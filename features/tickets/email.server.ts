@@ -9,6 +9,7 @@ import type { EventRecord } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
 import { BASE_URL } from "@/lib/shared/config";
+import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { renderCommunicationMessage } from "@/features/communications/email.server";
 
@@ -207,6 +208,9 @@ function buildHtml(
   const calendarDetail = event.doorCode
     ? "address, venue door code and your ticket"
     : "address and your ticket";
+  const ticketMascotUrl = escapeHtml(
+    buildAppUrl(origin, "/media/email/mascots/ticket-confirmation.png"),
+  );
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
     ${qrs.length > 0 ? `<div style="text-align:center;margin:24px 0">${qrBlocks}</div>` : ""}
     ${missingQrs > 0 ? `<p style="margin:0 0 12px;text-align:center;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The other ${missingQrs} ${missingQrs === 1 ? "ticket is" : "tickets are"} on the links below.</p>` : ""}
@@ -224,7 +228,8 @@ function buildHtml(
       <strong style="color:#1c1917">Ticket terms</strong><br>
       ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Entry is subject to the event details and house rules.")}<br><br>
       ${escapeHtml(event.refundPolicy ?? "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.")}
-    </div>`;
+    </div>
+    <p style="margin:24px 0 0"><img src="${ticketMascotUrl}" width="480" height="270" alt="A little illustrated character celebrates your ticket" style="display:block;width:100%;height:auto;border:0"></p>`;
   return renderBrandedEmail({
     origin,
     label: tickets.length === 1 ? "your ticket" : `your ${tickets.length} tickets`,

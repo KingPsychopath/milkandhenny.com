@@ -321,10 +321,15 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
     : eventStartLocal(event, 4);
   const thankYouAt = localDateAt(event, 1, 10);
   const surveyReminderAt = localDateAt(event, 4, 10);
-  const gif = `${BASE_URL}/media/after-school-club-walking.gif`;
-  const poster = `${BASE_URL}/media/after-school-club-walking-poster.jpg`;
-  const arrivalGif = `${BASE_URL}/media/after-school-club-arrival.gif`;
-  const arrivalPoster = `${BASE_URL}/media/after-school-club-arrival-poster.png`;
+  const eventMediaBase = `${BASE_URL}/media/events/after-school-club-2026-09-01`;
+  const emailMascotBase = `${BASE_URL}/media/email/mascots`;
+  const gif = `${eventMediaBase}/walking.gif`;
+  const poster = `${eventMediaBase}/walking-poster.jpg`;
+  const arrivalGif = `${eventMediaBase}/arrival.gif`;
+  const arrivalPoster = `${eventMediaBase}/arrival-poster.png`;
+  const preparationMascot = `${emailMascotBase}/preparation.png`;
+  const dayOfMascot = `${emailMascotBase}/day-of.png`;
+  const feedbackMascot = `${emailMascotBase}/feedback.png`;
   const stages = [
     {
       stageKey: "prepare",
@@ -333,7 +338,13 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       kind: "event_service" as const,
       subject: `A little ${event.title} preparation`,
       body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNothing is required. If you would like to make something just for fun:\n\n## Optional ideas\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYour spelling practice is just for fun. If you make a pitch, there is no expectation that you present it — it can simply be a silly or interesting idea you make for yourself.\n\nSee you soon,\nMilk & Henny",
-      media: [],
+      media: [
+        {
+          kind: "image",
+          url: preparationMascot,
+          alt: "A little illustrated character gets ready with letters and a pitch card",
+        },
+      ],
       sendAt: prepAt,
       lateJoinHours: hoursUntilEvent(event, prepAt),
       surveyId: null,
@@ -370,7 +381,13 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       kind: "event_service" as const,
       subject: `Today: ${event.title}`,
       body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs once you enter the gate on the **left** when you arrive. There is a car park on the very first right from the gate that is right next to the venue.\n\nKeep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
-      media: [],
+      media: [
+        {
+          kind: "image",
+          url: dayOfMascot,
+          alt: "A little illustrated character waits by the studio entrance",
+        },
+      ],
       sendAt: dayOfAt,
       lateJoinHours: hoursUntilEvent(event, dayOfAt),
       surveyId: null,
@@ -382,7 +399,13 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       kind: "feedback" as const,
       subject: `Thank you for coming to ${event.title}`,
       body: "Thank you for coming to **{{event.title}}**.\n\nWe would love to hear what you thought. It should take about two minutes:\n\n[Share your thoughts]({{survey.url}})\n\nWhat worked? What should we change? Would you come again?\n\nThank you for being there.",
-      media: [],
+      media: [
+        {
+          kind: "image",
+          url: feedbackMascot,
+          alt: "A little illustrated character holds a feedback card",
+        },
+      ],
       sendAt: thankYouAt,
       lateJoinHours: 48,
       surveyId,

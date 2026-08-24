@@ -10,9 +10,19 @@ const WIDTH = 240;
 const HEIGHT = 135;
 const FRAME_COUNT = 42;
 const FINAL_HOLD_FRAMES = 5;
-const OUTPUT_DIR = new URL("../public/media/", import.meta.url);
-const OUTPUT_GIF = new URL("after-school-club-arrival.gif", OUTPUT_DIR);
-const OUTPUT_POSTER = new URL("after-school-club-arrival-poster.png", OUTPUT_DIR);
+const EVENT_MEDIA_DIR = new URL(
+  "../public/media/events/after-school-club-2026-09-01/",
+  import.meta.url,
+);
+const EMAIL_MASCOT_DIR = new URL("../public/media/email/mascots/", import.meta.url);
+const OUTPUT_GIF = new URL("arrival.gif", EVENT_MEDIA_DIR);
+const OUTPUT_POSTER = new URL("arrival-poster.png", EVENT_MEDIA_DIR);
+const STATIC_VARIANTS = ["ticket-confirmation", "preparation", "day-of", "feedback"].map(
+  (kind) => ({
+    kind,
+    output: new URL(`${kind}.png`, EMAIL_MASCOT_DIR),
+  }),
+);
 
 const colour = {
   paper: "#fafaf9",
@@ -151,6 +161,41 @@ function drawCharacter({ x, footY, walking, jumping, waving, frame }) {
   return parts.join("");
 }
 
+function drawMascotCard(kind, x, footY) {
+  const cardX = x + 8;
+  const cardY = footY - 28;
+  const pieces = [
+    `<g>`,
+    `<rect x="${cardX}" y="${cardY}" width="40" height="26" rx="2" fill="${colour.paper}" stroke="${colour.stone500}" stroke-width="1"/>`,
+    `<rect x="${cardX + 1}" y="${cardY + 1}" width="38" height="5" fill="${colour.amber}"/>`,
+    `<circle cx="${cardX + 4}" cy="${cardY + 13}" r="2" fill="${colour.skin}"/>`,
+  ];
+
+  if (kind === "ticket-confirmation") {
+    pieces.push(
+      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.3" letter-spacing=".15">YOU'RE IN</text>`,
+      `<path d="M${cardX + 9} ${cardY + 17}h20M${cardX + 9} ${cardY + 21}h13" stroke="${colour.stone400}" stroke-width="1"/>`,
+      `<path d="M${cardX + 32} ${cardY + 17}l2 2 4-5" fill="none" stroke="${colour.amber}" stroke-width="1.5" stroke-linecap="square"/>`,
+    );
+  } else if (kind === "preparation") {
+    pieces.push(
+      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.1" letter-spacing=".1">MAKE A PITCH</text>`,
+      `<rect x="${cardX + 9}" y="${cardY + 15}" width="7" height="7" fill="${colour.cream}" stroke="${colour.amber}" stroke-width="1"/>`,
+      `<text x="${cardX + 12.5}" y="${cardY + 20.2}" text-anchor="middle" fill="${colour.ink}" font-family="Georgia, serif" font-size="5">A</text>`,
+      `<rect x="${cardX + 19}" y="${cardY + 15}" width="7" height="7" fill="${colour.cream}" stroke="${colour.amber}" stroke-width="1"/>`,
+      `<text x="${cardX + 22.5}" y="${cardY + 20.2}" text-anchor="middle" fill="${colour.ink}" font-family="Georgia, serif" font-size="5">?</text>`,
+    );
+  } else {
+    pieces.push(
+      `<text x="${cardX + 8}" y="${cardY + 11}" fill="${colour.ink}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="4.1" letter-spacing=".1">TELL US</text>`,
+      `<path d="M${cardX + 10} ${cardY + 19}l2 2 4-5M${cardX + 19} ${cardY + 19}l2 2 4-5M${cardX + 28} ${cardY + 19}l2 2 4-5" fill="none" stroke="${colour.amber}" stroke-width="1.5" stroke-linecap="square"/>`,
+    );
+  }
+
+  pieces.push(`</g>`);
+  return pieces.join("");
+}
+
 function drawSparkles(x, y, progress) {
   const opacity = Math.sin(progress * Math.PI);
   return [
@@ -211,11 +256,46 @@ function frameSvg(frame) {
   return scene.join("");
 }
 
+function staticVariantSvg(kind) {
+  const isDayOf = kind === "day-of";
+  const x = isDayOf ? 171 : 106;
+  const character = drawCharacter({
+    x,
+    footY: 96,
+    walking: false,
+    jumping: false,
+    waving: isDayOf,
+    frame: FRAME_COUNT - 1,
+  });
+  const card = isDayOf ? "" : drawMascotCard(kind, x, 96);
+  const title =
+    kind === "ticket-confirmation"
+      ? "A little character celebrates a ticket"
+      : kind === "preparation"
+        ? "A little character gets ready"
+        : kind === "day-of"
+          ? "A little character waits at the studio"
+          : "A little character holds a feedback card";
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 ${WIDTH} ${HEIGHT}">`,
+    `<title>${title}</title>`,
+    drawBackground(),
+    drawVenue(),
+    drawMarker(76, 18, colour.amber),
+    drawMarker(138, 22, colour.cream),
+    character,
+    card,
+    `</svg>`,
+  ].join("");
+}
+
 async function renderPng(svg, output) {
   await sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toFile(output);
 }
 
 await mkdir(dirname(OUTPUT_GIF.pathname), { recursive: true });
+await mkdir(EMAIL_MASCOT_DIR.pathname, { recursive: true });
 const temporaryDirectory = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "milk-henny-arrival-"));
 
 try {
@@ -231,6 +311,9 @@ try {
   for (let hold = 0; hold < FINAL_HOLD_FRAMES; hold += 1) framePaths.push(finalFrame);
 
   await renderPng(frameSvg(FRAME_COUNT - 1), OUTPUT_POSTER.pathname);
+  for (const variant of STATIC_VARIANTS) {
+    await renderPng(staticVariantSvg(variant.kind), variant.output.pathname);
+  }
   await run("magick", [
     "-delay",
     "12",
@@ -244,10 +327,17 @@ try {
 
   const gif = await stat(OUTPUT_GIF.pathname);
   const poster = await stat(OUTPUT_POSTER.pathname);
+  const variants = await Promise.all(
+    STATIC_VARIANTS.map(async (variant) => ({
+      path: variant.output.pathname,
+      bytes: (await stat(variant.output.pathname)).size,
+    })),
+  );
   console.log(
     JSON.stringify({
       gif: { path: OUTPUT_GIF.pathname, bytes: gif.size, frames: framePaths.length },
       poster: { path: OUTPUT_POSTER.pathname, bytes: poster.size },
+      variants,
     }),
   );
 } finally {

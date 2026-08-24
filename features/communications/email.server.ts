@@ -73,7 +73,10 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
     "event.map": event?.mapUrl ?? buildAppUrl(origin, "/contact"),
     "links.spellingGame": buildAppUrl(origin, "/things/spelling-bee"),
     "links.pitch": buildAppUrl(origin, "/things/pitches/new"),
-    "links.walkingVideo": buildAppUrl(origin, "/media/after-school-club-walking.mp4"),
+    "links.walkingVideo": buildAppUrl(
+      origin,
+      "/media/events/after-school-club-2026-09-01/walking.mp4",
+    ),
     "links.contact": buildAppUrl(origin, "/contact"),
     "links.email": "mailto:hello@milkandhenny.com",
     "survey.url": context.surveyUrl ?? "",
