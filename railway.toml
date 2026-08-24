@@ -1,6 +1,26 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+watchPatterns = [
+  "src/**",
+  "features/**",
+  "components/**",
+  "lib/**",
+  "server/**",
+  "public/**",
+  "scripts/**",
+  "ops/**",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "Dockerfile",
+  ".dockerignore",
+  "railway.toml",
+  "postcss.config.mjs",
+  "tsconfig.json",
+  "tsconfig.cli.json",
+  "vite.config.ts",
+]
 
 [deploy]
 healthcheckPath = "/api/health"

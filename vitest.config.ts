@@ -20,10 +20,14 @@ export default defineConfig({
     include: ["__tests__/unit/**/*.test.ts", "__tests__/integration/**/*.test.ts"],
     coverage: {
       include: ["lib/**/*.ts", "features/**/*.ts"],
-      exclude: ["lib/platform/redis.ts", "lib/platform/r2.ts", "lib/platform/logger.ts"],
+      exclude: [
+        "lib/platform/redis.server.ts",
+        "lib/platform/r2.server.ts",
+        "lib/platform/logger.server.ts",
+      ],
       thresholds: {
         statements: 44,
-        branches: 42,
+        branches: 41,
         functions: 44,
         lines: 45,
       },

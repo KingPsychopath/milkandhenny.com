@@ -38,6 +38,34 @@ The `maintenance` service uses `ops/` as its Railway root directory. Its
 `ops/railway.toml` builds the small maintenance image and schedules it for
 `03:15 UTC` daily.
 
+### Safe Railway release
+
+Run the release gate from the repository root:
+
+```bash
+pnpm verify:release
+```
+
+Then deploy the verified tree:
+
+```bash
+railway up --detach -m "release: describe the change"
+```
+
+Wait for the new deployment to reach `SUCCESS`. A queued or building
+deployment is not a completed release. After it succeeds, check the health
+endpoint and canonical origin:
+
+```bash
+curl --fail https://milkandhenny.com/api/health
+curl --fail -I https://milkandhenny.com/
+```
+
+Railway watches application and runtime inputs in `railway.toml`. Changes only
+to tests, browser configuration, CI, or documentation do not trigger a web
+service deployment. The previous successful deployment remains available for
+rollback; do not delete it as part of a normal release.
+
 ## VPS
 
 Use Docker with a reverse proxy such as Caddy or nginx. Terminate TLS at the proxy, forward the original host/protocol headers, and keep the Node process private.

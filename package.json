@@ -18,6 +18,7 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
+    "check": "pnpm format:check && pnpm typecheck && pnpm lint",
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "maintenance": "node ops/run-maintenance.mjs",
     "email:local": "docker compose -f docker-compose.local.yml up -d mailpit",
@@ -27,13 +28,13 @@
     "restore:postgres": "node ops/postgres-archive.mjs restore",
     "worker:media": "tsx --tsconfig tsconfig.cli.json scripts/media-worker.ts",
     "typecheck": "tsgo --noEmit",
-    "typecheck:ci": "tsgo --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit",
     "test:integration": "vitest run __tests__/integration",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify:release": "pnpm check && pnpm test:coverage && pnpm test:e2e && pnpm build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1109.0",

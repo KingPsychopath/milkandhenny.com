@@ -4,6 +4,7 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   browser,
   page,
 }) => {
+  test.setTimeout(60_000);
   const suffix = `${Date.now()}`;
   const title = `Playwright pitch ${suffix}`;
   const editedTitle = `${title} saved`;
@@ -26,6 +27,12 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   await editorTitle.fill(editedTitle);
   await expect(page.getByText("saved", { exact: true })).not.toBeVisible();
   await page.getByLabel("Current slide name").fill("Opening claim");
+  await page.locator('label:has(input[data-testid="toolbar-text"])').click();
+  const drawingCanvas = page.locator(".pitch-excalidraw canvas.interactive");
+  await expect(drawingCanvas).toBeVisible();
+  await drawingCanvas.click({ position: { x: 400, y: 220 } });
+  await page.keyboard.type("Opening claim content");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "+ slide" }).click();
   await page.getByLabel("Current slide name").fill("Closing proof");
   await expect(page.getByText("saved", { exact: true })).toBeVisible({ timeout: 15_000 });
@@ -36,6 +43,9 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   await expect(page.getByText("saved", { exact: true })).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: "publish + seal" }).click();
+  const publishDialog = page.getByRole("dialog", { name: "Publish and seal this edition?" });
+  await expect(publishDialog).toBeVisible();
+  await publishDialog.getByRole("button", { name: "publish and seal" }).click();
   await expect(page.getByRole("status")).toContainText("Published", { timeout: 20_000 });
 
   await page.goto(`/things/pitches/${deckId}`);
