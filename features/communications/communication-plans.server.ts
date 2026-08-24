@@ -330,7 +330,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 0,
       kind: "event_service" as const,
       subject: `A little ${event.title} preparation`,
-      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNo preparation is required, but if you fancy it, you can:\n\n## If you fancy it\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYou do not have to present it. It can simply be something silly or interesting that you make for yourself.\n\nSee you soon,\nMilk & Henny",
+      body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNothing is required. If you would like to make something just for fun:\n\n## Optional ideas\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYou do not have to present it. It can simply be something silly or interesting that you make for yourself.\n\nSee you soon,\nMilk & Henny",
       media: [],
       sendAt: prepAt,
       lateJoinHours: hoursUntilEvent(event, prepAt),
