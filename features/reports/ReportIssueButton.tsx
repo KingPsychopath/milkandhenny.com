@@ -39,6 +39,7 @@ export function ReportIssueButton<Type extends ReportType>({
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "duplicate" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [responseError, setResponseError] = useState("");
+  const [requestId, setRequestId] = useState("");
   const [reportId, setReportId] = useState("");
   const [diagnosticId] = useState(newDiagnosticId);
   const [idempotencyKey] = useState(() => `report_${newDiagnosticId()}`);
@@ -51,6 +52,7 @@ export function ReportIssueButton<Type extends ReportType>({
     setStatus("sending");
     setErrorMessage("");
     setResponseError("");
+    setRequestId("");
     recordDiagnosticAction("report.clicked", { type });
     const currentDiagnostics = captureDiagnosticContext({ diagnosticId, error });
     setDiagnostics(currentDiagnostics);
@@ -76,6 +78,7 @@ export function ReportIssueButton<Type extends ReportType>({
           timeoutMs: 10_000,
         },
       );
+      setRequestId(response.headers.get("x-request-id") ?? "");
       const result = (await response.json().catch(() => null)) as ReportResponse | null;
       if (!response.ok) {
         setResponseError(result?.error ?? `HTTP ${response.status}`);
@@ -111,7 +114,11 @@ export function ReportIssueButton<Type extends ReportType>({
               : label}
       </button>
       <span aria-live="polite">
-        {status === "error" ? errorMessage : reportId ? `reference ${diagnosticId}` : ""}
+        {status === "error"
+          ? `${errorMessage}${requestId ? ` · reference ${requestId}` : ""}`
+          : reportId
+            ? `reference ${diagnosticId}`
+            : ""}
       </span>
       <DiagnosticDetails diagnostics={diagnostics} responseError={responseError} />
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReportDiagnosticsInput } from "./types";
 
 export function DiagnosticDetails({
@@ -14,10 +14,34 @@ export function DiagnosticDetails({
   children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      summaryRef.current?.focus();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !detailsRef.current?.contains(event.target))
+        setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [open]);
+
   if (!import.meta.env.DEV) return null;
   return (
-    <details open={open} suppressHydrationWarning className="relative text-left">
+    <details ref={detailsRef} open={open} suppressHydrationWarning className="relative text-left">
       <summary
+        ref={summaryRef}
         aria-expanded={open}
         onClick={(event) => {
           event.preventDefault();
