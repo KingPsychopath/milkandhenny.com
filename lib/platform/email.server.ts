@@ -14,12 +14,22 @@ import { log } from "./logger.server";
 
 export type EmailChannel = "tickets" | "studio" | "communications";
 
-export type EmailConfig = {
+type CloudflareEmailConfig = {
+  provider: "cloudflare";
   apiKey: string;
   sender: { address: string; name: string };
   replyTo: string;
   accountId: string;
 };
+
+type MailpitEmailConfig = {
+  provider: "mailpit";
+  baseUrl: string;
+  sender: { address: string; name: string };
+  replyTo: string;
+};
+
+export type EmailConfig = CloudflareEmailConfig | MailpitEmailConfig;
 
 /** Inline image, referenced from HTML as `cid:<contentId>`. */
 export type EmailAttachment = {
@@ -60,7 +70,51 @@ const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name:
   },
 };
 
+function isProductionRuntime(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.APP_ENV === "production";
+}
+
+function selectedProvider(): EmailConfig["provider"] | null {
+  const requested = process.env.EMAIL_TRANSPORT?.trim().toLowerCase();
+  if (requested === "mailpit") return isProductionRuntime() ? null : "mailpit";
+  if (requested && requested !== "cloudflare") return null;
+
+  // A local process must never send to a real recipient by accident. Real
+  // provider delivery is exercised on Railway, where the production config is
+  // explicit and isolated from local credentials.
+  if (requested === "cloudflare") {
+    return isProductionRuntime() || process.env.NODE_ENV === "test" ? "cloudflare" : null;
+  }
+
+  if (process.env.NODE_ENV === "development") return "mailpit";
+  return "cloudflare";
+}
+
+function localSender(channel: EmailChannel): { address: string; name: string } {
+  const sender = CHANNEL_SENDERS[channel];
+  return {
+    address:
+      process.env[sender.environmentVariable]?.trim() ||
+      (channel === "tickets" ? "tickets@local.test" : "studio@local.test"),
+    name: sender.name,
+  };
+}
+
 function getEmailConfig(channel: EmailChannel): EmailConfig | null {
+  const provider = selectedProvider();
+  if (provider === "mailpit") {
+    return {
+      provider,
+      baseUrl: (process.env.EMAIL_MAILPIT_URL?.trim() || "http://127.0.0.1:8025").replace(
+        /\/+$/,
+        "",
+      ),
+      sender: localSender(channel),
+      replyTo: process.env.EMAIL_REPLY_TO?.trim() || "hello@local.test",
+    };
+  }
+  if (provider !== "cloudflare") return null;
+
   const apiKey = process.env.EMAIL_API_KEY?.trim();
   const replyTo = process.env.EMAIL_REPLY_TO?.trim();
   const sender = CHANNEL_SENDERS[channel];
@@ -73,6 +127,7 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
   if (!accountId) return null;
 
   return {
+    provider,
     apiKey,
     sender: { address, name: sender.name },
     replyTo,
@@ -84,16 +139,24 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
 export function describeEmailCapability(): {
   configured: boolean;
   feedbackConfigured: boolean;
-  provider: "cloudflare" | null;
+  provider: "cloudflare" | "mailpit" | null;
+  mailpitUrl: string | null;
   senders: Record<EmailChannel, string | null>;
   replyTo: string | null;
 } {
   const tickets = getEmailConfig("tickets");
   const studio = getEmailConfig("studio");
+  const mailpitUrl =
+    tickets?.provider === "mailpit"
+      ? tickets.baseUrl
+      : studio?.provider === "mailpit"
+        ? studio.baseUrl
+        : null;
   return {
     configured: tickets !== null && studio !== null,
     feedbackConfigured: Boolean(process.env.EMAIL_EVENT_SECRET?.trim()),
-    provider: tickets || studio ? "cloudflare" : null,
+    provider: tickets?.provider ?? studio?.provider ?? null,
+    mailpitUrl,
     senders: {
       tickets: tickets?.sender.address ?? null,
       studio: studio?.sender.address ?? null,
@@ -168,7 +231,7 @@ function interpretCloudflareResponse(
 }
 
 async function sendViaCloudflare(
-  config: EmailConfig,
+  config: CloudflareEmailConfig,
   message: EmailMessage,
   deliveryKey?: string,
 ): Promise<SendEmailResult> {
@@ -202,6 +265,47 @@ async function sendViaCloudflare(
   return interpretCloudflareResponse(status, payload, message.to);
 }
 
+async function sendViaMailpit(
+  config: MailpitEmailConfig,
+  message: EmailMessage,
+  deliveryKey?: string,
+): Promise<SendEmailResult> {
+  const response = await fetch(`${config.baseUrl}/api/v1/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      From: { Email: config.sender.address, Name: config.sender.name },
+      To: [{ Email: message.to }],
+      ReplyTo: [{ Email: config.replyTo }],
+      Subject: message.subject,
+      Text: message.text,
+      ...(message.html ? { HTML: message.html } : {}),
+      ...(deliveryKey ? { Headers: { "X-Milk-Henny-Delivery": deliveryKey } } : {}),
+      ...(message.attachments?.length
+        ? {
+            Attachments: message.attachments.map((attachment) => ({
+              Content: attachment.content,
+              Filename: attachment.filename,
+              ContentType: attachment.type,
+              ...(attachment.disposition === "inline" && attachment.contentId
+                ? { ContentID: attachment.contentId }
+                : {}),
+            })),
+          }
+        : {}),
+    }),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+  });
+  const payload = asRecord(await response.json().catch(() => null));
+  if (!response.ok) {
+    const error =
+      typeof payload?.Error === "string" ? payload.Error : "Mailpit rejected the message";
+    return { ok: false, status: response.status || 502, error };
+  }
+  const id = typeof payload?.ID === "string" && payload.ID.length > 0 ? payload.ID : null;
+  return { ok: true, id };
+}
+
 /**
  * Send one transactional message.
  *
@@ -224,11 +328,14 @@ export async function deliverEmailNow(
   }
 
   try {
-    const result = await sendViaCloudflare(config, message, deliveryKey);
+    const result =
+      config.provider === "mailpit"
+        ? await sendViaMailpit(config, message, deliveryKey)
+        : await sendViaCloudflare(config, message, deliveryKey);
 
     if (!result.ok) {
       log.error("email.send", "Email provider rejected the message", {
-        provider: "cloudflare",
+        provider: config.provider,
         channel: message.channel,
         status: result.status,
         error: result.error,
@@ -239,7 +346,7 @@ export async function deliverEmailNow(
     log.error(
       "email.send",
       "Email delivery threw",
-      { provider: "cloudflare", channel: message.channel },
+      { provider: config.provider, channel: message.channel },
       error,
     );
     return { ok: false, status: 502, error: "Email delivery failed" };

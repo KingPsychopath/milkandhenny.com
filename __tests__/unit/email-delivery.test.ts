@@ -98,6 +98,71 @@ describe("email provider delivery", () => {
       error: "Recipient address permanently bounced",
     });
   });
+
+  it("captures local messages in Mailpit with inline media", async () => {
+    vi.stubEnv("EMAIL_TRANSPORT", "mailpit");
+    vi.stubEnv("EMAIL_MAILPIT_URL", "http://127.0.0.1:8025");
+    vi.stubEnv("EMAIL_TICKETS_FROM", "tickets@local.test");
+    vi.stubEnv("EMAIL_REPLY_TO", "hello@local.test");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ID: "mailpit-message-1" }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      deliverEmailNow(
+        {
+          channel: "tickets",
+          to: "person@example.com",
+          subject: "A local ticket",
+          text: "Open your local ticket.",
+          html: '<img src="cid:ticketqr">',
+          attachments: [
+            {
+              content: "cG5n",
+              filename: "ticket.png",
+              type: "image/png",
+              disposition: "inline",
+              contentId: "ticketqr",
+            },
+          ],
+        },
+        "tickets:local:test",
+      ),
+    ).resolves.toEqual({ ok: true, id: "mailpit-message-1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8025/api/v1/send",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      From: { Email: "tickets@local.test" },
+      ReplyTo: [{ Email: "hello@local.test" }],
+      Headers: { "X-Milk-Henny-Delivery": "tickets:local:test" },
+      Attachments: [{ Content: "cG5n", ContentID: "ticketqr" }],
+    });
+  });
+
+  it("does not allow a local process to select Cloudflare delivery", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("EMAIL_TRANSPORT", "cloudflare");
+    configureCloudflare();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      deliverEmailNow({
+        channel: "tickets",
+        to: "person@example.com",
+        subject: "Should stay local",
+        text: "This must not leave the machine.",
+      }),
+    ).resolves.toEqual({ ok: false, status: 503, error: "Email is not configured" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("email outbox policy", () => {

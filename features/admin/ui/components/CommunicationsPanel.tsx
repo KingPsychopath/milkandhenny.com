@@ -23,6 +23,10 @@ type Message = {
   status: string;
   recipientCount: number;
 };
+type EmailCapability = {
+  provider: "cloudflare" | "mailpit" | null;
+  mailpitUrl: string | null;
+};
 type Media = { kind: MediaKind; url: string; alt: string; posterUrl?: string };
 type Template = {
   id: string;
@@ -221,6 +225,7 @@ export function CommunicationsPanel({
   const [plans, setPlans] = useState<Plan[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [email, setEmail] = useState<EmailCapability>({ provider: null, mailpitUrl: null });
   const [tab, setTab] = useState<"event-plan" | "compose" | "templates" | "feedback" | "people">(
     "event-plan",
   );
@@ -292,6 +297,7 @@ export function CommunicationsPanel({
         plans?: Plan[];
         templates?: Template[];
         surveys?: Survey[];
+        email?: EmailCapability;
         error?: string;
       };
       if (!response.ok) throw new Error(data.error || "Could not load communications");
@@ -301,6 +307,7 @@ export function CommunicationsPanel({
       setPlans(data.plans || []);
       setTemplates(data.templates || []);
       setSurveys(data.surveys || []);
+      setEmail(data.email || { provider: null, mailpitUrl: null });
       if (!selectedEvent && data.events?.[0]) setSelectedEvent(data.events[0].slug);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load communications");
@@ -721,6 +728,21 @@ export function CommunicationsPanel({
             <dd className="mt-1">{dateLabel(nextSend)}</dd>
           </div>
         </dl>
+        {email.provider === "mailpit" && email.mailpitUrl ? (
+          <div className="mt-5 border-t theme-border pt-4 font-mono text-xs theme-muted">
+            <span className="font-bold text-foreground">local capture</span>
+            <span className="mx-2 theme-faint">·</span>
+            Emails stay on this machine.{" "}
+            <a
+              href={email.mailpitUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-4 transition-opacity hover:opacity-70"
+            >
+              open the local inbox
+            </a>
+          </div>
+        ) : null}
       </section>
       <nav
         aria-label="Communications tools"
