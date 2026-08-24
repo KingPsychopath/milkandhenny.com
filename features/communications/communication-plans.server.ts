@@ -228,7 +228,7 @@ async function ensureSurvey(eventSlug: string, eventTitle: string): Promise<stri
   const id = randomUUID();
   await query(
     `insert into surveys (id, slug, event_slug, title, intro, questions, status)
-     values ($1,$2,$3,$4,$5,$6::jsonb,'open')`,
+     values ($1,$2,$3,$4,$5,$6::jsonb,'draft')`,
     [
       id,
       slug,
