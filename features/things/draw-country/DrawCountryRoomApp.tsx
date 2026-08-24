@@ -25,6 +25,7 @@ import type { CountryOutline } from "./types";
 import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   releaseGamePoolMembership,
   useGamePoolRoomBackNavigation,
@@ -133,6 +134,7 @@ function DrawCountryRoom({
   const previousPhase = useRef(snapshot?.phase);
   const previousStartRequest = useRef<string | null>(null);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
+  const { prompt, dialog } = useActionDialog();
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
   const nudgedRef = useRef<string[] | null>(null);
   nudgedRef.current = nudgedIds;
@@ -373,10 +375,21 @@ function DrawCountryRoom({
           onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
           onStart={() => void control({ type: "game.start" })}
           onPassLead={(playerId) => void control({ type: "host.pass", playerId })}
-          onRename={() => {
+          onRename={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
-            const name = window.prompt("Name in this room", current)?.trim();
+            const name = (
+              await prompt({
+                tone: "light",
+                eyebrow: "player name",
+                title: "What should we call you?",
+                description: "This name is shown to everyone in the room.",
+                label: "Name",
+                defaultValue: current,
+                confirmLabel: "save name",
+                required: true,
+              })
+            )?.trim();
             if (name && name !== current) void control({ type: "player.rename", name });
           }}
           onLeave={leaveRoom}
@@ -418,6 +431,7 @@ function DrawCountryRoom({
             onConfirm={() => void confirmStart()}
           />
         ) : null}
+        {dialog}
       </>
     );
 

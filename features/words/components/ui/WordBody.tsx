@@ -2,6 +2,7 @@
 
 import React, { Component, type ReactNode, type ErrorInfo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import { Link } from "@tanstack/react-router";
 import remarkGfm from "remark-gfm";
 import { rehypeHashtags } from "@/lib/markdown/rehype-hashtags";
 import { rehypeSlug } from "@/lib/markdown/rehype-slug";
@@ -72,6 +73,117 @@ function isImageOnlyParagraph(node: MarkdownNode | undefined): boolean {
   return (
     meaningful.length === 1 && meaningful[0].type === "element" && meaningful[0].tagName === "img"
   );
+}
+
+type InternalWordRoute =
+  | { kind: "word"; slug: string; hash?: string }
+  | { kind: "album"; album: string; hash?: string }
+  | { kind: "photo"; album: string; photo: string; hash?: string }
+  | { kind: "transfer"; id: string; hash?: string }
+  | { kind: "upload"; hash?: string }
+  | { kind: "admin"; hash?: string };
+
+function parseInternalWordRoute(href: string): InternalWordRoute | undefined {
+  if (!href.startsWith("/") || href.startsWith("//")) return undefined;
+
+  const url = new URL(href, "https://milk-and-henny.invalid");
+  // Search parameters need route-specific validation. Keep those links native
+  // so their exact URL semantics are preserved.
+  if (url.search) return undefined;
+
+  const segments = url.pathname.split("/").filter(Boolean);
+  let decodedSegments: string[];
+  try {
+    decodedSegments = segments.map((segment) => decodeURIComponent(segment));
+  } catch {
+    return undefined;
+  }
+  if (decodedSegments.some((segment) => segment.includes("/"))) return undefined;
+
+  const hash = url.hash ? url.hash.slice(1) : undefined;
+  if (decodedSegments.length === 2 && decodedSegments[0] === "words") {
+    return { kind: "word", slug: decodedSegments[1], hash };
+  }
+  if (decodedSegments.length === 2 && decodedSegments[0] === "pics") {
+    return { kind: "album", album: decodedSegments[1], hash };
+  }
+  if (decodedSegments.length === 3 && decodedSegments[0] === "pics") {
+    return { kind: "photo", album: decodedSegments[1], photo: decodedSegments[2], hash };
+  }
+  if (decodedSegments.length === 2 && decodedSegments[0] === "t") {
+    return { kind: "transfer", id: decodedSegments[1], hash };
+  }
+  if (decodedSegments.length === 1 && decodedSegments[0] === "upload") {
+    return { kind: "upload", hash };
+  }
+  if (decodedSegments.length === 1 && decodedSegments[0] === "admin") {
+    return { kind: "admin", hash };
+  }
+  return undefined;
+}
+
+function WordContentLink({
+  href,
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<"a"> & { href: string }) {
+  const route = parseInternalWordRoute(href);
+  if (!route)
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+
+  switch (route.kind) {
+    case "word":
+      return (
+        <Link to="/words/$slug" params={{ slug: route.slug }} hash={route.hash} {...props}>
+          {children}
+        </Link>
+      );
+    case "album":
+      return (
+        <Link to="/pics/$album" params={{ album: route.album }} hash={route.hash} {...props}>
+          {children}
+        </Link>
+      );
+    case "photo":
+      return (
+        <Link
+          to="/pics/$album/$photo"
+          params={{ album: route.album, photo: route.photo }}
+          hash={route.hash}
+          {...props}
+        >
+          {children}
+        </Link>
+      );
+    case "transfer":
+      return (
+        <Link
+          to="/t/$id"
+          params={{ id: route.id }}
+          search={{ token: undefined }}
+          hash={route.hash}
+          {...props}
+        >
+          {children}
+        </Link>
+      );
+    case "upload":
+      return (
+        <Link to="/upload" search={{ auth: undefined }} hash={route.hash} {...props}>
+          {children}
+        </Link>
+      );
+    case "admin":
+      return (
+        <Link to="/admin" search={{ view: "overview" }} hash={route.hash} {...props}>
+          {children}
+        </Link>
+      );
+  }
 }
 
 /* ─── Base components (always active) ─── */
@@ -181,9 +293,9 @@ function getBaseComponents(
       });
       if (!resolved) return <span>{children}</span>;
       return (
-        <a href={resolved} {...props}>
+        <WordContentLink href={resolved} {...props}>
           {children}
-        </a>
+        </WordContentLink>
       );
     },
 

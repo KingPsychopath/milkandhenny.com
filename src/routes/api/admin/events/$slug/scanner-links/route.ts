@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAuth } from "@/features/auth/auth.server";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
   createScannerLink,
@@ -16,8 +16,8 @@ import { SCANNER_PERMISSIONS, type ScannerPermission } from "@/features/tickets/
  * Admin scanner-link management for one event.
  *
  * Creating a link is how a helper gets scanning access; revoking it is how
- * that access ends. Both are plain admin actions — the blast radius of a
- * leaked link is one event's scan station, and revocation is instant.
+ * that access ends. Creating or changing a link is a step-up protected action;
+ * revocation remains available to an authenticated admin for quick shutdown.
  */
 
 async function handleGET(request: Request, slug: string) {
@@ -41,7 +41,7 @@ async function handleGET(request: Request, slug: string) {
 }
 
 async function handlePOST(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
+  const authErr = await requireAdminStepUp(request);
   if (authErr) return authErr;
 
   try {
@@ -72,7 +72,7 @@ async function handlePOST(request: Request, slug: string) {
 }
 
 async function handlePATCH(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
+  const authErr = await requireAdminStepUp(request);
   if (authErr) return authErr;
 
   try {

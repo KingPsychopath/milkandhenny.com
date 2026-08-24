@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { GameShell } from "../shared/GameShell";
 import {
@@ -357,6 +358,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   const short = LIARS_PLAYER_LIMITS[snapshot.mode].min - snapshot.players.length;
   const [startAttempted, setStartAttempted] = useState(false);
   const [confirmingStart, setConfirmingStart] = useState(false);
+  const { prompt, dialog } = useActionDialog();
   const [editingRoles, setEditingRoles] = useState(false);
   const notReady = snapshot.players.filter(({ ready }) => !ready);
   const inviteUrl =
@@ -385,10 +387,21 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         currentPlayerId={snapshot.player?.playerId ?? null}
         game={snapshot.mode}
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
-        onRename={() => {
+        onRename={async () => {
           const current =
             snapshot.players.find(({ id }) => id === snapshot.player?.playerId)?.name ?? "";
-          const name = window.prompt("Name in this room", current)?.trim();
+          const name = (
+            await prompt({
+              tone: "dark",
+              eyebrow: "player name",
+              title: "What should we call you?",
+              description: "This name is shown to everyone in the room.",
+              label: "Name",
+              defaultValue: current,
+              confirmLabel: "save name",
+              required: true,
+            })
+          )?.trim();
           if (name && name !== current) void send({ type: "player.rename", name });
         }}
         roomId={snapshot.roomId}
@@ -487,6 +500,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           }}
         />
       ) : null}
+      {dialog}
     </>
   );
 }

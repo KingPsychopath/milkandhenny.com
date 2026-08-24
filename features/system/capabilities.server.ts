@@ -8,6 +8,7 @@ import { getSecurityWarnings } from "@/features/auth/auth.server";
 import {
   checkConnection as checkObjectStorage,
   isConfigured as isObjectStorageConfigured,
+  isPrivateStorageConfigured,
   isTransferStorageConfigured,
 } from "@/lib/platform/r2.server";
 import { getRedis, getRedisRestConfig } from "@/lib/platform/redis.server";
@@ -19,8 +20,6 @@ import { hasMediaPublicUrl } from "@/lib/shared/config";
 import { getRuntimeMetadata } from "@/lib/platform/runtime-metadata.server";
 import { getDatabaseBootState } from "@/lib/platform/database-readiness.server";
 
-const REQUIRED_AUTH_VARIABLES = ["AUTH_SECRET", "ADMIN_PASSWORD", "UPLOAD_PIN"] as const;
-
 function isConfigured(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
@@ -29,7 +28,7 @@ function getConfiguredCapabilities(): Capability[] {
   const redisConfigured = getRedisRestConfig() !== null;
   const objectStorageConfigured = isObjectStorageConfigured();
   const privateTransferStorageConfigured = isTransferStorageConfigured();
-  const authConfigured = REQUIRED_AUTH_VARIABLES.every(isConfigured);
+  const authConfigured = getSecurityWarnings().length === 0;
   const maintenanceConfigured = isConfigured("CRON_SECRET");
   const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
   const emailCapability = describeEmailCapability();
@@ -242,6 +241,86 @@ function getSystemCapabilities(): SystemCapabilities {
   };
 }
 
+function getMediaWorkerCapabilities(): SystemCapabilities {
+  const redisRestConfigured = getRedisRestConfig() !== null;
+  const directRedisConfigured = getDirectRedisConfig() !== null;
+  const privateStorageConfigured = isPrivateStorageConfigured();
+  const mediaMode = getMediaProcessorMode();
+
+  const capabilities: Capability[] = [
+    {
+      id: "runtime",
+      label: "worker runtime",
+      status: "available",
+      required: true,
+      detail: "The media worker process is running.",
+    },
+    {
+      id: "worker-queue",
+      label: "media queue",
+      status:
+        mediaMode === "hybrid" && directRedisConfigured && redisRestConfigured
+          ? "available"
+          : "unavailable",
+      required: true,
+      detail:
+        mediaMode !== "hybrid"
+          ? "MEDIA_PROCESSOR_MODE must be hybrid for a worker service."
+          : directRedisConfigured && redisRestConfigured
+            ? "The worker has both blocking-queue and transfer-state Redis connections."
+            : "The worker needs REDIS_URL and REDIS_REST_URL/REDIS_REST_TOKEN.",
+    },
+    {
+      id: "media-storage",
+      label: "private media storage",
+      status: privateStorageConfigured ? "available" : "unavailable",
+      required: true,
+      detail: privateStorageConfigured
+        ? "Private transfer storage is configured."
+        : "Private transfer storage is not configured.",
+    },
+  ];
+
+  return {
+    status: getOverallStatus(capabilities),
+    timestamp: new Date().toISOString(),
+    runtime: getRuntimeMetadata(),
+    capabilities,
+  };
+}
+
+async function probeMediaWorkerCapabilities(): Promise<SystemCapabilities> {
+  const snapshot = getMediaWorkerCapabilities();
+  const capabilities = [...snapshot.capabilities];
+
+  const queueIndex = capabilities.findIndex(({ id }) => id === "worker-queue");
+  if (queueIndex >= 0 && capabilities[queueIndex]?.status === "available") {
+    try {
+      const directRedis = getCommandRedis() as unknown as {
+        get: (key: string) => Promise<unknown>;
+      };
+      await Promise.all([getRedis()?.get("mah:health:probe"), directRedis.get("mah:health:probe")]);
+      capabilities[queueIndex] = {
+        ...capabilities[queueIndex],
+        detail: "Blocking queue and transfer-state Redis connections are reachable.",
+      };
+    } catch {
+      capabilities[queueIndex] = {
+        ...capabilities[queueIndex],
+        status: "unavailable",
+        detail: "The worker Redis connections are configured but unreachable.",
+      };
+    }
+  }
+
+  return {
+    ...snapshot,
+    status: getOverallStatus(capabilities),
+    timestamp: new Date().toISOString(),
+    capabilities,
+  };
+}
+
 async function probeSystemCapabilities(): Promise<
   SystemCapabilities & {
     multiplayer: MultiplayerTelemetrySnapshot;
@@ -351,4 +430,9 @@ async function probeSystemCapabilities(): Promise<
   };
 }
 
-export { getSystemCapabilities, probeSystemCapabilities };
+export {
+  getMediaWorkerCapabilities,
+  getSystemCapabilities,
+  probeMediaWorkerCapabilities,
+  probeSystemCapabilities,
+};

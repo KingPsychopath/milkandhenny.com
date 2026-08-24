@@ -5,6 +5,7 @@ import {
   getLocalDevAdminCookieValue,
   handleVerifyRequest,
   isLocalDevelopment,
+  revokeCurrentSession,
 } from "./auth.server";
 import {
   getAuthCookieMaxAgeSeconds,
@@ -32,7 +33,6 @@ async function verifyAndSetCookie(
   const incoming = getRequest();
   const headers = new Headers(incoming.headers);
   headers.set("content-type", "application/json");
-  if (!headers.has("x-forwarded-for")) headers.set("x-forwarded-for", "127.0.0.1");
 
   const response = await handleVerifyRequest(
     new Request(incoming.url, {
@@ -89,7 +89,9 @@ export const signInUpload = createServerFn({ method: "POST" })
 
 export const signOut = createServerFn({ method: "POST" })
   .validator((data: { role: AuthCookieRole; nextPath?: string }) => data)
-  .handler(({ data }) => {
+  .handler(async ({ data }) => {
+    const request = getRequest();
+    const revoked = await revokeCurrentSession(request, data.role);
     setCookie(getAuthCookieName(data.role), "", {
       httpOnly: true,
       sameSite: "lax",
@@ -108,5 +110,6 @@ export const signOut = createServerFn({ method: "POST" })
     }
     const nextPath =
       data.nextPath?.startsWith("/") && !data.nextPath.startsWith("//") ? data.nextPath : "/";
-    throw redirect({ href: nextPath });
+    const failureSuffix = nextPath.includes("?") ? "&auth=logout-failed" : "?auth=logout-failed";
+    throw redirect({ href: revoked ? nextPath : `${nextPath}${failureSuffix}` });
   });

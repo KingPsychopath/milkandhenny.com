@@ -5,6 +5,7 @@ import { AppImage } from "@/components/AppImage";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import {
@@ -102,6 +103,7 @@ export function CentreRoom({
   const [resetNonce, setResetNonce] = useState(0);
   const [pending, setPending] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const { prompt, dialog } = useActionDialog();
   const previousCount = useRef<number | null>(null);
   const previousPhase = useRef(snapshot?.phase);
   const presenceSequence = useRef(0);
@@ -360,30 +362,44 @@ export function CentreRoom({
       ? (gamePoolRoomInviteUrl("centre", roomId) ?? "")
       : buildCentrePlayerInviteUrl(window.location.origin, roomId, token ?? undefined);
     return (
-      <CentreLobby
-        snapshot={snapshot}
-        playerId={credentials.playerId}
-        nudged={nudgedIds !== null}
-        invite={invite}
-        connection={live.connectionState}
-        message={shareMessage ?? live.message}
-        onShareMessage={setShareMessage}
-        onReady={(ready) => void send({ type: "readiness.set", ready })}
-        onDifficulty={(difficulty) => void send({ type: "game.configure", difficulty })}
-        onDelayedRivals={(delayedRivals) => void send({ type: "game.configure", delayedRivals })}
-        onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
-        onRename={() => {
-          const current =
-            snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
-          const name = window.prompt("Name in this room", current)?.trim();
-          if (name && name !== current) void send({ type: "player.rename", name });
-        }}
-        onStart={() => {
-          primeCentreAudio();
-          void send({ type: "game.start" });
-        }}
-        onLeave={leaveRoom}
-      />
+      <>
+        <CentreLobby
+          snapshot={snapshot}
+          playerId={credentials.playerId}
+          nudged={nudgedIds !== null}
+          invite={invite}
+          connection={live.connectionState}
+          message={shareMessage ?? live.message}
+          onShareMessage={setShareMessage}
+          onReady={(ready) => void send({ type: "readiness.set", ready })}
+          onDifficulty={(difficulty) => void send({ type: "game.configure", difficulty })}
+          onDelayedRivals={(delayedRivals) => void send({ type: "game.configure", delayedRivals })}
+          onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
+          onRename={async () => {
+            const current =
+              snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+            const name = (
+              await prompt({
+                tone: "dark",
+                eyebrow: "player name",
+                title: "What should we call you?",
+                description: "This name is shown to everyone in the room.",
+                label: "Name",
+                defaultValue: current,
+                confirmLabel: "save name",
+                required: true,
+              })
+            )?.trim();
+            if (name && name !== current) void send({ type: "player.rename", name });
+          }}
+          onStart={() => {
+            primeCentreAudio();
+            void send({ type: "game.start" });
+          }}
+          onLeave={leaveRoom}
+        />
+        {dialog}
+      </>
     );
   }
 

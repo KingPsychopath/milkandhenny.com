@@ -91,6 +91,7 @@ const EXPIRY_OPTIONS = [
 
 type UploadDashboardProps = {
   isAdmin: boolean;
+  accessExpiresAt: string | null;
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
@@ -232,7 +233,7 @@ function getUploadProgressLabel(progress: {
   return `uploading ${progress.current}/${progress.total}`;
 }
 
-export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
+export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardProps) {
   /* Upload state */
   const [mode, setMode] = useState<UploadMode>("transfer");
   const [files, setFiles] = useState<File[]>([]);
@@ -1015,6 +1016,20 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
             words
           </Link>
         </nav>
+        {accessExpiresAt ? (
+          <p
+            className="mt-5 border-y theme-border py-3 font-mono text-xs theme-muted"
+            role="status"
+          >
+            guest access is open · closes at{" "}
+            {new Date(accessExpiresAt).toLocaleString("en-GB", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+        ) : null}
       </header>
 
       {/* Mode toggle */}
@@ -1484,7 +1499,9 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
                 {transferResult.transfer.fileCount} file
                 {transferResult.transfer.fileCount !== 1 ? "s" : ""} ·{" "}
                 {formatBytes(transferResult.totalSize)} · expires{" "}
-                {new Date(transferResult.transfer.expiresAt).toLocaleDateString()}
+                {new Date(transferResult.transfer.expiresAt).toLocaleDateString("en-GB", {
+                  timeZone: "Europe/London",
+                })}
               </p>
               {typeof transferResult.addedCount === "number" ? (
                 <p className="font-mono text-xs theme-muted">

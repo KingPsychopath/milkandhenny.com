@@ -12,6 +12,7 @@ import {
 import { SAME_BRAIN_SCENARIOS, type SameBrainScenario } from "./same-brain-scenarios";
 import { SameBrainRoom } from "./SameBrainRoomApp";
 import type { SameBrainPlayerCredentials, SameBrainScoring } from "./types";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 /**
  * A whole table on one screen, for development only.
@@ -73,6 +74,7 @@ export function SameBrainDevHarness() {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { prompt, dialog } = useActionDialog();
 
   useEffect(() => setCaptures(readCaptures()), []);
 
@@ -193,10 +195,15 @@ export function SameBrainDevHarness() {
         setError("could not capture that room");
         return;
       }
-      const label = window.prompt(
-        "name this scenario",
-        `round · ${new Date().toLocaleTimeString()}`,
-      );
+      const label = await prompt({
+        tone: "dark",
+        eyebrow: "scenario capture",
+        title: "Name this scenario",
+        label: "Scenario name",
+        defaultValue: `round · ${new Date().toLocaleTimeString()}`,
+        confirmLabel: "save capture",
+        required: true,
+      });
       if (!label) return;
       writeCaptures([{ label, savedAt: Date.now(), payload }, ...captures].slice(0, 24));
     } finally {
@@ -430,6 +437,7 @@ export function SameBrainDevHarness() {
           </section>
         </>
       )}
+      {dialog}
     </div>
   );
 }

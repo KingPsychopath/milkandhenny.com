@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { probeSystemCapabilities } from "@/features/system/capabilities.server";
+import {
+  probeMediaWorkerCapabilities,
+  probeSystemCapabilities,
+} from "@/features/system/capabilities.server";
+import { isMediaWorkerRole } from "@/features/system/media-role.server";
 
 /**
  * Provider-neutral readiness endpoint for Railway, Docker, a VPS, or an
@@ -7,7 +11,9 @@ import { probeSystemCapabilities } from "@/features/system/capabilities.server";
  * traffic when boot migrations did not complete.
  */
 async function handleGET() {
-  const health = await probeSystemCapabilities();
+  const health = isMediaWorkerRole()
+    ? await probeMediaWorkerCapabilities()
+    : await probeSystemCapabilities();
   return Response.json(
     {
       ok: health.status !== "unhealthy",

@@ -21,6 +21,7 @@ type RedisLike = {
   sadd: (key: string, value: string) => Promise<void>;
   srem: (key: string, value: string) => Promise<void>;
   smembers: (key: string) => Promise<string[]>;
+  eval: (script: string, keys: string[], args: number[]) => Promise<number[]>;
   pipeline: () => {
     del: (key: string) => void;
     exists: (key: string) => void;
@@ -68,6 +69,22 @@ function createRedisMock(): RedisLike {
     },
     async smembers(key) {
       return [...(sets.get(key) ?? new Set<string>())];
+    },
+    async eval(_script, keys, args) {
+      const limit = Number(args[0]);
+      const globalLimit = keys.length > 1 ? Number(args[1]) : limit;
+      const identity = ((kv.get(keys[0]) as number | undefined) ?? 0) + 1;
+      kv.set(keys[0], identity);
+      if (keys.length > 1) {
+        const global = ((kv.get(keys[1]) as number | undefined) ?? 0) + 1;
+        kv.set(keys[1], global);
+        return [
+          identity <= limit && global <= globalLimit ? 1 : 0,
+          Math.max(0, limit - identity),
+          900,
+        ];
+      }
+      return [identity <= limit ? 1 : 0, Math.max(0, limit - identity), 900];
     },
     pipeline() {
       const ops: Array<() => Promise<number>> = [];
@@ -120,7 +137,7 @@ describe("auth security flows", () => {
       NODE_ENV: "test",
       AUTH_SECRET: "test-secret-key-for-jwt-signing-1234567890-EXTRA-LENGTH",
       ADMIN_PASSWORD: "a-very-strong-admin-password",
-      UPLOAD_PIN: "9999",
+      UPLOAD_PIN: "secure-upload-passphrase",
     };
   });
 
@@ -292,7 +309,7 @@ describe("auth security flows", () => {
     // Admin token A
     const verifyA = await handleVerifyRequest(
       mockRequest({
-        headers: { "x-forwarded-for": "203.0.113.10" },
+        headers: { "user-agent": "test-device-a" },
         jsonBody: { password: process.env.ADMIN_PASSWORD },
       }) as unknown as NextRequest,
       "admin",
@@ -302,7 +319,7 @@ describe("auth security flows", () => {
     // Admin token B
     const verifyB = await handleVerifyRequest(
       mockRequest({
-        headers: { "x-forwarded-for": "203.0.113.11" },
+        headers: { "user-agent": "test-device-b" },
         jsonBody: { password: process.env.ADMIN_PASSWORD },
       }) as unknown as NextRequest,
       "admin",

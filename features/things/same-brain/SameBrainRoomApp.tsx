@@ -42,6 +42,7 @@ import {
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 let actionCounter = 0;
 const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
@@ -316,6 +317,7 @@ function LobbyPhase({
   send: Send;
   sendHost: Send;
 }) {
+  const { prompt, dialog } = useActionDialog();
   const enough = snapshot.players.length >= SAME_BRAIN_PLAYER_LIMITS.min;
   const [startAttempted, setStartAttempted] = useState(false);
   const [confirmingStart, setConfirmingStart] = useState(false);
@@ -353,9 +355,20 @@ function LobbyPhase({
         currentPlayerId={snapshot.you?.id ?? null}
         game="same-brain"
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
-        onRename={() => {
+        onRename={async () => {
           const current = snapshot.players.find(({ id }) => id === snapshot.you?.id)?.name ?? "";
-          const name = window.prompt("Name in this room", current)?.trim();
+          const name = (
+            await prompt({
+              tone: "dark",
+              eyebrow: "player name",
+              title: "What should we call you?",
+              description: "This name is shown to everyone in the room.",
+              label: "Name",
+              defaultValue: current,
+              confirmLabel: "save name",
+              required: true,
+            })
+          )?.trim();
           if (name && name !== current) void send({ type: "player.rename", name });
         }}
         roomId={snapshot.roomId}
@@ -513,6 +526,7 @@ function LobbyPhase({
           readyHint="You’re all set — wait here while the host sets the game."
         />
       )}
+      {dialog}
     </>
   );
 }

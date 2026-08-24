@@ -1,19 +1,39 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
+import { getRequest, setCookie } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { UploadDashboard } from "@/features/transfers/ui/upload/UploadDashboard";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { signInUpload } from "@/features/auth/auth.functions";
+import {
+  getUploadAccessWindow,
+  toUploadAccessCookieOptions,
+  UPLOAD_ACCESS_COOKIE,
+} from "@/features/auth/upload-access.server";
 
 const getUploadAccess = createServerFn({ method: "GET" }).handler(async () => {
   const request = getRequest();
+  const openWindow = await getUploadAccessWindow();
+  if (openWindow) {
+    const remainingSeconds = Math.ceil((Date.parse(openWindow.expiresAt) - Date.now()) / 1000);
+    setCookie(
+      UPLOAD_ACCESS_COOKIE,
+      openWindow.token,
+      toUploadAccessCookieOptions(remainingSeconds),
+    );
+  } else {
+    setCookie(UPLOAD_ACCESS_COOKIE, "", toUploadAccessCookieOptions(0));
+  }
   const [auth, adminAuth] = await Promise.all([
     authenticateRequest(request, "upload"),
     authenticateRequest(request, "admin"),
   ]);
-  return { isAuthed: auth.ok, isAdmin: adminAuth.ok };
+  return {
+    isAuthed: auth.ok || Boolean(openWindow),
+    isAdmin: adminAuth.ok,
+    uploadAccessExpiresAt: openWindow?.expiresAt ?? null,
+  };
 });
 
 export const Route = createFileRoute("/upload")({
@@ -33,7 +53,7 @@ export const Route = createFileRoute("/upload")({
 });
 
 function UploadPage() {
-  const { isAuthed, isAdmin } = Route.useLoaderData();
+  const { isAuthed, isAdmin, uploadAccessExpiresAt } = Route.useLoaderData();
   const authFailed = Route.useSearch().auth === "failed";
 
   if (!isAuthed) {
@@ -51,7 +71,7 @@ function UploadPage() {
           <input
             name="pin"
             type="password"
-            placeholder="enter pin"
+            placeholder="enter upload passphrase"
             autoFocus
             required
             className={`w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)] ${
@@ -60,7 +80,7 @@ function UploadPage() {
           />
 
           {authFailed ? (
-            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">invalid pin</p>
+            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">invalid passphrase</p>
           ) : null}
 
           <button
@@ -82,7 +102,7 @@ function UploadPage() {
 
   return (
     <main id="main" className="min-h-dvh">
-      <UploadDashboard isAdmin={isAdmin} />
+      <UploadDashboard isAdmin={isAdmin} accessExpiresAt={uploadAccessExpiresAt} />
     </main>
   );
 }

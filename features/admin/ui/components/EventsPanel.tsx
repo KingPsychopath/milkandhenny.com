@@ -1052,6 +1052,7 @@ function ScanningSection({
   onError,
   onStatus,
   confirmAction,
+  stepUp,
 }: {
   event: EventRecord;
   authFetch: AuthFetch;
@@ -1063,6 +1064,7 @@ function ScanningSection({
     confirmLabel: string;
     intent: "danger" | "default";
   }) => Promise<boolean>;
+  stepUp: StepUpHelpers;
 }) {
   const stationId = useId();
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
@@ -1085,10 +1087,15 @@ function ScanningSection({
 
   const saveAbility = async (link: ScannerLinkRecord, permission: string, value: boolean) => {
     onError("");
+    const token = await stepUp.ensureStepUpToken();
+    if (!token.ok) {
+      if (!token.cancelled) onError(token.error ?? "Step-up failed");
+      return;
+    }
     try {
       const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           token: link.token,
           // Send every current value so the stored override set is explicit.
@@ -1251,12 +1258,17 @@ function ScanningSection({
   };
 
   const createLink = async () => {
+    const token = await stepUp.ensureStepUpToken();
+    if (!token.ok) {
+      if (!token.cancelled) onError(token.error ?? "Step-up failed");
+      return;
+    }
     setBusy(true);
     onError("");
     try {
       const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           label: newLinkLabel,
           checkpointId: newLinkStation === "door" ? null : newLinkStation,
@@ -2083,6 +2095,7 @@ function EventOperations({
         onError={onError}
         onStatus={onStatus}
         confirmAction={confirmAction}
+        stepUp={stepUp}
       />
 
       <GuestUploadsSection

@@ -11,6 +11,7 @@ export interface ConfirmDialogOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   intent?: "default" | "danger";
+  tone?: "site" | "light" | "dark";
 }
 
 export interface PromptDialogOptions extends ConfirmDialogOptions {
@@ -122,6 +123,7 @@ export function useActionDialog() {
       confirmLabel={request.confirmLabel ?? "continue"}
       cancelLabel={request.cancelLabel}
       intent={request.intent}
+      tone={request.tone}
       onCancel={cancelPending}
       onConfirm={handleConfirm}
     >

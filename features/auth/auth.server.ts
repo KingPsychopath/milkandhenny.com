@@ -13,6 +13,7 @@
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { isIP } from "node:net";
+import { getRequestIP } from "@tanstack/react-start/server";
 import { getCookie } from "@/lib/http/cookies";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
@@ -20,6 +21,7 @@ import {
   LOCAL_DEV_ADMIN_COOKIE,
   LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
 } from "./cookies";
+import { authenticateUploadAccess } from "./upload-access.server";
 
 /* ─── Types ─── */
 
@@ -59,6 +61,7 @@ const ADMIN_STEP_UP_TTL_SECONDS = 5 * 60;
 const LOGIN_DEDUPE_WINDOW_SECONDS = 15;
 const MIN_AUTH_SECRET_LENGTH = 32;
 const MIN_ADMIN_PASSWORD_LENGTH = 12;
+const MIN_UPLOAD_PIN_LENGTH = 12;
 const WEAK_SECRET_VALUES = new Set([
   "password",
   "password123",
@@ -76,9 +79,7 @@ function isLocalDevelopment(): boolean {
 
 // This value only exists in a local development server process. A random value
 // keeps the convenience cookie scoped to the process that issued it.
-const LOCAL_DEV_ADMIN_COOKIE_VALUE = isLocalDevelopment()
-  ? randomBytes(32).toString("hex")
-  : null;
+const LOCAL_DEV_ADMIN_COOKIE_VALUE = isLocalDevelopment() ? randomBytes(32).toString("hex") : null;
 
 function getLocalDevAdminCookieValue(): string | null {
   return LOCAL_DEV_ADMIN_COOKIE_VALUE;
@@ -170,15 +171,19 @@ function getRoleSecretStatus(role: AuthRole): { secret: string | null; error: st
   if (!secret) {
     return { secret: null, error: `${envVar} not configured` };
   }
+  const minimum =
+    role === "admin" ? MIN_ADMIN_PASSWORD_LENGTH : role === "upload" ? MIN_UPLOAD_PIN_LENGTH : 0;
+  if (minimum > 0) {
+    const weakness = validateSecretStrength(envVar, secret, minimum);
+    if (weakness) return { secret: null, error: weakness };
+  }
   return { secret, error: null };
 }
 
 async function getCurrentTokenVersion(role: RevocableRole): Promise<number | null> {
   const redis = getRedis();
   if (!redis) {
-    // Production fails closed for admin without Redis; local dev gets a safe fallback.
-    const isProd = process.env.NODE_ENV === "production";
-    return role === "admin" && isProd ? null : 1;
+    return process.env.NODE_ENV === "production" ? null : 1;
   }
 
   const key = tokenVersionKey(role);
@@ -190,8 +195,7 @@ async function getCurrentTokenVersion(role: RevocableRole): Promise<number | nul
     await redis.set(key, 1);
     return 1;
   } catch {
-    const isProd = process.env.NODE_ENV === "production";
-    return role === "admin" && isProd ? null : 1;
+    return process.env.NODE_ENV === "production" ? null : 1;
   }
 }
 
@@ -288,6 +292,23 @@ type StepUpPayload = {
   nonce: string;
 };
 
+async function getOpenUploadAuth(
+  request: Request,
+): Promise<{ token: string; payload: TokenPayload } | null> {
+  const session = await authenticateUploadAccess(request);
+  if (!session) return null;
+  return {
+    token: session.token,
+    payload: {
+      role: "upload",
+      iat: Math.floor(Date.parse(session.window.openedAt) / 1000),
+      exp: Math.floor(Date.parse(session.window.expiresAt) / 1000),
+      jti: `upload-open-${session.window.id}`,
+      tv: 0,
+    },
+  };
+}
+
 /** Verify JWT and return payload if valid for the expected role. */
 async function verifyToken(token: string, expectedRole: TokenRole): Promise<TokenPayload | null> {
   const { secret } = getAuthSecretStatus();
@@ -325,8 +346,7 @@ async function verifyToken(token: string, expectedRole: TokenRole): Promise<Toke
       const revoked = await redis.exists(`auth:revoked-jti:${payload.jti}`);
       if (revoked) return null;
     } catch {
-      // If Redis is flaky, do not fail open for admin tokens in production.
-      if (expectedRole === "admin" && process.env.NODE_ENV === "production") {
+      if (process.env.NODE_ENV === "production") {
         return null;
       }
     }
@@ -359,22 +379,16 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-/**
- * Best-effort client IP extraction.
- * Uses common proxy headers and falls back to "unknown".
- */
-function getClientIp(request: Request): string {
-  const forwarded = request.headers
-    .get("x-forwarded-for")
-    ?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const candidates = [
-    request.headers.get("cf-connecting-ip")?.trim(),
-    request.headers.get("x-real-ip")?.trim(),
-    forwarded?.at(-1),
-  ];
-  return candidates.find((value): value is string => Boolean(value && isIP(value))) ?? "unknown";
+/** Resolve the peer address supplied by the Nitro/H3 request context. */
+function getClientIp(_request: Request): string {
+  // Resolve the peer address from the Nitro/H3 request context. Do not trust
+  // client-controlled forwarding headers in application code.
+  try {
+    const ip = getRequestIP();
+    return typeof ip === "string" && isIP(ip) ? ip : "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function extractBearer(request: Request): string {
@@ -405,6 +419,29 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 900;
 const memoryRateLimit = new Map<string, { attempts: number; resetAtMs: number }>();
 
+const RESERVE_RATE_LIMIT_SCRIPT = `
+local identity = redis.call("INCR", KEYS[1])
+if identity == 1 then redis.call("EXPIRE", KEYS[1], ARGV[3]) end
+local global = redis.call("INCR", KEYS[2])
+if global == 1 then redis.call("EXPIRE", KEYS[2], ARGV[3]) end
+local allowed = 1
+if identity > tonumber(ARGV[1]) or global > tonumber(ARGV[2]) then allowed = 0 end
+local remaining = tonumber(ARGV[1]) - identity
+if remaining < 0 then remaining = 0 end
+local retry = redis.call("TTL", KEYS[1])
+return { allowed, remaining, retry }
+`;
+
+const RESERVE_STEP_UP_SCRIPT = `
+local attempts = redis.call("INCR", KEYS[1])
+if attempts == 1 then redis.call("EXPIRE", KEYS[1], ARGV[2]) end
+local allowed = attempts <= tonumber(ARGV[1]) and 1 or 0
+local remaining = tonumber(ARGV[1]) - attempts
+if remaining < 0 then remaining = 0 end
+local retry = redis.call("TTL", KEYS[1])
+return { allowed, remaining, retry }
+`;
+
 function memoryKey(role: AuthRole, ip: string): string {
   return `mem:${role}:${ip}`;
 }
@@ -415,6 +452,9 @@ async function checkRateLimit(
 ): Promise<{ allowed: boolean; remaining: number; backendAvailable: boolean }> {
   const redis = getRedis();
   if (!redis) {
+    if (process.env.NODE_ENV === "production") {
+      return { allowed: false, remaining: 0, backendAvailable: false };
+    }
     // In-memory fallback: good enough for local dev and prevents accidental brute force.
     const key = memoryKey(role, ip);
     const now = Date.now();
@@ -423,46 +463,35 @@ async function checkRateLimit(
       !entry || entry.resetAtMs <= now
         ? { attempts: 0, resetAtMs: now + LOCKOUT_SECONDS * 1000 }
         : entry;
+    fresh.attempts += 1;
     memoryRateLimit.set(key, fresh);
 
-    if (fresh.attempts >= MAX_ATTEMPTS) {
+    if (fresh.attempts > MAX_ATTEMPTS) {
       return { allowed: false, remaining: 0, backendAvailable: false };
     }
     return {
       allowed: true,
-      remaining: MAX_ATTEMPTS - fresh.attempts,
+      remaining: Math.max(0, MAX_ATTEMPTS - fresh.attempts),
       backendAvailable: false,
     };
   }
 
   const key = `auth:ratelimit:${role}:${ip}`;
+  const globalKey = `auth:ratelimit:${role}:global`;
   try {
-    const attempts = (await redis.get<number>(key)) ?? 0;
-    if (attempts >= MAX_ATTEMPTS) return { allowed: false, remaining: 0, backendAvailable: true };
-    return { allowed: true, remaining: MAX_ATTEMPTS - attempts, backendAvailable: true };
+    const result = (await redis.eval<number[]>(
+      RESERVE_RATE_LIMIT_SCRIPT,
+      [key, globalKey],
+      [MAX_ATTEMPTS, MAX_ATTEMPTS * 20, LOCKOUT_SECONDS],
+    )) as number[];
+    return {
+      allowed: Number(result?.[0]) === 1,
+      remaining: Math.max(0, Number(result?.[1]) || 0),
+      backendAvailable: true,
+    };
   } catch {
-    return role === "admin"
-      ? { allowed: false, remaining: 0, backendAvailable: false }
-      : { allowed: true, remaining: MAX_ATTEMPTS, backendAvailable: false };
+    return { allowed: false, remaining: 0, backendAvailable: false };
   }
-}
-
-async function recordFailure(role: AuthRole, ip: string): Promise<void> {
-  const redis = getRedis();
-  if (!redis) {
-    const key = memoryKey(role, ip);
-    const now = Date.now();
-    const entry = memoryRateLimit.get(key);
-    if (!entry || entry.resetAtMs <= now) {
-      memoryRateLimit.set(key, { attempts: 1, resetAtMs: now + LOCKOUT_SECONDS * 1000 });
-    } else {
-      memoryRateLimit.set(key, { ...entry, attempts: entry.attempts + 1 });
-    }
-    return;
-  }
-  const key = `auth:ratelimit:${role}:${ip}`;
-  await redis.incr(key);
-  await redis.expire(key, LOCKOUT_SECONDS);
 }
 
 async function clearRateLimit(role: AuthRole, ip: string): Promise<void> {
@@ -478,36 +507,43 @@ function stepUpRateLimitKey(parentJti: string): string {
   return `auth:step-up-ratelimit:${parentJti}`;
 }
 
-async function getStepUpAttempts(parentJti: string): Promise<number | null> {
+async function reserveStepUpAttempt(
+  parentJti: string,
+): Promise<{ allowed: boolean; remaining: number; backendAvailable: boolean }> {
   const redis = getRedis();
   const key = stepUpRateLimitKey(parentJti);
   if (!redis) {
+    if (process.env.NODE_ENV === "production") {
+      return { allowed: false, remaining: 0, backendAvailable: false };
+    }
     const entry = memoryRateLimit.get(`mem:${key}`);
-    if (!entry || entry.resetAtMs <= Date.now()) return 0;
-    return entry.attempts;
+    const now = Date.now();
+    const fresh =
+      !entry || entry.resetAtMs <= now
+        ? { attempts: 0, resetAtMs: now + LOCKOUT_SECONDS * 1000 }
+        : entry;
+    fresh.attempts += 1;
+    memoryRateLimit.set(`mem:${key}`, fresh);
+    return {
+      allowed: fresh.attempts <= MAX_ATTEMPTS,
+      remaining: Math.max(0, MAX_ATTEMPTS - fresh.attempts),
+      backendAvailable: false,
+    };
   }
   try {
-    return (await redis.get<number>(key)) ?? 0;
+    const result = (await redis.eval<number[]>(
+      RESERVE_STEP_UP_SCRIPT,
+      [key],
+      [MAX_ATTEMPTS, LOCKOUT_SECONDS],
+    )) as number[];
+    return {
+      allowed: Number(result?.[0]) === 1,
+      remaining: Math.max(0, Number(result?.[1]) || 0),
+      backendAvailable: true,
+    };
   } catch {
-    return null;
+    return { allowed: false, remaining: 0, backendAvailable: false };
   }
-}
-
-async function recordStepUpFailure(parentJti: string): Promise<void> {
-  const redis = getRedis();
-  const key = stepUpRateLimitKey(parentJti);
-  if (!redis) {
-    const memoryId = `mem:${key}`;
-    const entry = memoryRateLimit.get(memoryId);
-    const attempts = entry && entry.resetAtMs > Date.now() ? entry.attempts + 1 : 1;
-    memoryRateLimit.set(memoryId, {
-      attempts,
-      resetAtMs: Date.now() + LOCKOUT_SECONDS * 1000,
-    });
-    return;
-  }
-  await redis.incr(key);
-  await redis.expire(key, LOCKOUT_SECONDS);
 }
 
 async function clearStepUpFailures(parentJti: string): Promise<void> {
@@ -549,11 +585,13 @@ async function requireAuth(request: Request, role: AuthRole): Promise<Response |
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
   if (!token) {
+    if (role === "upload" && (await getOpenUploadAuth(request))) return null;
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const payload = await verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
+    if (role === "upload" && (await getOpenUploadAuth(request))) return null;
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -582,6 +620,8 @@ async function requireAuthWithPayload(
 
   const token = extractAuthTokenForAcceptedRoles(request, acceptedRoles);
   if (!token) {
+    const openAuth = role === "upload" ? await getOpenUploadAuth(request) : null;
+    if (openAuth) return { error: null, payload: openAuth.payload };
     return {
       error: Response.json({ error: "Unauthorized" }, { status: 401 }),
       payload: null,
@@ -590,6 +630,8 @@ async function requireAuthWithPayload(
 
   const payload = await verifyTokenForRoles(token, acceptedRoles);
   if (!payload) {
+    const openAuth = role === "upload" ? await getOpenUploadAuth(request) : null;
+    if (openAuth) return { error: null, payload: openAuth.payload };
     return {
       error: Response.json({ error: "Unauthorized" }, { status: 401 }),
       payload: null,
@@ -680,8 +722,14 @@ async function createAdminStepUpToken(request: Request, password: string): Promi
     return error ?? Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const attempts = await getStepUpAttempts(payload.jti);
-  if (attempts === null || attempts >= MAX_ATTEMPTS) {
+  const reservation = await reserveStepUpAttempt(payload.jti);
+  if (!reservation.backendAvailable && process.env.NODE_ENV === "production") {
+    return Response.json(
+      { error: "Step-up verification is temporarily unavailable." },
+      { status: 503 },
+    );
+  }
+  if (!reservation.allowed) {
     return Response.json(
       { error: "Too many step-up attempts. Try again later." },
       { status: 429, headers: { "Retry-After": String(LOCKOUT_SECONDS) } },
@@ -696,7 +744,6 @@ async function createAdminStepUpToken(request: Request, password: string): Promi
     );
   }
   if (!safeCompare(password.trim(), adminSecretStatus.secret)) {
-    await recordStepUpFailure(payload.jti);
     return Response.json({ error: "Invalid password" }, { status: 401 });
   }
 
@@ -767,6 +814,13 @@ function getSecurityWarnings(): string[] {
     if (issue) warnings.push(issue);
   }
 
+  const uploadPin = getRawEnv("UPLOAD_PIN");
+  if (!uploadPin) warnings.push("UPLOAD_PIN missing");
+  else {
+    const issue = validateSecretStrength("UPLOAD_PIN", uploadPin, MIN_UPLOAD_PIN_LENGTH);
+    if (issue) warnings.push(issue);
+  }
+
   return warnings;
 }
 
@@ -803,7 +857,7 @@ async function handleVerifyRequest(request: Request, role: AuthRole): Promise<Re
   const ip = getClientIp(request);
   const { allowed, remaining, backendAvailable } = await checkRateLimit(role, ip);
 
-  if (role === "admin" && !backendAvailable && process.env.NODE_ENV === "production") {
+  if (!backendAvailable && process.env.NODE_ENV === "production") {
     return Response.json(
       { error: "Rate limit backend unavailable for admin auth" },
       { status: 503 },
@@ -844,7 +898,12 @@ async function handleVerifyRequest(request: Request, role: AuthRole): Promise<Re
           }
         }
       } catch {
-        // Ignore dedupe read failures; normal login flow still works.
+        if (process.env.NODE_ENV === "production") {
+          return Response.json(
+            { error: "Session storage is temporarily unavailable" },
+            { status: 503 },
+          );
+        }
       }
     }
 
@@ -875,13 +934,22 @@ async function handleVerifyRequest(request: Request, role: AuthRole): Promise<Re
           await redis.expire(dedupeKey, LOGIN_DEDUPE_WINDOW_SECONDS);
         }
       } catch {
-        // ignore session tracking failures
+        if (process.env.NODE_ENV === "production") {
+          return Response.json(
+            { error: "Session storage is temporarily unavailable" },
+            { status: 503 },
+          );
+        }
       }
+    } else if (process.env.NODE_ENV === "production") {
+      return Response.json(
+        { error: "Session storage is temporarily unavailable" },
+        { status: 503 },
+      );
     }
     return Response.json({ ok: true, token });
   }
 
-  await recordFailure(role, ip);
   return Response.json(
     {
       error: `Invalid ${bodyField}`,
@@ -963,10 +1031,41 @@ async function authenticateRequest(
     }
   }
 
-  if (!token) return { ok: false, status: 401, error: "Unauthorized" };
+  if (!token) {
+    const openAuth = role === "upload" ? await getOpenUploadAuth(request) : null;
+    if (openAuth)
+      return { ok: true, role: "upload", token: openAuth.token, payload: openAuth.payload };
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
 
   const payload = await verifyTokenForRoles(token, acceptedRoles);
-  if (!payload) return { ok: false, status: 401, error: "Unauthorized" };
+  if (!payload) {
+    const openAuth = role === "upload" ? await getOpenUploadAuth(request) : null;
+    if (openAuth)
+      return { ok: true, role: "upload", token: openAuth.token, payload: openAuth.payload };
+    return { ok: false, status: 401, error: "Unauthorized" };
+  }
 
   return { ok: true, role: tokenRole ?? payload.role, token, payload };
 }
+
+/** Revoke the session used by a sign-out request before clearing its cookie. */
+async function revokeCurrentSession(request: Request, role: TokenRole): Promise<boolean> {
+  const token = extractBearer(request) || extractTokenFromCookies(request, role);
+  if (!token) return true;
+  const payload = await verifyToken(token, role);
+  if (!payload) return process.env.NODE_ENV !== "production";
+
+  const redis = getRedis();
+  if (!redis) return process.env.NODE_ENV !== "production";
+  try {
+    const ttl = Math.max(1, payload.exp - Math.floor(Date.now() / 1000));
+    await redis.set(`auth:revoked-jti:${payload.jti}`, 1);
+    await redis.expire(`auth:revoked-jti:${payload.jti}`, ttl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export { revokeCurrentSession };

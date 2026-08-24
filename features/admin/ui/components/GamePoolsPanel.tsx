@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import {
   recommendedGamePoolSettingsBundle,
@@ -253,6 +254,7 @@ export function GamePoolsPanel({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, GamePoolEntrance>>({});
   const [operatorLinks, setOperatorLinks] = useState<Record<string, string>>({});
+  const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -760,13 +762,14 @@ export function GamePoolsPanel({
                         <button
                           type="button"
                           disabled={loading}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Replace this permanent player link? The old QR code will stop working.",
-                              )
-                            )
-                              void changeLink(entrance.id, { rotateToken: true });
+                          onClick={async () => {
+                            const confirmed = await confirm({
+                              eyebrow: "game entrance",
+                              title: "Replace this player link?",
+                              description: "The old QR code will stop working.",
+                              confirmLabel: "replace link",
+                            });
+                            if (confirmed) await changeLink(entrance.id, { rotateToken: true });
                           }}
                           className="min-h-11 font-mono text-xs underline"
                         >
@@ -775,13 +778,15 @@ export function GamePoolsPanel({
                         <button
                           type="button"
                           disabled={loading}
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Retire this entrance? Its QR code will stop working permanently.",
-                              )
-                            )
-                              void changeLink(entrance.id, { retire: true });
+                          onClick={async () => {
+                            const confirmed = await confirm({
+                              eyebrow: "game entrance",
+                              title: "Retire this entrance?",
+                              description: "Its QR code will stop working permanently.",
+                              confirmLabel: "retire entrance",
+                              intent: "danger",
+                            });
+                            if (confirmed) await changeLink(entrance.id, { retire: true });
                           }}
                           className="min-h-11 font-mono text-xs text-[var(--prose-hashtag)] underline"
                         >
@@ -796,6 +801,7 @@ export function GamePoolsPanel({
           })}
         </ul>
       )}
+      {dialog}
     </div>
   );
 }

@@ -24,6 +24,19 @@ There is no second build, no separate worker bundle, and no way for the
 worker's copy of the processing code to drift from the app's — it _is_ the
 app's.
 
+The roles do not share the same secret set. The web service owns user-facing
+authentication (`ADMIN_PASSWORD`, `STAFF_PIN`, and `UPLOAD_PIN`) and payment,
+email, and database credentials. The media worker does not receive those
+secrets. It only needs Redis REST and direct Redis queue access, and private R2
+bucket credentials. Public R2 credentials are not needed by the worker.
+
+`/api/health` is role-aware. Web readiness checks the site and its required
+dependencies; worker readiness checks only the worker runtime, both Redis
+connections, and private media storage configuration. This prevents an
+unrelated web login secret from taking a healthy worker out of service while
+keeping the readiness request independent of a slow object-storage control
+plane.
+
 |                        | web             | media-worker       |
 | ---------------------- | --------------- | ------------------ |
 | `MEDIA_WORKER_ROLE`    | `web` (default) | `worker`           |

@@ -13,6 +13,7 @@ import type {
 import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
 import { AppSelect } from "@/components/AppSelect";
 
@@ -89,6 +90,7 @@ export function PitchesPanel({
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [operationalStatus, setOperationalStatus] = useState<PitchOperationalStatus>();
   const [modeDraft, setModeDraft] = useState<PitchOperationalMode>("enabled");
+  const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -257,14 +259,16 @@ export function PitchesPanel({
   }
 
   async function updateOperationalMode() {
-    if (
-      modeDraft === "off" &&
-      operationalStatus?.effectiveMode !== "off" &&
-      !window.confirm(
-        "Turn Pitch Night Studio off? Public decks and live presentation controls will stop until you enable it again.",
-      )
-    ) {
-      return;
+    if (modeDraft === "off" && operationalStatus?.effectiveMode !== "off") {
+      const confirmed = await confirm({
+        eyebrow: "pitch night studio",
+        title: "Turn the studio off?",
+        description:
+          "Public decks and live presentation controls will stop until you enable it again.",
+        confirmLabel: "turn it off",
+        intent: "danger",
+      });
+      if (!confirmed) return;
     }
     setBusy("operational-mode");
     try {
@@ -692,6 +696,7 @@ export function PitchesPanel({
           </details>
         </div>
       ) : null}
+      {dialog}
     </section>
   );
 }

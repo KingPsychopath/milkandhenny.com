@@ -51,8 +51,8 @@ type RetryableR2Error = {
 type R2RuntimeConfig = {
   accountId: string;
   endpoint?: string;
-  credentials: Record<StorageScope, { accessKey: string; secretKey: string }>;
-  publicBucket: string;
+  credentials: Partial<Record<StorageScope, { accessKey: string; secretKey: string }>>;
+  publicBucket?: string;
   privateBucket: string;
   maxSockets: number;
   socketAcquisitionWarningTimeoutMs: number;
@@ -108,17 +108,15 @@ function getRuntimeConfig(): R2RuntimeConfig {
   const publicBucket = process.env.R2_PUBLIC_BUCKET?.trim();
   const privateBucket = process.env.R2_PRIVATE_BUCKET?.trim();
 
-  if (
-    !accountId ||
-    !publicAccessKey ||
-    !publicSecretKey ||
-    !privateAccessKey ||
-    !privateSecretKey ||
-    !publicBucket ||
-    !privateBucket
-  ) {
+  if (!accountId || !privateAccessKey || !privateSecretKey || !privateBucket) {
+    throw new Error("Missing private R2 env vars. Configure private bucket credentials.");
+  }
+
+  const hasAnyPublicConfig = Boolean(publicAccessKey || publicSecretKey || publicBucket);
+  const hasCompletePublicConfig = Boolean(publicAccessKey && publicSecretKey && publicBucket);
+  if (hasAnyPublicConfig && !hasCompletePublicConfig) {
     throw new Error(
-      "Missing R2 env vars. Configure separate public and private bucket credentials.",
+      "Incomplete public R2 env vars. Configure all public bucket credentials or remove them.",
     );
   }
 
@@ -126,10 +124,12 @@ function getRuntimeConfig(): R2RuntimeConfig {
     accountId,
     endpoint,
     credentials: {
-      public: { accessKey: publicAccessKey, secretKey: publicSecretKey },
+      ...(hasCompletePublicConfig
+        ? { public: { accessKey: publicAccessKey!, secretKey: publicSecretKey! } }
+        : {}),
       private: { accessKey: privateAccessKey, secretKey: privateSecretKey },
     },
-    publicBucket,
+    ...(hasCompletePublicConfig ? { publicBucket } : {}),
     privateBucket,
     maxSockets: parsePositiveInt(process.env.R2_MAX_SOCKETS, getDefaultMaxSockets()),
     socketAcquisitionWarningTimeoutMs: parsePositiveInt(
@@ -151,6 +151,11 @@ function getClient(scope: StorageScope): { client: S3Client; config: R2RuntimeCo
 
   cached?.client.destroy();
   const credentials = config.credentials[scope];
+  if (!credentials) {
+    throw new Error(
+      `Missing ${scope} R2 credentials. Configure the ${scope} bucket credentials for this role.`,
+    );
+  }
 
   const client = new S3Client({
     region: "auto",
@@ -190,7 +195,11 @@ function getStorageScope(keyOrPrefix: string): StorageScope {
 
 function getBucket(scope: StorageScope): string {
   const config = getRuntimeConfig();
-  return scope === "public" ? config.publicBucket : config.privateBucket;
+  const bucket = scope === "public" ? config.publicBucket : config.privateBucket;
+  if (!bucket) {
+    throw new Error(`Missing ${scope} R2 bucket. Configure the ${scope} bucket for this role.`);
+  }
+  return bucket;
 }
 
 function resolveScope(keyOrPrefix: string, options?: R2OperationOptions): StorageScope {
@@ -288,9 +297,22 @@ function isTransferStorageConfigured(): boolean {
   return isConfigured();
 }
 
+/** Check whether the private transfer bucket is configured for worker-only use. */
+function isPrivateStorageConfigured(): boolean {
+  return Boolean(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_PRIVATE_ACCESS_KEY &&
+    process.env.R2_PRIVATE_SECRET_KEY &&
+    process.env.R2_PRIVATE_BUCKET,
+  );
+}
+
 /** Lightweight authenticated dependency probe for admin diagnostics. */
 async function checkConnection(): Promise<void> {
   const config = getRuntimeConfig();
+  if (!config.publicBucket || !config.credentials.public) {
+    throw new Error("Public R2 storage is not configured for this role.");
+  }
   const scopes = ["public", "private"] as const;
   await Promise.all(
     scopes.map((scope) =>
@@ -302,6 +324,14 @@ async function checkConnection(): Promise<void> {
         ),
       ),
     ),
+  );
+}
+
+/** Lightweight private-bucket probe for the media worker. */
+async function checkPrivateStorageConnection(): Promise<void> {
+  const config = getRuntimeConfig();
+  await sendWithRetry("checkPrivateStorageConnection", () =>
+    getClient("private").client.send(new HeadBucketCommand({ Bucket: config.privateBucket })),
   );
 }
 
@@ -635,7 +665,9 @@ async function presignGetUrl(
 
 export {
   checkConnection,
+  checkPrivateStorageConnection,
   isConfigured,
+  isPrivateStorageConfigured,
   isTransferStorageConfigured,
   listObjects,
   listPrefixes,

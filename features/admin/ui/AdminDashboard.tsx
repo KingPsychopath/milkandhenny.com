@@ -1036,14 +1036,22 @@ export function AdminDashboard({
             <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
               people and outreach
             </p>
-            <h2 id="communications-view-heading" className="mt-2 font-serif text-3xl font-semibold tracking-tight">
+            <h2
+              id="communications-view-heading"
+              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
+            >
               Communications
             </h2>
             <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-              Prepare newsletters and useful updates, choose the right people, and schedule them through the durable email outbox.
+              Prepare newsletters and useful updates, choose the right people, and schedule them
+              through the durable email outbox.
             </p>
           </div>
-          <CommunicationsPanel authFetch={authFetch} onError={setErrorMessage} onStatus={setStatusMessage} />
+          <CommunicationsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={setStatusMessage}
+          />
         </section>
       ) : null}
 
@@ -1412,7 +1420,12 @@ export function AdminDashboard({
                     <p className="theme-muted text-xs">last heartbeat</p>
                     <p className="text-sm">
                       {transferMediaStats.worker.lastHeartbeatAt
-                        ? new Date(transferMediaStats.worker.lastHeartbeatAt).toLocaleString()
+                        ? new Date(transferMediaStats.worker.lastHeartbeatAt).toLocaleString(
+                            "en-GB",
+                            {
+                              timeZone: "Europe/London",
+                            },
+                          )
                         : "—"}
                     </p>
                   </div>
@@ -1420,7 +1433,12 @@ export function AdminDashboard({
                     <p className="theme-muted text-xs">last processed</p>
                     <p className="text-sm">
                       {transferMediaStats.worker.lastProcessedAt
-                        ? new Date(transferMediaStats.worker.lastProcessedAt).toLocaleString()
+                        ? new Date(transferMediaStats.worker.lastProcessedAt).toLocaleString(
+                            "en-GB",
+                            {
+                              timeZone: "Europe/London",
+                            },
+                          )
                         : "—"}
                     </p>
                   </div>

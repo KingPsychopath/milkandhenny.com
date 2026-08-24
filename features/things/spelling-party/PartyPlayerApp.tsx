@@ -32,6 +32,7 @@ import {
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { shareOrCopy } from "@/lib/client/share";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
@@ -209,6 +210,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const priorPhase = useRef(live.snapshot?.phase);
   const playedAudio = useRef(new Set<string>());
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
+  const { prompt, dialog } = useActionDialog();
   const [sentenceClueConfirmationOpen, setSentenceClueConfirmationOpen] = useState(false);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
@@ -748,10 +750,21 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       {snapshot.phase === "lobby" ? (
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
-            const nextName = window.prompt("Name in this room", current)?.trim();
+            const nextName = (
+              await prompt({
+                tone: "dark",
+                eyebrow: "player name",
+                title: "What should we call you?",
+                description: "This name is shown to everyone in the room.",
+                label: "Name",
+                defaultValue: current,
+                confirmLabel: "save name",
+                required: true,
+              })
+            )?.trim();
             if (nextName && nextName !== current)
               void send({
                 actionId: crypto.randomUUID(),
@@ -1033,6 +1046,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           onConfirm={() => void confirmStart()}
         />
       ) : null}
+      {dialog}
     </div>
   );
 }

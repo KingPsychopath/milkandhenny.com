@@ -27,6 +27,7 @@ import {
   releaseGamePoolMembership,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
+import { useActionDialog } from "@/hooks/useActionDialog";
 
 export function TwinRoomApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
@@ -96,6 +97,7 @@ export function TwinRoom({
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
   const nudgedRef = useRef<string[] | null>(null);
+  const { prompt, dialog } = useActionDialog();
   nudgedRef.current = nudgedIds;
   const [confirmingStart, setConfirmingStart] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -247,10 +249,21 @@ export function TwinRoom({
             void send({ type: "game.start" });
           }}
           onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
-          onRename={() => {
+          onRename={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
-            const name = window.prompt("Name in this room", current)?.trim();
+            const name = (
+              await prompt({
+                tone: "dark",
+                eyebrow: "player name",
+                title: "What should we call you?",
+                description: "This name is shown to everyone in the room.",
+                label: "Name",
+                defaultValue: current,
+                confirmLabel: "save name",
+                required: true,
+              })
+            )?.trim();
             if (name && name !== current) void send({ type: "player.rename", name });
           }}
           onLeave={leaveRoom}
@@ -298,6 +311,7 @@ export function TwinRoom({
             }}
           />
         ) : null}
+        {dialog}
       </>
     );
 
