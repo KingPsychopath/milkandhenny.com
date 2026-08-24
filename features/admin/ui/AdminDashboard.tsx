@@ -11,6 +11,8 @@ import { EventsPanel } from "./components/EventsPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
 import { GamePoolsPanel } from "./components/GamePoolsPanel";
 import { BestDressedPanel } from "./components/BestDressedPanel";
+import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
+import { SystemHealthPanel } from "./components/SystemHealthPanel";
 import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -163,6 +165,23 @@ type ContentAuditResponse = {
 };
 
 type DebugResponse = SystemCapabilities & {
+  emailOutbox: {
+    available: boolean;
+    pending: number;
+    processing: number;
+    accepted: number;
+    failed: number;
+    oldestPendingAt: string | null;
+  };
+  mediaQueue: {
+    available: boolean;
+    enabled: boolean;
+    queued: number;
+    leased: number;
+    permanentFailures: number;
+    backlogAgeMs: number | null;
+    reason?: string;
+  };
   multiplayer: MultiplayerTelemetrySnapshot;
   gamePools: {
     activeAssignments: number;
@@ -310,23 +329,34 @@ export function AdminDashboard({
   const refreshDashboard = useCallback(async () => {
     setLoading(true);
     setErrorMessage("");
+    const errors: string[] = [];
     try {
-      const [contentRes, debugRes] = await Promise.all([
+      const [contentResult, debugResult] = await Promise.allSettled([
         authFetch("/api/admin/content-summary"),
         authFetch("/api/debug"),
       ]);
 
-      if (!contentRes.ok) {
-        throw new Error("Failed to load content summary");
-      }
-      if (!debugRes.ok) {
-        throw new Error("Failed to load system status");
+      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
+        try {
+          setContent((await contentResult.value.json()) as ContentSummaryResponse);
+        } catch {
+          errors.push("The content summary returned an unreadable response.");
+        }
+      } else {
+        errors.push("The content summary could not be loaded.");
       }
 
-      const [contentJson, debugJson] = await Promise.all([contentRes.json(), debugRes.json()]);
+      if (debugResult.status === "fulfilled" && debugResult.value.ok) {
+        try {
+          setDebugData((await debugResult.value.json()) as DebugResponse);
+        } catch {
+          errors.push("The system check returned an unreadable response.");
+        }
+      } else {
+        errors.push("The system check could not be loaded.");
+      }
 
-      setContent(contentJson as ContentSummaryResponse);
-      setDebugData(debugJson as DebugResponse);
+      setErrorMessage(errors.join(" "));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to refresh dashboard";
       setErrorMessage(msg);
@@ -1170,92 +1200,13 @@ export function AdminDashboard({
       <section className="space-y-6">
         {view === "overview" ? (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Link
-                to="/admin/editor"
-                search={{ slug: undefined }}
-                className="min-h-24 border-y theme-border px-1 py-4 hover:opacity-70"
-              >
-                <span className="font-mono text-xs font-bold">write or edit</span>
-                <span className="mt-2 block font-mono text-micro theme-muted">
-                  words, media, and sharing
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => onViewChange("events")}
-                className="min-h-24 border-y theme-border px-1 py-4 text-left hover:opacity-70"
-              >
-                <span className="font-mono text-xs font-bold">run an event</span>
-                <span className="mt-2 block font-mono text-micro theme-muted">
-                  tickets and scanners
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onViewChange("transfers")}
-                className="min-h-24 border-y theme-border px-1 py-4 text-left hover:opacity-70"
-              >
-                <span className="font-mono text-xs font-bold">manage transfers</span>
-                <span className="mt-2 block font-mono text-micro theme-muted">
-                  drops and processing
-                </span>
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <h2 className="font-mono text-sm font-bold">at a glance</h2>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => void refreshDashboard()}
-                title="Re-fetches blog/gallery counts and system health cards. It does not run the deep content audit."
-                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              >
-                {loading ? "refreshing..." : "refresh"}
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 font-mono text-sm">
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">blog posts</p>
-                <p className="text-lg">{content?.blog.totalPosts ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">featured posts</p>
-                <p className="text-lg">{content?.blog.featuredPosts ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">albums</p>
-                <p className="text-lg">{content?.gallery.totalAlbums ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">photos</p>
-                <p className="text-lg">{content?.gallery.totalPhotos ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">latest post</p>
-                <p className="text-sm">{formatDate(content?.blog.latestPostDate ?? null)}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">latest album</p>
-                <p className="text-sm">{formatDate(content?.gallery.latestAlbumDate ?? null)}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">posts with hero image</p>
-                <p className="text-lg">{content?.blog.postsWithImages ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">invalid albums</p>
-                <p className="text-lg">{content?.gallery.invalidAlbumCount ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">reading minutes</p>
-                <p className="text-lg">{content?.blog.totalReadingMinutes ?? "—"}</p>
-              </div>
-              <div className="border theme-border rounded-md p-3">
-                <p className="theme-muted text-xs">albums missing description</p>
-                <p className="text-lg">{content?.gallery.albumsWithoutDescription ?? "—"}</p>
-              </div>
-            </div>
+            <AdminOverviewPanel
+              content={content}
+              system={debugData}
+              loading={loading}
+              onRefresh={() => void refreshDashboard()}
+              onViewChange={onViewChange}
+            />
 
             <ReportsPanel
               authFetch={authFetch}
@@ -1267,23 +1218,11 @@ export function AdminDashboard({
 
         {view === "system" ? (
           <>
-            <div id="system-health" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-xs theme-muted">system health</p>
-                <p className="font-mono text-micro theme-faint">config + reachability</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 font-mono text-sm">
-                {debugData?.capabilities.map((capability) => (
-                  <div key={capability.id} className="border theme-border rounded-md p-3">
-                    <p className="theme-muted text-xs">{capability.label}</p>
-                    <p className="text-lg">{capability.status}</p>
-                    {typeof capability.latencyMs === "number" ? (
-                      <p className="theme-faint text-micro mt-1">{capability.latencyMs}ms</p>
-                    ) : null}
-                  </div>
-                )) ?? <p className="theme-muted text-xs">not checked</p>}
-              </div>
-            </div>
+            <SystemHealthPanel
+              snapshot={debugData}
+              loading={loading}
+              onRefresh={() => void refreshDashboard()}
+            />
 
             <div className="border-t theme-border pt-6 space-y-3">
               <div className="flex items-center justify-between gap-4">
