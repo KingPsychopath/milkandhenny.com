@@ -862,10 +862,6 @@ async function claimStageForImmediateSend(stageId: string): Promise<ClaimedCommu
       throw new Error("This plan can no longer send stages");
     }
     await client.query(
-      `update communication_plans set status = 'scheduled', updated_at = now() where id = $1`,
-      [stage.plan_id],
-    );
-    await client.query(
       `update communication_plan_stages
           set send_at = now(), status = 'fanout', last_error = null, updated_at = now()
         where id = $1`,

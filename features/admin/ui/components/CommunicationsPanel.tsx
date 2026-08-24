@@ -609,7 +609,7 @@ export function CommunicationsPanel({
   const sendStageNow = async (stage: Stage) => {
     if (
       !window.confirm(
-        `Send “${stage.subject}” to the current valid ticket holders now? This sends only this stage.`,
+        `Send “${stage.subject}” to the current valid ticket holders now? This sends only this stage and does not enable the rest of the plan.`,
       )
     )
       return;
@@ -619,7 +619,7 @@ export function CommunicationsPanel({
         queued?: number;
       };
       onStatus(
-        `${data.queued || 0} messages from “${stage.label}” queued. No other stage was sent.`,
+        `${data.queued || 0} messages from “${stage.label}” queued. No other stage was changed.`,
       );
       await load();
     } catch (error) {
