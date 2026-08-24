@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useRememberedPlayerName } from "@/features/things/shared/useRememberedPlayerName";
 import { controlPresentationFn, joinPresentationFn } from "../presentation.functions";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchControllerCredentials, PublicPitchDeck } from "../types";
@@ -25,7 +26,7 @@ function readCredentials(roomId: string): PitchControllerCredentials | undefined
 export function PresentationRemote({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<PitchControllerCredentials>();
   const [hydrated, setHydrated] = useState(false);
-  const [name, setName] = useState("");
+  const { name, setName, remember } = useRememberedPlayerName(80);
   const [joining, setJoining] = useState(false);
   const [query, setQuery] = useState("");
   const [pitches, setPitches] = useState<PublicPitchDeck[]>([]);
@@ -74,6 +75,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
       setJoining(false);
       return;
     }
+    remember(name);
     localStorage.setItem(sessionKey(roomId), JSON.stringify(result.value));
     setCredentials(result.value);
     setJoining(false);

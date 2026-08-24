@@ -94,6 +94,15 @@ Notes:
 - **Removal**: `/privacy` can remove the shared profile without clearing unrelated saved work,
   preferences, or sessions
 
+Current public call sites:
+
+- Event ticket claim: name and email after the visitor chooses a ticket type
+- Lost-ticket resend: email
+- Pitch creation and recovery: name and email
+- Multiplayer rooms, game pools, and presentation remotes: display name
+
+Do not use the browser profile in admin, scanner, or operator forms that describe another person.
+
 ---
 
 ## Why the previous model was weaker here
