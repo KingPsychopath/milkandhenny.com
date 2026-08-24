@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
-import { AppImage } from "@/components/AppImage";
 import { applyPresenterActionFn, closePartyRoomFn } from "./party-room.functions";
 import { usePartyLiveSnapshot } from "./usePartyLiveSnapshot";
 import { useSynchronizedPartyStage } from "./useSynchronizedPartyStage";
@@ -20,11 +19,9 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { shareOrCopy } from "@/lib/client/share";
-import { useQrCode } from "@/hooks/useQrCode";
-import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPresenterFragment } from "./party-invite";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 function roomTokens(roomId: string) {
@@ -70,9 +67,6 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
   const [tokensReadyForRoom, setTokensReadyForRoom] = useState<string | null>(null);
-  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
-  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
-  const [manualInvite, setManualInvite] = useState(false);
   const [closing, setClosing] = useState(false);
   const [endConfirmationOpen, setEndConfirmationOpen] = useState(false);
   const [removePlayerIds, setRemovePlayerIds] = useState<string[] | null>(null);
@@ -100,24 +94,6 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   const invite = tokens.joinToken
     ? buildPartyPlayerInviteUrl(location.origin, roomId, tokens.joinToken)
     : null;
-  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 320);
-
-  const shareInvite = async () => {
-    if (!invite) return;
-    setManualInvite(false);
-    const share = {
-      title: "Join our Spelling Bee",
-      text: `Join room ${roomId} and type along.`,
-      url: invite,
-    };
-    const result = await shareOrCopy(share, { useNativeShare: nativeShare, copyValue: invite });
-    if (result === "shared") setInviteMessage("Invite shared.");
-    else if (result === "copied") setInviteMessage("Player link copied.");
-    else if (result === "failed") {
-      setManualInvite(true);
-      setInviteMessage("Copy the player link below.");
-    }
-  };
 
   useEffect(() => {
     const round = snapshot?.round;
@@ -318,84 +294,46 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
       />
       <main id="main" className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-5 pb-10">
         {snapshot.phase === "lobby" ? (
-          <section
-            className="flex flex-1 flex-col items-center justify-center py-8 text-center"
-            aria-labelledby="party-room-title"
-          >
+          <section className="flex flex-1 flex-col justify-center py-8">
             <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
               {snapshot.deckName}
             </p>
-            <h1 id="party-room-title" className="font-serif text-4xl font-semibold sm:text-5xl">
-              Get everyone on a phone.
-            </h1>
-            <p className="mt-3 max-w-sm font-serif text-lg text-white/55">
-              Scan the code or use the player link. Start the round when everyone has joined.
-            </p>
-            {qr ? (
-              <AppImage
-                src={qr}
-                alt="QR code for players to join this spelling room"
-                width={320}
-                height={320}
-                className="mt-7 w-60 rounded-3xl bg-white p-3"
-              />
-            ) : qrFailed ? (
-              <p className="mt-6 font-mono text-xs text-white/50">
-                QR unavailable—share the player link or room code.
-              </p>
-            ) : null}
-            <div className="mt-5">
-              <p className="font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-                room code
-              </p>
-              <p className="mt-1 font-mono text-3xl tracking-[0.2em]">{roomId}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void shareInvite()}
-              disabled={!invite}
-              className="mt-5 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm font-semibold disabled:opacity-35"
-            >
-              {nativeShare ? "share player invite" : "copy player link"}
-            </button>
-            <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-200">
-              {inviteMessage}
-            </p>
-            {manualInvite && invite ? (
-              <input
-                readOnly
-                value={invite}
-                aria-label="Player invite link"
-                onFocus={(event) => event.currentTarget.select()}
-                className="mt-2 min-h-11 w-full max-w-md rounded-xl border border-white/15 bg-white/[0.04] px-3 font-mono text-xs text-white/70"
-              />
-            ) : null}
-            <ul
-              className="mt-7 flex flex-wrap justify-center gap-2"
-              aria-label="Players in the room"
-            >
-              {players.map((player) => (
-                <li
-                  key={player.id}
-                  className="rounded-full border border-white/15 px-4 py-2 font-mono text-sm"
+            <LobbyIntro
+              title="Get everyone on a phone."
+              description="Type the same word from different phones, then see whose spelling was closest."
+              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
+            />
+            <MultiplayerLobby
+              actions={
+                <button
+                  type="button"
+                  onClick={() => void send("round.start")}
+                  disabled={!players.length}
+                  className="min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-30"
                 >
-                  {player.name} · {player.ready !== false ? "ready" : "not ready"}
-                </li>
-              ))}
-            </ul>
-            <p aria-live="polite" className="mt-4 font-mono text-xs text-white/45">
-              {players.length
-                ? `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`
-                : "Waiting for the first player…"}
-            </p>
-            <button
-              type="button"
-              onClick={() => void send("round.start")}
-              disabled={!players.length}
-              className="mt-7 min-h-16 w-full max-w-sm rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black disabled:opacity-30"
-            >
-              start round
-            </button>
+                  start round
+                </button>
+              }
+              currentPlayerId={null}
+              game="spelling-party"
+              inviteLabel="room code"
+              inviteText="Join our spelling party."
+              inviteTitle="Spelling party"
+              inviteUrl={invite}
+              players={players.map((player) => ({
+                id: player.id,
+                name: player.name,
+                ready: player.ready !== false,
+              }))}
+              roomId={roomId}
+              settings={
+                <p className="font-mono text-xs text-white/45">
+                  {players.length
+                    ? `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`
+                    : "waiting for the first player"}
+                </p>
+              }
+            />
           </section>
         ) : snapshot.phase === "finished" ? (
           <section className="flex flex-1 flex-col justify-center py-10 text-center">

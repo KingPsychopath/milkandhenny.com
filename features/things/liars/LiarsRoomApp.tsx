@@ -34,7 +34,6 @@ import {
   ActionButton,
   Eyebrow,
   Headline,
-  InvitePanel,
   KnowledgeList,
   LineupEditor,
   MarkLegend,
@@ -55,8 +54,7 @@ import { useGameSound } from "../shared/useGameSound";
 import { useLiarsNotes } from "./useLiarsNotes";
 import type { LiarsPlayerCredentials, LiarsSnapshot } from "./types";
 import type { LiarsNote } from "./useLiarsNotes";
-import { PlayerReadyControl } from "../shared/PlayerReadyControl";
-import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 
 let actionCounter = 0;
@@ -380,22 +378,54 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           );
   return (
     <>
-      <Headline>Set the roles, then start.</Headline>
-      <p className="mt-4 font-serif text-lg leading-relaxed text-white/65">
-        Share the code, agree the roles, then tap ready. The host starts once the table is set.
-      </p>
-
-      {inviteUrl ? (
-        <div className="mt-8">
-          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} pooled={snapshot.managed} />
-        </div>
-      ) : null}
-
-      <MultiplayerLobbyPanel
+      <LobbyIntro
+        title="Set the roles, then start."
+        description="Everyone gets a secret role. Read the room, make your case, and find the liar."
+        rules="The host sets the roles, everyone taps ready, and the phone guides the night. Talk in the room; use the game only for private information, choices, and timing."
+      />
+      <MultiplayerLobby
+        actions={
+          isHost ? (
+            <>
+              {startAttempted && notReady.length > 0 ? (
+                <p className="mb-3 text-center font-mono text-xs text-white/45">
+                  {notReady.map(({ name }) => name).join(", ")} are not ready. Tap again to deal
+                  them in.
+                </p>
+              ) : null}
+              <ActionButton
+                disabled={short > 0}
+                onClick={() => {
+                  if (startAttempted && notReady.length > 0) {
+                    setConfirmingStart(true);
+                    return;
+                  }
+                  setStartAttempted(true);
+                  void sendHost({ type: "game.start" });
+                }}
+              >
+                {short > 0
+                  ? `${short} more ${short === 1 ? "player" : "players"} needed`
+                  : startAttempted && notReady.length > 0
+                    ? "start anyway"
+                    : "start the game"}
+              </ActionButton>
+            </>
+          ) : (
+            <p className="font-mono text-xs text-white/40">
+              waiting for {snapshot.players.find(({ host }) => host)?.name ?? "the host"} to start
+            </p>
+          )
+        }
         canPassLead={isHost && snapshot.players.length > 1}
         currentPlayerId={snapshot.player?.playerId ?? null}
         game={snapshot.mode}
+        inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
+        inviteText="Join our liars room."
+        inviteTitle="Liars"
+        inviteUrl={inviteUrl}
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
+        onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
         onRename={async () => {
           const current =
             snapshot.players.find(({ id }) => id === snapshot.player?.playerId)?.name ?? "";
@@ -413,8 +443,6 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           )?.trim();
           if (name && name !== current) void send({ type: "player.rename", name });
         }}
-        roomId={snapshot.roomId}
-        tone="night"
         players={snapshot.players.map((player) => ({
           id: player.id,
           name: player.name,
@@ -422,74 +450,44 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           lead: player.host,
           left: player.left,
         }))}
+        ready={you?.ready ?? true}
+        roomId={snapshot.roomId}
+        settings={
+          <>
+            <p className="font-mono text-xs text-white/60">roles in this game</p>
+            <div className="mt-3">
+              {editingRoles && isHost ? (
+                <LineupEditor
+                  mode={snapshot.mode}
+                  lineup={snapshot.lineup}
+                  playerCount={snapshot.players.length}
+                  wishes={snapshot.roleWishes}
+                  onChange={(next) => void sendHost({ type: "game.configure", lineup: next })}
+                  onReset={() => void sendHost({ type: "game.configure", resetLineup: true })}
+                />
+              ) : (
+                <LineupBoard
+                  mode={snapshot.mode}
+                  lineup={snapshot.lineup}
+                  playerCount={snapshot.players.length}
+                  wishes={snapshot.roleWishes}
+                  onWish={(role, wanted) => void send({ type: "lineup.wish", role, wanted })}
+                />
+              )}
+            </div>
+            {isHost && !snapshot.managed ? (
+              <button
+                type="button"
+                onClick={() => setEditingRoles(!editingRoles)}
+                aria-expanded={editingRoles}
+                className="mt-3 min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+              >
+                {editingRoles ? "done" : "add or remove roles"}
+              </button>
+            ) : null}
+          </>
+        }
       />
-
-      <div className="mt-10">
-        <Eyebrow>roles in this game</Eyebrow>
-        <div className="mt-3">
-          {editingRoles && isHost ? (
-            <LineupEditor
-              mode={snapshot.mode}
-              lineup={snapshot.lineup}
-              playerCount={snapshot.players.length}
-              wishes={snapshot.roleWishes}
-              onChange={(next) => void sendHost({ type: "game.configure", lineup: next })}
-              onReset={() => void sendHost({ type: "game.configure", resetLineup: true })}
-            />
-          ) : (
-            <LineupBoard
-              mode={snapshot.mode}
-              lineup={snapshot.lineup}
-              playerCount={snapshot.players.length}
-              wishes={snapshot.roleWishes}
-              onWish={(role, wanted) => void send({ type: "lineup.wish", role, wanted })}
-            />
-          )}
-        </div>
-        {isHost && !snapshot.managed ? (
-          <button
-            type="button"
-            onClick={() => setEditingRoles(!editingRoles)}
-            aria-expanded={editingRoles}
-            className="mt-3 min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-          >
-            {editingRoles ? "done" : "add or remove roles"}
-          </button>
-        ) : null}
-      </div>
-
-      <div className="mt-10 space-y-3">
-        <PlayerReadyControl
-          ready={you?.ready ?? true}
-          onChange={(ready) => void send({ type: "readiness.set", ready })}
-          readyHint="You’re all set — wait here while the host sets the roles."
-        />
-        {isHost && startAttempted && notReady.length > 0 ? (
-          <p className="text-center font-mono text-xs text-white/45">
-            buzzed {notReady.map(({ name }) => name).join(", ")} — tap again to deal them in
-            unconfirmed
-          </p>
-        ) : null}
-        {isHost ? (
-          <ActionButton
-            disabled={short > 0}
-            onClick={() => {
-              if (startAttempted && notReady.length > 0) {
-                setConfirmingStart(true);
-                return;
-              }
-              setStartAttempted(true);
-              void sendHost({ type: "game.start" });
-            }}
-          >
-            {short > 0
-              ? `${short} more ${short === 1 ? "player" : "players"} needed`
-              : startAttempted && notReady.length > 0
-                ? "start anyway"
-                : "start the game"}
-          </ActionButton>
-        ) : null}
-      </div>
       {confirmingStart ? (
         <GameActionDialog
           tone="dark"

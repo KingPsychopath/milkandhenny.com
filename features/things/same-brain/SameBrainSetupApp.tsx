@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   GameLaunch,
   GameLaunchButton,
@@ -8,8 +8,7 @@ import {
 } from "../shared/GameLaunch";
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
-import { gameNamespace } from "../shared/multiplayer-keys";
+import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
 import { gameSettingsDocument } from "../shared/game-settings";
@@ -23,37 +22,6 @@ import type { SameBrainScoring } from "./types";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
-
-/**
- * Any same brain game this device is still holding credentials for.
- *
- * Phones close tabs. People go to settings to change wifi and Safari reaps the page; somebody
- * follows a link and never finds their way back. Their seat is still in the room and their
- * credentials are still on the device, so the only thing missing was a door back in.
- */
-function useLiveSameBrainSessions() {
-  const [rooms, setRooms] = useState<string[]>([]);
-
-  useEffect(() => {
-    const prefix = gameNamespace("same-brain", 1);
-    const found: string[] = [];
-    try {
-      for (let index = 0; index < localStorage.length; index += 1) {
-        const key = localStorage.key(index);
-        if (!key?.startsWith(prefix) || !key.endsWith(":player-session")) continue;
-        const roomId = key.split(":room:")[1]?.split(":")[0];
-        if (!roomId) continue;
-        // Reading it also prunes it: an expired session removes its own key.
-        if (readExpiringLocalValue(key)) found.push(roomId);
-      }
-    } catch {
-      // Storage unavailable; there is simply nothing to resume.
-    }
-    setRooms([...new Set(found)]);
-  }, []);
-
-  return rooms;
-}
 
 /**
  * One page, two doors: open a room for a group of phones, or play the one-phone version where the
@@ -87,7 +55,6 @@ export function SameBrainSetupApp({
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const liveRooms = useLiveSameBrainSessions();
 
   useGameScreenHistory({
     active: solo,
@@ -158,23 +125,6 @@ export function SameBrainSetupApp({
                 ? `${defaultPool.label} · settings ready · everyone plays on their own phone`
                 : `${rounds} rounds · everyone plays on their own phone`}
             </GameLaunchMeta>
-
-            {liveRooms.length > 0 ? (
-              <p className="mt-5 text-center font-mono text-xs text-white/45">
-                still in{" "}
-                {liveRooms.map((roomId, index) => (
-                  <span key={roomId}>
-                    {index > 0 ? ", " : ""}
-                    <Link
-                      to={sameBrainPlayerPath(roomId)}
-                      className="text-[var(--things-amber)] underline underline-offset-4"
-                    >
-                      {roomId}
-                    </Link>
-                  </span>
-                ))}
-              </p>
-            ) : null}
 
             <GameLaunchChoices tone="dark">
               {defaultPool ? (

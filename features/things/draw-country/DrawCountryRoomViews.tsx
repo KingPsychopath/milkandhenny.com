@@ -1,14 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
-import { AppImage } from "@/components/AppImage";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
-import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
-import { useQrCode } from "@/hooks/useQrCode";
-import { shareOrCopy } from "@/lib/client/share";
-import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
 import { CountryRevealAnalysis } from "./CountryReveal";
@@ -88,7 +83,6 @@ export function RoomLobby({
   startLabel?: string | null;
   onLeave: () => Promise<boolean>;
 }) {
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
   const token =
     typeof window === "undefined"
       ? null
@@ -103,26 +97,7 @@ export function RoomLobby({
             snapshot.roomId,
             token ?? undefined,
           );
-  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite || null, 280);
-  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
-  const share = async () => {
-    const result = await shareOrCopy(
-      { title: "Draw the Country", text: `Join room ${snapshot.roomId}.`, url: invite },
-      { copyValue: invite },
-    );
-    setShareMessage(
-      result === "copied"
-        ? "Invite copied."
-        : result === "shared"
-          ? "Invite shared."
-          : result === "failed"
-            ? snapshot.managed
-              ? "Copy the game-night invite link instead."
-              : "Use the room code below."
-            : null,
-    );
-  };
   return (
     <div className="things-game things-game--cream text-black">
       <RoomHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
@@ -130,21 +105,39 @@ export function RoomLobby({
         id="main"
         className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-5 pb-12 pt-8 text-center"
       >
-        <h1 className="font-serif text-4xl font-semibold sm:text-5xl">Ready to draw?</h1>
-        <p className="mt-3 max-w-md font-serif text-lg text-black/55">
-          Share the code, then tap ready. When everyone is in, the host starts the round: draw each
-          country from memory, then see how close you were to its real border.
-        </p>
-        <p className="mt-2 font-mono text-micro text-black/40">
-          {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per round
-        </p>
-        <MultiplayerLobbyPanel
+        <LobbyIntro
+          title="Draw the country."
+          description="Draw a country from memory, then see how close you came to its real border."
+          rules="Everyone draws the same country on their own phone. You have limited time, and the closest outline wins the round."
+          tone="light"
+        />
+        <MultiplayerLobby
+          actions={
+            snapshot.canControl ? (
+              <button
+                type="button"
+                onClick={onStart}
+                className="mt-1 min-h-14 w-full rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white"
+              >
+                {startLabel ??
+                  (snapshot.players.length === 1
+                    ? "start with just me"
+                    : `start ${snapshot.players.length}-player game`)}
+              </button>
+            ) : (
+              <p className="font-mono text-xs text-black/45">waiting for the host to start</p>
+            )
+          }
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
           currentPlayerId={playerId}
           game="draw-country"
+          inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
+          inviteText="Join our draw the country room."
+          inviteTitle="Draw the country"
+          inviteUrl={invite}
           onPassLead={onPassLead}
+          onReadyChange={onReadyChange}
           onRename={onRename}
-          roomId={snapshot.roomId}
           players={snapshot.players.map((player) => ({
             id: player.id,
             name: player.name,
@@ -152,61 +145,18 @@ export function RoomLobby({
             lead: player.id === snapshot.hostPlayerId,
             left: player.withdrawn,
           }))}
-        />
-        {invite ? (
-          <>
-            {qr ? (
-              <AppImage
-                src={qr}
-                alt="QR code to join the draw the country room"
-                width={280}
-                height={280}
-                className="mt-6 w-48 rounded-3xl bg-white p-3"
-              />
-            ) : null}
-            {qrFailed ? (
-              <p className="mt-4 font-mono text-xs text-black/45">
-                {snapshot.managed
-                  ? "QR unavailable — copy the game-night invite link."
-                  : "QR unavailable — share the link or room code."}
-              </p>
-            ) : null}
-            <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
-              {snapshot.managed ? "invite link" : "room code"}
-            </p>
-            <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{snapshot.roomId}</p>
-            <button
-              type="button"
-              onClick={() => void share()}
-              className="mt-4 min-h-11 rounded-full border border-black/20 px-6 font-mono text-xs"
-            >
-              {nativeShare ? "share invite" : "copy invite link"}
-            </button>
-          </>
-        ) : null}
-        <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-800">
-          {shareMessage ?? message}
-        </p>
-        <PlayerReadyControl
           ready={currentPlayer?.ready ?? true}
-          onChange={onReadyChange}
-          tone="light"
-          readyHint="You’re all set — wait here for the host to start drawing."
+          roomId={snapshot.roomId}
+          settings={
+            <p className="font-mono text-micro text-black/40">
+              {snapshot.roundTotal} rounds · {snapshot.drawSeconds} seconds each · 100 points per
+              round
+            </p>
+          }
         />
-        {snapshot.canControl ? (
-          <button
-            type="button"
-            onClick={onStart}
-            className="mt-7 min-h-14 w-full rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white"
-          >
-            {startLabel ??
-              (snapshot.players.length === 1
-                ? "start with just me"
-                : `start ${snapshot.players.length}-player game`)}
-          </button>
-        ) : (
-          <p className="mt-7 font-mono text-xs text-black/45">waiting for the host to start</p>
-        )}
+        <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-800">
+          {message}
+        </p>
       </main>
     </div>
   );

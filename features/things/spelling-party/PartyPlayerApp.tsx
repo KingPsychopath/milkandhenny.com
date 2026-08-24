@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
-import { AppImage } from "@/components/AppImage";
 import {
   applyPlayerActionFn,
   applyPresenterActionFn,
@@ -34,12 +33,9 @@ import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
-import { shareOrCopy } from "@/lib/client/share";
-import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
-import { useQrCode } from "@/hooks/useQrCode";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-invite";
-import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 
@@ -795,36 +791,72 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
           {round ? `word ${round.number} of ${round.total}` : snapshot.deckName}
         </p>
         {snapshot.phase === "lobby" ? (
-          isHost && hostInvite ? (
-            <HostPlayerLobby
-              roomId={credentials.roomId}
-              invite={hostInvite}
-              players={snapshot.players}
-              currentPlayerId={credentials.playerId}
-              onReadyChange={(ready) => void setReady(ready)}
-              onStart={() => void sendHostAction("round.start")}
-              startLabel={
-                nudgedIds
-                  ? `start without ${snapshot.players
-                      .filter(({ id, ready }) => !ready && id !== credentials.playerId)
-                      .map(({ name }) => name)
-                      .join(" and ")}`
-                  : null
+          <section className="flex flex-1 flex-col justify-center py-6">
+            <LobbyIntro
+              title={isHost ? "Get everyone on a phone." : "You’re in."}
+              description={
+                isHost
+                  ? "Type one answer on each phone, then compare the spellings when time is up."
+                  : "The host will start when everyone is ready."
               }
+              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
             />
-          ) : (
-            <section className="flex flex-1 flex-col justify-center">
-              <h1 className="font-serif text-5xl font-semibold">You’re in.</h1>
-              <p className="mt-4 font-serif text-lg text-white/60">
-                The host will start when everyone is ready.
-              </p>
-              <PlayerReadyControl
-                ready={player?.ready ?? true}
-                onChange={(ready) => void setReady(ready)}
-                readyHint="You’re all set — wait here for the host to begin."
-              />
-            </section>
-          )
+            <MultiplayerLobby
+              actions={
+                isHost ? (
+                  <button
+                    type="button"
+                    onClick={() => void sendHostAction("round.start")}
+                    className="min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
+                  >
+                    {nudgedIds
+                      ? `start without ${snapshot.players
+                          .filter(({ id, ready }) => !ready && id !== credentials.playerId)
+                          .map(({ name }) => name)
+                          .join(" and ")}`
+                      : "start game"}
+                  </button>
+                ) : null
+              }
+              currentPlayerId={credentials.playerId}
+              game="spelling-party"
+              inviteLabel="room code"
+              inviteText="Join our spelling party."
+              inviteTitle="Spelling party"
+              inviteUrl={isHost ? hostInvite : null}
+              onReadyChange={(ready) => void setReady(ready)}
+              onRename={async () => {
+                const current =
+                  snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
+                const nextName = (
+                  await prompt({
+                    tone: "dark",
+                    eyebrow: "player name",
+                    title: "What should we call you?",
+                    description: "This name is shown to everyone in the room.",
+                    label: "Name",
+                    defaultValue: current,
+                    confirmLabel: "save name",
+                    required: true,
+                  })
+                )?.trim();
+                if (nextName && nextName !== current)
+                  void send({
+                    actionId: crypto.randomUUID(),
+                    type: "player.rename",
+                    name: nextName,
+                  });
+              }}
+              players={snapshot.players.map((player) => ({
+                id: player.id,
+                name: player.name,
+                ready: player.ready,
+                left: player.left,
+              }))}
+              ready={player?.ready ?? true}
+              roomId={credentials.roomId}
+            />
+          </section>
         ) : snapshot.phase === "finished" ? (
           <section className="flex flex-1 flex-col justify-center">
             <h1 className="font-serif text-5xl font-semibold">
@@ -1057,110 +1089,6 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       ) : null}
       {dialog}
     </div>
-  );
-}
-
-function HostPlayerLobby({
-  roomId,
-  invite,
-  players,
-  currentPlayerId,
-  onReadyChange,
-  onStart,
-  startLabel,
-}: {
-  roomId: string;
-  invite: string;
-  players: Array<{ id: string; name: string; ready: boolean }>;
-  currentPlayerId: string;
-  onReadyChange: (ready: boolean) => void;
-  onStart: () => void;
-  /** Overrides the start button label, e.g. after nudging unready players. */
-  startLabel?: string | null;
-}) {
-  const [message, setMessage] = useState<string | null>(null);
-  const { dataUrl: qr, failed: qrFailed } = useQrCode(invite, 280);
-  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
-  const currentPlayer = players.find(({ id }) => id === currentPlayerId);
-  const shareInvite = async () => {
-    const share = {
-      title: "Join our Spelling Bee",
-      text: `Join room ${roomId} and type along.`,
-      url: invite,
-    };
-    const result = await shareOrCopy(share, { copyValue: invite });
-    if (result === "shared") setMessage("Invite shared.");
-    else if (result === "copied") setMessage("Player link copied.");
-    else if (result === "failed")
-      setMessage("Ask players to scan the code or enter the room code.");
-  };
-  return (
-    <section
-      className="flex flex-1 flex-col items-center justify-center py-6"
-      aria-labelledby="host-lobby-title"
-    >
-      <h1 id="host-lobby-title" className="font-serif text-4xl font-semibold sm:text-5xl">
-        Get everyone on a phone.
-      </h1>
-      <p className="mt-3 max-w-sm font-serif text-lg text-white/55">
-        Share the code or player link. When everyone has joined and tapped ready, start the first
-        word.
-      </p>
-      {qr ? (
-        <AppImage
-          src={qr}
-          alt="QR code for players to join this spelling room"
-          width={280}
-          height={280}
-          className="mt-6 w-52 rounded-3xl bg-white p-3"
-        />
-      ) : qrFailed ? (
-        <p className="mt-5 font-mono text-xs text-white/50">
-          QR unavailable—share the player link or room code.
-        </p>
-      ) : null}
-      <p className="mt-4 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-        room code
-      </p>
-      <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{roomId}</p>
-      <button
-        type="button"
-        onClick={() => void shareInvite()}
-        className="mt-4 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm font-semibold"
-      >
-        {nativeShare ? "share player invite" : "copy player link"}
-      </button>
-      <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-amber-200">
-        {message}
-      </p>
-      <ul className="mt-5 flex flex-wrap justify-center gap-2" aria-label="Players in the room">
-        {players.map((player) => (
-          <li
-            key={player.id}
-            className="rounded-full border border-white/15 px-4 py-2 font-mono text-sm"
-          >
-            {player.name} · {player.ready !== false ? "ready" : "not ready"}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-3 font-mono text-xs text-white/45">
-        {players.length === 1
-          ? "Just you so far"
-          : `${players.filter(({ ready }) => ready !== false).length} of ${players.length} ready`}
-      </p>
-      <PlayerReadyControl
-        ready={currentPlayer?.ready ?? true}
-        onChange={onReadyChange}
-        readyHint="You’re all set — start when everyone is here."
-      />
-      <button
-        type="button"
-        onClick={onStart}
-        className="mt-6 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-bold text-black"
-      >
-        {startLabel ?? "start game"}
-      </button>
-    </section>
   );
 }
 

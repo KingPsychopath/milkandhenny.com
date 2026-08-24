@@ -26,7 +26,6 @@ import {
   ActionButton,
   Eyebrow,
   Headline,
-  InvitePanel,
   PhaseTimer,
   RevealBoard,
   SayItBeat,
@@ -35,14 +34,13 @@ import {
 import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
-import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import {
   gamePoolRoomInviteUrl,
   releaseGamePoolMembership,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
-import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 import { useActionDialog } from "@/hooks/useActionDialog";
 
 let actionCounter = 0;
@@ -340,23 +338,54 @@ function LobbyPhase({
 
   return (
     <>
-      <Headline>Find the answer you share.</Headline>
-      <p className="mt-4 font-mono text-xs leading-relaxed text-white/50">
-        Share the code, tap ready, then type one answer to each prompt. Matching answers score;
-        obvious answers are worth less.
-      </p>
-
-      {inviteUrl ? (
-        <div className="mt-8">
-          <InvitePanel roomId={snapshot.roomId} inviteUrl={inviteUrl} pooled={snapshot.managed} />
-        </div>
-      ) : null}
-
-      <MultiplayerLobbyPanel
+      <LobbyIntro
+        title="Find the answer you share."
+        description="Everyone answers the same question. Match the group to score."
+        rules="Answer each prompt on your own phone. Matching answers score together, and the less obvious your answer is, the more it is worth."
+      />
+      <MultiplayerLobby
+        actions={
+          isHost ? (
+            <>
+              {startAttempted && notReady.length > 0 ? (
+                <p className="mb-3 text-center font-mono text-xs text-white/45">
+                  {notReady.map(({ name }) => name).join(", ")} are not ready. Tap again to start
+                  without waiting.
+                </p>
+              ) : null}
+              <ActionButton
+                onClick={() => {
+                  if (startAttempted && notReady.length > 0) {
+                    setConfirmingStart(true);
+                    return;
+                  }
+                  setStartAttempted(true);
+                  void sendHost({ type: "game.start" });
+                }}
+                disabled={!enough}
+              >
+                {!enough
+                  ? `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`
+                  : startAttempted && notReady.length > 0
+                    ? "start anyway"
+                    : "start"}
+              </ActionButton>
+            </>
+          ) : (
+            <p className="font-mono text-xs text-white/40">
+              waiting for {snapshot.players.find(({ host }) => host)?.name ?? "the host"} to start
+            </p>
+          )
+        }
         canPassLead={isHost && snapshot.players.length > 1}
         currentPlayerId={snapshot.you?.id ?? null}
         game="same-brain"
+        inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
+        inviteText="Join our same brain room."
+        inviteTitle="Same brain"
+        inviteUrl={inviteUrl}
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
+        onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
         onRename={async () => {
           const current = snapshot.players.find(({ id }) => id === snapshot.you?.id)?.name ?? "";
           const name = (
@@ -373,8 +402,6 @@ function LobbyPhase({
           )?.trim();
           if (name && name !== current) void send({ type: "player.rename", name });
         }}
-        roomId={snapshot.roomId}
-        tone="night"
         players={snapshot.players.map((player) => ({
           id: player.id,
           name: player.name,
@@ -382,152 +409,107 @@ function LobbyPhase({
           lead: player.host,
           left: player.left,
         }))}
-      />
+        ready={snapshot.players.find(({ id }) => id === snapshot.you?.id)?.ready ?? true}
+        roomId={snapshot.roomId}
+        settings={
+          isHost ? (
+            <fieldset disabled={snapshot.managed}>
+              <label className="flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
+                rounds
+                <input
+                  type="number"
+                  min={SAME_BRAIN_ROUND_LIMITS.min}
+                  max={SAME_BRAIN_ROUND_LIMITS.max}
+                  value={snapshot.rounds}
+                  onChange={(event) =>
+                    void sendHost({ type: "game.configure", rounds: Number(event.target.value) })
+                  }
+                  className="w-16 border border-white/20 bg-transparent px-2 py-1 text-white"
+                />
+              </label>
 
-      <div className="mt-8">
-        <Eyebrow>scoreboard</Eyebrow>
-      </div>
-      <Scoreboard snapshot={snapshot} />
+              <fieldset className="mt-4">
+                <legend className="font-mono text-xs text-white/60">answer matching</legend>
+                {(
+                  [
+                    ["embedding", "match similar answers", "sea and ocean can score together"],
+                    ["exact", "match exact answers", "only the same word scores together"],
+                  ] as Array<[SameBrainScoring, string, string]>
+                ).map(([value, label, hint]) => (
+                  <label
+                    key={value}
+                    className="mt-2 flex min-h-11 items-start gap-3 font-mono text-xs text-white/70"
+                  >
+                    <input
+                      type="radio"
+                      name="scoring"
+                      checked={snapshot.scoring === value}
+                      onChange={() => void sendHost({ type: "game.configure", scoring: value })}
+                      className="mt-1"
+                    />
+                    <span>
+                      {label}
+                      <span className="block text-white/35">{hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
 
-      {isHost ? (
-        <section className="mt-8 border-t border-white/15 pt-5">
-          <Eyebrow>house rules</Eyebrow>
-          <fieldset disabled={snapshot.managed}>
-            <label className="mt-4 flex min-h-11 items-center gap-3 font-mono text-xs text-white/60">
-              rounds
-              <input
-                type="number"
-                min={SAME_BRAIN_ROUND_LIMITS.min}
-                max={SAME_BRAIN_ROUND_LIMITS.max}
-                value={snapshot.rounds}
-                onChange={(event) =>
-                  void sendHost({ type: "game.configure", rounds: Number(event.target.value) })
+              <Toggle
+                label="say the answers out loud"
+                hint="counts everyone down, then shows each person their own answer"
+                checked={snapshot.toggles.sayItAloud}
+                onChange={(next) =>
+                  void sendHost({ type: "game.configure", toggles: { sayItAloud: next } })
                 }
-                className="w-16 border border-white/20 bg-transparent px-2 py-1 text-white"
               />
-            </label>
-
-            <fieldset className="mt-4">
-              <legend className="font-mono text-xs text-white/60">
-                when two answers nearly match
-              </legend>
-              {(
-                [
-                  ["embedding", "count them as one", "sea and ocean score together"],
-                  ["exact", "keep them apart", "only identical answers score together"],
-                ] as Array<[SameBrainScoring, string, string]>
-              ).map(([value, label, hint]) => (
-                <label
-                  key={value}
-                  className="mt-2 flex min-h-11 items-start gap-3 font-mono text-xs text-white/70"
-                >
-                  <input
-                    type="radio"
-                    name="scoring"
-                    checked={snapshot.scoring === value}
-                    onChange={() => void sendHost({ type: "game.configure", scoring: value })}
-                    className="mt-1"
-                  />
-                  <span>
-                    {label}
-                    <span className="block text-white/35">{hint}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-
-            <Toggle
-              label="say the answers out loud"
-              hint="counts everyone down, then shows you your own word — for a room, not a call"
-              checked={snapshot.toggles.sayItAloud}
-              onChange={(next) =>
-                void sendHost({ type: "game.configure", toggles: { sayItAloud: next } })
-              }
-            />
-            <Toggle
-              label="the odd one out is eliminated"
-              hint="off, the loner just misses out; on, they leave the game"
-              checked={snapshot.toggles.eliminateOddOne}
-              onChange={(next) =>
-                void sendHost({ type: "game.configure", toggles: { eliminateOddOne: next } })
-              }
-            />
-            <Toggle
-              label="show who wrote what"
-              hint="off makes the reveal anonymous and the argument louder"
-              checked={snapshot.toggles.revealAuthors}
-              onChange={(next) =>
-                void sendHost({ type: "game.configure", toggles: { revealAuthors: next } })
-              }
-            />
-            <Toggle
-              label="say when the machine merged answers"
-              hint="so you can overrule it out loud"
-              checked={snapshot.toggles.showMachineWorking}
-              onChange={(next) =>
-                void sendHost({ type: "game.configure", toggles: { showMachineWorking: next } })
-              }
-            />
-          </fieldset>
-
-          <div className="mt-8">
-            {startAttempted && notReady.length > 0 ? (
-              <p className="mb-3 text-center font-mono text-xs text-white/45">
-                buzzed {notReady.map(({ name }) => name).join(", ")} — tap again to start without
-                waiting
-              </p>
-            ) : null}
-            <ActionButton
-              onClick={() => {
-                if (startAttempted && notReady.length > 0) {
-                  setConfirmingStart(true);
-                  return;
+              <Toggle
+                label="eliminate the odd one out"
+                hint="the loner leaves the game instead of only missing the points"
+                checked={snapshot.toggles.eliminateOddOne}
+                onChange={(next) =>
+                  void sendHost({ type: "game.configure", toggles: { eliminateOddOne: next } })
                 }
-                setStartAttempted(true);
-                void sendHost({ type: "game.start" });
-              }}
-              disabled={!enough}
-            >
-              {!enough
-                ? `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`
-                : startAttempted && notReady.length > 0
-                  ? "start anyway"
-                  : "start"}
-            </ActionButton>
-          </div>
-          {confirmingStart ? (
-            <GameActionDialog
-              tone="dark"
-              eyebrow="players not ready"
-              title="Start anyway?"
-              description={`${notReady.map(({ name }) => name).join(" and ")} ${
-                notReady.length === 1 ? "hasn’t" : "haven’t"
-              } confirmed they’re ready. They stay in the game and can answer when they’re back.`}
-              cancelLabel="keep waiting"
-              confirmLabel="start anyway"
-              pending={false}
-              pendingLabel="starting…"
-              onCancel={() => setConfirmingStart(false)}
-              onConfirm={() => {
-                setConfirmingStart(false);
-                void sendHost({ type: "game.start", force: true });
-              }}
-            />
-          ) : null}
-        </section>
-      ) : (
-        <p className="mt-8 font-mono text-xs text-white/40">
-          waiting for {snapshot.players.find(({ host }) => host)?.name ?? "the host"} to start
-        </p>
-      )}
-
-      {!snapshot.you?.id ? null : (
-        <PlayerReadyControl
-          ready={snapshot.players.find(({ id }) => id === snapshot.you?.id)?.ready ?? true}
-          onChange={(ready) => void send({ type: "readiness.set", ready })}
-          readyHint="You’re all set — wait here while the host sets the game."
+              />
+              <Toggle
+                label="show who wrote what"
+                hint="turn this off for an anonymous reveal"
+                checked={snapshot.toggles.revealAuthors}
+                onChange={(next) =>
+                  void sendHost({ type: "game.configure", toggles: { revealAuthors: next } })
+                }
+              />
+              <Toggle
+                label="show when answers were merged"
+                hint="so the group can overrule a match out loud"
+                checked={snapshot.toggles.showMachineWorking}
+                onChange={(next) =>
+                  void sendHost({ type: "game.configure", toggles: { showMachineWorking: next } })
+                }
+              />
+            </fieldset>
+          ) : null
+        }
+      />
+      {confirmingStart ? (
+        <GameActionDialog
+          tone="dark"
+          eyebrow="players not ready"
+          title="Start anyway?"
+          description={`${notReady.map(({ name }) => name).join(" and ")} ${
+            notReady.length === 1 ? "hasn’t" : "haven’t"
+          } confirmed they’re ready. They stay in the game and can answer when they’re back.`}
+          cancelLabel="keep waiting"
+          confirmLabel="start anyway"
+          pending={false}
+          pendingLabel="starting…"
+          onCancel={() => setConfirmingStart(false)}
+          onConfirm={() => {
+            setConfirmingStart(false);
+            void sendHost({ type: "game.start", force: true });
+          }}
         />
-      )}
+      ) : null}
       {dialog}
     </>
   );

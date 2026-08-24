@@ -7,7 +7,8 @@ export type PixelWorldGame =
   | "same-brain"
   | "centre"
   | "twin"
-  | "draw-country";
+  | "draw-country"
+  | "spelling-party";
 
 export type PixelWorldRole = "player" | "concierge" | "arranger" | "lost-guest" | "passerby";
 

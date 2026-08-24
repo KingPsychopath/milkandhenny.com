@@ -1,12 +1,8 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
-import { AppImage } from "@/components/AppImage";
-import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
-import { useQrCode } from "@/hooks/useQrCode";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
-import { shareOrCopy } from "@/lib/client/share";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import {
@@ -40,7 +36,7 @@ import {
   releaseGamePoolMembership,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
-import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
+import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { CentreReportButton } from "./CentreReportButton";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
@@ -105,7 +101,6 @@ export function CentreRoom({
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
   const [resetNonce, setResetNonce] = useState(0);
   const [pending, setPending] = useState(false);
-  const [shareMessage, setShareMessage] = useState<string | null>(null);
   const { prompt, dialog } = useActionDialog();
   const previousCount = useRef<number | null>(null);
   const previousPhase = useRef(snapshot?.phase);
@@ -374,8 +369,7 @@ export function CentreRoom({
           nudged={nudgedIds !== null}
           invite={invite}
           connection={live.connectionState}
-          message={shareMessage ?? live.message}
-          onShareMessage={setShareMessage}
+          message={live.message}
           onReady={(ready) => void send({ type: "readiness.set", ready })}
           onDifficulty={(difficulty) => void send({ type: "game.configure", difficulty })}
           onDelayedRivals={(delayedRivals) => void send({ type: "game.configure", delayedRivals })}
@@ -659,7 +653,6 @@ function CentreLobby({
   invite,
   connection,
   message,
-  onShareMessage,
   onReady,
   onDifficulty,
   onDelayedRivals,
@@ -674,7 +667,6 @@ function CentreLobby({
   invite: string;
   connection: MultiplayerConnectionState;
   message: string | null;
-  onShareMessage: (message: string | null) => void;
   onReady: (ready: boolean) => void;
   onDifficulty: (difficulty: CentreDifficulty) => void;
   onDelayedRivals: (enabled: boolean) => void;
@@ -683,26 +675,7 @@ function CentreLobby({
   onStart: () => void;
   onLeave: () => Promise<boolean>;
 }) {
-  const { dataUrl: qr, failed } = useQrCode(invite, 280);
-  const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const me = snapshot.players.find(({ id }) => id === playerId);
-  const share = async () => {
-    const result = await shareOrCopy(
-      { title: "Centre", text: `Join centre room ${snapshot.roomId}.`, url: invite },
-      { copyValue: invite },
-    );
-    onShareMessage(
-      result === "copied"
-        ? "Invite copied."
-        : result === "shared"
-          ? "Invite shared."
-          : result === "failed"
-            ? snapshot.managed
-              ? "Copy the game-night invite link instead."
-              : "Use the room code below."
-            : null,
-    );
-  };
   return (
     <div className="things-game things-game--night centre">
       <header className="centre-header">
@@ -714,20 +687,37 @@ function CentreLobby({
         <CentreLeaveButton onLeave={onLeave} tone="dark" />
       </header>
       <main id="main" className="centre-lobby">
-        <h1 className="centre-title centre-title--lobby">Ready to race?</h1>
-        <p className="centre-lede">
-          {snapshot.canControl
-            ? "Share the code or link, choose a difficulty, then start when everyone has joined and tapped ready."
-            : "Share the code or link with your friends, then tap ready. The host will start the race when everyone is in."}
-        </p>
-        <MultiplayerLobbyPanel
+        <LobbyIntro
+          title="Ready to race?"
+          description="Reach the centre of the maze before the clock runs out."
+          rules="Everyone gets the same maze. Use the controls to draw your route; the fastest clean route wins."
+          tone="dark"
+        />
+        <MultiplayerLobby
+          actions={
+            snapshot.canControl ? (
+              <button type="button" className="centre-button centre-button--go" onClick={onStart}>
+                {nudged
+                  ? `start without ${snapshot.players
+                      .filter(({ ready, id }) => !ready && id !== playerId)
+                      .map(({ name }) => name)
+                      .join(" and ")}`
+                  : `start · ${snapshot.players.length} racing`}
+              </button>
+            ) : (
+              <p className="centre-note">waiting for the host</p>
+            )
+          }
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
           currentPlayerId={playerId}
           game="centre"
+          inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
+          inviteText="Join our centre room."
+          inviteTitle="Centre"
+          inviteUrl={invite}
           onPassLead={onPassLead}
+          onReadyChange={onReady}
           onRename={onRename}
-          roomId={snapshot.roomId}
-          tone="night"
           players={snapshot.players.map((player) => ({
             id: player.id,
             name: player.name,
@@ -735,82 +725,40 @@ function CentreLobby({
             lead: player.id === snapshot.hostPlayerId,
             left: player.withdrawn,
           }))}
+          ready={me?.ready ?? true}
+          roomId={snapshot.roomId}
+          settings={
+            snapshot.canControl && !snapshot.managed ? (
+              <>
+                <label className="centre-difficulty">
+                  <span>difficulty</span>
+                  <strong>{DIFFICULTY_LABELS[snapshot.difficulty - 1]}</strong>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={snapshot.difficulty}
+                    onChange={(event) =>
+                      onDifficulty(Number(event.target.value) as CentreDifficulty)
+                    }
+                  />
+                </label>
+                <label className="centre-check">
+                  <input
+                    type="checkbox"
+                    checked={snapshot.delayedRivals}
+                    onChange={(event) => onDelayedRivals(event.target.checked)}
+                  />
+                  <span>show delayed rival dots</span>
+                </label>
+              </>
+            ) : null
+          }
         />
-        {invite ? (
-          <>
-            {qr ? (
-              <AppImage
-                src={qr}
-                alt="QR code to join this centre room"
-                width={280}
-                height={280}
-                className="centre-qr"
-              />
-            ) : failed ? (
-              <p className="centre-note">
-                {snapshot.managed
-                  ? "QR unavailable. Copy the game-night invite link."
-                  : "QR unavailable. Share the link or room code."}
-              </p>
-            ) : null}
-            <p className="centre-eyebrow">{snapshot.managed ? "invite link" : "room code"}</p>
-            <p className="centre-code">{snapshot.roomId}</p>
-            <button type="button" className="centre-button" onClick={() => void share()}>
-              {nativeShare ? "share invite" : "copy invite link"}
-            </button>
-          </>
-        ) : null}
         <p aria-live="polite" className="centre-message">
           {message}
         </p>
-        {snapshot.canControl && !snapshot.managed ? (
-          <>
-            <label className="centre-difficulty">
-              <span>difficulty</span>
-              <strong>{DIFFICULTY_LABELS[snapshot.difficulty - 1]}</strong>
-              <input
-                type="range"
-                min={1}
-                max={5}
-                step={1}
-                value={snapshot.difficulty}
-                onChange={(event) => onDifficulty(Number(event.target.value) as CentreDifficulty)}
-              />
-            </label>
-            <label className="centre-check">
-              <input
-                type="checkbox"
-                checked={snapshot.delayedRivals}
-                onChange={(event) => onDelayedRivals(event.target.checked)}
-              />
-              <span>show delayed rival dots</span>
-            </label>
-          </>
-        ) : null}
-        <button
-          type="button"
-          aria-pressed={me?.ready ?? true}
-          className={`centre-button${me?.ready ? "" : " centre-button--go"}`}
-          onClick={() => onReady(!(me?.ready ?? true))}
-        >
-          {me?.ready
-            ? "ready · tap to wait"
-            : snapshot.startRequestId
-              ? "the host is waiting — tap when ready"
-              : "not ready · tap when ready"}
-        </button>
-        {snapshot.canControl ? (
-          <button type="button" className="centre-button centre-button--go" onClick={onStart}>
-            {nudged
-              ? `start without ${snapshot.players
-                  .filter(({ ready, id }) => !ready && id !== playerId)
-                  .map(({ name }) => name)
-                  .join(" and ")}`
-              : `start · ${snapshot.players.length} racing`}
-          </button>
-        ) : (
-          <p className="centre-note">waiting for the host</p>
-        )}
       </main>
     </div>
   );

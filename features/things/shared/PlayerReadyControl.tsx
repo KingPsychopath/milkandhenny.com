@@ -2,15 +2,9 @@ interface PlayerReadyControlProps {
   ready: boolean;
   onChange: (ready: boolean) => void;
   tone?: "light" | "dark";
-  readyHint?: string;
 }
 
-export function PlayerReadyControl({
-  ready,
-  onChange,
-  tone = "dark",
-  readyHint = "You’re all set — wait here for the host to start.",
-}: PlayerReadyControlProps) {
+export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerReadyControlProps) {
   const light = tone === "light";
   const surface = light
     ? "border-black/15 bg-white/30 text-black"
@@ -54,7 +48,9 @@ export function PlayerReadyControl({
             {ready ? "You’re ready" : "You’re not ready"}
           </strong>
           <span className={`mt-0.5 block font-mono text-xs leading-relaxed ${muted}`}>
-            {ready ? readyHint : "Tap “I’m ready” when you’re back."}
+            {ready
+              ? "You’re all set — wait for the host to start."
+              : "Tap “I’m ready” when you’re back."}
           </span>
         </span>
       </div>
