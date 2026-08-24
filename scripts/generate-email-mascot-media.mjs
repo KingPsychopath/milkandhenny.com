@@ -167,13 +167,13 @@ async function cleanActionSource(source) {
       const greenLeaf = green >= red * 0.85 && green > blue * 1.2 && green > 40;
       const milkJugSpout = x >= 539 && x <= 557 && y >= 190 && y <= 213;
       const plantCutoff =
-        source === "action-grow-a.png" ? 548 : source === "action-arrive.png" ? 555 : 550;
+        source === "action-grow-a.png" ? 548 : source === "action-arrive.png" ? 558 : 550;
       const removeProp =
         alpha > 0 &&
         (sourceKind === "plant"
           ? (x >= plantCutoff && y >= 140) ||
             (x >= 535 && greenLeaf) ||
-            (source === "action-arrive.png" && x >= 552 && y >= 204)
+            (source === "action-arrive.png" && x >= 552 && y >= 214)
           : greenLeaf ||
             (x >= 544 && y >= 204 && !milkJugSpout) ||
             (x >= 558 && y >= 185) ||
@@ -288,9 +288,8 @@ async function composeFrame({ sprite, left, overlay, bottle, output }) {
 async function composeActionFrame({ source, output }) {
   const sourceBuffer = await cleanActionSource(source);
   const pour = source.includes("pour");
-  const bottleOffset = source === "action-arrive.png" ? 10 : 0;
   const layers = [
-    { input: bottleTreeSvg(bottleOffset, false), left: 0, top: 0 },
+    { input: bottleTreeSvg(0, false), left: 0, top: 0 },
     { input: sourceBuffer, left: 0, top: 0 },
   ];
   if (pour) {
