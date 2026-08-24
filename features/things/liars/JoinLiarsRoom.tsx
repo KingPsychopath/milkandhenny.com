@@ -72,10 +72,7 @@ export function JoinLiarsRoom({
           id="main"
           className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"
         >
-          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-            shared room
-          </p>
-          <h1 className="mt-3 font-serif text-5xl font-semibold">Who are you?</h1>
+          <h1 className="font-serif text-5xl font-semibold">Who are you?</h1>
           {loaded && name && !editingName ? (
             <div className="mt-8">
               <p className="font-mono text-xs text-white/55">joining as</p>

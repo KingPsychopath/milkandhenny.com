@@ -25,7 +25,7 @@ export const Route = createFileRoute("/things/draw-country")({
     buildSeoHead({
       title: `Draw the Country — ${SITE_NAME}`,
       description:
-        "Draw country borders from memory, compare your outline, or compete in a shared room.",
+        "Draw country borders from memory, compare your outline, or compete live with friends.",
       path: "/things/draw-country",
       image: OG_IMAGES.drawCountry,
       imageAlt: "Draw the Country — a country outline drawing game from Milk & Henny",

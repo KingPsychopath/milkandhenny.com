@@ -917,9 +917,6 @@ export function MultiplayerLobbyPanel({
   return (
     <section className={`multiplayer-lobby-panel multiplayer-lobby-panel--${tone}`}>
       <PixelRoomLobby game={game} players={present} roomId={roomId} tone={tone} />
-      <p className="multiplayer-lobby-panel-note">
-        This is a shared room. The room lead is the player who opened it and can start the game.
-      </p>
       <h3 className="multiplayer-lobby-panel-heading">who is here · {present.length}</h3>
       <ul className="multiplayer-lobby-roster" aria-label="Players in the room">
         {ordered.map((player) => (

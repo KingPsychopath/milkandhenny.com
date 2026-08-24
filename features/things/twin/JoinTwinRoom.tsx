@@ -65,7 +65,6 @@ export function JoinTwinRoom({
         <span className="twin-header-meta">{roomId}</span>
       </header>
       <main id="main" className="twin-join">
-        <p className="twin-eyebrow">shared room</p>
         <h1 className="twin-title">Sharp eyes?</h1>
         {loaded && name && !editingName ? (
           <div className="mt-8">
