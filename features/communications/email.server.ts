@@ -59,8 +59,9 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
     "event.date": eventDate,
     "event.time": eventTime,
     "event.doors": doorsTime,
+    "event.timing": event ? eventTiming(event) : "",
     "event.venue": event?.venueName ?? "",
-    "event.address": event?.address ?? "",
+    "event.address": event ? addressWithoutVenue(event) : "",
     "event.map": event?.mapUrl ?? buildAppUrl(origin, "/contact"),
     "links.spellingGame": buildAppUrl(origin, "/things/spelling-bee"),
     "links.pitch": buildAppUrl(origin, "/things/pitches/new"),
@@ -69,7 +70,37 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
     "links.email": "mailto:hello@milkandhenny.com",
     "survey.url": context.surveyUrl ?? "",
   };
-  return value.replace(/\{\{([a-z.]+)\}\}/g, (_, key: string) => values[key] ?? "");
+  return value.replace(/\{\{([A-Za-z.]+)\}\}/g, (_, key: string) => values[key] ?? "");
+}
+
+function eventTiming(event: EventRecord): string {
+  const eventTime = new Intl.DateTimeFormat("en-GB", {
+    timeStyle: "short",
+    timeZone: event.timezone,
+  }).format(new Date(event.startsAt));
+  const doorsTime = event.doorsAt
+    ? new Intl.DateTimeFormat("en-GB", {
+        timeStyle: "short",
+        timeZone: event.timezone,
+      }).format(new Date(event.doorsAt))
+    : "";
+  return [
+    doorsTime ? "Doors open: **" + doorsTime + "**" : "",
+    eventTime && eventTime !== doorsTime ? "Starts: **" + eventTime + "**" : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function addressWithoutVenue(event: EventRecord): string {
+  const address = event.address?.trim() ?? "";
+  const venue = event.venueName?.trim().toLowerCase();
+  if (!address || !venue) return address;
+  return address
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part && part.toLowerCase() !== venue)
+    .join(", ");
 }
 
 function inlineHtml(value: string): string {
@@ -90,7 +121,9 @@ function richBodyHtml(value: string): string {
 
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
-    blocks.push(`<p style="margin:0 0 18px;line-height:1.7">${paragraph.map(inlineHtml).join("<br>")}</p>`);
+    blocks.push(
+      `<p style="margin:0 0 18px;line-height:1.7">${paragraph.map(inlineHtml).join("<br>")}</p>`,
+    );
     paragraph = [];
   };
   const flushList = () => {
@@ -115,7 +148,9 @@ function richBodyHtml(value: string): string {
     if (line.startsWith("## ")) {
       flushParagraph();
       flushList();
-      blocks.push(`<h2 style="margin:24px 0 10px;font:600 20px/1.25 Georgia,serif">${inlineHtml(line.slice(3).trim())}</h2>`);
+      blocks.push(
+        `<h2 style="margin:24px 0 10px;font:600 20px/1.25 Georgia,serif">${inlineHtml(line.slice(3).trim())}</h2>`,
+      );
       continue;
     }
     paragraph.push(line);
@@ -125,20 +160,32 @@ function richBodyHtml(value: string): string {
   return blocks.join("");
 }
 
+function plainTextBody(value: string): string {
+  return value
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/^##\s+/gm, "")
+    .replace(/^- /gm, "• ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function mediaHtml(media: CommunicationMedia[]): string {
-  return media.map((item) => {
-    const url = safeUrl(item.url);
-    if (!url) return "";
-    const alt = escapeEmailHtml(item.alt || "shared media");
-    if (item.kind === "video") {
-      const poster = item.posterUrl ? safeUrl(item.posterUrl) : null;
-      const image = poster
-        ? `<img src="${escapeEmailHtml(poster)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0">`
-        : `<span style="display:block;padding:28px 16px;border:1px solid #e7e5e4;text-align:center">watch the video →</span>`;
-      return `<p style="margin:24px 0"><a href="${escapeEmailHtml(url)}" style="color:#b45309;text-decoration:none">${image}</a></p>`;
-    }
-    return `<p style="margin:24px 0"><img src="${escapeEmailHtml(url)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0"></p>`;
-  }).join("");
+  return media
+    .map((item) => {
+      const url = safeUrl(item.url);
+      if (!url) return "";
+      const alt = escapeEmailHtml(item.alt || "shared media");
+      if (item.kind === "video") {
+        const poster = item.posterUrl ? safeUrl(item.posterUrl) : null;
+        const image = poster
+          ? `<img src="${escapeEmailHtml(poster)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0">`
+          : `<span style="display:block;padding:28px 16px;border:1px solid #e7e5e4;text-align:center">watch the video →</span>`;
+        return `<p style="margin:24px 0"><a href="${escapeEmailHtml(url)}" style="color:#b45309;text-decoration:none">${image}</a></p>`;
+      }
+      return `<p style="margin:24px 0"><img src="${escapeEmailHtml(url)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0"></p>`;
+    })
+    .join("");
 }
 
 export function renderCommunicationMessage(input: {
@@ -153,15 +200,18 @@ export function renderCommunicationMessage(input: {
   context?: CommunicationEmailContext;
 }) {
   const origin = input.origin ?? BASE_URL;
-  const context = { ...input.context, recipientName: input.recipientName ?? input.context?.recipientName };
+  const context = {
+    ...input.context,
+    recipientName: input.recipientName ?? input.context?.recipientName,
+  };
   const subject = replaceTokens(input.subject, context, origin);
   const body = replaceTokens(input.body, context, origin);
   const greeting = input.recipientName ? `Hi ${input.recipientName},` : "";
   const paragraphs = richBodyHtml(body);
   const contentHtml = [
     greeting ? `<p style="margin:0 0 14px;line-height:1.6">${escapeEmailHtml(greeting)}</p>` : "",
-    mediaHtml(input.media ?? []),
     paragraphs,
+    mediaHtml(input.media ?? []),
   ].join("");
   const label =
     input.kind === "newsletter"
@@ -180,7 +230,7 @@ export function renderCommunicationMessage(input: {
     origin,
     label,
     title: subject,
-    meta: input.meta,
+    meta: input.kind === "event_service" || input.kind === "feedback" ? undefined : input.meta,
     contentHtml,
     footerLink,
   });
@@ -188,12 +238,14 @@ export function renderCommunicationMessage(input: {
     subject,
     text: [
       input.recipientName ? `Hi ${input.recipientName},` : "",
-      body.trim(),
+      plainTextBody(body),
       ...(input.media?.length ? ["", "Media is included in the HTML version."] : []),
       ...(input.unsubscribeUrl ? ["", `Stop marketing emails: ${input.unsubscribeUrl}`] : []),
       "",
-      "— milk & henny",
-    ].filter(Boolean).join("\n"),
+      "— milk & henny · hello@milkandhenny.com",
+    ]
+      .filter(Boolean)
+      .join("\n"),
     html: rendered,
   };
 }
