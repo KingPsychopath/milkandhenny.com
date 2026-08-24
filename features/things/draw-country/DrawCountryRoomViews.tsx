@@ -147,7 +147,7 @@ export function RoomLobby({
               </p>
             ) : null}
             <p className="mt-4 font-mono text-micro uppercase tracking-[0.17em] text-black/40">
-              {snapshot.managed ? "pool room" : "room code"}
+              {snapshot.managed ? "game-night room" : "room code"}
             </p>
             <p className="mt-1 font-mono text-2xl tracking-[0.2em]">{snapshot.roomId}</p>
             <button

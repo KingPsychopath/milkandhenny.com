@@ -838,7 +838,7 @@ export function InvitePanel({
         </p>
       ) : null}
       <p className="mt-5 font-mono text-micro uppercase tracking-[0.18em] text-white/40">
-        {pooled ? "pool room" : "room code"}
+        {pooled ? "game-night room" : "room code"}
       </p>
       <p className="mt-1 font-mono text-4xl font-bold tracking-[0.22em] text-[var(--things-amber)]">
         {roomId}

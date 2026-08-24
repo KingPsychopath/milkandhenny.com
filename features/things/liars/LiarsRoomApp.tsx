@@ -10,7 +10,11 @@ import {
   removeStorageKeys,
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
-import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
+import {
+  gamePoolRoomInviteUrl,
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
   liarsRoleSide,
@@ -100,6 +104,11 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
   });
   const sound = useGameSound(liarsBrowserKeys.muted());
   const snapshot = room.snapshot;
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(snapshot?.managed),
+    game: "liars",
+    roomId,
+  });
   const isNarrator = snapshot?.narratorPlayerId === playerId;
   const notes = useLiarsNotes(roomId, playerId, snapshot?.gameNumber ?? 1);
   const { overlay } = useLiarsEffects({

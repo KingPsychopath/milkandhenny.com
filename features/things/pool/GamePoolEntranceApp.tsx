@@ -8,6 +8,8 @@ import {
   adoptGamePoolAssignment,
   gamePoolClientId,
   gamePoolPlayerPath,
+  readActiveGamePoolMembership,
+  releaseGamePoolMembership,
 } from "./pool-session.client";
 import type { GamePoolPublicView } from "./types";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
@@ -41,6 +43,10 @@ export function GamePoolEntranceApp({
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const rooms = view.rooms ?? [];
   const openRooms = rooms.filter(({ status }) => status === "open");
+  const game = view.run?.gameSettings.game;
+  const activeMembership = game ? readActiveGamePoolMembership(game) : null;
+  const activeRoomId = activeMembership?.roomId ?? null;
+  const activeRoom = activeRoomId ? rooms.find(({ roomId }) => roomId === activeRoomId) : null;
   const requestedRoom = requestedRoomId
     ? rooms.find(({ roomId }) => roomId === requestedRoomId)
     : undefined;
@@ -101,6 +107,13 @@ export function GamePoolEntranceApp({
       setMessage(null);
       const clientId = gamePoolClientId();
       try {
+        if (
+          activeMembership &&
+          activeMembership.roomId !== (typeof choice === "object" ? choice.roomId : null)
+        ) {
+          if (!game) throw new Error("This game is not open.");
+          await releaseGamePoolMembership(game, activeMembership.roomId);
+        }
         const assignment = await assignGamePoolRoomFn({
           data: { token, clientId, name, choice },
         });
@@ -121,7 +134,7 @@ export function GamePoolEntranceApp({
         await refresh();
       }
     },
-    [busy, nameId, playerName, refresh, remember, token],
+    [activeMembership, busy, game, nameId, playerName, refresh, remember, token],
   );
 
   useEffect(() => {
@@ -132,11 +145,21 @@ export function GamePoolEntranceApp({
       !view.run?.autoJoin ||
       view.run.status !== "open" ||
       view.message ||
-      !playerName.trim()
+      !playerName.trim() ||
+      activeRoomId
     )
       return;
     void assign(requestedChoice);
-  }, [assign, nameLoaded, playerName, requestedChoice, suppressAutoJoin, view.message, view.run]);
+  }, [
+    activeRoomId,
+    assign,
+    nameLoaded,
+    playerName,
+    requestedChoice,
+    suppressAutoJoin,
+    view.message,
+    view.run,
+  ]);
 
   if (!view.found)
     return (
@@ -163,14 +186,16 @@ export function GamePoolEntranceApp({
       <header>
         <p className="font-mono text-micro uppercase tracking-[0.18em] theme-muted">game night</p>
         <h1 className="mt-3 font-serif text-5xl font-semibold tracking-tight">
-          {view.entrance?.label ?? "join a game"}
+          {activeRoom ? "choose another room" : (view.entrance?.label ?? "join a game")}
         </h1>
         <p className="mt-4 max-w-lg font-serif text-lg leading-relaxed theme-subtle">
-          {requestedRoomAvailable && requestedRoom
-            ? `This invite is for ${requestedRoom.label}. Add your name and go straight in.`
-            : requestedRoomId
-              ? "That room is no longer available. We can place you in the next room."
-              : "Add your name. We will place you in a room that is ready for another player."}
+          {activeRoom
+            ? `You are still in ${activeRoom.label}. Choose another room to leave it and move.`
+            : requestedRoomAvailable && requestedRoom
+              ? `This invite is for ${requestedRoom.label}. Add your name and go straight in.`
+              : requestedRoomId
+                ? "That room is no longer available. We can place you in the next room."
+                : "Add your name. We will place you in a room that is ready for another player."}
         </p>
       </header>
 
@@ -204,7 +229,9 @@ export function GamePoolEntranceApp({
               ? `Join ${requestedRoom.label}`
               : requestedRoomId
                 ? "Join the next room"
-                : "Enter the lobby"}
+                : activeRoom
+                  ? "Choose another room"
+                  : "Enter the lobby"}
           </h2>
           <label htmlFor={nameId} className="mt-6 block font-mono text-xs theme-muted">
             your name
@@ -234,7 +261,9 @@ export function GamePoolEntranceApp({
                 ? `join ${requestedRoom.label}`
                 : requestedRoomId
                   ? "join next available room"
-                  : "find me a room"}
+                  : activeRoom
+                    ? "leave current room and find another"
+                    : "find me a room"}
           </button>
           {view.run?.allowNewRooms ? (
             <button
@@ -257,8 +286,10 @@ export function GamePoolEntranceApp({
           ) : null}
           <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
             {requestedRoomAvailable
-              ? "This room QR still uses game-night admission, so seats and rejoining stay safe."
-              : "We remember your name on this device. Repeat scans can return you to your room immediately."}
+              ? "This is a shared game-night room. Everyone who joins plays together."
+              : activeRoom
+                ? "Choosing another room releases your current seat first."
+                : "We remember your name on this device so you can return to your room."}
           </p>
         </form>
       ) : (

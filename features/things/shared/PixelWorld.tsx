@@ -909,12 +909,20 @@ export function MultiplayerLobbyPanel({
   tone?: "page" | "night";
 }) {
   const present = players.filter(({ left }) => !left);
+  const ordered = [...present].sort((left, right) => {
+    if (left.id === currentPlayerId) return -1;
+    if (right.id === currentPlayerId) return 1;
+    return 0;
+  });
   return (
     <section className={`multiplayer-lobby-panel multiplayer-lobby-panel--${tone}`}>
       <PixelRoomLobby game={game} players={present} roomId={roomId} tone={tone} />
+      <p className="multiplayer-lobby-panel-note">
+        This is a shared room. The room lead is the player who opened it and can start the game.
+      </p>
       <h3 className="multiplayer-lobby-panel-heading">who is here · {present.length}</h3>
       <ul className="multiplayer-lobby-roster" aria-label="Players in the room">
-        {present.map((player) => (
+        {ordered.map((player) => (
           <li key={player.id}>
             <span>
               {player.name ?? "guest"}

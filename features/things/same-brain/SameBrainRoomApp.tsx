@@ -36,7 +36,11 @@ import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
 import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
-import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
+import {
+  gamePoolRoomInviteUrl,
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 
 let actionCounter = 0;
@@ -91,6 +95,11 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = room.snapshot;
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(snapshot?.managed),
+    game: "same-brain",
+    roomId,
+  });
   useWakeLock(Boolean(snapshot) && snapshot?.phase !== "lobby");
 
   const haptics = useWebHaptics();

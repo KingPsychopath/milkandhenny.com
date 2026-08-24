@@ -32,7 +32,11 @@ import type {
   CentreRoute,
 } from "./types";
 import { useCentreRoom } from "./useCentreRoom";
-import { gamePoolRoomInviteUrl, releaseGamePoolMembership } from "../pool/pool-session.client";
+import {
+  gamePoolRoomInviteUrl,
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 import { MultiplayerLobbyPanel } from "../shared/PixelWorld";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
@@ -82,6 +86,11 @@ export function CentreRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(snapshot?.managed),
+    game: "centre",
+    roomId,
+  });
   const haptics = useWebHaptics();
   const sound = useGameSound(gameBrowserKey("centre", 1, "sound"), ["all", "off"]);
   const [route, setRoute] = useState<CentreRoute>({ segments: [], wallHits: 0 });
@@ -694,7 +703,7 @@ function CentreLobby({
                   : "QR unavailable. Share the link or room code."}
               </p>
             ) : null}
-            <p className="centre-eyebrow">{snapshot.managed ? "pool room" : "room code"}</p>
+            <p className="centre-eyebrow">{snapshot.managed ? "game-night room" : "room code"}</p>
             <p className="centre-code">{snapshot.roomId}</p>
             <button type="button" className="centre-button" onClick={() => void share()}>
               {nativeShare ? "share invite" : "copy invite link"}

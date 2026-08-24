@@ -169,7 +169,7 @@ export function TwinLobby({
             ) : null}
 
             <p className="twin-eyebrow twin-eyebrow--tight">
-              {snapshot.managed ? "pool room" : "room code"}
+              {snapshot.managed ? "game-night room" : "room code"}
             </p>
             <p className="twin-code">{snapshot.roomId}</p>
             <button

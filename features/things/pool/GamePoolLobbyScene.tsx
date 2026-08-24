@@ -143,6 +143,7 @@ export function GamePoolLobbyScene({
                       />
                       {room.actors.some(({ label }) => label) ? (
                         <span className="game-pool-hotel-room-people">
+                          players here:{" "}
                           {room.actors
                             .map(({ label }) => label)
                             .filter(Boolean)

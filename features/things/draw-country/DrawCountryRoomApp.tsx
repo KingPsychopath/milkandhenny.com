@@ -25,7 +25,10 @@ import type { CountryOutline } from "./types";
 import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { releaseGamePoolMembership } from "../pool/pool-session.client";
+import {
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 
 export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
@@ -116,6 +119,11 @@ function DrawCountryRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(snapshot?.managed),
+    game: "draw-country",
+    roomId,
+  });
   const haptics = useWebHaptics();
   const [drawing, setDrawingState] = useState<CountryDrawing>([]);
   const [seconds, setSeconds] = useState(0);

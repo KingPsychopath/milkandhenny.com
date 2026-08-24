@@ -23,7 +23,10 @@ import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
-import { releaseGamePoolMembership } from "../pool/pool-session.client";
+import {
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 
 export function TwinRoomApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
@@ -81,6 +84,11 @@ export function TwinRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(snapshot?.managed),
+    game: "twin",
+    roomId,
+  });
   const haptics = useWebHaptics();
   const palette = useTwinPalette();
   // Two states, not three: twin has nothing that reads aloud, so "no voice" would be a dead option.

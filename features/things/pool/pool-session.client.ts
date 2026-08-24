@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { centreBrowserKeys } from "../centre/centre-keys";
 import type { CentrePlayerCredentials } from "../centre/types";
 import { drawCountryBrowserKeys } from "../draw-country/draw-country-keys";
@@ -18,8 +20,20 @@ interface GamePoolMembership {
   clientId: string;
 }
 
+interface ActiveGamePoolMembership extends GamePoolMembership {
+  roomId: string;
+}
+
 export const gamePoolMembershipKey = (game: GamePoolGame, roomId: string) =>
   gameBrowserKey("game-pool", 1, game, "room", roomId, "membership");
+
+export const gamePoolActiveMembershipKey = (game: GamePoolGame) =>
+  gameBrowserKey("game-pool", 1, game, "active-membership");
+
+export function readActiveGamePoolMembership(game: GamePoolGame) {
+  if (typeof window === "undefined") return null;
+  return readExpiringLocalValue<ActiveGamePoolMembership>(gamePoolActiveMembershipKey(game));
+}
 
 export function gamePoolRoomInvitePath(token: string, roomId: string) {
   return `/play/${encodeURIComponent(token)}?room=${encodeURIComponent(roomId)}`;
@@ -105,20 +119,61 @@ export function adoptGamePoolAssignment(
     membership,
     assignment.expiresAt,
   );
+  writeExpiringLocalValue(
+    gamePoolActiveMembershipKey(assignment.game),
+    { ...membership, roomId: assignment.roomId } satisfies ActiveGamePoolMembership,
+    assignment.expiresAt,
+  );
 }
 
 export function gamePoolPlayerPath(assignment: GamePoolAssignment) {
   return `/things/${assignment.game}/${assignment.roomId}`;
 }
 
+export function useGamePoolRoomBackNavigation({
+  enabled,
+  game,
+  roomId,
+}: {
+  enabled: boolean;
+  game: GamePoolGame;
+  roomId: string;
+}) {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const marker = `game-pool-room:${game}:${roomId}`;
+    const guardState = { gamePoolRoom: marker };
+    window.history.pushState(guardState, "", window.location.href);
+    let leaving = false;
+
+    const handlePopState = () => {
+      if (leaving) return;
+      leaving = true;
+      window.history.pushState(guardState, "", window.location.href);
+      void releaseGamePoolMembership(game, roomId)
+        .then((entrance) => {
+          window.location.assign(entrance ?? `/things/${game}`);
+        })
+        .catch(() => {
+          leaving = false;
+          window.history.back();
+        });
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [enabled, game, roomId]);
+}
+
 export async function releaseGamePoolMembership(game: GamePoolGame, roomId: string) {
   const key = gamePoolMembershipKey(game, roomId);
-  const membership = readExpiringLocalValue<GamePoolMembership>(key);
+  const active = readActiveGamePoolMembership(game);
+  const membership =
+    readExpiringLocalValue<GamePoolMembership>(key) ?? (active?.roomId === roomId ? active : null);
   if (!membership) return null;
-  try {
-    await releaseGamePoolAssignmentFn({ data: membership });
-  } finally {
-    localStorage.removeItem(key);
-  }
+  await releaseGamePoolAssignmentFn({ data: membership });
+  localStorage.removeItem(key);
+  if (active?.roomId === roomId) localStorage.removeItem(gamePoolActiveMembershipKey(game));
   return `/play/${encodeURIComponent(membership.token)}?choose=1`;
 }
