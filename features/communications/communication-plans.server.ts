@@ -342,7 +342,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 1,
       kind: "event_service" as const,
       subject: `Getting to ${event.title}`,
-      body: "Here is the practical bit for **{{event.title}}**.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Walk from\n\n- Woolwich Dockyard Station — 12-minute walk\n- Charlton Station — 20-minute walk\n- Woolwich Arsenal — 26-minute walk\n\nWhen you reach the roundabout near McDonald’s, follow the signs for Thames Side Studios. You will be there in minutes.\n\n## By car\n\nFree parking is available. Follow the milk & henny signs when you arrive.\n\n## Timing\n\n{{event.timing}}\n\n[Watch the walking video]({{links.walkingVideo}}).\n\nIf you get stuck, email [hello@milkandhenny.com]({{links.email}}).",
+      body: "Here is the practical bit for **{{event.title}}**.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Walk from\n\n- Woolwich Dockyard Station — 12-minute walk\n- Charlton Station — 20-minute walk\n- Woolwich Arsenal — 26-minute walk\n\nWhen you reach the roundabout near McDonald’s, follow the signs for Thames Side Studios. You will be there in minutes.\n\n## By car\n\nFree parking is available. Follow the milk & henny signs once you enter the gate on the **left** when you arrive. There is a car park on the very first right from the gate that is right next to the venue.\n\n## Timing\n\n{{event.timing}}\n\n[Watch the walking video]({{links.walkingVideo}}).\n\nIf you get stuck, email [hello@milkandhenny.com]({{links.email}}).",
       media: [
         {
           kind: "gif",
@@ -361,7 +361,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       position: 2,
       kind: "event_service" as const,
       subject: `Today: ${event.title}`,
-      body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs. Keep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
+      body: "Today’s the day.\n\n## Where\n\n**{{event.venue}}**\n{{event.address}}\n\n## Timing\n\n{{event.timing}}\n\nFree parking is available. Follow the milk & henny signs once you enter the gate on the **left** when you arrive. There is a car park on the very first right from the gate that is right next to the venue. Keep your ticket email handy; a screenshot is fine.\n\nSee you soon.",
       media: [],
       sendAt: dayOfAt,
       lateJoinHours: hoursUntilEvent(event, dayOfAt),
