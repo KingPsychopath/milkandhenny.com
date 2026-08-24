@@ -49,13 +49,7 @@ function PicsPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
-        <div className="flex items-center justify-between font-mono text-sm">
-          <Link
-            to="/"
-            className="theme-muted hover:text-foreground transition-colors tracking-tight"
-          >
-            ← home
-          </Link>
+        <div className="flex items-center justify-center font-mono text-sm">
           <Link
             to="/"
             className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"

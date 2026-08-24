@@ -86,13 +86,6 @@ function Home() {
           <Link to="/events" className="theme-muted hover:text-foreground transition-colors">
             [events]
           </Link>
-          <Link
-            to="/upload"
-            search={{ auth: undefined }}
-            className="theme-muted hover:text-foreground transition-colors"
-          >
-            [upload]
-          </Link>
         </nav>
       </header>
 
@@ -142,6 +135,13 @@ function Home() {
             >
               <Link to="/subscribe" className="hover:text-foreground transition-colors">
                 stay close
+              </Link>
+              <Link
+                to="/upload"
+                search={{ auth: undefined }}
+                className="hover:text-foreground transition-colors"
+              >
+                send files
               </Link>
               <Link to="/health" className="hover:text-foreground transition-colors">
                 health

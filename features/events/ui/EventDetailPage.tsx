@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
+import { JourneyRail } from "@/components/SiteFooter";
 import { SITE_BRAND } from "@/lib/shared/config";
 import type { PublicPitchDeck } from "@/features/things/pitches/types";
 import { eventIcsPath } from "../routes";
@@ -339,31 +339,13 @@ export function EventDetailPage({
         </section>
       </main>
 
-      <SiteFooter>
-        <SiteFooterBar
-          leading={
-            <span className="whitespace-nowrap">
-              © {new Date().getFullYear()} {SITE_BRAND}
-            </span>
-          }
-          trailing={
-            <nav
-              aria-label="Footer"
-              className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end"
-            >
-              <Link to="/privacy" className="hover:text-foreground transition-colors">
-                privacy
-              </Link>
-              <Link to="/contact" className="hover:text-foreground transition-colors">
-                contact
-              </Link>
-              <Link to="/events" className="hover:text-foreground transition-colors">
-                all events
-              </Link>
-            </nav>
-          }
-        />
-      </SiteFooter>
+      <JourneyRail
+        trailing={
+          <Link to="/events" className="hover:text-foreground transition-colors">
+            view all events →
+          </Link>
+        }
+      />
     </div>
   );
 }

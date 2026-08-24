@@ -223,29 +223,6 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     used,
   });
 
-  /**
-   * What the rest of the order still has here. A bundle's tickets usually
-   * live on one phone, so a spent QR must point at the sibling that isn't.
-   */
-  const groupView = async (): Promise<CheckpointGroupView | undefined> => {
-    const siblings = await query<{ ticket_type_id: string; used: number }>(
-      `select t.ticket_type_id, coalesce(u.used, 0) as used
-         from tickets t
-         left join checkpoint_usage u
-           on u.ticket_id = t.id and u.event_slug = $1 and u.checkpoint_id = $2
-        where t.order_id = $3 and t.status = 'valid' and t.id <> $4`,
-      [input.eventSlug, input.checkpointId, ticket.order_id, ticket.id],
-    );
-    if (siblings.length === 0) return undefined;
-    const othersLeft = siblings.reduce(
-      (total, sibling) =>
-        total +
-        Math.max(0, checkpointAllowanceFor(checkpoint, sibling.ticket_type_id) - sibling.used),
-      0,
-    );
-    return { otherTickets: siblings.length, othersLeft };
-  };
-
   if (allowance === 0) return { result: "not-included", ticket: view(0) };
 
   if (consume === 0) {
@@ -269,6 +246,31 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
   }
 
   return transaction(async (client) => {
+    /**
+     * What the rest of the order still has here. A bundle's tickets usually
+     * live on one phone, so a spent QR must point at the sibling that isn't.
+     * Keep this read on the transaction client: concurrent scans can already
+     * occupy every pool connection while they wait for the guarded upsert.
+     */
+    const groupView = async (): Promise<CheckpointGroupView | undefined> => {
+      const { rows: siblings } = await client.query<{ ticket_type_id: string; used: number }>(
+        `select t.ticket_type_id, coalesce(u.used, 0) as used
+           from tickets t
+           left join checkpoint_usage u
+             on u.ticket_id = t.id and u.event_slug = $1 and u.checkpoint_id = $2
+          where t.order_id = $3 and t.status = 'valid' and t.id <> $4`,
+        [input.eventSlug, input.checkpointId, ticket.order_id, ticket.id],
+      );
+      if (siblings.length === 0) return undefined;
+      const othersLeft = siblings.reduce(
+        (total, sibling) =>
+          total +
+          Math.max(0, checkpointAllowanceFor(checkpoint, sibling.ticket_type_id) - sibling.used),
+        0,
+      );
+      return { otherTickets: siblings.length, othersLeft };
+    };
+
     const { rows } = await client.query<{ used: number }>(
       `insert into checkpoint_usage (event_slug, checkpoint_id, ticket_id, used, last_used_by)
        values ($1, $2, $3, $4, $5)

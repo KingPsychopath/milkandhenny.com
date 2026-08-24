@@ -29,6 +29,8 @@
     "typecheck": "tsgo --noEmit",
     "typecheck:ci": "tsgo --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run __tests__/unit",
+    "test:integration": "vitest run __tests__/integration",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

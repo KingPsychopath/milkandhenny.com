@@ -1,6 +1,6 @@
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
+import { JourneyRail } from "@/components/SiteFooter";
 import { getAlbumBySlug } from "@/features/media/albums.server";
 import {
   getAlbumImageData,
@@ -8,7 +8,7 @@ import {
   getOriginalStorageKey,
   getOriginalUrl,
 } from "@/features/media/storage";
-import { BASE_URL, SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { BASE_URL, SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { PhotoViewer } from "@/features/media/components/PhotoViewer";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -126,24 +126,33 @@ function PhotoPage() {
         </section>
       </main>
 
-      <SiteFooter maxWidth="4xl">
-        <SiteFooterBar
-          leading={
-            <Link
-              to="/pics/$album"
-              params={{ album: albumSlug }}
-              className="hover:text-foreground transition-colors"
-            >
-              ← back to album
-            </Link>
-          }
-          trailing={
-            <span className="whitespace-nowrap">
-              © {new Date().getFullYear()} {SITE_BRAND}
-            </span>
-          }
-        />
-      </SiteFooter>
+      <JourneyRail
+        maxWidth="4xl"
+        trailing={
+          prevPhoto || nextPhoto ? (
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end">
+              {prevPhoto ? (
+                <Link
+                  to="/pics/$album/$photo"
+                  params={{ album: albumSlug, photo: prevPhoto.id }}
+                  className="hover:text-foreground transition-colors"
+                >
+                  ← previous
+                </Link>
+              ) : null}
+              {nextPhoto ? (
+                <Link
+                  to="/pics/$album/$photo"
+                  params={{ album: albumSlug, photo: nextPhoto.id }}
+                  className="hover:text-foreground transition-colors"
+                >
+                  next →
+                </Link>
+              ) : null}
+            </div>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

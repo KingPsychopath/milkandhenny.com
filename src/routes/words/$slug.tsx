@@ -5,7 +5,7 @@ import { WordSplitRedirectClient } from "@/features/words/components/ui/WordSpli
 import { getWordRenderData } from "@/features/words/components/ui/wordRenderData.server";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
-import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
+import { JourneyRail } from "@/components/SiteFooter";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
@@ -15,7 +15,7 @@ import { imagePlaceholderStyle } from "@/features/media/image";
 import { extractMarkdownImageRefs } from "@/features/words/image";
 import { loadWordImageData } from "@/features/words/image.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { getWord, getWordMeta } from "@/features/words/store.server";
+import { getWord, getWordMeta, listWords } from "@/features/words/store.server";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
@@ -33,6 +33,15 @@ const getWordPage = createServerFn({ method: "GET" })
 
     const note = await getWord(slug);
     if (!note) throw notFound();
+
+    const publishedWords = (await listWords({ includeNonPublic: false, limit: 1000 })).words
+      .map((word) => ({
+        slug: word.slug,
+        title: word.title,
+        date: word.publishedAt ?? word.updatedAt,
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const currentIndex = publishedWords.findIndex((word) => word.slug === slug);
 
     const published = meta.publishedAt ?? meta.updatedAt;
     const { headings, albums } = await getWordRenderData(slug, note.meta.updatedAt, note.markdown);
@@ -54,6 +63,8 @@ const getWordPage = createServerFn({ method: "GET" })
       heroImage,
       heroImageData,
       images,
+      olderWord: currentIndex >= 0 ? (publishedWords[currentIndex + 1] ?? null) : null,
+      newerWord: currentIndex > 0 ? (publishedWords[currentIndex - 1] ?? null) : null,
     };
   });
 
@@ -133,20 +144,6 @@ function WordSlugPage() {
             <WordSplitRedirectClient slug={slug} />
           </article>
         </main>
-        <SiteFooter>
-          <SiteFooterBar
-            leading={
-              <Link to="/words" className="hover:text-foreground transition-colors">
-                ← words
-              </Link>
-            }
-            trailing={
-              <span className="whitespace-nowrap">
-                © {new Date().getFullYear()} {SITE_BRAND}
-              </span>
-            }
-          />
-        </SiteFooter>
       </div>
     );
   }
@@ -264,20 +261,32 @@ function WordSlugPage() {
           <WordBody content={note.markdown} wordSlug={slug} albums={albums} images={images} />
         </article>
       </main>
-      <SiteFooter>
-        <SiteFooterBar
-          leading={
-            <Link to="/words" className="hover:text-foreground transition-colors">
-              ← words
-            </Link>
-          }
-          trailing={
-            <span className="whitespace-nowrap">
-              © {new Date().getFullYear()} {SITE_BRAND}
-            </span>
-          }
-        />
-      </SiteFooter>
+      <JourneyRail
+        trailing={
+          data.olderWord || data.newerWord ? (
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end">
+              {data.olderWord ? (
+                <Link
+                  to="/words/$slug"
+                  params={{ slug: data.olderWord.slug }}
+                  className="max-w-[14rem] truncate hover:text-foreground transition-colors"
+                >
+                  ← older · {data.olderWord.title}
+                </Link>
+              ) : null}
+              {data.newerWord ? (
+                <Link
+                  to="/words/$slug"
+                  params={{ slug: data.newerWord.slug }}
+                  className="max-w-[14rem] truncate hover:text-foreground transition-colors"
+                >
+                  {data.newerWord.title} · newer →
+                </Link>
+              ) : null}
+            </div>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
-import { getAlbumBySlug } from "@/features/media/albums.server";
+import { JourneyRail } from "@/components/SiteFooter";
+import { getAlbumBySlug, getAllAlbums } from "@/features/media/albums.server";
 import { getOgUrl } from "@/features/media/storage";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -13,13 +13,22 @@ const getAlbum = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const album = await getAlbumBySlug(data.album);
     if (!album) throw notFound();
-    return album;
+    const albums = await getAllAlbums();
+    const currentIndex = albums.findIndex((item) => item.slug === album.slug);
+    const olderAlbum = albums[currentIndex + 1];
+    const newerAlbum = currentIndex > 0 ? albums[currentIndex - 1] : undefined;
+    return {
+      album,
+      olderAlbum: olderAlbum ? { slug: olderAlbum.slug, title: olderAlbum.title } : null,
+      newerAlbum: newerAlbum ? { slug: newerAlbum.slug, title: newerAlbum.title } : null,
+    };
   });
 
 export const Route = createFileRoute("/pics/$album/")({
   component: AlbumPage,
   loader: ({ params }) => getAlbum({ data: params }),
-  head: ({ loaderData: album }) => {
+  head: ({ loaderData }) => {
+    const album = loaderData?.album;
     if (!album) {
       return buildSeoHead({
         title: `Album — ${SITE_NAME}`,
@@ -51,7 +60,7 @@ function formatDate(dateStr: string) {
 }
 
 function AlbumPage() {
-  const album = Route.useLoaderData();
+  const { album, olderAlbum, newerAlbum } = Route.useLoaderData();
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -101,20 +110,33 @@ function AlbumPage() {
         </section>
       </main>
 
-      <SiteFooter maxWidth="4xl">
-        <SiteFooterBar
-          leading={
-            <Link to="/pics" className="hover:text-foreground transition-colors">
-              ← all albums
-            </Link>
-          }
-          trailing={
-            <span className="whitespace-nowrap">
-              © {new Date().getFullYear()} {SITE_BRAND}
-            </span>
-          }
-        />
-      </SiteFooter>
+      <JourneyRail
+        maxWidth="4xl"
+        trailing={
+          olderAlbum || newerAlbum ? (
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 md:justify-end">
+              {olderAlbum ? (
+                <Link
+                  to="/pics/$album"
+                  params={{ album: olderAlbum.slug }}
+                  className="max-w-[14rem] truncate hover:text-foreground transition-colors"
+                >
+                  ← older · {olderAlbum.title}
+                </Link>
+              ) : null}
+              {newerAlbum ? (
+                <Link
+                  to="/pics/$album"
+                  params={{ album: newerAlbum.slug }}
+                  className="max-w-[14rem] truncate hover:text-foreground transition-colors"
+                >
+                  {newerAlbum.title} · newer →
+                </Link>
+              ) : null}
+            </div>
+          ) : undefined
+        }
+      />
     </div>
   );
 }
