@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
 import { useGameSound } from "../shared/useGameSound";
-import { GameActionDialog } from "../shared/GameActionDialog";
 import { CentreReplay } from "./CentreReplay";
 import { CentreReportButton } from "./CentreReportButton";
 import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { saveSoloCentreReplay, type SoloCentreReplay } from "./centre-replays.client";
 import { playCentreSound, primeCentreAudio } from "./centre-sound.client";
+import { GiveUpControl } from "../shared/GiveUpControl";
 import { MazeBoard, type MazeRouteLayer } from "./MazeBoard";
 import type { CentreDifficulty, CentreReplayPlayer, CentreRoute } from "./types";
 
@@ -52,7 +52,6 @@ export function SoloCentreGame({
   const [saved, setSaved] = useState<SoloCentreReplay | null>(null);
   const [ghostVisible, setGhostVisible] = useState(Boolean(ghost));
   const [resetNonce, setResetNonce] = useState(0);
-  const [confirmingGiveUp, setConfirmingGiveUp] = useState(false);
   const previousCount = useRef<number | null>(null);
 
   useEffect(() => {
@@ -232,9 +231,14 @@ export function SoloCentreGame({
             >
               restart route
             </button>
-            <button type="button" onClick={() => setConfirmingGiveUp(true)}>
-              give up
-            </button>
+            <GiveUpControl
+              tone="dark"
+              description="Your route will be discarded and you will return to Centre."
+              onGiveUp={() => {
+                onExit();
+                return true;
+              }}
+            />
             <button
               type="button"
               aria-pressed={sound.effects}
@@ -249,19 +253,6 @@ export function SoloCentreGame({
           <CentreReportButton phase={phase} />
         </main>
       </div>
-      {confirmingGiveUp ? (
-        <GameActionDialog
-          tone="dark"
-          eyebrow="give up"
-          title="Leave this maze?"
-          description="Your route will be discarded and you will return to Centre."
-          cancelLabel="keep tracing"
-          confirmLabel="give up"
-          pending={false}
-          onCancel={() => setConfirmingGiveUp(false)}
-          onConfirm={onExit}
-        />
-      ) : null}
     </>
   );
 }

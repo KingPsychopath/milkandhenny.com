@@ -8,6 +8,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { GameActionDialog } from "../shared/GameActionDialog";
+import { GiveUpControl } from "../shared/GiveUpControl";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -104,7 +105,6 @@ export function CentreRoom({
   const [nudgedIds, setNudgedIds] = useState<string[] | null>(null);
   const [resetNonce, setResetNonce] = useState(0);
   const [pending, setPending] = useState(false);
-  const [confirmingGiveUp, setConfirmingGiveUp] = useState(false);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const { prompt, dialog } = useActionDialog();
   const previousCount = useRef<number | null>(null);
@@ -601,13 +601,23 @@ export function CentreRoom({
             >
               restart route
             </button>
-            <button
-              type="button"
+            <GiveUpControl
               disabled={(snapshot.phase !== "racing" && snapshot.phase !== "finishing") || ownDone}
-              onClick={() => setConfirmingGiveUp(true)}
-            >
-              give up
-            </button>
+              tone="dark"
+              description="Your route will be marked as DNF. You can watch the other players finish."
+              title="Leave this race?"
+              onGiveUp={async () => {
+                const point = { ...centreEntrancePoint(maze, me.entranceIndex!), t: elapsed };
+                const giveUpRoute =
+                  route.segments.length > 0 ? route : { segments: [[point]], wallHits: 0 };
+                const result = await send({
+                  type: "race.retire",
+                  courseHash: course!.hash,
+                  route: giveUpRoute,
+                });
+                return Boolean(result?.ok && result.accepted);
+              }}
+            />
             <button type="button" aria-pressed={sound.effects} onClick={() => sound.cycle()}>
               {sound.effects ? "sound on" : "sound off"}
             </button>
@@ -635,30 +645,6 @@ export function CentreRoom({
           onConfirm={() => {
             setPending(true);
             void send({ type: "game.start", removePlayerIds }).finally(() => setPending(false));
-          }}
-        />
-      ) : null}
-      {confirmingGiveUp ? (
-        <GameActionDialog
-          tone="dark"
-          eyebrow="give up"
-          title="Leave this race?"
-          description="Your route will be marked as DNF. You can watch the other players finish."
-          cancelLabel="keep tracing"
-          confirmLabel="give up"
-          pending={pending}
-          pendingLabel="giving up…"
-          onCancel={() => setConfirmingGiveUp(false)}
-          onConfirm={() => {
-            const point = { ...centreEntrancePoint(maze, me.entranceIndex!), t: elapsed };
-            const giveUpRoute =
-              route.segments.length > 0 ? route : { segments: [[point]], wallHits: 0 };
-            setPending(true);
-            void send({ type: "race.retire", courseHash: course!.hash, route: giveUpRoute })
-              .then((result) => {
-                if (result?.ok && result.accepted) setConfirmingGiveUp(false);
-              })
-              .finally(() => setPending(false));
           }}
         />
       ) : null}
