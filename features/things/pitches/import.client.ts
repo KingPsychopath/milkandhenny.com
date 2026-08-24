@@ -1,4 +1,3 @@
-import { convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import type { BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import type JSZip from "jszip";
@@ -52,8 +51,14 @@ function fitWithinStage(width: number, height: number) {
   };
 }
 
+async function loadConvertToExcalidrawElements() {
+  const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+  return convertToExcalidrawElements;
+}
+
 export async function importPdf(file: File, maximumSlides = 12): Promise<ImportedPitchSlide[]> {
   const pdfjs = await import("pdfjs-dist");
+  const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     "pdfjs-dist/build/pdf.worker.min.mjs",
     import.meta.url,
@@ -156,6 +161,7 @@ function normalisePptxTarget(target: string): string {
 
 export async function importPptx(file: File, maximumSlides = 12): Promise<ImportedPitchSlide[]> {
   const { default: JSZip } = await import("jszip");
+  const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
   const zip = await JSZip.loadAsync(file);
   const slidePaths = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
