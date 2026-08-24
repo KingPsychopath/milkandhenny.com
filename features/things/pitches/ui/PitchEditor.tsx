@@ -11,6 +11,7 @@ import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/t
 import { GuidedTour, type GuidedTourStep } from "@/components/GuidedTour";
 import { activateSiteUpdate, useSiteUpdateState } from "@/features/offline/client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import {
@@ -472,6 +473,7 @@ export function PitchEditor({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const presentationInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
 
   documentRef.current = documentState;
   deckRef.current = deck;
@@ -1796,6 +1798,17 @@ export function PitchEditor({
       setMessage("Reconnect before publishing. Your working copy is safe on this device.");
       return;
     }
+    const isRepublish = Boolean(deckRef.current?.publishedAt);
+    const confirmed = await confirmAction({
+      title: isRepublish ? "Publish a new edition?" : "Publish and seal this edition?",
+      description: isRepublish
+        ? "This will make the current working copy public as a new fixed edition. Earlier sealed editions stay unchanged, and you can keep editing this private working copy afterwards."
+        : "This will make the current working copy public as a fixed edition. You can keep editing the private working copy afterwards, but this sealed edition cannot be changed.",
+      eyebrow: "check before publishing",
+      confirmLabel: isRepublish ? "publish new edition" : "publish and seal",
+      cancelLabel: "keep editing",
+    });
+    if (!confirmed) return;
     flushCanvasState();
     const currentDocument = documentRef.current;
     const currentVisibleSlides = currentDocument?.slides.filter((slide) => !slide.deletedAt) ?? [];
@@ -2830,6 +2843,7 @@ export function PitchEditor({
           onConfirm={(mode) => void confirmImport(mode)}
         />
       ) : null}
+      {actionDialog}
       <GuidedTour
         open={tourOpen}
         steps={isDemo ? DEMO_TOUR_STEPS : TOUR_STEPS}
