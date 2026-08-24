@@ -159,6 +159,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
           </label>
           <input
             id="party-name"
+            name="playerName"
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={32}

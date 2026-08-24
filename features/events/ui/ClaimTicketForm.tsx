@@ -10,6 +10,7 @@ import {
 } from "@/features/tickets/payment-limits";
 import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "../events.server";
 
@@ -227,6 +228,7 @@ export function ClaimTicketForm({
             </label>
             <input
               id={nameId}
+              name="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               autoComplete="name"
@@ -242,6 +244,7 @@ export function ClaimTicketForm({
             </label>
             <input
               id={emailId}
+              name="email"
               type="email"
               inputMode="email"
               value={email}
@@ -251,6 +254,8 @@ export function ClaimTicketForm({
               className="mt-1 w-full min-h-12 px-4 font-mono text-base bg-transparent border theme-border-strong rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
             />
           </div>
+
+          <BrowserProfileHint />
 
           {quantityOptions.length > 1 && (
             <div>

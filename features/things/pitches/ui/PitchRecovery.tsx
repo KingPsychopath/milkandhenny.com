@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { recoverPitchAccessFn } from "../pitches.functions";
 
 export function PitchRecovery({ compact = false }: { compact?: boolean }) {
@@ -39,6 +40,7 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
       <label className="block font-mono text-xs uppercase tracking-[0.14em] theme-muted">
         Recover my pitches
         <input
+          name="email"
           type="email"
           autoComplete="email"
           required
@@ -48,6 +50,9 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
           className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent px-0 font-mono text-base text-foreground outline-none focus:border-foreground"
         />
       </label>
+      <div className="mt-2">
+        <BrowserProfileHint />
+      </div>
       <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
         One email brings back every active pitch registered to that address.
       </p>

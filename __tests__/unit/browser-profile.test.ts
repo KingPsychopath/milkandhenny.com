@@ -1,0 +1,56 @@
+import { beforeEach, describe, expect, it } from "vitest";
+
+import {
+  forgetBrowserProfile,
+  readBrowserProfile,
+  rememberBrowserProfile,
+} from "@/lib/client/browser-profile";
+
+function makeStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+    removeItem: (key: string) => void values.delete(key),
+    clear: () => values.clear(),
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size;
+    },
+  } as Storage;
+}
+
+beforeEach(() => {
+  const localStorage = makeStorage();
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: localStorage });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage,
+      dispatchEvent: () => true,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
+  });
+});
+
+describe("browser profile", () => {
+  it("normalises saved identity fields", () => {
+    expect(rememberBrowserProfile({ name: "  Alex  ", email: " ALEX@Example.COM " })).toEqual({
+      name: "Alex",
+      email: "alex@example.com",
+    });
+    expect(readBrowserProfile()).toEqual({ name: "Alex", email: "alex@example.com" });
+  });
+
+  it("ignores malformed stored values", () => {
+    localStorage.setItem("mah-browser-profile-v1", JSON.stringify({ name: 42, email: "nope" }));
+    expect(readBrowserProfile()).toEqual({ name: "", email: "" });
+  });
+
+  it("can remove only the profile", () => {
+    rememberBrowserProfile({ name: "Alex" });
+    expect(forgetBrowserProfile()).toBe(true);
+    expect(readBrowserProfile()).toEqual({ name: "", email: "" });
+  });
+});

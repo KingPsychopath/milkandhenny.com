@@ -5,20 +5,22 @@ import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { PostListItem } from "@/features/words/components/PostListItem";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
+import { getFooterPartyPath } from "@/features/site/site-settings.server";
 
 const RECENT_LIMIT = 5;
 
 const getHomeData = createServerFn({ method: "GET" }).handler(async () => {
-  const noteBlogs = isWordsEnabled()
-    ? (
-        await listWords({
+  const [noteBlogs, footerPartyPath] = await Promise.all([
+    isWordsEnabled()
+      ? listWords({
           includeNonPublic: false,
           visibility: "public",
           type: "blog",
           limit: 1000,
-        })
-      ).words
-    : [];
+        }).then((result) => result.words)
+      : Promise.resolve([]),
+    getFooterPartyPath(),
+  ]);
 
   const allPosts = noteBlogs
     .map((note) => ({
@@ -36,7 +38,7 @@ const getHomeData = createServerFn({ method: "GET" }).handler(async () => {
   const posts = allPosts.slice(0, RECENT_LIMIT);
   const hasMore = allPosts.length > RECENT_LIMIT;
 
-  return { posts, hasMore };
+  return { posts, hasMore, footerPartyPath };
 });
 
 export const Route = createFileRoute("/")({
@@ -53,7 +55,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { posts, hasMore } = Route.useLoaderData();
+  const { posts, hasMore, footerPartyPath } = Route.useLoaderData();
 
   return (
     <div className="min-h-screen bg-background">
@@ -147,9 +149,9 @@ function Home() {
               <Link to="/contact" className="hover:text-foreground transition-colors">
                 contact
               </Link>
-              <Link to="/party" className="hover:text-foreground transition-colors">
+              <a href={footerPartyPath} className="hover:text-foreground transition-colors">
                 the party ↗
-              </Link>
+              </a>
             </div>
           </div>
           <div className="flex items-center justify-center gap-5 font-mono text-micro theme-faint tracking-wide">

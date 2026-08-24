@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useRememberedPlayerName } from "@/features/things/shared/useRememberedPlayerName";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { controlPresentationFn, joinPresentationFn } from "../presentation.functions";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchControllerCredentials, PublicPitchDeck } from "../types";
@@ -114,6 +115,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           <label className="font-mono text-xs uppercase tracking-[0.12em] theme-muted">
             your name
             <input
+              name="name"
               required
               disabled={!hydrated}
               autoComplete="name"
@@ -123,6 +125,9 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
               className="mt-3 block min-h-14 w-full border-b theme-border-strong bg-transparent font-serif text-2xl normal-case tracking-normal text-foreground outline-none"
             />
           </label>
+          <div className="mt-2">
+            <BrowserProfileHint />
+          </div>
           <button
             type="submit"
             disabled={!hydrated || joining}

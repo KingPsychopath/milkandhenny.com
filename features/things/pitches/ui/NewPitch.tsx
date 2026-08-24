@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
@@ -160,6 +161,7 @@ export function NewPitch({
           <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
             your name
             <input
+              name="name"
               required
               disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
               maxLength={120}
@@ -178,6 +180,7 @@ export function NewPitch({
           <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
             recovery email
             <input
+              name="email"
               required
               disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
               type="email"
@@ -194,6 +197,7 @@ export function NewPitch({
             />
           </label>
         </div>
+        <BrowserProfileHint />
         <button
           type="submit"
           disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}

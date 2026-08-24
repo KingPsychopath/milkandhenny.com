@@ -1023,6 +1023,28 @@ const MIGRATIONS: Migration[] = [
       $migration$;
     `,
   },
+  {
+    id: "0025_site_settings",
+    sql: `
+      create table if not exists site_settings (
+        singleton          boolean primary key default true check (singleton = true),
+        footer_party_path  text,
+        updated_at         timestamptz not null default now(),
+        check (
+          footer_party_path is null
+          or (
+            char_length(footer_party_path) between 1 and 200
+            and left(footer_party_path, 1) = '/'
+            and left(footer_party_path, 2) <> '//'
+          )
+        )
+      );
+
+      insert into site_settings (singleton, footer_party_path)
+        values (true, null)
+        on conflict (singleton) do nothing;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

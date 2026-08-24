@@ -100,6 +100,7 @@ export function JoinCentreRoom({
             <label className="centre-field">
               <span>your name</span>
               <input
+                name="playerName"
                 value={name}
                 maxLength={32}
                 required

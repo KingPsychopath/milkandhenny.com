@@ -28,6 +28,7 @@ import {
   type ScannerLinkRecord,
 } from "@/features/tickets/checkpoint-types";
 import type { DoorTicketView } from "@/features/tickets/types";
+import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
   natural: "natural — the image's own height",
@@ -2267,6 +2268,8 @@ export function EventsPanel({
           </button>
         </div>
       </div>
+
+      <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
 
       {events.length === 0 && !loading && (
         <p className="font-mono text-xs theme-faint py-4">no events yet</p>

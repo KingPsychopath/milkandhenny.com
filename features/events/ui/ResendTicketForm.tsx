@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 
 import { resendTicketsFn } from "@/features/tickets/tickets.functions";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 
 /**
  * "Send my ticket again."
@@ -47,6 +48,7 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
         </label>
         <input
           id={emailId}
+          name="email"
           type="email"
           inputMode="email"
           value={email}
@@ -64,6 +66,9 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
           {state === "sending" ? "sending" : "send"}
         </button>
       </form>
+      <div className="mt-2">
+        <BrowserProfileHint />
+      </div>
       {state === "error" && (
         <p role="alert" className="mt-2 font-mono text-micro theme-muted">
           That didn&apos;t work. Check the address and try again.

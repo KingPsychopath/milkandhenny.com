@@ -229,6 +229,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
             </h2>
             <input
               id="host-player-name"
+              name="playerName"
               value={playerName}
               onChange={(event) => setPlayerName(event.target.value)}
               maxLength={32}

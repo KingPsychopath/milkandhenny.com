@@ -206,6 +206,7 @@ export function GamePoolEntranceApp({
           </label>
           <input
             id={nameId}
+            name="playerName"
             value={playerName}
             maxLength={32}
             autoComplete="name"
