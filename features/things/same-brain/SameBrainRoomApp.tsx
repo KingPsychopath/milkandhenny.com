@@ -222,6 +222,13 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     <GameShell tone="night">
       <div className="flex min-h-svh flex-col text-white">
         <header className="mx-auto flex w-full max-w-lg items-center gap-3 px-5 pt-4 font-mono text-micro uppercase tracking-[0.16em] text-white/35">
+          <button
+            type="button"
+            onClick={() => setConfirmingLeave(true)}
+            className="min-h-11 shrink-0 hover:text-white/80"
+          >
+            ← same brain
+          </button>
           <span>{snapshot.roomId}</span>
           {snapshot.phase !== "lobby" && snapshot.phase !== "ending" ? (
             <span>
@@ -270,15 +277,6 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
             </p>
           ) : null}
 
-          <div className="mt-10 border-t border-white/10 pt-4">
-            <button
-              type="button"
-              onClick={() => setConfirmingLeave(true)}
-              className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-            >
-              leave room
-            </button>
-          </div>
           {confirmingLeave ? (
             <GameActionDialog
               tone="dark"

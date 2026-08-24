@@ -34,13 +34,16 @@ export function TwinHeader({
 }) {
   return (
     <header className="twin-header">
-      <Link to="/things/twin" className="twin-header-back">
-        ← back
-      </Link>
+      {onLeave ? (
+        <TwinLeaveButton onLeave={onLeave} label="← twin" />
+      ) : (
+        <Link to="/things/twin" className="twin-header-back">
+          ← twin
+        </Link>
+      )}
       <span className="twin-header-meta">
         {right ?? `${roomId}${connection ? ` · ${connection}` : ""}`}
       </span>
-      {onLeave ? <TwinLeaveButton onLeave={onLeave} /> : null}
     </header>
   );
 }
@@ -241,7 +244,13 @@ export function TwinLobby({
   );
 }
 
-function TwinLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }) {
+function TwinLeaveButton({
+  onLeave,
+  label = "leave room",
+}: {
+  onLeave: () => Promise<boolean>;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   return (
@@ -252,7 +261,7 @@ function TwinLeaveButton({ onLeave }: { onLeave: () => Promise<boolean> }) {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
       >
-        leave room
+        {label}
       </button>
       {open ? (
         <GameActionDialog

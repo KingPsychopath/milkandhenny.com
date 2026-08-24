@@ -1,4 +1,5 @@
 import { Link, Outlet, createFileRoute, useMatchRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { THINGS } from "@/features/things/catalog";
 import { isOfflineThingSlug } from "@/features/things/offline";
@@ -67,6 +68,15 @@ export const Route = createFileRoute("/things")({
 function ThingsRoute() {
   const matchRoute = useMatchRoute();
   const isIndex = matchRoute({ to: "/things", fuzzy: false });
+  const [query, setQuery] = useState("");
+  const filteredThings = useMemo(() => {
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return THINGS;
+    return THINGS.filter((thing) => {
+      const searchText = `${thing.name} ${thing.description} ${thing.eyebrow}`.toLowerCase();
+      return tokens.every((token) => searchText.includes(token));
+    });
+  }, [query]);
 
   if (!isIndex) return <Outlet />;
 
@@ -90,44 +100,90 @@ function ThingsRoute() {
           Things are made to be used. Small tools, games and experiments.
         </p>
         <ThingsConcierge />
+        <div className="mt-10">
+          <div className="relative">
+            <label htmlFor="things-search" className="sr-only">
+              Search things
+            </label>
+            <input
+              id="things-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="what do you feel like playing?"
+              autoComplete="off"
+              className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center font-mono text-lg theme-faint hover:text-foreground"
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+          {query ? (
+            <p className="mt-1.5 font-mono text-micro theme-faint" aria-live="polite">
+              {filteredThings.length === 0
+                ? "no matches"
+                : `${filteredThings.length} thing${filteredThings.length === 1 ? "" : "s"}`}
+            </p>
+          ) : null}
+        </div>
       </header>
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
-        <ul className="border-t theme-border-strong">
-          {THINGS.map((thing, index) => (
-            <li key={thing.slug}>
-              <Link
-                to={thing.href}
-                className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 border-b theme-border min-h-44 focus-visible:outline-offset-4"
-              >
-                <span
-                  aria-hidden="true"
-                  className="font-mono text-2xl theme-faint group-hover:text-foreground transition-colors"
+        {filteredThings.length === 0 ? (
+          <div className="border-t theme-border-strong py-16 text-center">
+            <p className="font-serif text-foreground/80 italic">nothing here feels right yet.</p>
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="mt-4 font-mono text-xs theme-muted hover:text-foreground"
+            >
+              show everything
+            </button>
+          </div>
+        ) : (
+          <ul className="border-t theme-border-strong">
+            {filteredThings.map((thing, index) => (
+              <li key={thing.slug}>
+                <Link
+                  to={thing.href}
+                  className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 border-b theme-border min-h-44 focus-visible:outline-offset-4"
                 >
-                  <ThingMark mark={thing.mark} />
-                </span>
-                <span>
-                  <span className="block font-mono text-micro uppercase tracking-[0.16em] theme-muted">
-                    {String(index + 1).padStart(2, "0")} · {thing.eyebrow}
+                  <span
+                    aria-hidden="true"
+                    className="font-mono text-2xl theme-faint group-hover:text-foreground transition-colors"
+                  >
+                    <ThingMark mark={thing.mark} />
                   </span>
-                  <span className="block mt-3 font-serif text-3xl text-foreground">
-                    {thing.name}
+                  <span>
+                    <span className="block font-mono text-micro uppercase tracking-[0.16em] theme-muted">
+                      {String(index + 1).padStart(2, "0")} · {thing.eyebrow}
+                    </span>
+                    <span className="block mt-3 font-serif text-3xl text-foreground">
+                      {thing.name}
+                    </span>
+                    <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
+                      {thing.description}
+                    </span>
+                    <ThingOfflineStatus thing={thing} />
                   </span>
-                  <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
-                    {thing.description}
+                  <span
+                    aria-hidden="true"
+                    className="font-mono text-lg theme-muted transition-transform duration-300 group-hover:translate-x-1"
+                  >
+                    →
                   </span>
-                  <ThingOfflineStatus thing={thing} />
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="font-mono text-lg theme-muted transition-transform duration-300 group-hover:translate-x-1"
-                >
-                  →
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </main>
     </div>
   );

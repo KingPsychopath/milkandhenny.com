@@ -391,8 +391,9 @@ export function CentreRoom({
     return (
       <div className="things-game things-game--night centre">
         <header className="centre-header">
-          <Link to="/things/centre">← back</Link>
+          <Link to="/things/centre">← centre</Link>
           <span>{roomId}</span>
+          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </header>
         <main id="main" className="centre-finished">
           <p className="centre-eyebrow">race complete</p>
@@ -434,7 +435,6 @@ export function CentreRoom({
           ) : (
             <p className="centre-note">waiting for the host</p>
           )}
-          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </main>
       </div>
     );
@@ -454,10 +454,11 @@ export function CentreRoom({
     <>
       <div className="things-game things-game--night centre">
         <header className="centre-header">
-          <Link to="/things/centre">← back</Link>
+          <Link to="/things/centre">← centre</Link>
           <span>
             {roomId} · {live.connectionState}
           </span>
+          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </header>
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
@@ -578,7 +579,6 @@ export function CentreRoom({
           <p role="status" className="centre-message">
             {live.message}
           </p>
-          <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
         </main>
       </div>
       {removePlayerIds ? (
@@ -659,10 +659,11 @@ function CentreLobby({
   return (
     <div className="things-game things-game--night centre">
       <header className="centre-header">
-        <Link to="/things/centre">← back</Link>
+        <Link to="/things/centre">← centre</Link>
         <span>
           {snapshot.roomId} · {connection}
         </span>
+        <CentreLeaveButton onLeave={onLeave} tone="dark" />
       </header>
       <main id="main" className="centre-lobby">
         <p className="centre-eyebrow">room ready</p>
@@ -761,7 +762,6 @@ function CentreLobby({
         ) : (
           <p className="centre-note">waiting for the host</p>
         )}
-        <CentreLeaveButton onLeave={onLeave} tone="dark" />
       </main>
     </div>
   );
@@ -780,7 +780,7 @@ function CentreLeaveButton({
     <>
       <button
         type="button"
-        className="centre-button"
+        className="centre-button centre-header-leave"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
       >

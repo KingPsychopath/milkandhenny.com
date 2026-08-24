@@ -3304,6 +3304,12 @@
     min-height: 2.75rem;
   }
 
+  .centre-header-leave {
+    width: auto;
+    margin-top: 0;
+    padding-inline: 0.8rem;
+  }
+
   .centre-launch,
   .centre-lobby,
   .centre-join,

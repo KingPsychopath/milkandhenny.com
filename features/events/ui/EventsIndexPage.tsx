@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 
 import { SITE_BRAND } from "@/lib/shared/config";
 import { formatEventDate, formatEventTime, formatMoney, type PublicEvent } from "../types";
@@ -93,6 +94,30 @@ function EventRow({ event, past }: { event: PublicEvent; past?: boolean }) {
 }
 
 export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
+  const [query, setQuery] = useState("");
+  const { filteredUpcoming, filteredPast } = useMemo(() => {
+    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return { filteredUpcoming: upcoming, filteredPast: past };
+    const matches = (event: PublicEvent) => {
+      const searchText = [
+        event.title,
+        event.tagline,
+        event.area,
+        event.description,
+        ...event.lineup,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((token) => searchText.includes(token));
+    };
+    return {
+      filteredUpcoming: upcoming.filter(matches),
+      filteredPast: past.filter(matches),
+    };
+  }, [past, query, upcoming]);
+  const resultCount = filteredUpcoming.length + filteredPast.length;
+
   return (
     <div className="min-h-screen bg-background">
       <header className="max-w-2xl mx-auto px-6 pt-20 pb-10 text-center">
@@ -112,27 +137,60 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
       </div>
 
       <main id="main" className="max-w-2xl mx-auto px-6 pt-4 pb-24">
+        <div className="relative mb-8">
+          <label htmlFor="events-search" className="sr-only">
+            Search events
+          </label>
+          <input
+            id="events-search"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="what are you looking for?"
+            autoComplete="off"
+            className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute inset-y-0 right-0 flex min-h-11 w-11 items-center justify-center font-mono text-lg theme-faint hover:text-foreground"
+            >
+              ×
+            </button>
+          ) : null}
+          {query ? (
+            <p className="mt-1.5 font-mono text-micro theme-faint" aria-live="polite">
+              {resultCount === 0
+                ? "no matches"
+                : `${resultCount} event${resultCount === 1 ? "" : "s"}`}
+            </p>
+          ) : null}
+        </div>
         <p className="font-mono text-micro theme-muted tracking-widest uppercase py-4">Upcoming</p>
 
-        {upcoming.length === 0 ? (
+        {filteredUpcoming.length === 0 ? (
           <p className="py-12 theme-muted font-mono text-sm text-center">
-            nothing announced yet. something&apos;s always cooking.
+            {query
+              ? "nothing here matches. try a different search."
+              : "nothing announced yet. something&apos;s always cooking."}
           </p>
         ) : (
           <div>
-            {upcoming.map((event) => (
+            {filteredUpcoming.map((event) => (
               <EventRow key={event.slug} event={event} />
             ))}
           </div>
         )}
 
-        {past.length > 0 && (
+        {filteredPast.length > 0 && (
           <section className="mt-16">
             <p className="font-mono text-micro theme-muted tracking-widest uppercase py-4">
               Previously
             </p>
             <div>
-              {past.slice(0, 10).map((event) => (
+              {filteredPast.slice(0, 10).map((event) => (
                 <EventRow key={event.slug} event={event} past />
               ))}
             </div>

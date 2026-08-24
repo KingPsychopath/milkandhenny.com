@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { GameActionDialog } from "../shared/GameActionDialog";
@@ -204,9 +203,13 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
       <LiarsOverlayLayer overlay={overlay} />
       <div className={`flex min-h-0 flex-1 flex-col text-white ${dead ? "opacity-60" : ""}`}>
         <header className="mx-auto flex w-full max-w-lg items-center justify-between gap-3 px-5 pt-4 font-mono text-xs text-white/45">
-          <Link to="/things/liars" className="inline-flex min-h-11 items-center">
+          <button
+            type="button"
+            onClick={() => setConfirmingLeave(true)}
+            className="inline-flex min-h-11 items-center hover:text-white/80"
+          >
             ← liars
-          </Link>
+          </button>
           {/* The lobby already shows the code at four times this size; twice is noise. */}
           <span>
             {snapshot.phase === "lobby"
@@ -286,13 +289,6 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
             {room.connectionState !== "connected" ? (
               <span className="font-mono text-xs text-white/30">{room.connectionState}</span>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setConfirmingLeave(true)}
-              className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-            >
-              leave room
-            </button>
           </div>
           {confirmingLeave ? (
             <GameActionDialog

@@ -165,8 +165,7 @@ export function GamePoolEntranceApp({
     return (
       <main id="main" className="mx-auto flex min-h-dvh max-w-2xl items-center px-6 py-16">
         <div>
-          <p className="font-mono text-micro uppercase tracking-widest theme-muted">game night</p>
-          <h1 className="mt-3 font-serif text-4xl font-semibold">This link is not active.</h1>
+          <h1 className="font-serif text-4xl font-semibold">This link is not active.</h1>
           <p className="mt-4 max-w-md font-mono text-sm leading-relaxed theme-muted">
             Ask the organiser for the current game QR code.
           </p>
@@ -184,8 +183,7 @@ export function GamePoolEntranceApp({
   return (
     <main id="main" className="mx-auto min-h-dvh w-full max-w-2xl px-6 py-12 sm:py-20">
       <header>
-        <p className="font-mono text-micro uppercase tracking-[0.18em] theme-muted">game night</p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold tracking-tight">
+        <h1 className="font-serif text-5xl font-semibold tracking-tight">
           {activeRoom ? "choose another room" : (view.entrance?.label ?? "join a game")}
         </h1>
         <p className="mt-4 max-w-lg font-serif text-lg leading-relaxed theme-subtle">
