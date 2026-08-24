@@ -12,7 +12,7 @@ import { resolveWordContentRef } from "@/features/media/storage";
 import type { NoteMeta, NoteVisibility, WordMediaItem, WordType } from "../types";
 
 function featuredButtonClass(isFeatured: boolean): string {
-  return `h-full min-h-10 px-3 rounded border font-mono text-xs transition-colors ${
+  return `h-full min-h-11 px-3 rounded border font-mono text-xs transition-colors ${
     isFeatured
       ? "border-[var(--foreground)] text-[var(--foreground)]"
       : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -288,14 +288,18 @@ export function WordEditSection({
             {hasUnsavedChanges ? " · unsaved changes" : ""}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={onTogglePreview} className="font-mono text-xs underline">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onTogglePreview}
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs"
+          >
             {showPreview ? "edit mode" : "preview"}
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="font-mono text-xs text-[var(--prose-hashtag)]"
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs text-[var(--prose-hashtag)]"
           >
             delete
           </button>
@@ -308,28 +312,28 @@ export function WordEditSection({
           value={editTitle}
           onChange={(event) => onEditTitleChange(event.target.value)}
           onBlur={onFieldBlur}
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <input
           value={editSubtitle}
           onChange={(event) => onEditSubtitleChange(event.target.value)}
           onBlur={onFieldBlur}
           placeholder="subtitle"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <input
           value={editImage}
           onChange={(event) => onEditImageChange(event.target.value)}
           onBlur={onFieldBlur}
           placeholder="hero image path (optional: words/media/... or words/assets/...)"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <input
           value={editTags}
           onChange={(event) => onEditTagsChange(event.target.value)}
           onBlur={onFieldBlur}
           placeholder="tags (comma-separated)"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
       </div>
 
@@ -399,7 +403,7 @@ export function WordEditSection({
                     <button
                       type="button"
                       onClick={() => setEditorExpanded((value) => !value)}
-                      className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
+                      className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                     >
                       {editorExpanded ? "shrink" : "expand"}
                     </button>
@@ -407,7 +411,7 @@ export function WordEditSection({
                   <button
                     type="button"
                     onClick={() => setEditorFocusMode((value) => !value)}
-                    className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
+                    className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                     aria-pressed={editorFocusMode}
                   >
                     {editorFocusMode ? "exit focus" : "focus mode"}
@@ -417,7 +421,7 @@ export function WordEditSection({
                       <button
                         type="button"
                         onClick={onTogglePreview}
-                        className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
+                        className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                       >
                         {showPreview ? "edit mode" : "preview"}
                       </button>
@@ -425,7 +429,7 @@ export function WordEditSection({
                         type="button"
                         onClick={onSave}
                         disabled={busy}
-                        className="min-h-10 px-2.5 rounded border theme-border font-mono text-xs"
+                        className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                       >
                         {busy ? "saving..." : "publish"}
                       </button>
@@ -439,77 +443,77 @@ export function WordEditSection({
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "## ")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   h2
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("**")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   bold
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("_")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   italic
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("`")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   icode
                 </button>
                 <button
                   type="button"
                   onClick={insertLinkFromSelection}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   link
                 </button>
                 <button
                   type="button"
                   onClick={insertMediaFromSelection}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   image
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "- ")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   list
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines((i) => `${i + 1}. `)}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   numbered
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "> ")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   quote
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "- [ ] ")}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   todo
                 </button>
                 <button
                   type="button"
                   onClick={() => insertTemplate("```\ncode\n```", [4, 8])}
-                  className="min-h-9 px-2 rounded border theme-border font-mono text-xs"
+                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
                 >
                   code
                 </button>
@@ -517,7 +521,7 @@ export function WordEditSection({
             ) : null}
 
             {showPreview ? (
-              <div className="border theme-border rounded p-3 prose-blog font-serif">
+              <div className="rounded border theme-border p-4 prose-blog font-serif">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   urlTransform={(url) => resolveWordContentRef(url, selectedSlug)}

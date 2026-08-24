@@ -30,14 +30,14 @@ export function EditorFiltersPanel({
   onClear,
 }: EditorFiltersPanelProps) {
   return (
-    <section className="mb-6 border theme-border rounded-md p-4 space-y-3">
+    <section className="mb-8 space-y-4 rounded-md border theme-border p-5">
       <p className="font-mono text-xs theme-muted">search + filters</p>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <input
           value={searchQuery}
           onChange={(event) => onSearchQueryChange(event.target.value)}
           placeholder="search title, slug, tags"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <AppSelect
           ariaLabel="Filter by type"
@@ -68,14 +68,18 @@ export function EditorFiltersPanel({
           value={filterTag}
           onChange={(event) => onFilterTagChange(event.target.value)}
           placeholder="filter by tag"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
       </div>
-      <div className="flex items-center gap-3 font-mono text-xs">
-        <button type="button" onClick={onApply} className="underline">
+      <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+        <button
+          type="button"
+          onClick={onApply}
+          className="min-h-11 rounded border theme-border px-4 font-mono text-xs"
+        >
           apply filters
         </button>
-        <button type="button" onClick={onClear} className="underline">
+        <button type="button" onClick={onClear} className="min-h-11 px-3 underline">
           clear
         </button>
       </div>

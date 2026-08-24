@@ -257,13 +257,13 @@ export function WordMediaLibrary({
   };
 
   return (
-    <aside className="border theme-border rounded-md p-3 space-y-3 h-fit max-h-[720px] overflow-auto">
-      <div className="flex items-center justify-between">
+    <aside className="h-fit max-h-[720px] space-y-4 overflow-auto rounded-md border theme-border p-4 xl:sticky xl:top-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-mono text-xs theme-muted">media library</h3>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="font-mono text-xs underline"
+            className="inline-flex min-h-11 items-center px-2 font-mono text-xs underline"
             onClick={onRefresh}
             disabled={uploading}
           >
@@ -271,11 +271,11 @@ export function WordMediaLibrary({
           </button>
         </div>
       </div>
-      <div className="border theme-border rounded p-2 space-y-2">
+      <div className="space-y-3 rounded border theme-border p-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="font-mono text-xs underline disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs disabled:opacity-50"
             disabled={uploading || !selectedSlug}
             onClick={() => startUploadPicker({ scope: "word", slug: selectedSlug })}
             title={selectedSlug ? `Upload to words/media/${selectedSlug}/` : "Select a word first"}
@@ -284,7 +284,7 @@ export function WordMediaLibrary({
           </button>
           <button
             type="button"
-            className="font-mono text-xs underline disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs disabled:opacity-50"
             disabled={uploading || !assetUploadId.trim()}
             onClick={() =>
               startUploadPicker({ scope: "asset", assetId: assetUploadId.trim().toLowerCase() })
@@ -294,7 +294,7 @@ export function WordMediaLibrary({
             upload to shared assets
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label htmlFor="shared-asset-id" className="font-mono text-micro theme-faint shrink-0">
             asset id
           </label>
@@ -303,7 +303,7 @@ export function WordMediaLibrary({
             value={assetUploadId}
             onChange={(event) => setAssetUploadId(event.target.value)}
             placeholder="brand-kit"
-            className="min-w-0 flex-1 bg-transparent border-b theme-border outline-none font-mono text-xs py-1"
+            className="min-h-11 min-w-0 flex-1 bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
           />
         </div>
         <label className="flex items-center gap-2 font-mono text-micro theme-faint cursor-pointer">
@@ -333,7 +333,7 @@ export function WordMediaLibrary({
         value={mediaSearchQuery}
         onChange={(event) => onMediaSearchQueryChange(event.target.value)}
         placeholder="search files or asset id"
-        className="w-full bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
+        className="min-h-11 w-full bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
       />
       {mediaLoading ? <p className="font-mono text-xs theme-muted">loading media...</p> : null}
       {mediaError ? (
@@ -346,7 +346,7 @@ export function WordMediaLibrary({
           <p className="font-mono text-micro theme-faint">no media files for this slug</p>
         ) : (
           filteredPageMedia.map((item) => (
-            <div key={item.key} className="border theme-border rounded p-2 space-y-1">
+            <div key={item.key} className="space-y-2 rounded border theme-border p-3">
               <p className="font-mono text-xs truncate">{item.filename}</p>
               <p className="font-mono text-micro theme-faint">{formatBytes(item.size)}</p>
               <code className="font-mono text-micro theme-muted block truncate">
@@ -358,10 +358,10 @@ export function WordMediaLibrary({
               >
                 use canonical snippet
               </p>
-              <div className="flex items-center gap-3 font-mono text-micro">
+              <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onPreview(filteredPageMedia, item.key)}
                   title="Preview in-page"
                 >
@@ -371,21 +371,21 @@ export function WordMediaLibrary({
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   title="Open media file in a new tab"
                 >
                   open
                 </a>
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onCopySnippet(item.markdown, `media-${item.key}`)}
                 >
                   {mediaCopied === `media-${item.key}` ? "copied" : "copy"}
                 </button>
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onAppendSnippet(item.markdown)}
                 >
                   append
@@ -404,7 +404,7 @@ export function WordMediaLibrary({
           <p className="font-mono text-micro theme-faint">no shared assets yet</p>
         ) : (
           filteredSharedAssets.map((item) => (
-            <div key={item.key} className="border theme-border rounded p-2 space-y-1">
+            <div key={item.key} className="space-y-2 rounded border theme-border p-3">
               <p className="font-mono text-xs truncate">
                 {item.assetId ? `${item.assetId}/` : ""}
                 {item.filename}
@@ -419,10 +419,10 @@ export function WordMediaLibrary({
               >
                 use canonical snippet
               </p>
-              <div className="flex items-center gap-3 font-mono text-micro">
+              <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onPreview(filteredSharedAssets, item.key)}
                   title="Preview in-page"
                 >
@@ -432,21 +432,21 @@ export function WordMediaLibrary({
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   title="Open asset in a new tab"
                 >
                   open
                 </a>
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onCopySnippet(item.markdown, `asset-${item.key}`)}
                 >
                   {mediaCopied === `asset-${item.key}` ? "copied" : "copy"}
                 </button>
                 <button
                   type="button"
-                  className="underline"
+                  className="inline-flex min-h-10 items-center px-1 underline"
                   onClick={() => onAppendSnippet(item.markdown)}
                 >
                   append

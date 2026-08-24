@@ -1282,9 +1282,9 @@ export function AdminDashboard({
               ref={transfersSectionRef}
               className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="font-mono text-xs theme-muted">transfer manager</p>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     disabled={transferNukeLoading}
@@ -1350,8 +1350,8 @@ export function AdminDashboard({
                     onClick={() => setTransferHealthFilter(filter)}
                     className={
                       transferHealthFilter === filter
-                        ? "px-2 py-1 rounded-sm border theme-border text-[var(--foreground)]"
-                        : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-[var(--foreground)] transition-colors"
+                        ? "min-h-10 px-3 py-1 rounded-sm border theme-border text-[var(--foreground)]"
+                        : "min-h-10 px-3 py-1 rounded-sm border theme-border theme-muted hover:text-[var(--foreground)] transition-colors"
                     }
                   >
                     {filter}
@@ -1365,7 +1365,7 @@ export function AdminDashboard({
                 </p>
               ) : null}
 
-              <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+              <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
                 <div className="border theme-border rounded-md p-3">
                   <p className="theme-muted text-xs">active transfers</p>
                   <p className="text-lg">{transfers.length}</p>
@@ -1385,7 +1385,7 @@ export function AdminDashboard({
                 </div>
               </div>
               {transferMediaStats ? (
-                <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+                <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
                   <div className="border theme-border rounded-md p-3">
                     <p className="theme-muted text-xs">media queue</p>
                     <p className="text-lg">{transferMediaStats.queueLength}</p>
@@ -1573,9 +1573,9 @@ export function AdminDashboard({
         {view === "content" ? (
           <>
             <div id="shared-pages" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="font-mono text-xs theme-muted">currently shared pages</p>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     disabled={sharedWordPurgeLoading}
@@ -1617,7 +1617,7 @@ export function AdminDashboard({
                 className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
               />
 
-              <div className="grid grid-cols-3 gap-3 font-mono text-sm">
+              <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
                 <div className="border theme-border rounded-md p-3">
                   <p className="theme-muted text-xs">shared pages</p>
                   <p className="text-lg">{sharedWords.length}</p>
@@ -1703,9 +1703,9 @@ export function AdminDashboard({
               id="word-media-orphans"
               className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="font-mono text-xs theme-muted">word media orphans</p>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     disabled={wordMediaCleanupLoading || wordMediaOrphansLoading}
@@ -1839,11 +1839,11 @@ export function AdminDashboard({
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-mono text-xs theme-muted">content audit results</p>
-                  <div className="flex items-center gap-2 font-mono text-xs">
+                  <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
                     <button
                       type="button"
                       onClick={() => setAuditView("all")}
-                      className={`px-2 py-1 rounded border transition-colors ${
+                      className={`min-h-10 px-3 py-1 rounded border transition-colors ${
                         auditView === "all"
                           ? "theme-border text-[var(--foreground)]"
                           : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
@@ -1854,7 +1854,7 @@ export function AdminDashboard({
                     <button
                       type="button"
                       onClick={() => setAuditView("broken-refs")}
-                      className={`px-2 py-1 rounded border transition-colors ${
+                      className={`min-h-10 px-3 py-1 rounded border transition-colors ${
                         auditView === "broken-refs"
                           ? "theme-border text-[var(--foreground)]"
                           : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
@@ -1865,7 +1865,7 @@ export function AdminDashboard({
                     <button
                       type="button"
                       onClick={() => setAuditView("invalid-albums")}
-                      className={`px-2 py-1 rounded border transition-colors ${
+                      className={`min-h-10 px-3 py-1 rounded border transition-colors ${
                         auditView === "invalid-albums"
                           ? "theme-border text-[var(--foreground)]"
                           : "theme-border-faint theme-muted hover:text-[var(--foreground)]"

@@ -58,40 +58,40 @@ export function WordCreateForm({
   onCreate,
 }: WordCreateFormProps) {
   return (
-    <div className="border theme-border rounded-md p-4 space-y-3">
+    <div className="space-y-4 rounded-md border theme-border p-5">
       <h2 className="font-mono text-xs theme-muted">create word</h2>
       <div className="grid sm:grid-cols-2 gap-3">
         <input
           value={createSlug}
           onChange={(event) => onCreateSlugChange(event.target.value)}
           placeholder="slug"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <input
           value={createTitle}
           onChange={(event) => onCreateTitleChange(event.target.value)}
           placeholder="title"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
       </div>
       <input
         value={createSubtitle}
         onChange={(event) => onCreateSubtitleChange(event.target.value)}
         placeholder="subtitle (optional)"
-        className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+        className="min-h-11 w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
       />
       <input
         value={createImage}
         onChange={(event) => onCreateImageChange(event.target.value)}
         placeholder="hero image path (optional: words/media/... or words/assets/...)"
-        className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+        className="min-h-11 w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
       />
       <div className="grid sm:grid-cols-2 gap-3">
         <input
           value={createTags}
           onChange={(event) => onCreateTagsChange(event.target.value)}
           placeholder="tags (comma-separated)"
-          className="bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
+          className="min-h-11 bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
         />
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
           <AppSelect
@@ -133,7 +133,7 @@ export function WordCreateForm({
         type="button"
         onClick={onCreate}
         disabled={busy}
-        className="font-mono text-xs px-3 py-2 rounded border theme-border"
+        className="min-h-11 rounded border theme-border px-4 py-2 font-mono text-xs"
       >
         {busy ? "working..." : "create word"}
       </button>

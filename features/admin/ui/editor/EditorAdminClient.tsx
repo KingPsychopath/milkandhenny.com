@@ -1051,7 +1051,7 @@ export function EditorAdminClient() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 pt-12 pb-24">
+    <div className="mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-8">
       <header className="flex flex-wrap items-center justify-between gap-3 mb-8">
         <div>
           <h1 className="font-mono text-lg font-bold tracking-tighter">admin · editor</h1>
@@ -1106,7 +1106,7 @@ export function EditorAdminClient() {
               <button
                 type="button"
                 onClick={() => setMobileEditorPanel("create")}
-                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors ${
+                className={`flex-1 min-h-11 rounded font-mono text-xs transition-colors ${
                   mobileEditorPanel === "create"
                     ? "border border-[var(--foreground)] text-[var(--foreground)]"
                     : "theme-muted hover:text-[var(--foreground)]"
@@ -1119,7 +1119,7 @@ export function EditorAdminClient() {
                 type="button"
                 onClick={() => selected && setMobileEditorPanel("edit")}
                 disabled={!selected}
-                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
+                className={`flex-1 min-h-11 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
                   mobileEditorPanel === "edit"
                     ? "border border-[var(--foreground)] text-[var(--foreground)]"
                     : "theme-muted hover:text-[var(--foreground)]"
@@ -1132,7 +1132,7 @@ export function EditorAdminClient() {
                 type="button"
                 onClick={() => selected && setMobileEditorPanel("share")}
                 disabled={!selected}
-                className={`flex-1 min-h-10 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
+                className={`flex-1 min-h-11 rounded font-mono text-xs transition-colors disabled:opacity-40 ${
                   mobileEditorPanel === "share"
                     ? "border border-[var(--foreground)] text-[var(--foreground)]"
                     : "theme-muted hover:text-[var(--foreground)]"

@@ -369,13 +369,13 @@ export function PitchesPanel({
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-6 flex flex-wrap gap-3">
         {(["all", "draft", "published", "archived", "trash"] as const).map((value) => (
           <button
             key={value}
             type="button"
             onClick={() => setFilter(value)}
-            className={`min-h-9 border px-3 font-mono text-xs ${
+            className={`min-h-11 border px-3 font-mono text-xs ${
               filter === value ? "theme-border-strong text-foreground" : "theme-border theme-muted"
             }`}
           >
@@ -388,7 +388,7 @@ export function PitchesPanel({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="name, email or title"
           aria-label="Search pitches"
-          className="min-h-9 min-w-56 flex-1 border-b theme-border bg-transparent px-2 font-mono text-xs text-foreground outline-none focus:border-foreground"
+          className="min-h-11 min-w-56 flex-1 border-b theme-border bg-transparent px-2 font-mono text-xs text-foreground outline-none focus:border-foreground"
         />
       </div>
 

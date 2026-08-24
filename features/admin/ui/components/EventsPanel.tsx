@@ -561,7 +561,7 @@ function GuestUploadsSection({
             <button
               type="button"
               onClick={() => void copy()}
-              className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+              className="min-h-10 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
             >
               {copied ? "copied ✓" : "copy upload link"}
             </button>
@@ -569,7 +569,7 @@ function GuestUploadsSection({
               type="button"
               onClick={() => setShowQr((current) => !current)}
               aria-expanded={showQr}
-              className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+              className="min-h-10 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
             >
               qr
             </button>
@@ -577,7 +577,7 @@ function GuestUploadsSection({
               href={`/t/${drop.transferId}`}
               target="_blank"
               rel="noreferrer noopener"
-              className="min-h-9 rounded border theme-border-strong px-3 py-2 font-mono text-micro text-foreground"
+              className="min-h-10 rounded border theme-border-strong px-3 py-2 font-mono text-micro text-foreground"
             >
               open album ↗
             </a>
@@ -585,7 +585,7 @@ function GuestUploadsSection({
               type="button"
               disabled={busy}
               onClick={() => void disable()}
-              className="min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+              className="min-h-10 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
             >
               turn off
             </button>
@@ -2245,16 +2245,16 @@ export function EventsPanel({
 
   return (
     <section id="events-manager" className="space-y-4 scroll-mt-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-xs theme-muted">events</p>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => {
               setEditing("__new__");
               setDraft(EMPTY_DRAFT);
             }}
-            className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
           >
             + new event
           </button>
@@ -2262,7 +2262,7 @@ export function EventsPanel({
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="font-mono text-xs theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
             {loading ? "loading..." : "refresh"}
           </button>
@@ -2278,7 +2278,7 @@ export function EventsPanel({
       <ul className="divide-y theme-border border-y theme-border">
         {events.map((event) => (
           <li key={event.slug} className="py-3">
-            <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
               <div className="min-w-0">
                 <p className="font-mono text-sm text-foreground truncate">{event.title}</p>
                 <p className="font-mono text-micro theme-muted mt-0.5">
@@ -2287,7 +2287,7 @@ export function EventsPanel({
                   {event.ticketTypes.length === 1 ? "" : "s"}
                 </p>
               </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
                 <a
                   href={`/events/${event.slug}`}
                   className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:opacity-70"

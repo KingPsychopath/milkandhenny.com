@@ -46,7 +46,11 @@ function AdminPage() {
           <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
           <p className="font-mono text-sm theme-muted mt-1 mb-8">admin</p>
 
+          <label htmlFor="admin-password" className="sr-only">
+            admin password
+          </label>
           <input
+            id="admin-password"
             name="password"
             type="password"
             placeholder="admin password"
@@ -57,7 +61,7 @@ function AdminPage() {
 
           <button
             type="submit"
-            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity"
+            className="mt-6 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity"
           >
             unlock
           </button>

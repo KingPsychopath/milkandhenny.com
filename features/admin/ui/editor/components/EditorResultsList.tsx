@@ -18,20 +18,24 @@ export function EditorResultsList({
   onRefresh,
 }: EditorResultsListProps) {
   return (
-    <aside className="space-y-3 border theme-border rounded-md p-3 h-fit">
-      <div className="flex items-center justify-between">
+    <aside className="h-fit space-y-4 rounded-md border theme-border p-4 lg:sticky lg:top-6">
+      <div className="flex items-center justify-between gap-3">
         <p className="font-mono text-xs theme-muted">results ({notes.length})</p>
-        <button type="button" onClick={onRefresh} className="font-mono text-xs underline">
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="min-h-11 px-2 font-mono text-xs underline"
+        >
           refresh
         </button>
       </div>
-      <div className="space-y-1 max-h-[420px] overflow-auto">
+      <div className="max-h-[36rem] space-y-2 overflow-auto">
         {notes.map((note) => (
           <button
             type="button"
             key={note.slug}
             onClick={() => onSelectSlug(note.slug)}
-            className={`w-full text-left rounded px-2 py-2 border transition-colors ${
+            className={`min-h-20 w-full rounded border px-3 py-3 text-left transition-colors ${
               selectedSlug === note.slug ? "border-[var(--foreground)]" : "theme-border"
             }`}
           >

@@ -36,3 +36,11 @@ gallery control room
 ```
 
 The gallery is an image-first task. Preview size and spacing take priority over fitting more controls into one viewport. Photo actions remain on each card so ordering and metadata work stays local to the image.
+
+## Rhythm and control rules
+
+- Use a clear section gap between work areas, a smaller gap inside a panel, and a tight gap only for related filters.
+- Primary actions use a bordered or filled button with a 44px touch target. Underlined text is for secondary actions, but it still gets a usable hit area.
+- Toolbars wrap on small screens. Stats collapse to one or two columns before they become narrow.
+- Keep dangerous actions visually separate from routine actions. Confirmations and step-up checks stay attached to the action they protect.
+- Use the image or resource title as the main anchor. IDs, timestamps, and storage details stay quiet until needed.
