@@ -19,6 +19,7 @@ import {
   sendCommunicationStageNow,
   previewCommunicationStage,
   previewCommunicationStageEmail,
+  resetCommunicationPlanStageFromTemplate,
   sendCommunicationPlanTest,
   updateCommunicationPlanStage,
 } from "@/features/communications/communication-plans.server";
@@ -148,6 +149,12 @@ async function handlePOST(request: Request) {
       return Response.json({
         rendered: await previewCommunicationStageEmail(body.stageId, request),
       });
+    }
+    if (body.action === "reset-stage-template") {
+      if (typeof body.stageId !== "string" || !body.stageId)
+        return Response.json({ error: "Choose a stage" }, { status: 400 });
+      await resetCommunicationPlanStageFromTemplate(body.stageId);
+      return Response.json({ ok: true });
     }
     if (body.action === "send-test-plan") {
       if (typeof body.planId !== "string" || !body.planId || typeof body.testEmail !== "string") {

@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
+import {
+  CommunicationMessageEditor,
+  type CommunicationMediaDraft,
+} from "./CommunicationMessageEditor";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type Kind = "newsletter" | "event_update" | "pitch_nudge" | "event_service" | "feedback";
 type Audience = "marketing_opted_in" | "event_attendees" | "pitch_owners" | "selected";
-type MediaKind = "image" | "gif" | "video";
+type MediaKind = CommunicationMediaDraft["kind"];
 type Contact = {
   emailHash: string;
   email: string;
@@ -68,6 +72,7 @@ type Stage = {
   subject: string;
   body: string;
   media: Media[];
+  templateName: string | null;
   sendAt: string | null;
   status: string;
   recipientCount: number;
@@ -152,11 +157,6 @@ const KIND_LABELS: Record<Kind, string> = {
 const KIND_OPTIONS: readonly AppSelectOption[] = Object.entries(KIND_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
-const MEDIA_OPTIONS: readonly AppSelectOption[] = [
-  { value: "image", label: "image" },
-  { value: "gif", label: "GIF" },
-  { value: "video", label: "video" },
-];
 const SURVEY_STATUS_OPTIONS: readonly AppSelectOption[] = [
   { value: "draft", label: "draft" },
   { value: "open", label: "open" },
@@ -205,6 +205,12 @@ function stageNeedsManualSendDecision(stage: Stage): boolean {
 }
 
 function canSendStageNow(stage: Stage): boolean {
+  return (
+    stageExpiredWithoutSending(stage) || ["draft", "scheduled", "paused"].includes(stage.status)
+  );
+}
+
+function stageCanEdit(stage: Stage): boolean {
   return (
     stageExpiredWithoutSending(stage) || ["draft", "scheduled", "paused"].includes(stage.status)
   );
@@ -321,18 +327,21 @@ function Button({
   primary = false,
   disabled = false,
   type = "button",
+  ariaExpanded,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   primary?: boolean;
   disabled?: boolean;
   type?: "button" | "submit";
+  ariaExpanded?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-expanded={ariaExpanded}
       className={`min-h-10 rounded border px-4 font-mono text-xs transition-opacity hover:opacity-70 disabled:cursor-wait disabled:opacity-45 ${primary ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
     >
       {children}
@@ -565,6 +574,25 @@ export function CommunicationsPanel({
       setBusy(false);
     }
   };
+  const resetStageTemplate = async (stage: Stage) => {
+    if (
+      !window.confirm(
+        `Restore “${stage.label}” from its${stage.templateName ? ` ${stage.templateName}` : " source"} template? Your stage edits will be replaced.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await post({ action: "reset-stage-template", stageId: stage.id });
+      setEditingStage(null);
+      onStatus("Stage restored from its template.");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not restore stage template");
+    } finally {
+      setBusy(false);
+    }
+  };
   const previewStage = async (stage: Stage) => {
     try {
       const data = (await post({ action: "preview-stage", stageId: stage.id })) as {
@@ -679,6 +707,10 @@ export function CommunicationsPanel({
     }
   };
   const preview = async () => {
+    if (previewHtml) {
+      setPreviewHtml("");
+      return;
+    }
     setBusy(true);
     try {
       const data = (await post({
@@ -917,6 +949,7 @@ export function CommunicationsPanel({
           setStageDraft={setStageDraft}
           openStage={openStage}
           saveStage={saveStage}
+          resetStageTemplate={resetStageTemplate}
           setEditingStage={setEditingStage}
           previewStage={previewStage}
           stageRecipients={stageRecipients}
@@ -1028,7 +1061,8 @@ function EventPlanView(props: {
   setStageDraft: React.Dispatch<React.SetStateAction<StageDraft>>;
   openStage: (stage: Stage) => void;
   saveStage: () => void;
-  setEditingStage: (value: string | null) => void;
+  resetStageTemplate: (stage: Stage) => void;
+  setEditingStage: React.Dispatch<React.SetStateAction<string | null>>;
   previewStage: (stage: Stage) => void;
   stageRecipients: {
     stageId: string;
@@ -1063,6 +1097,7 @@ function EventPlanView(props: {
     setStageDraft,
     openStage,
     saveStage,
+    resetStageTemplate,
     setEditingStage,
     previewStage,
     stageRecipients,
@@ -1163,7 +1198,7 @@ function EventPlanView(props: {
                   className="absolute -left-[1.78rem] top-3 h-3 w-3 rounded-full border-2 border-background bg-[var(--prose-hashtag)]"
                   aria-hidden="true"
                 />
-                <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
                   <div>
                     <p className="font-mono text-micro uppercase tracking-widest theme-muted">
                       {stage.label}
@@ -1188,14 +1223,36 @@ function EventPlanView(props: {
                         : ""}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => previewStage(stage)}>see recipients</Button>
-                    <Button onClick={() => previewStageEmail(stage)} disabled={busy}>
-                      preview email
+                  <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                    <Button
+                      onClick={() => {
+                        if (stageRecipients?.stageId === stage.id) setStageRecipients(null);
+                        else void previewStage(stage);
+                      }}
+                      ariaExpanded={stageRecipients?.stageId === stage.id}
+                    >
+                      {stageRecipients?.stageId === stage.id ? "hide recipients" : "see recipients"}
                     </Button>
-                    <Button onClick={() => openStage(stage)}>
-                      {stageNeedsManualSendDecision(stage) ? "set a new time" : "edit"}
+                    <Button
+                      onClick={() => {
+                        if (stagePreview?.stageId === stage.id) setStagePreview(null);
+                        else void previewStageEmail(stage);
+                      }}
+                      disabled={busy}
+                      ariaExpanded={stagePreview?.stageId === stage.id}
+                    >
+                      {stagePreview?.stageId === stage.id ? "hide preview" : "preview email"}
                     </Button>
+                    {stageCanEdit(stage) ? (
+                      <Button
+                        onClick={() =>
+                          editingStage === stage.id ? setEditingStage(null) : openStage(stage)
+                        }
+                        ariaExpanded={editingStage === stage.id}
+                      >
+                        {editingStage === stage.id ? "close editor" : "edit message"}
+                      </Button>
+                    ) : null}
                     {canSendStageNow(stage) ? (
                       <Button
                         primary={stageNeedsManualSendDecision(stage)}
@@ -1204,7 +1261,11 @@ function EventPlanView(props: {
                       >
                         {stageHasReachedSendTime(stage) ? "send now" : "send early"}
                       </Button>
-                    ) : null}
+                    ) : (
+                      <span className="self-center font-mono text-micro theme-faint">
+                        already sent
+                      </span>
+                    )}
                   </div>
                 </div>
                 {stageRecipients?.stageId === stage.id ? (
@@ -1213,13 +1274,6 @@ function EventPlanView(props: {
                       <p className="font-mono text-xs">
                         {stageRecipients.count} people would receive this
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setStageRecipients(null)}
-                        className="font-mono text-micro theme-muted underline underline-offset-4"
-                      >
-                        close
-                      </button>
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {stageRecipients.recipients.slice(0, 20).map((recipient) => (
@@ -1240,13 +1294,6 @@ function EventPlanView(props: {
                   <div className="mt-4 border-y theme-border-faint py-4">
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-mono text-xs">email preview</p>
-                      <button
-                        type="button"
-                        onClick={() => setStagePreview(null)}
-                        className="font-mono text-micro theme-muted underline underline-offset-4"
-                      >
-                        close
-                      </button>
                     </div>
                     <iframe
                       title={`${stage.subject} email preview`}
@@ -1263,68 +1310,45 @@ function EventPlanView(props: {
                       value={stageDraft.subject}
                       onChange={(value) => setStageDraft((draft) => ({ ...draft, subject: value }))}
                     />
-                    <Field
-                      label="message"
-                      value={stageDraft.body}
-                      onChange={(value) => setStageDraft((draft) => ({ ...draft, body: value }))}
-                      rows={12}
-                      hint="Use **bold**, - bullet points, [link text](https://…), and tokens such as {{event.venue}} or {{survey.url}}."
+                    <CommunicationMessageEditor
+                      body={stageDraft.body}
+                      onBodyChange={(value) =>
+                        setStageDraft((draft) => ({ ...draft, body: value }))
+                      }
+                      media={{
+                        kind: stageDraft.mediaKind,
+                        url: stageDraft.mediaUrl,
+                        alt: stageDraft.mediaAlt,
+                        posterUrl: stageDraft.posterUrl,
+                      }}
+                      onMediaChange={(media) =>
+                        setStageDraft((draft) => ({
+                          ...draft,
+                          mediaKind: media.kind,
+                          mediaUrl: media.url,
+                          mediaAlt: media.alt,
+                          posterUrl: media.posterUrl,
+                        }))
+                      }
+                      hint="Use the writing tools for Markdown. Event tokens such as {{event.venue}} and {{survey.url}} are filled when the email is sent."
                     />
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field
-                        label="send at"
-                        type="datetime-local"
-                        value={stageDraft.sendAt}
-                        onChange={(value) =>
-                          setStageDraft((draft) => ({ ...draft, sendAt: value }))
-                        }
-                      />
-                      <Field
-                        label="media URL"
-                        value={stageDraft.mediaUrl}
-                        onChange={(value) =>
-                          setStageDraft((draft) => ({ ...draft, mediaUrl: value }))
-                        }
-                        hint="GIFs and images appear in the email. Videos use a linked poster."
-                      />
-                    </div>
-                    {stageDraft.mediaUrl ? (
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <label className="block">
-                          <span className="font-mono text-micro theme-muted">media type</span>
-                          <AppSelect
-                            value={stageDraft.mediaKind}
-                            onValueChange={(value) =>
-                              setStageDraft((draft) => ({
-                                ...draft,
-                                mediaKind: value as MediaKind,
-                              }))
-                            }
-                            options={MEDIA_OPTIONS}
-                            ariaLabel="media type"
-                            variant="field"
-                            className="mt-2"
-                          />
-                        </label>
-                        <Field
-                          label="alt text"
-                          value={stageDraft.mediaAlt}
-                          onChange={(value) =>
-                            setStageDraft((draft) => ({ ...draft, mediaAlt: value }))
-                          }
-                        />
-                        <Field
-                          label="poster URL"
-                          value={stageDraft.posterUrl}
-                          onChange={(value) =>
-                            setStageDraft((draft) => ({ ...draft, posterUrl: value }))
-                          }
-                        />
-                      </div>
-                    ) : null}
+                    <Field
+                      label="send at"
+                      type="datetime-local"
+                      value={stageDraft.sendAt}
+                      onChange={(value) => setStageDraft((draft) => ({ ...draft, sendAt: value }))}
+                      hint={
+                        stageNeedsManualSendDecision(stage)
+                          ? "You can change an overdue stage. Saving keeps it unsent until you choose send now."
+                          : undefined
+                      }
+                    />
                     <div className="flex flex-wrap gap-2">
                       <Button primary onClick={saveStage} disabled={busy}>
                         save stage
+                      </Button>
+                      <Button onClick={() => void resetStageTemplate(stage)} disabled={busy}>
+                        reset from template
                       </Button>
                       <Button onClick={() => setEditingStage(null)}>close</Button>
                     </div>
@@ -1495,40 +1519,18 @@ function ComposeView(props: {
       ) : null}
       <div className="space-y-5">
         <Field label="subject" value={subject} onChange={setSubject} />
-        <Field
-          label="message"
-          value={body}
-          onChange={setBody}
-          rows={12}
-          hint="Use **bold**, - bullet points, [link text](https://…), and event tokens such as {{event.title}}."
+        <CommunicationMessageEditor
+          body={body}
+          onBodyChange={setBody}
+          media={{ kind: mediaKind, url: mediaUrl, alt: mediaAlt, posterUrl }}
+          onMediaChange={(media) => {
+            setMediaKind(media.kind);
+            setMediaUrl(media.url);
+            setMediaAlt(media.alt);
+            setPosterUrl(media.posterUrl);
+          }}
+          hint="Use the writing tools for Markdown. Event tokens such as {{event.title}} are filled when the email is sent."
         />
-        <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
-          <label className="block">
-            <span className="font-mono text-micro theme-muted">media type</span>
-            <AppSelect
-              value={mediaKind}
-              onValueChange={(value) => setMediaKind(value as MediaKind)}
-              options={MEDIA_OPTIONS.map((option) =>
-                option.value === "video" ? { ...option, label: "video link" } : option,
-              )}
-              ariaLabel="media type"
-              variant="field"
-              className="mt-2"
-            />
-          </label>
-          <Field
-            label="media URL"
-            value={mediaUrl}
-            onChange={setMediaUrl}
-            hint="Use a public URL. The video option displays a linked poster."
-          />
-        </div>
-        {mediaUrl ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="alt text" value={mediaAlt} onChange={setMediaAlt} />
-            <Field label="poster URL (video only)" value={posterUrl} onChange={setPosterUrl} />
-          </div>
-        ) : null}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[15rem] flex-1">
             <Field
@@ -1540,7 +1542,7 @@ function ComposeView(props: {
             />
           </div>
           <Button onClick={() => void preview()} disabled={busy || !subject.trim() || !body.trim()}>
-            preview email
+            {previewHtml ? "hide email preview" : "preview email"}
           </Button>
           <Button
             onClick={() => void save("draft")}
@@ -1613,14 +1615,38 @@ function TemplatesView(props: {
   templates: Template[];
   draft: TemplateDraft;
   setDraft: React.Dispatch<React.SetStateAction<TemplateDraft>>;
-  save: (event: FormEvent) => void;
+  save: (event: FormEvent) => Promise<void>;
   archive: (template: Template) => void;
   useTemplate: (template: Template) => void;
   busy: boolean;
 }) {
   const { templates, draft, setDraft, save, archive, useTemplate, busy } = props;
-  const set = (key: keyof TemplateDraft, value: string | boolean) =>
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const set = (key: keyof TemplateDraft, value: string | boolean) => {
+    setSavedAt(null);
     setDraft((current) => ({ ...current, [key]: value }));
+  };
+  const beginDraft = (next: TemplateDraft) => {
+    setSavedAt(null);
+    setDraft(next);
+  };
+  const handleSave = async (event: FormEvent) => {
+    await save(event);
+    setSavedAt(Date.now());
+  };
+  const clearDraft = () =>
+    beginDraft({
+      id: "",
+      name: "",
+      kind: "event_service",
+      subject: "",
+      body: "",
+      mediaUrl: "",
+      mediaKind: "image",
+      mediaAlt: "",
+      posterUrl: "",
+      isDefault: false,
+    });
   return (
     <section aria-labelledby="templates-heading" className="space-y-8">
       <div>
@@ -1662,8 +1688,26 @@ function TemplatesView(props: {
                 <Button onClick={() => useTemplate(template)}>use</Button>
                 <Button
                   onClick={() =>
-                    setDraft({
+                    beginDraft({
                       id: template.id,
+                      name: template.name,
+                      kind: template.kind,
+                      subject: template.subject,
+                      body: template.body,
+                      mediaUrl: template.media[0]?.url || "",
+                      mediaKind: template.media[0]?.kind || "image",
+                      mediaAlt: template.media[0]?.alt || "",
+                      posterUrl: template.media[0]?.posterUrl || "",
+                      isDefault: template.isDefault,
+                    })
+                  }
+                >
+                  edit
+                </Button>
+                <Button
+                  onClick={() =>
+                    beginDraft({
+                      id: "",
                       name: `${template.name} copy`,
                       kind: template.kind,
                       subject: template.subject,
@@ -1676,16 +1720,26 @@ function TemplatesView(props: {
                     })
                   }
                 >
-                  edit
+                  duplicate
                 </Button>
               </div>
             </article>
           ))}
         </div>
-        <form onSubmit={save} className="space-y-4">
-          <p className="font-mono text-sm font-bold">
-            {draft.id ? "edit template" : "new template"}
-          </p>
+        <form onSubmit={(event) => void handleSave(event)} className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-mono text-sm font-bold">
+              {draft.id ? "edit template" : "new template"}
+            </p>
+            {draft.id || draft.name || draft.body ? (
+              <Button onClick={clearDraft}>new template</Button>
+            ) : null}
+          </div>
+          {savedAt ? (
+            <p className="font-mono text-xs text-[var(--prose-hashtag)]" role="status">
+              saved · ready to use in compose or a future event plan
+            </p>
+          ) : null}
           <Field
             label="template name"
             value={draft.name}
@@ -1708,17 +1762,25 @@ function TemplatesView(props: {
             value={draft.subject}
             onChange={(value) => set("subject", value)}
           />
-          <Field
-            label="message"
-            value={draft.body}
-            onChange={(value) => set("body", value)}
-            rows={10}
-            hint="Supports bold, bullets, links, and tokens."
-          />
-          <Field
-            label="media URL"
-            value={draft.mediaUrl}
-            onChange={(value) => set("mediaUrl", value)}
+          <CommunicationMessageEditor
+            body={draft.body}
+            onBodyChange={(value) => set("body", value)}
+            media={{
+              kind: draft.mediaKind,
+              url: draft.mediaUrl,
+              alt: draft.mediaAlt,
+              posterUrl: draft.posterUrl,
+            }}
+            onMediaChange={(media) => {
+              setDraft((current) => ({
+                ...current,
+                mediaKind: media.kind,
+                mediaUrl: media.url,
+                mediaAlt: media.alt,
+                posterUrl: media.posterUrl,
+              }));
+              setSavedAt(null);
+            }}
           />
           <label className="flex items-center gap-3 font-mono text-xs">
             <input
@@ -1729,7 +1791,7 @@ function TemplatesView(props: {
             use as the default for this type
           </label>
           <Button primary type="submit" disabled={busy}>
-            save template
+            {draft.id ? "update template" : "save template"}
           </Button>
         </form>
       </div>

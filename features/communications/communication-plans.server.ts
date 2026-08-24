@@ -29,6 +29,7 @@ export type CommunicationPlanStage = {
   subject: string;
   body: string;
   media: CommunicationMedia[];
+  templateName: string | null;
   sendAt: string | null;
   lateJoinHours: number;
   status: string;
@@ -133,6 +134,7 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     subject: String(row.subject),
     body: String(row.body),
     media: validMedia(row.media),
+    templateName: typeof row.template_name === "string" ? row.template_name : null,
     sendAt: iso(row.send_at as Date | null),
     lateJoinHours: Number(row.late_join_hours) || 0,
     status: String(row.status),
@@ -159,6 +161,7 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
               'subject', s.subject,
               'body', s.body,
               'media', s.media,
+              'template_name', t.name,
               'send_at', s.send_at,
               'late_join_hours', s.late_join_hours,
               'status', s.status,
@@ -195,6 +198,7 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
        from communication_plans p
        join events e on e.slug = p.event_slug
        left join communication_plan_stages s on s.plan_id = p.id
+       left join communication_templates t on t.id = s.template_id
       ${where}
       group by p.id, e.title
       order by p.updated_at desc`,
@@ -543,29 +547,70 @@ export async function updateCommunicationPlanStage(input: {
   if (!subject || !body || (input.sendAt && (!sendAt || Number.isNaN(sendAt.getTime()))))
     throw new Error("Add a subject, message, and valid send time");
   const media = JSON.stringify(validMedia(input.media));
-  const updated = await query<{ template_id: string | null }>(
+  const currentRows = await query<{
+    status: string;
+    queued_count: number;
+    last_error: string | null;
+  }>(
+    `select status, queued_count, last_error
+       from communication_plan_stages
+      where id = $1`,
+    [input.id],
+  );
+  const current = currentRows[0];
+  const expiredWithoutSending =
+    current?.status === "complete" &&
+    current.queued_count === 0 &&
+    current.last_error === "send window passed";
+  if (!current) throw new Error("Stage not found");
+  if (!expiredWithoutSending && !["draft", "scheduled", "paused"].includes(current.status)) {
+    throw new Error("This stage has already been sent and can no longer be edited");
+  }
+  await query(
     `update communication_plan_stages s
         set subject = $2, body = $3, media = $4::jsonb, send_at = $5,
             status = case
+              when s.status = 'complete' and s.queued_count = 0 and s.last_error = 'send window passed'
+                then case when p.status = 'scheduled' and $5 > now() then 'scheduled' else 'draft' end
               when s.status not in ('draft', 'scheduled', 'paused') then s.status
               when p.status = 'scheduled' and $5 > now() then 'scheduled'
               else 'draft'
             end,
+            last_error = case
+              when s.status = 'complete' and s.queued_count = 0 and s.last_error = 'send window passed'
+                then null
+              else s.last_error
+            end,
             updated_at = now()
       from communication_plans p
       where s.id = $1 and p.id = s.plan_id
-      returning s.template_id`,
+      `,
     [input.id, subject, body, media, sendAt],
   );
-  const templateId = updated[0]?.template_id;
-  if (templateId) {
-    await query(
-      `update communication_templates
-          set subject = $2, body = $3, media = $4::jsonb, updated_at = now()
-        where id = $1`,
-      [templateId, subject, body, media],
-    );
-  }
+}
+
+export async function resetCommunicationPlanStageFromTemplate(stageId: string): Promise<void> {
+  const rows = await query<{
+    subject: string;
+    body: string;
+    media: unknown;
+    send_at: Date | null;
+  }>(
+    `select t.subject, t.body, t.media, s.send_at
+       from communication_plan_stages s
+       join communication_templates t on t.id = s.template_id
+      where s.id = $1`,
+    [stageId],
+  );
+  const template = rows[0];
+  if (!template) throw new Error("This stage has no source template to restore");
+  await updateCommunicationPlanStage({
+    id: stageId,
+    subject: template.subject,
+    body: template.body,
+    media: template.media,
+    sendAt: iso(template.send_at),
+  });
 }
 
 export async function scheduleCommunicationPlan(planId: string): Promise<void> {
