@@ -15,6 +15,8 @@ import { LampToggle } from "@/components/LampToggle";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
 import { ScannerReturnPrompt } from "@/components/ScannerReturnPrompt";
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
+import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
@@ -55,6 +57,28 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      recordDiagnosticAction("window.error", {
+        name: event.error instanceof Error ? event.error.name : "Error",
+        ...(import.meta.env.DEV && event.message ? { message: event.message } : {}),
+      });
+    };
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      recordDiagnosticAction("window.unhandled_rejection", {
+        name: event.reason instanceof Error ? event.reason.name : "PromiseRejection",
+        ...(import.meta.env.DEV && event.reason instanceof Error && event.reason.message
+          ? { message: event.reason.message }
+          : {}),
+      });
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
   return (
     <RootDocument>
       <Outlet />
@@ -62,7 +86,28 @@ function RootComponent() {
   );
 }
 
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+function SiteIssueReporter() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const hasLocalReporter =
+    pathname.startsWith("/upload") ||
+    (pathname.startsWith("/things/") && !pathname.startsWith("/things/centre"));
+  if (hasLocalReporter) return null;
+  return (
+    <div className="pointer-events-none fixed bottom-3 right-3 z-40">
+      <ReportIssueButton
+        type="site_feedback"
+        payload={{ surface: pathname || "site" }}
+        label="something feel off?"
+        className="pointer-events-auto mt-0 rounded-full border theme-border bg-background/90 px-3 shadow-sm backdrop-blur"
+      />
+    </div>
+  );
+}
+
+function RootDocument({
+  children,
+  hideSiteReporter = false,
+}: Readonly<{ children: ReactNode; hideSiteReporter?: boolean }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -83,6 +128,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <NavigationProgress />
         <OfflinePlatform />
         <ScannerReturnPrompt />
+        {hideSiteReporter ? null : <SiteIssueReporter />}
         {children}
         <Scripts />
       </body>
@@ -136,7 +182,7 @@ function RootError({ error }: ErrorComponentProps) {
   }, [error]);
 
   return (
-    <RootDocument>
+    <RootDocument hideSiteReporter>
       <main id="main" className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="text-center max-w-md space-y-8">
           <h1 className="font-mono text-7xl font-bold text-foreground opacity-10 leading-none">
@@ -150,6 +196,17 @@ function RootError({ error }: ErrorComponentProps) {
           >
             ↻ try again
           </button>
+          <ReportIssueButton
+            type="client_error"
+            payload={{
+              surface: "root_error",
+              operation: "route_render",
+              errorCode: error instanceof Error ? error.name : "route_error",
+            }}
+            error={error}
+            label="something still wrong? let us know"
+            className="justify-center"
+          />
         </div>
       </main>
     </RootDocument>

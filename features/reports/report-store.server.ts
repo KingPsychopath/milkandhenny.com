@@ -1,38 +1,65 @@
 import { createHash, randomUUID } from "node:crypto";
-import { getRedis } from "@/lib/platform/redis.server";
+
 import { countryById } from "@/features/things/draw-country/countries";
 import { parseCountryDrawing } from "@/features/things/draw-country/drawing-constraints";
 import { scoreCountryDrawing } from "@/features/things/draw-country/scoring";
 import type { CountryScore } from "@/features/things/draw-country/types";
-import { decayedReportWeight, REPORT_POLICIES } from "./report-policy";
+import { getRedis } from "@/lib/platform/redis.server";
+import {
+  decayedReportWeight,
+  REPORT_POLICIES,
+  REPORT_STATUSES,
+  type ReportSeverity,
+  type ReportStatus,
+  type ReportType,
+} from "./report-policy";
 import type {
   AdminReportGroup,
-  DrawCountryResultIssueContext,
+  DiagnosticAction,
+  DiagnosticContext,
+  DiagnosticDevice,
+  DiagnosticError,
+  ReportContextByType,
   UserReportDraft,
   UserReportRecord,
 } from "./types";
 
-const REPORT_INDEX_KEY = "user-report:index:v2";
-const LEGACY_REPORT_INDEX_KEY = "user-report:index:v1";
-const REPORT_KEY_PREFIX = "user-report:v1:";
-const REPORT_RATE_LIMIT_PREFIX = "user-report:rate:v1:";
-const REPORT_DUPLICATE_PREFIX = "user-report:duplicate:v1:";
+const REPORT_INDEX_KEY = "diagnostic-report:index:v1";
+const REPORT_KEY_PREFIX = "diagnostic-report:v1:";
+const REPORT_RATE_LIMIT_PREFIX = "diagnostic-report:rate:v1:";
+const REPORT_DUPLICATE_PREFIX = "diagnostic-report:duplicate:v1:";
+const REPORT_IDEMPOTENCY_PREFIX = "diagnostic-report:idempotency:v1:";
 const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
+const IDEMPOTENCY_WINDOW_SECONDS = 24 * 60 * 60;
 const RATE_LIMIT_MAX = 8;
 const MAX_ADMIN_REPORTS = 500;
+const MAX_TRAIL_ITEMS = 12;
+const MAX_REPORT_NOTE_LENGTH = 1_000;
 const MAX_REPORT_RETENTION_SECONDS =
   Math.max(...Object.values(REPORT_POLICIES).map(({ retentionDays }) => retentionDays)) * 86_400;
 
 const memoryReports = new Map<string, UserReportRecord>();
 const memoryRateLimits = new Map<string, { count: number; resetAtMs: number }>();
-const memoryDuplicates = new Map<string, number>();
+const memoryReservations = new Map<string, { value: string; expiresAtMs: number }>();
 
 export class ReportValidationError extends Error {}
 
-export class ReportRateLimitError extends Error {}
+export class ReportRateLimitError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds = RATE_LIMIT_WINDOW_SECONDS) {
+    super("Too many reports");
+    this.name = "ReportRateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
 
 function reportKey(id: string) {
   return `${REPORT_KEY_PREFIX}${id}`;
+}
+
+function isReportType(value: unknown): value is ReportType {
+  return typeof value === "string" && value in REPORT_POLICIES;
 }
 
 function requestFingerprint(request: Request) {
@@ -50,10 +77,160 @@ function requestFingerprint(request: Request) {
   return createHash("sha256").update(`${address}\n${agent}`).digest("hex").slice(0, 32);
 }
 
-function inputRecord(value: unknown): Record<string, unknown> {
+function inputRecord(value: unknown, message = "Invalid report") {
   if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new ReportValidationError("Invalid report");
+    throw new ReportValidationError(message);
   return Object.fromEntries(Object.entries(value));
+}
+
+function safeText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return undefined;
+  const normalized = Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127 ? " " : character;
+  })
+    .join("")
+    .trim();
+  return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+function safeKey(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "unknown";
+}
+
+function requiredText(record: Record<string, unknown>, key: string, maxLength = 120) {
+  const value = safeText(record[key], maxLength);
+  if (!value) throw new ReportValidationError(`Invalid ${key}`);
+  return value;
+}
+
+function optionalText(record: Record<string, unknown>, key: string, maxLength = 120) {
+  return safeText(record[key], maxLength);
+}
+
+function optionalNumber(
+  record: Record<string, unknown>,
+  key: string,
+  min = 0,
+  max = Number.MAX_SAFE_INTEGER,
+) {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max)
+    throw new ReportValidationError(`Invalid ${key}`);
+  return value;
+}
+
+function optionalBoolean(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw new ReportValidationError(`Invalid ${key}`);
+  return value;
+}
+
+function optionalConnectionState(record: Record<string, unknown>) {
+  const value = record.connectionState;
+  if (value === undefined) return undefined;
+  if (value !== "connected" && value !== "reconnecting" && value !== "offline")
+    throw new ReportValidationError("Invalid connection state");
+  return value;
+}
+
+function diagnosticAction(value: unknown): DiagnosticAction | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = Object.fromEntries(Object.entries(value));
+  const name = safeText(record.name, 80);
+  if (!name) return null;
+  const at = safeText(record.at, 40) ?? new Date().toISOString();
+  const rawData = record.data;
+  let data: DiagnosticAction["data"];
+  if (rawData && typeof rawData === "object" && !Array.isArray(rawData)) {
+    data = {};
+    for (const [key, rawValue] of Object.entries(rawData).slice(0, 8)) {
+      if (
+        typeof rawValue === "string" ||
+        typeof rawValue === "number" ||
+        typeof rawValue === "boolean" ||
+        rawValue === null
+      ) {
+        data[safeKey(key)] =
+          typeof rawValue === "string" ? (safeText(rawValue, 120) ?? "") : rawValue;
+      }
+    }
+  }
+  return data && Object.keys(data).length > 0 ? { at, name, data } : { at, name };
+}
+
+function diagnosticDevice(value: unknown): DiagnosticDevice {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const record = Object.fromEntries(Object.entries(value));
+  const width =
+    record.viewport && typeof record.viewport === "object" && !Array.isArray(record.viewport)
+      ? Object.fromEntries(Object.entries(record.viewport))
+      : undefined;
+  const viewport =
+    width &&
+    typeof width.width === "number" &&
+    Number.isFinite(width.width) &&
+    typeof width.height === "number" &&
+    Number.isFinite(width.height) &&
+    typeof width.pixelRatio === "number" &&
+    Number.isFinite(width.pixelRatio)
+      ? {
+          width: Math.max(0, Math.min(10_000, Math.round(width.width))),
+          height: Math.max(0, Math.min(10_000, Math.round(width.height))),
+          pixelRatio: Math.max(0.1, Math.min(10, Math.round(width.pixelRatio * 100) / 100)),
+        }
+      : undefined;
+  return {
+    userAgent: safeText(record.userAgent, 240),
+    platform: safeText(record.platform, 80),
+    viewport,
+    touch: typeof record.touch === "boolean" ? record.touch : undefined,
+    online: typeof record.online === "boolean" ? record.online : undefined,
+    timezone: safeText(record.timezone, 80),
+  };
+}
+
+function diagnosticError(value: unknown): DiagnosticError | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = Object.fromEntries(Object.entries(value));
+  const error: DiagnosticError = {
+    name: safeText(record.name, 100),
+    code: safeText(record.code, 100),
+  };
+  if (process.env.NODE_ENV !== "production") {
+    error.message = safeText(record.message, 500);
+    error.stack = safeText(record.stack, 4_000);
+  }
+  return error.name || error.code || error.message || error.stack ? error : undefined;
+}
+
+function buildDiagnostics(value: unknown, request: Request): DiagnosticContext {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value))
+      : {};
+  const trail = Array.isArray(record.trail)
+    ? record.trail
+        .map(diagnosticAction)
+        .filter((item): item is DiagnosticAction => item !== null)
+        .slice(-MAX_TRAIL_ITEMS)
+    : [];
+  const route = safeText(record.route, 200);
+  return {
+    schemaVersion: 1,
+    diagnosticId: safeText(record.diagnosticId, 100) ?? `diag_${randomUUID().replaceAll("-", "")}`,
+    buildId: safeText(record.buildId, 120) ?? "unknown",
+    route: route?.startsWith("/") ? route.split(/[?#]/, 1)[0] : new URL(request.url).pathname,
+    device: diagnosticDevice(record.device),
+    trail,
+    ...(diagnosticError(record.error) ? { error: diagnosticError(record.error) } : {}),
+  };
+}
+
+function noteValue(value: unknown) {
+  return safeText(value, MAX_REPORT_NOTE_LENGTH);
 }
 
 function countryScore(evaluation: ReturnType<typeof scoreCountryDrawing>): CountryScore {
@@ -72,9 +249,13 @@ function countryScore(evaluation: ReturnType<typeof scoreCountryDrawing>): Count
   };
 }
 
-function buildDrawCountryReport(value: unknown): UserReportDraft {
-  const data = inputRecord(value);
-  const countryId = typeof data.countryId === "string" ? data.countryId : "";
+function buildDrawCountryReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const countryId = requiredText(data, "countryId", 80);
   const country = countryById(countryId);
   if (!country) throw new ReportValidationError("Invalid country");
   if (data.mode !== "solo" && data.mode !== "multiplayer")
@@ -87,7 +268,7 @@ function buildDrawCountryReport(value: unknown): UserReportDraft {
     throw new ReportValidationError("Invalid drawing");
   }
   const evaluation = scoreCountryDrawing(country, drawing);
-  const context: DrawCountryResultIssueContext = {
+  const context: ReportContextByType["draw_country_result_issue"] = {
     schemaVersion: 1,
     mode: data.mode,
     country: {
@@ -103,19 +284,230 @@ function buildDrawCountryReport(value: unknown): UserReportDraft {
     },
     result: countryScore(evaluation),
     drawing: { raw: drawing },
+    diagnostics,
+    ...(note ? { note } : {}),
   };
   return {
     type: "draw_country_result_issue",
-    subjectKey: `country:${country.id}`,
+    subjectKey: `country:${safeKey(country.id)}`,
+    severity: "medium",
+    source: "user",
     context,
   };
 }
 
-function buildReport(value: unknown): UserReportDraft {
+function buildClientErrorReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const surface = requiredText(data, "surface");
+  const operation = optionalText(data, "operation");
+  const errorCode = optionalText(data, "errorCode", 100);
+  const context: ReportContextByType["client_error"] = {
+    schemaVersion: 1,
+    surface,
+    ...(operation ? { operation } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    diagnostics,
+    ...(note ? { note } : {}),
+  };
+  return {
+    type: "client_error",
+    subjectKey: `surface:${safeKey(surface)}:error:${safeKey(errorCode ?? "unknown")}`,
+    severity: "high",
+    source: "user",
+    context,
+  };
+}
+
+function buildSiteFeedbackReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const surface = requiredText(data, "surface");
+  const context: ReportContextByType["site_feedback"] = {
+    schemaVersion: 1,
+    surface,
+    diagnostics,
+    ...(note ? { note } : {}),
+  };
+  return {
+    type: "site_feedback",
+    subjectKey: `surface:${safeKey(surface)}`,
+    severity: "low",
+    source: "user",
+    context,
+  };
+}
+
+function buildThingsRoomReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const game = requiredText(data, "game");
+  const roomId = optionalText(data, "roomId", 80);
+  const phase = optionalText(data, "phase", 80);
+  const connectionState = optionalConnectionState(data);
+  const sequence = optionalNumber(data, "sequence", 0, Number.MAX_SAFE_INTEGER);
+  const revision = optionalNumber(data, "revision", 0, Number.MAX_SAFE_INTEGER);
+  const issue = optionalText(data, "issue", 160);
+  const context: ReportContextByType["things_room_issue"] = {
+    schemaVersion: 1,
+    game,
+    ...(roomId ? { roomId } : {}),
+    ...(phase ? { phase } : {}),
+    ...(connectionState ? { connectionState } : {}),
+    ...(sequence !== undefined ? { sequence } : {}),
+    ...(revision !== undefined ? { revision } : {}),
+    ...(issue ? { issue } : {}),
+    diagnostics,
+    ...(note ? { note } : {}),
+  };
+  return {
+    type: "things_room_issue",
+    subjectKey: `game:${safeKey(game)}:room:${safeKey(roomId ?? "unknown")}:issue:${safeKey(issue ?? "unknown")}`,
+    severity: "medium",
+    source: "user",
+    context,
+  };
+}
+
+function buildPitchReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const surface = requiredText(data, "surface");
+  const deckId = optionalText(data, "deckId", 100);
+  const roomId = optionalText(data, "roomId", 80);
+  const slideId = optionalText(data, "slideId", 100);
+  const slideIndex = optionalNumber(data, "slideIndex", 0, 10_000);
+  const operation = optionalText(data, "operation", 120);
+  const status = optionalText(data, "status", 120);
+  const retryable = optionalBoolean(data, "retryable");
+  const context: ReportContextByType["pitch_issue"] = {
+    schemaVersion: 1,
+    surface,
+    ...(deckId ? { deckId } : {}),
+    ...(roomId ? { roomId } : {}),
+    ...(slideId ? { slideId } : {}),
+    ...(slideIndex !== undefined ? { slideIndex } : {}),
+    ...(operation ? { operation } : {}),
+    ...(status ? { status } : {}),
+    ...(retryable !== undefined ? { retryable } : {}),
+    diagnostics,
+    ...(note ? { note } : {}),
+  };
+  return {
+    type: "pitch_issue",
+    subjectKey: `surface:${safeKey(surface)}:deck:${safeKey(deckId ?? "unknown")}:operation:${safeKey(operation ?? "unknown")}`,
+    severity: retryable === false ? "high" : "medium",
+    source: "user",
+    context,
+  };
+}
+
+function buildUploadReport(
+  payload: unknown,
+  diagnostics: DiagnosticContext,
+  note: string | undefined,
+): UserReportDraft {
+  const data = inputRecord(payload);
+  const surface = requiredText(data, "surface");
+  const phase = optionalText(data, "phase", 100);
+  const operation = optionalText(data, "operation", 120);
+  const fileCount = optionalNumber(data, "fileCount", 0, 100_000);
+  const bytes = optionalNumber(data, "bytes", 0, Number.MAX_SAFE_INTEGER);
+  const status = optionalNumber(data, "status", 100, 599);
+  const errorCode = optionalText(data, "errorCode", 100);
+  const retryable = optionalBoolean(data, "retryable");
+  const context: ReportContextByType["upload_issue"] = {
+    schemaVersion: 1,
+    surface,
+    ...(phase ? { phase } : {}),
+    ...(operation ? { operation } : {}),
+    ...(fileCount !== undefined ? { fileCount } : {}),
+    ...(bytes !== undefined ? { bytes } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    ...(retryable !== undefined ? { retryable } : {}),
+    diagnostics,
+    ...(note ? { note } : {}),
+  };
+  return {
+    type: "upload_issue",
+    subjectKey: `surface:${safeKey(surface)}:operation:${safeKey(operation ?? "unknown")}:error:${safeKey(errorCode ?? "unknown")}`,
+    severity: retryable === false ? "high" : "medium",
+    source: "user",
+    context,
+  };
+}
+
+function buildReport(value: unknown, request: Request): UserReportDraft {
   const data = inputRecord(value);
-  if (data.type !== "draw_country_result_issue")
-    throw new ReportValidationError("Unknown report type");
-  return buildDrawCountryReport(data.context);
+  if (!isReportType(data.type)) throw new ReportValidationError("Unknown report type");
+  const diagnostics = buildDiagnostics(data.diagnostics, request);
+  const note = noteValue(data.note);
+  switch (data.type) {
+    case "client_error":
+      return buildClientErrorReport(data.payload, diagnostics, note);
+    case "site_feedback":
+      return buildSiteFeedbackReport(data.payload, diagnostics, note);
+    case "draw_country_result_issue":
+      return buildDrawCountryReport(data.payload, diagnostics, note);
+    case "things_room_issue":
+      return buildThingsRoomReport(data.payload, diagnostics, note);
+    case "pitch_issue":
+      return buildPitchReport(data.payload, diagnostics, note);
+    case "upload_issue":
+      return buildUploadReport(data.payload, diagnostics, note);
+  }
+}
+
+type Reservation = { reserved: true } | { reserved: false; value?: string };
+
+function pruneMemoryReservations(nowMs = Date.now()) {
+  for (const [key, value] of memoryReservations) {
+    if (value.expiresAtMs <= nowMs) memoryReservations.delete(key);
+  }
+}
+
+async function reserve(key: string, ttlSeconds: number): Promise<Reservation> {
+  const redis = getRedis();
+  if (redis) {
+    const reserved = await redis.set(key, "pending", { ex: ttlSeconds, nx: true });
+    if (reserved) return { reserved: true };
+    const value = await redis.get<string>(key);
+    return { reserved: false, value: typeof value === "string" ? value : undefined };
+  }
+  if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+  pruneMemoryReservations();
+  const current = memoryReservations.get(key);
+  if (current) return { reserved: false, value: current.value };
+  memoryReservations.set(key, {
+    value: "pending",
+    expiresAtMs: Date.now() + ttlSeconds * 1_000,
+  });
+  return { reserved: true };
+}
+
+async function releaseReservation(key: string) {
+  const redis = getRedis();
+  if (redis) await redis.del(key);
+  else memoryReservations.delete(key);
+}
+
+function idempotencyHeader(request: Request) {
+  const value = request.headers.get("idempotency-key")?.trim();
+  if (value && /^[a-zA-Z0-9._:-]{8,120}$/.test(value)) return value;
+  return `generated_${randomUUID().replaceAll("-", "")}`;
 }
 
 async function enforceSubmissionLimits(report: UserReportDraft, request: Request) {
@@ -123,91 +515,140 @@ async function enforceSubmissionLimits(report: UserReportDraft, request: Request
   const duplicateWindowSeconds = REPORT_POLICIES[report.type].duplicateWindowHours * 60 * 60;
   const duplicateKey = `${REPORT_DUPLICATE_PREFIX}${fingerprint}:${report.type}:${report.subjectKey}`;
   const rateKey = `${REPORT_RATE_LIMIT_PREFIX}${fingerprint}`;
-  const redis = getRedis();
+  const duplicate = await reserve(duplicateKey, duplicateWindowSeconds);
+  if (!duplicate.reserved) return null;
 
+  const redis = getRedis();
   if (redis) {
-    const reserved = await redis.set(duplicateKey, "1", { ex: duplicateWindowSeconds, nx: true });
-    if (!reserved) return null;
     const count = await redis.incr(rateKey);
     if (count === 1) await redis.expire(rateKey, RATE_LIMIT_WINDOW_SECONDS);
     if (count > RATE_LIMIT_MAX) {
-      await redis.del(duplicateKey);
-      throw new ReportRateLimitError("Too many reports");
+      await releaseReservation(duplicateKey);
+      const ttl = await redis.ttl(rateKey);
+      throw new ReportRateLimitError(ttl > 0 ? ttl : RATE_LIMIT_WINDOW_SECONDS);
     }
-    return duplicateKey;
+  } else {
+    if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+    const now = Date.now();
+    const current = memoryRateLimits.get(rateKey);
+    const rate =
+      !current || current.resetAtMs <= now
+        ? { count: 0, resetAtMs: now + RATE_LIMIT_WINDOW_SECONDS * 1_000 }
+        : current;
+    rate.count += 1;
+    memoryRateLimits.set(rateKey, rate);
+    if (rate.count > RATE_LIMIT_MAX) {
+      await releaseReservation(duplicateKey);
+      throw new ReportRateLimitError(Math.max(1, Math.ceil((rate.resetAtMs - now) / 1_000)));
+    }
   }
-
-  const now = Date.now();
-  const duplicateUntil = memoryDuplicates.get(duplicateKey) ?? 0;
-  if (duplicateUntil > now) return null;
-  const current = memoryRateLimits.get(rateKey);
-  const rate =
-    !current || current.resetAtMs <= now
-      ? { count: 0, resetAtMs: now + RATE_LIMIT_WINDOW_SECONDS * 1_000 }
-      : current;
-  rate.count += 1;
-  memoryRateLimits.set(rateKey, rate);
-  if (rate.count > RATE_LIMIT_MAX) throw new ReportRateLimitError("Too many reports");
-  memoryDuplicates.set(duplicateKey, now + duplicateWindowSeconds * 1_000);
   return duplicateKey;
 }
 
-async function releaseDuplicateReservation(key: string) {
-  const redis = getRedis();
-  if (redis) await redis.del(key);
-  else memoryDuplicates.delete(key);
-}
-
-async function saveReport(report: UserReportRecord) {
+async function saveReport(report: UserReportRecord, idempotencyKey: string, duplicateKey: string) {
   const redis = getRedis();
   if (redis) {
     const ttlSeconds = REPORT_POLICIES[report.type].retentionDays * 86_400;
-    await Promise.all([
-      redis.set(reportKey(report.id), JSON.stringify(report), { ex: ttlSeconds }),
-      redis.zadd(REPORT_INDEX_KEY, {
-        score: new Date(report.createdAt).getTime(),
-        member: report.id,
-      }),
-    ]);
-    await redis.zremrangebyscore(
-      REPORT_INDEX_KEY,
-      "-inf",
-      Date.now() - MAX_REPORT_RETENTION_SECONDS * 1_000,
-    );
-    const indexedCount = await redis.zcard(REPORT_INDEX_KEY);
-    if (indexedCount > MAX_ADMIN_REPORTS) {
-      const overflowIds = await redis.zrange<string[]>(
-        REPORT_INDEX_KEY,
-        0,
-        indexedCount - MAX_ADMIN_REPORTS - 1,
-      );
-      const pipeline = redis.pipeline();
-      for (const id of overflowIds) pipeline.del(reportKey(id));
-      pipeline.zrem(REPORT_INDEX_KEY, ...overflowIds);
+    const pipeline = redis.pipeline();
+    pipeline.set(reportKey(report.id), JSON.stringify(report), { ex: ttlSeconds });
+    pipeline.zadd(REPORT_INDEX_KEY, {
+      score: new Date(report.createdAt).getTime(),
+      member: report.id,
+    });
+    pipeline.set(`${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`, report.id, {
+      ex: IDEMPOTENCY_WINDOW_SECONDS,
+    });
+    pipeline.set(duplicateKey, report.id, {
+      ex: REPORT_POLICIES[report.type].duplicateWindowHours * 60 * 60,
+    });
+    try {
       await pipeline.exec();
+      await redis.zremrangebyscore(
+        REPORT_INDEX_KEY,
+        "-inf",
+        Date.now() - MAX_REPORT_RETENTION_SECONDS * 1_000,
+      );
+      const indexedCount = await redis.zcard(REPORT_INDEX_KEY);
+      if (indexedCount > MAX_ADMIN_REPORTS) {
+        const overflowIds = await redis.zrange<string[]>(
+          REPORT_INDEX_KEY,
+          0,
+          indexedCount - MAX_ADMIN_REPORTS - 1,
+        );
+        const cleanup = redis.pipeline();
+        for (const id of overflowIds) cleanup.del(reportKey(id));
+        cleanup.zrem(REPORT_INDEX_KEY, ...overflowIds);
+        await cleanup.exec();
+      }
+    } catch (error) {
+      const cleanup = redis.pipeline();
+      cleanup.del(reportKey(report.id));
+      cleanup.zrem(REPORT_INDEX_KEY, report.id);
+      cleanup.del(`${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`, duplicateKey);
+      await cleanup.exec().catch(() => undefined);
+      throw error;
     }
     return;
   }
   if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
   memoryReports.set(report.id, report);
+  memoryReservations.set(`${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`, {
+    value: report.id,
+    expiresAtMs: Date.now() + IDEMPOTENCY_WINDOW_SECONDS * 1_000,
+  });
+  memoryReservations.set(duplicateKey, {
+    value: report.id,
+    expiresAtMs: Date.now() + REPORT_POLICIES[report.type].duplicateWindowHours * 3_600_000,
+  });
 }
 
 export async function submitUserReport(value: unknown, request: Request) {
-  const report = buildReport(value);
-  const duplicateReservation = await enforceSubmissionLimits(report, request);
-  if (!duplicateReservation) return { accepted: false as const, duplicate: true as const };
-  const record: UserReportRecord = {
-    ...report,
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
+  const report = buildReport(value, request);
+  const idempotencyKey = idempotencyHeader(request);
+  const idempotencyRedisKey = `${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`;
+  const idempotency = await reserve(idempotencyRedisKey, IDEMPOTENCY_WINDOW_SECONDS);
+  if (!idempotency.reserved) {
+    return {
+      accepted: false as const,
+      duplicate: true as const,
+      ...(idempotency.value && idempotency.value !== "pending"
+        ? { reportId: idempotency.value }
+        : {}),
+      diagnosticId: report.context.diagnostics.diagnosticId,
+    };
+  }
+
+  let duplicateKey: string | null = null;
   try {
-    await saveReport(record);
+    duplicateKey = await enforceSubmissionLimits(report, request);
+    if (!duplicateKey) {
+      await releaseReservation(idempotencyRedisKey);
+      return {
+        accepted: false as const,
+        duplicate: true as const,
+        diagnosticId: report.context.diagnostics.diagnosticId,
+      };
+    }
+    const now = new Date().toISOString();
+    const record = {
+      ...report,
+      id: randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+      status: "new" as const,
+    } satisfies UserReportRecord;
+    await saveReport(record, idempotencyKey, duplicateKey);
+    return {
+      accepted: true as const,
+      duplicate: false as const,
+      reportId: record.id,
+      diagnosticId: record.context.diagnostics.diagnosticId,
+    };
   } catch (error) {
-    await releaseDuplicateReservation(duplicateReservation);
+    await releaseReservation(idempotencyRedisKey).catch(() => undefined);
+    if (duplicateKey) await releaseReservation(duplicateKey).catch(() => undefined);
     throw error;
   }
-  return { accepted: true as const, duplicate: false as const };
 }
 
 function isUserReportRecord(value: unknown): value is UserReportRecord {
@@ -215,9 +656,14 @@ function isUserReportRecord(value: unknown): value is UserReportRecord {
   const report = Object.fromEntries(Object.entries(value));
   return (
     typeof report.id === "string" &&
-    report.type === "draw_country_result_issue" &&
+    isReportType(report.type) &&
     typeof report.subjectKey === "string" &&
     typeof report.createdAt === "string" &&
+    typeof report.updatedAt === "string" &&
+    typeof report.status === "string" &&
+    REPORT_STATUSES.includes(report.status as ReportStatus) &&
+    (report.severity === "low" || report.severity === "medium" || report.severity === "high") &&
+    (report.source === "user" || report.source === "automatic") &&
     !!report.context &&
     typeof report.context === "object" &&
     !Array.isArray(report.context)
@@ -227,13 +673,9 @@ function isUserReportRecord(value: unknown): value is UserReportRecord {
 async function listReportRecords() {
   const redis = getRedis();
   if (!redis) return [...memoryReports.values()];
-  const [currentIds, legacyIds, legacyTtl] = await Promise.all([
-    redis.zrange<string[]>(REPORT_INDEX_KEY, 0, MAX_ADMIN_REPORTS - 1, { rev: true }),
-    redis.smembers(LEGACY_REPORT_INDEX_KEY) as Promise<string[]>,
-    redis.ttl(LEGACY_REPORT_INDEX_KEY),
-  ]);
-  if (legacyTtl === -1) await redis.expire(LEGACY_REPORT_INDEX_KEY, MAX_REPORT_RETENTION_SECONDS);
-  const ids = [...new Set([...currentIds, ...legacyIds])].slice(0, MAX_ADMIN_REPORTS);
+  const ids = await redis.zrange<string[]>(REPORT_INDEX_KEY, 0, MAX_ADMIN_REPORTS - 1, {
+    rev: true,
+  });
   const values = await Promise.all(
     ids.map((id) => redis.get<UserReportRecord | string>(reportKey(id))),
   );
@@ -252,20 +694,35 @@ async function listReportRecords() {
       staleIds.push(ids[index]);
     }
   });
-  if (staleIds.length)
-    await Promise.all([
-      redis.zrem(REPORT_INDEX_KEY, ...staleIds),
-      redis.srem(LEGACY_REPORT_INDEX_KEY, ...staleIds),
-    ]);
+  if (staleIds.length) await redis.zrem(REPORT_INDEX_KEY, ...staleIds);
   return reports;
 }
 
-export async function listAdminReportGroups(nowMs = Date.now()): Promise<AdminReportGroup[]> {
+function groupId(report: Pick<UserReportRecord, "type" | "subjectKey">) {
+  return `${report.type}:${report.subjectKey}`;
+}
+
+function activeStatus(status: ReportStatus) {
+  return status !== "resolved" && status !== "ignored" && status !== "duplicate";
+}
+
+function highestSeverity(first: ReportSeverity, second: ReportSeverity): ReportSeverity {
+  const rank = { low: 0, medium: 1, high: 2 } as const;
+  return rank[second] > rank[first] ? second : first;
+}
+
+export async function listAdminReportGroups(
+  nowMs = Date.now(),
+  options: { includeResolved?: boolean } = {},
+): Promise<AdminReportGroup[]> {
   const reports = await listReportRecords();
   const groups = new Map<string, AdminReportGroup>();
   for (const report of reports) {
-    const id = `${report.type}:${report.subjectKey}`;
-    const weight = decayedReportWeight(report.type, report.createdAt, nowMs);
+    if (!options.includeResolved && !activeStatus(report.status)) continue;
+    const id = groupId(report);
+    const weight = activeStatus(report.status)
+      ? decayedReportWeight(report.type, report.createdAt, nowMs)
+      : 0;
     const existing = groups.get(id);
     if (!existing) {
       groups.set(id, {
@@ -273,29 +730,49 @@ export async function listAdminReportGroups(nowMs = Date.now()): Promise<AdminRe
         type: report.type,
         label: REPORT_POLICIES[report.type].label,
         subjectKey: report.subjectKey,
+        status: report.status,
+        severity: report.severity,
         reportIds: [report.id],
         count: 1,
+        activeCount: activeStatus(report.status) ? 1 : 0,
         priority: weight,
         halfLifeDays: REPORT_POLICIES[report.type].halfLifeDays,
         firstReportedAt: report.createdAt,
         latestReportedAt: report.createdAt,
         latestContext: report.context,
-        recentReports: [{ id: report.id, createdAt: report.createdAt, context: report.context }],
+        recentReports: [
+          {
+            id: report.id,
+            createdAt: report.createdAt,
+            updatedAt: report.updatedAt,
+            status: report.status,
+            severity: report.severity,
+            source: report.source,
+            context: report.context,
+          },
+        ],
       });
       continue;
     }
     existing.reportIds.push(report.id);
     existing.count += 1;
+    existing.activeCount += activeStatus(report.status) ? 1 : 0;
     existing.priority += weight;
+    existing.severity = highestSeverity(existing.severity, report.severity);
     existing.recentReports.push({
       id: report.id,
       createdAt: report.createdAt,
+      updatedAt: report.updatedAt,
+      status: report.status,
+      severity: report.severity,
+      source: report.source,
       context: report.context,
     });
     if (report.createdAt < existing.firstReportedAt) existing.firstReportedAt = report.createdAt;
     if (report.createdAt > existing.latestReportedAt) {
       existing.latestReportedAt = report.createdAt;
       existing.latestContext = report.context;
+      existing.status = report.status;
     }
   }
   return [...groups.values()]
@@ -304,7 +781,7 @@ export async function listAdminReportGroups(nowMs = Date.now()): Promise<AdminRe
       priority: Math.round(group.priority * 1_000) / 1_000,
       recentReports: group.recentReports
         .toSorted((first, second) => second.createdAt.localeCompare(first.createdAt))
-        .slice(0, 5),
+        .slice(0, 8),
     }))
     .sort(
       (first, second) =>
@@ -313,21 +790,90 @@ export async function listAdminReportGroups(nowMs = Date.now()): Promise<AdminRe
     );
 }
 
-export async function dismissUserReports(ids: string[]) {
-  const validIds = [...new Set(ids)]
-    .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
-    .slice(0, MAX_ADMIN_REPORTS);
-  if (!validIds.length) return 0;
+function isReportStatus(value: unknown): value is ReportStatus {
+  return typeof value === "string" && REPORT_STATUSES.includes(value as ReportStatus);
+}
+
+function updateReportRecord(
+  report: UserReportRecord,
+  status: ReportStatus,
+  updatedAt: string,
+  note?: string,
+): UserReportRecord {
+  const nextNote = noteValue(note);
+  switch (report.type) {
+    case "client_error":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+    case "site_feedback":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+    case "draw_country_result_issue":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+    case "things_room_issue":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+    case "pitch_issue":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+    case "upload_issue":
+      return {
+        ...report,
+        updatedAt,
+        status,
+        context: { ...report.context, ...(nextNote ? { note: nextNote } : {}) },
+      };
+  }
+}
+
+export async function updateAdminReportGroup(id: string, status: ReportStatus, note?: string) {
+  if (!isReportStatus(status)) throw new ReportValidationError("Invalid report status");
+  const separator = id.indexOf(":");
+  const type = separator > 0 ? id.slice(0, separator) : "";
+  const subjectKey = separator > 0 ? id.slice(separator + 1) : "";
+  if (!isReportType(type) || !subjectKey) throw new ReportValidationError("Invalid report group");
+  const reports = (await listReportRecords()).filter(
+    (report) => report.type === type && report.subjectKey === subjectKey,
+  );
+  if (!reports.length) return 0;
+  const updatedAt = new Date().toISOString();
+  const nextReports: UserReportRecord[] = reports.map((report) =>
+    updateReportRecord(report, status, updatedAt, note),
+  );
   const redis = getRedis();
   if (redis) {
     const pipeline = redis.pipeline();
-    for (const id of validIds) pipeline.del(reportKey(id));
-    pipeline.zrem(REPORT_INDEX_KEY, ...validIds);
-    pipeline.srem(LEGACY_REPORT_INDEX_KEY, ...validIds);
+    for (const report of nextReports) {
+      const retentionDays = activeStatus(status)
+        ? REPORT_POLICIES[report.type].retentionDays
+        : REPORT_POLICIES[report.type].resolvedRetentionDays;
+      pipeline.set(reportKey(report.id), JSON.stringify(report), { ex: retentionDays * 86_400 });
+    }
     await pipeline.exec();
-    return validIds.length;
+  } else {
+    if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+    for (const report of nextReports) memoryReports.set(report.id, report);
   }
-  let dismissed = 0;
-  for (const id of validIds) if (memoryReports.delete(id)) dismissed += 1;
-  return dismissed;
+  return nextReports.length;
 }

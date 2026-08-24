@@ -28,7 +28,7 @@ describe("user report storage", () => {
     await submitUserReport(
       {
         type: "draw_country_result_issue",
-        context: { countryId: "CN", mode: "solo", drawing },
+        payload: { countryId: "CN", mode: "solo", drawing },
       },
       request,
     );
@@ -36,8 +36,10 @@ describe("user report storage", () => {
 
     expect(groups).toHaveLength(1);
     expect(groups[0].count).toBe(1);
-    expect(groups[0].latestContext.drawing.raw).toEqual(drawing);
-    expect(groups[0].latestContext.drawing.aligned).toBeUndefined();
-    expect(groups[0].latestContext.result.score).toEqual(expect.any(Number));
+    const context = groups[0].latestContext;
+    if (!("drawing" in context)) throw new Error("expected a draw-country report");
+    expect(context.drawing.raw).toEqual(drawing);
+    expect(context.drawing.aligned).toBeUndefined();
+    expect(context.result.score).toEqual(expect.any(Number));
   });
 });

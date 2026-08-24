@@ -28,9 +28,24 @@ async function handlePOST(request: Request) {
     return Response.json({ success: true, ...result });
   } catch (error) {
     if (error instanceof ReportValidationError)
-      return Response.json({ error: error.message }, { status: 400 });
-    if (error instanceof ReportRateLimitError)
-      return Response.json({ error: "Too many reports. Please try later." }, { status: 429 });
+      return Response.json(
+        { error: error.message, errorCode: "invalid_report", retryable: false },
+        { status: 400 },
+      );
+    if (error instanceof ReportRateLimitError) {
+      return Response.json(
+        {
+          error: "We have enough reports for now. Try again later.",
+          errorCode: "rate_limited",
+          retryable: true,
+          retryAfterSeconds: error.retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: { "retry-after": String(error.retryAfterSeconds) },
+        },
+      );
+    }
     return apiErrorFromRequest(request, "reports.submit", "Could not save this report", error);
   }
 }

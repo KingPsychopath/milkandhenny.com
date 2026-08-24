@@ -1,22 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+
 import type { AdminReportGroup } from "@/features/reports/types";
-import { useActionDialog } from "@/hooks/useActionDialog";
+import {
+  REPORT_POLICIES,
+  REPORT_STATUSES,
+  type ReportStatus,
+  type ReportType,
+} from "@/features/reports/report-policy";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+
+function isReportType(value: unknown): value is ReportType {
+  return typeof value === "string" && value in REPORT_POLICIES;
+}
 
 function isAdminReportGroup(value: unknown): value is AdminReportGroup {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const report = Object.fromEntries(Object.entries(value));
   return (
     typeof report.id === "string" &&
-    report.type === "draw_country_result_issue" &&
+    isReportType(report.type) &&
     typeof report.label === "string" &&
     typeof report.subjectKey === "string" &&
+    typeof report.status === "string" &&
+    REPORT_STATUSES.includes(report.status as ReportStatus) &&
+    (report.severity === "low" || report.severity === "medium" || report.severity === "high") &&
     Array.isArray(report.reportIds) &&
     report.reportIds.every((id) => typeof id === "string") &&
     typeof report.count === "number" &&
+    typeof report.activeCount === "number" &&
     typeof report.priority === "number" &&
     typeof report.halfLifeDays === "number" &&
     typeof report.firstReportedAt === "string" &&
@@ -44,6 +58,58 @@ function formatReportedAt(value: string) {
   });
 }
 
+function contextHeading(context: AdminReportGroup["latestContext"]) {
+  if ("country" in context) return `${context.country.name} · ${context.result.score}/100`;
+  if ("game" in context)
+    return `${context.game}${context.roomId ? ` · room ${context.roomId}` : ""}`;
+  if ("fileCount" in context)
+    return `${context.surface} upload${context.phase ? ` · ${context.phase}` : ""}`;
+  if ("deckId" in context || "slideIndex" in context)
+    return `${context.surface}${context.deckId ? ` · deck ${context.deckId}` : ""}`;
+  return `${context.surface}${"operation" in context && context.operation ? ` · ${context.operation}` : ""}`;
+}
+
+function contextFacts(context: AdminReportGroup["latestContext"]) {
+  if ("country" in context) {
+    return [
+      ["average", `${context.result.deviation}%`],
+      ["border", `${context.result.borderDeviation}%`],
+      ["coverage", `${context.result.coverageDeviation}%`],
+      ["shape", `${context.result.silhouetteDeviation}%`],
+    ] as const;
+  }
+  if ("game" in context) {
+    return [
+      ["phase", context.phase ?? "—"],
+      ["connection", context.connectionState ?? "—"],
+      ["sequence", context.sequence ?? "—"],
+      ["revision", context.revision ?? "—"],
+    ] as const;
+  }
+  if ("fileCount" in context) {
+    return [
+      ["phase", context.phase ?? "—"],
+      ["files", context.fileCount ?? "—"],
+      ["bytes", context.bytes ?? "—"],
+      ["status", context.status ?? "—"],
+    ] as const;
+  }
+  if ("deckId" in context || "slideIndex" in context) {
+    return [
+      ["operation", context.operation ?? "—"],
+      ["slide", context.slideIndex === undefined ? "—" : context.slideIndex + 1],
+      ["status", context.status ?? "—"],
+      ["retryable", context.retryable === undefined ? "—" : String(context.retryable)],
+    ] as const;
+  }
+  return [
+    ["operation", "operation" in context ? (context.operation ?? "—") : "—"],
+    ["error code", "errorCode" in context ? (context.errorCode ?? "—") : "—"],
+    ["route", context.diagnostics.route],
+    ["build", context.diagnostics.buildId],
+  ] as const;
+}
+
 export function ReportsPanel({
   authFetch,
   onError,
@@ -55,14 +121,17 @@ export function ReportsPanel({
 }) {
   const [reports, setReports] = useState<AdminReportGroup[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dismissing, setDismissing] = useState<string | null>(null);
-  const { confirm, dialog } = useActionDialog();
+  const [includeResolved, setIncludeResolved] = useState(false);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [updating, setUpdating] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
     onError("");
     try {
-      const response = await authFetch("/api/admin/reports");
+      const response = await authFetch(
+        `/api/admin/reports${includeResolved ? "?includeResolved=1" : ""}`,
+      );
       const data: unknown = await response.json().catch(() => null);
       if (!response.ok) throw new Error("Failed to load reports");
       setReports(parseReports(data));
@@ -71,123 +140,163 @@ export function ReportsPanel({
     } finally {
       setLoading(false);
     }
-  }, [authFetch, onError]);
+  }, [authFetch, includeResolved, onError]);
 
   useEffect(() => {
     void loadReports();
+    const timer = window.setInterval(() => void loadReports(), 30_000);
+    return () => window.clearInterval(timer);
   }, [loadReports]);
 
-  const dismiss = async (report: AdminReportGroup) => {
-    const accepted = await confirm({
-      eyebrow: "user reports",
-      title: `Dismiss ${report.count === 1 ? "this report" : `${report.count} reports`}?`,
-      description:
-        "This removes the current report group. A new report can surface it again later.",
-      confirmLabel: "dismiss reports",
-      intent: "danger",
-    });
-    if (!accepted) return;
-    setDismissing(report.id);
+  const update = async (report: AdminReportGroup, status: ReportStatus) => {
+    setUpdating(report.id);
     onError("");
     try {
       const response = await authFetch("/api/admin/reports", {
-        method: "DELETE",
+        method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids: report.reportIds }),
+        body: JSON.stringify({ id: report.id, status, note: notes[report.id] || undefined }),
       });
-      if (!response.ok) throw new Error("Failed to dismiss reports");
-      setReports((current) => current.filter(({ id }) => id !== report.id));
-      onStatus("Reports dismissed.");
+      if (!response.ok) throw new Error("Failed to update report");
+      onStatus(`Report marked ${status}.`);
+      await loadReports();
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to dismiss reports");
+      onError(error instanceof Error ? error.message : "Failed to update report");
     } finally {
-      setDismissing(null);
+      setUpdating(null);
     }
   };
 
   return (
-    <div id="user-reports" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-      <div className="flex items-center justify-between gap-4">
+    <div id="user-reports" className="scroll-mt-6 space-y-3 border-t theme-border pt-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs theme-muted">user reports</p>
           <p className="mt-1 font-mono text-micro theme-faint">
-            grouped by subject · ordered by decayed priority
+            grouped by issue · ordered by active decayed priority · retained without deletion
           </p>
         </div>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void loadReports()}
-          className="min-h-11 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
-        >
-          {loading ? "refreshing..." : "refresh"}
-        </button>
+        <div className="flex items-center gap-4">
+          <label className="inline-flex min-h-11 items-center gap-2 font-mono text-xs theme-muted">
+            <input
+              type="checkbox"
+              checked={includeResolved}
+              onChange={(event) => setIncludeResolved(event.target.checked)}
+            />
+            show history
+          </label>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void loadReports()}
+            className="min-h-11 font-mono text-xs theme-muted transition-opacity hover:opacity-60 disabled:opacity-50"
+          >
+            {loading ? "refreshing..." : "refresh"}
+          </button>
+        </div>
       </div>
 
       {!loading && reports.length === 0 ? (
-        <p className="font-mono text-xs theme-muted">No active reports.</p>
+        <p className="font-mono text-xs theme-muted">
+          {includeResolved ? "No reports in the retained history." : "No active reports."}
+        </p>
       ) : null}
 
       <div className="space-y-2">
         {reports.map((report) => {
           const context = report.latestContext;
+          const facts = contextFacts(context);
           return (
-            <article key={report.id} className="rounded-md border theme-border p-3">
-              <div className="flex items-start justify-between gap-3">
+            <article key={report.id} className="border theme-border p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-mono text-sm">
-                    {context.country.name} · {context.result.score}/100
-                  </p>
+                  <p className="font-mono text-sm">{contextHeading(context)}</p>
                   <p className="mt-1 font-mono text-xs theme-muted">
-                    {report.count} {report.count === 1 ? "report" : "reports"} · priority{" "}
-                    {report.priority.toFixed(2)} · {report.halfLifeDays}-day half-life
+                    {report.label} · {report.activeCount} active / {report.count} total · priority{" "}
+                    {report.priority.toFixed(2)} · {report.severity}
                   </p>
                   <p className="font-mono text-micro theme-faint">
-                    latest {formatReportedAt(report.latestReportedAt)} · {context.mode}
+                    latest {formatReportedAt(report.latestReportedAt)} · first{" "}
+                    {formatReportedAt(report.firstReportedAt)}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={dismissing === report.id}
-                  onClick={() => void dismiss(report)}
-                  className="min-h-11 shrink-0 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)] disabled:opacity-50"
-                >
-                  {dismissing === report.id ? "dismissing..." : "dismiss"}
-                </button>
+                <label className="font-mono text-micro theme-muted">
+                  <span className="sr-only">Report status</span>
+                  <select
+                    value={report.status}
+                    disabled={updating === report.id}
+                    onChange={(event) => void update(report, event.target.value as ReportStatus)}
+                    className="min-h-10 border-b theme-border-strong bg-transparent px-1 font-mono text-xs text-foreground outline-none"
+                  >
+                    {REPORT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 border-t theme-border pt-3 font-mono text-xs sm:grid-cols-4">
-                <div>
-                  <dt className="theme-faint">average</dt>
-                  <dd>{context.result.deviation}%</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">border</dt>
-                  <dd>{context.result.borderDeviation}%</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">coverage</dt>
-                  <dd>{context.result.coverageDeviation}%</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">shape</dt>
-                  <dd>{context.result.silhouetteDeviation}%</dd>
-                </div>
+                {facts.map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="theme-faint">{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
               </dl>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t theme-border pt-3">
+                <input
+                  value={notes[report.id] ?? ""}
+                  onChange={(event) =>
+                    setNotes((current) => ({ ...current, [report.id]: event.target.value }))
+                  }
+                  placeholder="internal note (optional)"
+                  maxLength={1_000}
+                  className="min-h-10 min-w-56 flex-1 border-b theme-border-strong bg-transparent px-1 font-mono text-xs text-foreground outline-none placeholder:theme-muted"
+                />
+                {report.status !== "investigating" ? (
+                  <button
+                    type="button"
+                    disabled={updating === report.id}
+                    onClick={() => void update(report, "investigating")}
+                    className="min-h-10 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
+                  >
+                    investigate
+                  </button>
+                ) : null}
+                {report.status !== "resolved" ? (
+                  <button
+                    type="button"
+                    disabled={updating === report.id}
+                    onClick={() => void update(report, "resolved")}
+                    className="min-h-10 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
+                  >
+                    resolve
+                  </button>
+                ) : null}
+              </div>
 
               <details className="mt-3 border-t theme-border pt-3">
                 <summary className="min-h-11 cursor-pointer select-none font-mono text-xs theme-muted">
-                  recent diagnostic context
+                  diagnostic context · {context.diagnostics.trail.length} recent actions
                 </summary>
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all font-mono text-micro theme-faint">
-                  {JSON.stringify(report.recentReports, null, 2)}
+                <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all font-mono text-micro theme-faint">
+                  {JSON.stringify(
+                    {
+                      latest: context,
+                      reports: report.recentReports,
+                    },
+                    null,
+                    2,
+                  )}
                 </pre>
               </details>
             </article>
           );
         })}
       </div>
-      {dialog}
     </div>
   );
 }

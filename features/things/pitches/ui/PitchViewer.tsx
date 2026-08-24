@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
@@ -131,6 +132,17 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         >
           replay
         </button>
+        <ReportIssueButton
+          type="pitch_issue"
+          payload={{
+            surface: "viewer",
+            deckId: pitch.id,
+            slideId: slide?.id,
+            slideIndex: index,
+            operation: "view",
+          }}
+          className="mt-0"
+        />
       </footer>
     </main>
   );

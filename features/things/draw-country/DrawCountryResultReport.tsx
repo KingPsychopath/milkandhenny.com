@@ -11,6 +11,6 @@ export function DrawCountryResultReport({
   mode: "solo" | "multiplayer";
 }) {
   return (
-    <ReportIssueButton type="draw_country_result_issue" context={{ countryId, drawing, mode }} />
+    <ReportIssueButton type="draw_country_result_issue" payload={{ countryId, drawing, mode }} />
   );
 }

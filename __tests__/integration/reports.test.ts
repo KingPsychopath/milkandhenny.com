@@ -19,7 +19,7 @@ describe("user reports API", () => {
         "content-type": "application/json",
         origin: "https://milkandhenny.com",
       },
-      body: JSON.stringify({ type: "draw_country_result_issue", context: {} }),
+      body: JSON.stringify({ type: "draw_country_result_issue", payload: {} }),
     });
 
     const response = await POST(request);

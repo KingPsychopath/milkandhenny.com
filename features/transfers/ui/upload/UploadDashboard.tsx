@@ -11,6 +11,7 @@ import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { collectDroppedFiles } from "./drop-files";
 import { copyText } from "@/lib/client/share";
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 
 /* ─── Types ─── */
 
@@ -1417,6 +1418,18 @@ export function UploadDashboard({ isAdmin }: UploadDashboardProps) {
       {uploadError && (
         <p className="font-mono text-xs mt-4 text-[var(--prose-hashtag)]">{uploadError}</p>
       )}
+      <ReportIssueButton
+        type="upload_issue"
+        payload={{
+          surface: mode,
+          phase: uploadProgress?.phase,
+          operation: transferAction === "append" ? "append" : "upload",
+          fileCount: files.length,
+          bytes: files.reduce((total, file) => total + file.size, 0),
+          errorCode: uploadError ? "upload_failed" : undefined,
+          retryable: uploadError ? true : undefined,
+        }}
+      />
 
       {/* Transfer result */}
       {transferResult && (

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import { AppImage } from "@/components/AppImage";
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { useQrCode } from "@/hooks/useQrCode";
 import { approvePresentationControllerFn, controlPresentationFn } from "../presentation.functions";
 import { readPublishedPitchFn } from "../pitches.functions";
@@ -115,6 +116,11 @@ export function PresentationHost({ roomId }: { roomId: string }) {
         >
           open a new room
         </Link>
+        <ReportIssueButton
+          type="pitch_issue"
+          payload={{ surface: "host_link", roomId, operation: "open", status: "missing_token" }}
+          className="mt-6"
+        />
       </main>
     );
   }
@@ -248,6 +254,19 @@ export function PresentationHost({ roomId }: { roomId: string }) {
           {live.message ? (
             <p className="mt-3 font-mono text-xs theme-muted">{live.message}</p>
           ) : null}
+          <ReportIssueButton
+            type="pitch_issue"
+            payload={{
+              surface: "host",
+              roomId,
+              deckId: pitch?.id,
+              slideId: slide?.id,
+              slideIndex: snapshot?.slideIndex,
+              operation: live.message ? "poll" : "present",
+              status: live.message ? "error" : live.connectionState,
+            }}
+            className="mt-3"
+          />
         </aside>
       ) : null}
     </main>

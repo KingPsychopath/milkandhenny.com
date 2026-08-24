@@ -14,13 +14,15 @@ import {
 
 type PresentationOperation<T> =
   | { ok: true; value: T }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; retryable?: boolean };
 
 async function runPresentationOperation<T>(
   effect: Effect.Effect<PresentationOperation<T>, unknown, PitchesService>,
 ): Promise<PresentationOperation<T>> {
   const result = await runPitchesResult(effect);
-  return result.ok ? result.value : { ok: false, status: result.status, error: result.error };
+  return result.ok
+    ? result.value
+    : { ok: false, status: result.status, error: result.error, retryable: result.retryable };
 }
 
 export const createPresentationRoomFn = createServerFn({ method: "POST" })
@@ -38,7 +40,12 @@ export const createPresentationRoomFn = createServerFn({ method: "POST" })
     );
     return result.ok
       ? { ok: true as const, value: result.value }
-      : { ok: false as const, status: result.status, error: result.error };
+      : {
+          ok: false as const,
+          status: result.status,
+          error: result.error,
+          retryable: result.retryable,
+        };
   });
 
 export const joinPresentationFn = createServerFn({ method: "POST" })

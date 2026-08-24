@@ -26,7 +26,9 @@ import {
   parsePitchTitle,
 } from "./validation";
 
-type OperationResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
+type OperationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; status: number; error: string; retryable?: boolean };
 
 function invalid(error = "Some details were missing or invalid. Check them and try again.") {
   return { ok: false as const, status: 400, error };
@@ -40,7 +42,9 @@ async function runOperation<T>(
   effect: Effect.Effect<OperationResult<T>, unknown, PitchesService>,
 ): Promise<OperationResult<T>> {
   const result = await runPitchesResult(effect);
-  return result.ok ? result.value : { ok: false, status: result.status, error: result.error };
+  return result.ok
+    ? result.value
+    : { ok: false, status: result.status, error: result.error, retryable: result.retryable };
 }
 
 function validEmail(value: string): boolean {

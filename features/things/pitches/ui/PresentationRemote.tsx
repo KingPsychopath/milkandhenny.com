@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useRememberedPlayerName } from "@/features/things/shared/useRememberedPlayerName";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { controlPresentationFn, joinPresentationFn } from "../presentation.functions";
 import { listPublishedPitchesFn } from "../pitches.functions";
 import type { PitchControllerCredentials, PublicPitchDeck } from "../types";
@@ -137,6 +138,16 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           </button>
         </form>
         {message ? <p className="mt-4 font-mono text-xs theme-muted">{message}</p> : null}
+        <ReportIssueButton
+          type="pitch_issue"
+          payload={{
+            surface: "remote_join",
+            roomId,
+            operation: "join",
+            status: message ? "error" : undefined,
+          }}
+          className="mt-6"
+        />
       </main>
     );
   }
@@ -152,6 +163,16 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           <p className="mt-4 font-mono text-sm theme-muted">
             Keep this open. The controls appear when the host approves you.
           </p>
+          <ReportIssueButton
+            type="pitch_issue"
+            payload={{
+              surface: "remote_waiting",
+              roomId,
+              operation: "poll",
+              status: live.message ? "error" : live.connectionState,
+            }}
+            className="mt-6 justify-center"
+          />
         </div>
       </main>
     );
@@ -160,7 +181,14 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
   if (self.status === "revoked") {
     return (
       <main id="main" className="flex min-h-screen items-center justify-center px-6 text-center">
-        <h1 className="font-serif text-4xl text-foreground">The host kept the remote.</h1>
+        <div>
+          <h1 className="font-serif text-4xl text-foreground">The host kept the remote.</h1>
+          <ReportIssueButton
+            type="pitch_issue"
+            payload={{ surface: "remote_revoked", roomId, operation: "poll", status: "revoked" }}
+            className="mt-6 justify-center"
+          />
+        </div>
       </main>
     );
   }
@@ -216,6 +244,15 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           {message || live.message}
         </p>
       ) : null}
+      <ReportIssueButton
+        type="pitch_issue"
+        payload={{
+          surface: "remote",
+          roomId,
+          operation: message ? "control" : "poll",
+          status: message || live.message ? "error" : live.connectionState,
+        }}
+      />
     </main>
   );
 }

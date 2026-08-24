@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
 import { AppImage } from "@/components/AppImage";
+import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
@@ -21,19 +22,35 @@ export function RoomHeader({
   roomId,
   connection,
   onLeave,
+  showReport = true,
 }: {
   roomId: string;
   connection: string;
   onLeave?: () => Promise<boolean>;
+  showReport?: boolean;
 }) {
+  const reportConnectionState =
+    connection === "connected" || connection === "reconnecting" || connection === "offline"
+      ? connection
+      : undefined;
   return (
     <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/45">
       <Link to="/things/draw-country" className="inline-flex min-h-11 items-center">
         ← back
       </Link>
-      <span className="min-w-0 truncate text-right">
-        {roomId} · {connection}
-      </span>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-right">
+          {roomId} · {connection}
+        </span>
+        {showReport ? (
+          <ReportIssueButton
+            type="things_room_issue"
+            payload={{ game: "draw-country", roomId, connectionState: reportConnectionState }}
+            label="something feel off?"
+            className="mt-0"
+          />
+        ) : null}
+      </div>
       {onLeave ? <DrawCountryLeaveButton onLeave={onLeave} /> : null}
     </header>
   );
@@ -209,7 +226,12 @@ export function RoomReveal({
   const ranking = snapshot.players.toSorted((a, b) => (b.roundScore ?? 0) - (a.roundScore ?? 0));
   return (
     <div className="things-game things-game--cream text-black">
-      <RoomHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
+      <RoomHeader
+        roomId={snapshot.roomId}
+        connection={connection}
+        onLeave={onLeave}
+        showReport={false}
+      />
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-12 pt-4">
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">

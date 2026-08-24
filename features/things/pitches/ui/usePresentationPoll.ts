@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MULTIPLAYER_REALTIME_LIMITS } from "../../shared/multiplayer-realtime";
+import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { useMultiplayerWakeSocket } from "../../shared/useMultiplayerWakeSocket";
 import { useRoomReconciler } from "../../shared/useRoomReconciler";
 import { readPresentationFn } from "../presentation.functions";
@@ -40,6 +41,10 @@ export function usePresentationPoll(roomId: string, credentials: Credentials) {
         });
         if (!isCurrent()) return;
         if (!result.ok) {
+          recordDiagnosticAction("pitch.poll.failed", {
+            status: result.status,
+            retryable: "retryable" in result ? (result.retryable ?? false) : false,
+          });
           setMessage(result.error);
           if (result.status >= 400 && result.status < 500) {
             stoppedRef.current = true;
@@ -50,7 +55,10 @@ export function usePresentationPoll(roomId: string, credentials: Credentials) {
         setSnapshot(result.value);
         setMessage("");
       } catch {
-        if (isCurrent()) setMessage("Reconnecting…");
+        if (isCurrent()) {
+          recordDiagnosticAction("pitch.poll.unreachable");
+          setMessage("Reconnecting…");
+        }
       }
     },
     [credentials, roomId],

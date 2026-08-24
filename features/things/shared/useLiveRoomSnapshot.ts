@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { resolveLiveRoomRead } from "./live-room-state";
 import { useRoomReconciler } from "./useRoomReconciler";
 
@@ -87,6 +88,15 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
 
     const outcome = resolveLiveRoomRead(read, failuresRef.current);
     failuresRef.current = outcome.consecutiveFailures;
+    if (!read.ok) {
+      recordDiagnosticAction(
+        "unreachable" in read ? "room.read.unreachable" : "room.read.unavailable",
+        {
+          failures: outcome.consecutiveFailures,
+          ended: outcome.ended,
+        },
+      );
+    }
     setMessage(outcome.message);
     setEnded(outcome.ended);
     // Nothing to apply, but the clock still gets a free correction out of the round trip.
