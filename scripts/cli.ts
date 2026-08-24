@@ -859,10 +859,14 @@ async function startCliCallbackListener(expectedState: string): Promise<CliCallb
       return;
     }
 
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    response.end(
-      "<!doctype html><title>Milk & Henny CLI</title><p>Approval received. You can return to the terminal.</p>",
-    );
+    const approved = Boolean(code);
+    response.writeHead(200, {
+      "Cache-Control": "no-store",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+      "Content-Type": "text/html; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.end(renderCliCallbackPage(approved));
     if (settled) return;
     settled = true;
     if (timer) clearTimeout(timer);
@@ -898,6 +902,142 @@ async function startCliCallbackListener(expectedState: string): Promise<CliCallb
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
+}
+
+function renderCliCallbackPage(approved: boolean): string {
+  const title = approved ? "You’re signed in." : "Sign-in was not completed.";
+  const eyebrow = approved ? "access granted" : "nothing changed";
+  const detail = approved
+    ? "The terminal is finishing the connection now. You can leave this window open or close it."
+    : "The terminal did not receive an approval. Return to it and start again when you are ready.";
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Milk &amp; Henny — ${approved ? "signed in" : "sign-in incomplete"}</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --background: oklch(0.985 0.002 86.42);
+        --foreground: oklch(0.214 0.012 56.42);
+        --muted: oklch(0.522 0.022 55.4);
+        --border: oklch(0.856 0.01 70.7);
+        --amber: oklch(0.55 0.18 47.6);
+        --amber-soft: oklch(0.965 0.058 95.28);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: oklch(0.214 0.012 56.42);
+          --foreground: oklch(0.918 0.006 70.7);
+          --muted: oklch(0.696 0.019 70.7);
+          --border: oklch(0.298 0.018 55.4);
+          --amber: oklch(0.82 0.16 79);
+          --amber-soft: oklch(0.298 0.018 55.4);
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding: 2rem 1.5rem;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: "Geist Mono", "SFMono-Regular", "SF Mono", ui-monospace, monospace;
+        -webkit-font-smoothing: antialiased;
+      }
+      main { width: min(100%, 42rem); }
+      .masthead {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.75rem;
+        letter-spacing: -0.02em;
+      }
+      .brand { font-weight: 700; letter-spacing: -0.06em; }
+      .context { color: var(--muted); }
+      .content { padding: clamp(3.5rem, 12vh, 7rem) 0 3rem; }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: var(--amber);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        line-height: 1;
+        text-transform: uppercase;
+      }
+      .status-mark {
+        display: grid;
+        width: 1.75rem;
+        height: 1.75rem;
+        place-items: center;
+        border: 1px solid currentColor;
+        background: var(--amber-soft);
+        font-size: 0.9rem;
+        line-height: 1;
+      }
+      h1 {
+        max-width: 12ch;
+        margin: 1.5rem 0 1.25rem;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(2.75rem, 8vw, 5.5rem);
+        font-weight: 500;
+        letter-spacing: -0.065em;
+        line-height: 0.98;
+      }
+      .detail {
+        max-width: 34rem;
+        margin: 0;
+        color: var(--muted);
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: clamp(1.05rem, 2vw, 1.25rem);
+        line-height: 1.55;
+      }
+      .handoff {
+        display: grid;
+        gap: 0.6rem;
+        margin-top: 3rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border);
+      }
+      .handoff-label { font-size: 0.7rem; color: var(--muted); text-transform: lowercase; }
+      .handoff-value { font-size: 0.9rem; font-weight: 700; }
+      footer { color: var(--muted); font-size: 0.7rem; }
+      @media (max-width: 28rem) {
+        .masthead { align-items: flex-start; flex-direction: column; gap: 0.4rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="masthead">
+        <span class="brand">milk &amp; henny</span>
+        <span class="context">local cli hand-off</span>
+      </header>
+      <section class="content" aria-labelledby="title">
+        <div class="status">
+          <span class="status-mark" aria-hidden="true">${approved ? "✓" : "·"}</span>
+          <span>${eyebrow}</span>
+        </div>
+        <h1 id="title">${title}</h1>
+        <p class="detail">${detail}</p>
+        <div class="handoff">
+          <span class="handoff-label">next</span>
+          <span class="handoff-value">return to your terminal</span>
+        </div>
+      </section>
+      <footer>milkandhenny.com · this local page can be closed</footer>
+    </main>
+  </body>
+</html>`;
 }
 
 async function openCliBrowser(url: string): Promise<boolean> {
