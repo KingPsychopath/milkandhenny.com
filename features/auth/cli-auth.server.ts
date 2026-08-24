@@ -130,17 +130,20 @@ export async function approveCliAuthorization(
   if (!redis || !REQUEST_ID_PATTERN.test(requestId)) return null;
 
   try {
+    const record = await redis.get<CliAuthorizationRecord>(requestKey(requestId));
+    if (!record) return null;
+
     const claimed = await redis.set(approvalKey(requestId), "1", {
       ex: CLI_CODE_TTL_SECONDS,
       nx: true,
     });
     if (!claimed) return null;
 
-    const record = await redis.get<CliAuthorizationRecord>(requestKey(requestId));
-    if (!record) return null;
-
     const token = await issueAdminTokenForCli({ ip: record.ip, ua: record.ua });
-    if (!token) return null;
+    if (!token) {
+      await redis.del(approvalKey(requestId));
+      return null;
+    }
 
     const code = newOpaqueValue();
     await redis.set(
@@ -151,6 +154,7 @@ export async function approveCliAuthorization(
     await redis.del(requestKey(requestId));
     return { redirectUri: callbackRedirect(record, { code }) };
   } catch {
+    await redis.del(approvalKey(requestId)).catch(() => undefined);
     return null;
   }
 }
@@ -162,13 +166,15 @@ export async function denyCliAuthorization(
   if (!redis || !REQUEST_ID_PATTERN.test(requestId)) return null;
 
   try {
+    const record = await redis.get<CliAuthorizationRecord>(requestKey(requestId));
+    if (!record) return null;
+
     const claimed = await redis.set(approvalKey(requestId), "1", {
       ex: CLI_CODE_TTL_SECONDS,
       nx: true,
     });
     if (!claimed) return null;
-    const record = await redis.get<CliAuthorizationRecord>(requestKey(requestId));
-    if (!record) return null;
+
     await redis.del(requestKey(requestId));
     return { redirectUri: callbackRedirect(record, { error: "access_denied" }) };
   } catch {

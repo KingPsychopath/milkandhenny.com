@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getClientIp } from "@/features/auth/auth.server";
 import { createCliAuthorizationRequest } from "@/features/auth/cli-auth.server";
+import { getBaseUrlForRequest } from "@/lib/shared/config";
 
 type RequestBody = {
   redirectUri?: unknown;
@@ -33,7 +34,7 @@ async function handlePOST(request: Request) {
     state: body.state,
     ip: getClientIp(request),
     ua: request.headers.get("user-agent") ?? "milkandhenny-cli",
-    browserUrlOrigin: new URL(request.url).origin,
+    browserUrlOrigin: getBaseUrlForRequest(request),
   });
   if (!result) {
     return Response.json({ error: "CLI authorization is unavailable" }, { status: 503 });
