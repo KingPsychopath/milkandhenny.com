@@ -65,6 +65,7 @@ const pixelFont = {
   K: ["1001", "1010", "1100", "1010", "1001"],
   L: ["1000", "1000", "1000", "1000", "1111"],
   M: ["10001", "11011", "10101", "10001", "10001"],
+  N: ["1001", "1101", "1011", "1001", "1001"],
   O: ["0110", "1001", "1001", "1001", "0110"],
   S: ["0111", "1000", "0110", "0001", "1110"],
   T: ["11111", "00100", "00100", "00100", "00100"],
@@ -93,11 +94,10 @@ function pushPixelText(pieces, value, x, y, scale, fill) {
   }
 }
 
-function bottleTreeSvg(offsetX = 0) {
+function bottleTreeSvg(offsetX = 0, includeGround = true) {
   const pieces = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" shape-rendering="crispEdges">`,
     `<g transform="translate(${offsetX} 5)">`,
-    `<rect x="548" y="231" width="64" height="4" fill="${palette.stone300}"/>`,
     `<rect x="578" y="146" width="5" height="40" fill="${palette.stone500}"/>`,
     `<rect x="568" y="154" width="15" height="5" fill="${palette.stone500}"/>`,
     `<rect x="582" y="163" width="14" height="5" fill="${palette.stone500}"/>`,
@@ -114,6 +114,8 @@ function bottleTreeSvg(offsetX = 0) {
     `<rect x="567" y="208" width="24" height="12" fill="${palette.cream}"/>`,
   ];
   pushPixelText(pieces, "H", 575, 211, 2, palette.amberDark);
+  if (includeGround)
+    pieces.push(`<rect x="548" y="231" width="64" height="4" fill="${palette.stone300}"/>`);
   pieces.push(
     `<rect x="566" y="207" width="3" height="17" fill="${palette.amber}"/>`,
     `</g>`,
@@ -163,7 +165,7 @@ async function cleanActionSource(source) {
       const blue = data[index + 2];
       const alpha = data[index + 3];
       const greenLeaf = green >= red * 0.85 && green > blue * 1.2 && green > 40;
-      const jugCap = x >= 539 && x <= 555 && y >= 190 && y <= 204;
+      const milkJugSpout = x >= 539 && x <= 557 && y >= 190 && y <= 213;
       const plantCutoff =
         source === "action-grow-a.png" ? 548 : source === "action-arrive.png" ? 555 : 550;
       const removeProp =
@@ -173,9 +175,9 @@ async function cleanActionSource(source) {
             (x >= 535 && greenLeaf) ||
             (source === "action-arrive.png" && x >= 552 && y >= 204)
           : greenLeaf ||
-            (x >= 544 && y >= 204) ||
-            (x >= 548 && y >= 185 && !jugCap) ||
-            (x >= 556 && y >= 170));
+            (x >= 544 && y >= 204 && !milkJugSpout) ||
+            (x >= 558 && y >= 185) ||
+            (x >= 544 && y >= 214));
       if (removeProp) data[index + 3] = 0;
     }
   }
@@ -222,20 +224,42 @@ function overlaySvg(kind) {
 
   if (kind === "feedback") {
     pieces.push(
-      `<rect x="350" y="119" width="112" height="111" fill="${palette.ink}"/>`,
-      `<rect x="358" y="128" width="96" height="94" fill="${palette.cream}"/>`,
-      `<rect x="383" y="109" width="42" height="23" fill="${palette.ink}"/>`,
-      `<rect x="389" y="113" width="30" height="13" fill="${palette.amber}"/>`,
-      `<rect x="365" y="153" width="16" height="12" fill="${palette.amberLight}"/>`,
-      `<rect x="388" y="157" width="49" height="3" fill="${palette.stone500}"/>`,
-      `<rect x="365" y="174" width="16" height="12" fill="${palette.amberLight}"/>`,
-      `<rect x="388" y="178" width="49" height="3" fill="${palette.stone500}"/>`,
-      `<rect x="365" y="195" width="16" height="12" fill="${palette.amberLight}"/>`,
-      `<rect x="388" y="199" width="49" height="3" fill="${palette.stone500}"/>`,
-      `<rect x="450" y="197" width="10" height="26" fill="${palette.ink}" transform="rotate(38 455 210)"/>`,
-      `<rect x="453" y="194" width="7" height="12" fill="${palette.amberLight}" transform="rotate(38 456 200)"/>`,
+      `<rect x="354" y="108" width="150" height="126" fill="${palette.stone300}"/>`,
+      `<rect x="346" y="100" width="150" height="126" fill="${palette.ink}"/>`,
+      `<rect x="352" y="106" width="138" height="114" fill="${palette.cream}"/>`,
+      `<rect x="352" y="106" width="138" height="8" fill="${palette.amber}"/>`,
+      `<rect x="380" y="92" width="66" height="20" fill="${palette.ink}"/>`,
+      `<rect x="386" y="96" width="54" height="12" fill="${palette.amberLight}"/>`,
+      `<rect x="360" y="144" width="114" height="2" fill="${palette.stone300}"/>`,
+      `<rect x="360" y="153" width="14" height="14" fill="${palette.amberDark}"/>`,
+      `<rect x="363" y="156" width="8" height="8" fill="${palette.cream}"/>`,
+      `<rect x="364" y="158" width="2" height="4" fill="${palette.amberDark}"/>`,
+      `<rect x="366" y="160" width="2" height="3" fill="${palette.amberDark}"/>`,
+      `<rect x="368" y="156" width="2" height="5" fill="${palette.amberDark}"/>`,
+      `<rect x="384" y="156" width="76" height="4" fill="${palette.stone500}"/>`,
+      `<rect x="384" y="163" width="48" height="2" fill="${palette.stone300}"/>`,
+      `<rect x="360" y="176" width="14" height="14" fill="${palette.amberDark}"/>`,
+      `<rect x="363" y="179" width="8" height="8" fill="${palette.cream}"/>`,
+      `<rect x="364" y="181" width="2" height="4" fill="${palette.amberDark}"/>`,
+      `<rect x="366" y="183" width="2" height="3" fill="${palette.amberDark}"/>`,
+      `<rect x="368" y="179" width="2" height="5" fill="${palette.amberDark}"/>`,
+      `<rect x="384" y="179" width="64" height="4" fill="${palette.stone500}"/>`,
+      `<rect x="384" y="186" width="82" height="2" fill="${palette.stone300}"/>`,
+      `<rect x="360" y="199" width="14" height="14" fill="${palette.amberDark}"/>`,
+      `<rect x="363" y="202" width="8" height="8" fill="${palette.cream}"/>`,
+      `<rect x="364" y="204" width="2" height="4" fill="${palette.amberDark}"/>`,
+      `<rect x="366" y="206" width="2" height="3" fill="${palette.amberDark}"/>`,
+      `<rect x="368" y="202" width="2" height="5" fill="${palette.amberDark}"/>`,
+      `<rect x="384" y="202" width="40" height="4" fill="${palette.stone500}"/>`,
+      `<rect x="384" y="209" width="58" height="2" fill="${palette.stone300}"/>`,
+      `<rect x="464" y="193" width="8" height="5" fill="${palette.ink}"/>`,
+      `<rect x="460" y="198" width="8" height="5" fill="${palette.amberLight}"/>`,
+      `<rect x="456" y="203" width="8" height="5" fill="${palette.amberLight}"/>`,
+      `<rect x="452" y="208" width="8" height="5" fill="${palette.ink}"/>`,
+      `<rect x="448" y="213" width="8" height="5" fill="${palette.stone500}"/>`,
     );
-    pushPixelText(pieces, "FEEDBACK", 366, 137, 1, palette.ink);
+    pushPixelText(pieces, "FEEDBACK", 366, 123, 1, palette.ink);
+    pushPixelText(pieces, "MIN", 451, 125, 1, palette.amberDark);
   }
 
   pieces.push("</svg>");
@@ -266,7 +290,7 @@ async function composeActionFrame({ source, output }) {
   const pour = source.includes("pour");
   const bottleOffset = source === "action-arrive.png" ? 10 : 0;
   const layers = [
-    { input: bottleTreeSvg(bottleOffset), left: 0, top: 0 },
+    { input: bottleTreeSvg(bottleOffset, false), left: 0, top: 0 },
     { input: sourceBuffer, left: 0, top: 0 },
   ];
   if (pour) {
