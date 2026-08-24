@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GamePoolLobbyScene } from "./GamePoolLobbyScene";
+import { gamePoolPixelWorldGame } from "./lobby-scene";
 import { assignGamePoolRoomFn, getGamePoolPublicViewFn } from "./pool.functions";
 import {
   adoptGamePoolAssignment,
@@ -179,7 +180,7 @@ export function GamePoolEntranceApp({
           allowRoomChoice={view.run.allowRoomChoice}
           busy={busy}
           destinationRoomId={destinationRoomId}
-          game={view.entrance?.game ?? view.run.gameSettings.game}
+          game={gamePoolPixelWorldGame(view.run.gameSettings)}
           joining={busy}
           live={socket.state === "connected"}
           onChooseRoom={(roomId) => void assign({ roomId })}

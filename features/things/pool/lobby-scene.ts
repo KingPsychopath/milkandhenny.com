@@ -1,3 +1,5 @@
+import type { GameSettingsDocument } from "../shared/game-settings";
+import type { PixelWorldGame } from "../shared/pixel-world";
 import type { GamePoolPublicOccupant, GamePoolRoomSummary } from "./types";
 
 export const GAME_POOL_LOBBY_OCCUPANT_LIMIT = 6;
@@ -40,6 +42,12 @@ function visibleOccupants(room: GamePoolRoomSummary): GamePoolPublicOccupant[] {
   for (let index = occupants.length; index < room.playerCount; index += 1)
     occupants.push({ id: `${room.roomId}:anonymous:${index}` });
   return occupants;
+}
+
+export function gamePoolPixelWorldGame(document: GameSettingsDocument): PixelWorldGame {
+  if (document.game !== "liars") return document.game;
+  const mode = (document.settings as { mode?: unknown }).mode;
+  return mode === "imposter" ? "imposter" : "mafia";
 }
 
 export function buildGamePoolLobbyScene(

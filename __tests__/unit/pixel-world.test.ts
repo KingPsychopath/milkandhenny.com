@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PIXEL_WORLD_SCENE_VARIANTS,
   pixelWorldRoomSummary,
   pixelWorldTone,
   pixelWorldVariant,
@@ -11,7 +12,7 @@ describe("pixel world", () => {
   it("keeps room styles and player tones stable", () => {
     expect(pixelWorldVariant("ROOM234")).toBe(pixelWorldVariant("ROOM234"));
     expect(pixelWorldVariant("ROOM234")).toBeGreaterThanOrEqual(0);
-    expect(pixelWorldVariant("ROOM234")).toBeLessThan(4);
+    expect(pixelWorldVariant("ROOM234")).toBeLessThan(PIXEL_WORLD_SCENE_VARIANTS);
     expect(pixelWorldTone("opaque-player")).toBe(pixelWorldTone("opaque-player"));
     expect(pixelWorldTone("opaque-player")).toBeLessThan(8);
   });

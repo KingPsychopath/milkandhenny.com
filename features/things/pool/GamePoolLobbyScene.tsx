@@ -3,14 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PixelWorld } from "../shared/PixelWorld";
 import type { PixelWorldGame, PixelWorldPlayer } from "../shared/pixel-world";
 import { buildGamePoolLobbyScene, gamePoolLobbyStatus } from "./lobby-scene";
-import type { GamePoolGame, GamePoolRoomSummary } from "./types";
+import type { GamePoolRoomSummary } from "./types";
 import "./GamePoolLobbyScene.css";
 
 const ROOMS_PER_FLOOR = 3;
-
-function worldGame(game: GamePoolGame): PixelWorldGame {
-  return game === "liars" ? "liars" : game;
-}
 
 export function GamePoolLobbyScene({
   allowNewRooms,
@@ -29,7 +25,7 @@ export function GamePoolLobbyScene({
   allowRoomChoice: boolean;
   busy: boolean;
   destinationRoomId: string | null;
-  game: GamePoolGame;
+  game: PixelWorldGame;
   joining: boolean;
   live: boolean;
   onChooseRoom: (roomId: string) => void;
@@ -137,7 +133,7 @@ export function GamePoolLobbyScene({
                       <PixelWorld
                         className="game-pool-hotel-room-scene"
                         room={{
-                          game: worldGame(game),
+                          game,
                           roomId: room.roomId,
                           status: room.status === "started" ? "playing" : "waiting",
                           players,
@@ -194,7 +190,7 @@ export function GamePoolLobbyScene({
                       className="game-pool-hotel-room-scene"
                       decorative
                       room={{
-                        game: worldGame(game),
+                        game,
                         roomId: `arranging-${game}`,
                         status: "next",
                         players: [
@@ -221,7 +217,7 @@ export function GamePoolLobbyScene({
                       className="game-pool-hotel-room-scene"
                       decorative
                       room={{
-                        game: worldGame(game),
+                        game,
                         roomId: `next-${game}`,
                         status: "next",
                         players: [],

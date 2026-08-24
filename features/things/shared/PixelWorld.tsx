@@ -87,13 +87,55 @@ function drawFloor(context: CanvasRenderingContext2D, palette: PixelPalette, var
 }
 
 function drawWindow(context: CanvasRenderingContext2D, palette: PixelPalette, variant: number) {
-  const x = variant % 2 === 0 ? 10 : 132;
+  const positions = [10, 132, 18, 124, 72, 136] as const;
+  const x = positions[variant % positions.length] ?? 10;
   rect(context, palette.stone500, x, 9, 49, 27);
   rect(context, palette.selection, x + 2, 11, 45, 23);
   line(context, palette.stone500, x + 24, 11, x + 24, 34);
   line(context, palette.stone500, x + 2, 22, x + 47, 22);
   rect(context, palette.background, x + 7, 13, 4, 2);
   rect(context, palette.background, x + 36, 25, 6, 2);
+}
+
+function drawBookcase(
+  context: CanvasRenderingContext2D,
+  palette: PixelPalette,
+  x: number,
+  y: number,
+) {
+  rect(context, palette.stone500, x, y, 25, 25);
+  rect(context, palette.background, x + 2, y + 2, 21, 21);
+  line(context, palette.stone500, x + 2, y + 11, x + 23, y + 11);
+  rect(context, palette.amber, x + 5, y + 4, 2, 7);
+  rect(context, palette.stone400, x + 9, y + 3, 3, 8);
+  rect(context, palette.selection, x + 15, y + 5, 4, 6);
+  rect(context, palette.stone300, x + 4, y + 15, 5, 8);
+  rect(context, palette.amber, x + 12, y + 14, 3, 9);
+  rect(context, palette.stone400, x + 18, y + 16, 2, 7);
+}
+
+function drawLamp(context: CanvasRenderingContext2D, palette: PixelPalette, x: number, y: number) {
+  rect(context, palette.stone500, x + 6, y + 7, 1, 16);
+  rect(context, palette.stone500, x + 2, y + 23, 9, 2);
+  rect(context, palette.amber, x + 2, y + 2, 9, 6);
+  rect(context, palette.selection, x + 4, y + 4, 5, 3);
+}
+
+function drawNoticeboard(
+  context: CanvasRenderingContext2D,
+  palette: PixelPalette,
+  x: number,
+  y: number,
+  pins: number,
+) {
+  rect(context, palette.stone500, x, y, 31, 22);
+  rect(context, palette.background, x + 2, y + 2, 27, 18);
+  for (let index = 0; index < pins; index += 1) {
+    const noteX = x + 5 + (index % 3) * 8;
+    const noteY = y + 5 + Math.floor(index / 3) * 8;
+    rect(context, index % 2 === 0 ? palette.selection : palette.stone300, noteX, noteY, 5, 5);
+    rect(context, palette.amber, noteX + 2, noteY - 1, 1, 1);
+  }
 }
 
 function drawTable(
@@ -123,7 +165,9 @@ function drawGameFurniture(
 ) {
   drawWindow(context, palette, variant);
   const mafia = game === "liars" || game === "mafia";
-  drawTable(context, palette, mafia, variant === 2 ? 67 : 72, 67);
+  const tableX = [72, 64, 78, 68, 60, 75][variant % 6] ?? 72;
+  const tableY = [67, 70, 65, 68, 66, 71][variant % 6] ?? 67;
+  drawTable(context, palette, mafia, tableX, tableY);
 
   if (game === "lost") {
     rect(context, palette.stone500, 137, 37, 40, 25);
@@ -136,10 +180,16 @@ function drawGameFurniture(
   }
 
   if (mafia) {
-    rect(context, palette.stone500, 151, 39, 27, 22);
-    rect(context, palette.background, 153, 41, 23, 18);
-    rect(context, palette.amber, 158, 48, 3, 6);
-    rect(context, palette.amber, 168, 46, 3, 8);
+    if (variant % 3 === 0) drawNoticeboard(context, palette, 147, 38, 4);
+    else if (variant % 3 === 1) {
+      drawBookcase(context, palette, 150, 36);
+      drawLamp(context, palette, 135, 39);
+    } else {
+      drawLamp(context, palette, 151, 37);
+      rect(context, palette.stone500, 171, 43, 8, 17);
+      rect(context, palette.background, 173, 45, 4, 13);
+      rect(context, palette.amber, 174, 47, 2, 2);
+    }
     return;
   }
   if (game === "imposter") {
@@ -373,10 +423,55 @@ function arrangerPose(time: number, motion: boolean): CharacterPose {
   return { x: 35, y: 82, walking: false, facing: 1, gesture: "think" };
 }
 
-function passerbyPose(time: number, motion: boolean): CharacterPose {
+function passerbyPose(time: number, motion: boolean, seed: number): CharacterPose {
   if (!motion) return { x: 92, y: 76, walking: false, facing: 1, gesture: "wave" };
 
+  const performance = seed % 3;
   const cycle = Math.min(time, 12_000);
+  if (performance === 1) {
+    if (cycle < 2_600) {
+      const progress = cycle / 2_600;
+      return {
+        x: between(18, 107, progress),
+        y: between(85, 72, progress),
+        walking: true,
+        facing: 1,
+        gesture: "none",
+      };
+    }
+    if (cycle < 6_400) return { x: 107, y: 72, walking: false, facing: 1, gesture: "think" };
+    if (cycle < 8_000) return { x: 107, y: 72, walking: false, facing: -1, gesture: "shrug" };
+    const progress = (cycle - 8_000) / 4_000;
+    return {
+      x: between(107, 184, progress),
+      y: between(72, 84, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (performance === 2) {
+    if (cycle < 3_800) {
+      const progress = cycle / 3_800;
+      return {
+        x: between(182, 87, progress),
+        y: between(84, 75, progress),
+        walking: true,
+        facing: -1,
+        gesture: "none",
+      };
+    }
+    if (cycle < 7_000) return { x: 87, y: 75, walking: false, facing: -1, gesture: "map" };
+    if (cycle < 8_500) return { x: 87, y: 75, walking: false, facing: 1, gesture: "wave" };
+    const progress = (cycle - 8_500) / 3_500;
+    return {
+      x: between(87, 18, progress),
+      y: between(75, 86, progress),
+      walking: true,
+      facing: -1,
+      gesture: "none",
+    };
+  }
   if (cycle < 3_200) {
     const progress = cycle / 3_200;
     return {
@@ -398,10 +493,12 @@ function passerbyPose(time: number, motion: boolean): CharacterPose {
   };
 }
 
-function gameIdleGesture(game: PixelWorldGame): CharacterGesture {
+function gameIdleGesture(game: PixelWorldGame, seed: number): CharacterGesture {
   if (game === "draw-country") return "map";
   if (game === "same-brain" || game === "centre") return "think";
-  if (game === "liars" || game === "mafia" || game === "imposter") return "question";
+  if (game === "liars" || game === "mafia")
+    return (["question", "think", "shrug"] as const)[seed % 3] ?? "question";
+  if (game === "imposter") return seed % 2 === 0 ? "question" : "shrug";
   return "wave";
 }
 
@@ -425,7 +522,19 @@ function playerPose(
   }
 
   if (player.ready) {
-    const [x, y] = READY_SEATS[index % READY_SEATS.length] ?? READY_SEATS[0]!;
+    const socialDeduction = game === "liars" || game === "mafia" || game === "imposter";
+    const socialSeats: typeof READY_SEATS = [
+      [61, 57],
+      [86, 52],
+      [116, 56],
+      [133, 71],
+      [116, 85],
+      [86, 88],
+      [58, 83],
+      [46, 70],
+    ];
+    const seats = socialDeduction ? socialSeats : READY_SEATS;
+    const [x, y] = seats[index % seats.length] ?? seats[0]!;
     const cycle = motion ? (time + index * 2_300 + (seed % 1_200)) % 14_000 : 0;
     const active = motion && cycle >= 7_500 && cycle < 9_200;
     return {
@@ -433,7 +542,7 @@ function playerPose(
       y,
       walking: false,
       facing: index % 3 === 0 ? 1 : -1,
-      gesture: active ? (player.lead ? "clipboard" : gameIdleGesture(game)) : "none",
+      gesture: active ? (player.lead ? "clipboard" : gameIdleGesture(game, seed)) : "none",
     };
   }
 
@@ -464,7 +573,7 @@ function playerPose(
         cycle >= 5_500 && cycle < 7_000
           ? player.lead
             ? "clipboard"
-            : gameIdleGesture(game)
+            : gameIdleGesture(game, seed)
           : "none",
     };
   if (cycle < 11_500) {
@@ -491,7 +600,7 @@ function characterPose(
   if (player.role === "lost-guest") return lostGuestPose(time, motion);
   if (player.role === "concierge") return conciergePose(time, motion);
   if (player.role === "arranger") return arrangerPose(time, motion);
-  if (player.role === "passerby") return passerbyPose(time, motion);
+  if (player.role === "passerby") return passerbyPose(time, motion, seed);
   return playerPose(game, index, player, time, motion, seed);
 }
 
@@ -657,18 +766,21 @@ export function PixelWorld({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let visible = true;
+    let intersecting = true;
     let frame = 0;
+    let timer = 0;
     const startedAt = performance.now();
-    let lastPaint = 0;
+    const canAnimate = () =>
+      intersecting && document.visibilityState === "visible" && !reduced.matches;
 
     const render = (now: number) => {
       frame = 0;
-      if (visible && (now - lastPaint >= 100 || reduced.matches)) {
-        paint(canvas, roomRef.current, now - startedAt, !reduced.matches);
-        lastPaint = now;
-      }
-      if (visible && !reduced.matches) frame = window.requestAnimationFrame(render);
+      timer = 0;
+      if (!canAnimate()) return;
+      paint(canvas, roomRef.current, now - startedAt, true);
+      timer = window.setTimeout(() => {
+        if (canAnimate()) frame = window.requestAnimationFrame(render);
+      }, 100);
     };
     const redraw = () => {
       paint(
@@ -678,39 +790,50 @@ export function PixelWorld({
         !reduced.matches,
       );
     };
+    const stop = () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      frame = 0;
+      timer = 0;
+    };
     const start = () => {
-      if (!frame && visible && !reduced.matches) frame = window.requestAnimationFrame(render);
+      if (!frame && !timer && canAnimate()) frame = window.requestAnimationFrame(render);
     };
     const resize = new ResizeObserver(redraw);
     const intersection = new IntersectionObserver(([entry]) => {
-      visible = entry?.isIntersecting ?? true;
-      if (visible) {
+      intersecting = entry?.isIntersecting ?? true;
+      if (intersecting) {
         redraw();
         start();
-      } else {
-        window.cancelAnimationFrame(frame);
-        frame = 0;
-      }
+      } else stop();
     });
     const motionChange = () => {
-      window.cancelAnimationFrame(frame);
-      frame = 0;
+      stop();
       redraw();
       start();
+    };
+    const visibilityChange = () => {
+      stop();
+      if (document.visibilityState === "visible") {
+        redraw();
+        start();
+      }
     };
 
     redrawRef.current = redraw;
     resize.observe(canvas);
     intersection.observe(canvas);
     reduced.addEventListener("change", motionChange);
+    document.addEventListener("visibilitychange", visibilityChange);
     redraw();
     start();
     return () => {
       redrawRef.current = null;
-      window.cancelAnimationFrame(frame);
+      stop();
       resize.disconnect();
       intersection.disconnect();
       reduced.removeEventListener("change", motionChange);
+      document.removeEventListener("visibilitychange", visibilityChange);
     };
   }, []);
 

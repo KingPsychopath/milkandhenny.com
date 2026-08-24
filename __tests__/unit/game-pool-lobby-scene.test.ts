@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { buildGamePoolLobbyScene, gamePoolLobbyStatus } from "@/features/things/pool/lobby-scene";
+import {
+  buildGamePoolLobbyScene,
+  gamePoolLobbyStatus,
+  gamePoolPixelWorldGame,
+} from "@/features/things/pool/lobby-scene";
+import { CENTRE_GAME_SETTINGS } from "@/features/things/centre/settings";
+import { LIARS_GAME_SETTINGS } from "@/features/things/liars/settings";
+import { gameSettingsDocument } from "@/features/things/shared/game-settings";
 import type { GamePoolRoomSummary } from "@/features/things/pool/types";
 
 function room(roomId: string, input: Partial<GamePoolRoomSummary> = {}): GamePoolRoomSummary {
@@ -17,6 +24,22 @@ function room(roomId: string, input: Partial<GamePoolRoomSummary> = {}): GamePoo
 }
 
 describe("game-pool lobby scene", () => {
+  it("uses the native social-deduction mode for the room scene", () => {
+    expect(
+      gamePoolPixelWorldGame(
+        gameSettingsDocument("liars", { ...LIARS_GAME_SETTINGS, mode: "mafia" }),
+      ),
+    ).toBe("mafia");
+    expect(
+      gamePoolPixelWorldGame(
+        gameSettingsDocument("liars", { ...LIARS_GAME_SETTINGS, mode: "imposter" }),
+      ),
+    ).toBe("imposter");
+    expect(gamePoolPixelWorldGame(gameSettingsDocument("centre", CENTRE_GAME_SETTINGS))).toBe(
+      "centre",
+    );
+  });
+
   it("keeps every room and groups open rooms before playing rooms into floors", () => {
     const scene = buildGamePoolLobbyScene([
       room("playing-1", { status: "started", playerCount: 4 }),

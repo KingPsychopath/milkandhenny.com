@@ -30,6 +30,8 @@ export interface PixelWorldRoom {
   variant?: number;
 }
 
+export const PIXEL_WORLD_SCENE_VARIANTS = 6;
+
 export function pixelWorldHash(value: string) {
   let hash = 2166136261;
   for (const character of value) {
@@ -40,7 +42,7 @@ export function pixelWorldHash(value: string) {
 }
 
 export function pixelWorldVariant(roomId: string) {
-  return pixelWorldHash(roomId) % 4;
+  return pixelWorldHash(roomId) % PIXEL_WORLD_SCENE_VARIANTS;
 }
 
 export function pixelWorldTone(playerId: string) {

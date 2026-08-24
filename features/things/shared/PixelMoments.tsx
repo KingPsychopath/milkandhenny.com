@@ -34,6 +34,7 @@ export function LostGuest404() {
 
 export function HomepageFooterVisitor() {
   const [visible, setVisible] = useState(false);
+  const [moment, setMoment] = useState(0);
 
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -48,6 +49,7 @@ export function HomepageFooterVisitor() {
         () => {
           shown = true;
           sessionStorage.setItem(FOOTER_VISITOR_SEEN, "1");
+          setMoment(Math.floor(Math.random() * 3));
           setVisible(true);
           departureTimer = window.setTimeout(() => setVisible(false), VISIT_DURATION_MS);
         },
@@ -74,12 +76,12 @@ export function HomepageFooterVisitor() {
         decorative
         room={{
           game: "hotel",
-          roomId: "homepage-footer-visitor",
+          roomId: `homepage-footer-visitor-${moment}`,
           status: "waiting",
           capacity: 1,
           players: [
             {
-              id: "homepage-footer-visitor",
+              id: `homepage-footer-visitor-${moment}`,
               name: "passing guest",
               ready: false,
               role: "passerby",
