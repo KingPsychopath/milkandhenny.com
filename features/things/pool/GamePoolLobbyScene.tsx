@@ -142,8 +142,24 @@ export function GamePoolLobbyScene({
                         label={`${room.label}: ${room.playerCount} of ${room.capacity}, ${room.status === "started" ? "playing" : "waiting"}`}
                       />
                       {room.actors.some(({ label }) => label) ? (
-                        <span className="game-pool-hotel-room-people">
-                          players here:{" "}
+                        <span
+                          className="game-pool-hotel-room-people"
+                          aria-label={`Players in ${room.label}: ${room.actors
+                            .map(({ label }) => label)
+                            .filter(Boolean)
+                            .join(
+                              ", ",
+                            )}${room.hiddenCount > 0 ? ` and ${room.hiddenCount} more` : ""}`}
+                        >
+                          <svg
+                            className="game-pool-hotel-room-people-mark"
+                            viewBox="0 0 16 16"
+                            aria-hidden="true"
+                          >
+                            <circle cx="5.5" cy="5" r="2" />
+                            <circle cx="10.5" cy="6" r="1.6" />
+                            <path d="M1.8 13c.3-2.3 1.6-3.5 3.7-3.5S8.9 10.7 9.2 13M8 13c.2-1.8 1.2-2.9 2.8-2.9 1.8 0 2.9 1 3.2 2.9" />
+                          </svg>
                           {room.actors
                             .map(({ label }) => label)
                             .filter(Boolean)

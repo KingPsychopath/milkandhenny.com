@@ -178,7 +178,9 @@
 }
 
 .game-pool-hotel-room-people {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   overflow: hidden;
   padding-top: 0.35rem;
   color: var(--stone-500);
@@ -186,6 +188,18 @@
   font-size: clamp(0.42rem, 1.2vw, 0.55rem);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.game-pool-hotel-room-people-mark {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.15;
+  opacity: 0.78;
 }
 
 .game-pool-hotel-room-state {
