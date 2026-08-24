@@ -8,6 +8,8 @@ import {
   updateGamePoolEntrance,
 } from "@/features/things/pool/store.server";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
+import { getGamePoolPublicView } from "@/features/things/pool/pool.server";
+import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
 describeWithDatabase("game-pool public defaults (postgres)", () => {
@@ -90,5 +92,43 @@ describeWithDatabase("game-pool public defaults (postgres)", () => {
     );
     expect(defaults).toHaveLength(1);
     expect([first.id, second.id]).toContain(defaults[0]?.id);
+  });
+
+  it("exposes stable per-run sprite identities without exposing assignment ids", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "liars",
+      label: "Private lobby",
+      nameVisibility: "initials",
+      actionId: "sprite-public-view",
+    });
+    const opened = await openGamePoolRun(entrance.id, {
+      actionId: "sprite-public-view-run",
+      durationMinutes: 60,
+    });
+    if (!opened?.run) throw new Error("Could not open the test pool");
+
+    const assignmentId = "gpa_1234567890123456789012";
+    await query(
+      `insert into game_pool_rooms (run_id, room_id, player_count, capacity)
+       values ($1, 'ABCD234', 1, 9)`,
+      [opened.run.id],
+    );
+    await query(
+      `insert into game_pool_assignments
+       (id, run_id, room_id, client_id, player_id, display_name)
+       values ($1, $2, 'ABCD234', 'sprite-client-id', 'player-secret', 'Abel')`,
+      [assignmentId, opened.run.id],
+    );
+
+    const first = await getGamePoolPublicView(opened.token);
+    const second = await getGamePoolPublicView(opened.token);
+    const firstOccupant = first.rooms?.[0]?.occupants[0];
+    const secondOccupant = second.rooms?.[0]?.occupants[0];
+
+    expect(firstOccupant).toMatchObject({ label: "A" });
+    expect(firstOccupant?.id).toBe(secondOccupant?.id);
+    expect(firstOccupant?.id).not.toContain(assignmentId);
+    expect(JSON.stringify(first)).not.toContain("player-secret");
+    expect(JSON.stringify(first)).not.toContain("sprite-client-id");
   });
 });

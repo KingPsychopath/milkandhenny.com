@@ -89,13 +89,20 @@ export interface GamePoolRun {
   closedAt: string | null;
 }
 
+export interface GamePoolPublicOccupant {
+  /** Opaque within one pool run. Never a player, client, or assignment identifier. */
+  id: string;
+  /** Omitted when the pool exposes counts only. */
+  label?: string;
+}
+
 export interface GamePoolRoomSummary {
   roomId: string;
   label: string;
   status: "open" | "started" | "closed";
   playerCount: number;
   capacity: number;
-  players: string[];
+  occupants: GamePoolPublicOccupant[];
   createdAt: string;
 }
 

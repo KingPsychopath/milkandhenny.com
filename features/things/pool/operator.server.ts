@@ -67,7 +67,7 @@ export async function getGamePoolOperatorView(token: string): Promise<GamePoolOp
         status: room.status === "open" ? "open" : room.status === "closed" ? "closed" : "started",
         playerCount: room.player_count,
         capacity: room.capacity,
-        players: [],
+        occupants: [],
         createdAt: room.created_at.toISOString(),
       }),
     ),

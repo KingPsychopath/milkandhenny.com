@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { getRedis } from "@/lib/platform/redis.server";
 import { query } from "@/lib/platform/postgres.server";
 import { remainingMultiplayerRoomTtlSeconds } from "../shared/room-primitives.server";
@@ -26,6 +28,7 @@ import { findGamePoolRunForClient } from "./membership.server";
 import { recordGamePoolAllocation } from "./operations.server";
 
 interface ActiveAssignmentRow {
+  id: string;
   room_id: string;
   display_name: string;
 }
@@ -44,6 +47,10 @@ function publicName(name: string, visibility: GamePoolNameVisibility) {
   if (visibility === "counts") return null;
   if (visibility === "initials") return Array.from(name.trim())[0]?.toLocaleUpperCase() ?? null;
   return name;
+}
+
+function publicOccupantId(runId: string, assignmentId: string) {
+  return createHash("sha256").update(`${runId}\0${assignmentId}`).digest("base64url").slice(0, 18);
 }
 
 export async function getGamePoolPublicView(token: string): Promise<GamePoolPublicView> {
@@ -70,18 +77,18 @@ export async function getGamePoolPublicView(token: string): Promise<GamePoolPubl
 
   const roomRows = await listGamePoolRoomRows(run.id);
   const assignments = await query<ActiveAssignmentRow>(
-    `select room_id, display_name from game_pool_assignments
+    `select id, room_id, display_name from game_pool_assignments
      where run_id = $1 and status = 'active'
      order by created_at`,
     [run.id],
   );
-  const namesByRoom = new Map<string, string[]>();
+  const occupantsByRoom = new Map<string, Array<{ id: string; label: string }>>();
   for (const assignment of assignments) {
-    const name = publicName(assignment.display_name, run.nameVisibility);
-    if (!name) continue;
-    const names = namesByRoom.get(assignment.room_id) ?? [];
-    names.push(name);
-    namesByRoom.set(assignment.room_id, names);
+    const label = publicName(assignment.display_name, run.nameVisibility);
+    if (!label) continue;
+    const occupants = occupantsByRoom.get(assignment.room_id) ?? [];
+    occupants.push({ id: publicOccupantId(run.id, assignment.id), label });
+    occupantsByRoom.set(assignment.room_id, occupants);
   }
   const rooms: GamePoolRoomSummary[] = roomRows
     .filter((room) => room.status !== "closed")
@@ -91,7 +98,7 @@ export async function getGamePoolPublicView(token: string): Promise<GamePoolPubl
       status: room.status === "open" ? "open" : "started",
       playerCount: room.player_count,
       capacity: Math.min(room.capacity, run.targetSize),
-      players: namesByRoom.get(room.room_id) ?? [],
+      occupants: occupantsByRoom.get(room.room_id) ?? [],
       createdAt: room.created_at.toISOString(),
     }));
   return {

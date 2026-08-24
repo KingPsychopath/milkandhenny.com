@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
+import { GamePoolLobbyScene } from "./GamePoolLobbyScene";
 import { assignGamePoolRoomFn, getGamePoolPublicViewFn } from "./pool.functions";
 import {
   adoptGamePoolAssignment,
@@ -9,6 +10,11 @@ import {
 } from "./pool-session.client";
 import type { GamePoolPublicView } from "./types";
 import { useMultiplayerWakeSocket } from "../shared/useMultiplayerWakeSocket";
+
+function showRoomFoundJourney() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
+  return new Promise<void>((resolve) => window.setTimeout(resolve, 420));
+}
 
 export function GamePoolEntranceApp({
   token,
@@ -25,6 +31,7 @@ export function GamePoolEntranceApp({
   const messageId = useId();
   const [view, setView] = useState(initialView);
   const [busy, setBusy] = useState(false);
+  const [destinationRoomId, setDestinationRoomId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(initialView.message ?? null);
   const [roomsOpen, setRoomsOpen] = useState(false);
   const [targetRejected, setTargetRejected] = useState(false);
@@ -89,6 +96,7 @@ export function GamePoolEntranceApp({
         return;
       }
       setBusy(true);
+      setDestinationRoomId(null);
       setMessage(null);
       const clientId = gamePoolClientId();
       try {
@@ -97,6 +105,8 @@ export function GamePoolEntranceApp({
         });
         remember(name);
         adoptGamePoolAssignment(assignment, { token, clientId });
+        setDestinationRoomId(assignment.roomId);
+        await showRoomFoundJourney();
         window.location.assign(gamePoolPlayerPath(assignment));
       } catch (error) {
         const errorMessage =
@@ -105,6 +115,7 @@ export function GamePoolEntranceApp({
           setTargetRejected(true);
           setMessage("That room just filled or started. Join the next available room.");
         } else setMessage(errorMessage);
+        setDestinationRoomId(null);
         setBusy(false);
         await refresh();
       }
@@ -162,9 +173,21 @@ export function GamePoolEntranceApp({
         </p>
       </header>
 
+      {accepting && view.run ? (
+        <GamePoolLobbyScene
+          allowNewRooms={view.run.allowNewRooms}
+          destinationRoomId={destinationRoomId}
+          joining={busy}
+          live={socket.state === "connected"}
+          requestedRoomId={requestedRoomId}
+          rooms={rooms}
+          targetSize={view.run.targetSize}
+        />
+      ) : null}
+
       {accepting ? (
         <form
-          className="mt-10 border-t theme-border pt-8"
+          className="mt-8 border-t theme-border pt-8"
           aria-labelledby="join-title"
           onSubmit={(event) => {
             event.preventDefault();
@@ -176,7 +199,7 @@ export function GamePoolEntranceApp({
               ? `Join ${requestedRoom.label}`
               : requestedRoomId
                 ? "Join the next room"
-                : "Join the game"}
+                : "Enter the lobby"}
           </h2>
           <label htmlFor={nameId} className="mt-6 block font-mono text-xs theme-muted">
             your name
@@ -205,7 +228,7 @@ export function GamePoolEntranceApp({
                 ? `join ${requestedRoom.label}`
                 : requestedRoomId
                   ? "join next available room"
-                  : "join now"}
+                  : "find me a room"}
           </button>
           {view.run?.allowNewRooms ? (
             <button
@@ -259,8 +282,8 @@ export function GamePoolEntranceApp({
                   <div className="min-w-0">
                     <p className="font-mono text-sm">{room.label}</p>
                     <p className="mt-1 truncate font-mono text-xs theme-muted">
-                      {room.players.length > 0
-                        ? room.players.join(", ")
+                      {room.occupants.some(({ label }) => label)
+                        ? room.occupants.flatMap(({ label }) => (label ? [label] : [])).join(", ")
                         : `${room.playerCount} joined`}
                       {` · ${room.playerCount} of ${room.capacity}`}
                     </p>
