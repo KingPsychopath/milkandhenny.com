@@ -399,7 +399,25 @@ export async function sendCommunicationStageNow(stageId: string, request?: Reque
   return expandDueCommunicationStages(request);
 }
 
-type StageRecipient = { email: string; displayName: string | null; emailHash: string };
+type StageRecipient = { email: string; displayName: string | null; emailHash: string; issuedAt: string };
+
+function localDayKey(value: string, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function isEventDay(recipient: StageRecipient, event: { startsAt: string; timezone: string }): boolean {
+  return localDayKey(recipient.issuedAt, event.timezone) === localDayKey(event.startsAt, event.timezone);
+}
+
+function boughtWithin48Hours(recipient: StageRecipient, event: { startsAt: string }): boolean {
+  const hoursUntilStart = (new Date(event.startsAt).getTime() - new Date(recipient.issuedAt).getTime()) / 3_600_000;
+  return hoursUntilStart >= 0 && hoursUntilStart <= 48;
+}
 
 async function recipientsForStage(stage: CommunicationPlanStage, eventSlug: string): Promise<StageRecipient[]> {
   if (stage.audience !== "event_attendees") return [];
@@ -409,9 +427,34 @@ async function recipientsForStage(stage: CommunicationPlanStage, eventSlug: stri
     if (ticket.status !== "valid" || !ticket.email) continue;
     const email = ticket.email.trim().toLowerCase();
     const emailHash = hashEmail(email);
-    if (!recipients.has(emailHash)) recipients.set(emailHash, { email, emailHash, displayName: ticket.holderName || null });
+    const existing = recipients.get(emailHash);
+    if (!existing) {
+      recipients.set(emailHash, { email, emailHash, displayName: ticket.holderName || null, issuedAt: ticket.issuedAt });
+    } else if (new Date(ticket.issuedAt).getTime() < new Date(existing.issuedAt).getTime()) {
+      existing.issuedAt = ticket.issuedAt;
+    }
   }
   return [...recipients.values()];
+}
+
+async function hasStageDelivery(stageId: string, emailHash: string): Promise<boolean> {
+  const rows = await query<{ exists: boolean }>(
+    `select exists(select 1 from communication_stage_deliveries where stage_id = $1 and email_hash = $2) as exists`,
+    [stageId, emailHash],
+  );
+  return rows[0]?.exists === true;
+}
+
+async function shouldSkipStageForRecipient(
+  stage: CommunicationPlanStage,
+  plan: CommunicationPlan,
+  recipient: StageRecipient,
+  event: { startsAt: string; timezone: string },
+): Promise<boolean> {
+  if (stage.stageKey === "getting-there" && isEventDay(recipient, event)) return true;
+  if (stage.stageKey !== "today" || isEventDay(recipient, event) || !boughtWithin48Hours(recipient, event)) return false;
+  const practicalStage = plan.stages.find((candidate) => candidate.stageKey === "getting-there");
+  return practicalStage ? hasStageDelivery(practicalStage.id, recipient.emailHash) : false;
 }
 
 export async function previewCommunicationStage(stageId: string): Promise<{ recipientCount: number; recipients: Array<{ name: string | null; email: string }> }> {
@@ -481,6 +524,17 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
     let recipientCount = 0;
     let stageQueued = 0;
     for (const recipient of recipients) {
+      if (await shouldSkipStageForRecipient(stage, plan, recipient, event)) {
+        const skipped = await query<{ email_hash: string }>(
+          `insert into communication_stage_deliveries (stage_id, email_hash, email, status)
+           values ($1,$2,$3,'skipped')
+           on conflict (stage_id, email_hash) do nothing
+           returning email_hash`,
+          [stage.id, recipient.emailHash, recipient.email],
+        );
+        if (skipped[0]) recipientCount += 1;
+        continue;
+      }
       const inserted = await query<{ email_hash: string }>(
         `insert into communication_stage_deliveries (stage_id, email_hash, email)
          values ($1,$2,$3)
