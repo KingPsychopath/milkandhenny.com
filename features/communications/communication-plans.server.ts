@@ -323,13 +323,14 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const surveyReminderAt = localDateAt(event, 4, 10);
   const eventMediaBase = `${BASE_URL}/media/events/after-school-club-2026-09-01`;
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
-  const gif = `${eventMediaBase}/walking.gif`;
-  const poster = `${eventMediaBase}/walking-poster.jpg`;
-  const arrivalGif = `${eventMediaBase}/arrival.gif`;
-  const arrivalPoster = `${eventMediaBase}/arrival-poster.png`;
-  const preparationMascot = `${emailMascotBase}/preparation.png`;
-  const dayOfMascot = `${emailMascotBase}/day-of.png`;
-  const feedbackMascot = `${emailMascotBase}/feedback.png`;
+  const mediaVersion = "?v=1";
+  const gif = `${eventMediaBase}/walking.gif${mediaVersion}`;
+  const poster = `${eventMediaBase}/walking-poster.jpg${mediaVersion}`;
+  const arrivalGif = `${eventMediaBase}/arrival.gif${mediaVersion}`;
+  const arrivalPoster = `${eventMediaBase}/arrival-poster.png${mediaVersion}`;
+  const preparationMascot = `${emailMascotBase}/preparation.png${mediaVersion}`;
+  const dayOfMascot = `${emailMascotBase}/day-of.png${mediaVersion}`;
+  const feedbackMascot = `${emailMascotBase}/feedback.png${mediaVersion}`;
   const stages = [
     {
       stageKey: "prepare",

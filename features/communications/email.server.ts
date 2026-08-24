@@ -76,6 +76,7 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
     "links.walkingVideo": buildAppUrl(
       origin,
       "/media/events/after-school-club-2026-09-01/walking.mp4",
+      { search: { v: "1" } },
     ),
     "links.contact": buildAppUrl(origin, "/contact"),
     "links.email": "mailto:hello@milkandhenny.com",

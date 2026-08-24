@@ -209,7 +209,9 @@ function buildHtml(
     ? "address, venue door code and your ticket"
     : "address and your ticket";
   const ticketMascotUrl = escapeHtml(
-    buildAppUrl(origin, "/media/email/mascots/ticket-confirmation.png"),
+    buildAppUrl(origin, "/media/email/mascots/ticket-confirmation.png", {
+      search: { v: "1" },
+    }),
   );
   const contentHtml = `${detail.length > 0 ? `<p style="margin:0 0 20px">${detail.join("<br>")}</p>` : ""}
     ${qrs.length > 0 ? `<div style="text-align:center;margin:24px 0">${qrBlocks}</div>` : ""}
