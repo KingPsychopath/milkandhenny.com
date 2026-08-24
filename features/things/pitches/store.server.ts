@@ -1339,7 +1339,7 @@ export async function restorePitchDeckFromTrash(deckId: string): Promise<StoredP
 
 export async function markExpiredPitchDecksDeleting(limit = 100): Promise<StoredPitchDeck[]> {
   return transaction(async (client) => {
-    await client.query(
+    const expired = await client.query<PitchDeckRow>(
       `update pitch_decks
           set lifecycle = 'trashed',
               trashed_at = now(),
@@ -1353,9 +1353,22 @@ export async function markExpiredPitchDecksDeleting(limit = 100): Promise<Stored
            order by draft_expires_at, id
            for update skip locked
            limit $1
-        )`,
+        )
+        returning *`,
       [Math.min(500, Math.max(1, limit)), PITCH_TRASH_RETENTION_DAYS],
     );
+    for (const row of expired.rows) {
+      await insertAudit(client, {
+        deckId: row.id,
+        action: "deck.expired",
+        actor: "system",
+        metadata: {
+          reason: "draft-expired",
+          draftExpiresAt: iso(row.draft_expires_at),
+          purgeAfter: iso(row.purge_after!),
+        },
+      });
+    }
     const rows = await client.query<PitchDeckRow>(
       `with candidates as (
          select id from pitch_decks

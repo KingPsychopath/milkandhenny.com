@@ -31,6 +31,8 @@ type PitchDetail = {
     draftExpiresAt: string;
     publishedAt?: string;
     updatedAt: string;
+    trashedAt?: string;
+    purgeAfter?: string;
   };
   assets: PitchAsset[];
   backups: Array<{
@@ -68,6 +70,41 @@ function when(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function describeTrash(
+  pitch: PitchDetail["pitch"],
+  audit: PitchDetail["audit"],
+): {
+  summary: string;
+  movedBy: string;
+  movedAt?: string;
+} {
+  const event = audit.find(
+    (entry) => entry.action === "deck.trashed" || entry.action === "deck.expired",
+  );
+  if (event?.action === "deck.expired") {
+    return {
+      summary: "The draft expired, so the studio moved it to Trash automatically.",
+      movedBy: "studio automation",
+      movedAt: event.createdAt,
+    };
+  }
+  if (event?.action === "deck.trashed") {
+    return {
+      summary:
+        event.actor === "admin"
+          ? "An admin moved this pitch to Trash. Owners cannot move pitches to Trash themselves."
+          : `This pitch was moved to Trash by ${event.actor}.`,
+      movedBy: event.actor,
+      movedAt: event.createdAt,
+    };
+  }
+  return {
+    summary: "This pitch is in Trash, but the original reason is not recorded.",
+    movedBy: "not recorded",
+    movedAt: pitch.trashedAt,
+  };
 }
 
 export function PitchesPanel({
@@ -179,13 +216,13 @@ export function PitchesPanel({
     }
   }
 
-  async function restoreTrash(pitch: PitchDeckAdminSummary) {
-    setBusy(pitch.id);
+  async function restoreTrash(deckId: string) {
+    setBusy(deckId);
     try {
       const response = await authFetch("/api/admin/pitches", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restore-trash", deckId: pitch.id }),
+        body: JSON.stringify({ action: "restore-trash", deckId }),
       });
       if (!response.ok) throw new Error("Could not restore pitch from Trash");
       onStatus("Pitch restored from Trash.");
@@ -308,6 +345,8 @@ export function PitchesPanel({
     }),
     { drafts: 0, published: 0, bytes: 0 },
   );
+  const isTrashed = detail?.pitch.lifecycle === "trashed";
+  const trashStatus = detail && isTrashed ? describeTrash(detail.pitch, detail.audit) : undefined;
 
   return (
     <section id="pitch-manager" className="scroll-mt-6">
@@ -436,7 +475,7 @@ export function PitchesPanel({
                   <button
                     type="button"
                     disabled={busy === pitch.id}
-                    onClick={() => void restoreTrash(pitch)}
+                    onClick={() => void restoreTrash(pitch.id)}
                     className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
                   >
                     restore
@@ -469,9 +508,11 @@ export function PitchesPanel({
               </p>
               <h3 className="mt-1 font-serif text-2xl text-foreground">{detail.pitch.title}</h3>
               <p className="mt-1 font-mono text-micro theme-muted">
-                {detail.pitch.publishedAt
-                  ? `sealed ${when(detail.pitch.publishedAt)} · working copy ${when(detail.pitch.updatedAt)}`
-                  : `private draft · expires ${when(detail.pitch.draftExpiresAt)}`}
+                {isTrashed
+                  ? `in Trash · purges ${detail.pitch.purgeAfter ? when(detail.pitch.purgeAfter) : "after the recovery window"}`
+                  : detail.pitch.publishedAt
+                    ? `sealed ${when(detail.pitch.publishedAt)} · working copy ${when(detail.pitch.updatedAt)}`
+                    : `private draft · expires ${when(detail.pitch.draftExpiresAt)}`}
               </p>
             </div>
             <button
@@ -493,45 +534,48 @@ export function PitchesPanel({
             <label className="font-mono text-micro theme-muted sm:col-span-2">
               pitch title
               <input
+                disabled={isTrashed}
                 value={form.title}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, title: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-serif text-xl text-foreground outline-none"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-serif text-xl text-foreground outline-none disabled:opacity-50"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
               owner name
               <input
+                disabled={isTrashed}
                 value={form.ownerName}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, ownerName: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none disabled:opacity-50"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
               owner email
               <input
+                disabled={isTrashed}
                 type="email"
                 value={form.ownerEmail}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, ownerEmail: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none disabled:opacity-50"
               />
             </label>
             <div className="flex flex-wrap gap-4 sm:col-span-2">
               <button
                 type="submit"
-                disabled={Boolean(busy)}
+                disabled={isTrashed || Boolean(busy)}
                 className="min-h-10 bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
               >
                 save details
               </button>
               <button
                 type="button"
-                disabled={Boolean(busy)}
+                disabled={isTrashed || Boolean(busy)}
                 onClick={() => void updateDetail("resend-access")}
                 className="min-h-10 border-b theme-border-strong px-2 font-mono text-xs text-foreground disabled:opacity-40"
               >
@@ -539,6 +583,60 @@ export function PitchesPanel({
               </button>
             </div>
           </form>
+
+          {isTrashed && trashStatus ? (
+            <section
+              className="mt-6 border-y theme-border py-5"
+              aria-labelledby="pitch-trash-status-heading"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">
+                    trash status
+                  </p>
+                  <h4
+                    id="pitch-trash-status-heading"
+                    className="mt-1 font-serif text-xl text-foreground"
+                  >
+                    recoverable until{" "}
+                    {detail.pitch.purgeAfter ? when(detail.pitch.purgeAfter) : "the purge date"}
+                  </h4>
+                  <p className="mt-2 max-w-2xl font-serif text-base leading-relaxed theme-muted">
+                    {trashStatus.summary}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy === detail.pitch.id}
+                  onClick={() => void restoreTrash(detail.pitch.id)}
+                  className="min-h-11 border theme-border-strong px-4 font-mono text-xs text-foreground hover:opacity-70 disabled:opacity-40"
+                >
+                  {busy === detail.pitch.id ? "restoring…" : "restore pitch"}
+                </button>
+              </div>
+              <dl className="mt-5 grid gap-4 border-t theme-border pt-4 font-mono text-micro sm:grid-cols-3">
+                <div>
+                  <dt className="theme-muted">moved by</dt>
+                  <dd className="mt-1 text-foreground">{trashStatus.movedBy}</dd>
+                </div>
+                <div>
+                  <dt className="theme-muted">moved at</dt>
+                  <dd className="mt-1 text-foreground">
+                    {trashStatus.movedAt ? when(trashStatus.movedAt) : "not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="theme-muted">owner access</dt>
+                  <dd className="mt-1 text-foreground">paused while in Trash</dd>
+                </div>
+              </dl>
+              <p className="mt-4 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+                An admin must restore this pitch before the purge date. Restoring keeps the working
+                copy and makes the owner&apos;s existing private link usable again. Restore it
+                first, then send a fresh link if they need one.
+              </p>
+            </section>
+          ) : null}
 
           <p className="mt-8 font-mono text-micro uppercase tracking-[0.14em] theme-muted">
             current working slides
