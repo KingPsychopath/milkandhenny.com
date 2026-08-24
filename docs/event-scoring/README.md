@@ -209,7 +209,7 @@ Confirm each decision before the affected implementation begins.
 - [ ] Awards create positive postings.
 - [ ] Penalties create negative postings.
 - [ ] Transfers create an atomic debit and credit.
-- [ ] Reversals create exact opposite postings and reference the original transaction.
+- [x] Reversals create exact opposite postings and reference the original transaction.
 - [ ] Every transaction records event, activity, source, actor, reason, rule revision, and time.
 - [ ] Every external command has an idempotency key.
 - [ ] A repeated command returns the original outcome without another posting.

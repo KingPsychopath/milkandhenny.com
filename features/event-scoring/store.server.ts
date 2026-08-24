@@ -966,6 +966,17 @@ async function existingTransaction(
 export async function recordScore(
   input: RecordScoreInput,
 ): Promise<ScoreStoreResult<ScoreTransaction>> {
+  try {
+    return await transaction((client) => recordScoreInTransaction(client, input));
+  } catch (error) {
+    return scoreConstraintError(error);
+  }
+}
+
+export async function recordScoreInTransaction(
+  client: PoolClient,
+  input: RecordScoreInput,
+): Promise<ScoreStoreResult<ScoreTransaction>> {
   if (!input.eventSlug || !input.sourceId || !input.idempotencyKey || input.postings.length === 0) {
     return {
       ok: false,
@@ -980,97 +991,85 @@ export async function recordScore(
     return { ok: false, status: 400, error: "Score postings must be whole non-zero points" };
   }
 
-  try {
-    return await transaction(async (client) => {
-      const settings = await lockSettings(client, input.eventSlug);
-      if (input.activityId) {
-        const activity = await client.query<{ id: string }>(
-          `select id from score_activities where id = $1 and event_slug = $2`,
-          [input.activityId, input.eventSlug],
-        );
-        if (!activity.rows[0]) return { ok: false, status: 404, error: "Score activity not found" };
-      }
-      const duplicate = await existingTransaction(client, input.eventSlug, input.idempotencyKey);
-      if (duplicate) return { ok: true, value: duplicate };
+  const settings = await lockSettings(client, input.eventSlug);
+  if (input.activityId) {
+    const activity = await client.query<{ id: string }>(
+      `select id from score_activities where id = $1 and event_slug = $2`,
+      [input.activityId, input.eventSlug],
+    );
+    if (!activity.rows[0]) return { ok: false, status: 404, error: "Score activity not found" };
+  }
+  const duplicate = await existingTransaction(client, input.eventSlug, input.idempotencyKey);
+  if (duplicate) return { ok: true, value: duplicate };
 
-      let requestedStatus = input.status ?? "accepted";
-      if (settings.state === "frozen" && requestedStatus === "accepted") {
-        requestedStatus = "held";
-      }
-      if (settings.state === "closed" && requestedStatus === "accepted") {
+  let requestedStatus = input.status ?? "accepted";
+  if (settings.state === "frozen" && requestedStatus === "accepted") {
+    requestedStatus = "held";
+  }
+  if (settings.state === "closed" && requestedStatus === "accepted") {
+    return {
+      ok: false,
+      status: 409,
+      error: "Scoring is closed; this action needs admin review",
+    };
+  }
+  if (settings.state !== "live" && requestedStatus === "accepted") {
+    return { ok: false, status: 409, error: "Scoring is not live" };
+  }
+
+  const participantIds = [...new Set(input.postings.map((posting) => posting.participantId))];
+  const participantResult = await client.query<{
+    id: string;
+    event_slug: string;
+    status: string;
+  }>(
+    `select id, event_slug, status from event_participants
+          where id = any($1::text[]) for update`,
+    [participantIds],
+  );
+  if (
+    participantResult.rows.length !== participantIds.length ||
+    participantResult.rows.some(
+      (participant) =>
+        participant.event_slug !== input.eventSlug || participant.status !== "active",
+    )
+  ) {
+    return { ok: false, status: 409, error: "One participant cannot receive this score" };
+  }
+
+  if (input.postings.some((posting) => posting.points < 0)) {
+    const balances = await client.query<{ participant_id: string; balance: number }>(
+      `select participant_id, balance from score_projections
+            where participant_id = any($1::text[]) for update`,
+      [participantIds],
+    );
+    const byParticipant = new Map(balances.rows.map((row) => [row.participant_id, row.balance]));
+    const deltas = new Map<string, number>();
+    for (const posting of input.postings) {
+      deltas.set(posting.participantId, (deltas.get(posting.participantId) ?? 0) + posting.points);
+    }
+    for (const [participantId, delta] of deltas) {
+      if ((byParticipant.get(participantId) ?? 0) + delta < 0) {
         return {
           ok: false,
           status: 409,
-          error: "Scoring is closed; this action needs admin review",
+          error: "That correction would create a negative balance",
         };
       }
-      if (settings.state !== "live" && requestedStatus === "accepted") {
-        return { ok: false, status: 409, error: "Scoring is not live" };
-      }
-
-      const participantIds = [...new Set(input.postings.map((posting) => posting.participantId))];
-      const participantResult = await client.query<{
-        id: string;
-        event_slug: string;
-        status: string;
-      }>(
-        `select id, event_slug, status from event_participants
-          where id = any($1::text[]) for update`,
-        [participantIds],
-      );
-      if (
-        participantResult.rows.length !== participantIds.length ||
-        participantResult.rows.some(
-          (participant) =>
-            participant.event_slug !== input.eventSlug || participant.status !== "active",
-        )
-      ) {
-        return { ok: false, status: 409, error: "One participant cannot receive this score" };
-      }
-
-      if (input.postings.some((posting) => posting.points < 0)) {
-        const balances = await client.query<{ participant_id: string; balance: number }>(
-          `select participant_id, balance from score_projections
-            where participant_id = any($1::text[]) for update`,
-          [participantIds],
-        );
-        const byParticipant = new Map(
-          balances.rows.map((row) => [row.participant_id, row.balance]),
-        );
-        const deltas = new Map<string, number>();
-        for (const posting of input.postings) {
-          deltas.set(
-            posting.participantId,
-            (deltas.get(posting.participantId) ?? 0) + posting.points,
-          );
-        }
-        for (const [participantId, delta] of deltas) {
-          if ((byParticipant.get(participantId) ?? 0) + delta < 0) {
-            return {
-              ok: false,
-              status: 409,
-              error: "That correction would create a negative balance",
-            };
-          }
-        }
-      }
-
-      return await insertTransaction(
-        client,
-        input,
-        requestedStatus,
-        requestedStatus === "accepted",
-      );
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("score_transactions_source_idx")) {
-      return { ok: false, status: 409, error: "This source has already been scored" };
     }
-    if (error instanceof Error && error.message.includes("score_reversals_original_idx")) {
-      return { ok: false, status: 409, error: "This score has already been reversed" };
-    }
-    throw error;
   }
+
+  return insertTransaction(client, input, requestedStatus, requestedStatus === "accepted");
+}
+
+function scoreConstraintError(error: unknown): never | ScoreStoreResult<ScoreTransaction> {
+  if (error instanceof Error && error.message.includes("score_transactions_source_idx")) {
+    return { ok: false, status: 409, error: "This source has already been scored" };
+  }
+  if (error instanceof Error && error.message.includes("score_reversals_original_idx")) {
+    return { ok: false, status: 409, error: "This score has already been reversed" };
+  }
+  throw error;
 }
 
 async function insertTransaction(
@@ -1224,27 +1223,49 @@ export async function reverseScore(
     "eventSlug" | "postings" | "sourceType" | "sourceId" | "originalTransactionId"
   >,
 ): Promise<ScoreStoreResult<ScoreTransaction>> {
-  const original = await queryOne<{ status: ScoreTransactionStatus; event_slug: string }>(
-    `select status, event_slug from score_transactions where id = $1 and event_slug = $2`,
+  try {
+    return await transaction((client) =>
+      reverseScoreInTransaction(client, eventSlug, originalTransactionId, input),
+    );
+  } catch (error) {
+    return scoreConstraintError(error);
+  }
+}
+
+export async function reverseScoreInTransaction(
+  client: PoolClient,
+  eventSlug: string,
+  originalTransactionId: string,
+  input: Omit<
+    RecordScoreInput,
+    "eventSlug" | "postings" | "sourceType" | "sourceId" | "originalTransactionId"
+  >,
+): Promise<ScoreStoreResult<ScoreTransaction>> {
+  const originalResult = await client.query<{
+    status: ScoreTransactionStatus;
+    event_slug: string;
+  }>(
+    `select status, event_slug from score_transactions where id = $1 and event_slug = $2 for update`,
     [originalTransactionId, eventSlug],
   );
+  const original = originalResult.rows[0];
   if (!original) return { ok: false, status: 404, error: "Original score was not found" };
   if (original.status !== "accepted") {
     return { ok: false, status: 409, error: "Only an accepted score can be reversed" };
   }
-  const originals = await query<PostingRow>(
+  const originals = await client.query<PostingRow>(
     `select participant_id, points, team_id from score_postings where transaction_id = $1`,
     [originalTransactionId],
   );
-  if (originals.length === 0)
+  if (originals.rows.length === 0)
     return { ok: false, status: 404, error: "Original score was not found" };
-  return recordScore({
+  return recordScoreInTransaction(client, {
     ...input,
     eventSlug,
     sourceType: "reversal",
     sourceId: originalTransactionId,
     originalTransactionId,
-    postings: originals.map((posting) => ({
+    postings: originals.rows.map((posting) => ({
       participantId: posting.participant_id,
       points: -posting.points,
       teamId: posting.team_id ?? undefined,

@@ -11,6 +11,7 @@ import {
   participantForTicket,
   recordScore,
   rebuildEventProjections,
+  reverseScore,
   setTeamMembership,
 } from "@/features/event-scoring/store.server";
 import { renameEventSlug } from "@/features/events/store.server";
@@ -192,6 +193,47 @@ describeWithDatabase("event scoring postgres", () => {
     const rebuilt = await rebuildEventProjections("scoring-night");
     expect(rebuilt.balances[participant!.id]).toBe(5);
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(5);
+  });
+
+  it("reverses an accepted score with one exact linked opposite posting", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const awarded = await recordScore({
+      eventSlug: "scoring-night",
+      sourceType: "manual",
+      sourceId: "award-to-reverse",
+      idempotencyKey: "award-to-reverse",
+      reasonCode: "other",
+      note: "Award",
+      actorType: "admin",
+      postings: [{ participantId: participant!.id, points: 9 }],
+    });
+    expect(awarded.ok).toBe(true);
+
+    const reversed = await reverseScore(
+      "scoring-night",
+      awarded.ok ? awarded.value.id : "missing",
+      {
+        idempotencyKey: "reverse-award",
+        reasonCode: "correction",
+        note: "Mistaken award",
+        actorType: "admin",
+        actorId: "admin-1",
+      },
+    );
+    expect(reversed.ok && reversed.value.postings).toEqual([
+      { participantId: participant!.id, points: -9 },
+    ]);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
+    expect(
+      await query<{ original_transaction_id: string }>(
+        `select original_transaction_id from score_transactions where id = $1`,
+        [reversed.ok ? reversed.value.id : "missing"],
+      ),
+    ).toEqual([{ original_transaction_id: awarded.ok ? awarded.value.id : "missing" }]);
   });
 
   it("moves a route slug atomically without changing immutable event identity", async () => {
