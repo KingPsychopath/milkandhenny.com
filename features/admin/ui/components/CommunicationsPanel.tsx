@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   CommunicationMessageEditor,
   type CommunicationMediaDraft,
@@ -441,6 +442,7 @@ export function CommunicationsPanel({
   });
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const { confirm, dialog } = useActionDialog();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -530,13 +532,15 @@ export function CommunicationsPanel({
   };
   const planAction = async (action: "schedule-plan" | "pause-plan") => {
     if (!activePlan) return;
-    if (
-      action === "schedule-plan" &&
-      !window.confirm(
-        "Schedule the future stages in this plan? Past stages stay unsent until you choose send now or set a new time.",
-      )
-    )
-      return;
+    if (action === "schedule-plan") {
+      const approved = await confirm({
+        eyebrow: "event plan",
+        title: "Schedule the future stages?",
+        description: "Past stages stay unsent until you choose send now or set a new time.",
+        confirmLabel: "schedule plan",
+      });
+      if (!approved) return;
+    }
     setBusy(true);
     try {
       await post({ action, planId: activePlan.id });
@@ -592,12 +596,13 @@ export function CommunicationsPanel({
     }
   };
   const resetStageTemplate = async (stage: Stage) => {
-    if (
-      !window.confirm(
-        `Restore “${stage.label}” from its${stage.templateName ? ` ${stage.templateName}` : " source"} template? Your stage edits will be replaced.`,
-      )
-    )
-      return;
+    const approved = await confirm({
+      eyebrow: "stage editing",
+      title: "Restore the template?",
+      description: `Your edits to “${stage.label}” will be replaced by its${stage.templateName ? ` ${stage.templateName}` : " source"} template.`,
+      confirmLabel: "restore template",
+    });
+    if (!approved) return;
     setBusy(true);
     try {
       await post({ action: "reset-stage-template", stageId: stage.id });
@@ -636,11 +641,15 @@ export function CommunicationsPanel({
     }
   };
   const sendTestPlan = async () => {
-    if (
-      !activePlan ||
-      !window.confirm(`Send every email in this event plan to ${testEmail.trim()}?`)
-    )
-      return;
+    if (!activePlan) return;
+    const recipient = testEmail.trim();
+    const approved = await confirm({
+      eyebrow: "test delivery",
+      title: "Send the whole plan?",
+      description: `This sends every stage in the event plan to ${recipient}. It does not contact ticket holders.`,
+      confirmLabel: "send test emails",
+    });
+    if (!approved) return;
     setBusy(true);
     try {
       const data = await post({ action: "send-test-plan", planId: activePlan.id, testEmail });
@@ -652,12 +661,13 @@ export function CommunicationsPanel({
     }
   };
   const sendStageNow = async (stage: Stage) => {
-    if (
-      !window.confirm(
-        `Send “${stage.subject}” to the current valid ticket holders now? This sends only this stage and does not enable the rest of the plan.`,
-      )
-    )
-      return;
+    const approved = await confirm({
+      eyebrow: "event communication",
+      title: "Send this stage now?",
+      description: `“${stage.subject}” will go to the current valid ticket holders. This sends only this stage and does not enable the rest of the plan.`,
+      confirmLabel: "send stage",
+    });
+    if (!approved) return;
     setBusy(true);
     try {
       const data = (await post({ action: "send-stage-now", stageId: stage.id })) as {
@@ -802,7 +812,14 @@ export function CommunicationsPanel({
     }
   };
   const archiveTemplate = async (template: Template) => {
-    if (!window.confirm(`Archive “${template.name}”?`)) return;
+    const approved = await confirm({
+      eyebrow: "template library",
+      title: "Archive this template?",
+      description: `“${template.name}” will no longer be available as an active template.`,
+      confirmLabel: "archive template",
+      intent: "danger",
+    });
+    if (!approved) return;
     try {
       await post({ action: "archive-template", templateId: template.id });
       onStatus("Template archived.");
@@ -1062,6 +1079,7 @@ export function CommunicationsPanel({
           }}
         />
       ) : null}
+      {dialog}
     </div>
   );
 }
