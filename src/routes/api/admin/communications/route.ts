@@ -12,6 +12,7 @@ import {
   archiveCommunicationTemplate,
   createStarterPlan,
   listCommunicationPlans,
+  listCommunicationStageDeliveries,
   listCommunicationTemplates,
   pauseCommunicationPlan,
   saveCommunicationTemplate,
@@ -142,6 +143,11 @@ async function handlePOST(request: Request) {
       if (typeof body.stageId !== "string" || !body.stageId)
         return Response.json({ error: "Choose a stage" }, { status: 400 });
       return Response.json(await previewCommunicationStage(body.stageId));
+    }
+    if (body.action === "stage-deliveries") {
+      if (typeof body.stageId !== "string" || !body.stageId)
+        return Response.json({ error: "Choose a stage" }, { status: 400 });
+      return Response.json({ deliveries: await listCommunicationStageDeliveries(body.stageId) });
     }
     if (body.action === "preview-stage-email") {
       if (typeof body.stageId !== "string" || !body.stageId)

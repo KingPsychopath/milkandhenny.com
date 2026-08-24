@@ -114,6 +114,7 @@ export function SystemHealthPanel({
             <p className="mt-1 text-micro theme-faint">
               {snapshot?.emailOutbox.pending ?? "—"} pending ·{" "}
               {snapshot?.emailOutbox.processing ?? "—"} sending ·{" "}
+              {snapshot?.emailOutbox.accepted ?? "—"} accepted ·{" "}
               {snapshot?.emailOutbox.failed ?? "—"} failed
             </p>
           </article>

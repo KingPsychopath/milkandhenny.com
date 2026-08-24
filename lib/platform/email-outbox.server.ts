@@ -220,6 +220,12 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
         where id = $1 and status = 'processing'`,
       [row.id],
     );
+    await query(
+      `update communication_stage_deliveries
+          set status = 'failed', updated_at = now()
+        where outbox_id = $1 and status in ('queued', 'accepted')`,
+      [row.id],
+    );
     return;
   }
 
@@ -258,6 +264,14 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
       ? [row.id, result.status, safeError]
       : [row.id, result.status, safeError, retryDelaySeconds(row.attempts)],
   );
+  if (permanent) {
+    await query(
+      `update communication_stage_deliveries
+          set status = 'failed', updated_at = now()
+        where outbox_id = $1 and status in ('queued', 'accepted')`,
+      [row.id],
+    );
+  }
 }
 
 let draining: Promise<number> | null = null;

@@ -33,12 +33,27 @@ export type CommunicationPlanStage = {
   sendAt: string | null;
   lateJoinHours: number;
   status: string;
+  deliveryState: string;
   recipientCount: number;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
   delivery: CommunicationDeliveryCounts;
   linkClicks: CommunicationLinkMetric[];
+};
+
+export type CommunicationStageDelivery = {
+  emailHash: string;
+  email: string;
+  displayName: string | null;
+  deliveryStatus: string;
+  outboxStatus: string | null;
+  attempts: number;
+  lastError: string | null;
+  providerDeliveryStatus: string | null;
+  nextAttemptAt: string | null;
+  acceptedAt: string | null;
+  deliveredAt: string | null;
 };
 
 export type CommunicationPlan = {
@@ -81,6 +96,7 @@ const EMPTY_DELIVERY_COUNTS: CommunicationDeliveryCounts = {
   bounced: 0,
   rejected: 0,
   complained: 0,
+  skipped: 0,
 };
 
 function deliveryCounts(value: unknown): CommunicationDeliveryCounts {
@@ -91,6 +107,27 @@ function deliveryCounts(value: unknown): CommunicationDeliveryCounts {
   return Object.fromEntries(
     Object.keys(EMPTY_DELIVERY_COUNTS).map((key) => [key, Number(row[key]) || 0]),
   ) as unknown as CommunicationDeliveryCounts;
+}
+
+function stageDeliveryState(
+  status: string,
+  recipientCount: number,
+  delivery: CommunicationDeliveryCounts,
+): string {
+  if (status === "draft") return "draft";
+  if (status === "scheduled") return "scheduled";
+  if (status === "paused") return "paused";
+  if (status === "fanout") return "preparing";
+  if (delivery.queued > 0) return "queued";
+  if (delivery.accepted > 0) return "accepted";
+  if (delivery.deferred > 0) return "deferred";
+
+  const failures = delivery.failed + delivery.bounced + delivery.rejected + delivery.complained;
+  const settled = delivery.delivered + failures + delivery.skipped;
+  if (settled > 0 && settled >= recipientCount) {
+    return failures > 0 ? "complete with issues" : "delivered";
+  }
+  return status === "complete" ? "complete" : status;
 }
 
 function linkMetrics(value: unknown): CommunicationLinkMetric[] {
@@ -124,6 +161,9 @@ function validMedia(value: unknown): CommunicationMedia[] {
 }
 
 function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
+  const status = String(row.status);
+  const recipientCount = Number(row.recipient_count) || 0;
+  const delivery = deliveryCounts(row.delivery);
   return {
     id: String(row.id),
     stageKey: String(row.stage_key),
@@ -137,12 +177,13 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     templateName: typeof row.template_name === "string" ? row.template_name : null,
     sendAt: iso(row.send_at as Date | null),
     lateJoinHours: Number(row.late_join_hours) || 0,
-    status: String(row.status),
-    recipientCount: Number(row.recipient_count) || 0,
+    status,
+    deliveryState: stageDeliveryState(status, recipientCount, delivery),
+    recipientCount,
     queuedCount: Number(row.queued_count) || 0,
     lastError: typeof row.last_error === "string" ? row.last_error : null,
     surveyId: typeof row.survey_id === "string" ? row.survey_id : null,
-    delivery: deliveryCounts(row.delivery),
+    delivery,
     linkClicks: linkMetrics(row.link_clicks),
   };
 }
@@ -177,7 +218,8 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
                 'failed', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'failed'),
                 'bounced', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'bounced'),
                 'rejected', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'rejected'),
-                'complained', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'complained')
+                'complained', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'complained'),
+                'skipped', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'skipped')
               ),
               'link_clicks', coalesce((
                 select jsonb_agg(jsonb_build_object(
@@ -220,6 +262,65 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
 
 export async function listCommunicationPlans(eventSlug?: string): Promise<CommunicationPlan[]> {
   return eventSlug ? rowsForPlans("where p.event_slug = $1", [eventSlug]) : rowsForPlans();
+}
+
+export async function listCommunicationStageDeliveries(
+  stageId: string,
+): Promise<CommunicationStageDelivery[]> {
+  const rows = await query<{
+    email_hash: string;
+    email: string;
+    display_name: string | null;
+    delivery_status: string;
+    outbox_status: string | null;
+    attempts: number | null;
+    last_error: string | null;
+    provider_delivery_status: string | null;
+    next_attempt_at: Date | null;
+    accepted_at: Date | null;
+    delivered_at: Date | null;
+  }>(
+    `select d.email_hash, d.email, c.display_name,
+            d.status as delivery_status,
+            o.status as outbox_status,
+            o.attempts,
+            o.last_error,
+            o.provider_delivery_status,
+            o.next_attempt_at,
+            o.accepted_at,
+            o.delivered_at
+       from communication_stage_deliveries d
+       left join communication_contacts c on c.email_hash = d.email_hash
+       left join email_outbox o on o.id = d.outbox_id
+      where d.stage_id = $1
+      order by
+        case d.status
+          when 'failed' then 0
+          when 'bounced' then 0
+          when 'rejected' then 0
+          when 'complained' then 0
+          when 'deferred' then 1
+          when 'queued' then 2
+          when 'accepted' then 3
+          when 'delivered' then 4
+          else 5
+        end,
+        lower(d.email)`,
+    [stageId],
+  );
+  return rows.map((row) => ({
+    emailHash: row.email_hash,
+    email: row.email,
+    displayName: row.display_name,
+    deliveryStatus: row.delivery_status,
+    outboxStatus: row.outbox_status,
+    attempts: Number(row.attempts) || 0,
+    lastError: row.last_error,
+    providerDeliveryStatus: row.provider_delivery_status,
+    nextAttemptAt: iso(row.next_attempt_at),
+    acceptedAt: iso(row.accepted_at),
+    deliveredAt: iso(row.delivered_at),
+  }));
 }
 
 export async function listCommunicationTemplates(): Promise<CommunicationTemplate[]> {
@@ -621,7 +722,7 @@ export async function scheduleCommunicationPlan(planId: string): Promise<void> {
   await query(
     `update communication_plan_stages
         set status = 'scheduled', updated_at = now()
-      where plan_id = $1 and status = 'draft' and send_at > now()`,
+      where plan_id = $1 and status in ('draft', 'paused') and send_at > now()`,
     [planId],
   );
 }

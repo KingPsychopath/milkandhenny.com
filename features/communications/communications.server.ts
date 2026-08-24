@@ -60,6 +60,7 @@ export type CommunicationDeliveryCounts = {
   bounced: number;
   rejected: number;
   complained: number;
+  skipped: number;
 };
 
 export type CommunicationLinkMetric = {
@@ -87,6 +88,7 @@ const EMPTY_DELIVERY_COUNTS: CommunicationDeliveryCounts = {
   bounced: 0,
   rejected: 0,
   complained: 0,
+  skipped: 0,
 };
 
 function deliveryCounts(value: unknown): CommunicationDeliveryCounts {

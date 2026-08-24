@@ -52,6 +52,7 @@ type DeliveryCounts = {
   bounced: number;
   rejected: number;
   complained: number;
+  skipped: number;
 };
 type LinkMetric = { linkKey: string; uniqueRecipients: number; totalClicks: number };
 type Media = { kind: MediaKind; url: string; alt: string; posterUrl?: string };
@@ -77,12 +78,26 @@ type Stage = {
   templateName: string | null;
   sendAt: string | null;
   status: string;
+  deliveryState: string;
   recipientCount: number;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
   delivery: DeliveryCounts;
   linkClicks: LinkMetric[];
+};
+type StageDelivery = {
+  emailHash: string;
+  email: string;
+  displayName: string | null;
+  deliveryStatus: string;
+  outboxStatus: string | null;
+  attempts: number;
+  lastError: string | null;
+  providerDeliveryStatus: string | null;
+  nextAttemptAt: string | null;
+  acceptedAt: string | null;
+  deliveredAt: string | null;
 };
 type Plan = {
   id: string;
@@ -255,7 +270,19 @@ function engagementLabel(delivery: DeliveryCounts, links: LinkMetric[]): string 
       `needs attention ${delivery.failed + delivery.bounced + delivery.rejected + delivery.complained}`,
     );
   }
+  if (delivery.skipped) parts.push(`skipped ${delivery.skipped}`);
   return parts.join(" · ");
+}
+
+function deliveryStatusLabel(row: StageDelivery): string {
+  if (row.deliveryStatus === "delivered") return "delivered";
+  if (row.deliveryStatus === "accepted") return "accepted · awaiting confirmation";
+  if (row.deliveryStatus === "queued") {
+    return row.outboxStatus === "processing" ? "sending" : "queued";
+  }
+  if (row.deliveryStatus === "deferred") return "deferred · retrying";
+  if (row.deliveryStatus === "skipped") return "skipped";
+  return row.deliveryStatus;
 }
 
 function linkMetricsLabel(links: LinkMetric[]): string {
@@ -404,6 +431,10 @@ export function CommunicationsPanel({
     count: number;
     recipients: Array<{ name: string | null; email: string }>;
   } | null>(null);
+  const [stageDeliveries, setStageDeliveries] = useState<{
+    stageId: string;
+    deliveries: StageDelivery[];
+  } | null>(null);
   const [stagePreview, setStagePreview] = useState<{ stageId: string; html: string } | null>(null);
   const [testEmail, setTestEmail] = useState("try@owenabel.com");
   const [kind, setKind] = useState<Kind>("newsletter");
@@ -533,11 +564,17 @@ export function CommunicationsPanel({
   const planAction = async (action: "schedule-plan" | "pause-plan") => {
     if (!activePlan) return;
     if (action === "schedule-plan") {
+      const hasPausedFutureStages = activePlan.stages.some(
+        (stage) =>
+          stage.status === "paused" && stage.sendAt && Date.parse(stage.sendAt) > Date.now(),
+      );
       const approved = await confirm({
         eyebrow: "event plan",
-        title: "Schedule the future stages?",
-        description: "Past stages stay unsent until you choose send now or set a new time.",
-        confirmLabel: "schedule plan",
+        title: hasPausedFutureStages ? "Resume the future stages?" : "Schedule the future stages?",
+        description: hasPausedFutureStages
+          ? "Paused future stages will be restored. Stages already sent stay sent."
+          : "Past stages stay unsent until you choose send now or set a new time.",
+        confirmLabel: hasPausedFutureStages ? "resume stages" : "schedule plan",
       });
       if (!approved) return;
     }
@@ -628,6 +665,29 @@ export function CommunicationsPanel({
       });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not preview recipients");
+    }
+  };
+  const viewStageRecipients = async (stage: Stage) => {
+    if (stageDeliveries?.stageId === stage.id) {
+      setStageDeliveries(null);
+      return;
+    }
+    if (stageRecipients?.stageId === stage.id) {
+      setStageRecipients(null);
+      return;
+    }
+    try {
+      const data = (await post({ action: "stage-deliveries", stageId: stage.id })) as {
+        deliveries?: StageDelivery[];
+      };
+      if (data.deliveries && data.deliveries.length > 0) {
+        setStageDeliveries({ stageId: stage.id, deliveries: data.deliveries });
+        setStageRecipients(null);
+        return;
+      }
+      await previewStage(stage);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not load delivery details");
     }
   };
   const previewStageEmail = async (stage: Stage) => {
@@ -985,9 +1045,9 @@ export function CommunicationsPanel({
           saveStage={saveStage}
           resetStageTemplate={resetStageTemplate}
           setEditingStage={setEditingStage}
-          previewStage={previewStage}
           stageRecipients={stageRecipients}
-          setStageRecipients={setStageRecipients}
+          stageDeliveries={stageDeliveries}
+          viewStageRecipients={viewStageRecipients}
           previewStageEmail={previewStageEmail}
           stagePreview={stagePreview}
           setStagePreview={setStagePreview}
@@ -1099,19 +1159,13 @@ function EventPlanView(props: {
   saveStage: () => void;
   resetStageTemplate: (stage: Stage) => void;
   setEditingStage: React.Dispatch<React.SetStateAction<string | null>>;
-  previewStage: (stage: Stage) => void;
   stageRecipients: {
     stageId: string;
     count: number;
     recipients: Array<{ name: string | null; email: string }>;
   } | null;
-  setStageRecipients: (
-    value: {
-      stageId: string;
-      count: number;
-      recipients: Array<{ name: string | null; email: string }>;
-    } | null,
-  ) => void;
+  stageDeliveries: { stageId: string; deliveries: StageDelivery[] } | null;
+  viewStageRecipients: (stage: Stage) => void;
   previewStageEmail: (stage: Stage) => void;
   stagePreview: { stageId: string; html: string } | null;
   setStagePreview: (value: { stageId: string; html: string } | null) => void;
@@ -1135,9 +1189,9 @@ function EventPlanView(props: {
     saveStage,
     resetStageTemplate,
     setEditingStage,
-    previewStage,
     stageRecipients,
-    setStageRecipients,
+    stageDeliveries,
+    viewStageRecipients,
     previewStageEmail,
     stagePreview,
     setStagePreview,
@@ -1146,6 +1200,10 @@ function EventPlanView(props: {
     sendTestPlan,
     sendStageNow,
   } = props;
+  const pausedFutureStages =
+    activePlan?.stages.filter(
+      (stage) => stage.status === "paused" && stage.sendAt && Date.parse(stage.sendAt) > Date.now(),
+    ).length ?? 0;
   return (
     <section aria-labelledby="event-plan-heading" className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -1193,9 +1251,17 @@ function EventPlanView(props: {
               <p className="font-serif text-2xl">{activePlan.name}</p>
               <p className="mt-1 font-mono text-xs theme-muted">
                 {activePlan.status} · five thoughtful stages · no duplicate ticket confirmation
+                {pausedFutureStages
+                  ? ` · ${pausedFutureStages} future stage${pausedFutureStages === 1 ? "" : "s"} paused`
+                  : ""}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {pausedFutureStages ? (
+                <Button primary onClick={() => void planAction("schedule-plan")} disabled={busy}>
+                  resume future stages
+                </Button>
+              ) : null}
               {activePlan.status === "scheduled" ? (
                 <Button onClick={() => void planAction("pause-plan")} disabled={busy}>
                   pause plan
@@ -1244,7 +1310,7 @@ function EventPlanView(props: {
                       {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"} ·{" "}
                       {stageNeedsManualSendDecision(stage)
                         ? "overdue — waiting for your decision"
-                        : stage.status}{" "}
+                        : stage.deliveryState}{" "}
                       · {stage.recipientCount || "recipient count at fan-out"}
                     </p>
                     {stageNeedsManualSendDecision(stage) ? (
@@ -1261,13 +1327,26 @@ function EventPlanView(props: {
                   </div>
                   <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                     <Button
-                      onClick={() => {
-                        if (stageRecipients?.stageId === stage.id) setStageRecipients(null);
-                        else void previewStage(stage);
-                      }}
-                      ariaExpanded={stageRecipients?.stageId === stage.id}
+                      onClick={() => void viewStageRecipients(stage)}
+                      ariaExpanded={
+                        stageRecipients?.stageId === stage.id ||
+                        stageDeliveries?.stageId === stage.id
+                      }
                     >
-                      {stageRecipients?.stageId === stage.id ? "hide recipients" : "see recipients"}
+                      {stageRecipients?.stageId === stage.id ||
+                      stageDeliveries?.stageId === stage.id
+                        ? "hide recipients"
+                        : stage.delivery.queued +
+                              stage.delivery.accepted +
+                              stage.delivery.delivered +
+                              stage.delivery.failed +
+                              stage.delivery.bounced +
+                              stage.delivery.rejected +
+                              stage.delivery.complained +
+                              stage.delivery.skipped >
+                            0
+                          ? "delivery details"
+                          : "see recipients"}
                     </Button>
                     <Button
                       onClick={() => {
@@ -1324,6 +1403,48 @@ function EventPlanView(props: {
                     {stageRecipients.count > 20 ? (
                       <p className="mt-2 font-mono text-micro theme-faint">showing the first 20</p>
                     ) : null}
+                  </div>
+                ) : null}
+                {stageDeliveries?.stageId === stage.id ? (
+                  <div className="mt-4 border-y theme-border-faint py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-mono text-xs">
+                        {stageDeliveries.deliveries.length} delivery records
+                      </p>
+                      <p className="font-mono text-micro theme-faint">
+                        accepted means the provider accepted the message
+                      </p>
+                    </div>
+                    <div className="mt-3 divide-y theme-border-faint">
+                      {stageDeliveries.deliveries.map((delivery) => (
+                        <div
+                          key={delivery.emailHash}
+                          className="grid gap-1 py-3 font-mono text-micro sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate">
+                              {delivery.displayName || "unnamed"} · {delivery.email}
+                            </p>
+                            {delivery.lastError ? (
+                              <p className="mt-1 break-words text-[var(--prose-hashtag)]">
+                                {delivery.lastError}
+                              </p>
+                            ) : null}
+                          </div>
+                          <p className="theme-muted sm:text-right">
+                            {deliveryStatusLabel(delivery)}
+                            {delivery.attempts
+                              ? ` · ${delivery.attempts} attempt${delivery.attempts === 1 ? "" : "s"}`
+                              : ""}
+                            {delivery.nextAttemptAt &&
+                            (delivery.deliveryStatus === "deferred" ||
+                              delivery.outboxStatus === "pending")
+                              ? ` · next retry ${dateLabel(delivery.nextAttemptAt)}`
+                              : ""}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
                 {stagePreview?.stageId === stage.id ? (
