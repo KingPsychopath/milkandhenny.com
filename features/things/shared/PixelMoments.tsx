@@ -22,7 +22,7 @@ export function LostGuest404() {
               id: "lost-guest-404",
               name: "lost guest",
               ready: false,
-              entering: true,
+              role: "lost-guest",
             },
           ],
         }}
@@ -82,7 +82,7 @@ export function HomepageFooterVisitor() {
               id: "homepage-footer-visitor",
               name: "passing guest",
               ready: false,
-              entering: true,
+              role: "passerby",
             },
           ],
         }}

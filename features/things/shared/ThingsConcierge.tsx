@@ -10,7 +10,15 @@ export function ThingsConcierge() {
           roomId: "things-concierge",
           status: "waiting",
           capacity: 1,
-          players: [{ id: "things-concierge", name: "concierge", ready: false, lead: true }],
+          players: [
+            {
+              id: "things-concierge",
+              name: "concierge",
+              ready: false,
+              lead: true,
+              role: "concierge",
+            },
+          ],
         }}
         label="A small games concierge walks through the room"
       />

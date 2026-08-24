@@ -202,6 +202,7 @@ export function GamePoolLobbyScene({
                             id: `arranger-${game}`,
                             name: "room arranger",
                             ready: false,
+                            role: "arranger",
                           },
                         ],
                         capacity: targetSize,

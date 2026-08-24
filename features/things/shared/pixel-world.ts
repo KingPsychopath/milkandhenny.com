@@ -9,6 +9,8 @@ export type PixelWorldGame =
   | "twin"
   | "draw-country";
 
+export type PixelWorldRole = "player" | "concierge" | "arranger" | "lost-guest" | "passerby";
+
 export interface PixelWorldPlayer {
   id: string;
   name?: string;
@@ -16,6 +18,7 @@ export interface PixelWorldPlayer {
   lead?: boolean;
   left?: boolean;
   entering?: boolean;
+  role?: PixelWorldRole;
 }
 
 export interface PixelWorldRoom {

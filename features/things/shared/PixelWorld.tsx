@@ -186,29 +186,40 @@ function drawGameFurniture(
   rect(context, palette.stone400, 150, 48, 24, 12);
 }
 
-function playerPosition(index: number, player: PixelWorldPlayer, time: number, seed: number) {
-  const readySeats: ReadonlyArray<readonly [number, number]> = [
-    [67, 58],
-    [91, 54],
-    [118, 58],
-    [67, 82],
-    [94, 85],
-    [122, 82],
-    [48, 76],
-    [142, 77],
-  ];
-  if (player.entering) {
-    const progress = Math.min(1, time / 900);
-    return [18 + progress * 40, 86 - progress * 12] as const;
-  }
-  if (player.ready) return readySeats[index % readySeats.length] ?? readySeats[0]!;
-  const phase = time / 1_200 + ((seed % 7) * Math.PI) / 3;
-  return [28 + (seed % 25) + Math.round(Math.sin(phase) * 5), 78 + (seed % 8)] as const;
+type CharacterGesture =
+  | "none"
+  | "map"
+  | "shrug"
+  | "think"
+  | "question"
+  | "wave"
+  | "clipboard"
+  | "arrange";
+
+interface CharacterPose {
+  x: number;
+  y: number;
+  walking: boolean;
+  facing: -1 | 1;
+  gesture: CharacterGesture;
 }
 
-type LostGuestGesture = "none" | "map" | "shrug" | "think" | "question";
+const READY_SEATS: ReadonlyArray<readonly [number, number]> = [
+  [67, 58],
+  [91, 54],
+  [118, 58],
+  [67, 82],
+  [94, 85],
+  [122, 82],
+  [48, 76],
+  [142, 77],
+];
 
-function lostGuestPose(time: number, motion: boolean) {
+function between(from: number, to: number, progress: number) {
+  return from + (to - from) * progress;
+}
+
+function lostGuestPose(time: number, motion: boolean): CharacterPose {
   if (!motion) return { x: 118, y: 68, walking: false, facing: 1, gesture: "map" as const };
 
   const cycle = time % 24_000;
@@ -284,12 +295,212 @@ function lostGuestPose(time: number, motion: boolean) {
   };
 }
 
-function drawLostGuestGesture(
+function conciergePose(time: number, motion: boolean): CharacterPose {
+  if (!motion) return { x: 126, y: 70, walking: false, facing: -1, gesture: "clipboard" };
+
+  const cycle = time % 20_000;
+  if (cycle < 3_000) {
+    const progress = cycle / 3_000;
+    return {
+      x: between(24, 69, progress),
+      y: between(83, 76, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 6_500) return { x: 69, y: 76, walking: false, facing: 1, gesture: "arrange" };
+  if (cycle < 9_500) {
+    const progress = (cycle - 6_500) / 3_000;
+    return {
+      x: between(69, 126, progress),
+      y: between(76, 70, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 14_000) return { x: 126, y: 70, walking: false, facing: -1, gesture: "clipboard" };
+  if (cycle < 18_000) {
+    const progress = (cycle - 14_000) / 4_000;
+    return {
+      x: between(126, 40, progress),
+      y: between(70, 81, progress),
+      walking: true,
+      facing: -1,
+      gesture: "none",
+    };
+  }
+  return { x: 40, y: 81, walking: false, facing: 1, gesture: "wave" };
+}
+
+function arrangerPose(time: number, motion: boolean): CharacterPose {
+  if (!motion) return { x: 69, y: 76, walking: false, facing: 1, gesture: "arrange" };
+
+  const cycle = time % 18_000;
+  if (cycle < 2_500) {
+    const progress = cycle / 2_500;
+    return {
+      x: between(35, 69, progress),
+      y: between(82, 76, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 6_000) return { x: 69, y: 76, walking: false, facing: 1, gesture: "arrange" };
+  if (cycle < 9_000) {
+    const progress = (cycle - 6_000) / 3_000;
+    return {
+      x: between(69, 116, progress),
+      y: between(76, 74, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 13_000) return { x: 116, y: 74, walking: false, facing: -1, gesture: "arrange" };
+  if (cycle < 16_000) {
+    const progress = (cycle - 13_000) / 3_000;
+    return {
+      x: between(116, 35, progress),
+      y: between(74, 82, progress),
+      walking: true,
+      facing: -1,
+      gesture: "none",
+    };
+  }
+  return { x: 35, y: 82, walking: false, facing: 1, gesture: "think" };
+}
+
+function passerbyPose(time: number, motion: boolean): CharacterPose {
+  if (!motion) return { x: 92, y: 76, walking: false, facing: 1, gesture: "wave" };
+
+  const cycle = Math.min(time, 12_000);
+  if (cycle < 3_200) {
+    const progress = cycle / 3_200;
+    return {
+      x: between(17, 77, progress),
+      y: between(86, 77, progress),
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 5_200) return { x: 77, y: 77, walking: false, facing: 1, gesture: "wave" };
+  const progress = (cycle - 5_200) / 6_800;
+  return {
+    x: between(77, 184, progress),
+    y: between(77, 84, progress),
+    walking: true,
+    facing: 1,
+    gesture: "none",
+  };
+}
+
+function gameIdleGesture(game: PixelWorldGame): CharacterGesture {
+  if (game === "draw-country") return "map";
+  if (game === "same-brain" || game === "centre") return "think";
+  if (game === "liars" || game === "mafia" || game === "imposter") return "question";
+  return "wave";
+}
+
+function playerPose(
+  game: PixelWorldGame,
+  index: number,
+  player: PixelWorldPlayer,
+  time: number,
+  motion: boolean,
+  seed: number,
+): CharacterPose {
+  if (player.entering) {
+    const progress = Math.min(1, (motion ? time : 900) / 900);
+    return {
+      x: between(18, 58, progress),
+      y: between(86, 74, progress),
+      walking: motion && progress < 1,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+
+  if (player.ready) {
+    const [x, y] = READY_SEATS[index % READY_SEATS.length] ?? READY_SEATS[0]!;
+    const cycle = motion ? (time + index * 2_300 + (seed % 1_200)) % 14_000 : 0;
+    const active = motion && cycle >= 7_500 && cycle < 9_200;
+    return {
+      x,
+      y,
+      walking: false,
+      facing: index % 3 === 0 ? 1 : -1,
+      gesture: active ? (player.lead ? "clipboard" : gameIdleGesture(game)) : "none",
+    };
+  }
+
+  const homeX = 35 + (seed % 34);
+  const awayX = 82 + (seed % 42);
+  const y = 73 + (seed % 11);
+  if (!motion)
+    return { x: homeX, y, walking: false, facing: 1, gesture: player.lead ? "clipboard" : "none" };
+
+  const cycle = (time + (seed % 5_000)) % 16_000;
+  if (cycle < 3_500) {
+    const progress = cycle / 3_500;
+    return {
+      x: between(homeX, awayX, progress),
+      y: y - Math.sin(progress * Math.PI) * 4,
+      walking: true,
+      facing: 1,
+      gesture: "none",
+    };
+  }
+  if (cycle < 8_000)
+    return {
+      x: awayX,
+      y: y - 1,
+      walking: false,
+      facing: -1,
+      gesture:
+        cycle >= 5_500 && cycle < 7_000
+          ? player.lead
+            ? "clipboard"
+            : gameIdleGesture(game)
+          : "none",
+    };
+  if (cycle < 11_500) {
+    const progress = (cycle - 8_000) / 3_500;
+    return {
+      x: between(awayX, homeX, progress),
+      y: y - 1 + Math.sin(progress * Math.PI) * 4,
+      walking: true,
+      facing: -1,
+      gesture: "none",
+    };
+  }
+  return { x: homeX, y, walking: false, facing: 1, gesture: "none" };
+}
+
+function characterPose(
+  game: PixelWorldGame,
+  index: number,
+  player: PixelWorldPlayer,
+  time: number,
+  motion: boolean,
+  seed: number,
+) {
+  if (player.role === "lost-guest") return lostGuestPose(time, motion);
+  if (player.role === "concierge") return conciergePose(time, motion);
+  if (player.role === "arranger") return arrangerPose(time, motion);
+  if (player.role === "passerby") return passerbyPose(time, motion);
+  return playerPose(game, index, player, time, motion, seed);
+}
+
+function drawCharacterGesture(
   context: CanvasRenderingContext2D,
   palette: PixelPalette,
   x: number,
   y: number,
-  gesture: LostGuestGesture,
+  gesture: CharacterGesture,
 ) {
   if (gesture === "map") {
     line(context, palette.selection, x + 12, y + 11, x + 18, y + 3);
@@ -308,6 +519,16 @@ function drawLostGuestGesture(
     rect(context, palette.amber, x + 8, y - 6, 2, 3);
     rect(context, palette.amber, x + 7, y - 2, 1, 2);
     rect(context, palette.amber, x + 7, y + 1, 1, 1);
+  } else if (gesture === "wave") {
+    line(context, palette.selection, x + 12, y + 11, x + 15, y + 4);
+    rect(context, palette.selection, x + 14, y + 2, 2, 3);
+  } else if (gesture === "clipboard") {
+    rect(context, palette.stone500, x + 11, y + 8, 6, 8);
+    rect(context, palette.background, x + 12, y + 9, 4, 5);
+    rect(context, palette.amber, x + 13, y + 8, 2, 1);
+  } else if (gesture === "arrange") {
+    line(context, palette.selection, x + 1, y + 11, x - 2, y + 16);
+    line(context, palette.selection, x + 11, y + 11, x + 15, y + 16);
   }
 }
 
@@ -318,6 +539,7 @@ function drawPerson(
   index: number,
   time: number,
   motion: boolean,
+  game: PixelWorldGame,
 ) {
   const seed = pixelWorldHash(player.id);
   const tone = pixelWorldTone(player.id);
@@ -331,15 +553,14 @@ function drawPerson(
     palette.amber,
     palette.stone500,
   ];
-  const lostGuest = player.id === "lost-guest-404";
-  const lostPose = lostGuest ? lostGuestPose(time, motion) : null;
-  const [x, y] = lostPose
-    ? ([lostPose.x, lostPose.y] as const)
-    : playerPosition(index, player, motion ? time : 900, seed);
-  const bob = motion && player.ready ? Math.round(Math.sin(time / 420 + index) * 1) : 0;
-  const walking = lostPose?.walking ?? (motion && (!player.ready || player.entering));
+  const pose = characterPose(game, index, player, time, motion, seed);
+  const { x, y, walking } = pose;
+  const bob = 0;
   const step = walking && Math.floor(time / 180 + index) % 2 === 0 ? 1 : 0;
-  const headShift = lostPose && !walking ? Math.round(Math.sin(time / 650) * 1) : 0;
+  const headShift =
+    motion && !walking && pose.gesture !== "none"
+      ? Math.round(Math.sin(time / 1_100 + index) * 1)
+      : 0;
   const shirt = colours[tone] ?? palette.foreground;
   rect(context, palette.foreground, x + 2 - step, y + 15 + bob, 3, 4);
   rect(context, palette.foreground, x + 8 + step, y + 15 + bob, 3, 4);
@@ -353,7 +574,7 @@ function drawPerson(
     9,
     4,
   );
-  const eyeShift = lostPose?.facing === -1 ? -1 : lostPose?.facing === 1 ? 1 : 0;
+  const eyeShift = pose.facing;
   rect(context, palette.foreground, x + 4 + headShift + eyeShift, y + 5 + bob, 1, 1);
   rect(context, palette.foreground, x + 8 + headShift + eyeShift, y + 5 + bob, 1, 1);
   rect(context, palette.selection, x - step, y + 9 + bob, 2, 5);
@@ -362,7 +583,7 @@ function drawPerson(
     rect(context, palette.amber, x + 10, y - 2 + bob, 3, 2);
     rect(context, palette.amber, x + 12, y - 1 + bob, 1, 5);
   }
-  if (lostPose) drawLostGuestGesture(context, palette, x, y, lostPose.gesture);
+  drawCharacterGesture(context, palette, x, y, pose.gesture);
 }
 
 function drawRoom(
@@ -383,13 +604,13 @@ function drawRoom(
     rect(context, palette.background, 61, 77, 71, 1);
     for (let x = 64; x < 130; x += 8) rect(context, palette.stone400, x, 77, 4, 1);
     visiblePixelWorldPlayers(room.players).forEach((player, index) =>
-      drawPerson(context, palette, player, index, elapsed, motion),
+      drawPerson(context, palette, player, index, elapsed, motion, room.game),
     );
     return;
   }
 
   visiblePixelWorldPlayers(room.players).forEach((player, index) =>
-    drawPerson(context, palette, player, index, elapsed, motion),
+    drawPerson(context, palette, player, index, elapsed, motion, room.game),
   );
 
   if (room.status === "playing") {
@@ -428,6 +649,9 @@ export function PixelWorld({
   tone?: "page" | "night";
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const roomRef = useRef(room);
+  const redrawRef = useRef<(() => void) | null>(null);
+  roomRef.current = room;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -435,42 +659,63 @@ export function PixelWorld({
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let visible = true;
     let frame = 0;
-    let startedAt = performance.now();
+    const startedAt = performance.now();
     let lastPaint = 0;
 
     const render = (now: number) => {
+      frame = 0;
       if (visible && (now - lastPaint >= 100 || reduced.matches)) {
-        paint(canvas, room, now - startedAt, !reduced.matches);
+        paint(canvas, roomRef.current, now - startedAt, !reduced.matches);
         lastPaint = now;
       }
-      if (!reduced.matches) frame = window.requestAnimationFrame(render);
+      if (visible && !reduced.matches) frame = window.requestAnimationFrame(render);
     };
     const redraw = () => {
-      startedAt = performance.now();
-      paint(canvas, room, reduced.matches ? 900 : 0, !reduced.matches);
+      paint(
+        canvas,
+        roomRef.current,
+        reduced.matches ? 900 : performance.now() - startedAt,
+        !reduced.matches,
+      );
+    };
+    const start = () => {
+      if (!frame && visible && !reduced.matches) frame = window.requestAnimationFrame(render);
     };
     const resize = new ResizeObserver(redraw);
     const intersection = new IntersectionObserver(([entry]) => {
       visible = entry?.isIntersecting ?? true;
-      if (visible) redraw();
+      if (visible) {
+        redraw();
+        start();
+      } else {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
     });
     const motionChange = () => {
       window.cancelAnimationFrame(frame);
+      frame = 0;
       redraw();
-      if (!reduced.matches) frame = window.requestAnimationFrame(render);
+      start();
     };
 
+    redrawRef.current = redraw;
     resize.observe(canvas);
     intersection.observe(canvas);
     reduced.addEventListener("change", motionChange);
     redraw();
-    if (!reduced.matches) frame = window.requestAnimationFrame(render);
+    start();
     return () => {
+      redrawRef.current = null;
       window.cancelAnimationFrame(frame);
       resize.disconnect();
       intersection.disconnect();
       reduced.removeEventListener("change", motionChange);
     };
+  }, []);
+
+  useEffect(() => {
+    redrawRef.current?.();
   }, [room]);
 
   return (
