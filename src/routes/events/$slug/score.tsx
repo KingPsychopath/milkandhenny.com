@@ -1,16 +1,11 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
-import { activeParticipantForEvent } from "@/features/event-scoring/session.server";
-import { publicLeaderboard } from "@/features/event-scoring/scoring.server";
+import { getPublicLeaderboardFn } from "@/features/event-scoring/public.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/$slug/score")({
   loader: async ({ params }) => {
-    const result = await publicLeaderboard({
-      eventSlug: params.slug,
-      currentParticipantId: await activeParticipantForEvent(params.slug),
-      includePreview: false,
-    });
+    const result = await getPublicLeaderboardFn({ data: { eventSlug: params.slug } });
     if (!result.ok) throw notFound();
     return result.value;
   },

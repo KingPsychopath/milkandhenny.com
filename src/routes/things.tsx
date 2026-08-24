@@ -46,6 +46,21 @@ function ThingMark({ mark }: { mark: Thing["mark"] }) {
     );
   }
 
+  if (mark.value === "temperature") {
+    return (
+      <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
+        <path
+          d="M9.8 24.2c-3.4 0-5.7-2.3-5.7-5.5 0-2.8 1.8-4.7 3.8-7.5.1 2.2.8 3.6 1.8 4.6.3-3.7 3.9-6 2.6-11.3 3.6 3.2 5.4 6.7 5.4 10.3 0 5.3-3.4 9.4-7.9 9.4Z"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M9.9 23.9c-1.8-1.1-2.1-3-.8-5.1.2 1 .7 1.7 1.3 2.1.5-1.2 1.5-2.2 1.3-4 2.8 2.9 1.5 6.2-1.8 7Z" />
+        <path d="M21.6 4v7.2M18.5 5.8l6.2 3.6m0-3.6-6.2 3.6" strokeLinecap="round" />
+        <circle cx="21.6" cy="7.6" r="0.8" className="fill-current stroke-none" />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
       <circle cx="10" cy="9" r="3.25" />

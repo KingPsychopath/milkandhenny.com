@@ -65,6 +65,13 @@ export function HeatLedger({
       {ordered.map((guess, index) => {
         const band = heatBand(guess.rank);
         const divider = band !== previousBand;
+        const owner = [
+          guess.playerName,
+          guess.mine ? "you" : null,
+          index === 0 && guess.rank !== 0 ? "hottest" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
         previousBand = band;
         return (
           <li key={guess.id}>
@@ -82,11 +89,7 @@ export function HeatLedger({
                 {guess.rank === 0 ? "0" : `#${guess.rank.toLocaleString()}`}
               </span>
               <span className="heat-word-text">{guess.word}</span>
-              <span className="heat-word-owner">
-                {guess.playerName}
-                {guess.mine ? " · you" : ""}
-                {index === 0 && guess.rank !== 0 ? " · hottest" : ""}
-              </span>
+              <span className="heat-word-owner">{owner}</span>
               <span className="heat-word-effect" aria-hidden="true" />
             </article>
           </li>

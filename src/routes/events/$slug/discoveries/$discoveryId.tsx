@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
-import { activeParticipantForEvent } from "@/features/event-scoring/session.server";
-import { getDiscovery } from "@/features/event-scoring/discoveries.server";
+import { getPublicDiscoveryFn } from "@/features/event-scoring/public.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/$slug/discoveries/$discoveryId")({
   loader: async ({ params }) => {
-    const discovery = await getDiscovery(params.discoveryId);
-    if (!discovery || discovery.eventSlug !== params.slug) throw notFound();
-    return { discovery, activeParticipantId: await activeParticipantForEvent(params.slug) };
+    const result = await getPublicDiscoveryFn({
+      data: { eventSlug: params.slug, discoveryId: params.discoveryId },
+    });
+    if (!result) throw notFound();
+    return result;
   },
   component: DiscoveryRoute,
   head: ({ params }) =>

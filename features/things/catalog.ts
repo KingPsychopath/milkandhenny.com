@@ -27,7 +27,9 @@ export interface Thing {
     | "/things/centre"
     | "/things/hot-and-cold";
   status: "ready";
-  mark: { kind: "symbol"; value: string } | { kind: "icon"; value: "brain" | "maze" | "pair" };
+  mark:
+    | { kind: "symbol"; value: string }
+    | { kind: "icon"; value: "brain" | "maze" | "pair" | "temperature" };
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
@@ -39,7 +41,7 @@ export const THINGS = [
     eyebrow: "word hunt · 1–8 people",
     href: "/things/hot-and-cold",
     status: "ready",
-    mark: { kind: "symbol", value: "♨" },
+    mark: { kind: "icon", value: "temperature" },
     offline: null,
   },
   {
