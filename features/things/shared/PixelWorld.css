@@ -137,6 +137,38 @@
   }
 }
 
+.lost-guest-404 {
+  width: min(13rem, 70vw);
+  margin-inline: auto;
+  opacity: 0.72;
+}
+
+.lost-guest-404 .pixel-world,
+.homepage-footer-visitor .pixel-world {
+  border-style: dashed;
+}
+
+.homepage-footer-visitor {
+  position: absolute;
+  top: -5.5rem;
+  right: 0;
+  width: 8rem;
+  opacity: 0.66;
+  pointer-events: none;
+}
+
+@media (max-width: 48rem) {
+  .homepage-footer-visitor {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .homepage-footer-visitor {
+    display: none;
+  }
+}
+
 .things-concierge {
   position: absolute;
   right: 1.5rem;

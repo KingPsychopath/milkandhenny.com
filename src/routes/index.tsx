@@ -6,6 +6,7 @@ import { PostListItem } from "@/features/words/components/PostListItem";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { getFooterPartyPath } from "@/features/site/site-settings.server";
+import { HomepageFooterVisitor } from "@/features/things/shared/PixelMoments";
 
 const RECENT_LIMIT = 5;
 
@@ -128,7 +129,8 @@ function Home() {
       </main>
 
       <footer className="border-t theme-border">
-        <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
+        <div className="relative max-w-2xl mx-auto px-6 py-8 space-y-4">
+          <HomepageFooterVisitor />
           <div className="flex items-center justify-between font-mono text-micro theme-muted tracking-wide">
             <span>
               © {new Date().getFullYear()} {SITE_BRAND}

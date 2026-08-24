@@ -1,5 +1,6 @@
 export type PixelWorldGame =
   | "hotel"
+  | "lost"
   | "liars"
   | "mafia"
   | "imposter"

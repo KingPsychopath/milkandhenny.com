@@ -87,6 +87,18 @@ describe("game-pool lobby scene", () => {
     ).toBe("room 1 found · heading over");
   });
 
+  it("announces an empty game night clearly", () => {
+    expect(
+      gamePoolLobbyStatus({
+        destinationRoomId: null,
+        joining: false,
+        rooms: [],
+        waitingPlayerCount: 0,
+        waitingRoomCount: 0,
+      }),
+    ).toBe("no rooms are open yet · someone is arranging chairs");
+  });
+
   it("keeps a room-specific invitation visible in the scene", () => {
     const scene = buildGamePoolLobbyScene(
       [room("first"), room("second"), room("invited"), room("playing", { status: "started" })],

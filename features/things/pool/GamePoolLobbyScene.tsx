@@ -184,7 +184,33 @@ export function GamePoolLobbyScene({
                     </div>
                   );
                 })}
-                {allowNewRooms && index === floors.length - 1 ? (
+                {scene.rooms.length === 0 ? (
+                  <div className="game-pool-hotel-room game-pool-hotel-room-next">
+                    <span className="game-pool-hotel-room-heading">
+                      <span>getting ready</span>
+                      <span>0/{targetSize}</span>
+                    </span>
+                    <PixelWorld
+                      className="game-pool-hotel-room-scene"
+                      decorative
+                      room={{
+                        game: worldGame(game),
+                        roomId: `arranging-${game}`,
+                        status: "next",
+                        players: [
+                          {
+                            id: `arranger-${game}`,
+                            name: "room arranger",
+                            ready: false,
+                          },
+                        ],
+                        capacity: targetSize,
+                      }}
+                      label=""
+                    />
+                    <span className="game-pool-hotel-room-state">arranging chairs</span>
+                  </div>
+                ) : allowNewRooms && index === floors.length - 1 ? (
                   <div className="game-pool-hotel-room game-pool-hotel-room-next">
                     <span className="game-pool-hotel-room-heading">
                       <span>next room</span>
@@ -192,6 +218,7 @@ export function GamePoolLobbyScene({
                     </span>
                     <PixelWorld
                       className="game-pool-hotel-room-scene"
+                      decorative
                       room={{
                         game: worldGame(game),
                         roomId: `next-${game}`,

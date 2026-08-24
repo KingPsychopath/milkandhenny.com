@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
@@ -18,6 +18,12 @@ import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import "@/src/styles/globals.css";
+
+const LostGuest404 = lazy(() =>
+  import("@/features/things/shared/PixelMoments").then(({ LostGuest404 }) => ({
+    default: LostGuest404,
+  })),
+);
 
 export const Route = createRootRoute({
   head: () => {
@@ -106,6 +112,9 @@ function NotFound() {
           <p className="font-serif text-xl text-foreground">this page doesn&apos;t exist</p>
           <p className="theme-muted text-sm">maybe it never did. maybe it will one day.</p>
         </div>
+        <Suspense fallback={null}>
+          <LostGuest404 />
+        </Suspense>
         <Link
           to="/"
           className="font-mono text-sm theme-muted hover:text-foreground transition-colors"

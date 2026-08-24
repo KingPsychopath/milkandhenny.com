@@ -99,6 +99,7 @@ export function gamePoolLobbyStatus(input: {
     return room ? `${room.label} found · heading over` : "room found · heading over";
   }
   if (input.joining) return "finding you a room…";
+  if (input.rooms.length === 0) return "no rooms are open yet · someone is arranging chairs";
   if (input.waitingPlayerCount === 0) return "the next room is ready when you are";
   return `${input.waitingPlayerCount} waiting across ${input.waitingRoomCount} ${input.waitingRoomCount === 1 ? "room" : "rooms"}`;
 }
