@@ -15,7 +15,6 @@ import { AlbumManagerPanel } from "./components/AlbumManagerPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
 import { CommunicationsPanel } from "./components/CommunicationsPanel";
-import { UploadAccessPanel } from "./components/UploadAccessPanel";
 import { AdminSectionNav, type AdminSection } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -1081,13 +1080,6 @@ export function AdminDashboard({
               loading={loading}
               onRefresh={() => void refreshDashboard()}
               onViewChange={onViewChange}
-            />
-
-            <UploadAccessPanel
-              authFetch={authFetch}
-              ensureStepUpToken={ensureStepUpToken}
-              onError={setErrorMessage}
-              onStatus={setStatusMessage}
             />
 
             <ReportsPanel
