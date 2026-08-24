@@ -392,7 +392,7 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   const emailMascotBase = `${BASE_URL}/media/email/mascots`;
   const mediaVersion = "?v=2";
   const arrivalGif = `${eventMediaBase}/arrival.gif${mediaVersion}`;
-  const preparationMascot = `${emailMascotBase}/preparation.png${mediaVersion}`;
+  const preparationMascot = `${emailMascotBase}/plant-watering/walking-across.gif${mediaVersion}`;
   const dayOfMascot = `${emailMascotBase}/day-of.png${mediaVersion}`;
   const feedbackMascot = `${emailMascotBase}/feedback.png${mediaVersion}`;
   const stages = [
@@ -405,9 +405,9 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
       body: "You’re coming to **{{event.title}}** next Tuesday.\n\nNothing is required. If you would like to make something just for fun:\n\n## Optional ideas\n\n- [Practise your spelling]({{links.spellingGame}}) with the Milk & Henny spelling game.\n- [Create a short pitch]({{links.pitch}}) about an idea, opinion, product, or theory.\n\nYour spelling practice is just for fun. If you make a pitch, there is no expectation that you present it — it can simply be a silly or interesting idea you make for yourself.\n\nSee you soon,\nMilk & Henny",
       media: [
         {
-          kind: "image",
+          kind: "gif",
           url: preparationMascot,
-          alt: "A small pixel character practises with two letter tiles",
+          alt: "A small pixel character walks over and pours milk into a little amber bottle-tree",
         },
       ],
       sendAt: prepAt,
