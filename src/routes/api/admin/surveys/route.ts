@@ -39,5 +39,10 @@ async function handlePOST(request: Request) {
 }
 
 export const Route = createFileRoute("/api/admin/surveys")({
-  server: { handlers: { GET: ({ request }) => handleGET(request), POST: ({ request }) => handlePOST(request) } },
+  server: {
+    handlers: {
+      GET: ({ request }) => handleGET(request),
+      POST: ({ request }) => handlePOST(request),
+    },
+  },
 });

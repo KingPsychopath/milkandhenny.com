@@ -10,12 +10,20 @@ async function handlePOST(request: Request, id: string) {
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     if (body.action !== "cancel") {
-      return Response.json({ error: "That communication action is not available" }, { status: 400 });
+      return Response.json(
+        { error: "That communication action is not available" },
+        { status: 400 },
+      );
     }
     await cancelCommunication(id);
     return Response.json({ ok: true });
   } catch (error) {
-    return apiErrorFromRequest(request, "admin.communications.cancel", "Could not cancel communication", error);
+    return apiErrorFromRequest(
+      request,
+      "admin.communications.cancel",
+      "Could not cancel communication",
+      error,
+    );
   }
 }
 

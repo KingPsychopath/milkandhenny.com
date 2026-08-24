@@ -35,7 +35,10 @@ function asQuestions(value: unknown): SurveyQuestion[] {
         id: typeof item.id === "string" && item.id ? item.id.slice(0, 80) : `question-${index + 1}`,
         type,
         label: typeof item.label === "string" ? item.label.trim().slice(0, 240) : "Question",
-        hint: typeof item.hint === "string" && item.hint.trim() ? item.hint.trim().slice(0, 400) : undefined,
+        hint:
+          typeof item.hint === "string" && item.hint.trim()
+            ? item.hint.trim().slice(0, 400)
+            : undefined,
         required: item.required !== false,
         ...(options && options.length > 0 ? { options } : {}),
       };
@@ -110,7 +113,8 @@ export async function saveSurvey(input: {
   const title = input.title.trim().slice(0, 160);
   const intro = input.intro.trim().slice(0, 2000);
   const questions = asQuestions(input.questions);
-  if (!slug || !title || questions.length === 0) throw new Error("Add a title and at least one question");
+  if (!slug || !title || questions.length === 0)
+    throw new Error("Add a title and at least one question");
   if (input.status === "open" && questions.some((question) => !question.label)) {
     throw new Error("Every question needs a label");
   }
@@ -145,7 +149,11 @@ function cleanAnswer(question: SurveyQuestion, value: unknown): string | string[
   if (typeof value !== "string") return null;
   const answer = value.trim().slice(0, 4000);
   if (!answer) return null;
-  if (question.type === "rating" && (!/^[1-5]$/.test(answer) || Number(answer) < 1 || Number(answer) > 5)) return null;
+  if (
+    question.type === "rating" &&
+    (!/^[1-5]$/.test(answer) || Number(answer) < 1 || Number(answer) > 5)
+  )
+    return null;
   if (question.type === "yes_no" && answer !== "yes" && answer !== "no") return null;
   if (question.type === "single_choice" && !(question.options ?? []).includes(answer)) return null;
   if (question.type === "email" && !validEmail(answer)) return null;
@@ -163,7 +171,8 @@ export async function submitSurvey(input: {
   const answers: Record<string, string | string[]> = {};
   for (const question of survey.questions) {
     const answer = cleanAnswer(question, input.answers[question.id]);
-    if (question.required && answer === null) throw new Error(`Answer “${question.label}” to continue`);
+    if (question.required && answer === null)
+      throw new Error(`Answer “${question.label}” to continue`);
     if (answer !== null) answers[question.id] = answer;
   }
   const email = input.respondentEmail?.trim().toLowerCase() || null;
@@ -178,11 +187,21 @@ export async function submitSurvey(input: {
        returning id
      )
      select exists(select 1 from inserted) as inserted`,
-    [randomUUID(), survey.id, email, emailHash, input.respondentName?.trim().slice(0, 160) || null, JSON.stringify(answers)],
+    [
+      randomUUID(),
+      survey.id,
+      email,
+      emailHash,
+      input.respondentName?.trim().slice(0, 160) || null,
+      JSON.stringify(answers),
+    ],
   );
   const inserted = Boolean(rows[0]?.inserted);
   if (inserted) {
-    await query(`update surveys set response_count = response_count + 1, updated_at = now() where id = $1`, [survey.id]);
+    await query(
+      `update surveys set response_count = response_count + 1, updated_at = now() where id = $1`,
+      [survey.id],
+    );
   }
   return { accepted: true, alreadySubmitted: !inserted && Boolean(emailHash) };
 }
@@ -199,7 +218,10 @@ export async function listSurveyResponses(surveyId: string): Promise<SurveyRespo
     id: String(row.id),
     respondentEmail: typeof row.respondent_email === "string" ? row.respondent_email : null,
     respondentName: typeof row.respondent_name === "string" ? row.respondent_name : null,
-    answers: (row.answers && typeof row.answers === "object" ? row.answers : {}) as Record<string, string | string[]>,
+    answers: (row.answers && typeof row.answers === "object" ? row.answers : {}) as Record<
+      string,
+      string | string[]
+    >,
     submittedAt: asIso(row.submitted_at as Date),
   }));
 }

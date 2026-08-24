@@ -13,7 +13,12 @@ export const Route = createFileRoute("/api/admin/surveys/$id")({
         try {
           return Response.json({ responses: await listSurveyResponses(params.id) });
         } catch (error) {
-          return apiErrorFromRequest(request, "admin.survey-responses", "Could not load feedback", error);
+          return apiErrorFromRequest(
+            request,
+            "admin.survey-responses",
+            "Could not load feedback",
+            error,
+          );
         }
       },
     },

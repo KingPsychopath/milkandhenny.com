@@ -17,12 +17,8 @@ describe("local admin auth bypass", () => {
     vi.stubEnv("NODE_ENV", "development");
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 
-    const {
-      getLocalDevAdminCookieValue,
-      authenticateRequest,
-      requireAuth,
-      requireAdminStepUp,
-    } = await import("@/features/auth/auth.server");
+    const { getLocalDevAdminCookieValue, authenticateRequest, requireAuth, requireAdminStepUp } =
+      await import("@/features/auth/auth.server");
     const value = getLocalDevAdminCookieValue();
 
     expect(value).toEqual(expect.any(String));
@@ -36,9 +32,8 @@ describe("local admin auth bypass", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 
-    const { getLocalDevAdminCookieValue, authenticateRequest, requireAuth } = await import(
-      "@/features/auth/auth.server"
-    );
+    const { getLocalDevAdminCookieValue, authenticateRequest, requireAuth } =
+      await import("@/features/auth/auth.server");
 
     expect(getLocalDevAdminCookieValue()).toBeNull();
     const request = requestWithCookie("mah-auth-admin-dev=not-a-real-session");
