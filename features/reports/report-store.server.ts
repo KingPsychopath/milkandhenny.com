@@ -36,7 +36,11 @@ const MAX_ADMIN_REPORTS = 500;
 const MAX_TRAIL_ITEMS = 12;
 const MAX_REPORT_NOTE_LENGTH = 1_000;
 const MAX_REPORT_RETENTION_SECONDS =
-  Math.max(...Object.values(REPORT_POLICIES).map(({ retentionDays }) => retentionDays)) * 86_400;
+  Math.max(
+    ...Object.values(REPORT_POLICIES).map(
+      ({ retentionDays, resolvedRetentionDays }) => retentionDays + resolvedRetentionDays,
+    ),
+  ) * 86_400;
 
 const memoryReports = new Map<string, UserReportRecord>();
 const memoryRateLimits = new Map<string, { count: number; resetAtMs: number }>();
@@ -231,6 +235,40 @@ function buildDiagnostics(value: unknown, request: Request): DiagnosticContext {
 
 function noteValue(value: unknown) {
   return safeText(value, MAX_REPORT_NOTE_LENGTH);
+}
+
+function activeStatus(status: ReportStatus) {
+  return status !== "resolved" && status !== "ignored" && status !== "duplicate";
+}
+
+function reportExpiryMs(
+  report: Pick<UserReportRecord, "type" | "status" | "createdAt" | "updatedAt">,
+) {
+  const policy = REPORT_POLICIES[report.type];
+  const createdAtMs = Date.parse(report.createdAt);
+  if (!Number.isFinite(createdAtMs)) return Date.now() + policy.retentionDays * 86_400_000;
+
+  const activeExpiryMs = createdAtMs + policy.retentionDays * 86_400_000;
+  if (activeStatus(report.status)) return activeExpiryMs;
+
+  const updatedAtMs = Date.parse(report.updatedAt);
+  const closedAtMs = Number.isFinite(updatedAtMs) ? updatedAtMs : createdAtMs;
+  const closedExpiryMs = closedAtMs + policy.resolvedRetentionDays * 86_400_000;
+  const hardExpiryMs =
+    createdAtMs + (policy.retentionDays + policy.resolvedRetentionDays) * 86_400_000;
+  return Math.min(closedExpiryMs, hardExpiryMs);
+}
+
+function reportTtlSeconds(
+  report: Pick<UserReportRecord, "type" | "status" | "createdAt" | "updatedAt">,
+) {
+  return Math.max(1, Math.ceil((reportExpiryMs(report) - Date.now()) / 1_000));
+}
+
+function pruneMemoryReports(nowMs = Date.now()) {
+  for (const [id, report] of memoryReports) {
+    if (reportExpiryMs(report) <= nowMs) memoryReports.delete(id);
+  }
 }
 
 function countryScore(evaluation: ReturnType<typeof scoreCountryDrawing>): CountryScore {
@@ -548,7 +586,7 @@ async function enforceSubmissionLimits(report: UserReportDraft, request: Request
 async function saveReport(report: UserReportRecord, idempotencyKey: string, duplicateKey: string) {
   const redis = getRedis();
   if (redis) {
-    const ttlSeconds = REPORT_POLICIES[report.type].retentionDays * 86_400;
+    const ttlSeconds = reportTtlSeconds(report);
     const pipeline = redis.pipeline();
     pipeline.set(reportKey(report.id), JSON.stringify(report), { ex: ttlSeconds });
     pipeline.zadd(REPORT_INDEX_KEY, {
@@ -591,6 +629,7 @@ async function saveReport(report: UserReportRecord, idempotencyKey: string, dupl
     return;
   }
   if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+  pruneMemoryReports();
   memoryReports.set(report.id, report);
   memoryReservations.set(`${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`, {
     value: report.id,
@@ -672,7 +711,10 @@ function isUserReportRecord(value: unknown): value is UserReportRecord {
 
 async function listReportRecords() {
   const redis = getRedis();
-  if (!redis) return [...memoryReports.values()];
+  if (!redis) {
+    pruneMemoryReports();
+    return [...memoryReports.values()];
+  }
   const ids = await redis.zrange<string[]>(REPORT_INDEX_KEY, 0, MAX_ADMIN_REPORTS - 1, {
     rev: true,
   });
@@ -700,10 +742,6 @@ async function listReportRecords() {
 
 function groupId(report: Pick<UserReportRecord, "type" | "subjectKey">) {
   return `${report.type}:${report.subjectKey}`;
-}
-
-function activeStatus(status: ReportStatus) {
-  return status !== "resolved" && status !== "ignored" && status !== "duplicate";
 }
 
 function highestSeverity(first: ReportSeverity, second: ReportSeverity): ReportSeverity {
@@ -865,14 +903,12 @@ export async function updateAdminReportGroup(id: string, status: ReportStatus, n
   if (redis) {
     const pipeline = redis.pipeline();
     for (const report of nextReports) {
-      const retentionDays = activeStatus(status)
-        ? REPORT_POLICIES[report.type].retentionDays
-        : REPORT_POLICIES[report.type].resolvedRetentionDays;
-      pipeline.set(reportKey(report.id), JSON.stringify(report), { ex: retentionDays * 86_400 });
+      pipeline.set(reportKey(report.id), JSON.stringify(report), { ex: reportTtlSeconds(report) });
     }
     await pipeline.exec();
   } else {
     if (process.env.NODE_ENV === "production") throw new Error("Report storage unavailable");
+    pruneMemoryReports();
     for (const report of nextReports) memoryReports.set(report.id, report);
   }
   return nextReports.length;

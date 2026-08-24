@@ -69,7 +69,12 @@ export function ReportIssueButton<Type extends ReportType>({
             diagnostics: currentDiagnostics,
           }),
         },
-        { retryMethods: ["POST"], retries: 2, timeoutMs: 10_000 },
+        {
+          retryMethods: ["POST"],
+          retryStatuses: [408, 425, 500, 502, 503, 504],
+          retries: 2,
+          timeoutMs: 10_000,
+        },
       );
       const result = (await response.json().catch(() => null)) as ReportResponse | null;
       if (!response.ok) {

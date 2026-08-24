@@ -4,6 +4,7 @@ type FetchWithRetryOptions = {
   maxDelayMs?: number;
   timeoutMs?: number;
   retryMethods?: readonly string[];
+  retryStatuses?: readonly number[];
 };
 
 const DEFAULT_RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -63,6 +64,7 @@ export async function fetchWithRetry(
   const retryMethods = retryOptions?.retryMethods
     ? new Set(retryOptions.retryMethods.map((value) => value.toUpperCase()))
     : DEFAULT_RETRY_METHODS;
+  const retryStatuses = new Set(retryOptions?.retryStatuses ?? RETRYABLE_STATUS);
   const canRetryMethod = retryMethods.has(method);
 
   for (let i = 0; i <= retries; i++) {
@@ -70,7 +72,7 @@ export async function fetchWithRetry(
     try {
       const res = await fetch(url, { ...options, signal: attempt.signal });
 
-      if (res.ok || !canRetryMethod || !RETRYABLE_STATUS.has(res.status) || i === retries) {
+      if (res.ok || !canRetryMethod || !retryStatuses.has(res.status) || i === retries) {
         return res;
       }
 

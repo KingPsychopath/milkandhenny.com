@@ -93,12 +93,12 @@ function SiteIssueReporter() {
     (pathname.startsWith("/things/") && !pathname.startsWith("/things/centre"));
   if (hasLocalReporter) return null;
   return (
-    <div className="pointer-events-none fixed bottom-3 right-3 z-40">
+    <div className="pointer-events-none fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-3 z-40 max-w-[calc(100vw-1.5rem)]">
       <ReportIssueButton
         type="site_feedback"
         payload={{ surface: pathname || "site" }}
         label="something feel off?"
-        className="pointer-events-auto mt-0 rounded-full border theme-border bg-background/90 px-3 shadow-sm backdrop-blur"
+        className="pointer-events-auto mt-0 max-w-full rounded-full border theme-border bg-background/90 px-3 shadow-sm backdrop-blur"
       />
     </div>
   );

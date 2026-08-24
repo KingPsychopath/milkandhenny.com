@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { AdminReportGroup } from "@/features/reports/types";
+import { copyText } from "@/lib/client/share";
 import {
   REPORT_POLICIES,
   REPORT_STATUSES,
@@ -124,6 +125,7 @@ export function ReportsPanel({
   const [includeResolved, setIncludeResolved] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
+  const [copiedReportId, setCopiedReportId] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -164,6 +166,20 @@ export function ReportsPanel({
       onError(error instanceof Error ? error.message : "Failed to update report");
     } finally {
       setUpdating(null);
+    }
+  };
+
+  const copyContext = async (
+    reportId: string,
+    context: AdminReportGroup["latestContext"],
+    reports: AdminReportGroup["recentReports"],
+  ) => {
+    const copied = await copyText(JSON.stringify({ latest: context, reports }, null, 2));
+    if (copied) {
+      setCopiedReportId(reportId);
+      onStatus("Diagnostic context copied.");
+    } else {
+      onError("Could not copy diagnostic context.");
     }
   };
 
@@ -282,6 +298,15 @@ export function ReportsPanel({
                 <summary className="min-h-11 cursor-pointer select-none font-mono text-xs theme-muted">
                   diagnostic context · {context.diagnostics.trail.length} recent actions
                 </summary>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="min-h-11 px-2 font-mono text-xs theme-muted underline-offset-4 hover:underline"
+                    onClick={() => void copyContext(report.id, context, report.recentReports)}
+                  >
+                    {copiedReportId === report.id ? "copied" : "copy context"}
+                  </button>
+                </div>
                 <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all font-mono text-micro theme-faint">
                   {JSON.stringify(
                     {
