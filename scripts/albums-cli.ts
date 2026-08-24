@@ -14,6 +14,7 @@ import {
   updateAlbumPhoto,
 } from "../features/media/admin-albums";
 import { getMimeType, isProcessableImage } from "../features/media/processing.server";
+import { isConfigured as isObjectStorageConfigured } from "../lib/platform/r2.server";
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -60,6 +61,12 @@ function print(value: unknown): void {
 }
 
 export async function runAlbumsCli(command: "albums" | "photos", args: string[]): Promise<void> {
+  if (!isObjectStorageConfigured()) {
+    throw new Error(
+      "Album storage is not configured. Use `railway run --service web --environment production pnpm cli ...` or configure both scoped R2 credential pairs locally.",
+    );
+  }
+
   const action = args[1];
   if (command === "albums") {
     if (action === "list") return print(await listAdminAlbums());
