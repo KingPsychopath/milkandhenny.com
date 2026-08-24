@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import {
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/admin/cli-auth")({
 function CliAuthPage() {
   const search = Route.useSearch();
   const page = Route.useLoaderData();
+  const [pendingAction, setPendingAction] = useState<"sign-in" | "approve" | "deny" | null>(null);
 
   if (!page.valid) {
     return (
@@ -66,7 +68,12 @@ function CliAuthPage() {
             browser and is never sent to the CLI.
           </p>
 
-          <form action={signInAdminForCli.url} method="post" encType="multipart/form-data">
+          <form
+            action={signInAdminForCli.url}
+            method="post"
+            encType="multipart/form-data"
+            onSubmit={() => setPendingAction("sign-in")}
+          >
             <input type="hidden" name="request" value={search.request} />
             <label htmlFor="cli-admin-password" className="sr-only">
               admin password
@@ -85,7 +92,7 @@ function CliAuthPage() {
               type="submit"
               className="mt-6 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity"
             >
-              continue
+              {pendingAction === "sign-in" ? "checking…" : "continue"}
             </button>
           </form>
           {message ? (
@@ -112,22 +119,30 @@ function CliAuthPage() {
           </p>
         </div>
 
-        <form action={approveCliAuth.url} method="post">
+        <form
+          action={approveCliAuth.url}
+          method="post"
+          onSubmit={() => setPendingAction("approve")}
+        >
           <input type="hidden" name="request" value={search.request} />
           <button
             type="submit"
-            className="mt-8 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity"
+            disabled={pendingAction !== null}
+            aria-busy={pendingAction === "approve"}
+            className="mt-8 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity disabled:cursor-wait disabled:opacity-60"
           >
-            approve terminal
+            {pendingAction === "approve" ? "approving…" : "approve terminal"}
           </button>
         </form>
-        <form action={denyCliAuth.url} method="post">
+        <form action={denyCliAuth.url} method="post" onSubmit={() => setPendingAction("deny")}>
           <input type="hidden" name="request" value={search.request} />
           <button
             type="submit"
-            className="mt-3 min-h-12 w-full rounded-md border border-[var(--stone-300)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide hover:opacity-70 transition-opacity"
+            disabled={pendingAction !== null}
+            aria-busy={pendingAction === "deny"}
+            className="mt-3 min-h-12 w-full rounded-md border border-[var(--stone-300)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide hover:opacity-70 transition-opacity disabled:cursor-wait disabled:opacity-60"
           >
-            cancel
+            {pendingAction === "deny" ? "cancelling…" : "cancel"}
           </button>
         </form>
       </div>
