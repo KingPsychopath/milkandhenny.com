@@ -2518,33 +2518,36 @@ export function EventsPanel({
           </div>
 
           {draft.heroImage && (
-            <AppImage
-              src={draft.heroImage}
-              alt="Event hero preview"
-              width={draft.heroImageWidth}
-              height={draft.heroImageHeight}
-              onLoad={(event) => {
-                const { naturalWidth, naturalHeight } = event.currentTarget;
-                if (naturalWidth <= 0 || naturalHeight <= 0) return;
-                setDraft((current) =>
-                  current &&
-                  current.heroImage === draft.heroImage &&
-                  (current.heroImageWidth !== naturalWidth ||
-                    current.heroImageHeight !== naturalHeight)
-                    ? {
-                        ...current,
-                        heroImageWidth: naturalWidth,
-                        heroImageHeight: naturalHeight,
-                      }
-                    : current,
-                );
-              }}
-              className={`w-full h-auto rounded-lg ${
-                draft.heroHeight === "natural"
-                  ? "max-h-64 object-cover"
-                  : heroImageHeightClass(draft.heroHeight)
-              }`}
-            />
+            <div className="media-image-placeholder overflow-hidden rounded-lg">
+              <AppImage
+                src={draft.heroImage}
+                alt="Event hero preview"
+                width={draft.heroImageWidth}
+                height={draft.heroImageHeight}
+                reveal
+                onLoad={(event) => {
+                  const { naturalWidth, naturalHeight } = event.currentTarget;
+                  if (naturalWidth <= 0 || naturalHeight <= 0) return;
+                  setDraft((current) =>
+                    current &&
+                    current.heroImage === draft.heroImage &&
+                    (current.heroImageWidth !== naturalWidth ||
+                      current.heroImageHeight !== naturalHeight)
+                      ? {
+                          ...current,
+                          heroImageWidth: naturalWidth,
+                          heroImageHeight: naturalHeight,
+                        }
+                      : current,
+                  );
+                }}
+                className={`w-full h-auto rounded-lg ${
+                  draft.heroHeight === "natural"
+                    ? "max-h-64 object-cover"
+                    : heroImageHeightClass(draft.heroHeight)
+                }`}
+              />
+            </div>
           )}
 
           <label className="block">

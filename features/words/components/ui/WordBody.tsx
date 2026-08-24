@@ -128,7 +128,10 @@ function getBaseComponents(
 
       if (alt) {
         return (
-          <figure className="image-figure" style={imagePlaceholderStyle(image?.placeholder)}>
+          <figure
+            className="media-image-placeholder image-figure"
+            style={imagePlaceholderStyle(image?.placeholder)}
+          >
             <AppImage
               src={resolved}
               srcSet={image?.srcSet}
@@ -136,6 +139,7 @@ function getBaseComponents(
               alt={alt}
               width={image?.width}
               height={image?.height}
+              reveal
               sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
               onError={handleError}
             />
@@ -145,17 +149,22 @@ function getBaseComponents(
       }
 
       return (
-        <AppImage
-          src={resolved}
-          srcSet={image?.srcSet}
-          sources={image?.sources}
-          alt=""
-          width={image?.width}
-          height={image?.height}
-          sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+        <figure
+          className="media-image-placeholder image-figure"
           style={imagePlaceholderStyle(image?.placeholder)}
-          onError={handleError}
-        />
+        >
+          <AppImage
+            src={resolved}
+            srcSet={image?.srcSet}
+            sources={image?.sources}
+            alt=""
+            width={image?.width}
+            height={image?.height}
+            reveal
+            sizes="(min-width: 672px) 624px, calc(100vw - 3rem)"
+            onError={handleError}
+          />
+        </figure>
       );
     },
 
