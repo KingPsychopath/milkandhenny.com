@@ -1275,6 +1275,65 @@ const MIGRATIONS: Migration[] = [
         on game_pool_assignments (status, last_seen_at);
     `,
   },
+  {
+    id: "0031_email_engagement",
+    sql: `
+      alter table email_feedback_events rename to email_delivery_events;
+      alter table email_delivery_events
+        drop constraint if exists email_feedback_events_event_type_check;
+      update email_delivery_events
+         set event_type = case event_type
+           when 'cf.email.sending.message.delivered' then 'delivered'
+           when 'cf.email.sending.message.deferred' then 'deferred'
+           when 'cf.email.sending.message.bounced' then 'bounced'
+           when 'cf.email.sending.message.failed' then 'failed'
+           when 'cf.email.sending.message.rejected' then 'rejected'
+           when 'cf.email.sending.message.complained' then 'complained'
+           else event_type
+         end;
+      alter table email_delivery_events
+        add constraint email_delivery_events_event_type_check
+        check (event_type in ('delivered', 'deferred', 'bounced', 'failed', 'rejected', 'complained'));
+      alter index email_feedback_message_idx rename to email_delivery_message_idx;
+
+      alter table email_outbox
+        add column if not exists provider_delivery_status text,
+        add column if not exists delivered_at timestamptz;
+
+      alter table communication_stage_deliveries
+        drop constraint if exists communication_stage_deliveries_status_check;
+      alter table communication_stage_deliveries
+        add constraint communication_stage_deliveries_status_check
+        check (status in (
+          'queued', 'accepted', 'delivered', 'deferred', 'failed',
+          'bounced', 'rejected', 'complained', 'skipped'
+        ));
+      create index if not exists communication_stage_deliveries_outbox_idx
+        on communication_stage_deliveries (outbox_id)
+        where outbox_id is not null;
+
+      create table communication_links (
+        token_id          uuid primary key,
+        source_type       text not null check (source_type in ('message', 'stage', 'test')),
+        source_id         uuid not null,
+        recipient_hash    text not null check (char_length(recipient_hash) = 64),
+        link_key          text not null check (char_length(link_key) between 1 and 160),
+        destination       text not null check (char_length(destination) between 1 and 2048),
+        click_count       integer not null default 0 check (click_count >= 0),
+        first_clicked_at  timestamptz,
+        last_clicked_at   timestamptz,
+        expires_at        timestamptz not null,
+        created_at        timestamptz not null default now(),
+        unique (source_type, source_id, recipient_hash, link_key)
+      );
+
+      create index communication_links_source_idx
+        on communication_links (source_type, source_id, link_key)
+        where click_count > 0;
+      create index communication_links_expiry_idx
+        on communication_links (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

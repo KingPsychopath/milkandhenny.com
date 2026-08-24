@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 
 import { drainEmailOutbox, enqueueEmail } from "@/lib/platform/email-outbox.server";
-import { recordEmailFeedback } from "@/lib/platform/email-feedback.server";
+import { recordEmailDeliveryEvent } from "@/lib/platform/email-delivery-events.server";
+import {
+  prepareCommunicationLinkMap,
+  recordCommunicationLinkClick,
+} from "@/features/communications/email-links.server";
+import { communicationLinkKey } from "@/features/communications/email.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -68,9 +74,45 @@ describeWithDatabase("email outbox (postgres)", () => {
       provider_message_id: "provider-1",
     });
 
-    await recordEmailFeedback({
+    await recordEmailDeliveryEvent({
+      eventId: "delivered-1",
+      type: "delivered",
+      occurredAt: new Date("2026-08-14T12:00:00.000Z"),
+      providerMessageId: "provider-1",
+      recipients: ["PERSON@example.com"],
+    });
+    const delivered = await query<{
+      status: string;
+      provider_delivery_status: string | null;
+    }>(`select status, provider_delivery_status from email_outbox`);
+    expect(delivered[0]).toEqual({ status: "accepted", provider_delivery_status: "delivered" });
+
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret");
+    const sourceId = randomUUID();
+    const links = await prepareCommunicationLinkMap({
+      body: "[Practise spelling](/things/spelling-bee)",
+      context: {},
+      origin: "http://localhost:3000",
+      media: [],
+      source: {
+        sourceType: "message",
+        sourceId,
+        recipientHash: "a".repeat(64),
+      },
+    });
+    const tracked = links.get(communicationLinkKey("/things/spelling-bee") ?? "");
+    expect(tracked).toBeTruthy();
+    const token = tracked ? new URL(tracked).searchParams.get("token") : null;
+    await expect(recordCommunicationLinkClick(token ?? "")).resolves.toBe("/things/spelling-bee");
+    const click = await query<{ click_count: number }>(
+      `select click_count from communication_links where source_id = $1`,
+      [sourceId],
+    );
+    expect(click[0]?.click_count).toBe(1);
+
+    await recordEmailDeliveryEvent({
       eventId: "feedback-1",
-      type: "cf.email.sending.message.bounced",
+      type: "bounced",
       occurredAt: new Date("2026-08-14T12:00:00.000Z"),
       providerMessageId: "provider-1",
       recipients: ["PERSON@example.com"],

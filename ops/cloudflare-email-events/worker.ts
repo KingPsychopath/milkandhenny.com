@@ -1,27 +1,7 @@
-interface Env {
-  APP_BASE_URL: string;
-  EMAIL_EVENT_SECRET: string;
-}
+import "./worker-configuration.d.ts";
 
 type CloudflareEmailEvent = {
   metadata?: { eventTimestamp?: unknown };
-};
-
-type QueueMessage<Body> = {
-  id: string;
-  timestamp: Date;
-  body: Body;
-  attempts: number;
-  ack(): void;
-  retry(options?: { delaySeconds?: number }): void;
-};
-
-type QueueBatch<Body> = {
-  messages: readonly QueueMessage<Body>[];
-};
-
-type QueueWorker<Environment, Body> = {
-  queue(batch: QueueBatch<Body>, env: Environment): Promise<void>;
 };
 
 function retryDelay(attempts: number): number {
@@ -29,7 +9,7 @@ function retryDelay(attempts: number): number {
 }
 
 export default {
-  async queue(batch: QueueBatch<CloudflareEmailEvent>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<CloudflareEmailEvent>, env: Env): Promise<void> {
     for (const message of batch.messages) {
       try {
         const eventTimestamp = message.body.metadata?.eventTimestamp;
@@ -81,4 +61,4 @@ export default {
       }
     }
   },
-} satisfies QueueWorker<Env, CloudflareEmailEvent>;
+} satisfies ExportedHandler<Env, CloudflareEmailEvent>;

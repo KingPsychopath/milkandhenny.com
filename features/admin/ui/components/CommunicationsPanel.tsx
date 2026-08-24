@@ -23,11 +23,26 @@ type Message = {
   scheduledAt: string | null;
   status: string;
   recipientCount: number;
+  delivery: DeliveryCounts;
+  linkClicks: LinkMetric[];
 };
 type EmailCapability = {
   provider: "cloudflare" | "mailpit" | null;
   mailpitUrl: string | null;
+  deliveryEventsConfigured?: boolean;
+  linkTrackingConfigured?: boolean;
 };
+type DeliveryCounts = {
+  queued: number;
+  accepted: number;
+  delivered: number;
+  deferred: number;
+  failed: number;
+  bounced: number;
+  rejected: number;
+  complained: number;
+};
+type LinkMetric = { linkKey: string; uniqueRecipients: number; totalClicks: number };
 type Media = { kind: MediaKind; url: string; alt: string; posterUrl?: string };
 type Template = {
   id: string;
@@ -53,6 +68,8 @@ type Stage = {
   recipientCount: number;
   queuedCount: number;
   surveyId: string | null;
+  delivery: DeliveryCounts;
+  linkClicks: LinkMetric[];
 };
 type Plan = {
   id: string;
@@ -158,6 +175,29 @@ function dateLabel(value: string | null): string {
         timeStyle: "short",
         timeZone: "Europe/London",
       });
+}
+
+function engagementLabel(delivery: DeliveryCounts, links: LinkMetric[]): string {
+  const clicked = links.reduce((total, link) => total + link.uniqueRecipients, 0);
+  const parts = [
+    `accepted ${delivery.accepted}`,
+    `delivered ${delivery.delivered}`,
+    `clicked ${clicked}`,
+  ];
+  if (delivery.deferred) parts.push(`deferred ${delivery.deferred}`);
+  if (delivery.failed || delivery.bounced || delivery.rejected || delivery.complained) {
+    parts.push(
+      `needs attention ${delivery.failed + delivery.bounced + delivery.rejected + delivery.complained}`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function linkMetricsLabel(links: LinkMetric[]): string {
+  return links
+    .filter((link) => link.uniqueRecipients > 0)
+    .map((link) => `${link.linkKey} ${link.uniqueRecipients}`)
+    .join(" · ");
 }
 
 function shortDate(value: string | null): string {
@@ -747,7 +787,7 @@ export function CommunicationsPanel({
             {loading ? "loading…" : "refresh"}
           </Button>
         </div>
-        <dl className="mt-7 grid gap-4 border-t theme-border pt-5 font-mono text-xs sm:grid-cols-3">
+        <dl className="mt-7 grid gap-4 border-t theme-border pt-5 font-mono text-xs sm:grid-cols-4">
           <div>
             <dt className="theme-faint">marketing opt-ins</dt>
             <dd className="mt-1 text-lg">{optedInCount}</dd>
@@ -759,6 +799,13 @@ export function CommunicationsPanel({
           <div>
             <dt className="theme-faint">next send</dt>
             <dd className="mt-1">{dateLabel(nextSend)}</dd>
+          </div>
+          <div>
+            <dt className="theme-faint">email signals</dt>
+            <dd className="mt-1">
+              {email.deliveryEventsConfigured ? "delivery" : "delivery off"} ·{" "}
+              {email.linkTrackingConfigured ? "clicks" : "clicks off"}
+            </dd>
           </div>
         </dl>
         {email.provider === "mailpit" && email.mailpitUrl ? (
@@ -1061,6 +1108,12 @@ function EventPlanView(props: {
                     <p className="mt-2 font-mono text-xs theme-muted">
                       {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"} ·{" "}
                       {stage.status} · {stage.recipientCount || "recipient count at fan-out"}
+                    </p>
+                    <p className="mt-2 font-mono text-micro theme-faint">
+                      {engagementLabel(stage.delivery, stage.linkClicks)}
+                      {linkMetricsLabel(stage.linkClicks)
+                        ? ` · ${linkMetricsLabel(stage.linkClicks)}`
+                        : ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1454,6 +1507,12 @@ function ComposeView(props: {
                     <p className="font-serif text-xl">{message.subject}</p>
                     <p className="mt-1 font-mono text-micro theme-muted">
                       {KIND_LABELS[message.kind]} · {message.recipientCount} people
+                    </p>
+                    <p className="mt-2 font-mono text-micro theme-faint">
+                      {engagementLabel(message.delivery, message.linkClicks)}
+                      {linkMetricsLabel(message.linkClicks)
+                        ? ` · ${linkMetricsLabel(message.linkClicks)}`
+                        : ""}
                     </p>
                   </div>
                   <p className="font-mono text-xs theme-muted">{message.status}</p>

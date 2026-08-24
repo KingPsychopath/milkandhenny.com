@@ -233,6 +233,12 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
         where id = $1 and status = 'processing'`,
       [row.id, result.id],
     );
+    await query(
+      `update communication_stage_deliveries
+          set status = 'accepted', updated_at = now()
+        where outbox_id = $1 and status = 'queued'`,
+      [row.id],
+    );
     return;
   }
 

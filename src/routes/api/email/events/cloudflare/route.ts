@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import {
   authenticateCloudflareEmailRelay,
-  parseCloudflareEmailFeedback,
-  recordEmailFeedback,
-} from "@/lib/platform/email-feedback.server";
+  parseCloudflareEmailDeliveryEvent,
+} from "@/lib/platform/email-providers/cloudflare-email-events.server";
+import { recordEmailDeliveryEvent } from "@/lib/platform/email-delivery-events.server";
 import { log } from "@/lib/platform/logger.server";
 
 type RelayItem = { id?: unknown; occurredAt?: unknown; event?: unknown };
@@ -33,7 +33,7 @@ async function handlePOST(request: Request) {
   try {
     events = (items as RelayItem[]).flatMap((raw) => {
       const occurredAt = typeof raw.occurredAt === "string" ? new Date(raw.occurredAt) : new Date();
-      const event = parseCloudflareEmailFeedback(
+      const event = parseCloudflareEmailDeliveryEvent(
         raw.event,
         typeof raw.id === "string" ? raw.id : "",
         occurredAt,
@@ -46,12 +46,12 @@ async function handlePOST(request: Request) {
 
   try {
     for (const event of events) {
-      await recordEmailFeedback(event);
+      await recordEmailDeliveryEvent(event);
     }
     return Response.json({ received: items.length, handled: events.length });
   } catch (error) {
-    log.error("email.feedback", "Could not record Cloudflare email feedback", {}, error);
-    return Response.json({ error: "Feedback could not be recorded" }, { status: 503 });
+    log.error("email.delivery", "Could not record Cloudflare email delivery event", {}, error);
+    return Response.json({ error: "Delivery event could not be recorded" }, { status: 503 });
   }
 }
 

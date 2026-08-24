@@ -140,14 +140,43 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "ticket-email",
       label: "transactional email",
-      status:
-        emailCapability.configured && emailCapability.feedbackConfigured ? "available" : "degraded",
+      status: emailCapability.configured ? "available" : "degraded",
       required: false,
       detail: !emailCapability.configured
         ? "Ticket and studio email channels are not fully configured."
-        : !emailCapability.feedbackConfigured
-          ? "Cloudflare can send, but its delivery-event relay is not configured."
-          : `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`,
+        : `Ticket and studio emails send via ${emailCapability.provider} from ${emailCapability.senders.tickets} and ${emailCapability.senders.studio}; replies go to ${emailCapability.replyTo}.`,
+    },
+    {
+      id: "email-delivery-events",
+      label: "email delivery events",
+      status: !emailCapability.configured
+        ? "disabled"
+        : emailCapability.deliveryEventsConfigured
+          ? "available"
+          : "degraded",
+      required: false,
+      detail: !emailCapability.configured
+        ? "Delivery events wait for transactional email configuration."
+        : emailCapability.deliveryEventsConfigured
+          ? emailCapability.provider === "mailpit"
+            ? "Local delivery is visible in Mailpit; no external event relay is needed."
+            : "Normalized provider events update delivered, deferred, failed, bounced, and complaint state."
+          : "Email can send, but the provider delivery-event relay secret is not configured.",
+    },
+    {
+      id: "email-link-engagement",
+      label: "email link engagement",
+      status: !emailCapability.configured
+        ? "disabled"
+        : emailCapability.linkTrackingConfigured
+          ? "available"
+          : "degraded",
+      required: false,
+      detail: !emailCapability.configured
+        ? "Link engagement waits for transactional email configuration."
+        : emailCapability.linkTrackingConfigured
+          ? "First-party signed redirects count meaningful clicks without exposing recipient addresses."
+          : "Email can send, but AUTH_SECRET is required to sign engagement links.",
     },
     {
       id: "multiplayer-realtime",

@@ -1,11 +1,11 @@
 import { log } from "./logger.server";
 
 /**
- * Cloudflare transactional email.
+ * Provider-neutral transactional email.
  *
  * Mirrors the posture of `redis.server.ts` and `r2.server.ts`: the
- * application contract is `EMAIL_*`, while Cloudflare account details stay
- * inside this platform adapter.
+ * The application contract is `EMAIL_*`; Cloudflare and Mailpit details stay
+ * inside this platform adapter so the product does not depend on either API.
  *
  * Ticket delivery should be sent from a dedicated subdomain so bulk or
  * announcement mail can never damage the reputation of the domain carrying
@@ -138,7 +138,8 @@ function getEmailConfig(channel: EmailChannel): EmailConfig | null {
 /** Surfaced on `/health` alongside the other optional capabilities. */
 export function describeEmailCapability(): {
   configured: boolean;
-  feedbackConfigured: boolean;
+  deliveryEventsConfigured: boolean;
+  linkTrackingConfigured: boolean;
   provider: "cloudflare" | "mailpit" | null;
   mailpitUrl: string | null;
   senders: Record<EmailChannel, string | null>;
@@ -152,10 +153,17 @@ export function describeEmailCapability(): {
       : studio?.provider === "mailpit"
         ? studio.baseUrl
         : null;
+  const provider = tickets?.provider ?? studio?.provider ?? null;
+  const configured = tickets !== null && studio !== null;
   return {
-    configured: tickets !== null && studio !== null,
-    feedbackConfigured: Boolean(process.env.EMAIL_EVENT_SECRET?.trim()),
-    provider: tickets?.provider ?? studio?.provider ?? null,
+    configured,
+    // Mailpit is observed directly through its inbox. Cloudflare needs the
+    // dedicated Queue relay secret before provider events can be trusted.
+    deliveryEventsConfigured:
+      provider === "mailpit" || Boolean(process.env.EMAIL_EVENT_SECRET?.trim()),
+    // Links are signed by the app, so they remain independent of the sender.
+    linkTrackingConfigured: configured && Boolean(process.env.AUTH_SECRET?.trim()),
+    provider,
     mailpitUrl,
     senders: {
       tickets: tickets?.sender.address ?? null,

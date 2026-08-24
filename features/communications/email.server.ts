@@ -85,6 +85,14 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
   return value.replace(/\{\{([A-Za-z.]+)\}\}/g, (_, key: string) => values[key] ?? "");
 }
 
+export function resolveCommunicationTokens(
+  value: string,
+  context: CommunicationEmailContext,
+  origin: string,
+): string {
+  return replaceTokens(value, context, origin);
+}
+
 function eventTiming(event: EventRecord): string {
   const eventTime = new Intl.DateTimeFormat("en-GB", {
     timeStyle: "short",
@@ -152,18 +160,60 @@ function replaceMarkdownLinks(
   return output;
 }
 
-function inlineHtml(value: string): string {
+/** Extract links before the body is turned into HTML. */
+export function extractCommunicationLinks(value: string): Array<{ label: string; url: string }> {
+  const links: Array<{ label: string; url: string }> = [];
+  replaceMarkdownLinks(value, (label, url) => {
+    links.push({ label, url });
+    return "";
+  });
+  return links;
+}
+
+/** A provider-neutral, readable key used for aggregate click reporting. */
+export function communicationLinkKey(value: string): string | null {
+  const safe = safeLinkUrl(value);
+  if (!safe || safe.startsWith("mailto:")) return null;
+  try {
+    const url = safe.startsWith("/")
+      ? new URL(safe, "https://milkandhenny.invalid")
+      : new URL(safe);
+    const path = `${url.pathname}${url.search}`.replace(/\/$/, "") || "/";
+    const key = path
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 150);
+    return key || "link";
+  } catch {
+    return null;
+  }
+}
+
+function unescapeEmailHtml(value: string): string {
+  return value
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'");
+}
+
+function inlineHtml(value: string, trackingLinks?: ReadonlyMap<string, string>): string {
   const escaped = escapeEmailHtml(value);
   const withLinks = replaceMarkdownLinks(escaped, (label, url) => {
-    const safe = safeLinkUrl(url);
+    const rawUrl = unescapeEmailHtml(url);
+    const safe = safeLinkUrl(rawUrl);
+    const key = safe ? communicationLinkKey(safe) : null;
+    const tracked = key ? trackingLinks?.get(key) : undefined;
     return safe
-      ? `<a href="${escapeEmailHtml(safe)}" style="color:#a16207;text-decoration:underline;text-underline-offset:3px">${label}</a>`
+      ? `<a href="${escapeEmailHtml(tracked ?? safe)}" style="color:#a16207;text-decoration:underline;text-underline-offset:3px">${label}</a>`
       : label;
   });
   return withLinks.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
 
-function richBodyHtml(value: string): string {
+function richBodyHtml(value: string, trackingLinks?: ReadonlyMap<string, string>): string {
   const lines = value.trim().split("\n");
   const blocks: string[] = [];
   let paragraph: string[] = [];
@@ -172,14 +222,14 @@ function richBodyHtml(value: string): string {
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
     blocks.push(
-      `<p style="margin:0 0 18px;line-height:1.7">${paragraph.map(inlineHtml).join("<br>")}</p>`,
+      `<p style="margin:0 0 18px;line-height:1.7">${paragraph.map((line) => inlineHtml(line, trackingLinks)).join("<br>")}</p>`,
     );
     paragraph = [];
   };
   const flushList = () => {
     if (list.length === 0) return;
     blocks.push(
-      `<ul style="margin:0 0 20px;padding-left:22px">${list.map((item) => `<li style="margin:0 0 8px;padding-left:4px">${inlineHtml(item)}</li>`).join("")}</ul>`,
+      `<ul style="margin:0 0 20px;padding-left:22px">${list.map((item) => `<li style="margin:0 0 8px;padding-left:4px">${inlineHtml(item, trackingLinks)}</li>`).join("")}</ul>`,
     );
     list = [];
   };
@@ -210,10 +260,12 @@ function richBodyHtml(value: string): string {
   return blocks.join("");
 }
 
-function plainTextBody(value: string): string {
+function plainTextBody(value: string, trackingLinks?: ReadonlyMap<string, string>): string {
   return replaceMarkdownLinks(value, (label, url) => {
     const safe = safeLinkUrl(url);
-    return safe && !safe.startsWith("mailto:") ? `${label} (${safe})` : label;
+    const key = safe ? communicationLinkKey(safe) : null;
+    const tracked = key ? trackingLinks?.get(key) : undefined;
+    return safe && !safe.startsWith("mailto:") ? `${label} (${tracked ?? safe})` : label;
   })
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/^##\s+/gm, "")
@@ -222,18 +274,23 @@ function plainTextBody(value: string): string {
     .trim();
 }
 
-function mediaHtml(media: CommunicationMedia[]): string {
+function mediaHtml(
+  media: CommunicationMedia[],
+  trackingLinks?: ReadonlyMap<string, string>,
+): string {
   return media
     .map((item) => {
       const url = safeUrl(item.url);
       if (!url) return "";
+      const tracked =
+        item.kind === "video" ? trackingLinks?.get(communicationLinkKey(url) ?? "") : undefined;
       const alt = escapeEmailHtml(item.alt || "shared media");
       if (item.kind === "video") {
         const poster = item.posterUrl ? safeUrl(item.posterUrl) : null;
         const image = poster
           ? `<img src="${escapeEmailHtml(poster)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0">`
           : `<span style="display:block;padding:28px 16px;border:1px solid #e7e5e4;text-align:center">watch the video →</span>`;
-        return `<p style="margin:24px 0"><a href="${escapeEmailHtml(url)}" style="color:#b45309;text-decoration:none">${image}</a></p>`;
+        return `<p style="margin:24px 0"><a href="${escapeEmailHtml(tracked ?? url)}" style="color:#b45309;text-decoration:none">${image}</a></p>`;
       }
       return `<p style="margin:24px 0"><img src="${escapeEmailHtml(url)}" alt="${alt}" style="display:block;width:100%;height:auto;border:0"></p>`;
     })
@@ -250,6 +307,7 @@ export function renderCommunicationMessage(input: {
   origin?: string;
   meta?: string;
   context?: CommunicationEmailContext;
+  trackingLinks?: ReadonlyMap<string, string>;
 }) {
   const origin = input.origin ?? BASE_URL;
   const context = {
@@ -259,11 +317,11 @@ export function renderCommunicationMessage(input: {
   const subject = replaceTokens(input.subject, context, origin);
   const body = replaceTokens(input.body, context, origin);
   const greeting = input.recipientName ? `Hi ${input.recipientName},` : "";
-  const paragraphs = richBodyHtml(body);
+  const paragraphs = richBodyHtml(body, input.trackingLinks);
   const contentHtml = [
     greeting ? `<p style="margin:0 0 14px;line-height:1.6">${escapeEmailHtml(greeting)}</p>` : "",
     paragraphs,
-    mediaHtml(input.media ?? []),
+    mediaHtml(input.media ?? [], input.trackingLinks),
   ].join("");
   const label =
     input.kind === "newsletter"
@@ -290,7 +348,7 @@ export function renderCommunicationMessage(input: {
     subject,
     text: [
       input.recipientName ? `Hi ${input.recipientName},` : "",
-      plainTextBody(body),
+      plainTextBody(body, input.trackingLinks),
       ...(input.media?.length ? ["", "Media is included in the HTML version."] : []),
       ...(input.unsubscribeUrl ? ["", `Stop marketing emails: ${input.unsubscribeUrl}`] : []),
       "",

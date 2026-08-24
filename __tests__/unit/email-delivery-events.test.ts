@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { __emailDeliveryTesting } from "@/lib/platform/email-delivery-events.server";
 import {
-  __emailFeedbackTesting,
   authenticateCloudflareEmailRelay,
-  parseCloudflareEmailFeedback,
-} from "@/lib/platform/email-feedback.server";
+  parseCloudflareEmailDeliveryEvent,
+} from "@/lib/platform/email-providers/cloudflare-email-events.server";
 
-describe("Cloudflare email delivery feedback", () => {
+describe("Cloudflare email delivery events", () => {
   it("parses a bounce without retaining the address in its identity", () => {
-    const event = parseCloudflareEmailFeedback(
+    const event = parseCloudflareEmailDeliveryEvent(
       {
         type: "cf.email.sending.message.bounced",
         source: { type: "email.sending", domain: "tickets.milkandhenny.com" },
@@ -20,33 +20,39 @@ describe("Cloudflare email delivery feedback", () => {
 
     expect(event).toEqual({
       eventId: "event_123",
-      type: "cf.email.sending.message.bounced",
+      type: "bounced",
       occurredAt: new Date("2026-08-14T12:00:00.000Z"),
       providerMessageId: "email_123",
       recipients: ["Guest@Example.com"],
     });
-    expect(__emailFeedbackTesting.hashRecipient(" Guest@Example.com ")).toBe(
-      __emailFeedbackTesting.hashRecipient("guest@example.com"),
+    expect(__emailDeliveryTesting.hashRecipient(" Guest@Example.com ")).toBe(
+      __emailDeliveryTesting.hashRecipient("guest@example.com"),
     );
   });
 
-  it("ignores delivery events that do not suppress future email", () => {
+  it.each([
+    ["delivered", "cf.email.sending.message.delivered"],
+    ["deferred", "cf.email.sending.message.deferred"],
+    ["failed", "cf.email.sending.message.failed"],
+    ["rejected", "cf.email.sending.message.rejected"],
+    ["complained", "cf.email.sending.message.complained"],
+  ] as const)("normalizes %s events at the provider boundary", (status, providerType) => {
     expect(
-      parseCloudflareEmailFeedback(
+      parseCloudflareEmailDeliveryEvent(
         {
-          type: "cf.email.sending.message.delivered",
+          type: providerType,
           source: { type: "email.sending" },
           payload: { messageId: "email_123", recipient: "guest@example.com" },
         },
         "event_123",
-        new Date(),
-      ),
-    ).toBeNull();
+        new Date("2026-08-14T12:00:00.000Z"),
+      )?.type,
+    ).toBe(status);
   });
 
   it("rejects malformed handled events", () => {
     expect(() =>
-      parseCloudflareEmailFeedback(
+      parseCloudflareEmailDeliveryEvent(
         {
           type: "cf.email.sending.message.complained",
           source: { type: "email.routing" },

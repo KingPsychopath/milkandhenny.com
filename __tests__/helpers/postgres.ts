@@ -61,6 +61,8 @@ export async function applySchema(): Promise<void> {
     drop table if exists game_pool_runs cascade;
     drop table if exists game_pool_entrances cascade;
     drop table if exists email_feedback_events cascade;
+    drop table if exists email_delivery_events cascade;
+    drop table if exists communication_links cascade;
     drop table if exists email_suppressions cascade;
     drop table if exists email_outbox cascade;
     drop table if exists pitch_audit_events cascade;
@@ -92,7 +94,7 @@ export async function applySchema(): Promise<void> {
 export async function truncateAll(): Promise<void> {
   const { query } = await import("@/lib/platform/postgres.server");
   await query(
-    `truncate email_feedback_events, email_suppressions, email_outbox, pitch_decks,
+    `truncate email_delivery_events, email_suppressions, email_outbox, communication_links, pitch_decks,
               checkout_sessions, tickets, ticket_types, events restart identity cascade`,
   );
   // New tables land via cascade from events/tickets, but be explicit so a

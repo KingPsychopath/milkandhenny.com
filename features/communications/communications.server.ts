@@ -9,6 +9,7 @@ import {
   type CommunicationKind,
   type CommunicationMedia,
 } from "./email.server";
+import { prepareCommunicationLinkMap } from "./email-links.server";
 
 export type CommunicationContact = {
   emailHash: string;
@@ -37,6 +38,25 @@ export type CommunicationMessage = {
   lastError: string | null;
   createdAt: string;
   queuedAt: string | null;
+  delivery: CommunicationDeliveryCounts;
+  linkClicks: CommunicationLinkMetric[];
+};
+
+export type CommunicationDeliveryCounts = {
+  queued: number;
+  accepted: number;
+  delivered: number;
+  deferred: number;
+  failed: number;
+  bounced: number;
+  rejected: number;
+  complained: number;
+};
+
+export type CommunicationLinkMetric = {
+  linkKey: string;
+  uniqueRecipients: number;
+  totalClicks: number;
 };
 
 type Candidate = { email: string; displayName: string | null; source: string };
@@ -49,12 +69,47 @@ function iso(value: Date | string | null): string | null {
   return value ? new Date(value).toISOString() : null;
 }
 
+const EMPTY_DELIVERY_COUNTS: CommunicationDeliveryCounts = {
+  queued: 0,
+  accepted: 0,
+  delivered: 0,
+  deferred: 0,
+  failed: 0,
+  bounced: 0,
+  rejected: 0,
+  complained: 0,
+};
+
+function deliveryCounts(value: unknown): CommunicationDeliveryCounts {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...EMPTY_DELIVERY_COUNTS };
+  }
+  const row = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(EMPTY_DELIVERY_COUNTS).map((key) => [key, Number(row[key]) || 0]),
+  ) as unknown as CommunicationDeliveryCounts;
+}
+
+function linkMetrics(value: unknown): CommunicationLinkMetric[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      linkKey: String(item.linkKey ?? ""),
+      uniqueRecipients: Number(item.uniqueRecipients) || 0,
+      totalClicks: Number(item.totalClicks) || 0,
+    }))
+    .filter((item) => item.linkKey);
+}
+
 function validMedia(value: unknown): CommunicationMedia[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map((item) => ({
-      kind: (item.kind === "gif" || item.kind === "video" ? item.kind : "image") as CommunicationMedia["kind"],
+      kind: (item.kind === "gif" || item.kind === "video"
+        ? item.kind
+        : "image") as CommunicationMedia["kind"],
       url: typeof item.url === "string" ? item.url.trim() : "",
       alt: typeof item.alt === "string" ? item.alt.trim().slice(0, 200) : "",
       ...(typeof item.posterUrl === "string" && item.posterUrl.trim()
@@ -85,7 +140,8 @@ async function syncContacts(): Promise<void> {
     const existing = merged.get(key);
     if (existing) {
       existing.sources.add(candidate.source);
-      if (!existing.displayName && candidate.displayName) existing.displayName = candidate.displayName;
+      if (!existing.displayName && candidate.displayName)
+        existing.displayName = candidate.displayName;
     } else {
       merged.set(key, {
         email,
@@ -125,7 +181,9 @@ function contactFromRow(row: Record<string, unknown>): CommunicationContact {
 
 export async function listCommunicationContacts(): Promise<CommunicationContact[]> {
   await syncContacts();
-  const rows = await query<Record<string, unknown>>(`select email_hash, email, display_name, sources, marketing_opted_in,
+  const rows = await query<
+    Record<string, unknown>
+  >(`select email_hash, email, display_name, sources, marketing_opted_in,
             opted_in_at, opted_out_at, unsubscribe_token
        from communication_contacts
       order by lower(coalesce(display_name, email)), email_hash`);
@@ -168,11 +226,14 @@ async function resolveRecipients(input: {
   await syncContacts();
   let hashes: string[] = [];
   if (input.audience === "marketing_opted_in" || input.audience === "selected") {
-    hashes = input.audience === "selected"
-      ? input.selectedContactHashes
-      : (await query<{ email_hash: string }>(
-          `select email_hash from communication_contacts where marketing_opted_in = true`,
-        )).map((row) => row.email_hash);
+    hashes =
+      input.audience === "selected"
+        ? input.selectedContactHashes
+        : (
+            await query<{ email_hash: string }>(
+              `select email_hash from communication_contacts where marketing_opted_in = true`,
+            )
+          ).map((row) => row.email_hash);
   } else if (input.audience === "event_attendees" && input.eventSlug) {
     const tickets = await query<{ email: string }>(
       `select distinct lower(email) as email
@@ -201,7 +262,8 @@ async function resolveRecipients(input: {
     [hashes],
   );
   const contacts = rows.map(contactFromRow);
-  return input.audience === "selected" && (input.kind === "newsletter" || input.kind === "pitch_nudge")
+  return input.audience === "selected" &&
+    (input.kind === "newsletter" || input.kind === "pitch_nudge")
     ? contacts.filter((contact) => contact.marketingOptedIn)
     : contacts;
 }
@@ -225,24 +287,59 @@ function messageFromRow(row: Record<string, unknown>): CommunicationMessage {
     lastError: typeof row.last_error === "string" ? row.last_error : null,
     createdAt: iso(row.created_at as Date) ?? new Date().toISOString(),
     queuedAt: iso(row.queued_at as Date | null),
+    delivery: deliveryCounts(row.delivery_counts),
+    linkClicks: linkMetrics(row.link_clicks),
   };
 }
 
 export async function listCommunicationMessages(): Promise<CommunicationMessage[]> {
-  const rows = await query<Record<string, unknown>>(`select id, kind, audience, event_slug, subject, body, media,
+  const rows = await query<
+    Record<string, unknown>
+  >(`select id, kind, audience, event_slug, subject, body, media,
             selected_contact_hashes, scheduled_at, status, recipient_count,
-            queued_count, last_error, created_at, queued_at
-       from communication_messages
+            queued_count, last_error, created_at, queued_at,
+            jsonb_build_object(
+              'queued', (select count(*) from email_outbox o where o.communication_id = m.id and o.status in ('pending', 'processing')),
+              'accepted', (select count(*) from email_outbox o where o.communication_id = m.id and o.status = 'accepted'),
+              'delivered', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'delivered'),
+              'deferred', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'deferred'),
+              'failed', (select count(*) from email_outbox o where o.communication_id = m.id and o.status = 'failed'),
+              'bounced', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'bounced'),
+              'rejected', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'rejected'),
+              'complained', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'complained')
+            ) as delivery_counts,
+            coalesce((
+              select jsonb_agg(jsonb_build_object(
+                'linkKey', clicks.link_key,
+                'uniqueRecipients', clicks.unique_recipients,
+                'totalClicks', clicks.total_clicks
+              ) order by clicks.link_key)
+                from (
+                  select link_key,
+                         count(*) filter (where click_count > 0) as unique_recipients,
+                         coalesce(sum(click_count), 0) as total_clicks
+                    from communication_links
+                   where source_type = 'message' and source_id = m.id
+                   group by link_key
+                ) clicks
+            ), '[]'::jsonb) as link_clicks
+       from communication_messages m
       order by coalesce(scheduled_at, created_at) desc
       limit 100`);
   return rows.map(messageFromRow);
 }
 
-export async function listCommunicationEvents(): Promise<Array<{ slug: string; title: string; startsAt: string }>> {
+export async function listCommunicationEvents(): Promise<
+  Array<{ slug: string; title: string; startsAt: string }>
+> {
   const rows = await query<{ slug: string; title: string; starts_at: Date }>(
     `select slug, title, starts_at from events order by starts_at desc limit 100`,
   );
-  return rows.map((row) => ({ slug: row.slug, title: row.title, startsAt: row.starts_at.toISOString() }));
+  return rows.map((row) => ({
+    slug: row.slug,
+    title: row.title,
+    startsAt: row.starts_at.toISOString(),
+  }));
 }
 
 export async function saveCommunication(input: {
@@ -273,12 +370,14 @@ export async function saveCommunication(input: {
   }
   const id = randomUUID();
   const isDraft = !scheduledAt;
-  const recipients = isDraft ? [] : await resolveRecipients({
-    kind: input.kind,
-    audience: input.audience,
-    eventSlug: input.eventSlug,
-    selectedContactHashes: input.selectedContactHashes,
-  });
+  const recipients = isDraft
+    ? []
+    : await resolveRecipients({
+        kind: input.kind,
+        audience: input.audience,
+        eventSlug: input.eventSlug,
+        selectedContactHashes: input.selectedContactHashes,
+      });
   if (!isDraft && recipients.length === 0) throw new Error("There are no people in this audience");
 
   await query(
@@ -287,30 +386,64 @@ export async function saveCommunication(input: {
         selected_contact_hashes, scheduled_at, status, recipient_count)
      values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`,
     [
-      id, input.kind, input.audience, input.eventSlug, subject, body, JSON.stringify(media),
-      input.selectedContactHashes, scheduledAt, isDraft ? "draft" : "scheduled", recipients.length,
+      id,
+      input.kind,
+      input.audience,
+      input.eventSlug,
+      subject,
+      body,
+      JSON.stringify(media),
+      input.selectedContactHashes,
+      scheduledAt,
+      isDraft ? "draft" : "scheduled",
+      recipients.length,
     ],
   );
 
   if (!isDraft) {
     const origin = getBaseUrlForRequest(input.request);
     const event = input.eventSlug ? ((await getEvent(input.eventSlug)) ?? undefined) : undefined;
-    await enqueueEmails(recipients.map((recipient) => {
-      const unsubscribeUrl = input.kind === "newsletter"
-        ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
-        : undefined;
-      const rendered = renderCommunicationMessage({
-        kind: input.kind, subject, body, media, recipientName: recipient.displayName ?? undefined,
-        unsubscribeUrl, origin, meta: event?.title ?? input.eventSlug ?? undefined,
-        context: { event, recipientName: recipient.displayName ?? undefined },
-      });
-      return {
-        idempotencyKey: `communications:${id}:${recipient.emailHash}`,
-        message: { channel: "communications" as const, to: recipient.email, subject: rendered.subject, text: rendered.text, html: rendered.html },
-        notBefore: scheduledAt ?? undefined,
-        communicationId: id,
-      };
-    }));
+    const queuedMessages = await Promise.all(
+      recipients.map(async (recipient) => {
+        const unsubscribeUrl =
+          input.kind === "newsletter"
+            ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
+            : undefined;
+        const context = { event, recipientName: recipient.displayName ?? undefined };
+        const trackingLinks = await prepareCommunicationLinkMap({
+          body,
+          context,
+          origin,
+          media,
+          source: { sourceType: "message", sourceId: id, recipientHash: recipient.emailHash },
+        });
+        const rendered = renderCommunicationMessage({
+          kind: input.kind,
+          subject,
+          body,
+          media,
+          recipientName: recipient.displayName ?? undefined,
+          unsubscribeUrl,
+          origin,
+          meta: event?.title ?? input.eventSlug ?? undefined,
+          context,
+          trackingLinks,
+        });
+        return {
+          idempotencyKey: `communications:${id}:${recipient.emailHash}`,
+          message: {
+            channel: "communications" as const,
+            to: recipient.email,
+            subject: rendered.subject,
+            text: rendered.text,
+            html: rendered.html,
+          },
+          notBefore: scheduledAt ?? undefined,
+          communicationId: id,
+        };
+      }),
+    );
+    await enqueueEmails(queuedMessages);
     await query(
       `update communication_messages
           set queued_count = $2, queued_at = now(), updated_at = now()
@@ -322,8 +455,33 @@ export async function saveCommunication(input: {
   const rows = await query<Record<string, unknown>>(
     `select id, kind, audience, event_slug, subject, body, media,
             selected_contact_hashes, scheduled_at, status, recipient_count,
-            queued_count, last_error, created_at, queued_at
-       from communication_messages where id = $1`,
+            queued_count, last_error, created_at, queued_at,
+            jsonb_build_object(
+              'queued', (select count(*) from email_outbox o where o.communication_id = m.id and o.status in ('pending', 'processing')),
+              'accepted', (select count(*) from email_outbox o where o.communication_id = m.id and o.status = 'accepted'),
+              'delivered', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'delivered'),
+              'deferred', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'deferred'),
+              'failed', (select count(*) from email_outbox o where o.communication_id = m.id and o.status = 'failed'),
+              'bounced', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'bounced'),
+              'rejected', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'rejected'),
+              'complained', (select count(*) from email_outbox o where o.communication_id = m.id and o.provider_delivery_status = 'complained')
+            ) as delivery_counts,
+            coalesce((
+              select jsonb_agg(jsonb_build_object(
+                'linkKey', clicks.link_key,
+                'uniqueRecipients', clicks.unique_recipients,
+                'totalClicks', clicks.total_clicks
+              ) order by clicks.link_key)
+                from (
+                  select link_key,
+                         count(*) filter (where click_count > 0) as unique_recipients,
+                         coalesce(sum(click_count), 0) as total_clicks
+                    from communication_links
+                   where source_type = 'message' and source_id = m.id
+                   group by link_key
+                ) clicks
+            ), '[]'::jsonb) as link_clicks
+       from communication_messages m where m.id = $1`,
     [id],
   );
   const row = rows[0];

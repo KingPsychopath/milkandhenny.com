@@ -12,7 +12,12 @@ import {
   type CommunicationKind,
   type CommunicationMedia,
 } from "./email.server";
-import { listCommunicationContacts } from "./communications.server";
+import { prepareCommunicationLinkMap } from "./email-links.server";
+import {
+  listCommunicationContacts,
+  type CommunicationDeliveryCounts,
+  type CommunicationLinkMetric,
+} from "./communications.server";
 
 export type CommunicationPlanStage = {
   id: string;
@@ -30,6 +35,8 @@ export type CommunicationPlanStage = {
   recipientCount: number;
   queuedCount: number;
   surveyId: string | null;
+  delivery: CommunicationDeliveryCounts;
+  linkClicks: CommunicationLinkMetric[];
 };
 
 export type CommunicationPlan = {
@@ -61,6 +68,39 @@ function hashEmail(email: string): string {
 
 function iso(value: Date | string | null): string | null {
   return value ? new Date(value).toISOString() : null;
+}
+
+const EMPTY_DELIVERY_COUNTS: CommunicationDeliveryCounts = {
+  queued: 0,
+  accepted: 0,
+  delivered: 0,
+  deferred: 0,
+  failed: 0,
+  bounced: 0,
+  rejected: 0,
+  complained: 0,
+};
+
+function deliveryCounts(value: unknown): CommunicationDeliveryCounts {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...EMPTY_DELIVERY_COUNTS };
+  }
+  const row = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(EMPTY_DELIVERY_COUNTS).map((key) => [key, Number(row[key]) || 0]),
+  ) as unknown as CommunicationDeliveryCounts;
+}
+
+function linkMetrics(value: unknown): CommunicationLinkMetric[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      linkKey: String(item.linkKey ?? ""),
+      uniqueRecipients: Number(item.uniqueRecipients) || 0,
+      totalClicks: Number(item.totalClicks) || 0,
+    }))
+    .filter((item) => item.linkKey);
 }
 
 function validMedia(value: unknown): CommunicationMedia[] {
@@ -98,6 +138,8 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     recipientCount: Number(row.recipient_count) || 0,
     queuedCount: Number(row.queued_count) || 0,
     surveyId: typeof row.survey_id === "string" ? row.survey_id : null,
+    delivery: deliveryCounts(row.delivery),
+    linkClicks: linkMetrics(row.link_clicks),
   };
 }
 
@@ -120,7 +162,32 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
               'status', s.status,
               'recipient_count', s.recipient_count,
               'queued_count', s.queued_count,
-              'survey_id', s.survey_id
+              'survey_id', s.survey_id,
+              'delivery', jsonb_build_object(
+                'queued', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'queued'),
+                'accepted', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'accepted'),
+                'delivered', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'delivered'),
+                'deferred', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'deferred'),
+                'failed', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'failed'),
+                'bounced', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'bounced'),
+                'rejected', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'rejected'),
+                'complained', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'complained')
+              ),
+              'link_clicks', coalesce((
+                select jsonb_agg(jsonb_build_object(
+                  'linkKey', clicks.link_key,
+                  'uniqueRecipients', clicks.unique_recipients,
+                  'totalClicks', clicks.total_clicks
+                ) order by clicks.link_key)
+                  from (
+                    select link_key,
+                           count(*) filter (where click_count > 0) as unique_recipients,
+                           coalesce(sum(click_count), 0) as total_clicks
+                      from communication_links
+                     where source_type = 'stage' and source_id = s.id
+                     group by link_key
+                  ) clicks
+              ), '[]'::jsonb)
             ) order by s.position) filter (where s.id is not null), '[]'::jsonb) as stages
        from communication_plans p
        join events e on e.slug = p.event_slug
@@ -635,6 +702,14 @@ export async function sendCommunicationPlanTest(
     const surveyUrl = surveyRow[0]
       ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`)
       : undefined;
+    const context = { event, surveyUrl, recipientName: "Test recipient" };
+    const trackingLinks = await prepareCommunicationLinkMap({
+      body: stage.body,
+      context,
+      origin,
+      media: stage.media,
+      source: { sourceType: "test", sourceId: stage.id, recipientHash: hashEmail(testEmail) },
+    });
     const rendered = renderCommunicationMessage({
       kind: stage.kind,
       subject: `[TEST] ${stage.subject}`,
@@ -642,8 +717,9 @@ export async function sendCommunicationPlanTest(
       media: stage.media,
       origin,
       meta: event.title,
-      context: { event, surveyUrl, recipientName: "Test recipient" },
+      context,
       recipientName: "Test recipient",
+      trackingLinks,
     });
     const result = await enqueueEmail(
       {
@@ -856,6 +932,13 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
         surveyUrl,
         recipientName: recipient.displayName ?? undefined,
       };
+      const trackingLinks = await prepareCommunicationLinkMap({
+        body: stage.body,
+        context,
+        origin,
+        media: stage.media,
+        source: { sourceType: "stage", sourceId: stage.id, recipientHash: recipient.emailHash },
+      });
       const rendered = renderCommunicationMessage({
         kind: stage.kind,
         subject: stage.subject,
@@ -865,6 +948,7 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
         origin,
         meta: event.title,
         context,
+        trackingLinks,
       });
       const result = await enqueueEmail(
         {
@@ -883,8 +967,10 @@ export async function expandDueCommunicationStages(request?: Request): Promise<n
         queued += 1;
         stageQueued += 1;
         await query(
-          `update communication_stage_deliveries set status = 'queued', updated_at = now() where stage_id = $1 and email_hash = $2`,
-          [stage.id, recipient.emailHash],
+          `update communication_stage_deliveries
+              set status = 'queued', outbox_id = $3, updated_at = now()
+            where stage_id = $1 and email_hash = $2`,
+          [stage.id, recipient.emailHash, result.id],
         );
       } else {
         await query(
