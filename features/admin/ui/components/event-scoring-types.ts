@@ -74,6 +74,13 @@ export type ScoringData = {
     entityId: string;
     createdAt: string;
   }>;
+  merges: Array<{
+    id: string;
+    sourceParticipantId: string;
+    targetParticipantId: string;
+    reason: string;
+    createdAt: string;
+  }>;
 };
 
 export type ScoringAction = (

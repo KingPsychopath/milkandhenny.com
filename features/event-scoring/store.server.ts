@@ -937,6 +937,37 @@ export async function listScoreMediaLinks(eventSlug: string): Promise<ScoreMedia
   }));
 }
 
+export async function listParticipantMerges(
+  eventSlug: string,
+): Promise<
+  Array<{
+    id: string;
+    sourceParticipantId: string;
+    targetParticipantId: string;
+    reason: string;
+    createdAt: string;
+  }>
+> {
+  const rows = await query<{
+    id: string;
+    source_participant_id: string;
+    target_participant_id: string;
+    reason: string;
+    created_at: Date;
+  }>(
+    `select id, source_participant_id, target_participant_id, reason, created_at
+       from event_participant_merges where event_slug = $1 and reversed_at is null order by created_at desc`,
+    [eventSlug],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    sourceParticipantId: row.source_participant_id,
+    targetParticipantId: row.target_participant_id,
+    reason: row.reason,
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+
 export async function updateScoreMediaConsent(
   mediaId: string,
   consentState: ScoreMediaLink["consentState"],

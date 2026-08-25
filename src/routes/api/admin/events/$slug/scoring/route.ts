@@ -20,6 +20,7 @@ import {
   listScoreMediaLinks,
   listScoreAuditEvents,
   listLeaderboardParticipants,
+  listParticipantMerges,
   listStaffAssignments,
   listStaffDevices,
   listTeams,
@@ -42,6 +43,8 @@ import {
   getScoring,
   listScoringActivities,
   reversePoints,
+  mergeParticipants,
+  reverseParticipantMerge,
   transferPoints,
   updateScoringActivity,
 } from "@/features/event-scoring/scoring.server";
@@ -84,19 +87,31 @@ async function handleGET(request: Request, slug: string) {
     if (search) {
       return Response.json({ participants: await searchEventParticipants(slug, search) });
     }
-    const [settings, activities, pools, discoveries, teams, held, staff, media, drop, audit] =
-      await Promise.all([
-        getScoring(slug),
-        listScoringActivities(slug),
-        listPools(slug),
-        listDiscoveries(slug),
-        listTeams(slug),
-        listHeldScoreTransactions(slug),
-        listStaffAssignments(slug),
-        listScoreMediaLinks(slug),
-        getEventDrop(slug),
-        listScoreAuditEvents({ eventSlug: slug, limit: 100 }),
-      ]);
+    const [
+      settings,
+      activities,
+      pools,
+      discoveries,
+      teams,
+      held,
+      staff,
+      media,
+      drop,
+      audit,
+      merges,
+    ] = await Promise.all([
+      getScoring(slug),
+      listScoringActivities(slug),
+      listPools(slug),
+      listDiscoveries(slug),
+      listTeams(slug),
+      listHeldScoreTransactions(slug),
+      listStaffAssignments(slug),
+      listScoreMediaLinks(slug),
+      getEventDrop(slug),
+      listScoreAuditEvents({ eventSlug: slug, limit: 100 }),
+      listParticipantMerges(slug),
+    ]);
     return Response.json({
       settings,
       activities,
@@ -125,6 +140,7 @@ async function handleGET(request: Request, slug: string) {
           }
         : null,
       audit,
+      merges,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
@@ -789,6 +805,40 @@ async function handlePOST(request: Request, slug: string) {
           "Content-Type": "application/json",
         },
       });
+    }
+
+    if (action === "merge-participants") {
+      const sourceParticipantId = stringValue(body.sourceParticipantId);
+      const targetParticipantId = stringValue(body.targetParticipantId);
+      const reason = stringValue(body.reason);
+      const evidence = Array.isArray(body.evidence)
+        ? body.evidence.filter((item): item is string => typeof item === "string")
+        : [];
+      if (!sourceParticipantId || !targetParticipantId || !reason || evidence.length === 0)
+        return Response.json(
+          { error: "Two participants, evidence, and a reason are required" },
+          { status: 400 },
+        );
+      const result = await mergeParticipants({
+        eventSlug: slug,
+        sourceParticipantId,
+        targetParticipantId,
+        actorId,
+        reason,
+        evidence,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ merged: true });
+    }
+
+    if (action === "split-participants") {
+      const mergeId = stringValue(body.mergeId);
+      const reason = stringValue(body.reason);
+      if (!mergeId || !reason)
+        return Response.json({ error: "Merge and reason are required" }, { status: 400 });
+      const result = await reverseParticipantMerge({ mergeId, actorId, reason });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ split: true });
     }
 
     return Response.json({ error: "Unknown scoring action" }, { status: 400 });
