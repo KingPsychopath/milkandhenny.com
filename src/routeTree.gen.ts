@@ -80,6 +80,7 @@ import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/c
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
 import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
+import { Route as ApiCronProcessOfficialGameResultsRouteRouteImport } from './routes/api/cron/process-official-game-results/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
 import { Route as ApiCronSendPitchRemindersRouteRouteImport } from './routes/api/cron/send-pitch-reminders/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
@@ -542,6 +543,12 @@ const ApiCronDeliverEmailRouteRoute =
   ApiCronDeliverEmailRouteRouteImport.update({
     id: '/api/cron/deliver-email',
     path: '/api/cron/deliver-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronProcessOfficialGameResultsRouteRoute =
+  ApiCronProcessOfficialGameResultsRouteRouteImport.update({
+    id: '/api/cron/process-official-game-results',
+    path: '/api/cron/process-official-game-results',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronProcessTransferMediaRouteRoute =
@@ -1156,6 +1163,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
@@ -1325,6 +1333,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
@@ -1495,6 +1504,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
@@ -1666,6 +1676,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
@@ -1835,6 +1846,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
@@ -2004,6 +2016,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
@@ -2163,6 +2176,7 @@ export interface RootRouteChildren {
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
   ApiCronDeliverEmailRouteRoute: typeof ApiCronDeliverEmailRouteRoute
+  ApiCronProcessOfficialGameResultsRouteRoute: typeof ApiCronProcessOfficialGameResultsRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
   ApiCronSendPitchRemindersRouteRoute: typeof ApiCronSendPitchRemindersRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
@@ -2694,6 +2708,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/deliver-email'
       fullPath: '/api/cron/deliver-email'
       preLoaderRoute: typeof ApiCronDeliverEmailRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/process-official-game-results': {
+      id: '/api/cron/process-official-game-results'
+      path: '/api/cron/process-official-game-results'
+      fullPath: '/api/cron/process-official-game-results'
+      preLoaderRoute: typeof ApiCronProcessOfficialGameResultsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/process-transfer-media': {
@@ -3838,6 +3859,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiCronCleanupWordMediaOrphansRouteRoute,
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
   ApiCronDeliverEmailRouteRoute: ApiCronDeliverEmailRouteRoute,
+  ApiCronProcessOfficialGameResultsRouteRoute:
+    ApiCronProcessOfficialGameResultsRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
   ApiCronSendPitchRemindersRouteRoute: ApiCronSendPitchRemindersRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,

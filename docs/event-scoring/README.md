@@ -123,11 +123,11 @@ Confirm each decision before the affected implementation begins.
       dashboard.
 - [ ] Admin UI uses focused components under the existing admin component structure.
 - [ ] UI and CLI operations call the same server workflows.
-- [ ] Durable game results use an idempotent source receipt or transactional outbox.
+- [x] Durable game results use an idempotent source receipt or transactional outbox.
 - [ ] Event rename or slug change cannot orphan participants, activities, media, or scores.
 - [ ] Event linkage uses an immutable identity or one atomic, complete slug-move operation.
 - [ ] Event deletion is blocked once durable scoring history exists; cancellation archives it.
-- [ ] No legacy schema, compatibility alias, or transitional scoring API remains.
+- [x] No legacy schema, compatibility alias, or transitional scoring API remains.
 
 ## 2. Person and participant identity
 
@@ -348,15 +348,15 @@ Required permission boundaries:
 
 - [ ] Games store a server-authoritative result before scoring.
 - [ ] Games never edit event balances directly.
-- [ ] A durable source receipt connects the game result to one scoring activity.
-- [ ] The receipt records the event, game instance, round or match, participants, and result.
+- [x] A durable source receipt connects the game result to one scoring activity.
+- [x] The receipt records the event, game instance, round or match, participants, and result.
 - [ ] The scoring workflow validates event state, activity state, player links, rule, and limits.
-- [ ] Raw game scores convert to normalized event points.
-- [ ] Reprocessing a result cannot duplicate points.
-- [ ] Failed processing can retry safely.
-- [ ] A cancelled game result is not scored.
-- [ ] A corrected game result reverses the prior score before applying the new one.
-- [ ] Reconnects and repeated finish messages cannot settle a game twice.
+- [x] Raw game scores convert to normalized event points.
+- [x] Reprocessing a result cannot duplicate points.
+- [x] Failed processing can retry safely.
+- [x] A cancelled game result is not scored.
+- [x] A corrected game result reverses the prior score before applying the new one.
+- [x] Reconnects and repeated finish messages cannot settle a game twice.
 - [ ] Unclaimed players can receive an event participant placeholder and claim it later.
 - [ ] Browser-only local results remain untrusted until server or moderator confirmation.
 

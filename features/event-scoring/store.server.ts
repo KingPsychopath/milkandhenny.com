@@ -1037,7 +1037,7 @@ export async function recordScoreInTransaction(
     return { ok: false, status: 409, error: "One participant cannot receive this score" };
   }
 
-  if (input.postings.some((posting) => posting.points < 0)) {
+  if (input.sourceType !== "reversal" && input.postings.some((posting) => posting.points < 0)) {
     const balances = await client.query<{ participant_id: string; balance: number }>(
       `select participant_id, balance from score_projections
             where participant_id = any($1::text[]) for update`,

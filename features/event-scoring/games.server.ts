@@ -1,343 +1,450 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 
-import { query, queryOne } from "@/lib/platform/postgres.server";
-import {
-  activityCanAccept,
-  canAcceptScore,
-  convertRulePoints,
-  type ScoreTransaction,
-} from "./types";
-import {
-  acceptHeldScore,
-  getActivity,
-  getOrCreateSettings,
-  getParticipant,
-  getScoreTransaction,
-  recordScore,
-  reverseScore,
-} from "./store.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import type {
+  OfficialGameKind,
+  OfficialGameResultEnvelope,
+  OfficialGameResultScope,
+  OfficialResultPlayer,
+} from "@/features/things/shared/official-game-results";
+import { activityCanAccept, convertRulePoints, type ActivityStatus, type ScoreRule } from "./types";
+import { recordScoreInTransaction, reverseScoreInTransaction } from "./store.server";
 
-export type GamePlayerResult = {
-  participantId: string;
-  rawScore?: number;
-  placement?: number;
+type BindingStatus = "provisioning" | "active" | "paused" | "closed";
+type ResultStatus = "pending" | "processed" | "ignored" | "held";
+
+type ResultRow = {
+  id: string;
+  channel_id: string;
+  game_kind: OfficialGameKind;
+  game_instance_id: string;
+  result_id: string;
+  revision: number;
+  operation: "record" | "cancel";
+  scope: OfficialGameResultScope;
+  players: unknown;
+  payload_hash: string;
+  status: ResultStatus;
 };
 
-export type GameResultOutcome =
-  | { state: "processed"; receiptId: string; transaction: ScoreTransaction }
-  | { state: "held"; receiptId: string; reason: string }
-  | { state: "rejected"; receiptId: string; reason: string }
-  | { state: "duplicate"; receiptId: string; transaction?: ScoreTransaction };
-
-type ReceiptRow = {
-  id: string;
+type ProcessRow = ResultRow & {
+  event_id: string;
   event_slug: string;
   activity_id: string;
-  game_kind: string;
-  game_instance_id: string;
-  round_id: string | null;
-  status: string;
-  participants: unknown;
-  result: unknown;
-  source_key: string;
-  current_transaction_id: string | null;
+  binding_game_kind: OfficialGameKind;
+  binding_game_instance_id: string | null;
+  accepted_scope: OfficialGameResultScope;
+  binding_status: BindingStatus;
 };
 
-function id(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+export type OfficialResultProcessingOutcome =
+  | { state: "processed" | "corrected" | "cancelled" | "ignored"; resultId: string }
+  | { state: "held"; resultId: string; reason: string };
+
+function opaqueId(prefix: "gsc" | "ogr" | "sgr") {
+  return `${prefix}_${randomBytes(18).toString("base64url")}`;
 }
 
-export async function recordOfficialGameResult(input: {
+function canonicalPayload(input: Omit<OfficialGameResultEnvelope, "payloadHash">): string {
+  return JSON.stringify({
+    schemaVersion: input.schemaVersion,
+    channelId: input.channelId,
+    gameKind: input.gameKind,
+    gameInstanceId: input.gameInstanceId,
+    resultId: input.resultId,
+    revision: input.revision,
+    operation: input.operation,
+    scope: input.scope,
+    players: input.players,
+    committedAt: input.committedAt,
+  });
+}
+
+export function officialResultPayloadHash(
+  input: Omit<OfficialGameResultEnvelope, "payloadHash">,
+): string {
+  return createHash("sha256").update(canonicalPayload(input)).digest("hex");
+}
+
+export async function createGameScoreBinding(input: {
   eventSlug: string;
   activityId: string;
-  gameKind: string;
+  gameKind: OfficialGameKind;
+  acceptedScope: OfficialGameResultScope;
+}): Promise<
+  { ok: true; value: { channelId: string } } | { ok: false; status: number; error: string }
+> {
+  const channelId = opaqueId("gsc");
+  const row = await queryOne<{ channel_id: string }>(
+    `insert into event_game_score_bindings
+       (channel_id, event_id, activity_id, game_kind, accepted_scope)
+     select $1, events.event_id, activities.id, $4, $5
+       from events
+       join score_activities activities on activities.event_slug = events.slug
+      where events.slug = $2 and activities.id = $3
+     returning channel_id`,
+    [channelId, input.eventSlug, input.activityId, input.gameKind, input.acceptedScope],
+  );
+  return row
+    ? { ok: true, value: { channelId: row.channel_id } }
+    : { ok: false, status: 404, error: "Event scoring activity not found" };
+}
+
+export async function activateGameScoreBinding(input: {
+  channelId: string;
   gameInstanceId: string;
-  roundId?: string;
-  sourceKey: string;
-  players: GamePlayerResult[];
-}): Promise<{ ok: true; value: GameResultOutcome } | { ok: false; status: number; error: string }> {
-  const activity = await getActivity(input.activityId);
-  if (!activity || activity.eventSlug !== input.eventSlug)
-    return { ok: false, status: 404, error: "Activity not found" };
-  let receipt = await queryOne<ReceiptRow>(
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const row = await queryOne<{ channel_id: string }>(
+    `update event_game_score_bindings
+        set game_instance_id = $2, status = 'active', updated_at = now()
+      where channel_id = $1 and status = 'provisioning' and game_instance_id is null
+      returning channel_id`,
+    [input.channelId, input.gameInstanceId],
+  );
+  return row
+    ? { ok: true }
+    : { ok: false, status: 409, error: "Game score binding cannot be activated" };
+}
+
+export async function linkGamePlayer(input: {
+  channelId: string;
+  gamePlayerId: string;
+  participantId: string;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const row = await queryOne<{ channel_id: string }>(
+    `insert into event_game_player_links (channel_id, game_player_id, participant_id)
+     select bindings.channel_id, $2, participants.id
+       from event_game_score_bindings bindings
+       join events on events.event_id = bindings.event_id
+       join event_participants participants on participants.event_slug = events.slug
+      where bindings.channel_id = $1
+        and participants.id = $3
+        and participants.status = 'active'
+     on conflict (channel_id, game_player_id) do update set
+       participant_id = excluded.participant_id
+     returning channel_id`,
+    [input.channelId, input.gamePlayerId, input.participantId],
+  );
+  return row
+    ? { ok: true }
+    : { ok: false, status: 404, error: "Game player or event participant not found" };
+}
+
+export async function ingestOfficialGameResult(
+  envelope: OfficialGameResultEnvelope,
+): Promise<
+  | { ok: true; value: { id: string; duplicate: boolean } }
+  | { ok: false; status: number; error: string }
+> {
+  if (
+    envelope.schemaVersion !== 1 ||
+    envelope.revision < 1 ||
+    envelope.payloadHash !== officialResultPayloadHash(envelope)
+  ) {
+    return { ok: false, status: 400, error: "Official game result envelope is invalid" };
+  }
+  return transaction(async (client) => {
+    const binding = await client.query<{ channel_id: string }>(
+      `select channel_id from event_game_score_bindings
+        where channel_id = $1 and game_kind = $2 and game_instance_id = $3
+        for update`,
+      [envelope.channelId, envelope.gameKind, envelope.gameInstanceId],
+    );
+    if (!binding.rows[0]) {
+      return { ok: false, status: 404, error: "Active game score binding not found" };
+    }
+    const existing = await client.query<{ id: string; payload_hash: string }>(
+      `select id, payload_hash from official_game_results
+        where channel_id = $1 and result_id = $2 and revision = $3`,
+      [envelope.channelId, envelope.resultId, envelope.revision],
+    );
+    if (existing.rows[0]) {
+      if (existing.rows[0].payload_hash !== envelope.payloadHash) {
+        await client.query(
+          `update official_game_results
+              set status = 'held', held_reason = 'Conflicting payload for one result revision'
+            where id = $1`,
+          [existing.rows[0].id],
+        );
+        return { ok: false, status: 409, error: "Official result revision conflicts" };
+      }
+      return { ok: true, value: { id: existing.rows[0].id, duplicate: true } };
+    }
+    const latest = await client.query<{ revision: number }>(
+      `select revision from official_game_results
+        where channel_id = $1 and result_id = $2
+        order by revision desc limit 1`,
+      [envelope.channelId, envelope.resultId],
+    );
+    const expectedRevision = (latest.rows[0]?.revision ?? 0) + 1;
+    if (envelope.revision !== expectedRevision) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Official result revision must be ${expectedRevision}`,
+      };
+    }
+    const id = opaqueId("ogr");
+    await client.query(
+      `insert into official_game_results
+         (id, channel_id, game_kind, game_instance_id, result_id, revision, operation,
+          scope, players, payload_hash, committed_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::timestamptz)`,
+      [
+        id,
+        envelope.channelId,
+        envelope.gameKind,
+        envelope.gameInstanceId,
+        envelope.resultId,
+        envelope.revision,
+        envelope.operation,
+        envelope.scope,
+        JSON.stringify(envelope.players),
+        envelope.payloadHash,
+        envelope.committedAt,
+      ],
+    );
+    return { ok: true, value: { id, duplicate: false } };
+  });
+}
+
+function resultPlayers(value: unknown): OfficialResultPlayer[] | null {
+  if (!Array.isArray(value)) return null;
+  const players: OfficialResultPlayer[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return null;
+    const player = entry as Record<string, unknown>;
+    if (typeof player.playerId !== "string" || typeof player.outcome !== "string") return null;
+    players.push(player as OfficialResultPlayer);
+  }
+  return players;
+}
+
+async function holdResult(client: PoolClient, result: ResultRow, reason: string) {
+  await client.query(
+    `update official_game_results set status = 'held', held_reason = $2 where id = $1`,
+    [result.id, reason],
+  );
+  return { state: "held", resultId: result.id, reason } as const;
+}
+
+async function processResult(
+  client: PoolClient,
+  resultId: string,
+): Promise<OfficialResultProcessingOutcome> {
+  const selected = await client.query<ProcessRow>(
+    `select results.*,
+            bindings.event_id,
+            events.slug as event_slug,
+            bindings.activity_id,
+            bindings.game_kind as binding_game_kind,
+            bindings.game_instance_id as binding_game_instance_id,
+            bindings.accepted_scope,
+            bindings.status as binding_status
+       from official_game_results results
+       join event_game_score_bindings bindings on bindings.channel_id = results.channel_id
+       join events on events.event_id = bindings.event_id
+      where results.id = $1 and results.status = 'pending'
+      for update of results, bindings`,
+    [resultId],
+  );
+  const row = selected.rows[0];
+  if (!row) return { state: "ignored", resultId };
+  if (
+    row.binding_status !== "active" ||
+    row.binding_game_kind !== row.game_kind ||
+    row.binding_game_instance_id !== row.game_instance_id ||
+    row.accepted_scope !== row.scope
+  ) {
+    return holdResult(client, row, "The game result does not match an active score binding");
+  }
+  const settings = await client.query<{ state: string }>(
+    `select state from event_scoring_settings where event_slug = $1 for update`,
+    [row.event_slug],
+  );
+  const scoringState = settings.rows[0]?.state ?? "off";
+  if (scoringState === "off") {
+    await client.query(
+      `update official_game_results set status = 'ignored', processed_at = now() where id = $1`,
+      [row.id],
+    );
+    return { state: "ignored", resultId: row.id };
+  }
+  if (scoringState !== "live") {
+    return holdResult(client, row, `Scoring is ${scoringState}`);
+  }
+  const activities = await client.query<{
+    status: ActivityStatus;
+    rule: unknown;
+    rule_revision: number;
+    starts_at: Date | null;
+    ends_at: Date | null;
+  }>(
+    `select status, rule, rule_revision, starts_at, ends_at
+       from score_activities
+      where id = $1 and event_slug = $2
+      for update`,
+    [row.activity_id, row.event_slug],
+  );
+  const activity = activities.rows[0];
+  if (!activity) return holdResult(client, row, "The score activity no longer exists");
+  if (
+    !activityCanAccept({
+      status: activity.status,
+      startsAt: activity.starts_at?.toISOString(),
+      endsAt: activity.ends_at?.toISOString(),
+    })
+  ) {
+    return holdResult(client, row, "The score activity is not accepting results");
+  }
+  const players = resultPlayers(row.players);
+  if (!players) return holdResult(client, row, "The official player result is invalid");
+  const links = await client.query<{ game_player_id: string; participant_id: string }>(
+    `select links.game_player_id, links.participant_id
+       from event_game_player_links links
+       join event_participants participants on participants.id = links.participant_id
+      where links.channel_id = $1 and participants.status = 'active'
+      for update of participants`,
+    [row.channel_id],
+  );
+  const participantByPlayer = new Map(
+    links.rows.map((link) => [link.game_player_id, link.participant_id]),
+  );
+  if (players.some((player) => !participantByPlayer.has(player.playerId))) {
+    return holdResult(client, row, "A game player still needs an event participant");
+  }
+
+  const postings =
+    row.operation === "record"
+      ? players.flatMap((player) => {
+          if (player.outcome === "withdrawn" || player.outcome === "disqualified") return [];
+          const points = convertRulePoints(activity.rule as ScoreRule, player);
+          const participantId = participantByPlayer.get(player.playerId);
+          return points > 0 && participantId ? [{ participantId, points }] : [];
+        })
+      : [];
+  if (row.operation === "record" && postings.length === 0) {
+    return holdResult(client, row, "The configured rule awarded no points");
+  }
+
+  const prior = await client.query<{ transaction_id: string | null }>(
+    `select receipts.transaction_id
+       from score_game_receipts receipts
+       join official_game_results prior on prior.id = receipts.official_result_id
+      where prior.channel_id = $1 and prior.result_id = $2 and prior.revision < $3
+        and receipts.status in ('processed', 'corrected')
+      order by prior.revision desc
+      limit 1
+      for update of receipts`,
+    [row.channel_id, row.result_id, row.revision],
+  );
+  let reversalTransactionId: string | null = null;
+  if (prior.rows[0]?.transaction_id) {
+    const reversed = await reverseScoreInTransaction(
+      client,
+      row.event_slug,
+      prior.rows[0].transaction_id,
+      {
+        idempotencyKey: `game-result-reversal:${row.id}`,
+        reasonCode: row.operation === "cancel" ? "reversal" : "correction",
+        note:
+          row.operation === "cancel"
+            ? "Official game result cancelled"
+            : "Official game result corrected",
+        actorType: "system",
+      },
+    );
+    if (!reversed.ok) throw new Error(reversed.error);
+    reversalTransactionId = reversed.value.id;
+  }
+
+  let transactionId: string | null = null;
+  if (row.operation === "record") {
+    const scored = await recordScoreInTransaction(client, {
+      eventSlug: row.event_slug,
+      activityId: row.activity_id,
+      sourceType: "game",
+      sourceId: row.id,
+      idempotencyKey: `game-result:${row.id}`,
+      reasonCode: "completion",
+      ruleRevision: activity.rule_revision,
+      actorType: "system",
+      metadata: {
+        gameKind: row.game_kind,
+        gameInstanceId: row.game_instance_id,
+        resultId: row.result_id,
+        revision: row.revision,
+      },
+      postings,
+    });
+    if (!scored.ok) throw new Error(scored.error);
+    transactionId = scored.value.id;
+  }
+
+  const receiptStatus =
+    row.operation === "cancel" ? "cancelled" : row.revision > 1 ? "corrected" : "processed";
+  await client.query(
     `insert into score_game_receipts
-       (id, event_slug, activity_id, game_kind, game_instance_id, round_id, participants, result, source_key)
-     values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
-     on conflict (event_slug, source_key) do nothing
-     returning id, event_slug, activity_id, game_kind, game_instance_id, round_id, status, participants, result, source_key, current_transaction_id`,
+       (id, official_result_id, event_id, activity_id, transaction_id,
+        reversal_transaction_id, status)
+     values ($1,$2,$3,$4,$5,$6,$7)`,
     [
-      id("game"),
-      input.eventSlug,
-      input.activityId,
-      input.gameKind,
-      input.gameInstanceId,
-      input.roundId ?? null,
-      JSON.stringify(input.players.map((player) => player.participantId)),
-      JSON.stringify(input.players),
-      input.sourceKey,
+      opaqueId("sgr"),
+      row.id,
+      row.event_id,
+      row.activity_id,
+      transactionId,
+      reversalTransactionId,
+      receiptStatus,
     ],
   );
+  await client.query(
+    `update official_game_results
+        set status = 'processed', held_reason = null, processed_at = now()
+      where id = $1`,
+    [row.id],
+  );
+  return { state: receiptStatus, resultId: row.id };
+}
 
-  if (!receipt) {
-    const existing = await queryOne<ReceiptRow>(
-      `select id, event_slug, activity_id, game_kind, game_instance_id, round_id, status, participants, result, source_key, current_transaction_id
-         from score_game_receipts where event_slug = $1 and source_key = $2`,
-      [input.eventSlug, input.sourceKey],
-    );
-    if (!existing)
-      return { ok: false, status: 409, error: "This game result is already being processed" };
-    if (
-      existing.status === "processed" ||
-      existing.status === "cancelled" ||
-      existing.status === "corrected"
-    ) {
-      const transaction = existing.current_transaction_id
-        ? { id: existing.current_transaction_id }
-        : await queryOne<{ id: string }>(
-            `select id from score_transactions where event_slug = $1 and source_type = 'game' and source_id = $2`,
-            [input.eventSlug, existing.id],
-          );
-      return {
-        ok: true,
-        value: {
-          state: "duplicate",
-          receiptId: existing.id,
-          transaction: transaction ? await readTransaction(transaction.id) : undefined,
-        },
-      };
-    }
-    receipt = existing;
-  }
+export async function processOfficialGameResult(
+  resultId: string,
+): Promise<OfficialResultProcessingOutcome> {
+  return transaction((client) => processResult(client, resultId));
+}
 
-  if (!receipt)
-    return { ok: false, status: 409, error: "This game result is already being processed" };
-  const players = Array.isArray(receipt.result)
-    ? (receipt.result as GamePlayerResult[])
-    : input.players;
-
-  const settings = await getOrCreateSettings(input.eventSlug);
-  if (settings.state === "closed") {
-    await markReceipt(receipt.id, "held");
-    return {
-      ok: true,
-      value: {
-        state: "held",
-        receiptId: receipt.id,
-        reason: "Scoring is closed; an admin must review this result",
-      },
-    };
-  }
-  if (settings.state === "frozen") {
-    await markReceipt(receipt.id, "held");
-    return {
-      ok: true,
-      value: { state: "held", receiptId: receipt.id, reason: "Scoring is frozen" },
-    };
-  }
-  if (!canAcceptScore(settings, "normal") || !activityCanAccept(activity)) {
-    await markReceipt(receipt.id, "rejected");
-    return {
-      ok: true,
-      value: {
-        state: "rejected",
-        receiptId: receipt.id,
-        reason: "The event or activity is not accepting results",
-      },
-    };
-  }
-
-  const postings = [];
-  for (const player of players) {
-    const participant = await getParticipant(player.participantId);
-    if (!participant || participant.eventSlug !== input.eventSlug) {
-      await markReceipt(receipt.id, "held");
-      return {
-        ok: true,
-        value: {
-          state: "held",
-          receiptId: receipt.id,
-          reason: "A player still needs an event participant",
-        },
-      };
-    }
-    const points = convertRulePoints(activity.rule, player);
-    if (points > 0) postings.push({ participantId: player.participantId, points });
-  }
-  if (postings.length === 0) {
-    await markReceipt(receipt.id, "rejected");
-    return {
-      ok: true,
-      value: {
-        state: "rejected",
-        receiptId: receipt.id,
-        reason: "The configured rule awarded no points",
-      },
-    };
-  }
-  const scored = await recordScore({
-    eventSlug: input.eventSlug,
-    activityId: input.activityId,
-    sourceType: "game",
-    sourceId: receipt.id,
-    idempotencyKey: `game:${receipt.id}`,
-    reasonCode: "completion",
-    actorType: "system",
-    metadata: {
-      gameKind: input.gameKind,
-      gameInstanceId: input.gameInstanceId,
-      roundId: input.roundId ?? null,
-    },
-    postings,
-  });
-  if (!scored.ok) {
-    await markReceipt(receipt.id, scored.status >= 500 ? "held" : "rejected");
-    return {
-      ok: true,
-      value: {
-        state: scored.status >= 500 ? "held" : "rejected",
-        receiptId: receipt.id,
-        reason: scored.error,
-      },
-    };
-  }
-  if (scored.value.status === "held") {
-    await markReceipt(receipt.id, "held", scored.value.id);
-    return {
-      ok: true,
-      value: { state: "held", receiptId: receipt.id, reason: "Scoring is frozen" },
-    };
-  }
-  await markReceipt(receipt.id, "processed", scored.value.id);
+export async function processPendingOfficialGameResults(limit = 50): Promise<{
+  selected: number;
+  processed: number;
+  held: number;
+  ignored: number;
+}> {
+  const ids = await query<{ id: string }>(
+    `select id from official_game_results
+      where status = 'pending'
+      order by ingested_at, id
+      limit $1`,
+    [Math.max(1, Math.min(200, Math.trunc(limit)))],
+  );
+  const outcomes: OfficialResultProcessingOutcome[] = [];
+  for (const row of ids) outcomes.push(await processOfficialGameResult(row.id));
   return {
-    ok: true,
-    value: { state: "processed", receiptId: receipt.id, transaction: scored.value },
+    selected: ids.length,
+    processed: outcomes.filter((outcome) =>
+      ["processed", "corrected", "cancelled"].includes(outcome.state),
+    ).length,
+    held: outcomes.filter((outcome) => outcome.state === "held").length,
+    ignored: outcomes.filter((outcome) => outcome.state === "ignored").length,
   };
 }
 
-async function markReceipt(
-  receiptId: string,
-  status: "processed" | "held" | "rejected" | "cancelled" | "corrected",
-  transactionId?: string,
-): Promise<void> {
+export async function retryHeldOfficialGameResult(
+  resultId: string,
+): Promise<OfficialResultProcessingOutcome> {
   await query(
-    `update score_game_receipts
-        set status = $2,
-            current_transaction_id = coalesce($3, current_transaction_id),
-            processed_at = case when $2 = 'processed' then now() else processed_at end
-      where id = $1`,
-    [receiptId, status, transactionId ?? null],
+    `update official_game_results set status = 'pending', held_reason = null where id = $1 and status = 'held'`,
+    [resultId],
   );
-}
-
-async function readTransaction(transactionId: string): Promise<ScoreTransaction | undefined> {
-  return (await getScoreTransaction(transactionId)) ?? undefined;
-}
-
-export async function processHeldGameResult(input: {
-  receiptId: string;
-  actorId: string;
-}): Promise<GameResultOutcome | { state: "rejected"; receiptId: string; reason: string }> {
-  const receipt = await queryOne<ReceiptRow>(
-    `select id, event_slug, activity_id, game_kind, game_instance_id, round_id, status, participants, result, source_key, current_transaction_id
-       from score_game_receipts
-      where id = $1 and status = 'held'`,
-    [input.receiptId],
-  );
-  if (!receipt)
-    return { state: "rejected", receiptId: input.receiptId, reason: "Held game receipt not found" };
-  const transaction = receipt.current_transaction_id
-    ? { id: receipt.current_transaction_id }
-    : await queryOne<{ id: string }>(
-        `select id from score_transactions
-          where event_slug = $1 and source_type = 'game' and source_id = $2 and status = 'held'`,
-        [receipt.event_slug, receipt.id],
-      );
-  if (!transaction) {
-    const players = Array.isArray(receipt.result) ? (receipt.result as GamePlayerResult[]) : [];
-    const retried = await recordOfficialGameResult({
-      eventSlug: receipt.event_slug,
-      activityId: receipt.activity_id,
-      gameKind: receipt.game_kind,
-      gameInstanceId: receipt.game_instance_id,
-      roundId: receipt.round_id ?? undefined,
-      sourceKey: receipt.source_key,
-      players,
-    });
-    if (!retried.ok) return { state: "rejected", receiptId: receipt.id, reason: retried.error };
-    return retried.value;
-  }
-  const accepted = await acceptHeldScore(receipt.event_slug, transaction.id, {
-    actorType: "admin",
-    actorId: input.actorId,
-  });
-  if (!accepted.ok) return { state: "held", receiptId: receipt.id, reason: accepted.error };
-  await markReceipt(receipt.id, "processed", accepted.value.id);
-  return { state: "processed", receiptId: receipt.id, transaction: accepted.value };
-}
-
-export async function cancelOfficialGameResult(input: {
-  receiptId: string;
-  actorId: string;
-  reason: string;
-}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  if (!input.reason.trim())
-    return { ok: false, status: 400, error: "A cancellation needs a reason" };
-  const row = await queryOne<{ event_slug: string; status: string }>(
-    `update score_game_receipts set status = 'cancelled' where id = $1 and status in ('pending', 'held') returning event_slug, status`,
-    [input.receiptId],
-  );
-  if (!row) return { ok: false, status: 404, error: "Game receipt not found or already settled" };
-  await query(
-    `insert into score_audit_events (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
-     values ($1,'game.result.cancelled','admin',$2,'game_receipt',$3,$4::jsonb)`,
-    [row.event_slug, input.actorId, input.receiptId, JSON.stringify({ reason: input.reason })],
-  );
-  return { ok: true };
-}
-
-export async function correctOfficialGameResult(input: {
-  receiptId: string;
-  actorId: string;
-  reason: string;
-  players: GamePlayerResult[];
-  idempotencyKey: string;
-}): Promise<{ ok: true; value: GameResultOutcome } | { ok: false; status: number; error: string }> {
-  if (!input.reason.trim()) return { ok: false, status: 400, error: "A correction needs a reason" };
-  const receipt = await queryOne<ReceiptRow>(`select * from score_game_receipts where id = $1`, [
-    input.receiptId,
-  ]);
-  if (!receipt) return { ok: false, status: 404, error: "Game receipt not found" };
-  const original = receipt.current_transaction_id
-    ? { id: receipt.current_transaction_id }
-    : await queryOne<{ id: string }>(
-        `select id from score_transactions where event_slug = $1 and source_type = 'game' and source_id = $2`,
-        [receipt.event_slug, receipt.id],
-      );
-  if (original) {
-    const reversed = await reverseScore(receipt.event_slug, original.id, {
-      idempotencyKey: `game-correction-reversal:${input.idempotencyKey}`,
-      reasonCode: "correction",
-      note: input.reason,
-      actorType: "admin",
-      actorId: input.actorId,
-    });
-    if (!reversed.ok) return reversed;
-  }
-  const corrected = await recordOfficialGameResult({
-    eventSlug: receipt.event_slug,
-    activityId: receipt.activity_id,
-    gameKind: "corrected",
-    gameInstanceId: receipt.id,
-    sourceKey: `correction:${input.idempotencyKey}`,
-    players: input.players,
-  });
-  if (corrected.ok && corrected.value.state === "processed") {
-    await query(
-      `update score_game_receipts
-          set status = 'corrected', result = $2::jsonb, current_transaction_id = $3
-        where id = $1`,
-      [input.receiptId, JSON.stringify(input.players), corrected.value.transaction.id],
-    );
-  }
-  return corrected;
+  return processOfficialGameResult(resultId);
 }

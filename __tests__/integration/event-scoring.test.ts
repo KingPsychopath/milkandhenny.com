@@ -17,14 +17,54 @@ import {
 import { renameEventSlug } from "@/features/events/store.server";
 import { markTicketStatus } from "@/features/tickets/store.server";
 import {
-  processHeldGameResult,
-  recordOfficialGameResult,
+  activateGameScoreBinding,
+  createGameScoreBinding,
+  ingestOfficialGameResult,
+  linkGamePlayer,
+  officialResultPayloadHash,
+  processOfficialGameResult,
+  retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
+import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   mergeParticipants,
   reverseParticipantMerge,
 } from "@/features/event-scoring/scoring.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
+
+function centreEnvelope(input: {
+  channelId: string;
+  revision: number;
+  operation?: "record" | "cancel";
+  placement?: number;
+}): OfficialGameResultEnvelope {
+  const unsigned = {
+    schemaVersion: 1,
+    channelId: input.channelId,
+    gameKind: "centre",
+    gameInstanceId: "game-1",
+    resultId: "final",
+    revision: input.revision,
+    operation: input.operation ?? "record",
+    scope: "game",
+    players:
+      input.operation === "cancel"
+        ? []
+        : [
+            {
+              playerId: "player-1",
+              outcome: "completed" as const,
+              placement: input.placement ?? 1,
+            },
+          ],
+    committedAt: new Date(1_700_000_000_000 + input.revision).toISOString(),
+  } as const satisfies Omit<OfficialGameResultEnvelope, "payloadHash">;
+  return {
+    ...unsigned,
+    players: [...unsigned.players],
+    payloadHash: officialResultPayloadHash(unsigned),
+  };
+}
 
 describeWithDatabase("event scoring postgres", () => {
   beforeAll(async () => {
@@ -363,45 +403,124 @@ describeWithDatabase("event scoring postgres", () => {
       name: "Centre",
       template: "winner",
       status: "live",
-      rule: { mode: "fixed", fixedPoints: 7, repeat: "once-per-source", requiresCheckIn: false },
+      rule: {
+        mode: "placement",
+        placementPoints: { "1": 7, "2": 3 },
+        repeat: "once-per-source",
+        requiresCheckIn: false,
+      },
     });
     await getOrCreateSettings("scoring-night");
     await query(
       `update event_scoring_settings set state = 'frozen' where event_slug = 'scoring-night'`,
     );
-    const held = await recordOfficialGameResult({
+    const binding = await createGameScoreBinding({
       eventSlug: "scoring-night",
       activityId: activity.id,
       gameKind: "centre",
-      gameInstanceId: "game-1",
-      sourceKey: "centre:game-1",
-      players: [{ participantId: participant!.id, placement: 1 }],
+      acceptedScope: "game",
     });
-    expect(held.ok && held.value.state).toBe("held");
+    expect(binding.ok).toBe(true);
+    const channelId = binding.ok ? binding.value.channelId : "missing";
+    expect(await activateGameScoreBinding({ channelId, gameInstanceId: "game-1" })).toEqual({
+      ok: true,
+    });
+    expect(
+      await linkGamePlayer({
+        channelId,
+        gamePlayerId: "player-1",
+        participantId: participant!.id,
+      }),
+    ).toEqual({ ok: true });
+    const envelope = centreEnvelope({ channelId, revision: 1 });
+    const ingestions = await Promise.all([
+      ingestOfficialGameResult(envelope),
+      ingestOfficialGameResult(envelope),
+    ]);
+    expect(ingestions.every((result) => result.ok)).toBe(true);
+    expect(ingestions.map((result) => (result.ok ? result.value.duplicate : null)).sort()).toEqual([
+      false,
+      true,
+    ]);
+    const resultId = ingestions[0]?.ok ? ingestions[0].value.id : "missing";
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
+    expect(
+      (await query<{ count: string }>(`select count(*)::text as count from score_game_receipts`))[0]
+        ?.count,
+    ).toBe("0");
+    expect((await processOfficialGameResult(resultId)).state).toBe("held");
     await query(
       `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
     );
-    const processed = await processHeldGameResult({
-      receiptId: held.ok ? held.value.receiptId : "missing",
-      actorId: "admin-1",
-    });
+    const processed = await retryHeldOfficialGameResult(resultId);
     expect(processed.state).toBe("processed");
-    const duplicate = await recordOfficialGameResult({
-      eventSlug: "scoring-night",
-      activityId: activity.id,
-      gameKind: "centre",
-      gameInstanceId: "game-1",
-      sourceKey: "centre:game-1",
-      players: [{ participantId: participant!.id, placement: 1 }],
-    });
-    expect(duplicate.ok && duplicate.value.state).toBe("duplicate");
+    const duplicate = await ingestOfficialGameResult(envelope);
+    expect(duplicate.ok && duplicate.value.duplicate).toBe(true);
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
     expect(
       (
         await query<{ count: string }>(
-          `select count(*)::text as count from score_game_receipts where source_key = 'centre:game-1'`,
+          `select count(*)::text as count from score_game_receipts receipts
+            join official_game_results results on results.id = receipts.official_result_id
+           where results.channel_id = $1 and results.result_id = 'final'`,
+          [channelId],
         )
       )[0]?.count,
     ).toBe("1");
+
+    const invalidCorrection = await ingestOfficialGameResult(
+      centreEnvelope({ channelId, revision: 2, placement: 99 }),
+    );
+    expect(invalidCorrection.ok).toBe(true);
+    expect(
+      (
+        await processOfficialGameResult(
+          invalidCorrection.ok ? invalidCorrection.value.id : "missing",
+        )
+      ).state,
+    ).toBe("held");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
+
+    const correction = await ingestOfficialGameResult(
+      centreEnvelope({ channelId, revision: 3, placement: 2 }),
+    );
+    expect(correction.ok).toBe(true);
+    expect(
+      (await processOfficialGameResult(correction.ok ? correction.value.id : "missing")).state,
+    ).toBe("corrected");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(3);
+
+    const cancellation = await ingestOfficialGameResult(
+      centreEnvelope({ channelId, revision: 4, operation: "cancel" }),
+    );
+    expect(cancellation.ok).toBe(true);
+    expect(
+      (await processOfficialGameResult(cancellation.ok ? cancellation.value.id : "missing")).state,
+    ).toBe("cancelled");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
+    expect(
+      await query<{
+        revision: number;
+        status: string;
+        points: string;
+        has_reversal: boolean;
+      }>(
+        `select results.revision,
+                receipts.status,
+                coalesce(sum(postings.points), 0)::text as points,
+                receipts.reversal_transaction_id is not null as has_reversal
+           from score_game_receipts receipts
+           join official_game_results results on results.id = receipts.official_result_id
+           left join score_postings postings on postings.transaction_id = receipts.transaction_id
+          where results.channel_id = $1
+          group by results.revision, receipts.status, receipts.reversal_transaction_id
+          order by results.revision`,
+        [channelId],
+      ),
+    ).toEqual([
+      { revision: 1, status: "processed", points: "7", has_reversal: false },
+      { revision: 3, status: "corrected", points: "3", has_reversal: true },
+      { revision: 4, status: "cancelled", points: "0", has_reversal: true },
+    ]);
   });
 });

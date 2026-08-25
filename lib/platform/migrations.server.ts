@@ -1888,6 +1888,77 @@ const MIGRATIONS: Migration[] = [
         where source_type = 'reversal' and original_transaction_id is not null;
     `,
   },
+  {
+    id: "0038_official_game_result_overlay",
+    sql: `
+      drop table if exists score_game_receipts cascade;
+
+      create table event_game_score_bindings (
+        channel_id       text primary key,
+        event_id         text not null references events (event_id) on delete restrict,
+        activity_id      text not null references score_activities (id) on delete restrict,
+        game_kind        text not null check (game_kind in (
+          'centre', 'twin', 'draw-country', 'same-brain', 'spelling-party'
+        )),
+        game_instance_id text,
+        accepted_scope   text not null check (accepted_scope in ('round', 'match', 'game')),
+        status           text not null default 'provisioning'
+                         check (status in ('provisioning', 'active', 'paused', 'closed')),
+        created_at       timestamptz not null default now(),
+        updated_at       timestamptz not null default now(),
+        unique (game_kind, game_instance_id)
+      );
+
+      create index event_game_score_bindings_event_idx
+        on event_game_score_bindings (event_id, status, game_kind);
+
+      create table event_game_player_links (
+        channel_id       text not null references event_game_score_bindings (channel_id) on delete restrict,
+        game_player_id   text not null,
+        participant_id   text not null references event_participants (id) on delete restrict,
+        created_at       timestamptz not null default now(),
+        primary key (channel_id, game_player_id),
+        unique (channel_id, participant_id)
+      );
+
+      create table official_game_results (
+        id               text primary key,
+        channel_id       text not null references event_game_score_bindings (channel_id) on delete restrict,
+        game_kind        text not null,
+        game_instance_id text not null,
+        result_id        text not null,
+        revision         integer not null check (revision >= 1),
+        operation        text not null check (operation in ('record', 'cancel')),
+        scope            text not null check (scope in ('round', 'match', 'game')),
+        players          jsonb not null,
+        payload_hash     text not null check (char_length(payload_hash) = 64),
+        status           text not null default 'pending'
+                         check (status in ('pending', 'processed', 'ignored', 'held')),
+        held_reason      text,
+        committed_at     timestamptz not null,
+        ingested_at      timestamptz not null default now(),
+        processed_at     timestamptz,
+        unique (channel_id, result_id, revision)
+      );
+
+      create index official_game_results_pending_idx
+        on official_game_results (status, ingested_at, id)
+        where status in ('pending', 'held');
+
+      create table score_game_receipts (
+        id                   text primary key,
+        official_result_id   text not null unique references official_game_results (id) on delete restrict,
+        event_id             text not null references events (event_id) on delete restrict,
+        activity_id          text not null references score_activities (id) on delete restrict,
+        transaction_id       text references score_transactions (id) on delete restrict,
+        reversal_transaction_id text references score_transactions (id) on delete restrict,
+        status               text not null check (status in ('processed', 'ignored', 'held', 'cancelled', 'corrected')),
+        reason               text,
+        created_at           timestamptz not null default now(),
+        updated_at           timestamptz not null default now()
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
