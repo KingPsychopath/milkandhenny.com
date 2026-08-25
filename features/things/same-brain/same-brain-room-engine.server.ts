@@ -21,7 +21,11 @@ import {
   touchMultiplayerPresence,
 } from "../shared/room-presence";
 import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -161,6 +165,20 @@ const safeEqual = multiplayerCredentialsMatch;
 function changed(room: SameBrainRoomState) {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayerCount(room));
+  else if (room.phase !== "ending")
+    room.expiresAt = activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+}
+
+function activePlayerCount(room: SameBrainRoomState) {
+  return room.players.filter(({ out, leftAt }) => !out && leftAt === undefined).length;
+}
+
+function storageExpiry(room: SameBrainRoomState, now = Date.now()) {
+  if (room.phase === "lobby" || room.phase === "ending") return room.expiresAt;
+  return activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 }
 
 function failure(errorCode: SameBrainRejectionCode, error: string): SameBrainActionResult {
@@ -216,6 +234,7 @@ async function loadRoom(
 
 async function saveRoom(room: SameBrainRoomState, keys = sameBrainRoomRedisKeys(room.roomId)) {
   const redis = getRedis();
+  room.expiresAt = storageExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deleteRoom(room, keys);
     return;
@@ -596,11 +615,11 @@ export async function createSameBrainRoom(input: {
 }): Promise<SameBrainRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
-  const expiresAt = multiplayerRoomExpiresAt();
+  const now = Date.now();
+  const expiresAt = multiplayerLobbyExpiresAt(now, 1);
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );
-  const now = Date.now();
   const room: SameBrainRoomState = {
     roomId,
     managed: input.managed,
@@ -1071,6 +1090,7 @@ export async function applySameBrainPlayerAction(input: {
     if (action.type === "room.leave") {
       if (room.phase === "lobby") {
         room.players = room.players.filter(({ id }) => id !== player.id);
+        if (room.players.length === 0) room.expiresAt = now;
       } else {
         player.out = true;
         player.answer = null;

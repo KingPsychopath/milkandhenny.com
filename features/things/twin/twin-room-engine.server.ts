@@ -1,6 +1,10 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -150,6 +154,12 @@ const memoryLogs = createMemoryRoomStore<TwinLoggedHeat[]>("twin-log");
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayers(room).length);
+  else if (room.phase === "closed") room.expiresAt = now;
+  else if (room.phase !== "finished")
+    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 }
 
 function activePlayers(room: RoomState) {
@@ -181,6 +191,14 @@ async function loadRoom(roomId: string) {
 
 async function saveRoom(room: RoomState) {
   const redis = getRedis();
+  if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "closed")
+    room.expiresAt =
+      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
+  if (room.expiresAt <= Date.now()) {
+    if (redis) await redis.del(twinRoomRedisKeys(room.roomId).state);
+    else memoryRooms.delete(room.roomId);
+    return;
+  }
   if (redis)
     await redis.set(twinRoomRedisKeys(room.roomId).state, room, {
       ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
@@ -669,7 +687,7 @@ export async function createTwinRoom(input: {
   const joinToken = createMultiplayerCredential();
   const playerToken = createMultiplayerCredential();
   const now = Date.now();
-  const expiresAt = multiplayerRoomExpiresAt(now);
+  const expiresAt = multiplayerLobbyExpiresAt(now, 1);
   const requestedHandSize = input.handSize ?? TWIN_DEFAULT_HAND;
   const plan = planTwinDeck(1, requestedHandSize);
   const host = newPlayer(input.hostName, hashMultiplayerCredential(playerToken), now);

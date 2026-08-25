@@ -18,7 +18,11 @@ import {
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
 import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -166,6 +170,11 @@ const safeEqual = multiplayerCredentialsMatch;
 function changed(room: PartyRoomState) {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, Math.max(1, activePlayers(room).length));
+  else if (room.phase !== "finished")
+    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 }
 function activePlayers(room: PartyRoomState) {
   return room.players.filter(({ leftAt }) => leftAt === undefined);
@@ -225,6 +234,9 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
 
 async function saveRoom(room: PartyRoomState, keys = partyRoomRedisKeys(room.roomId)) {
   const redis = getRedis();
+  if (room.phase !== "lobby" && room.phase !== "finished")
+    room.expiresAt =
+      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
   if (room.expiresAt <= Date.now()) {
     await deletePartyRoom(room, keys);
     return;
@@ -554,7 +566,7 @@ export async function createPartyRoom(input: {
   if (!deck) throw new Error("Deck unavailable");
   const presenterToken = token();
   const joinToken = token();
-  const expiresAt = multiplayerRoomExpiresAt();
+  const expiresAt = multiplayerLobbyExpiresAt(Date.now(), 1);
   const nextRoomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );

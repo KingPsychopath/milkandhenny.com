@@ -14,7 +14,11 @@ import {
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -95,6 +99,12 @@ const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayers(room).length);
+  else if (room.phase === "closed") room.expiresAt = now;
+  else if (room.phase !== "finished")
+    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 }
 
 function activePlayers(room: RoomState) {
@@ -126,6 +136,14 @@ async function loadRoom(roomId: string) {
 
 async function saveRoom(room: RoomState) {
   const redis = getRedis();
+  if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "closed")
+    room.expiresAt =
+      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
+  if (room.expiresAt <= Date.now()) {
+    if (redis) await redis.del(drawCountryRoomRedisKeys(room.roomId).state);
+    else memoryRooms.delete(room.roomId);
+    return;
+  }
   if (redis)
     await redis.set(drawCountryRoomRedisKeys(room.roomId).state, room, {
       ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
@@ -326,7 +344,7 @@ export async function createDrawCountryRoom(input: {
   const joinToken = createMultiplayerCredential();
   const playerToken = createMultiplayerCredential();
   const playerId = crypto.randomUUID();
-  const expiresAt = multiplayerRoomExpiresAt();
+  const expiresAt = multiplayerLobbyExpiresAt(Date.now(), 1);
   const room: RoomState = {
     roomId,
     managed: input.managed,

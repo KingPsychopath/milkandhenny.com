@@ -21,7 +21,11 @@ import {
   touchMultiplayerPresence,
 } from "../shared/room-presence";
 import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -217,6 +221,20 @@ const safeEqual = multiplayerCredentialsMatch;
 function changed(room: LiarsRoomState) {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayerCount(room));
+  else if (room.phase !== "ending")
+    room.expiresAt = activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+}
+
+function activePlayerCount(room: LiarsRoomState) {
+  return room.players.filter(({ alive, leftAt }) => alive && leftAt === undefined).length;
+}
+
+function storageExpiry(room: LiarsRoomState, now = Date.now()) {
+  if (room.phase === "lobby" || room.phase === "ending") return room.expiresAt;
+  return activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 }
 
 function failure(errorCode: LiarsRoomErrorCode, error: string): LiarsActionResult {
@@ -271,6 +289,7 @@ async function loadRoom(
 
 async function saveRoom(room: LiarsRoomState, keys = liarsRoomRedisKeys(room.roomId)) {
   const redis = getRedis();
+  room.expiresAt = storageExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deleteRoom(room, keys);
     return;
@@ -1265,7 +1284,7 @@ export async function createLiarsRoom(input: {
 }): Promise<LiarsRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
-  const expiresAt = multiplayerRoomExpiresAt();
+  const expiresAt = multiplayerLobbyExpiresAt(Date.now(), 1);
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );
@@ -1726,6 +1745,7 @@ export async function applyLiarsPlayerAction(input: {
       if (room.phase === "lobby") {
         room.players = room.players.filter(({ id }) => id !== player.id);
         room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
+        if (room.players.length === 0) room.expiresAt = now;
       } else {
         if (player.alive) {
           kill(room, player, "left");

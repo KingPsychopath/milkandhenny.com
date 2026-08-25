@@ -1,11 +1,24 @@
-// Quick-play rooms need enough time for setup, reconnects and a full session,
-// without retaining abandoned transient state for the rest of the day.
+// Room records need enough time for setup, reconnects and a full session, without retaining
+// abandoned transient state for the rest of the day.
 export const MULTIPLAYER_ROOM_TTL_SECONDS = 90 * 60;
+export const MULTIPLAYER_EMPTY_LOBBY_TTL_SECONDS = 5 * 60;
+export const MULTIPLAYER_LOBBY_TTL_SECONDS = 30 * 60;
+export const MULTIPLAYER_PRESENCE_LEASE_SECONDS = 15 * 60;
 export const MULTIPLAYER_ROOM_ID_LENGTH = 7;
 export const MULTIPLAYER_ROOM_ID_PATTERN = /^[A-Z2-9]{7}$/;
 export const MULTIPLAYER_ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export type MultiplayerConnectionState = "connected" | "reconnecting" | "offline";
+
+export function multiplayerLobbyExpiresAt(now = Date.now(), playerCount = 1) {
+  const seconds =
+    playerCount === 0 ? MULTIPLAYER_EMPTY_LOBBY_TTL_SECONDS : MULTIPLAYER_LOBBY_TTL_SECONDS;
+  return now + seconds * 1_000;
+}
+
+export function multiplayerPresenceLeaseExpiresAt(now = Date.now()) {
+  return now + MULTIPLAYER_PRESENCE_LEASE_SECONDS * 1_000;
+}
 
 export interface MultiplayerRoomIdentity {
   roomId: string;
