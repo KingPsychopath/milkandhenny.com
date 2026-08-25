@@ -16,7 +16,7 @@ import {
 } from "../types";
 import { AppImage } from "@/components/AppImage";
 import { imagePlaceholderStyle, type ResponsiveImageData } from "@/features/media/image";
-import type { TicketTypeAvailability } from "../events.server";
+import type { TicketTypeAvailability } from "@/features/event-operations/event-page.server";
 import { AddressLink } from "./AddressLink";
 import { ThreeWordHint } from "./ThreeWordHint";
 import { ClaimTicketForm } from "./ClaimTicketForm";

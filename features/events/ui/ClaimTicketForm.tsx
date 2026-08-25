@@ -13,7 +13,7 @@ import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { formatMoney, type TicketType } from "../types";
-import type { TicketTypeAvailability } from "../events.server";
+import type { TicketTypeAvailability } from "@/features/event-operations/event-page.server";
 
 /**
  * Free ticket claim.

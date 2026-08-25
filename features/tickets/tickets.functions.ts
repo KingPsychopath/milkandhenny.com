@@ -10,13 +10,8 @@ import {
   TICKET_MARKETING_CONSENT_VERSION,
 } from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
-import { runEventsResult } from "@/features/events/events-runtime.server";
-import {
-  toTicketHolderEvent,
-  type EventAlbumView,
-  type EventRecord,
-} from "@/features/events/types";
-import { getEventAlbumView } from "@/features/events/drop.server";
+import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
+import { toTicketHolderEvent } from "@/features/events/types";
 import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
 import { buildTicketQrPayload } from "./qr.server";
@@ -28,20 +23,13 @@ import {
   startCheckout,
 } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
-import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
-import { resolveTicketOrderAccess } from "./order-access";
-import { openAttendeeTicket } from "@/features/event-scoring/session.server";
-import { personalScore } from "@/features/event-scoring/scoring.server";
-import { findSettings, privateOrderScore } from "@/features/event-scoring/store.server";
-import { listCheckpoints } from "./checkpoints.server";
+import { rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
   isValidEmail,
   isValidTicketId,
   type DoorTicketView,
-  type OrderTicketView,
-  type TicketPageTicket,
   type RedeemOutcome,
   type TicketStatus,
 } from "./types";
@@ -84,7 +72,7 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
       return { ok: false, status: 400, error: "That email address doesn't look right" };
     }
 
-    const loaded = await runEventsResult(
+    const loaded = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
         return yield* events.read(data.eventSlug);
@@ -101,7 +89,7 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
       return { ok: false, status: 400, error: "This ticket has to be paid for" };
     }
 
-    const issued = await runEventsResult(
+    const issued = await runEventOperationsResult(
       Effect.gen(function* () {
         const tickets = yield* TicketsService;
         return yield* tickets.issue({
@@ -164,148 +152,6 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
     };
   });
 
-export type TicketPageResult =
-  | { found: false }
-  | {
-      found: true;
-      ticket: TicketPageTicket;
-      qrPayload: string;
-      event: ReturnType<typeof toTicketHolderEvent>;
-      /** Tickets bought together, so one delivery link opens the whole order. */
-      orderTickets: OrderTicketView[];
-      orderSize: number;
-      orderPosition: number;
-      canManageOrder: boolean;
-      managerTicketId?: string;
-      /**
-       * Scan points beyond the door. A redeemed ticket is not a spent one, and
-       * the page has to be able to say so in the event's own words.
-       */
-      checkpointNames: string[];
-      /** The shared album — the reason to come back to this page afterwards. */
-      album: EventAlbumView;
-      score?: {
-        participantId: string;
-        publicAlias: string;
-        displayMode: "alias" | "anonymous" | "hidden";
-        points: number;
-        revision: number;
-        rank: number;
-        teamRank?: number;
-        synchronizedAt: string;
-        orderPoints?: number;
-        transactions: Array<{
-          status: string;
-          reasonCode: string;
-          points: number;
-          createdAt: string;
-        }>;
-      };
-    };
-
-export const getTicketPageFn = createServerFn({ method: "GET" })
-  .validator((data: { id: string }) => data)
-  .handler(async ({ data }): Promise<TicketPageResult> => {
-    const loaded = await runEventsResult(
-      Effect.gen(function* () {
-        const tickets = yield* TicketsService;
-        return yield* tickets.read(data.id);
-      }),
-    );
-    if (!loaded.ok || !loaded.value) return { found: false };
-
-    const ticket = loaded.value;
-    const detailResult = await runEventsResult(
-      Effect.gen(function* () {
-        const events = yield* EventsService;
-        const tickets = yield* TicketsService;
-        const event = yield* events.read(ticket.eventSlug);
-        const orderTickets = yield* tickets.order(ticket.orderId);
-        return { event, orderTickets };
-      }),
-    );
-    if (!detailResult.ok || !detailResult.value.event) return { found: false };
-
-    const event: EventRecord = detailResult.value.event;
-    const orderTickets = detailResult.value.orderTickets;
-    const access = resolveTicketOrderAccess(ticket, orderTickets, readManagedTicketOrders());
-    const isPrimaryTicket = access.managerTicketId === ticket.id;
-
-    // Holding a ticket is what earns the address.
-    rememberTicketHolder(event.slug);
-    if (isPrimaryTicket) rememberManagedTicketOrder(ticket.orderId);
-
-    const [album, checkpoints] = await Promise.all([
-      getEventAlbumView(event.slug),
-      listCheckpoints(event.slug),
-    ]);
-    const scoringSettings = await findSettings(event.slug);
-    const scoreResult =
-      scoringSettings && scoringSettings.state !== "off"
-        ? await personalScore({
-            eventSlug: event.slug,
-            ticketId: ticket.id,
-            includeHistory: true,
-          })
-        : null;
-    const orderScore =
-      scoreResult?.ok && access.canManageOrder
-        ? await privateOrderScore({ eventSlug: event.slug, orderId: ticket.orderId })
-        : null;
-    if (scoreResult) {
-      try {
-        await openAttendeeTicket({ ticketId: ticket.id, eventSlug: event.slug, mode: "view-only" });
-      } catch {
-        // Admission tickets must remain readable when the optional scoring session store is down.
-      }
-    }
-
-    return {
-      found: true,
-      ticket: {
-        id: ticket.id,
-        holderName: ticket.holderName,
-        kind: ticket.kind,
-        status: ticket.status,
-        redeemedAt: ticket.redeemedAt,
-        amountPaidMinor: ticket.amountPaidMinor,
-        currency: ticket.currency,
-      },
-      qrPayload: buildTicketQrPayload(ticket.id),
-      event: toTicketHolderEvent(event),
-      orderTickets: access.tickets.map(
-        ({ id, holderName, status, redeemedAt, amountPaidMinor, currency }) => ({
-          id,
-          holderName,
-          status,
-          redeemedAt,
-          amountPaidMinor,
-          currency,
-        }),
-      ),
-      orderSize: access.orderSize,
-      orderPosition: access.orderPosition,
-      canManageOrder: access.canManageOrder,
-      managerTicketId: access.managerTicketId,
-      checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
-      album,
-      score: scoreResult?.ok
-        ? {
-            participantId: scoreResult.value.participant.id,
-            publicAlias: scoreResult.value.participant.publicAlias,
-            displayMode: scoreResult.value.participant.displayMode,
-            points: scoreResult.value.participant.balance,
-            revision: scoreResult.value.participant.revision,
-            rank: scoreResult.value.rank,
-            teamRank: scoreResult.value.teamRank,
-            synchronizedAt: new Date().toISOString(),
-            transactions: scoreResult.value.transactions,
-            orderPoints: orderScore?.ok ? orderScore.value.points : undefined,
-          }
-        : undefined,
-    };
-  });
-
 export type ResendResult = { ok: true } | { ok: false; status: number; error: string };
 
 /**
@@ -325,7 +171,7 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
       return { ok: false, status: 400, error: "That email address doesn't look right" };
     }
 
-    const found = await runEventsResult(
+    const found = await runEventOperationsResult(
       Effect.gen(function* () {
         const tickets = yield* TicketsService;
         return yield* tickets.lookupByEmail(data.eventSlug, data.email);
@@ -384,7 +230,7 @@ export const redeemTicketFn = createServerFn({ method: "POST" })
     const auth = await authoriseDoor(data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
-    const result = await runEventsResult(
+    const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const tickets = yield* TicketsService;
         return yield* tickets.redeem({
@@ -419,7 +265,7 @@ export const getDoorDataFn = createServerFn({ method: "GET" })
     const auth = await authoriseDoor(data.eventSlug, data.scannerToken);
     if (!auth.ok) return { authorised: false };
 
-    const result = await runEventsResult(
+    const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
         const tickets = yield* TicketsService;

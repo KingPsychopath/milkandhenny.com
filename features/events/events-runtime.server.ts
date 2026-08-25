@@ -1,6 +1,5 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
 
-import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { EventsService } from "./events-service.server";
 
 /**
@@ -11,11 +10,11 @@ import { EventsService } from "./events-service.server";
  * state — Redis remains the source of truth, so any replica can serve the
  * next request.
  */
-const eventsLayer = Layer.mergeAll(EventsService.layer, TicketsService.layer);
+const eventsLayer = Layer.mergeAll(EventsService.layer);
 
 const eventsRuntime = ManagedRuntime.make(eventsLayer);
 
-export type EventsServices = EventsService | TicketsService;
+export type EventsServices = EventsService;
 
 /** The only sanctioned Promise boundary — call this from TanStack/Nitro edges. */
 export function runEventsEffect<A, E>(

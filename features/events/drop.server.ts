@@ -11,7 +11,8 @@ import {
 } from "@/features/transfers/store.server";
 import { isValidEventSlug, type EventAlbumView } from "./types";
 import { getEvent } from "./store.server";
-import type { TicketOpResult } from "@/features/tickets/tickets.server";
+
+type EventDropResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
 
 /**
  * Event guest drops.
@@ -126,7 +127,7 @@ export async function getEventAlbumView(eventSlug: string): Promise<EventAlbumVi
 export async function enableEventDrop(
   eventSlug: string,
   expirySeconds: number,
-): Promise<TicketOpResult<EventDropStatus>> {
+): Promise<EventDropResult<EventDropStatus>> {
   const event = await getEvent(eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
 
@@ -184,7 +185,7 @@ export async function enableEventDrop(
 }
 
 /** The kill switch: uploads stop; media already sent stays until expiry. */
-export async function disableEventDrop(eventSlug: string): Promise<TicketOpResult<void>> {
+export async function disableEventDrop(eventSlug: string): Promise<EventDropResult<void>> {
   if (!isValidEventSlug(eventSlug)) return { ok: false, status: 404, error: "Event not found" };
   await query(`update event_drops set disabled_at = now() where event_slug = $1`, [eventSlug]);
   log.info("event-drop.disable", "Guest uploads disabled", { slug: eventSlug });

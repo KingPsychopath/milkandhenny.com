@@ -2,7 +2,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
-import { getTicketPageFn } from "@/features/tickets/tickets.functions";
+import { getTicketPageFn } from "@/features/event-operations/ticket-page.functions";
 import { TicketPage } from "@/features/tickets/ui/TicketPage";
 
 export const Route = createFileRoute("/ticket/$id")({

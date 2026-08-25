@@ -5,7 +5,7 @@ import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
-import { runEventsResult } from "@/features/events/events-runtime.server";
+import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
 
 /**
  * A single admin event: read, update, delete.
@@ -19,7 +19,7 @@ async function handleGET(request: Request, slug: string) {
   if (authErr) return authErr;
 
   try {
-    const result = await runEventsResult(
+    const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
         const tickets = yield* TicketsService;
@@ -48,7 +48,7 @@ async function handlePATCH(request: Request, slug: string) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const result = await runEventsResult(
+    const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
         return yield* events.update(slug, body as Record<string, unknown>);
@@ -72,7 +72,7 @@ async function handleDELETE(request: Request, slug: string) {
   if (stepUpErr) return stepUpErr;
 
   try {
-    const result = await runEventsResult(
+    const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
         return yield* events.remove(slug);

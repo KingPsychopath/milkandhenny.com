@@ -7,7 +7,8 @@ import { describe, it, expect } from "vitest";
  * they are tested directly rather than through a route.
  */
 
-import { buildAvailability, normaliseEventInput } from "@/features/events/events.server";
+import { buildAvailability } from "@/features/event-operations/event-page.server";
+import { normaliseEventInput } from "@/features/events/events.server";
 import {
   heroImageHeightClass,
   isEventHeroHeight,

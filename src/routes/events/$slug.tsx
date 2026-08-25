@@ -1,7 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { SITE_NAME } from "@/lib/shared/config";
-import { getEventPageFn } from "@/features/events/events.functions";
+import { getEventPageFn } from "@/features/event-operations/event-page.functions";
 import { buildEventJsonLd } from "@/features/events/ics";
 import { buildEventUrl } from "@/features/events/routes";
 import { EventDetailPage } from "@/features/events/ui/EventDetailPage";

@@ -16,22 +16,18 @@ export class EventsService extends Context.Service<
     readonly create: typeof create;
     readonly update: typeof update;
     readonly remove: typeof remove;
-    readonly page: typeof page;
     readonly index: typeof index;
     readonly read: typeof read;
     readonly list: typeof list;
-    readonly soldCounts: typeof soldCounts;
   }
 >()("EventsService") {
   static readonly layer = Layer.succeed(this, {
     create,
     update,
     remove,
-    page,
     index,
     read,
     list,
-    soldCounts,
   });
 }
 
@@ -51,12 +47,6 @@ function remove(slug: string) {
   return eventsOperation({ domain: "events", operation: "remove" }, () => engine.removeEvent(slug));
 }
 
-function page(slug: string, options: { revealLocation?: boolean; includeHidden?: boolean } = {}) {
-  return eventsOperation({ domain: "events", operation: "page" }, () =>
-    engine.getEventPage(slug, options),
-  );
-}
-
 function index() {
   return eventsOperation({ domain: "events", operation: "index" }, () => engine.getEventsIndex());
 }
@@ -67,10 +57,4 @@ function read(slug: string) {
 
 function list(options: { includeHidden?: boolean } = {}) {
   return eventsOperation({ domain: "events", operation: "list" }, () => engine.listEvents(options));
-}
-
-function soldCounts(slug: string) {
-  return eventsOperation({ domain: "events", operation: "sold_counts" }, () =>
-    engine.getSoldCounts(slug),
-  );
 }
