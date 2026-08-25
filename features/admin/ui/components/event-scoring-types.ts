@@ -1,15 +1,11 @@
+import type { ActivityStatus, ScoreRule } from "@/features/event-scoring/types";
+
 export type AdminScoringActivity = {
   id: string;
   name: string;
   template: string;
-  status: string;
-  rule: {
-    mode: string;
-    fixedPoints?: number;
-    participationPoints?: number;
-    repeat: string;
-    requiresCheckIn: boolean;
-  };
+  status: ActivityStatus;
+  rule: ScoreRule;
 };
 
 export type AdminScoringPool = {
