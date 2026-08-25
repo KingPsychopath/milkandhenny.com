@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
@@ -8,6 +8,7 @@ import type {
   OfficialGameResultScope,
   OfficialResultPlayer,
 } from "@/features/things/shared/official-game-results";
+import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import { activityCanAccept, convertRulePoints, type ActivityStatus, type ScoreRule } from "./types";
 import { recordScoreInTransaction, reverseScoreInTransaction } from "./store.server";
 
@@ -44,27 +45,6 @@ export type OfficialResultProcessingOutcome =
 
 function opaqueId(prefix: "gsc" | "ogr" | "sgr") {
   return `${prefix}_${randomBytes(18).toString("base64url")}`;
-}
-
-function canonicalPayload(input: Omit<OfficialGameResultEnvelope, "payloadHash">): string {
-  return JSON.stringify({
-    schemaVersion: input.schemaVersion,
-    channelId: input.channelId,
-    gameKind: input.gameKind,
-    gameInstanceId: input.gameInstanceId,
-    resultId: input.resultId,
-    revision: input.revision,
-    operation: input.operation,
-    scope: input.scope,
-    players: input.players,
-    committedAt: input.committedAt,
-  });
-}
-
-export function officialResultPayloadHash(
-  input: Omit<OfficialGameResultEnvelope, "payloadHash">,
-): string {
-  return createHash("sha256").update(canonicalPayload(input)).digest("hex");
 }
 
 export async function createGameScoreBinding(input: {

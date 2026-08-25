@@ -362,7 +362,7 @@ Required permission boundaries:
 
 Initial integrations:
 
-- [ ] Centre.
+- [x] Centre.
 - [ ] Twin.
 - [ ] Draw Country.
 - [ ] Same Brain.
@@ -785,11 +785,11 @@ Moderator award:
 
 Automatic game:
 
-- [ ] An event-linked game stores one official result.
-- [ ] The configured rule creates event points once.
-- [ ] Retry and reconnect create no duplicate.
+- [x] An event-linked game stores one official result.
+- [x] The configured rule creates event points once.
+- [x] Retry and reconnect create no duplicate.
 - [ ] An unclaimed player can claim the result later.
-- [ ] A corrected or cancelled result follows the defined reversal policy.
+- [x] A corrected or cancelled result follows the defined reversal policy.
 
 Discovery hunt:
 

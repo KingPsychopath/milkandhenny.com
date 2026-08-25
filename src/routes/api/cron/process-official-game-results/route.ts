@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
 import { processPendingOfficialGameResults } from "@/features/event-scoring/games.server";
+import { drainOfficialGameResultOutbox } from "@/features/things/shared/official-game-results.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -10,12 +11,16 @@ async function handlePOST(request: Request) {
   if (authError) return authError;
   const startedAt = Date.now();
   try {
-    const result = await processPendingOfficialGameResults();
+    const [outbox, result] = await Promise.all([
+      drainOfficialGameResultOutbox(),
+      processPendingOfficialGameResults(),
+    ]);
     log.info("cron.official-game-results", "Official game results processed", {
       ...result,
+      outbox,
       durationMs: Date.now() - startedAt,
     });
-    return Response.json({ success: true, ...result, timestamp: new Date().toISOString() });
+    return Response.json({ success: true, outbox, ...result, timestamp: new Date().toISOString() });
   } catch (error) {
     return apiErrorFromRequest(
       request,

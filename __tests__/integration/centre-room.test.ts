@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/things/shared/official-game-results.server", () => ({
+  deliverOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-08-08T12:00:00.000Z",
+      payloadHash: "a".repeat(64),
+    }),
+  ),
 }));
 
 import {
@@ -20,7 +39,10 @@ import {
 } from "../../features/things/centre/centre-generator";
 import type { CentrePoint, CentreRoute } from "../../features/things/centre/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredResults.length = 0;
+  vi.useRealTimers();
+});
 
 interface Seat {
   roomId: string;
@@ -75,6 +97,63 @@ async function snapshot(seat: Seat) {
 }
 
 describe("Centre rooms", () => {
+  it("emits one neutral official result only for an event-linked finished game", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-08T11:00:00Z"));
+    const created = await createCentreRoom({
+      hostName: "Abel",
+      difficulty: 2,
+      delayedRivals: false,
+      officialResultChannelId: "gsc_test",
+    });
+    const seat = {
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+    };
+    await applyCentreAction({ ...seat, action: { type: "game.start" } });
+    const armed = await applyCentreAction({ ...seat, action: { type: "arming.set", armed: true } });
+    vi.setSystemTime((armed.snapshot?.course?.startsAt ?? Date.now()) + 10);
+    const racing = await snapshot(seat);
+    const maze = generateCentreMaze({
+      seed: racing.course!.seed,
+      difficulty: racing.course!.difficulty,
+      playerCount: 1,
+    });
+    const route = solvedRoute(maze, racing.players[0]!.entranceIndex!, 2_000);
+    await applyCentreAction({
+      ...seat,
+      action: {
+        type: "race.finish",
+        courseHash: racing.course!.hash,
+        route,
+        claimedElapsedMs: 2_000,
+      },
+    });
+    vi.setSystemTime(Date.now() + 1_300);
+    expect((await snapshot(seat)).phase).toBe("finished");
+    await snapshot(seat);
+
+    expect(deliveredResults).toHaveLength(1);
+    expect(deliveredResults[0]).toMatchObject({
+      channelId: "gsc_test",
+      gameKind: "centre",
+      gameInstanceId: created.roomId,
+      resultId: "game:1",
+      revision: 1,
+      scope: "game",
+      players: [
+        {
+          playerId: created.playerId,
+          outcome: "completed",
+          placement: 1,
+          won: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(deliveredResults[0])).not.toContain("Abel");
+  });
+
   it("arms every player, starts together, verifies finishes, and stores the replay separately", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-08T12:00:00Z"));

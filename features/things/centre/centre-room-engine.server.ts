@@ -25,6 +25,12 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
+import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { centreRoomRedisKeys } from "./centre-keys";
 import { validateCentreRoute, validateCentreRouteProgress } from "./centre-trace";
@@ -83,6 +89,7 @@ interface RoomState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
+  officialResultChannelId?: string;
   expiresAt: number;
   revision: number;
   sequence: number;
@@ -178,20 +185,64 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     const room = await loadRoom(roomId);
     if (!room) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
     if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    const envelope = !wasFinished && room.phase === "finished" ? centreOfficialResult(room) : null;
+    if (envelope)
+      deliverOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
     return result;
   }
   const initial = await loadRoom(roomId);
   if (!initial) return null;
   const keys: Keys = centreRoomRedisKeys(roomId);
-  return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
-    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) {
+      const envelope =
+        !wasFinished && room.phase === "finished" ? centreOfficialResult(room) : null;
+      queued = await persistRoomWithOfficialResults({
+        redis,
+        stateKey: keys.state,
+        room,
+        ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+        envelopes: envelope ? [envelope] : [],
+      });
+    }
     return result;
+  });
+  deliverOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function centreOfficialResult(room: RoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "finished") return null;
+  const places = rankings(room);
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "centre",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber}`,
+      scope: "game",
+      players: room.players.map((player) => ({
+        playerId: player.id,
+        outcome: player.withdrawn
+          ? "withdrawn"
+          : player.elapsedMs !== null
+            ? "completed"
+            : "did-not-finish",
+        placement: places.get(player.id),
+        durationMs: player.elapsedMs ?? undefined,
+        won: places.get(player.id) === 1,
+      })),
+    },
   });
 }
 
@@ -336,6 +387,7 @@ export async function createCentreRoom(input: {
   difficulty: CentreDifficulty;
   delayedRivals: boolean;
   managed?: boolean;
+  officialResultChannelId?: string;
 }): Promise<CentreRoomCredentials> {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -346,6 +398,7 @@ export async function createCentreRoom(input: {
   const room: RoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     expiresAt: multiplayerLobbyExpiresAt(Date.now(), 1),
     revision: 1,
     sequence: 1,

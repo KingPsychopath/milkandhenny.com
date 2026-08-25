@@ -21,10 +21,10 @@ import {
   createGameScoreBinding,
   ingestOfficialGameResult,
   linkGamePlayer,
-  officialResultPayloadHash,
   processOfficialGameResult,
   retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
+import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   mergeParticipants,
