@@ -536,7 +536,7 @@ function fitText(value: string, size: number, maxWidth: number, widths: number[]
 }
 
 function pdfTextCommand(input: {
-  font: "FB" | "FR";
+  font: "FB" | "FR" | "FS";
   fontMetrics: EmbeddedFont;
   size: number;
   text: string;
@@ -587,6 +587,9 @@ export async function renderDiscoveryPrintPdf(input: {
     name: "MAHLiberationSans-Bold",
     bold: true,
   });
+  const brandFontId = add(
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>",
+  );
   const pageIds: number[] = [];
 
   for (let offset = 0; offset < input.pack.items.length; offset += pageCapacity) {
@@ -699,6 +702,20 @@ export async function renderDiscoveryPrintPdf(input: {
           }),
         );
       }
+      if (compact) {
+        commands.push(
+          pdfTextCommand({
+            font: "FS",
+            fontMetrics: regularFont,
+            size: 6.5,
+            text: "milk & henny",
+            x: x + cellWidth / 2,
+            y: y + 6,
+            maxWidth: cellWidth * 0.28,
+            align: "center",
+          }),
+        );
+      }
       if (input.pack.includePlacementNotes && item.placementNote) {
         commands.push(
           pdfTextCommand({
@@ -755,7 +772,7 @@ export async function renderDiscoveryPrintPdf(input: {
     const xObjects = imageIds.map((id, index) => `/Q${index} ${id} 0 R`).join(" ");
     pageIds.push(
       add(
-        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFont.id} 0 R /FB ${boldFont.id} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFont.id} 0 R /FB ${boldFont.id} 0 R /FS ${brandFontId} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
       ),
     );
   }
