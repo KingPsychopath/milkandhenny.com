@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { OperationsTab } from "./AdminSectionNav";
@@ -283,6 +283,7 @@ export function AttendeeOperationsPanel({
               ) ?? nextContacts[0]),
         );
         if (matchingPerson && matchingPerson.personId !== initialPerson) {
+          selfNavigationRef.current = matchingPerson.personId;
           onPersonChange(matchingPerson.personId);
         }
       } catch (error) {
@@ -294,12 +295,25 @@ export function AttendeeOperationsPanel({
     [authFetch, initialPerson, onError, onPersonChange, query],
   );
 
+  // Seeds the search from deep-link parameters only. `loadPeople` is read
+  // through a ref: its identity tracks the query text, and depending on it
+  // here made every keystroke re-run this effect and stomp the box with the
+  // deep-link target while re-fetching three or four times per search.
+  const loadPeopleRef = useRef(loadPeople);
+  loadPeopleRef.current = loadPeople;
+  const selfNavigationRef = useRef<string | null>(null);
   useEffect(() => {
     if (tab !== "people") return;
+    const selfTarget = selfNavigationRef.current;
+    selfNavigationRef.current = null;
+    // Navigation this panel initiated itself (a result click, a drawer close)
+    // already updated local state; re-seeding would overwrite what the admin
+    // typed with the resolved person id and fire a redundant search.
+    if (selfTarget !== null && (initialPerson ?? "cleared") === selfTarget) return;
     const target = initialPerson ?? initialTicket ?? initialEvent ?? "";
     setQuery(target);
-    void loadPeople(initialPerson, target);
-  }, [initialEvent, initialPerson, initialTicket, loadPeople, tab]);
+    void loadPeopleRef.current(initialPerson, target);
+  }, [initialEvent, initialPerson, initialTicket, tab]);
 
   async function findPeople(event: FormEvent) {
     event.preventDefault();
@@ -630,6 +644,7 @@ export function AttendeeOperationsPanel({
                         onClick={() => {
                           setSelected(person);
                           setSelectedContact(undefined);
+                          selfNavigationRef.current = person.personId;
                           onPersonChange(person.personId);
                         }}
                         className="min-h-14 w-full py-3 text-left hover:opacity-70"
@@ -699,6 +714,7 @@ export function AttendeeOperationsPanel({
                 onManage={manageIdentity}
                 onClose={() => {
                   setSelected(undefined);
+                  selfNavigationRef.current = "cleared";
                   onPersonChange(undefined);
                 }}
               />

@@ -256,7 +256,13 @@ export function AdminDashboard({
 
   const ensureStepUpToken = async (): Promise<string | null> => {
     const result = await ensureStepUpTokenResult();
-    if (!result.ok) return null;
+    if (!result.ok) {
+      // A dismissed dialog is a decision; a failed verification is news. The
+      // panels consuming this wrapper bail out silently on null, so a real
+      // failure must surface here or the click does nothing at all.
+      if (!("cancelled" in result)) setErrorMessage(result.error);
+      return null;
+    }
     return result.token;
   };
 

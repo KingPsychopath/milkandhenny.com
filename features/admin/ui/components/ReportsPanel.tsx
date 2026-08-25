@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import type { AdminReportGroup } from "@/features/reports/types";
 import { copyText } from "@/lib/client/share";
 import {
@@ -137,15 +138,22 @@ export function ReportsPanel({
   const [updating, setUpdating] = useState<string | null>(null);
   const [copiedReportId, setCopiedReportId] = useState<string | null>(null);
 
+  const [pollingHalted, setPollingHalted] = useState(false);
+
   const loadReports = useCallback(async () => {
     setLoading(true);
-    onError("");
     try {
       const response = await authFetch(
         `/api/admin/reports${includeResolved ? "?includeResolved=1" : ""}`,
       );
       const data: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error("Failed to load reports");
+      if (!response.ok) {
+        // A 4xx stays wrong until something changes; only manual refresh or a
+        // filter change re-arms the timer.
+        if (response.status >= 400 && response.status < 500) setPollingHalted(true);
+        throw new Error("Failed to load reports");
+      }
+      setPollingHalted(false);
       setReports(parseReports(data));
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to load reports");
@@ -154,11 +162,15 @@ export function ReportsPanel({
     }
   }, [authFetch, includeResolved, onError]);
 
-  useEffect(() => {
-    void loadReports();
-    const timer = window.setInterval(() => void loadReports(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [loadReports]);
+  // The shared error banner is deliberately not cleared per poll — a bare
+  // interval here used to wipe other panels' errors every 30 seconds.
+  useVisibilityReconciler({
+    enabled: !pollingHalted,
+    intervalMs: 30_000,
+    identity: includeResolved ? "admin-reports:history" : "admin-reports:open",
+    minimumGapMs: 5_000,
+    reconcile: () => loadReports(),
+  });
 
   const update = async (report: AdminReportGroup, status: ReportStatus) => {
     setUpdating(report.id);

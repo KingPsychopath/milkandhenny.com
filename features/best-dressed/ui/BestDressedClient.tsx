@@ -103,6 +103,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     enabled: Boolean(hasVoted),
     intervalMs: LEADERBOARD_REFRESH_INTERVAL_MS,
     identity: hasVoted ? `best-dressed:${currentSession}` : null,
+    minimumGapMs: 5_000,
     reconcile: async (isCurrent) => {
       const data = await getBestDressedLeaderboardFn();
       if (!isCurrent()) return;

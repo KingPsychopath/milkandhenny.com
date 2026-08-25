@@ -338,6 +338,9 @@ function useCheckoutOutcome(sessionId: string, initial: CheckoutOutcomeResult) {
     enabled: poll === "waiting",
     intervalMs: POLL_INTERVAL_MS,
     identity: poll === "waiting" ? `checkout:${sessionId}` : null,
+    // Alt-tabbing during the Stripe redirect fires resume events; the floor
+    // keeps them from each becoming an immediate outcome request.
+    minimumGapMs: 750,
     reconcile: async () => {
       await check();
     },

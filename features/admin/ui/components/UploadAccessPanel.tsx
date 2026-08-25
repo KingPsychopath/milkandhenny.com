@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import type { UploadAccessDurationMinutes } from "@/features/auth/upload-access.server";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -55,14 +56,22 @@ export function UploadAccessPanel({
   const [copied, setCopied] = useState(false);
   const { confirm: confirmAction, dialog } = useActionDialog();
 
+  const [pollingHalted, setPollingHalted] = useState(false);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    // `loading` starts true and is never re-raised here: the visible
+    // "checking…" badge belongs to the first load, not to every 15-second
+    // background refresh.
     try {
       const response = await authFetch("/api/admin/upload-access");
       const data = (await response.json().catch(() => ({}))) as Partial<UploadAccessStatus> & {
         error?: string;
       };
-      if (!response.ok) throw new Error(data.error || "Failed to load upload access");
+      if (!response.ok) {
+        if (response.status >= 400 && response.status < 500) setPollingHalted(true);
+        throw new Error(data.error || "Failed to load upload access");
+      }
+      setPollingHalted(false);
       setStatus({
         active: data.active === true,
         openedAt: data.openedAt,
@@ -81,11 +90,15 @@ export function UploadAccessPanel({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!status?.active) return;
-    const timer = window.setInterval(() => void load(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [load, status?.active]);
+  // Refresh only while a window is open, pause in hidden tabs, and stop on a
+  // 4xx instead of re-asking a refusing endpoint four times a minute.
+  useVisibilityReconciler({
+    enabled: Boolean(status?.active) && !pollingHalted,
+    intervalMs: 15_000,
+    identity: "admin-upload-access",
+    minimumGapMs: 5_000,
+    reconcile: () => load(),
+  });
 
   const open = async () => {
     setBusy(true);

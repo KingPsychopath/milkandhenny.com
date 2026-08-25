@@ -28,7 +28,9 @@ export function ScoreNotificationNotice({ ticketId }: { ticketId: string }) {
       });
       window.dispatchEvent(new Event("mah-score-wake"));
     }
-    void load();
+    // Notices are a nicety: an offline ticket page or a non-JSON response
+    // should fail silently, not surface an unhandled rejection.
+    void load().catch(() => undefined);
     return () => {
       active = false;
     };

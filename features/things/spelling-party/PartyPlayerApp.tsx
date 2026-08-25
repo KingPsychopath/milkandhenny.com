@@ -318,14 +318,21 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       flushingActions.current = false;
     }
   }, [queued, send]);
+  // `flush` gets a new identity on almost every render (the live snapshot it
+  // closes over is rebuilt each time), and the stage clock re-renders this
+  // component ~12×/s. Held in a ref so the retry interval survives renders —
+  // depending on `flush` here rebuilt the timer before it could ever fire and
+  // re-sent queued actions at render frequency.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
   useEffect(() => {
     if (live.connectionState !== "connected") return;
-    void flush();
+    void flushRef.current();
     // The socket can remain healthy while one HTTPS request is lost. Keep the durable outbox
     // moving without waiting for a WebSocket reconnect that may never be necessary.
-    const timer = window.setInterval(() => void flush(), 3_000);
+    const timer = window.setInterval(() => void flushRef.current(), 3_000);
     return () => window.clearInterval(timer);
-  }, [flush, live.connectionState]);
+  }, [live.connectionState]);
 
   const snapshot = live.snapshot;
   const setLiveMessage = live.setMessage;

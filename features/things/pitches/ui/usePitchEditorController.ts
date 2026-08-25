@@ -487,6 +487,7 @@ export function usePitchEditorController({
     enabled: !isDemo,
     intervalMs: OPERATIONAL_STATUS_REFRESH_INTERVAL_MS,
     identity: isDemo ? null : `pitch-operational:${deckId}`,
+    minimumGapMs: 5_000,
     reconcile: async (isCurrent) => {
       try {
         const status = await readPitchOperationalStatusFn();

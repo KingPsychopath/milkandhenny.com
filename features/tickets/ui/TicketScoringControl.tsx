@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type TicketMode = "scoring" | "view-only";
 
@@ -14,7 +14,13 @@ export function TicketScoringControl({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  // Read through a ref so a caller passing an inline callback cannot turn
+  // this one-shot session read into a refetch on every parent render.
+  const onModeChangeRef = useRef(onModeChange);
+  onModeChangeRef.current = onModeChange;
+
   useEffect(() => {
+    let cancelled = false;
     void fetch(`/api/tickets/${encodeURIComponent(ticketId)}/session`, {
       headers: { accept: "application/json" },
     })
@@ -28,14 +34,17 @@ export function TicketScoringControl({
           : null,
       )
       .then((body) => {
-        if (!body) return;
+        if (!body || cancelled) return;
         const selected = body.mode === "scoring" && body.active === true;
         setActive(selected);
         setAnotherTicketActive(!selected && body.eventHasActive === true);
-        onModeChange?.(selected ? "scoring" : "view-only");
+        onModeChangeRef.current?.(selected ? "scoring" : "view-only");
       })
       .catch(() => undefined);
-  }, [onModeChange, ticketId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId]);
 
   async function useForScoring() {
     setBusy(true);

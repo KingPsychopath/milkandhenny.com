@@ -257,6 +257,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
   const [wordSlugSuggestions, setWordSlugSuggestions] = useState<string[]>([]);
   const [assetSuggestions, setAssetSuggestions] = useState<string[]>([]);
   const [targetsLoading, setTargetsLoading] = useState(false);
+  const targetsRequestActive = useRef(false);
   const [targetsResolved, setTargetsResolved] = useState(false);
   const [targetsError, setTargetsError] = useState("");
 
@@ -331,7 +332,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
   );
 
   useEffect(() => {
-    if (!isAdmin || mode !== "words" || targetsResolved || targetsLoading) return;
+    // Re-entrancy is guarded by a ref, not `targetsLoading`: setting that
+    // state inside the effect while it sits in the dependency array made the
+    // first commit abort its own fetch, leaving the panel stuck on
+    // "loading suggestions…" with no way to recover.
+    if (!isAdmin || mode !== "words" || targetsResolved || targetsRequestActive.current) return;
+    targetsRequestActive.current = true;
     let cancelled = false;
     const controller = new AbortController();
     const abortTimeout = setTimeout(() => controller.abort(), 4500);
@@ -360,6 +366,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       } finally {
         clearTimeout(abortTimeout);
         clearTimeout(hardStop);
+        targetsRequestActive.current = false;
         if (!cancelled) {
           setTargetsLoading(false);
           setTargetsResolved(true);
@@ -374,7 +381,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       controller.abort();
       cancelled = true;
     };
-  }, [authFetch, isAdmin, mode, targetsResolved, targetsLoading]);
+  }, [authFetch, isAdmin, mode, targetsResolved]);
 
   /* ─── File management ─── */
 

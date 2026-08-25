@@ -156,15 +156,23 @@ export function AlbumManagerPanel({
     void loadAlbums();
   }, [loadAlbums]);
 
+  // Keyed on the slug, not the derived album object: `replaceAlbum` swaps in
+  // a fresh object after every mutation, and resetting on identity wiped
+  // unsaved metadata drafts, the photo filter, and multi-selection every time
+  // the admin reordered a photo. Albums are read through a ref for the same
+  // reason — their identity churns without the selection changing.
+  const albumsRef = useRef(albums);
+  albumsRef.current = albums;
   useEffect(() => {
-    if (!selectedAlbum) return;
-    setMetaTitle(selectedAlbum.title);
-    setMetaDate(selectedAlbum.date);
-    setMetaDescription(selectedAlbum.description ?? "");
+    const album = albumsRef.current.find((candidate) => candidate.slug === selectedSlug);
+    if (!album) return;
+    setMetaTitle(album.title);
+    setMetaDate(album.date);
+    setMetaDescription(album.description ?? "");
     setSelectedIds(new Set());
     setEditingId(null);
     setPhotoQuery("");
-  }, [selectedAlbum]);
+  }, [selectedSlug]);
 
   const replaceAlbum = (album: Album) => {
     setAlbums((current) => current.map((item) => (item.slug === album.slug ? album : item)));
