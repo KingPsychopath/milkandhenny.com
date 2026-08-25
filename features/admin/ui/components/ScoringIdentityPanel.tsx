@@ -12,6 +12,8 @@ export function ScoringIdentityPanel({
   const [sourceParticipantId, setSource] = useState("");
   const [targetParticipantId, setTarget] = useState("");
   const [reason, setReason] = useState("");
+  const [privacyPersonId, setPrivacyPersonId] = useState("");
+  const [privacyReason, setPrivacyReason] = useState("");
   return (
     <section aria-labelledby="scoring-identity-heading" className="border-t theme-border pt-6">
       <h4 id="scoring-identity-heading" className="font-serif text-xl">
@@ -91,6 +93,57 @@ export function ScoringIdentityPanel({
           </li>
         ))}
       </ul>
+      <form
+        className="mt-6 grid gap-4 border-t theme-border pt-5 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (
+            !window.confirm(
+              "Remove this person's identifiers and names while keeping immutable event records?",
+            )
+          )
+            return;
+          void onAction({
+            action: "pseudonymize-person",
+            personId: privacyPersonId,
+            reason: privacyReason,
+          }).then((result) => {
+            if (result) {
+              setPrivacyPersonId("");
+              setPrivacyReason("");
+            }
+          });
+        }}
+      >
+        <div className="sm:col-span-2">
+          <h5 className="font-serif text-lg">Privacy deletion</h5>
+          <p className="mt-1 font-mono text-xs theme-muted">
+            Remove names and verified identifiers. Ledger, admission, links, and audit rows remain
+            valid.
+          </p>
+        </div>
+        <label className="font-mono text-xs">
+          person ID
+          <input
+            required
+            value={privacyPersonId}
+            onChange={(event) => setPrivacyPersonId(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <label className="font-mono text-xs">
+          reason
+          <input
+            required
+            value={privacyReason}
+            onChange={(event) => setPrivacyReason(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <button className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70">
+          pseudonymize person
+        </button>
+      </form>
     </section>
   );
 }

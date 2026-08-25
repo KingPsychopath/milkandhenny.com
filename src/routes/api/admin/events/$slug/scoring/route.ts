@@ -66,6 +66,7 @@ import {
   retryHeldOfficialGameResult,
   retryHeldOfficialGameResultsForEvent,
 } from "@/features/event-scoring/games.server";
+import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
 import { printLayout } from "@/features/event-scoring/print";
 import { PRINT_PACK_KINDS } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -888,6 +889,21 @@ async function handlePOST(request: Request, slug: string) {
       const result = await reverseParticipantMerge({ mergeId, actorId, reason });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ split: true });
+    }
+
+    if (action === "pseudonymize-person") {
+      const personId = stringValue(body.personId);
+      const reason = stringValue(body.reason);
+      if (!personId || !reason)
+        return Response.json({ error: "Person and privacy reason are required" }, { status: 400 });
+      const result = await pseudonymizeEventPerson({
+        eventSlug: slug,
+        personId,
+        actorId,
+        reason,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json(result.value);
     }
 
     return Response.json({ error: "Unknown scoring action" }, { status: 400 });

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { query, queryOne } from "@/lib/platform/postgres.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
   canAutomaticallyMergeIdentity,
   identityEvidenceStrength,
@@ -106,4 +106,54 @@ export async function attachParticipantWithEvidence(input: {
     ],
   );
   return { state: "attached", personId: input.personId };
+}
+
+export async function pseudonymizeEventPerson(input: {
+  eventSlug: string;
+  personId: string;
+  actorId: string;
+  reason: string;
+}): Promise<ScoreStoreResult<{ participants: number }>> {
+  if (!input.reason.trim())
+    return { ok: false, status: 400, error: "A privacy action needs a reason" };
+  return transaction(async (client) => {
+    const participants = await client.query<{ id: string }>(
+      `select id from event_participants
+        where event_slug = $1 and person_id = $2 for update`,
+      [input.eventSlug, input.personId],
+    );
+    if (participants.rows.length === 0)
+      return { ok: false, status: 404, error: "Event person not found" };
+    await client.query(`delete from event_person_identifiers where person_id = $1`, [
+      input.personId,
+    ]);
+    await client.query(
+      `update event_people set canonical_name = null, updated_at = now() where id = $1`,
+      [input.personId],
+    );
+    for (const participant of participants.rows) {
+      const alias = `removed-${createHash("sha256")
+        .update(`${input.eventSlug}:${participant.id}:privacy`)
+        .digest("hex")
+        .slice(0, 10)}`;
+      await client.query(
+        `update event_participants
+            set display_name = null, public_alias = $2, display_mode = 'anonymous', updated_at = now()
+          where id = $1`,
+        [participant.id, alias],
+      );
+    }
+    await client.query(
+      `insert into score_audit_events
+         (event_slug,action,actor_type,actor_id,entity_type,entity_id,metadata)
+       values ($1,'privacy.person.pseudonymized','admin',$2,'person',$3,$4::jsonb)`,
+      [
+        input.eventSlug,
+        input.actorId,
+        input.personId,
+        JSON.stringify({ participantCount: participants.rows.length, reason: input.reason }),
+      ],
+    );
+    return { ok: true, value: { participants: participants.rows.length } };
+  });
 }

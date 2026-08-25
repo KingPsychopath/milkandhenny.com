@@ -64,6 +64,7 @@ import {
   reconcileOfflineScoreCommands,
   reserveOfflineScoreBudget,
 } from "@/features/event-scoring/offline.server";
+import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   applyPenalty,
@@ -261,6 +262,63 @@ describeWithDatabase("event scoring postgres", () => {
       (await query<{ count: string }>(`select count(*)::text as count from score_postings`))[0]
         ?.count,
     ).toBe("2");
+  });
+
+  it("pseudonymizes personal identity without changing immutable scoring", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    await query(
+      `insert into event_people (id,canonical_name) values ('privacy-person','Private Name')`,
+    );
+    await query(
+      `insert into event_person_identifiers (id,person_id,kind,value_hash,verified_at)
+       values ('privacy-email','privacy-person','email',$1,now())`,
+      ["a".repeat(64)],
+    );
+    await query(`update event_participants set person_id = 'privacy-person' where id = $1`, [
+      participant!.id,
+    ]);
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Privacy score",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 4, repeat: "repeat", requiresCheckIn: false },
+    });
+    expect(
+      await awardPoints({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        participantIds: [participant!.id],
+        idempotencyKey: "privacy-award",
+        actorType: "admin",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await pseudonymizeEventPerson({
+        eventSlug: "scoring-night",
+        personId: "privacy-person",
+        actorId: "admin-test",
+        reason: "Verified privacy request",
+      }),
+    ).toMatchObject({ ok: true, value: { participants: 1 } });
+    expect(await participantForTicket("01ARZ3NDEKTSV4RR")).toMatchObject({
+      id: participant!.id,
+      balance: 4,
+      displayMode: "anonymous",
+      publicAlias: expect.stringMatching(/^removed-/),
+    });
+    expect(
+      await query(`select id from event_person_identifiers where person_id = 'privacy-person'`),
+    ).toEqual([]);
+    expect(
+      await query<{ count: string }>(
+        `select count(*)::text as count from score_transactions where idempotency_key = 'privacy-award'`,
+      ),
+    ).toEqual([{ count: "1" }]);
   });
 
   it("accepts a concurrent duplicate award once and rebuilds the same projection", async () => {
