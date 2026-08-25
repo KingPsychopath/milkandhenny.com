@@ -1,13 +1,16 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  clearRateLimit as clearSharedRateLimit,
+  reserveRateLimit,
+} from "@/lib/platform/rate-limit.server";
+import {
   SHARE_DEFAULT_EXPIRY_DAYS,
   SHARE_MAX_EXPIRY_DAYS,
   SHARE_RECORD_RETENTION_DAYS,
   SHARE_PIN_LOCKOUT_SECONDS,
   SHARE_PIN_MAX_ATTEMPTS,
   wordShareIndexKey,
-  wordSharePinRateLimitKey,
   wordShareKey,
   wordShareSlugsKey,
 } from "./config.server";
@@ -24,7 +27,6 @@ type AccessTokenPayload = {
 const memoryShares = new Map<string, ShareLink>();
 const memoryShareIndex = new Map<string, Set<string>>();
 const memoryShareSlugs = new Set<string>();
-const memoryPinRateLimit = new Map<string, { attempts: number; resetAtMs: number }>();
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -385,49 +387,25 @@ async function updateShareLink(
   return { link: next, token: nextToken };
 }
 
-async function checkPinRateLimit(shareId: string, ip: string): Promise<boolean> {
-  const redis = getRedis();
-  if (redis) {
-    const key = wordSharePinRateLimitKey(shareId, ip);
-    const attempts = (await redis.get<number>(key)) ?? 0;
-    if (attempts >= SHARE_PIN_MAX_ATTEMPTS) return false;
-    return true;
-  }
-  const key = `${shareId}:${ip}`;
-  const now = Date.now();
-  const item = memoryPinRateLimit.get(key);
-  if (!item || item.resetAtMs <= now) {
-    memoryPinRateLimit.set(key, { attempts: 0, resetAtMs: now + SHARE_PIN_LOCKOUT_SECONDS * 1000 });
-    return true;
-  }
-  return item.attempts < SHARE_PIN_MAX_ATTEMPTS;
+const SHARE_PIN_LIMIT_NAME = "words-share-pin";
+
+function pinLimitIdentity(shareId: string, ip: string): string {
+  return `${shareId}:${ip}`;
 }
 
-async function recordPinFailure(shareId: string, ip: string): Promise<void> {
-  const redis = getRedis();
-  if (redis) {
-    const key = wordSharePinRateLimitKey(shareId, ip);
-    await redis.incr(key);
-    await redis.expire(key, SHARE_PIN_LOCKOUT_SECONDS);
-    return;
-  }
-  const key = `${shareId}:${ip}`;
-  const now = Date.now();
-  const item = memoryPinRateLimit.get(key);
-  if (!item || item.resetAtMs <= now) {
-    memoryPinRateLimit.set(key, { attempts: 1, resetAtMs: now + SHARE_PIN_LOCKOUT_SECONDS * 1000 });
-    return;
-  }
-  memoryPinRateLimit.set(key, { ...item, attempts: item.attempts + 1 });
+/** One PIN comparison consumes one attempt; success forgives the window. */
+async function reservePinAttempt(shareId: string, ip: string): Promise<boolean> {
+  const decision = await reserveRateLimit({
+    name: SHARE_PIN_LIMIT_NAME,
+    identity: pinLimitIdentity(shareId, ip),
+    limit: SHARE_PIN_MAX_ATTEMPTS,
+    windowSeconds: SHARE_PIN_LOCKOUT_SECONDS,
+  });
+  return decision.allowed;
 }
 
 async function clearPinFailures(shareId: string, ip: string): Promise<void> {
-  const redis = getRedis();
-  if (redis) {
-    await redis.del(wordSharePinRateLimitKey(shareId, ip));
-    return;
-  }
-  memoryPinRateLimit.delete(`${shareId}:${ip}`);
+  await clearSharedRateLimit(SHARE_PIN_LIMIT_NAME, pinLimitIdentity(shareId, ip));
 }
 
 function isShareUsable(link: ShareLink): boolean {
@@ -470,16 +448,6 @@ async function verifyShareLinkAccess(input: {
     return { ok: true, link };
   }
 
-  const allowed = await checkPinRateLimit(link.id, input.ip);
-  if (!allowed) {
-    return {
-      ok: false,
-      error: "Too many invalid PIN attempts. Try again later.",
-      status: 429,
-      pinRequired: true,
-    };
-  }
-
   const pin = input.pin?.trim() || "";
   if (!pin || !link.pinHash) {
     return {
@@ -490,9 +458,19 @@ async function verifyShareLinkAccess(input: {
     };
   }
 
+  // Reserve before comparing so every guess counts, right or wrong.
+  const allowed = await reservePinAttempt(link.id, input.ip);
+  if (!allowed) {
+    return {
+      ok: false,
+      error: "Too many invalid PIN attempts. Try again later.",
+      status: 429,
+      pinRequired: true,
+    };
+  }
+
   const candidate = sha256(pin);
   if (!safeCompareStrings(candidate, link.pinHash)) {
-    await recordPinFailure(link.id, input.ip);
     return { ok: false, error: "Invalid PIN.", status: 401, pinRequired: true };
   }
 

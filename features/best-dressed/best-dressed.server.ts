@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { getCookie, getRequestIP, setCookie } from "@tanstack/react-start/server";
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import { getAttendeeNames } from "./attendees.server";
 
 const VOTES_HASH_KEY = "best-dressed:votes:v2";
@@ -17,7 +18,6 @@ const VOTED_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days (safety net if session n
 
 const VOTE_RATELIMIT_WINDOW_SECONDS = 10 * 60;
 const VOTE_RATELIMIT_MAX_PER_IP = 200;
-const memoryRateLimit = new Map<string, { count: number; resetAtMs: number }>();
 
 // In-memory fallback for local dev
 const memoryVotes = new Map<string, number>();
@@ -52,33 +52,13 @@ function getClientIpFromHeaders(): string {
 }
 
 async function rateLimitVote(ip: string): Promise<{ allowed: boolean; remaining: number }> {
-  const cleanIp = ip || "unknown";
-  const redis = getRedis();
-  const key = `best-dressed:ratelimit:vote:${cleanIp}`;
-
-  if (!redis) {
-    const now = Date.now();
-    const entry = memoryRateLimit.get(key);
-    const fresh =
-      !entry || entry.resetAtMs <= now
-        ? { count: 0, resetAtMs: now + VOTE_RATELIMIT_WINDOW_SECONDS * 1000 }
-        : entry;
-    fresh.count += 1;
-    memoryRateLimit.set(key, fresh);
-    const remaining = Math.max(0, VOTE_RATELIMIT_MAX_PER_IP - fresh.count);
-    return { allowed: fresh.count <= VOTE_RATELIMIT_MAX_PER_IP, remaining };
-  }
-
-  try {
-    const next = await redis.incr(key);
-    if (next === 1) {
-      await redis.expire(key, VOTE_RATELIMIT_WINDOW_SECONDS);
-    }
-    const remaining = Math.max(0, VOTE_RATELIMIT_MAX_PER_IP - next);
-    return { allowed: next <= VOTE_RATELIMIT_MAX_PER_IP, remaining };
-  } catch {
-    return { allowed: true, remaining: VOTE_RATELIMIT_MAX_PER_IP };
-  }
+  const decision = await reserveRateLimit({
+    name: "best-dressed-vote",
+    identity: ip || "unknown",
+    limit: VOTE_RATELIMIT_MAX_PER_IP,
+    windowSeconds: VOTE_RATELIMIT_WINDOW_SECONDS,
+  });
+  return { allowed: decision.allowed, remaining: decision.remaining };
 }
 
 function votedKey(session: string): string {
