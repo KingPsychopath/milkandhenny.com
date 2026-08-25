@@ -8,6 +8,7 @@ import {
   isCommunicationsTab,
   isOperationsTab,
   type AdminSection,
+  type AdminDestination,
   type CommunicationsTab,
   type OperationsTab,
 } from "@/features/admin/ui/components/AdminSectionNav";
@@ -28,6 +29,11 @@ export const Route = createFileRoute("/admin/")({
     communicationTab?: CommunicationsTab;
     communicationEvent?: string;
     operationsTab?: OperationsTab;
+    event?: string;
+    ticket?: string;
+    person?: string;
+    emailStatus?: string;
+    emailQuery?: string;
   } => ({
     view: isAdminSection(search.view) ? search.view : "overview",
     ...(isCommunicationsTab(search.communicationTab)
@@ -37,6 +43,21 @@ export const Route = createFileRoute("/admin/")({
       ? { communicationEvent: search.communicationEvent }
       : {}),
     ...(isOperationsTab(search.operationsTab) ? { operationsTab: search.operationsTab } : {}),
+    ...(typeof search.event === "string" && search.event.trim()
+      ? { event: search.event.trim().slice(0, 160) }
+      : {}),
+    ...(typeof search.ticket === "string" && search.ticket.trim()
+      ? { ticket: search.ticket.trim().slice(0, 160) }
+      : {}),
+    ...(typeof search.person === "string" && search.person.trim()
+      ? { person: search.person.trim().slice(0, 160) }
+      : {}),
+    ...(typeof search.emailStatus === "string" && search.emailStatus.trim()
+      ? { emailStatus: search.emailStatus.trim().slice(0, 40) }
+      : {}),
+    ...(typeof search.emailQuery === "string" && search.emailQuery.trim()
+      ? { emailQuery: search.emailQuery.trim().slice(0, 200) }
+      : {}),
   }),
   component: AdminPage,
   loader: () => getAdminAccess(),
@@ -52,7 +73,17 @@ export const Route = createFileRoute("/admin/")({
 
 function AdminPage() {
   const { auth, localDevBypassAvailable } = Route.useLoaderData();
-  const { view, communicationTab, communicationEvent, operationsTab } = Route.useSearch();
+  const {
+    view,
+    communicationTab,
+    communicationEvent,
+    operationsTab,
+    event,
+    ticket,
+    person,
+    emailStatus,
+    emailQuery,
+  } = Route.useSearch();
   const navigate = Route.useNavigate();
   const isAuthed = auth.ok;
 
@@ -114,7 +145,27 @@ function AdminPage() {
         view={view}
         communicationTab={communicationTab ?? "event-plan"}
         communicationEvent={communicationEvent}
-        operationsTab={operationsTab ?? "inbox"}
+        operationsTab={operationsTab ?? (ticket || person || event ? "people" : "inbox")}
+        targetEvent={event}
+        targetTicket={ticket}
+        targetPerson={person}
+        emailStatus={emailStatus}
+        emailQuery={emailQuery}
+        onNavigate={(destination: AdminDestination) =>
+          void navigate({
+            search: {
+              view: destination.section,
+              communicationTab: destination.communicationTab,
+              operationsTab: destination.operationsTab,
+              event: destination.event,
+              ticket: destination.ticket,
+              person: destination.person,
+              emailStatus: destination.emailStatus,
+              emailQuery: destination.emailQuery,
+            },
+            resetScroll: true,
+          })
+        }
         onViewChange={(nextView) =>
           void navigate({ search: { view: nextView }, resetScroll: true })
         }
@@ -142,6 +193,18 @@ function AdminPage() {
           void navigate({
             search: { view: "operations", operationsTab: nextTab },
             resetScroll: true,
+          })
+        }
+        onOperationsPersonChange={(nextPerson) =>
+          void navigate({
+            search: (current) => ({
+              ...current,
+              view: "operations",
+              operationsTab: "people",
+              person: nextPerson,
+              ticket: undefined,
+            }),
+            resetScroll: false,
           })
         }
       />

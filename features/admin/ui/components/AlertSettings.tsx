@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { ADMIN_ALERT_CATEGORIES } from "@/features/attendee-operations/alert-categories";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type Recipient = {
@@ -26,16 +27,7 @@ type Delivery = {
   createdAt: string;
 };
 
-const CATEGORIES = [
-  "all",
-  "refund-failed",
-  "refund-review",
-  "access-email-failed",
-  "email-delivery-failed",
-  "capacity-invariant",
-  "identity-conflict",
-  "transfer-conflict",
-] as const;
+const CATEGORIES = ["all", ...ADMIN_ALERT_CATEGORIES.map((category) => category.id)] as const;
 
 export function AlertSettings({
   authFetch,
@@ -182,6 +174,25 @@ export function AlertSettings({
         Recipients must already own the verified mailbox. Alert emails contain minimal detail and
         link back to the authorised inbox. Times are UTC.
       </p>
+      <details className="mt-4 border-y theme-border py-2">
+        <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
+          what can trigger an alert?
+        </summary>
+        <dl className="divide-y theme-border">
+          {ADMIN_ALERT_CATEGORIES.map((category) => (
+            <div key={category.id} className="py-3">
+              <dt className="font-mono text-xs">{category.label}</dt>
+              <dd className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                {category.description}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
+          The in-admin inbox records every notification. Email alerts are sent only for warning and
+          critical events, using each recipient’s category, event, cadence, and quiet-hour rules.
+        </p>
+      </details>
       <form onSubmit={(event) => void save(event)} className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="font-mono text-xs">
           verified email
@@ -211,7 +222,10 @@ export function AlertSettings({
                   checked={categories.includes(category)}
                   onChange={() => toggleCategory(category)}
                 />
-                {category}
+                {category === "all"
+                  ? "all operational alerts"
+                  : (ADMIN_ALERT_CATEGORIES.find((item) => item.id === category)?.label ??
+                    category)}
               </label>
             ))}
           </div>

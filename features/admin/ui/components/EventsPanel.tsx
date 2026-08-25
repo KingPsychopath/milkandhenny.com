@@ -2464,6 +2464,7 @@ export function EventsPanel({
   onStatus,
   ensureStepUpToken,
   withStepUpHeaders,
+  initialEventSlug,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -2472,6 +2473,7 @@ export function EventsPanel({
     { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
   >;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
+  initialEventSlug?: string;
 }) {
   const statusId = useId();
   const heroHeightId = useId();
@@ -2483,6 +2485,7 @@ export function EventsPanel({
   const [operationsSlug, setOperationsSlug] = useState<string | null>(null);
   const [operations, setOperations] = useState<EventTicketSummary | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
+  const openedTarget = useRef<string | undefined>(undefined);
   const { confirm, prompt, dialog } = useActionDialog();
 
   const load = useCallback(async () => {
@@ -2542,6 +2545,25 @@ export function EventsPanel({
       setOperationsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      !initialEventSlug ||
+      openedTarget.current === initialEventSlug ||
+      !events.some((event) => event.slug === initialEventSlug)
+    ) {
+      return;
+    }
+    openedTarget.current = initialEventSlug;
+    setOperationsSlug(initialEventSlug);
+    setOperations(null);
+    setOperationsLoading(true);
+    void loadOperations(initialEventSlug)
+      .catch((error) =>
+        onError(error instanceof Error ? error.message : "Failed to load event operations"),
+      )
+      .finally(() => setOperationsLoading(false));
+  }, [events, initialEventSlug, loadOperations, onError]);
 
   const save = async () => {
     if (!draft) return;

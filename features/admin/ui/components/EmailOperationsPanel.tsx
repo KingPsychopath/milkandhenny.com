@@ -45,26 +45,45 @@ export function EmailOperationsPanel({
   onStatus,
   ensureStepUpToken,
   withStepUpHeaders,
+  initialStatus,
+  initialQuery,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   ensureStepUpToken: () => Promise<StepUpResult>;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
+  initialStatus?: string;
+  initialQuery?: string;
 }) {
   const [data, setData] = useState<EmailLedgerPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
-  const [draftQuery, setDraftQuery] = useState("");
-  const [query, setQuery] = useState("");
+  const [draftQuery, setDraftQuery] = useState(initialQuery ?? "");
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [channel, setChannel] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(
+    initialStatus && EMAIL_OUTBOX_STATUSES.includes(initialStatus as never) ? initialStatus : "",
+  );
   const [deliveryStatus, setDeliveryStatus] = useState("");
   const [kind, setKind] = useState("");
   const [source, setSource] = useState("");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const { confirm, dialog } = useActionDialog();
+
+  useEffect(() => {
+    setStatus(
+      initialStatus && EMAIL_OUTBOX_STATUSES.includes(initialStatus as never) ? initialStatus : "",
+    );
+    setPage(1);
+  }, [initialStatus]);
+
+  useEffect(() => {
+    setDraftQuery(initialQuery ?? "");
+    setQuery(initialQuery ?? "");
+    setPage(1);
+  }, [initialQuery]);
 
   const load = useCallback(async () => {
     setLoading(true);

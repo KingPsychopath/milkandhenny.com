@@ -22,7 +22,7 @@ export const ADMIN_SECTIONS = [
   {
     id: "communications",
     label: "communications",
-    description: "Drafts, scheduled messages, media, and permissions",
+    description: "Plans, messages, delivery, alert recipients, templates, and consent",
   },
   {
     id: "games",
@@ -47,7 +47,7 @@ export const ADMIN_SECTIONS = [
   {
     id: "settings",
     label: "settings",
-    description: "Global capabilities, defaults, people, alerts, and audit",
+    description: "Attendee capabilities, event defaults, and administrator access",
   },
 ] as const;
 
@@ -72,6 +72,17 @@ export const COMMUNICATION_TABS = [
 ] as const;
 
 export type CommunicationsTab = (typeof COMMUNICATION_TABS)[number];
+
+export type AdminDestination = {
+  section: AdminSection;
+  operationsTab?: OperationsTab;
+  communicationTab?: CommunicationsTab;
+  event?: string;
+  ticket?: string;
+  person?: string;
+  emailStatus?: string;
+  emailQuery?: string;
+};
 
 export function isCommunicationsTab(value: unknown): value is CommunicationsTab {
   return COMMUNICATION_TABS.some((tab) => tab === value);

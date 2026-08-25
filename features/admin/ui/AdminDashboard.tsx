@@ -22,6 +22,7 @@ import { AttendeeSettingsPanel } from "./components/AttendeeSettingsPanel";
 import { AdminCommandPalette } from "./components/AdminCommandPalette";
 import {
   AdminSectionNav,
+  type AdminDestination,
   type AdminSection,
   type CommunicationsTab,
   type OperationsTab,
@@ -116,19 +117,33 @@ export function AdminDashboard({
   communicationTab,
   communicationEvent,
   operationsTab,
+  targetEvent,
+  targetTicket,
+  targetPerson,
+  emailStatus,
+  emailQuery,
+  onNavigate,
   onViewChange,
   onCommunicationTabChange,
   onCommunicationEventChange,
   onOperationsTabChange,
+  onOperationsPersonChange,
 }: {
   view: AdminSection;
   communicationTab: CommunicationsTab;
   communicationEvent?: string;
   operationsTab: OperationsTab;
+  targetEvent?: string;
+  targetTicket?: string;
+  targetPerson?: string;
+  emailStatus?: string;
+  emailQuery?: string;
+  onNavigate: (destination: AdminDestination) => void;
   onViewChange: (section: AdminSection) => void;
   onCommunicationTabChange: (tab: CommunicationsTab) => void;
   onCommunicationEventChange: (eventSlug: string) => void;
   onOperationsTabChange: (tab: OperationsTab) => void;
+  onOperationsPersonChange: (personId?: string) => void;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(false);
@@ -139,7 +154,15 @@ export function AdminDashboard({
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
   const [operationsAttention, setOperationsAttention] = useState(0);
   const [operationsRecent, setOperationsRecent] = useState<
-    Array<{ id: string; title: string; status: string; deepLink: string }>
+    Array<{
+      id: string;
+      title: string;
+      body: string;
+      status: string;
+      severity: string;
+      category: string;
+      deepLink: string;
+    }>
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
 
@@ -199,7 +222,15 @@ export function AdminDashboard({
         response.ok
           ? ((await response.json()) as {
               unresolved?: number;
-              items?: Array<{ id: string; title: string; status: string; deepLink: string }>;
+              items?: Array<{
+                id: string;
+                title: string;
+                body: string;
+                status: string;
+                severity: string;
+                category: string;
+                deepLink: string;
+              }>;
             })
           : null,
       )
@@ -283,19 +314,19 @@ export function AdminDashboard({
                 onClick={() => setAttentionOpen((current) => !current)}
                 aria-expanded={attentionOpen}
                 aria-controls="operations-attention-popover"
-                aria-label={`${operationsAttention} unresolved attendee operation${operationsAttention === 1 ? "" : "s"}`}
+                aria-label={`${operationsAttention} unresolved admin notification${operationsAttention === 1 ? "" : "s"}`}
                 className="min-h-11 font-mono text-xs theme-muted hover:opacity-70"
               >
-                attention{operationsAttention ? ` · ${operationsAttention}` : ""}
+                notifications{operationsAttention ? ` · ${operationsAttention}` : ""}
               </button>
               {attentionOpen ? (
                 <section
                   id="operations-attention-popover"
-                  aria-label="Recent operations needing attention"
+                  aria-label="Recent admin notifications"
                   className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] border theme-border bg-background p-4 shadow-lg"
                 >
                   <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-                    recent items
+                    notifications
                   </p>
                   {operationsRecent.length ? (
                     <ul className="mt-2 divide-y theme-border">
@@ -304,7 +335,10 @@ export function AdminDashboard({
                           <a href={item.deepLink} className="block hover:opacity-70">
                             <span className="block font-serif">{item.title}</span>
                             <span className="mt-1 block font-mono text-micro theme-muted">
-                              {item.status}
+                              {item.status} · {item.severity} · {item.category}
+                            </span>
+                            <span className="mt-1 block font-mono text-micro leading-relaxed theme-faint">
+                              {item.body}
                             </span>
                           </a>
                         </li>
@@ -317,22 +351,16 @@ export function AdminDashboard({
                     type="button"
                     onClick={() => {
                       setAttentionOpen(false);
-                      onViewChange("operations");
+                      onNavigate({ section: "operations", operationsTab: "inbox" });
                     }}
                     className="mt-3 min-h-11 font-mono text-xs underline hover:opacity-70"
                   >
-                    open full inbox
+                    open notification inbox →
                   </button>
                 </section>
               ) : null}
             </div>
-            <AdminCommandPalette
-              onNavigate={(section, targetOperationsTab) =>
-                targetOperationsTab
-                  ? onOperationsTabChange(targetOperationsTab)
-                  : onViewChange(section)
-              }
-            />
+            <AdminCommandPalette onNavigate={onNavigate} />
           </div>
         </div>
         <h1 className="mt-2 font-serif text-4xl font-semibold tracking-tight">
@@ -381,6 +409,7 @@ export function AdminDashboard({
             onStatus={setStatusMessage}
             ensureStepUpToken={ensureStepUpTokenResult}
             withStepUpHeaders={withStepUpHeaders}
+            initialEventSlug={targetEvent}
           />
           <EventScoringPanel
             authFetch={authFetch}
@@ -428,6 +457,8 @@ export function AdminDashboard({
             onCommunicationEventChange={onCommunicationEventChange}
             ensureStepUpToken={ensureStepUpTokenResult}
             withStepUpHeaders={withStepUpHeaders}
+            initialEmailStatus={emailStatus}
+            initialEmailQuery={emailQuery}
           />
         </section>
       ) : null}
@@ -465,6 +496,10 @@ export function AdminDashboard({
           withStepUpHeaders={withStepUpHeaders}
           tab={operationsTab}
           onTabChange={onOperationsTabChange}
+          initialEvent={targetEvent}
+          initialTicket={targetTicket}
+          initialPerson={targetPerson}
+          onPersonChange={onOperationsPersonChange}
         />
       ) : null}
 
@@ -486,7 +521,7 @@ export function AdminDashboard({
               system={debugData}
               loading={loading}
               onRefresh={() => void refreshDashboard()}
-              onViewChange={onViewChange}
+              onNavigate={onNavigate}
             />
 
             <ReportsPanel

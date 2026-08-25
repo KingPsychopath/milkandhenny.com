@@ -91,10 +91,13 @@ describe("admin overview attention", () => {
     );
 
     expect(items.map(({ id, destination }) => ({ id, destination }))).toEqual([
-      { id: "capability:database", destination: "system" },
-      { id: "content:invalid-albums", destination: "content" },
-      { id: "media:unavailable", destination: "system" },
-      { id: "security:0:Admin secret is too short.", destination: "system" },
+      { id: "capability:database", destination: { section: "system" } },
+      { id: "content:invalid-albums", destination: { section: "content" } },
+      { id: "media:unavailable", destination: { section: "transfers" } },
+      {
+        id: "security:0:Admin secret is too short.",
+        destination: { section: "system" },
+      },
     ]);
   });
 });

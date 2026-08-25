@@ -1,5 +1,22 @@
 import { query } from "@/lib/platform/postgres.server";
 import { attendeeSessionSummaries } from "@/features/event-scoring/session.server";
+import { actionEmailHash, maskActionEmail } from "./action-links.server";
+
+export type PurchaserContactDirectoryEntry = {
+  contactId: string;
+  name?: string;
+  emailHint: string;
+  lastPurchasedAt: string;
+  tickets: Array<{
+    id: string;
+    eventSlug: string;
+    eventTitle: string;
+    holderName: string;
+    status: string;
+    orderId: string;
+    issuedAt: string;
+  }>;
+};
 
 export type PersonDirectoryEntry = {
   personId: string;
@@ -55,6 +72,7 @@ export type PersonDirectoryEntry = {
 
 export async function searchPeople(queryText: string, limit = 30): Promise<PersonDirectoryEntry[]> {
   const search = queryText.trim().toLocaleLowerCase("en-GB");
+  const exactEmailHash = search.includes("@") ? actionEmailHash(search) : "";
   const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
   const people = await query<{
     id: string;
@@ -75,11 +93,21 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
          or lower(coalesce(person.canonical_name,'')) like '%' || $1 || '%'
          or lower(person.id) like '%' || $1 || '%'
          or lower(coalesce(identifier.display_hint,'')) like '%' || $1 || '%'
+         or ($3 <> '' and identifier.kind = 'email' and identifier.value_hash = $3)
          or lower(coalesce(ticket.id,'')) like '%' || $1 || '%'
          or lower(coalesce(ticket.event_slug,'')) like '%' || $1 || '%'
+         or exists (
+           select 1
+             from event_order_managers manager
+             join tickets managed_ticket on managed_ticket.order_id = manager.order_id
+            where manager.person_id = person.id and manager.status = 'active'
+              and (lower(managed_ticket.id) like '%' || $1 || '%'
+                or lower(managed_ticket.event_slug) like '%' || $1 || '%'
+                or lower(managed_ticket.order_id) like '%' || $1 || '%')
+         )
       order by person.canonical_name nulls last,person.id
       limit $2`,
-    [search, boundedLimit],
+    [search, boundedLimit, exactEmailHash],
   );
   if (!people.length) return [];
   const ids = people.map((person) => person.id);
@@ -114,14 +142,24 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         notes: string | null;
         other_order_tickets: string;
       }>(
-        `select participant.person_id,ticket.id,ticket.event_slug,event.title as event_title,
+        `with ownership as (
+           select participant.person_id,participant.ticket_id
+             from event_participants participant
+            where participant.person_id = any($1::text[])
+           union
+           select manager.person_id,ticket.id as ticket_id
+             from event_order_managers manager
+             join tickets ticket on ticket.order_id = manager.order_id
+            where manager.person_id = any($1::text[]) and manager.status = 'active'
+         )
+         select ownership.person_id,ticket.id,ticket.event_slug,event.title as event_title,
               ticket.holder_name,ticket.status,ticket.order_id,participant.id as participant_id,
               participant.checked_in_at,ticket.amount_paid_minor,ticket.currency,ticket.notes,
               (select count(*) - 1 from tickets sibling where sibling.order_id = ticket.order_id)::text as other_order_tickets
-         from event_participants participant
-         join tickets ticket on ticket.id = participant.ticket_id
+         from ownership
+         join tickets ticket on ticket.id = ownership.ticket_id
+         join event_participants participant on participant.ticket_id = ticket.id
          join events event on event.slug = ticket.event_slug
-        where participant.person_id = any($1::text[])
         order by event.starts_at desc,ticket.issued_at`,
         [ids],
       ),
@@ -318,4 +356,90 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         createdAt: event.created_at.toISOString(),
       })),
   }));
+}
+
+/**
+ * Purchases are contact records, not proof that the mailbox owner created an account.
+ * Keep them discoverable to operators without manufacturing a verified identity at checkout.
+ */
+export async function searchPurchaserContacts(
+  queryText: string,
+  limit = 30,
+): Promise<PurchaserContactDirectoryEntry[]> {
+  const search = queryText.trim().toLocaleLowerCase("en-GB");
+  const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+  const rows = await query<{
+    email_hash: string;
+    email: string;
+    id: string;
+    event_slug: string;
+    event_title: string;
+    holder_name: string;
+    status: string;
+    order_id: string;
+    parent_ticket_id: string | null;
+    issued_at: Date;
+  }>(
+    `with matching_contacts as (
+       select ticket.email_hash,max(ticket.issued_at) as last_purchased_at
+         from tickets ticket
+        where ticket.email_hash is not null and ticket.email is not null
+          and not exists (
+            select 1 from event_person_identifiers identifier
+             where identifier.kind = 'email' and identifier.value_hash = ticket.email_hash
+               and identifier.verified_at is not null and identifier.historical_until is null
+          )
+          and ($1 = ''
+            or lower(ticket.email) like '%' || $1 || '%'
+            or lower(ticket.holder_name) like '%' || $1 || '%'
+            or lower(ticket.id) like '%' || $1 || '%'
+            or lower(ticket.event_slug) like '%' || $1 || '%'
+            or lower(ticket.order_id) like '%' || $1 || '%')
+        group by ticket.email_hash
+        order by last_purchased_at desc
+        limit $2
+     )
+     select ticket.email_hash,ticket.email,ticket.id,ticket.event_slug,event.title as event_title,
+            ticket.holder_name,ticket.status,ticket.order_id,ticket.parent_ticket_id,ticket.issued_at
+       from matching_contacts contact
+       join tickets ticket on ticket.email_hash = contact.email_hash
+       join events event on event.slug = ticket.event_slug
+      order by contact.last_purchased_at desc,ticket.issued_at desc`,
+    [search, boundedLimit],
+  );
+  const contacts = new Map<string, PurchaserContactDirectoryEntry>();
+  for (const row of rows) {
+    const current = contacts.get(row.email_hash);
+    if (current) {
+      current.tickets.push({
+        id: row.id,
+        eventSlug: row.event_slug,
+        eventTitle: row.event_title,
+        holderName: row.holder_name,
+        status: row.status,
+        orderId: row.order_id,
+        issuedAt: row.issued_at.toISOString(),
+      });
+      if (!current.name && !row.parent_ticket_id) current.name = row.holder_name;
+      continue;
+    }
+    contacts.set(row.email_hash, {
+      contactId: `purchaser:${row.email_hash}`,
+      name: row.parent_ticket_id ? undefined : row.holder_name,
+      emailHint: maskActionEmail(row.email),
+      lastPurchasedAt: row.issued_at.toISOString(),
+      tickets: [
+        {
+          id: row.id,
+          eventSlug: row.event_slug,
+          eventTitle: row.event_title,
+          holderName: row.holder_name,
+          status: row.status,
+          orderId: row.order_id,
+          issuedAt: row.issued_at.toISOString(),
+        },
+      ],
+    });
+  }
+  return [...contacts.values()];
 }

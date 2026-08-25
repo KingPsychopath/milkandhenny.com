@@ -3,7 +3,7 @@
 import { Link } from "@tanstack/react-router";
 
 import type { SystemCapabilities } from "@/features/system/capabilities";
-import type { AdminSection } from "./AdminSectionNav";
+import type { AdminDestination } from "./AdminSectionNav";
 
 type ContentSnapshot = {
   blog: {
@@ -51,7 +51,8 @@ type AttentionItem = {
   id: string;
   title: string;
   detail: string;
-  destination: AdminSection;
+  destination: AdminDestination;
+  actionLabel: string;
 };
 
 const STALE_QUEUE_MS = 15 * 60_000;
@@ -64,11 +65,13 @@ export function getAdminAttentionItems(
 
   for (const capability of system?.capabilities ?? []) {
     if (capability.status === "available" || capability.status === "disabled") continue;
+    if (!capability.required) continue;
     items.push({
       id: `capability:${capability.id}`,
       title: `${capability.label} is ${capability.status}`,
       detail: capability.detail,
-      destination: "system",
+      destination: { section: "system" },
+      actionLabel: "inspect service health",
     });
   }
 
@@ -77,7 +80,8 @@ export function getAdminAttentionItems(
       id: "content:invalid-albums",
       title: `${content?.gallery.invalidAlbumCount} invalid ${content?.gallery.invalidAlbumCount === 1 ? "album" : "albums"}`,
       detail: "Run the content audit to see the exact validation failures.",
-      destination: "content",
+      destination: { section: "content" },
+      actionLabel: "open content audit",
     });
   }
 
@@ -86,7 +90,12 @@ export function getAdminAttentionItems(
       id: "email:failed",
       title: `${system?.emailOutbox.failed} failed email ${system?.emailOutbox.failed === 1 ? "delivery" : "deliveries"}`,
       detail: "Ticket or studio email did not reach the provider.",
-      destination: "system",
+      destination: {
+        section: "communications",
+        communicationTab: "delivery",
+        emailStatus: "failed",
+      },
+      actionLabel: "review and retry failed email",
     });
   }
 
@@ -95,7 +104,8 @@ export function getAdminAttentionItems(
       id: "email:delivery-events",
       title: "Email delivery signals are missing",
       detail: `${system?.emailOutbox.awaitingProviderFeedback} provider-accepted message${system?.emailOutbox.awaitingProviderFeedback === 1 ? " has" : "s have"} no delivery event after 15 minutes.`,
-      destination: "system",
+      destination: { section: "communications", communicationTab: "delivery" },
+      actionLabel: "inspect provider delivery signals",
     });
   }
 
@@ -111,7 +121,12 @@ export function getAdminAttentionItems(
       id: "email:stale",
       title: "Email queue is delayed",
       detail: `The oldest of ${system?.emailOutbox.pending} pending messages has waited more than 15 minutes.`,
-      destination: "system",
+      destination: {
+        section: "communications",
+        communicationTab: "delivery",
+        emailStatus: "pending",
+      },
+      actionLabel: "open pending queue",
     });
   }
 
@@ -120,7 +135,8 @@ export function getAdminAttentionItems(
       id: "media:unavailable",
       title: "Media queue status is unavailable",
       detail: system.mediaQueue.reason ?? "The queue could not be inspected.",
-      destination: "system",
+      destination: { section: "transfers" },
+      actionLabel: "inspect media queue",
     });
   }
 
@@ -129,7 +145,8 @@ export function getAdminAttentionItems(
       id: "media:failed",
       title: `${system?.mediaQueue?.permanentFailures} media ${system?.mediaQueue?.permanentFailures === 1 ? "job needs" : "jobs need"} attention`,
       detail: "These jobs exhausted automatic retries.",
-      destination: "transfers",
+      destination: { section: "transfers" },
+      actionLabel: "review failed media jobs",
     });
   }
 
@@ -138,7 +155,8 @@ export function getAdminAttentionItems(
       id: "media:stale",
       title: "Media processing is delayed",
       detail: `The oldest queued job has waited more than 15 minutes. ${system?.mediaQueue?.queued ?? 0} jobs are queued.`,
-      destination: "transfers",
+      destination: { section: "transfers" },
+      actionLabel: "open media backlog",
     });
   }
 
@@ -147,7 +165,8 @@ export function getAdminAttentionItems(
       id: `security:${index}:${warning}`,
       title: "Security configuration needs attention",
       detail: warning,
-      destination: "system",
+      destination: { section: "system" },
+      actionLabel: "review security configuration",
     });
   }
 
@@ -182,13 +201,13 @@ export function AdminOverviewPanel({
   system,
   loading,
   onRefresh,
-  onViewChange,
+  onNavigate,
 }: {
   content: ContentSnapshot | null;
   system: OperationsSnapshot | null;
   loading: boolean;
   onRefresh: () => void;
-  onViewChange: (section: AdminSection) => void;
+  onNavigate: (destination: AdminDestination) => void;
 }) {
   const attention = getAdminAttentionItems(content, system);
   const status = system?.status ?? "checking";
@@ -227,7 +246,7 @@ export function AdminOverviewPanel({
               <li key={item.id} className="border-t theme-border pt-3 first:border-t-0 first:pt-0">
                 <button
                   type="button"
-                  onClick={() => onViewChange(item.destination)}
+                  onClick={() => onNavigate(item.destination)}
                   className="group w-full min-h-11 text-left"
                 >
                   <span className="font-mono text-sm text-[var(--prose-hashtag)]">
@@ -237,7 +256,7 @@ export function AdminOverviewPanel({
                     {item.detail}
                   </span>
                   <span className="mt-1 block font-mono text-micro theme-faint transition-opacity group-hover:opacity-70">
-                    open {item.destination}
+                    {item.actionLabel} →
                   </span>
                 </button>
               </li>
@@ -272,7 +291,7 @@ export function AdminOverviewPanel({
           </Link>
           <button
             type="button"
-            onClick={() => onViewChange("events")}
+            onClick={() => onNavigate({ section: "events" })}
             className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
           >
             <span className="font-mono text-xs font-bold">run an event</span>
@@ -282,7 +301,7 @@ export function AdminOverviewPanel({
           </button>
           <button
             type="button"
-            onClick={() => onViewChange("transfers")}
+            onClick={() => onNavigate({ section: "transfers" })}
             className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
           >
             <span className="font-mono text-xs font-bold">manage transfers</span>
@@ -325,7 +344,7 @@ export function AdminOverviewPanel({
         </dl>
         <button
           type="button"
-          onClick={() => onViewChange("content")}
+          onClick={() => onNavigate({ section: "content" })}
           className="mt-3 min-h-11 font-mono text-xs theme-muted transition-opacity hover:opacity-70"
         >
           open full content detail

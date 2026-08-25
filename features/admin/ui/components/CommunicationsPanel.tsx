@@ -6,6 +6,7 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 import { AdminFormAction } from "./AdminFormAction";
 import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
 import { EmailOperationsPanel } from "./EmailOperationsPanel";
+import { AlertSettings } from "./AlertSettings";
 import {
   CommunicationMessageEditor,
   type CommunicationMediaDraft,
@@ -418,6 +419,8 @@ export function CommunicationsPanel({
   onStatus,
   communicationTab,
   communicationEvent,
+  initialEmailStatus,
+  initialEmailQuery,
   onCommunicationTabChange,
   onCommunicationEventChange,
   ensureStepUpToken,
@@ -428,6 +431,8 @@ export function CommunicationsPanel({
   onStatus: (message: string) => void;
   communicationTab: CommunicationsTab;
   communicationEvent?: string;
+  initialEmailStatus?: string;
+  initialEmailQuery?: string;
   onCommunicationTabChange: (tab: CommunicationsTab) => void;
   onCommunicationEventChange: (eventSlug: string) => void;
   ensureStepUpToken: () => Promise<
@@ -1139,13 +1144,24 @@ export function CommunicationsPanel({
         />
       ) : null}
       {tab === "delivery" ? (
-        <EmailOperationsPanel
-          authFetch={authFetch}
-          onError={onError}
-          onStatus={onStatus}
-          ensureStepUpToken={ensureStepUpToken}
-          withStepUpHeaders={withStepUpHeaders}
-        />
+        <div className="space-y-10">
+          <EmailOperationsPanel
+            authFetch={authFetch}
+            onError={onError}
+            onStatus={onStatus}
+            ensureStepUpToken={ensureStepUpToken}
+            withStepUpHeaders={withStepUpHeaders}
+            initialStatus={initialEmailStatus}
+            initialQuery={initialEmailQuery}
+          />
+          <AlertSettings
+            authFetch={authFetch}
+            onError={onError}
+            onStatus={onStatus}
+            ensureStepUpToken={ensureStepUpToken}
+            withStepUpHeaders={withStepUpHeaders}
+          />
+        </div>
       ) : null}
       {tab === "templates" ? (
         <TemplatesView

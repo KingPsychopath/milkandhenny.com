@@ -82,6 +82,21 @@ type Person = {
   staffDevices: number;
   auditTimeline: Array<{ action: string; actorType: string; reason?: string; createdAt: string }>;
 };
+type PurchaserContact = {
+  contactId: string;
+  name?: string;
+  emailHint: string;
+  lastPurchasedAt: string;
+  tickets: Array<{
+    id: string;
+    eventSlug: string;
+    eventTitle: string;
+    holderName: string;
+    status: string;
+    orderId: string;
+    issuedAt: string;
+  }>;
+};
 
 export function AttendeeOperationsPanel({
   authFetch,
@@ -91,6 +106,10 @@ export function AttendeeOperationsPanel({
   withStepUpHeaders,
   tab,
   onTabChange,
+  initialEvent,
+  initialTicket,
+  initialPerson,
+  onPersonChange,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -99,12 +118,18 @@ export function AttendeeOperationsPanel({
   withStepUpHeaders: StepUpHeaders;
   tab: OperationsTab;
   onTabChange: (tab: OperationsTab) => void;
+  initialEvent?: string;
+  initialTicket?: string;
+  initialPerson?: string;
+  onPersonChange: (personId?: string) => void;
 }) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unresolved, setUnresolved] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
+  const [purchaserContacts, setPurchaserContacts] = useState<PurchaserContact[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Person>();
+  const [selectedContact, setSelectedContact] = useState<PurchaserContact>();
   const [loading, setLoading] = useState(false);
   const [administrators, setAdministrators] = useState<Administrator[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
@@ -197,27 +222,54 @@ export function AttendeeOperationsPanel({
     onStatus("Inbox view saved on this device.");
   }
 
-  async function loadPeople(selectedPersonId?: string) {
-    setLoading(true);
-    try {
-      const response = await authFetch(
-        `/api/admin/operations/people?q=${encodeURIComponent(query)}`,
-      );
-      const body = (await response.json()) as { people?: Person[]; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "People could not be searched");
-      const nextPeople = body.people ?? [];
-      setPeople(nextPeople);
-      setSelected(
-        selectedPersonId
+  const loadPeople = useCallback(
+    async (selectedPersonId?: string, searchText = query) => {
+      setLoading(true);
+      try {
+        const response = await authFetch(
+          `/api/admin/operations/people?q=${encodeURIComponent(searchText)}`,
+        );
+        const body = (await response.json()) as {
+          people?: Person[];
+          purchaserContacts?: PurchaserContact[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(body.error ?? "People could not be searched");
+        const nextPeople = body.people ?? [];
+        const nextContacts = body.purchaserContacts ?? [];
+        setPeople(nextPeople);
+        setPurchaserContacts(nextContacts);
+        const matchingPerson = selectedPersonId
           ? nextPeople.find((person) => person.personId === selectedPersonId)
-          : undefined,
-      );
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "People could not be searched");
-    } finally {
-      setLoading(false);
-    }
-  }
+          : searchText
+            ? nextPeople[0]
+            : undefined;
+        setSelected(matchingPerson);
+        setSelectedContact(
+          matchingPerson || !searchText
+            ? undefined
+            : (nextContacts.find((contact) =>
+                contact.tickets.some((ticket) => ticket.id === searchText),
+              ) ?? nextContacts[0]),
+        );
+        if (matchingPerson && matchingPerson.personId !== initialPerson) {
+          onPersonChange(matchingPerson.personId);
+        }
+      } catch (error) {
+        onError(error instanceof Error ? error.message : "People could not be searched");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [authFetch, initialPerson, onError, onPersonChange, query],
+  );
+
+  useEffect(() => {
+    if (tab !== "people") return;
+    const target = initialPerson ?? initialTicket ?? initialEvent ?? "";
+    setQuery(target);
+    void loadPeople(initialPerson, target);
+  }, [initialEvent, initialPerson, initialTicket, loadPeople, tab]);
 
   async function findPeople(event: FormEvent) {
     event.preventDefault();
@@ -508,30 +560,103 @@ export function AttendeeOperationsPanel({
             </button>
           </form>
           <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)]">
-            <ul className="divide-y border-y theme-border">
-              {people.map((person) => (
-                <li key={person.personId}>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(person)}
-                    className="min-h-14 w-full py-3 text-left hover:opacity-70"
-                  >
-                    <span className="block font-serif text-lg">
-                      {person.canonicalName ?? "Unnamed person"}
-                    </span>
-                    <span className="font-mono text-micro theme-muted">
-                      {person.verifiedEmails.join(", ") || person.personId} ·{" "}
-                      {person.tickets.length} tickets
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-6">
+              <section aria-labelledby="identity-records-heading">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 id="identity-records-heading" className="font-mono text-xs font-bold">
+                    identity records
+                  </h3>
+                  <span className="font-mono text-micro theme-muted">{people.length}</span>
+                </div>
+                <ul className="mt-2 divide-y border-y theme-border">
+                  {people.map((person) => (
+                    <li key={person.personId}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(person);
+                          setSelectedContact(undefined);
+                          onPersonChange(person.personId);
+                        }}
+                        className="min-h-14 w-full py-3 text-left hover:opacity-70"
+                      >
+                        <span className="block font-serif text-lg">
+                          {person.canonicalName ?? "Unnamed person"}
+                        </span>
+                        <span className="font-mono text-micro theme-muted">
+                          {person.verifiedEmails.join(", ") || person.personId} ·{" "}
+                          {person.tickets.length} tickets
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {!people.length ? (
+                    <li className="py-4 font-mono text-xs theme-muted">
+                      No identity record matches.
+                    </li>
+                  ) : null}
+                </ul>
+              </section>
+              <section aria-labelledby="purchaser-contacts-heading">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 id="purchaser-contacts-heading" className="font-mono text-xs font-bold">
+                    purchasers not verified yet
+                  </h3>
+                  <span className="font-mono text-micro theme-muted">
+                    {purchaserContacts.length}
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                  Purchase contacts appear immediately. They become identities only after mailbox
+                  verification.
+                </p>
+                <ul className="mt-2 divide-y border-y theme-border">
+                  {purchaserContacts.map((contact) => (
+                    <li key={contact.contactId}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(undefined);
+                          setSelectedContact(contact);
+                        }}
+                        className="min-h-14 w-full py-3 text-left hover:opacity-70"
+                      >
+                        <span className="block font-serif text-lg">
+                          {contact.name ?? "Ticket purchaser"}
+                        </span>
+                        <span className="font-mono text-micro theme-muted">
+                          {contact.emailHint} · {contact.tickets.length} tickets
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {!purchaserContacts.length ? (
+                    <li className="py-4 font-mono text-xs theme-muted">
+                      No unverified purchaser contact matches.
+                    </li>
+                  ) : null}
+                </ul>
+              </section>
+            </div>
             {selected ? (
-              <PersonDrawer person={selected} busy={identityBusy} onManage={manageIdentity} />
+              <PersonDrawer
+                person={selected}
+                busy={identityBusy}
+                onManage={manageIdentity}
+                onClose={() => {
+                  setSelected(undefined);
+                  onPersonChange(undefined);
+                }}
+              />
+            ) : selectedContact ? (
+              <PurchaserContactDrawer
+                contact={selectedContact}
+                onClose={() => setSelectedContact(undefined)}
+              />
             ) : (
               <p className="font-mono text-xs theme-muted">
-                Choose a person to inspect identities, sessions, tickets, and access.
+                Choose a verified identity for access controls, or a purchaser contact for ticket
+                and delivery context.
               </p>
             )}
           </div>
@@ -545,10 +670,73 @@ export function AttendeeOperationsPanel({
   );
 }
 
+function PurchaserContactDrawer({
+  contact,
+  onClose,
+}: {
+  contact: PurchaserContact;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="border-y theme-border py-5" aria-label="Purchaser contact detail">
+      <div className="flex items-center justify-between gap-4">
+        <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+          purchaser contact
+        </p>
+        <button type="button" onClick={onClose} className="mh-action mh-action--quiet">
+          close
+        </button>
+      </div>
+      <h3 className="mt-2 font-serif text-2xl">{contact.name ?? "Ticket purchaser"}</h3>
+      <p className="mt-1 font-mono text-xs theme-muted">{contact.emailHint}</p>
+      <div className="mt-5 border-y theme-border py-4">
+        <p className="font-mono text-xs">Not an account yet</p>
+        <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+          Buying a ticket records the delivery contact but does not prove control of the mailbox.
+          After a successful one-time-link sign-in, the verified identity appears here and eligible
+          orders become recoverable without changing the ticket links.
+        </p>
+      </div>
+      <h4 className="mt-6 font-mono text-xs font-bold">purchased tickets</h4>
+      <ul className="mt-2 divide-y border-y theme-border">
+        {contact.tickets.map((ticket) => (
+          <li key={ticket.id} className="py-4">
+            <p className="font-serif text-lg">
+              {ticket.eventTitle} · {ticket.holderName}
+            </p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              {ticket.status} · order {ticket.orderId} · purchased{" "}
+              {new Date(ticket.issuedAt).toLocaleString()}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4">
+              <a href={`/ticket/${ticket.id}?preview=1`} className="mh-action mh-action--quiet">
+                preview ticket
+              </a>
+              <a
+                href={`/admin?view=events&event=${encodeURIComponent(ticket.eventSlug)}`}
+                className="mh-action mh-action--quiet"
+              >
+                manage event tickets
+              </a>
+              <a
+                href={`/admin?view=communications&communicationTab=delivery&emailQuery=${encodeURIComponent(ticket.id)}`}
+                className="mh-action mh-action--quiet"
+              >
+                check failed delivery
+              </a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
 function PersonDrawer({
   person,
   busy,
   onManage,
+  onClose,
 }: {
   person: Person;
   busy: boolean;
@@ -557,6 +745,7 @@ function PersonDrawer({
     action: "sign-out" | "restrict" | "restore" | "remove-email",
     identifierId?: string,
   ) => Promise<void>;
+  onClose: () => void;
 }) {
   const recentlyActive =
     person.access.lastSeenAt !== undefined &&
@@ -566,7 +755,14 @@ function PersonDrawer({
   ).length;
   return (
     <aside className="border-y theme-border py-5" aria-label="Attendee detail">
-      <p className="font-mono text-micro uppercase tracking-widest theme-muted">identity manager</p>
+      <div className="flex items-center justify-between gap-4">
+        <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+          identity manager
+        </p>
+        <button type="button" onClick={onClose} className="mh-action mh-action--quiet">
+          close
+        </button>
+      </div>
       <h3 className="mt-2 font-serif text-2xl">{person.canonicalName ?? "Unnamed person"}</h3>
       <p className="mt-1 font-mono text-micro theme-muted">{person.personId}</p>
       <dl className="mt-5 space-y-4 font-mono text-xs">
