@@ -1,9 +1,5 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import {
-  MULTIPLAYER_ROOM_ALPHABET,
-  MULTIPLAYER_ROOM_ID_LENGTH,
-  MULTIPLAYER_ROOM_TTL_SECONDS,
-} from "./multiplayer";
+import { MULTIPLAYER_ROOM_ALPHABET, MULTIPLAYER_ROOM_ID_LENGTH } from "./multiplayer";
 
 export function createMultiplayerCredential(bytes = 24) {
   return randomBytes(bytes).toString("base64url");
@@ -36,10 +32,6 @@ export async function createAvailableMultiplayerRoomId(
     if (!(await roomExists(roomId))) return roomId;
   }
   throw new Error("Could not allocate room");
-}
-
-export function multiplayerRoomExpiresAt(now = Date.now()) {
-  return now + MULTIPLAYER_ROOM_TTL_SECONDS * 1_000;
 }
 
 export function multiplayerRoomExpired(expiresAt: number, now = Date.now()) {
