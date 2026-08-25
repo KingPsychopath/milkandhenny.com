@@ -28,6 +28,7 @@ import {
   type ScannerLinkRecord,
 } from "@/features/tickets/checkpoint-types";
 import type { DoorTicketView } from "@/features/tickets/types";
+import { AdminFormAction } from "./AdminFormAction";
 import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
@@ -339,7 +340,7 @@ function Field({
   hint?: string;
 }) {
   return (
-    <label className="block">
+    <label className="admin-form-field block">
       <span className="font-mono text-micro theme-muted tracking-wide">{label}</span>
       <input
         type={type}
@@ -1560,10 +1561,10 @@ function ScanningSection({
             formEvent.preventDefault();
             if (newLinkLabel.trim()) void createLink();
           }}
-          className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="admin-form-row mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
         >
           <Field label="who is scanning" value={newLinkLabel} onChange={setNewLinkLabel} />
-          <div>
+          <div className="admin-form-field">
             <label htmlFor={stationId} className="font-mono text-micro theme-muted tracking-wide">
               station
             </label>
@@ -1576,13 +1577,15 @@ function ScanningSection({
               className="mt-1 rounded text-sm"
             />
           </div>
-          <button
-            type="submit"
-            disabled={busy || !newLinkLabel.trim()}
-            className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-          >
-            create link
-          </button>
+          <AdminFormAction>
+            <button
+              type="submit"
+              disabled={busy || !newLinkLabel.trim()}
+              className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+            >
+              create link
+            </button>
+          </AdminFormAction>
         </form>
 
         {newLinkStation === "door" && (
@@ -1738,7 +1741,7 @@ function ScanningSection({
             formEvent.preventDefault();
             if (newCheckpointName.trim()) void addCheckpoint();
           }}
-          className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+          className="admin-form-row mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]"
         >
           <Field
             label="new checkpoint"
@@ -1752,13 +1755,15 @@ function ScanningSection({
             onChange={setNewCheckpointAllowance}
             type="number"
           />
-          <button
-            type="submit"
-            disabled={busy || !newCheckpointName.trim()}
-            className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
-          >
-            add checkpoint
-          </button>
+          <AdminFormAction>
+            <button
+              type="submit"
+              disabled={busy || !newCheckpointName.trim()}
+              className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
+            >
+              add checkpoint
+            </button>
+          </AdminFormAction>
         </form>
       </div>
     </div>
@@ -2147,7 +2152,7 @@ function EventOperations({
                       formEvent.preventDefault();
                       void saveHolder();
                     }}
-                    className="mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+                    className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_1fr_auto]"
                   >
                     <Field
                       label="name"
@@ -2169,13 +2174,15 @@ function EventOperations({
                       }
                       hint="blank removes the address"
                     />
-                    <button
-                      type="submit"
-                      disabled={busy || !editingTicket.name.trim()}
-                      className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-                    >
-                      save
-                    </button>
+                    <AdminFormAction>
+                      <button
+                        type="submit"
+                        disabled={busy || !editingTicket.name.trim()}
+                        className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+                      >
+                        save
+                      </button>
+                    </AdminFormAction>
                   </form>
                 )}
               </li>
@@ -2726,7 +2733,7 @@ export function EventsPanel({
             {draft.ticketTypes.map((type, index) => (
               <div
                 key={`${type.id}-${index}`}
-                className="grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto] sm:items-end"
+                className="admin-form-row grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
               >
                 <Field
                   label="name"
@@ -2764,26 +2771,28 @@ export function EventsPanel({
                     setDraft({ ...draft, ticketTypes: next });
                   }}
                 />
-                <button
-                  type="button"
-                  disabled={draft.ticketTypes.length === 1}
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      ticketTypes: draft.ticketTypes.filter(
-                        (_, ticketIndex) => ticketIndex !== index,
-                      ),
-                    })
-                  }
-                  className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
-                  title={
-                    draft.ticketTypes.length === 1
-                      ? "An event needs at least one ticket type."
-                      : "Remove this ticket type when the event is saved."
-                  }
-                >
-                  remove
-                </button>
+                <AdminFormAction>
+                  <button
+                    type="button"
+                    disabled={draft.ticketTypes.length === 1}
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        ticketTypes: draft.ticketTypes.filter(
+                          (_, ticketIndex) => ticketIndex !== index,
+                        ),
+                      })
+                    }
+                    className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
+                    title={
+                      draft.ticketTypes.length === 1
+                        ? "An event needs at least one ticket type."
+                        : "Remove this ticket type when the event is saved."
+                    }
+                  >
+                    remove
+                  </button>
+                </AdminFormAction>
               </div>
             ))}
             <button

@@ -386,6 +386,23 @@
 }
 
 @layer components {
+  /*
+    Keep labels, controls, help text, and row actions on shared tracks. Aligning whole fields to
+    their bottom edge makes a field with help text pull its control above neighbouring controls.
+  */
+  @media (min-width: 40rem) {
+    .admin-form-row {
+      align-items: start;
+      row-gap: 0;
+    }
+
+    .admin-form-row > .admin-form-field {
+      display: grid;
+      grid-row: span 3 / span 3;
+      grid-template-rows: subgrid;
+    }
+  }
+
   @keyframes app-image-placeholder-sweep {
     0% {
       opacity: 0;

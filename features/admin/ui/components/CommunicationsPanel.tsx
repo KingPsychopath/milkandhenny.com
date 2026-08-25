@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { AdminFormAction } from "./AdminFormAction";
 import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
 import {
   CommunicationMessageEditor,
@@ -358,7 +359,7 @@ function Field({
   rows?: number;
 }) {
   return (
-    <label className="block">
+    <label className="admin-form-field block">
       <span className="font-mono text-micro theme-muted">{label}</span>
       {rows ? (
         <textarea
@@ -1309,8 +1310,8 @@ function EventPlanView(props: {
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-3 border-b theme-border py-4">
-            <label className="min-w-[18rem] flex-1">
+          <div className="admin-form-row grid gap-3 border-b theme-border py-4 sm:grid-cols-[minmax(18rem,1fr)_auto]">
+            <label className="admin-form-field">
               <span className="font-mono text-micro theme-muted">test recipient</span>
               <input
                 value={testEmail}
@@ -1322,9 +1323,11 @@ function EventPlanView(props: {
                 Sends every stage with a [TEST] subject. It does not schedule the plan.
               </span>
             </label>
-            <Button onClick={sendTestPlan} disabled={busy || !testEmail.trim()}>
-              send all test emails
-            </Button>
+            <AdminFormAction spacing="comfortable">
+              <Button onClick={sendTestPlan} disabled={busy || !testEmail.trim()}>
+                send all test emails
+              </Button>
+            </AdminFormAction>
           </div>
           <ol className="mt-5 border-l theme-border pl-6">
             {activePlan.stages.map((stage) => (
@@ -1734,38 +1737,41 @@ function ComposeView(props: {
           previewValues={previewValues}
           hint="Use the writing tools for Markdown. Event tokens such as {{event.title}} are filled when the email is sent."
         />
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[15rem] flex-1">
-            <Field
-              label="send at"
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={setScheduledAt}
-              hint="The outbox queues recipients in bounded batches."
-            />
-          </div>
-          <Button onClick={() => void preview()} disabled={busy || !subject.trim() || !body.trim()}>
-            {previewHtml ? "hide email preview" : "preview email"}
-          </Button>
-          <Button
-            onClick={() => void save("draft")}
-            disabled={busy || !subject.trim() || !body.trim()}
-          >
-            save draft
-          </Button>
-          <Button
-            primary
-            onClick={() => void save("schedule")}
-            disabled={busy || !subject.trim() || !body.trim() || !scheduledAt}
-          >
-            schedule
-          </Button>
-          <Button
-            onClick={() => void save("now")}
-            disabled={busy || !subject.trim() || !body.trim()}
-          >
-            send now
-          </Button>
+        <div className="admin-form-row grid gap-3 sm:grid-cols-[minmax(15rem,1fr)_auto]">
+          <Field
+            label="send at"
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={setScheduledAt}
+            hint="The outbox queues recipients in bounded batches."
+          />
+          <AdminFormAction className="flex flex-wrap gap-3" spacing="comfortable">
+            <Button
+              onClick={() => void preview()}
+              disabled={busy || !subject.trim() || !body.trim()}
+            >
+              {previewHtml ? "hide email preview" : "preview email"}
+            </Button>
+            <Button
+              onClick={() => void save("draft")}
+              disabled={busy || !subject.trim() || !body.trim()}
+            >
+              save draft
+            </Button>
+            <Button
+              primary
+              onClick={() => void save("schedule")}
+              disabled={busy || !subject.trim() || !body.trim() || !scheduledAt}
+            >
+              schedule
+            </Button>
+            <Button
+              onClick={() => void save("now")}
+              disabled={busy || !subject.trim() || !body.trim()}
+            >
+              send now
+            </Button>
+          </AdminFormAction>
         </div>
       </div>
       {previewHtml ? (
