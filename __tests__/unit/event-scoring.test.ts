@@ -20,6 +20,7 @@ import {
   shouldRetryScoreResponse,
 } from "@/features/event-scoring/client-sync";
 import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
+import { simulateScoreClaim, TEST_SCENARIOS } from "@/features/event-scoring/test-mode";
 
 describe("event scoring rules", () => {
   it("keeps scoring off until an explicit live state", () => {
@@ -115,5 +116,27 @@ describe("event scoring rules", () => {
     expect(shouldRetryScoreResponse(400, 0)).toBe(false);
     expect(shouldRetryScoreResponse(503, 0)).toBe(true);
     expect(nextRetryDelayMs(2, 0)).toBe(1500);
+  });
+
+  it("rehearses every test mode outcome without a live mutation", () => {
+    const outcomes = TEST_SCENARIOS.map((scenario) =>
+      simulateScoreClaim({
+        scenario,
+        status: "live",
+        rule: { mode: "fixed", fixedPoints: 5, repeat: "once", requiresCheckIn: false },
+        previewPoints: 5,
+      }),
+    );
+    expect(outcomes.map((outcome) => outcome.state)).toEqual([
+      "accepted",
+      "rejected",
+      "rejected",
+      "rejected",
+      "held",
+      "held",
+    ]);
+    expect(outcomes.every((outcome) => outcome.ledgerWrites === 0)).toBe(true);
+    expect(outcomes.every((outcome) => outcome.poolChange === 0)).toBe(true);
+    expect(outcomes.every((outcome) => outcome.rankChange === 0)).toBe(true);
   });
 });

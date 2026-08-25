@@ -10,6 +10,7 @@ import { ScoringMediaPanel } from "./ScoringMediaPanel";
 import { ScoringAuditPanel } from "./ScoringAuditPanel";
 import { ScoringIdentityPanel } from "./ScoringIdentityPanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
+import { ScoringTestModePanel } from "./ScoringTestModePanel";
 import type { ScoringData } from "./event-scoring-types";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -86,6 +87,10 @@ export function EventScoringPanel({
   }
 
   async function changeState(state: string) {
+    if (state === "live") {
+      const summary = `${data?.activities.length ?? 0} activities and ${data?.discoveries.length ?? 0} discoveries will become live.`;
+      if (!window.confirm(`Preview complete: ${summary}\n\nPublish live scoring now?`)) return;
+    }
     const result = await performAction({ action: "state", state });
     if (result) onStatus(`Scoring is now ${state}.`);
   }
@@ -233,6 +238,7 @@ export function EventScoringPanel({
             discoveryCount={data.discoveries.length}
             onDownload={downloadPrint}
           />
+          <ScoringTestModePanel data={data} />
           <ScoringMediaPanel data={data} onAction={performAction} />
           <ScoringAuditPanel audit={data.audit} onExport={downloadExport} />
           <ScoringIdentityPanel merges={data.merges} onAction={performAction} />
