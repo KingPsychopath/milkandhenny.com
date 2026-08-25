@@ -1,9 +1,15 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
+import {
+  describeTransferFiles,
+  inferTransferTitle,
+  totalTransferBytes,
+} from "@/features/transfers/presentation";
 import { getTransfer, validateDeleteToken } from "@/features/transfers/store.server";
 import { toPublicTransfer } from "@/features/transfers/public";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
+import { formatBytes } from "@/lib/shared/format";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { TransferGallery } from "@/features/transfers/ui/transfer/TransferGallery";
 import { CountdownTimer } from "@/features/transfers/ui/transfer/CountdownTimer";
@@ -42,9 +48,12 @@ export const Route = createFileRoute("/t/$id")({
         referrer: "no-referrer",
       });
     }
-    const description = `${transfer.files.length} files shared via ${SITE_NAME}`;
+    const displayTitle = inferTransferTitle(transfer.title, transfer.files);
+    const contents = describeTransferFiles(transfer.files);
+    const totalSize = formatBytes(totalTransferBytes(transfer.files));
+    const description = `${contents} · ${totalSize} · available until ${formatDate(transfer.expiresAt)}. Shared privately via ${SITE_NAME}.`;
     return buildSeoHead({
-      title: `${transfer.title} — ${SITE_NAME}`,
+      title: `${displayTitle} — ${SITE_NAME}`,
       description,
       path: `/t/${transfer.id}`,
       robots: "noindex, nofollow",
@@ -61,27 +70,6 @@ function formatDate(iso: string) {
     year: "numeric",
     timeZone: "Europe/London",
   });
-}
-
-const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
-
-/** Summarise file counts: "12 photos, 3 videos, 2 files" */
-function describeFiles(files: { kind: string; filename?: string }[]): string {
-  const counts: Record<string, number> = {};
-  for (const f of files) {
-    const label =
-      f.kind === "image" || f.kind === "gif" || RAW_IMAGE_EXTENSIONS.test(f.filename ?? "")
-        ? "photo"
-        : f.kind === "video"
-          ? "video"
-          : f.kind === "audio"
-            ? "audio"
-            : "file";
-    counts[label] = (counts[label] ?? 0) + 1;
-  }
-  return Object.entries(counts)
-    .map(([label, n]) => `${n} ${n === 1 ? label : label + "s"}`)
-    .join(", ");
 }
 
 function TransferPage() {
@@ -116,6 +104,7 @@ function TransferPage() {
 
   /* ─── Expired (data still in Redis but past expiry) ─── */
   if (remainingSeconds <= 0) {
+    const displayTitle = inferTransferTitle(transfer.title, transfer.files);
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <main id="main" className="text-center max-w-md space-y-6">
@@ -124,7 +113,7 @@ function TransferPage() {
           </p>
           <p className="font-serif text-xl text-foreground">this transfer has expired</p>
           <p className="theme-muted text-sm">
-            &ldquo;{transfer.title}&rdquo; expired on {formatDate(transfer.expiresAt)}. transfers
+            &ldquo;{displayTitle}&rdquo; expired on {formatDate(transfer.expiresAt)}. transfers
             self-destruct automatically.
           </p>
           <div className="pt-2">
@@ -140,10 +129,12 @@ function TransferPage() {
     );
   }
 
+  const displayTitle = inferTransferTitle(transfer.title, transfer.files);
+
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <header className="max-w-4xl mx-auto px-6 pt-10 pb-6">
-        <div className="flex items-center justify-between font-mono text-sm">
+      <header className="w-full max-w-4xl mx-auto px-6 pt-10 pb-6">
+        <div className="flex items-center justify-between gap-3 font-mono text-sm">
           <span className="theme-muted tracking-tight">shared via</span>
           <Link
             to="/"
@@ -154,7 +145,7 @@ function TransferPage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-6">
+      <div className="w-full max-w-4xl mx-auto px-6">
         <div className="border-t theme-border" />
       </div>
 
@@ -166,10 +157,10 @@ function TransferPage() {
             <CountdownTimer expiresAt={transfer.expiresAt} />
           </div>
           <h1 className="font-serif text-3xl sm:text-4xl text-foreground leading-tight tracking-tight mt-3">
-            {transfer.title}
+            {displayTitle}
           </h1>
           <p className="mt-2 theme-subtle text-sm font-mono tracking-wide">
-            {describeFiles(transfer.files)}
+            {describeTransferFiles(transfer.files)}
           </p>
         </section>
 

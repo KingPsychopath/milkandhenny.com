@@ -8,6 +8,7 @@ import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
 import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/browser-heif";
+import { inferTransferTitle } from "@/features/transfers/presentation";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { collectDroppedFiles } from "./drop-files";
 import { copyText } from "@/lib/client/share";
@@ -611,6 +612,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
   /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
   const handleTransferCreateUpload = async () => {
+    const transferTitle = inferTransferTitle(title, files);
     const preparedFiles = await prepareTransferUploads(files);
     const presignFiles: TransferUploadFileInput[] = preparedFiles.map((file) => ({
       name: file.uploadName,
@@ -632,7 +634,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        title: title || "untitled",
+        title: transferTitle,
         expires: expiry,
         files: presignFiles,
       }),
@@ -715,7 +717,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       body: JSON.stringify({
         transferId,
         deleteToken,
-        title: title || "untitled",
+        title: transferTitle,
         expiresSeconds,
         files: finalizeFiles,
       }),
@@ -1133,7 +1135,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   htmlFor="transfer-title"
                   className="font-mono text-xs theme-muted block mb-1.5"
                 >
-                  title
+                  transfer title
                 </label>
                 <input
                   id="transfer-title"
@@ -1143,6 +1145,9 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   placeholder="valentine's day photos"
                   className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
                 />
+                <p className="font-mono text-micro theme-faint mt-1">
+                  optional · a single file uses its filename by default
+                </p>
               </div>
               <div>
                 <label
