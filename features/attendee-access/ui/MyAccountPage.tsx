@@ -224,7 +224,7 @@ export function MyAccountPage() {
       <Link to="/" className="font-mono text-micro theme-muted hover:text-foreground">
         ← milk &amp; henny
       </Link>
-      <h1 className="mt-10 font-serif text-4xl">You</h1>
+      <h1 className="mt-10 font-serif text-4xl">account</h1>
       {loading || !account ? (
         <p className="mt-6 font-mono text-xs theme-muted">{message || "loading…"}</p>
       ) : (

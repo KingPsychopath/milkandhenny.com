@@ -147,12 +147,7 @@ function NotFound() {
         <Suspense fallback={null}>
           <LostGuest404 />
         </Suspense>
-        <Link
-          to="/"
-          className="font-mono text-sm theme-muted hover:text-foreground transition-colors"
-        >
-          ← go home
-        </Link>
+        <RecoveryNavigation />
       </div>
     </main>
   );
@@ -186,6 +181,7 @@ function RootError({ error }: ErrorComponentProps) {
             >
               ↻ try again
             </button>
+            <RecoveryNavigation />
             <ReportIssueButton
               type="client_error"
               payload={{
@@ -202,5 +198,26 @@ function RootError({ error }: ErrorComponentProps) {
         </div>
       </main>
     </RootDocument>
+  );
+}
+
+function RecoveryNavigation() {
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.assign("/");
+  };
+
+  return (
+    <nav aria-label="Page recovery" className="flex flex-wrap items-center justify-center gap-2">
+      <button type="button" onClick={goBack} className="mh-action mh-action--quiet">
+        ← go back
+      </button>
+      <Link to="/" className="mh-action mh-action--quiet">
+        go home
+      </Link>
+    </nav>
   );
 }

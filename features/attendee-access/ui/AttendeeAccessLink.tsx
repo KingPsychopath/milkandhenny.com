@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 
 import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGameNavigation";
 
@@ -46,12 +46,12 @@ export function AttendeeAccessLink() {
   if (hiddenSurface) return null;
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
   return (
-    <Link
-      to="/my"
+    <a
+      href="/my"
       style={{ opacity: nearTop ? 1 : 0, pointerEvents: nearTop ? "auto" : "none" }}
       className="mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20"
     >
       account
-    </Link>
+    </a>
   );
 }

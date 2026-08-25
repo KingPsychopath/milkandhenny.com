@@ -155,10 +155,10 @@ export function TicketIdentityControlsView({
       {personallyClaimed ? (
         <div>
           <p className="font-mono text-micro theme-muted">
-            saved to You{account?.name ? ` as ${account.name}` : ""} ·{" "}
-            <Link to="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
+            saved to your account{account?.name ? ` as ${account.name}` : ""} ·{" "}
+            <a href="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
               manage
-            </Link>
+            </a>
           </p>
           <button
             type="button"
