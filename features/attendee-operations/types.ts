@@ -147,4 +147,4 @@ export function isTerminalTicketTransfer(state: TicketTransferState): boolean {
   return state !== "pending";
 }
 
-export type AdminNotificationStatus = "new" | "seen" | "in-progress" | "resolved" | "dismissed";
+export type AdminNotificationStatus = "new" | "in-progress" | "resolved" | "dismissed";

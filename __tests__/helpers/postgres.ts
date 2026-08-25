@@ -57,6 +57,7 @@ export async function applySchema(): Promise<void> {
   await query(`
     drop table if exists attendee_operations_audit_events cascade;
     drop table if exists admin_alert_recipients cascade;
+    drop table if exists admin_notification_reads cascade;
     drop table if exists admin_notifications cascade;
     drop table if exists admin_attention_cases cascade;
     drop table if exists attendee_domain_events cascade;
@@ -150,7 +151,8 @@ export async function truncateAll(): Promise<void> {
   await query(
     `truncate event_order_managers, event_ticket_identity_claims,
               event_person_login_challenges, event_person_identifiers, event_people,
-              attendee_operations_audit_events, admin_alert_recipients, admin_notifications,
+              attendee_operations_audit_events, admin_alert_recipients, admin_notification_reads,
+              admin_notifications,
               admin_attention_cases, attendee_domain_events, global_admin_grants,
               ticket_refund_allocations, ticket_return_requests, ticket_transfers,
               ticket_assignments, attendee_action_links, event_operation_policies,

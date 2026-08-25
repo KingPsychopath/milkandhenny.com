@@ -45,6 +45,7 @@ import {
   listAlertRecipients,
   revokeAlertRecipient,
   saveAlertRecipient,
+  setAdminNotificationReadState,
   sendOperationsDigests,
   sendTestAlert,
   updateAdminNotification,
@@ -349,10 +350,26 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
         createCase: true,
       },
     });
-    const inbox = await listAdminInbox({ severity: "critical", category: "refund-failed" });
+    const viewer = { actorId: BUYER, actorType: "admin" as const };
+    const inbox = await listAdminInbox({
+      viewer,
+      severity: "critical",
+      category: "refund-failed",
+    });
     expect(inbox.items).toHaveLength(1);
+    expect(inbox).toMatchObject({ unresolved: 1, unread: 1 });
+    expect(inbox.items[0]).toMatchObject({ unread: true });
     expect(inbox.administrators).toEqual([{ personId: BUYER, name: "Buyer" }]);
     const item = inbox.items[0];
+    expect(await setAdminNotificationReadState({ id: item.id, viewer, read: true })).toBe(true);
+    expect((await listAdminInbox({ viewer })).unread).toBe(0);
+    expect(
+      (
+        await listAdminInbox({
+          viewer: { actorId: "another-admin", actorType: "admin" },
+        })
+      ).unread,
+    ).toBe(1);
     expect(
       await updateAdminNotification({
         id: item.id,
@@ -372,7 +389,7 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
         reason: "Reconciled against provider records",
       }),
     ).toBe(true);
-    expect((await listAdminInbox({ status: "resolved" })).items[0]).toMatchObject({
+    expect((await listAdminInbox({ viewer, status: "resolved" })).items[0]).toMatchObject({
       assigneePersonId: BUYER,
       resolutionReason: "Reconciled against provider records",
       privateNote: { body: "Checking the provider ledger" },
@@ -426,11 +443,10 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
       }),
     ).rejects.toThrow("invalid");
     expect(
-      await updateAdminNotification({
+      await setAdminNotificationReadState({
         id: "notice_missing",
-        status: "seen",
-        actorId: "root-owner",
-        actorType: "root-owner",
+        viewer: { actorId: "root-owner", actorType: "root-owner" },
+        read: true,
       }),
     ).toBe(false);
     expect(

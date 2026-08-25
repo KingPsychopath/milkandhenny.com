@@ -152,7 +152,7 @@ export function AdminDashboard({
   const [content, setContent] = useState<ContentSummaryResponse | null>(null);
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
-  const [operationsAttention, setOperationsAttention] = useState(0);
+  const [operationsUnread, setOperationsUnread] = useState(0);
   const [operationsRecent, setOperationsRecent] = useState<
     Array<{
       id: string;
@@ -162,6 +162,7 @@ export function AdminDashboard({
       severity: string;
       category: string;
       deepLink: string;
+      unread: boolean;
     }>
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -217,11 +218,11 @@ export function AdminDashboard({
   }, [refreshDashboard, view]);
 
   useEffect(() => {
-    void authFetch("/api/admin/operations/inbox")
+    void authFetch("/api/admin/operations/inbox?active=1")
       .then(async (response) =>
         response.ok
           ? ((await response.json()) as {
-              unresolved?: number;
+              unread?: number;
               items?: Array<{
                 id: string;
                 title: string;
@@ -230,16 +231,28 @@ export function AdminDashboard({
                 severity: string;
                 category: string;
                 deepLink: string;
+                unread: boolean;
               }>;
             })
           : null,
       )
       .then((inbox) => {
-        setOperationsAttention(inbox?.unresolved ?? 0);
+        setOperationsUnread(inbox?.unread ?? 0);
         setOperationsRecent(inbox?.items?.slice(0, 3) ?? []);
       })
       .catch(() => undefined);
   }, [authFetch, view]);
+
+  const openNotification = async (item: (typeof operationsRecent)[number]) => {
+    if (item.unread) {
+      await authFetch("/api/admin/operations/inbox", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: item.id, read: true }),
+      }).catch(() => undefined);
+    }
+    window.location.assign(item.deepLink);
+  };
 
   const ensureStepUpToken = async (): Promise<string | null> => {
     const result = await ensureStepUpTokenResult();
@@ -314,10 +327,12 @@ export function AdminDashboard({
                 onClick={() => setAttentionOpen((current) => !current)}
                 aria-expanded={attentionOpen}
                 aria-controls="operations-attention-popover"
-                aria-label={`${operationsAttention} unresolved admin notification${operationsAttention === 1 ? "" : "s"}`}
-                className="min-h-11 font-mono text-xs theme-muted hover:opacity-70"
+                aria-label={`${operationsUnread} unread admin notification${operationsUnread === 1 ? "" : "s"}`}
+                className="relative inline-flex min-h-11 items-center gap-2 font-mono text-xs theme-muted hover:opacity-70"
               >
-                notifications{operationsAttention ? ` · ${operationsAttention}` : ""}
+                <NotificationBell />
+                <span className="hidden sm:inline">notifications</span>
+                {operationsUnread ? <span aria-hidden="true">{operationsUnread}</span> : null}
               </button>
               {attentionOpen ? (
                 <section
@@ -332,15 +347,20 @@ export function AdminDashboard({
                     <ul className="mt-2 divide-y theme-border">
                       {operationsRecent.map((item) => (
                         <li key={item.id} className="py-3">
-                          <a href={item.deepLink} className="block hover:opacity-70">
+                          <button
+                            type="button"
+                            onClick={() => void openNotification(item)}
+                            className="block w-full min-h-11 py-1 text-left hover:opacity-70"
+                          >
                             <span className="block font-serif">{item.title}</span>
                             <span className="mt-1 block font-mono text-micro theme-muted">
+                              {item.unread ? "unread · " : ""}
                               {item.status} · {item.severity} · {item.category}
                             </span>
                             <span className="mt-1 block font-mono text-micro leading-relaxed theme-faint">
                               {item.body}
                             </span>
-                          </a>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -351,7 +371,7 @@ export function AdminDashboard({
                     type="button"
                     onClick={() => {
                       setAttentionOpen(false);
-                      onNavigate({ section: "operations", operationsTab: "inbox" });
+                      window.location.assign("/admin?view=overview#notifications");
                     }}
                     className="mt-3 min-h-11 font-mono text-xs underline hover:opacity-70"
                   >
@@ -529,6 +549,20 @@ export function AdminDashboard({
               onError={setErrorMessage}
               onStatus={setStatusMessage}
             />
+
+            <div className="border-t theme-border pt-8">
+              <AttendeeOperationsPanel
+                authFetch={authFetch}
+                onError={setErrorMessage}
+                onStatus={setStatusMessage}
+                ensureStepUpToken={ensureStepUpTokenResult}
+                withStepUpHeaders={withStepUpHeaders}
+                tab="inbox"
+                onTabChange={onOperationsTabChange}
+                onPersonChange={onOperationsPersonChange}
+                inboxOnly
+              />
+            </div>
           </>
         ) : null}
 
@@ -692,5 +726,21 @@ export function AdminDashboard({
       {actionDialog}
       {authDialog}
     </div>
+  );
+}
+
+function NotificationBell() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className="size-4"
+    >
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </svg>
   );
 }

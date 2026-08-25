@@ -12,9 +12,9 @@ const COMMANDS: Array<{
     destination: { section: "overview" },
   },
   {
-    label: "needs attention",
-    detail: "refunds, conflicts, delivery failures",
-    destination: { section: "operations", operationsTab: "inbox" },
+    label: "notifications",
+    detail: "app-wide alerts, work ownership, and delivery failures",
+    destination: { section: "overview" },
   },
   {
     label: "identity manager",

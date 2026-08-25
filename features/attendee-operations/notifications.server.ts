@@ -5,6 +5,7 @@ import { query, transaction } from "@/lib/platform/postgres.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { actionEmailHash, maskActionEmail } from "./action-links.server";
+import { resolveAdminNotificationDeepLink } from "./notification-destination";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 
 export type DomainEventSeverity = "info" | "prompt" | "warning" | "critical";
@@ -22,7 +23,7 @@ export type DomainEventInput = {
   admin?: {
     title: string;
     body: string;
-    deepLink: string;
+    deepLink?: string;
     category?: string;
     createCase?: boolean;
   };
@@ -41,9 +42,16 @@ export type AdminInboxItem = {
   privateNote?: { body?: string; actorId?: string; updatedAt?: string };
   resolutionReason?: string;
   deepLink: string;
-  status: "new" | "seen" | "in-progress" | "resolved" | "dismissed";
+  status: "new" | "in-progress" | "resolved" | "dismissed";
+  unread: boolean;
+  readAt?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminNotificationViewer = {
+  actorId: string;
+  actorType: "root-owner" | "admin";
 };
 
 function id(prefix: string): string {
@@ -55,6 +63,15 @@ export async function emitDomainEvent(
 ): Promise<{ id: string; created: boolean }> {
   const severity = input.severity ?? "info";
   const correlationId = input.correlationId ?? randomUUID();
+  const adminDeepLink = input.admin
+    ? resolveAdminNotificationDeepLink({
+        kind: input.kind,
+        category: input.admin.category ?? input.kind,
+        eventSlug: input.eventSlug,
+        entityRefs: input.entityRefs,
+        fallback: input.admin.deepLink,
+      })
+    : undefined;
   const result = await transaction(async (client) => {
     const eventId = id("event");
     const inserted = await client.query<{ id: string }>(
@@ -112,7 +129,7 @@ export async function emitDomainEvent(
           input.admin.title,
           input.admin.body,
           input.eventSlug ?? null,
-          input.admin.deepLink,
+          adminDeepLink,
         ],
       );
     }
@@ -126,7 +143,7 @@ export async function emitDomainEvent(
       severity,
       title: input.admin.title,
       body: input.admin.body,
-      deepLink: input.admin.deepLink,
+      deepLink: adminDeepLink!,
       eventSlug: input.eventSlug,
     });
   }
@@ -480,7 +497,7 @@ export async function sendOperationsDigests(now = new Date()): Promise<{
          from admin_notifications notification
          join admin_alert_recipients recipient on recipient.id = $1
         where notification.created_at >= $2
-          and notification.status in ('new','seen','in-progress')
+          and notification.status in ('new','in-progress')
           and (cardinality(recipient.event_slugs) = 0 or notification.event_slug = any(recipient.event_slugs))
           and (recipient.fallback or 'all' = any(recipient.categories)
                or notification.category = any(recipient.categories))
@@ -524,24 +541,34 @@ export async function sendOperationsDigests(now = new Date()): Promise<{
   return { recipients: recipients.length, queued, skipped };
 }
 
-export async function listAdminInbox(
-  input: {
-    status?: AdminInboxItem["status"];
-    category?: string;
-    severity?: DomainEventSeverity;
-    eventSlug?: string;
-    limit?: number;
-  } = {},
-): Promise<{
+export async function listAdminInbox(input: {
+  viewer: AdminNotificationViewer;
+  status?: AdminInboxItem["status"];
+  category?: string;
+  severity?: DomainEventSeverity;
+  eventSlug?: string;
+  active?: boolean;
+  limit?: number;
+}): Promise<{
   unresolved: number;
+  unread: number;
   items: AdminInboxItem[];
   administrators: Array<{ personId: string; name: string }>;
 }> {
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 40)));
   const [counts, rows, administrators] = await Promise.all([
-    query<{ count: string }>(
-      `select count(*)::text as count from admin_notifications
-        where status in ('new','seen','in-progress')`,
+    query<{ unresolved: string; unread: string }>(
+      `select
+         count(*) filter (where notification.status in ('new','in-progress'))::text as unresolved,
+         count(*) filter (
+           where notification.status in ('new','in-progress') and not exists (
+             select 1 from admin_notification_reads personal
+              where personal.notification_id = notification.id
+                and personal.actor_type = $1 and personal.actor_id = $2
+           )
+         )::text as unread
+       from admin_notifications notification`,
+      [input.viewer.actorType, input.viewer.actorId],
     ),
     query<{
       id: string;
@@ -559,28 +586,36 @@ export async function listAdminInbox(
       status: AdminInboxItem["status"];
       created_at: Date;
       updated_at: Date;
+      read_at: Date | null;
     }>(
       `select notification.id,notification.case_id,notification.category,
               coalesce(attention.severity,domain.severity) as severity,
               attention.assignee_person_id,person.canonical_name as assignee_name,
               attention.private_note,attention.resolution_reason,
               notification.title,notification.body,notification.event_slug,
-              notification.deep_link,notification.status,
+              notification.deep_link,notification.status,personal.read_at,
               notification.created_at,notification.updated_at
          from admin_notifications notification
          join attendee_domain_events domain on domain.id = notification.source_event_id
          left join admin_attention_cases attention on attention.id = notification.case_id
          left join event_people person on person.id = attention.assignee_person_id
-        where ($1::text is null or notification.status = $1)
-          and ($2::text is null or notification.category = $2)
-          and ($3::text is null or coalesce(attention.severity,domain.severity) = $3)
-          and ($4::text is null or notification.event_slug = $4)
-        order by notification.created_at desc limit $5`,
+         left join admin_notification_reads personal
+           on personal.notification_id = notification.id
+          and personal.actor_type = $1 and personal.actor_id = $2
+        where ($3::text is null or notification.status = $3)
+          and ($4::text is null or notification.category = $4)
+          and ($5::text is null or coalesce(attention.severity,domain.severity) = $5)
+          and ($6::text is null or notification.event_slug = $6)
+          and (not $7::boolean or notification.status in ('new','in-progress'))
+        order by notification.created_at desc limit $8`,
       [
+        input.viewer.actorType,
+        input.viewer.actorId,
         input.status ?? null,
         input.category ?? null,
         input.severity ?? null,
         input.eventSlug ?? null,
+        input.active === true,
         limit,
       ],
     ),
@@ -594,7 +629,8 @@ export async function listAdminInbox(
     ),
   ]);
   return {
-    unresolved: Number(counts[0]?.count) || 0,
+    unresolved: Number(counts[0]?.unresolved) || 0,
+    unread: Number(counts[0]?.unread) || 0,
     items: rows.map((row) => ({
       id: row.id,
       caseId: row.case_id ?? undefined,
@@ -612,6 +648,8 @@ export async function listAdminInbox(
       eventSlug: row.event_slug ?? undefined,
       deepLink: row.deep_link,
       status: row.status,
+      unread: row.read_at === null,
+      readAt: row.read_at?.toISOString(),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     })),
@@ -620,6 +658,35 @@ export async function listAdminInbox(
       name: administrator.canonical_name ?? administrator.person_id,
     })),
   };
+}
+
+export async function setAdminNotificationReadState(input: {
+  id: string;
+  viewer: AdminNotificationViewer;
+  read: boolean;
+}): Promise<boolean> {
+  return transaction(async (client) => {
+    const notification = await client.query(`select 1 from admin_notifications where id = $1`, [
+      input.id,
+    ]);
+    if (!notification.rowCount) return false;
+    if (input.read) {
+      await client.query(
+        `insert into admin_notification_reads (notification_id,actor_type,actor_id,read_at)
+         values ($1,$2,$3,now())
+         on conflict (notification_id,actor_type,actor_id)
+         do update set read_at = excluded.read_at`,
+        [input.id, input.viewer.actorType, input.viewer.actorId],
+      );
+    } else {
+      await client.query(
+        `delete from admin_notification_reads
+          where notification_id = $1 and actor_type = $2 and actor_id = $3`,
+        [input.id, input.viewer.actorType, input.viewer.actorId],
+      );
+    }
+    return true;
+  });
 }
 
 export async function updateAdminNotification(input: {

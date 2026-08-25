@@ -20,7 +20,9 @@ type InboxItem = {
   privateNote?: { body?: string; actorId?: string; updatedAt?: string };
   resolutionReason?: string;
   deepLink: string;
-  status: "new" | "seen" | "in-progress" | "resolved" | "dismissed";
+  status: "new" | "in-progress" | "resolved" | "dismissed";
+  unread: boolean;
+  readAt?: string;
   createdAt: string;
 };
 type Administrator = { personId: string; name: string };
@@ -110,6 +112,7 @@ export function AttendeeOperationsPanel({
   initialTicket,
   initialPerson,
   onPersonChange,
+  inboxOnly = false,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -122,9 +125,11 @@ export function AttendeeOperationsPanel({
   initialTicket?: string;
   initialPerson?: string;
   onPersonChange: (personId?: string) => void;
+  inboxOnly?: boolean;
 }) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unresolved, setUnresolved] = useState(0);
+  const [unread, setUnread] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
   const [purchaserContacts, setPurchaserContacts] = useState<PurchaserContact[]>([]);
   const [query, setQuery] = useState("");
@@ -152,6 +157,7 @@ export function AttendeeOperationsPanel({
       );
       const body = (await response.json()) as {
         unresolved?: number;
+        unread?: number;
         items?: InboxItem[];
         administrators?: Administrator[];
         error?: string;
@@ -159,6 +165,7 @@ export function AttendeeOperationsPanel({
       if (!response.ok) throw new Error(body.error ?? "Inbox could not be loaded");
       setItems(body.items ?? []);
       setUnresolved(body.unresolved ?? 0);
+      setUnread(body.unread ?? 0);
       setAdministrators(body.administrators ?? []);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Inbox could not be loaded");
@@ -200,8 +207,31 @@ export function AttendeeOperationsPanel({
       onError(body.error ?? "Inbox item could not be updated");
       return;
     }
+    if (status === "in-progress" && item.unread) {
+      await setItemRead(item, true, false);
+    }
     onStatus(status === "resolved" ? "Case resolved." : "Inbox updated.");
     await loadInbox();
+  }
+
+  async function setItemRead(item: InboxItem, read: boolean, reload = true) {
+    const response = await authFetch("/api/admin/operations/inbox", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: item.id, read }),
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      onError(body.error ?? "Notification read state could not be updated");
+      return false;
+    }
+    if (reload) await loadInbox();
+    return true;
+  }
+
+  async function openItem(item: InboxItem) {
+    if (item.unread) await setItemRead(item, true, false);
+    window.location.assign(item.deepLink);
   }
 
   function saveView() {
@@ -326,43 +356,52 @@ export function AttendeeOperationsPanel({
   }
 
   return (
-    <section aria-labelledby="attendee-operations-heading">
+    <section
+      id={inboxOnly ? "notifications" : undefined}
+      aria-labelledby="attendee-operations-heading"
+    >
       <div className="flex flex-wrap items-end justify-between gap-4 border-b theme-border pb-5">
         <div>
           <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-            attendee operations
+            {inboxOnly ? "across the app" : "attendee operations"}
           </p>
           <h2 id="attendee-operations-heading" className="mt-2 font-serif text-3xl">
-            {tab === "people"
-              ? "Identity manager"
-              : tab === "preview"
-                ? "Attendee experience"
-                : "People who need an answer"}
+            {inboxOnly
+              ? "Notifications"
+              : tab === "people"
+                ? "Identity manager"
+                : tab === "preview"
+                  ? "Attendee experience"
+                  : "People who need an answer"}
           </h2>
         </div>
         {tab === "inbox" ? (
-          <p className="font-mono text-xs theme-muted">{unresolved} unresolved</p>
+          <p className="font-mono text-xs theme-muted">
+            {unresolved} unresolved · {unread} unread for you
+          </p>
         ) : null}
       </div>
-      <div className="mt-4 flex gap-5 border-b theme-border">
-        {(["inbox", "people", "preview"] as const).map((name) => (
-          <button
-            key={name}
-            type="button"
-            onClick={() => onTabChange(name)}
-            aria-current={tab === name ? "page" : undefined}
-            className={`min-h-11 border-b-2 px-1 font-mono text-xs ${
-              tab === name ? "border-foreground" : "border-transparent theme-muted"
-            }`}
-          >
-            {name === "inbox"
-              ? `needs attention${unresolved ? ` · ${unresolved}` : ""}`
-              : name === "people"
-                ? "identity manager"
-                : "attendee preview"}
-          </button>
-        ))}
-      </div>
+      {!inboxOnly ? (
+        <div className="mt-4 flex gap-5 border-b theme-border">
+          {(["inbox", "people", "preview"] as const).map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onTabChange(name)}
+              aria-current={tab === name ? "page" : undefined}
+              className={`min-h-11 border-b-2 px-1 font-mono text-xs ${
+                tab === name ? "border-foreground" : "border-transparent theme-muted"
+              }`}
+            >
+              {name === "inbox"
+                ? `needs attention${unresolved ? ` · ${unresolved}` : ""}`
+                : name === "people"
+                  ? "identity manager"
+                  : "attendee preview"}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {tab === "inbox" ? (
         <div className="mt-5">
@@ -372,9 +411,10 @@ export function AttendeeOperationsPanel({
               onValueChange={setStatusFilter}
               options={[
                 { value: "", label: "all statuses" },
-                ...(["new", "seen", "in-progress", "resolved", "dismissed"] as const).map(
-                  (status) => ({ value: status, label: status }),
-                ),
+                ...(["new", "in-progress", "resolved", "dismissed"] as const).map((status) => ({
+                  value: status,
+                  label: status,
+                })),
               ]}
               variant="field"
               ariaLabel="Filter by status"
@@ -448,6 +488,7 @@ export function AttendeeOperationsPanel({
                     <div className="max-w-2xl">
                       <p className="font-mono text-micro uppercase tracking-widest theme-muted">
                         {item.status}
+                        {item.unread ? " · unread for you" : ""}
                         {` · ${item.severity} · ${item.category}`}
                         {item.eventSlug ? ` · ${item.eventSlug}` : ""}
                       </p>
@@ -459,20 +500,33 @@ export function AttendeeOperationsPanel({
                     <div className="flex flex-wrap gap-3">
                       <a
                         href={item.deepLink}
+                        onClick={(event) => {
+                          if (!item.unread) return;
+                          event.preventDefault();
+                          void openItem(item);
+                        }}
                         className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
                       >
-                        open
+                        open relevant page
                       </a>
-                      {item.status === "new" ? (
+                      {item.unread ? (
                         <button
                           type="button"
-                          onClick={() => void updateItem(item, "seen")}
+                          onClick={() => void setItemRead(item, true)}
                           className="min-h-11 font-mono text-xs underline"
                         >
-                          mark seen
+                          mark read
                         </button>
-                      ) : null}
-                      {item.status === "seen" ? (
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void setItemRead(item, false)}
+                          className="min-h-11 font-mono text-xs underline"
+                        >
+                          mark unread
+                        </button>
+                      )}
+                      {item.status === "new" ? (
                         <button
                           type="button"
                           onClick={() => void updateItem(item, "in-progress")}

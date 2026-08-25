@@ -1,30 +1,34 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAuth, requireAuthWithPayload } from "@/features/auth/auth.server";
+import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
   listAdminInbox,
+  setAdminNotificationReadState,
   updateAdminNotification,
   type AdminInboxItem,
 } from "@/features/attendee-operations/notifications.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
-  const auth = await requireAuth(request, "admin");
-  if (auth) return auth;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
+  const viewer = notificationViewer(auth);
   try {
     const url = new URL(request.url);
     const status = url.searchParams.get("status") as AdminInboxItem["status"] | null;
-    const valid = ["new", "seen", "in-progress", "resolved", "dismissed"].includes(status ?? "");
+    const valid = ["new", "in-progress", "resolved", "dismissed"].includes(status ?? "");
     const severity = url.searchParams.get("severity");
     const validSeverity = ["info", "prompt", "warning", "critical"].includes(severity ?? "");
     return Response.json(
       await listAdminInbox({
+        viewer,
         status: valid ? (status ?? undefined) : undefined,
         severity: validSeverity
           ? (severity as "info" | "prompt" | "warning" | "critical")
           : undefined,
         category: url.searchParams.get("category") || undefined,
         eventSlug: url.searchParams.get("event") || undefined,
+        active: url.searchParams.get("active") === "1",
       }),
     );
   } catch (error) {
@@ -47,8 +51,19 @@ async function handlePATCH(request: Request) {
       reason?: unknown;
       assigneePersonId?: unknown;
       privateNote?: unknown;
+      read?: unknown;
     } | null;
-    const statuses = ["new", "seen", "in-progress", "resolved", "dismissed"] as const;
+    if (body && typeof body.id === "string" && typeof body.read === "boolean") {
+      const updated = await setAdminNotificationReadState({
+        id: body.id,
+        viewer: notificationViewer(auth),
+        read: body.read,
+      });
+      return updated
+        ? Response.json({ updated: true })
+        : Response.json({ error: "Notification not found" }, { status: 404 });
+    }
+    const statuses = ["new", "in-progress", "resolved", "dismissed"] as const;
     if (
       !body ||
       typeof body.id !== "string" ||
@@ -82,6 +97,13 @@ async function handlePATCH(request: Request) {
       error,
     );
   }
+}
+
+function notificationViewer(auth: Awaited<ReturnType<typeof requireAuthWithPayload>>) {
+  return {
+    actorId: auth.actorId ?? "root-owner",
+    actorType: auth.actorType === "admin" ? ("admin" as const) : ("root-owner" as const),
+  };
 }
 
 export const Route = createFileRoute("/api/admin/operations/inbox")({

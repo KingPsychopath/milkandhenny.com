@@ -2996,6 +2996,30 @@ const MIGRATIONS: Migration[] = [
        where entrance.id = run.entrance_id and entrance.game = 'same-brain';
     `,
   },
+  {
+    id: "0060_admin_notification_read_state",
+    sql: `
+      update admin_notifications set status = 'new' where status = 'seen';
+      alter table admin_notifications drop constraint admin_notifications_status_check;
+      alter table admin_notifications add constraint admin_notifications_status_check
+        check (status in ('new','in-progress','resolved','dismissed'));
+
+      update admin_attention_cases set status = 'new' where status = 'seen';
+      alter table admin_attention_cases drop constraint admin_attention_cases_status_check;
+      alter table admin_attention_cases add constraint admin_attention_cases_status_check
+        check (status in ('new','in-progress','resolved','dismissed'));
+
+      create table admin_notification_reads (
+        notification_id  text not null references admin_notifications (id) on delete cascade,
+        actor_type       text not null check (actor_type in ('root-owner','admin')),
+        actor_id         text not null check (char_length(actor_id) between 1 and 200),
+        read_at          timestamptz not null default now(),
+        primary key (notification_id, actor_type, actor_id)
+      );
+      create index admin_notification_reads_actor_idx
+        on admin_notification_reads (actor_type, actor_id, read_at desc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
