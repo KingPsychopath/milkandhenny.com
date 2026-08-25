@@ -1,9 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredOfficialResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+vi.mock("@/features/things/shared/official-game-results.server", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/features/things/shared/official-game-results.server")>();
+  return {
+    ...original,
+    deliverOfficialResultsAfterCommit: vi.fn(
+      (queued: Array<{ envelope: Record<string, unknown> }>) =>
+        deliveredOfficialResults.push(...queued.map(({ envelope }) => envelope)),
+    ),
+  };
+});
 
 import {
   applyPlayerAction,
@@ -19,7 +32,10 @@ import {
   partyAudioAssetKey,
 } from "../../features/things/spelling-party/party-content.server";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredOfficialResults.length = 0;
+  vi.useRealTimers();
+});
 
 async function joined(roomId: string, joinToken: string, name: string, joinId: string) {
   const result = await joinPartyRoom({ roomId, joinToken, name, joinId });
@@ -248,7 +264,11 @@ describe("Party Typing rooms", () => {
   it("automatically locks the latest synchronized draft and returns a complete reconnect snapshot", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T13:00:00Z"));
-    const room = await createPartyRoom({ deckId: "warm-up", answerSeconds: 10, roundTotal: 1 });
+    const room = await createPartyRoom({
+      deckId: "warm-up",
+      answerSeconds: 10,
+      roundTotal: 1,
+    });
     const player = await joined(room.roomId, room.joinToken, "Ava", "join-ava");
     const started = await applyPresenterAction({
       roomId: room.roomId,
@@ -354,7 +374,12 @@ describe("Party Typing rooms", () => {
     expect((await closePartyRoom(disposable.roomId, disposable.presenterToken)).ok).toBe(true);
     expect((await closePartyRoom(disposable.roomId, disposable.presenterToken)).ok).toBe(true);
 
-    const room = await createPartyRoom({ deckId: "warm-up", answerSeconds: 10, roundTotal: 1 });
+    const room = await createPartyRoom({
+      deckId: "warm-up",
+      answerSeconds: 10,
+      roundTotal: 1,
+      officialResultChannelId: "score-channel",
+    });
     const player = await joined(room.roomId, room.joinToken, "Ava", "join-finish");
     const started = await applyPresenterAction({
       roomId: room.roomId,
@@ -385,6 +410,16 @@ describe("Party Typing rooms", () => {
       action: { actionId: "finish", type: "round.next" },
     });
     expect(finished.snapshot?.phase).toBe("finished");
+    expect(deliveredOfficialResults).toHaveLength(1);
+    const result = deliveredOfficialResults[0];
+    expect(result).toMatchObject({
+      gameKind: "spelling-party",
+      gameInstanceId: room.roomId,
+      resultId: "game:1",
+      scope: "game",
+      players: [{ playerId: player.playerId, rawScore: 0, placement: 1, won: true }],
+    });
+    expect(JSON.stringify(result)).not.toContain("Ava");
     vi.advanceTimersByTime(14 * 60_000);
     expect(
       (

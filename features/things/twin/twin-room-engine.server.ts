@@ -21,11 +21,18 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
+import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import {
   dealTwin,
   planTwinDeck,
@@ -122,6 +129,7 @@ interface RoomState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
+  officialResultChannelId?: string;
   expiresAt: number;
   revision: number;
   sequence: number;
@@ -150,6 +158,14 @@ interface RoomState {
 type Keys = ReturnType<typeof twinRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("twin");
 const memoryLogs = createMemoryRoomStore<TwinLoggedHeat[]>("twin-log");
+
+registerMemoryRoomSweeper("twin", (now) => {
+  for (const [roomId, room] of memoryRooms) {
+    if (room.expiresAt > now) continue;
+    memoryRooms.delete(roomId);
+    memoryLogs.delete(roomId);
+  }
+});
 
 function changed(room: RoomState) {
   room.revision += 1;
@@ -238,20 +254,62 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     const room = await loadRoom(roomId);
     if (!room) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
     if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    const envelope = !wasFinished && room.phase === "finished" ? twinOfficialResult(room) : null;
+    if (envelope)
+      deliverOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
     return result;
   }
   const initial = await loadRoom(roomId);
   if (!initial) return null;
   const keys: Keys = twinRoomRedisKeys(roomId);
-  return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
-    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) {
+      const envelope = !wasFinished && room.phase === "finished" ? twinOfficialResult(room) : null;
+      queued = await persistRoomWithOfficialResults({
+        redis,
+        stateKey: keys.state,
+        room,
+        ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+        envelopes: envelope ? [envelope] : [],
+      });
+    }
     return result;
+  });
+  deliverOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function twinOfficialResult(room: RoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "finished") return null;
+  const ranked = rankTwinFinish(playerStats(room));
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "twin",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber}`,
+      scope: "game",
+      players: ranked.map((player, index) => ({
+        playerId: player.playerId,
+        outcome: room.players.find(({ id }) => id === player.playerId)?.withdrawn
+          ? "withdrawn"
+          : "completed",
+        rawScore: player.connections,
+        placement: index + 1,
+        durationMs: player.totalElapsedMs,
+        won: index === 0,
+      })),
+    },
   });
 }
 
@@ -679,6 +737,7 @@ export async function createTwinRoom(input: {
   graceMs?: number;
   settleHoldMs?: number;
   managed?: boolean;
+  officialResultChannelId?: string;
 }) {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -695,6 +754,7 @@ export async function createTwinRoom(input: {
   const room: RoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     expiresAt,
     revision: 1,
     sequence: 1,

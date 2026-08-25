@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/things/shared/official-game-results.server", () => ({
+  deliverOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-08-08T12:00:00.000Z",
+      payloadHash: "b".repeat(64),
+    }),
+  ),
 }));
 
 import {
@@ -15,7 +34,10 @@ import {
 import { TWIN_TIMING } from "../../features/things/twin/twin-rules";
 import type { TwinSnapshot } from "../../features/things/twin/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredResults.length = 0;
+  vi.useRealTimers();
+});
 
 interface Seat {
   name: string;
@@ -24,10 +46,10 @@ interface Seat {
   playerToken: string;
 }
 
-async function openRoom(names: string[], handSize = 4) {
+async function openRoom(names: string[], handSize = 4, officialResultChannelId?: string) {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-08T12:00:00Z"));
-  const created = await createTwinRoom({ hostName: names[0], handSize });
+  const created = await createTwinRoom({ hostName: names[0], handSize, officialResultChannelId });
   const seats: Seat[] = [
     {
       name: names[0],
@@ -119,7 +141,7 @@ async function startGame(seats: Seat[]) {
 
 describe("Twin rooms", () => {
   it("always leaves every player exactly one symbol to find, every heat of a whole game", async () => {
-    const { seats } = await openRoom(["Abel", "Maya", "Daniel", "Priya"], 4);
+    const { seats, roomId } = await openRoom(["Abel", "Maya", "Daniel", "Priya"], 4, "gsc_twin");
     await startGame(seats);
 
     let guard = 0;
@@ -147,6 +169,15 @@ describe("Twin rooms", () => {
     }
 
     expect(finished).toBe(true);
+    expect(deliveredResults).toHaveLength(1);
+    expect(deliveredResults[0]).toMatchObject({
+      channelId: "gsc_twin",
+      gameKind: "twin",
+      gameInstanceId: roomId,
+      resultId: "game:1",
+      scope: "game",
+    });
+    expect(JSON.stringify(deliveredResults[0])).not.toContain("Abel");
     expect(heatsSeen.size).toBeGreaterThan(1);
 
     const ended = await look(seats[0]);

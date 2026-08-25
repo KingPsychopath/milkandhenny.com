@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/things/shared/official-game-results.server", () => ({
+  deliverOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-08-08T12:00:00.000Z",
+      payloadHash: "d".repeat(64),
+    }),
+  ),
 }));
 
 /**
@@ -33,7 +52,10 @@ import { startSameBrainScenario } from "../../features/things/same-brain/same-br
 import { SAME_BRAIN_SCENARIOS } from "../../features/things/same-brain/same-brain-scenarios";
 import type { SameBrainScoring, SameBrainSnapshot } from "../../features/things/same-brain/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredResults.length = 0;
+  vi.useRealTimers();
+});
 
 let actionCounter = 0;
 const nextActionId = () => `action-${(actionCounter += 1)}`;
@@ -53,12 +75,18 @@ interface Seat {
  */
 async function room(
   names: string[],
-  options: { scoring?: SameBrainScoring; rounds?: number; toggles?: Record<string, boolean> } = {},
+  options: {
+    scoring?: SameBrainScoring;
+    rounds?: number;
+    toggles?: Record<string, boolean>;
+    officialResultChannelId?: string;
+  } = {},
 ) {
   const created = await createSameBrainRoom({
     scoring: options.scoring ?? "exact",
     rounds: options.rounds,
     toggles: { sayItAloud: false, ...options.toggles },
+    officialResultChannelId: options.officialResultChannelId,
   });
   const seats: Seat[] = [];
   for (const name of names) {
@@ -397,7 +425,10 @@ describe("same brain room", () => {
   });
 
   it("plays a whole game through to a winner", async () => {
-    const created = await room(["Abel", "Maya", "Daniel"], { rounds: 3 });
+    const created = await room(["Abel", "Maya", "Daniel"], {
+      rounds: 3,
+      officialResultChannelId: "gsc_same_brain",
+    });
     await host(created.roomId, created.hostToken, { type: "game.start" });
 
     for (let round = 1; round <= 3; round += 1) {
@@ -416,6 +447,15 @@ describe("same brain room", () => {
       expect.arrayContaining([created.seats[0].playerId, created.seats[1].playerId]),
     );
     expect(ending.players.find(({ name }) => name === "Abel")?.score).toBe(6);
+    expect(deliveredResults).toHaveLength(1);
+    expect(deliveredResults[0]).toMatchObject({
+      channelId: "gsc_same_brain",
+      gameKind: "same-brain",
+      gameInstanceId: created.roomId,
+      resultId: "game:1",
+      scope: "game",
+    });
+    expect(JSON.stringify(deliveredResults[0])).not.toContain("Abel");
   });
 
   /**

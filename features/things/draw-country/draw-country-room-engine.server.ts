@@ -9,6 +9,7 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
   withMultiplayerRoomLock,
@@ -25,6 +26,12 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
+import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import { countryById } from "./countries";
 import { drawCountryRoomRedisKeys } from "./draw-country-keys";
 import { selectRoomCountries } from "./rotation.server";
@@ -75,6 +82,7 @@ interface RoomState {
   roomId: string;
   /** The game-night pool owns admission for this room. */
   managed?: boolean;
+  officialResultChannelId?: string;
   expiresAt: number;
   revision: number;
   sequence: number;
@@ -95,6 +103,10 @@ interface RoomState {
 
 type Keys = ReturnType<typeof drawCountryRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
+
+registerMemoryRoomSweeper("draw-country", (now) => {
+  for (const [roomId, room] of memoryRooms) if (room.expiresAt <= now) memoryRooms.delete(roomId);
+});
 
 function changed(room: RoomState) {
   room.revision += 1;
@@ -134,7 +146,7 @@ async function loadRoom(roomId: string) {
   return room;
 }
 
-async function saveRoom(room: RoomState) {
+async function saveRoom(room: RoomState, envelopes: OfficialGameResultEnvelope[] = []) {
   const redis = getRedis();
   if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "closed")
     room.expiresAt =
@@ -142,13 +154,19 @@ async function saveRoom(room: RoomState) {
   if (room.expiresAt <= Date.now()) {
     if (redis) await redis.del(drawCountryRoomRedisKeys(room.roomId).state);
     else memoryRooms.delete(room.roomId);
-    return;
+    return [];
   }
-  if (redis)
-    await redis.set(drawCountryRoomRedisKeys(room.roomId).state, room, {
-      ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+  if (redis) {
+    return persistRoomWithOfficialResults({
+      redis,
+      stateKey: drawCountryRoomRedisKeys(room.roomId).state,
+      room,
+      ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+      envelopes,
     });
-  else memoryRooms.set(room.roomId, room);
+  }
+  memoryRooms.set(room.roomId, room);
+  return envelopes.map((envelope) => ({ key: `memory:${envelope.payloadHash}`, envelope }));
 }
 
 async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise<T>) {
@@ -157,20 +175,65 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     const room = await loadRoom(roomId);
     if (!room) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
-    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    const envelope =
+      !wasFinished && room.phase === "finished" ? drawCountryOfficialResult(room) : null;
+    const queued = multiplayerRoomStateChanged(before, room)
+      ? await saveRoom(room, envelope ? [envelope] : [])
+      : [];
+    deliverOfficialResultsAfterCommit(queued);
     return result;
   }
   const initial = await loadRoom(roomId);
   if (!initial) return null;
   const keys: Keys = drawCountryRoomRedisKeys(roomId);
-  return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room || room.expiresAt <= Date.now()) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
-    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) {
+      const envelope =
+        !wasFinished && room.phase === "finished" ? drawCountryOfficialResult(room) : null;
+      queued = await saveRoom(room, envelope ? [envelope] : []);
+    }
     return result;
+  });
+  deliverOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function drawCountryOfficialResult(room: RoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "finished") return null;
+  const ranked = room.players
+    .filter((player) => !player.withdrawn)
+    .toSorted((left, right) => right.score - left.score || left.id.localeCompare(right.id));
+  let priorScore: number | null = null;
+  let priorPlacement = 0;
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "draw-country",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber ?? 1}`,
+      scope: "game",
+      players: ranked.map((player, index) => {
+        const placement = player.score === priorScore ? priorPlacement : index + 1;
+        priorScore = player.score;
+        priorPlacement = placement;
+        return {
+          playerId: player.id,
+          outcome: "completed",
+          rawScore: player.score,
+          placement,
+          won: placement === 1,
+        };
+      }),
+    },
   });
 }
 
@@ -336,6 +399,7 @@ export async function createDrawCountryRoom(input: {
   roundTotal: number;
   recentCountryIds: string[];
   managed?: boolean;
+  officialResultChannelId?: string;
 }) {
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
@@ -348,6 +412,7 @@ export async function createDrawCountryRoom(input: {
   const room: RoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     expiresAt,
     revision: 1,
     sequence: 1,

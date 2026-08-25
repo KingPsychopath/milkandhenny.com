@@ -363,10 +363,10 @@ Required permission boundaries:
 Initial integrations:
 
 - [x] Centre.
-- [ ] Twin.
-- [ ] Draw Country.
-- [ ] Same Brain.
-- [ ] Spelling Party.
+- [x] Twin.
+- [x] Draw Country.
+- [x] Same Brain.
+- [x] Spelling Party.
 
 Extended integrations:
 

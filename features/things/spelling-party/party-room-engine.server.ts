@@ -12,6 +12,7 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -29,6 +30,12 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
+import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";
 import type {
@@ -124,6 +131,7 @@ interface JoinReceipt {
 }
 interface PartyRoomState {
   roomId: string;
+  officialResultChannelId?: string;
   deckId: string;
   deckName: string;
   answerSeconds: number;
@@ -152,6 +160,17 @@ interface PartyRoomState {
 
 const memoryRooms = createMemoryRoomStore<PartyRoomState>("spelling-party");
 const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("spelling-party-receipts");
+
+registerMemoryRoomSweeper("spelling-party", (now) => {
+  for (const [roomId, room] of memoryRooms) {
+    if (room.expiresAt > now) continue;
+    memoryRooms.delete(roomId);
+    for (const joinId of room.joinReceiptIds)
+      memoryJoinReceipts.delete(memoryReceiptKey(roomId, joinId));
+  }
+  for (const [key, receipt] of memoryJoinReceipts)
+    if (receipt.expiresAt <= now) memoryJoinReceipts.delete(key);
+});
 let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setPartyRoomLockObserver(observer: typeof lockObserver) {
@@ -232,18 +251,30 @@ async function loadRoom(id: string): Promise<LoadedRoom | null> {
   return { room, keys };
 }
 
-async function saveRoom(room: PartyRoomState, keys = partyRoomRedisKeys(room.roomId)) {
+async function saveRoom(
+  room: PartyRoomState,
+  keys = partyRoomRedisKeys(room.roomId),
+  envelopes: OfficialGameResultEnvelope[] = [],
+) {
   const redis = getRedis();
   if (room.phase !== "lobby" && room.phase !== "finished")
     room.expiresAt =
       activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
   if (room.expiresAt <= Date.now()) {
     await deletePartyRoom(room, keys);
-    return;
+    return [];
   }
-  if (redis)
-    await redis.set(keys.state, room, { ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt) });
-  else memoryRooms.set(room.roomId, room);
+  if (redis) {
+    return persistRoomWithOfficialResults({
+      redis,
+      stateKey: keys.state,
+      room,
+      ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+      envelopes,
+    });
+  }
+  memoryRooms.set(room.roomId, room);
+  return envelopes.map((envelope) => ({ key: `memory:${envelope.payloadHash}`, envelope }));
 }
 
 async function withRoom<T>(
@@ -255,24 +286,69 @@ async function withRoom<T>(
     const loaded = await loadRoom(id);
     if (!loaded) return null;
     const before = JSON.stringify(loaded.room);
+    const wasFinished = loaded.room.phase === "finished";
     const result = await use(loaded.room, loaded.keys);
-    if (multiplayerRoomStateChanged(before, loaded.room)) await saveRoom(loaded.room, loaded.keys);
+    const envelope =
+      !wasFinished && loaded.room.phase === "finished" ? partyOfficialResult(loaded.room) : null;
+    const queued = multiplayerRoomStateChanged(before, loaded.room)
+      ? await saveRoom(loaded.room, loaded.keys, envelope ? [envelope] : [])
+      : [];
+    deliverOfficialResultsAfterCommit(queued);
     return result;
   }
   const initial = await loadRoom(id);
   if (!initial) return null;
-  return withMultiplayerRoomLock(
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(
     redis,
     { roomId: id, lockKey: initial.keys.lock, onAttempt: (attempt) => lockObserver?.(attempt) },
     async () => {
       const room = await redis.get<PartyRoomState>(initial.keys.state);
       if (!room || room.expiresAt <= Date.now()) return null;
       const before = JSON.stringify(room);
+      const wasFinished = room.phase === "finished";
       const result = await use(room, initial.keys);
-      if (multiplayerRoomStateChanged(before, room)) await saveRoom(room, initial.keys);
+      if (multiplayerRoomStateChanged(before, room)) {
+        const envelope =
+          !wasFinished && room.phase === "finished" ? partyOfficialResult(room) : null;
+        queued = await saveRoom(room, initial.keys, envelope ? [envelope] : []);
+      }
       return result;
     },
   );
+  deliverOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function partyOfficialResult(room: PartyRoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "finished") return null;
+  const ranked = room.players.toSorted(
+    (left, right) => right.score - left.score || left.id.localeCompare(right.id),
+  );
+  let priorScore: number | null = null;
+  let priorPlacement = 0;
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "spelling-party",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber ?? 1}`,
+      scope: "game",
+      players: ranked.map((player, index) => {
+        const placement = player.score === priorScore ? priorPlacement : index + 1;
+        priorScore = player.score;
+        priorPlacement = placement;
+        return {
+          playerId: player.id,
+          outcome: player.leftAt === undefined ? "completed" : "withdrawn",
+          rawScore: player.score,
+          placement,
+          won: placement === 1,
+        };
+      }),
+    },
+  });
 }
 
 async function readJoinReceipt(roomIdValue: string, joinId: string, keys: PartyRedisKeys) {
@@ -547,6 +623,7 @@ export async function createPartyRoom(input: {
   recentWordIds?: string[];
   answerSeconds: number;
   roundTotal: number;
+  officialResultChannelId?: string;
 }): Promise<PartyRoomCredentials> {
   const seen = new Set<string>();
   const customWords: PartyWord[] = (input.customDeck?.words ?? []).flatMap((word) => {
@@ -582,6 +659,7 @@ export async function createPartyRoom(input: {
   const words = [...freshWords, ...previousWords];
   const room: PartyRoomState = {
     roomId: nextRoomId,
+    officialResultChannelId: input.officialResultChannelId,
     deckId: deck.id,
     deckName: deck.name,
     answerSeconds: Math.max(8, Math.min(60, input.answerSeconds)),

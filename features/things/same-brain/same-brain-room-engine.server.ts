@@ -12,6 +12,7 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -32,6 +33,12 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
+import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import { sameBrainQuestion } from "./same-brain-questions";
 import { sameBrainSimilarity } from "./same-brain-embeddings.server";
 import {
@@ -108,6 +115,7 @@ interface SameBrainRoomState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
+  officialResultChannelId?: string;
   phase: SameBrainPhase;
   revision: number;
   sequence: number;
@@ -151,6 +159,17 @@ interface JoinReceipt {
 
 const memoryRooms = createMemoryRoomStore<SameBrainRoomState>("same-brain");
 const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("same-brain-receipts");
+
+registerMemoryRoomSweeper("same-brain", (now) => {
+  for (const [roomId, room] of memoryRooms) {
+    if (room.expiresAt > now) continue;
+    memoryRooms.delete(roomId);
+    for (const joinId of room.joinReceiptIds)
+      memoryJoinReceipts.delete(memoryReceiptKey(roomId, joinId));
+  }
+  for (const [key, receipt] of memoryJoinReceipts)
+    if (receipt.expiresAt <= now) memoryJoinReceipts.delete(key);
+});
 let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setSameBrainRoomLockObserver(observer: typeof lockObserver) {
@@ -232,16 +251,28 @@ async function loadRoom(
   return { room, keys };
 }
 
-async function saveRoom(room: SameBrainRoomState, keys = sameBrainRoomRedisKeys(room.roomId)) {
+async function saveRoom(
+  room: SameBrainRoomState,
+  keys = sameBrainRoomRedisKeys(room.roomId),
+  envelopes: OfficialGameResultEnvelope[] = [],
+) {
   const redis = getRedis();
   room.expiresAt = storageExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deleteRoom(room, keys);
-    return;
+    return [];
   }
-  if (redis)
-    await redis.set(keys.state, room, { ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt) });
-  else memoryRooms.set(room.roomId, room);
+  if (redis) {
+    return persistRoomWithOfficialResults({
+      redis,
+      stateKey: keys.state,
+      room,
+      ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+      envelopes,
+    });
+  }
+  memoryRooms.set(room.roomId, room);
+  return envelopes.map((envelope) => ({ key: `memory:${envelope.payloadHash}`, envelope }));
 }
 
 async function withRoom<T>(
@@ -253,24 +284,69 @@ async function withRoom<T>(
     const loaded = await loadRoom(id);
     if (!loaded) return null;
     const before = JSON.stringify(loaded.room);
+    const wasEnding = loaded.room.phase === "ending";
     const result = await use(loaded.room, loaded.keys);
-    if (multiplayerRoomStateChanged(before, loaded.room)) await saveRoom(loaded.room, loaded.keys);
+    const envelope =
+      !wasEnding && loaded.room.phase === "ending" ? sameBrainOfficialResult(loaded.room) : null;
+    const queued = multiplayerRoomStateChanged(before, loaded.room)
+      ? await saveRoom(loaded.room, loaded.keys, envelope ? [envelope] : [])
+      : [];
+    deliverOfficialResultsAfterCommit(queued);
     return result;
   }
   const initial = await loadRoom(id);
   if (!initial) return null;
-  return withMultiplayerRoomLock(
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(
     redis,
     { roomId: id, lockKey: initial.keys.lock, onAttempt: (attempt) => lockObserver?.(attempt) },
     async () => {
       const room = await redis.get<SameBrainRoomState>(initial.keys.state);
       if (!room || room.expiresAt <= Date.now()) return null;
       const before = JSON.stringify(room);
+      const wasEnding = room.phase === "ending";
       const result = await use(room, initial.keys);
-      if (multiplayerRoomStateChanged(before, room)) await saveRoom(room, initial.keys);
+      if (multiplayerRoomStateChanged(before, room)) {
+        const envelope =
+          !wasEnding && room.phase === "ending" ? sameBrainOfficialResult(room) : null;
+        queued = await saveRoom(room, initial.keys, envelope ? [envelope] : []);
+      }
       return result;
     },
   );
+  deliverOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function sameBrainOfficialResult(room: SameBrainRoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "ending") return null;
+  const ranked = room.players.toSorted(
+    (left, right) => right.score - left.score || left.id.localeCompare(right.id),
+  );
+  let priorScore: number | null = null;
+  let priorPlacement = 0;
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "same-brain",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber}`,
+      scope: "game",
+      players: ranked.map((player, index) => {
+        const placement = player.score === priorScore ? priorPlacement : index + 1;
+        priorScore = player.score;
+        priorPlacement = placement;
+        return {
+          playerId: player.id,
+          outcome: player.leftAt === undefined ? "completed" : "withdrawn",
+          rawScore: player.score,
+          placement,
+          won: room.winnerIds.includes(player.id),
+        };
+      }),
+    },
+  });
 }
 
 async function readJoinReceipt(roomId: string, joinId: string, keys: SameBrainRedisKeys) {
@@ -613,6 +689,7 @@ export async function createSameBrainRoom(input: {
   toggles?: Partial<SameBrainToggles>;
   timings?: Partial<SameBrainTimings>;
   managed?: boolean;
+  officialResultChannelId?: string;
 }): Promise<SameBrainRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
@@ -624,6 +701,7 @@ export async function createSameBrainRoom(input: {
   const room: SameBrainRoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     phase: "lobby",
     revision: 1,
     sequence: 1,

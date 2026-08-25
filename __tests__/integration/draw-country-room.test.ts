@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/things/shared/official-game-results.server", () => ({
+  deliverOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-07-15T11:00:00.000Z",
+      payloadHash: "c".repeat(64),
+    }),
+  ),
 }));
 
 import {
@@ -14,14 +33,18 @@ import {
 import { countryById } from "../../features/things/draw-country/countries";
 import type { CountryDrawing } from "../../features/things/draw-country/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredResults.length = 0;
+  vi.useRealTimers();
+});
 
-async function hostedRoom(roundTotal = 2, drawSeconds = 30) {
+async function hostedRoom(roundTotal = 2, drawSeconds = 30, officialResultChannelId?: string) {
   return createDrawCountryRoom({
     hostName: "Abel",
     drawSeconds,
     roundTotal,
     recentCountryIds: [],
+    officialResultChannelId,
   });
 }
 
@@ -249,7 +272,7 @@ describe("Draw the Country rooms", () => {
   it("runs to a finish and then reports the room as finished", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T11:00:00Z"));
-    const room = await hostedRoom(1, 30);
+    const room = await hostedRoom(1, 30, "gsc_draw_country");
     const started = await applyDrawCountryAction({
       roomId: room.roomId,
       playerId: room.playerId,
@@ -273,6 +296,16 @@ describe("Draw the Country rooms", () => {
       lastSequence: 0,
     });
     expect(finished.snapshot?.phase).toBe("finished");
+    expect(deliveredResults).toHaveLength(1);
+    expect(deliveredResults[0]).toMatchObject({
+      channelId: "gsc_draw_country",
+      gameKind: "draw-country",
+      gameInstanceId: room.roomId,
+      resultId: "game:1",
+      scope: "game",
+      players: [{ playerId: room.playerId, outcome: "completed", placement: 1 }],
+    });
+    expect(JSON.stringify(deliveredResults[0])).not.toContain("Abel");
   });
 
   it("replays with the same people, banking the last game into a session total", async () => {
