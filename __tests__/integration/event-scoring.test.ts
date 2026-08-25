@@ -8,6 +8,7 @@ import {
   createTeam,
   findSettings,
   getOrCreateSettings,
+  markParticipantCheckedIn,
   participantForTicket,
   recordScore,
   rebuildEventProjections,
@@ -22,7 +23,6 @@ import {
   ingestOfficialGameResult,
   linkGamePlayer,
   processOfficialGameResult,
-  retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
 import {
   claimGamePlayerResult,
@@ -37,6 +37,8 @@ import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
+  awardPoints,
+  changeScoringState,
   mergeParticipants,
   reverseParticipantMerge,
 } from "@/features/event-scoring/scoring.server";
@@ -466,11 +468,13 @@ describeWithDatabase("event scoring postgres", () => {
         ?.count,
     ).toBe("0");
     expect((await processOfficialGameResult(resultId)).state).toBe("held");
-    await query(
-      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
-    );
-    const processed = await retryHeldOfficialGameResult(resultId);
-    expect(processed.state).toBe("processed");
+    expect(
+      await changeScoringState({
+        eventSlug: "scoring-night",
+        state: "live",
+        actorId: "admin-1",
+      }),
+    ).toMatchObject({ ok: true, value: { state: "live" } });
     const duplicate = await ingestOfficialGameResult(envelope);
     expect(duplicate.ok && duplicate.value.duplicate).toBe(true);
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
@@ -721,5 +725,37 @@ describeWithDatabase("event scoring postgres", () => {
         )
       )[0]?.count,
     ).toBe("2");
+  });
+
+  it("enforces activity check-in and repeat rules inside the score transaction", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Checked-in winner",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 4, repeat: "once", requiresCheckIn: true },
+    });
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const award = (command: string) =>
+      awardPoints({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        participantIds: [participant!.id],
+        idempotencyKey: command,
+        sourceId: command,
+        actorType: "admin",
+        actorId: "admin-1",
+      });
+    expect(await award("checked-award-one")).toMatchObject({ ok: false, status: 409 });
+    await markParticipantCheckedIn(participant!.id, new Date());
+    const accepted = await award("checked-award-one");
+    expect(accepted).toMatchObject({ ok: true, value: { status: "accepted" } });
+    expect(await award("checked-award-one")).toEqual(accepted);
+    expect(await award("checked-award-two")).toMatchObject({ ok: false, status: 409 });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(4);
   });
 });

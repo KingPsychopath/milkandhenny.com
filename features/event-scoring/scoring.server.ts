@@ -39,6 +39,7 @@ import {
   updateSettings,
   type RecordScoreInput,
 } from "./store.server";
+import { retryHeldOfficialGameResultsForEvent } from "./games.server";
 
 export type ScoringOperationResult<T> =
   | { ok: true; value: T }
@@ -89,6 +90,9 @@ export async function changeScoringState(input: {
       JSON.stringify({ from: current.state, to: input.state, reason: input.reason ?? null }),
     ],
   );
+  if (current.state === "frozen" && input.state === "live") {
+    await retryHeldOfficialGameResultsForEvent(input.eventSlug);
+  }
   return { ok: true, value: next };
 }
 

@@ -487,3 +487,28 @@ export async function retryHeldOfficialGameResult(
   );
   return processOfficialGameResult(resultId);
 }
+
+export async function retryHeldOfficialGameResultsForEvent(
+  eventSlug: string,
+  limit = 200,
+): Promise<{ selected: number; processed: number; held: number }> {
+  const rows = await query<{ id: string }>(
+    `select results.id
+       from official_game_results results
+       join event_game_score_bindings bindings on bindings.channel_id = results.channel_id
+       join events on events.event_id = bindings.event_id
+      where events.slug = $1 and results.status = 'held'
+      order by results.ingested_at, results.id
+      limit $2`,
+    [eventSlug, Math.max(1, Math.min(500, Math.trunc(limit)))],
+  );
+  const outcomes: OfficialResultProcessingOutcome[] = [];
+  for (const row of rows) outcomes.push(await retryHeldOfficialGameResult(row.id));
+  return {
+    selected: rows.length,
+    processed: outcomes.filter((outcome) =>
+      ["processed", "corrected", "cancelled"].includes(outcome.state),
+    ).length,
+    held: outcomes.filter((outcome) => outcome.state === "held").length,
+  };
+}

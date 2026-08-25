@@ -232,10 +232,10 @@ Confirm each decision before the affected implementation begins.
 - [ ] Scheduled start and end use the event timezone and handle daylight-saving changes.
 - [ ] Admins can start, freeze, resume, and close scoring manually.
 - [ ] Freeze keeps public totals fixed.
-- [ ] Valid results received while frozen are stored as held source receipts.
-- [ ] Resume can process eligible held results once.
-- [ ] Close blocks normal awards and claims.
-- [ ] A late automatic game result after close enters review instead of disappearing.
+- [x] Valid results received while frozen are stored as held source receipts.
+- [x] Resume can process eligible held results once.
+- [x] Close blocks normal awards and claims.
+- [x] A late automatic game result after close enters review instead of disappearing.
 - [ ] Admin correction after close requires reason, confirmation, and re-finalization.
 - [ ] Cancelling an activity defines whether pending results are rejected, held, or honoured.
 - [ ] Cancelling an event prevents new claims while preserving audit and attendee history.

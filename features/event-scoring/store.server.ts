@@ -996,12 +996,14 @@ export async function recordScoreInTransaction(
   }
 
   const settings = await lockSettings(client, input.eventSlug);
+  let activityRule: ScoreRule | null = null;
   if (input.activityId) {
-    const activity = await client.query<{ id: string }>(
-      `select id from score_activities where id = $1 and event_slug = $2`,
+    const activity = await client.query<{ id: string; rule: unknown }>(
+      `select id, rule from score_activities where id = $1 and event_slug = $2`,
       [input.activityId, input.eventSlug],
     );
     if (!activity.rows[0]) return { ok: false, status: 404, error: "Score activity not found" };
+    activityRule = activity.rows[0].rule as ScoreRule;
   }
   const duplicate = await existingTransaction(client, input.eventSlug, input.idempotencyKey);
   if (duplicate) return { ok: true, value: duplicate };
@@ -1026,8 +1028,9 @@ export async function recordScoreInTransaction(
     id: string;
     event_slug: string;
     status: string;
+    checked_in_at: Date | null;
   }>(
-    `select id, event_slug, status from event_participants
+    `select id, event_slug, status, checked_in_at from event_participants
           where id = any($1::text[]) for update`,
     [participantIds],
   );
@@ -1039,6 +1042,42 @@ export async function recordScoreInTransaction(
     )
   ) {
     return { ok: false, status: 409, error: "One participant cannot receive this score" };
+  }
+
+  const activityAward = ["manual", "game", "discovery", "check-in"].includes(input.sourceType);
+  if (
+    activityAward &&
+    activityRule?.requiresCheckIn &&
+    participantResult.rows.some((participant) => !participant.checked_in_at)
+  ) {
+    return { ok: false, status: 409, error: "Check in before receiving this activity score" };
+  }
+  if (activityAward && input.activityId && activityRule?.repeat === "once") {
+    const prior = await client.query<{ participant_id: string }>(
+      `select distinct postings.participant_id
+         from score_transactions transactions
+         join score_postings postings on postings.transaction_id = transactions.id
+        where transactions.event_slug = $1 and transactions.activity_id = $2
+          and transactions.status in ('accepted', 'held')
+          and postings.participant_id = any($3::text[])
+        limit 1`,
+      [input.eventSlug, input.activityId, participantIds],
+    );
+    if (prior.rows[0]) {
+      return { ok: false, status: 409, error: "This activity can award each participant once" };
+    }
+  }
+  if (activityAward && input.activityId && activityRule?.repeat === "once-per-source") {
+    const prior = await client.query<{ id: string }>(
+      `select id from score_transactions
+        where event_slug = $1 and activity_id = $2 and source_id = $3
+          and status in ('accepted', 'held')
+        limit 1`,
+      [input.eventSlug, input.activityId, input.sourceId],
+    );
+    if (prior.rows[0]) {
+      return { ok: false, status: 409, error: "This activity source has already been scored" };
+    }
   }
 
   if (input.sourceType !== "reversal" && input.postings.some((posting) => posting.points < 0)) {

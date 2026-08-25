@@ -366,9 +366,15 @@ export async function claimDiscovery(input: {
 > {
   const discovery = await getDiscovery(input.discoveryId);
   if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
-  const participant = await getParticipant(input.participantId);
+  const [participant, event] = await Promise.all([
+    getParticipant(input.participantId),
+    getEvent(discovery.eventSlug),
+  ]);
   if (!participant || participant.eventSlug !== discovery.eventSlug)
     return { ok: false, status: 404, error: "Participant not found" };
+  if (!event || event.status === "cancelled" || event.status === "archived") {
+    return { ok: false, status: 409, error: "This event is not accepting discovery claims" };
+  }
   if (discovery.status !== "live")
     return { ok: false, status: 409, error: "This discovery is not live" };
   const resolved = await resolveDiscovery(discovery, input.presented);
@@ -392,6 +398,9 @@ export async function claimDiscovery(input: {
   }
 
   const settings = await getOrCreateSettings(discovery.eventSlug);
+  if (settings.state !== "live" && settings.state !== "frozen") {
+    return { ok: false, status: 409, error: "Scoring is not accepting discovery claims" };
+  }
   const claimId = id("claim");
   const claim = await transaction(async (client) => {
     // Claim numbers must be allocated under one lock. Without this, two final
