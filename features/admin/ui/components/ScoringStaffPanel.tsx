@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type {
   AdminScoringActivity,
   AdminStaffAssignment,
@@ -164,14 +165,17 @@ export function ScoringStaffPanel({
         ) : null}
         <label className="font-mono text-xs">
           access type
-          <select
+          <AppSelect
             value={assignmentType}
-            onChange={(event) => setAssignmentType(event.target.value as typeof assignmentType)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="personal">personal link</option>
-            <option value="station">shared station</option>
-          </select>
+            onValueChange={(value) => setAssignmentType(value as typeof assignmentType)}
+            options={[
+              { value: "personal", label: "personal link" },
+              { value: "station", label: "shared station" },
+            ]}
+            variant="field"
+            ariaLabel="Access type"
+            className="mt-2"
+          />
           <span className="mt-2 block leading-relaxed theme-muted">
             {assignmentType === "personal"
               ? "Tied to one durable staff identity."
@@ -180,17 +184,17 @@ export function ScoringStaffPanel({
         </label>
         <label className="font-mono text-xs">
           preset
-          <select
+          <AppSelect
             value={preset}
-            onChange={(event) => setPreset(event.target.value as typeof preset)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {PRESETS.map((value) => (
-              <option key={value} value={value}>
-                {value.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setPreset(value as typeof preset)}
+            options={PRESETS.map((value) => ({
+              value,
+              label: value.replaceAll("-", " "),
+            }))}
+            variant="field"
+            ariaLabel="Access preset"
+            className="mt-2"
+          />
           <span className="mt-2 block leading-relaxed theme-muted">
             {PRESET_DESCRIPTIONS[preset]}
           </span>

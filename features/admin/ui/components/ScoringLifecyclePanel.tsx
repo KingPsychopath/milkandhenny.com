@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { ScoringAction, ScoringData } from "./event-scoring-types";
 
 export function ScoringLifecyclePanel({
@@ -34,16 +35,19 @@ export function ScoringLifecyclePanel({
       >
         <label className="font-mono text-xs">
           visibility
-          <select
+          <AppSelect
             value={visibility}
-            onChange={(event) => setVisibility(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="hidden">hidden</option>
-            <option value="preview">admin preview</option>
-            <option value="public-live">public live</option>
-            <option value="public-final">public final</option>
-          </select>
+            onValueChange={setVisibility}
+            options={[
+              { value: "hidden", label: "hidden" },
+              { value: "preview", label: "admin preview" },
+              { value: "public-live", label: "public live" },
+              { value: "public-final", label: "public final" },
+            ]}
+            variant="field"
+            ariaLabel="Leaderboard visibility"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           scheduled start (ISO time with event offset)

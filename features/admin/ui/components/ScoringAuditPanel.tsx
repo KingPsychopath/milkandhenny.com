@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { AdminScoringActivity, ScoringData } from "./event-scoring-types";
 
 export function ScoringAuditPanel({
@@ -78,46 +79,56 @@ export function ScoringAuditPanel({
         </label>
         <label className="font-mono text-xs">
           activity
-          <select
+          <AppSelect
             value={activity}
-            onChange={(event) => setActivity(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">all activities</option>
-            {activities.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setActivity}
+            options={[
+              { value: "", label: "all activities" },
+              ...activities.map((entry) => ({ value: entry.id, label: entry.name })),
+            ]}
+            variant="field"
+            ariaLabel="Activity"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           source
-          <select
+          <AppSelect
             value={source}
-            onChange={(event) => setSource(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">all sources</option>
-            {["manual", "game", "discovery", "check-in", "transfer", "reversal", "correction"].map(
-              (entry) => (
-                <option key={entry}>{entry}</option>
-              ),
-            )}
-          </select>
+            onValueChange={setSource}
+            options={[
+              { value: "", label: "all sources" },
+              ...[
+                "manual",
+                "game",
+                "discovery",
+                "check-in",
+                "transfer",
+                "reversal",
+                "correction",
+              ].map((entry) => ({ value: entry, label: entry })),
+            ]}
+            variant="field"
+            ariaLabel="Source"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           status
-          <select
+          <AppSelect
             value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">all states</option>
-            {["accepted", "held", "rejected", "reversed"].map((entry) => (
-              <option key={entry}>{entry}</option>
-            ))}
-          </select>
+            onValueChange={setStatus}
+            options={[
+              { value: "", label: "all states" },
+              ...["accepted", "held", "rejected", "reversed"].map((entry) => ({
+                value: entry,
+                label: entry,
+              })),
+            ]}
+            variant="field"
+            ariaLabel="Status"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           from

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { AdminScoringActivity, ScoringAction } from "./event-scoring-types";
 
 type Participant = { id: string; displayName?: string; publicAlias: string; balance: number };
@@ -113,17 +114,17 @@ export function ScoringCorrectionsPanel({
           </p>
           <label className="font-mono text-xs">
             source activity
-            <select
+            <AppSelect
               value={activityId}
-              onChange={(event) => setActivityId(event.target.value)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              {activities.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {activity.name}
-                </option>
-              ))}
-            </select>
+              onValueChange={setActivityId}
+              options={activities.map((activity) => ({
+                value: activity.id,
+                label: activity.name,
+              }))}
+              variant="field"
+              ariaLabel="Source activity"
+              className="mt-2"
+            />
           </label>
           <label className="font-mono text-xs">
             {state === "closed" ? "point change (positive or negative)" : "penalty points"}

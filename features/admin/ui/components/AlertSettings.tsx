@@ -1,5 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
+
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type Recipient = {
   id: string;
@@ -216,14 +218,17 @@ export function AlertSettings({
         </fieldset>
         <label className="font-mono text-xs">
           cadence
-          <select
+          <AppSelect
             value={cadence}
-            onChange={(event) => setCadence(event.target.value as Recipient["cadence"])}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="immediate">immediate</option>
-            <option value="digest">daily digest</option>
-          </select>
+            onValueChange={(value) => setCadence(value as Recipient["cadence"])}
+            options={[
+              { value: "immediate", label: "immediate" },
+              { value: "digest", label: "daily digest" },
+            ]}
+            variant="field"
+            ariaLabel="Cadence"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           digest hour

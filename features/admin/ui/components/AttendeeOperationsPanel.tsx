@@ -1,4 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+
+import { AppSelect } from "@/components/AppSelect";
 import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -287,28 +289,31 @@ export function AttendeeOperationsPanel({
       {tab === "inbox" ? (
         <div className="mt-5">
           <div className="mb-5 grid gap-3 border-y theme-border py-4 sm:grid-cols-2 lg:grid-cols-5">
-            <select
+            <AppSelect
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              aria-label="filter by status"
-              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
-            >
-              <option value="">all statuses</option>
-              {(["new", "seen", "in-progress", "resolved", "dismissed"] as const).map((status) => (
-                <option key={status}>{status}</option>
-              ))}
-            </select>
-            <select
+              onValueChange={setStatusFilter}
+              options={[
+                { value: "", label: "all statuses" },
+                ...(["new", "seen", "in-progress", "resolved", "dismissed"] as const).map(
+                  (status) => ({ value: status, label: status }),
+                ),
+              ]}
+              variant="field"
+              ariaLabel="Filter by status"
+            />
+            <AppSelect
               value={severityFilter}
-              onChange={(event) => setSeverityFilter(event.target.value)}
-              aria-label="filter by severity"
-              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
-            >
-              <option value="">all severities</option>
-              {(["critical", "warning", "prompt", "info"] as const).map((severity) => (
-                <option key={severity}>{severity}</option>
-              ))}
-            </select>
+              onValueChange={setSeverityFilter}
+              options={[
+                { value: "", label: "all severities" },
+                ...(["critical", "warning", "prompt", "info"] as const).map((severity) => ({
+                  value: severity,
+                  label: severity,
+                })),
+              ]}
+              variant="field"
+              ariaLabel="Filter by severity"
+            />
             <input
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
@@ -399,23 +404,22 @@ export function AttendeeOperationsPanel({
                         </button>
                       ) : null}
                       {item.caseId ? (
-                        <select
+                        <AppSelect
                           value={item.assigneePersonId ?? ""}
-                          onChange={(change) =>
+                          onValueChange={(value) =>
                             void updateItem(item, item.status, {
-                              assigneePersonId: change.target.value || undefined,
+                              assigneePersonId: value || undefined,
                             })
                           }
-                          aria-label={`assign ${item.title}`}
-                          className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
-                        >
-                          <option value="">unassigned</option>
-                          {administrators.map((administrator) => (
-                            <option key={administrator.personId} value={administrator.personId}>
-                              {administrator.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={[
+                            { value: "", label: "unassigned" },
+                            ...administrators.map((administrator) => ({
+                              value: administrator.personId,
+                              label: administrator.name,
+                            })),
+                          ]}
+                          ariaLabel={`Assign ${item.title}`}
+                        />
                       ) : null}
                       {item.caseId ? (
                         <button

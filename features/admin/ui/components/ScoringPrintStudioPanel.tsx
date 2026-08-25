@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import {
   PRINT_LAYOUTS,
   PRINT_PACK_KINDS,
@@ -39,44 +40,47 @@ export function ScoringPrintStudioPanel({
       >
         <label className="font-mono text-xs">
           pack
-          <select
+          <AppSelect
             value={kind}
-            onChange={(event) => setKind(event.target.value as PrintPackKind)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {PRINT_PACK_KINDS.map((value) => (
-              <option key={value} value={value}>
-                {value.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setKind(value as PrintPackKind)}
+            options={PRINT_PACK_KINDS.map((value) => ({
+              value,
+              label: value.replaceAll("-", " "),
+            }))}
+            variant="field"
+            ariaLabel="Print pack"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           paper
-          <select
+          <AppSelect
             value={paper}
-            onChange={(event) => setPaper(event.target.value as typeof paper)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="a4">A4</option>
-            <option value="letter">US Letter</option>
-            <option value="a5">A5</option>
-            <option value="card">Card</option>
-          </select>
+            onValueChange={(value) => setPaper(value as typeof paper)}
+            options={[
+              { value: "a4", label: "A4" },
+              { value: "letter", label: "US Letter" },
+              { value: "a5", label: "A5" },
+              { value: "card", label: "Card" },
+            ]}
+            variant="field"
+            ariaLabel="Paper size"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           layout
-          <select
+          <AppSelect
             value={layout}
-            onChange={(event) => setLayout(event.target.value as PrintLayout)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {Object.entries(PRINT_LAYOUTS).map(([value, option]) => (
-              <option key={value} value={value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setLayout(value as PrintLayout)}
+            options={Object.entries(PRINT_LAYOUTS).map(([value, option]) => ({
+              value,
+              label: option.label,
+            }))}
+            variant="field"
+            ariaLabel="Print layout"
+            className="mt-2"
+          />
         </label>
         <button
           disabled={busy || (kind === "hunt" && discoveryCount === 0)}

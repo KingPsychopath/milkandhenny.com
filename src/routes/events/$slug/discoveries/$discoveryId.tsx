@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
+import { AppSelect } from "@/components/AppSelect";
 import { getPublicDiscoveryFn } from "@/features/event-scoring/public.functions";
 import {
   formatDiscoveryCooldown,
@@ -56,6 +57,11 @@ function DiscoveryRoute() {
   }, [activeParticipantId, tickets.length]);
 
   async function claim() {
+    if (!activeParticipantId && tickets.length > 1 && !ticketId) {
+      setIsError(true);
+      setMessage("Choose the ticket playing this hunt.");
+      return;
+    }
     setBusy(true);
     setMessage(null);
     setIsError(false);
@@ -138,19 +144,20 @@ function DiscoveryRoute() {
           {!activeParticipantId && tickets.length > 1 && (
             <label className="block font-mono text-xs">
               ticket playing this hunt
-              <select
-                required
+              <AppSelect
                 value={ticketId}
-                onChange={(event) => setTicketId(event.target.value)}
-                className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-              >
-                <option value="">choose a ticket</option>
-                {tickets.map((ticket) => (
-                  <option key={ticket.ticketId} value={ticket.ticketId}>
-                    {ticket.holderName}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setTicketId}
+                options={[
+                  { value: "", label: "choose a ticket" },
+                  ...tickets.map((ticket) => ({
+                    value: ticket.ticketId,
+                    label: ticket.holderName,
+                  })),
+                ]}
+                variant="field"
+                ariaLabel="Ticket playing this hunt"
+                className="mt-2"
+              />
             </label>
           )}
           <label className="block font-mono text-xs text-foreground" htmlFor="discovery-code">

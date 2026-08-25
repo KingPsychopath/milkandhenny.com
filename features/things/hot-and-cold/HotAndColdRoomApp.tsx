@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { AppImage } from "@/components/AppImage";
+import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GiveUpControl } from "../shared/GiveUpControl";
@@ -272,21 +273,21 @@ export function HotAndColdRoomApp({
               </label>
               <label>
                 seconds
-                <select
+                <AppSelect
                   name="turn-seconds"
                   disabled={!snapshot.canControl || snapshot.managed}
                   value={snapshot.turnSeconds}
-                  onChange={(event) =>
-                    void send({ type: "game.configure", turnSeconds: Number(event.target.value) })
+                  onValueChange={(value) =>
+                    void send({ type: "game.configure", turnSeconds: Number(value) })
                   }
-                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-2"
-                >
-                  {[10, 15, 20, 30, 0].map((value) => (
-                    <option key={value} value={value}>
-                      {value || "∞"}
-                    </option>
-                  ))}
-                </select>
+                  options={[10, 15, 20, 30, 0].map((value) => ({
+                    value,
+                    label: String(value || "∞"),
+                  }))}
+                  variant="field"
+                  ariaLabel="Seconds per turn"
+                  className="mt-2"
+                />
               </label>
             </div>
           </details>

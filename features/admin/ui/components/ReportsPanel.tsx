@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { AdminReportGroup } from "@/features/reports/types";
 import { copyText } from "@/lib/client/share";
 import {
@@ -250,18 +251,13 @@ export function ReportsPanel({
                 </div>
                 <label className="font-mono text-micro theme-muted">
                   <span className="sr-only">Report status</span>
-                  <select
+                  <AppSelect
                     value={report.status}
                     disabled={updating === report.id}
-                    onChange={(event) => void update(report, event.target.value as ReportStatus)}
-                    className="min-h-10 border-b theme-border-strong bg-transparent px-1 font-mono text-xs text-foreground outline-none"
-                  >
-                    {REPORT_STATUSES.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(value) => void update(report, value as ReportStatus)}
+                    options={REPORT_STATUSES.map((status) => ({ value: status, label: status }))}
+                    ariaLabel="Report status"
+                  />
                 </label>
               </div>
 

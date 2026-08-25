@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
+
 const VARIANTS = [
   "single ticket",
   "multi-ticket purchaser",
@@ -99,15 +101,13 @@ export function AttendeePreviewMatrix() {
       <div className="mt-5 flex flex-wrap gap-4">
         <label className="font-mono text-xs">
           state
-          <select
+          <AppSelect
             value={variant}
-            onChange={(event) => setVariant(event.target.value as Variant)}
-            className="ml-2 min-h-11 border theme-border bg-background px-3"
-          >
-            {VARIANTS.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
+            onValueChange={(value) => setVariant(value as Variant)}
+            options={VARIANTS.map((item) => ({ value: item, label: item }))}
+            ariaLabel="Preview state"
+            className="ml-2"
+          />
         </label>
         <label className="flex min-h-11 items-center gap-2 font-mono text-xs">
           <input

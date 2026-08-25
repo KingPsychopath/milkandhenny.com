@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import {
   GLOBAL_ADMIN_ROLE_PRESETS,
   type GlobalAdminRole,
@@ -156,17 +157,14 @@ export function AdminAccessSettings({
         </label>
         <label className="font-mono text-xs">
           role
-          <select
+          <AppSelect
             value={rolePreset}
-            onChange={(event) => setRolePreset(event.target.value as Grant["rolePreset"])}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {ADMIN_ROLE_PRESETS.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setRolePreset(value as Grant["rolePreset"])}
+            options={ADMIN_ROLE_PRESETS.map((role) => ({ value: role, label: role }))}
+            variant="field"
+            ariaLabel="Role"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           invitation expires

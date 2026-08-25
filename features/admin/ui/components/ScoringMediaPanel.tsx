@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import type { ScoringAction, ScoringData } from "./event-scoring-types";
 
 export function ScoringMediaPanel({
@@ -78,28 +79,34 @@ export function ScoringMediaPanel({
         </label>
         <label className="font-mono text-xs">
           visibility
-          <select
+          <AppSelect
             value={visibility}
-            onChange={(event) => setVisibility(event.target.value as typeof visibility)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="event-album">event album</option>
-            <option value="admin-evidence">admin evidence</option>
-            <option value="discard">discard</option>
-          </select>
+            onValueChange={(value) => setVisibility(value as typeof visibility)}
+            options={[
+              { value: "event-album", label: "event album" },
+              { value: "admin-evidence", label: "admin evidence" },
+              { value: "discard", label: "discard" },
+            ]}
+            variant="field"
+            ariaLabel="Media visibility"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           consent
-          <select
+          <AppSelect
             value={consentState}
-            onChange={(event) => setConsentState(event.target.value as typeof consentState)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="not-requested">not requested</option>
-            <option value="requested">requested</option>
-            <option value="obtained">obtained</option>
-            <option value="declined">declined</option>
-          </select>
+            onValueChange={(value) => setConsentState(value as typeof consentState)}
+            options={[
+              { value: "not-requested", label: "not requested" },
+              { value: "requested", label: "requested" },
+              { value: "obtained", label: "obtained" },
+              { value: "declined", label: "declined" },
+            ]}
+            variant="field"
+            ariaLabel="Media consent"
+            className="mt-2"
+          />
         </label>
         <button className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70">
           attach existing photo

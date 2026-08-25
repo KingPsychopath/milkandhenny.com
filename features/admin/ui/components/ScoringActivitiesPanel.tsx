@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES, estimateMaximumIssue } from "@/features/event-scoring/templates";
 import type { AdminScoringActivity, ScoringAction } from "./event-scoring-types";
 
@@ -36,6 +37,7 @@ export function ScoringActivitiesPanel({
   const [repeat, setRepeat] = useState<"once" | "repeat" | "once-per-source">("repeat");
   const [requiresCheckIn, setRequiresCheckIn] = useState(true);
   const [expectedAttendance, setExpectedAttendance] = useState(100);
+  const [starterTemplateId, setStarterTemplateId] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [previewId, setPreviewId] = useState("");
 
@@ -76,35 +78,32 @@ export function ScoringActivitiesPanel({
         {personalTemplates.length > 0 && (
           <label className="font-mono text-xs sm:col-span-2">
             personal templates
-            <select
-              defaultValue=""
-              onChange={(event) => {
-                if (!event.target.value) return;
+            <AppSelect
+              value=""
+              onValueChange={(value) => {
+                if (!value) return;
                 void onAction({
                   action: "create-from-activity-template",
-                  templateId: event.target.value,
+                  templateId: value,
                 });
-                event.target.value = "";
               }}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              <option value="">Choose a saved template</option>
-              {personalTemplates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "Choose a saved template" },
+                ...personalTemplates.map((item) => ({ value: item.id, label: item.name })),
+              ]}
+              variant="field"
+              ariaLabel="Personal template"
+              className="mt-2"
+            />
           </label>
         )}
         <label className="font-mono text-xs sm:col-span-2">
           start from a template
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const selected = EVENT_SCORING_TEMPLATES.find(
-                (item) => item.id === event.target.value,
-              );
+          <AppSelect
+            value={starterTemplateId}
+            onValueChange={(value) => {
+              setStarterTemplateId(value);
+              const selected = EVENT_SCORING_TEMPLATES.find((item) => item.id === value);
               if (!selected || selected.kind !== "activity") return;
               setName(selected.label);
               setTemplate(selected.activityTemplate as typeof template);
@@ -112,15 +111,17 @@ export function ScoringActivitiesPanel({
               setRepeat(selected.rule.repeat);
               setRequiresCheckIn(selected.rule.requiresCheckIn);
             }}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">Blank activity</option>
-            {EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "activity").map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Blank activity" },
+              ...EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "activity").map((item) => ({
+                value: item.id,
+                label: item.label,
+              })),
+            ]}
+            variant="field"
+            ariaLabel="Activity template"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           name
@@ -133,17 +134,17 @@ export function ScoringActivitiesPanel({
         </label>
         <label className="font-mono text-xs">
           outcome
-          <select
+          <AppSelect
             value={template}
-            onChange={(event) => setTemplate(event.target.value as typeof template)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {TEMPLATES.map((value) => (
-              <option key={value} value={value}>
-                {value.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setTemplate(value as typeof template)}
+            options={TEMPLATES.map((value) => ({
+              value,
+              label: value.replaceAll("-", " "),
+            }))}
+            variant="field"
+            ariaLabel="Activity outcome"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           winner or completion points
@@ -185,15 +186,18 @@ export function ScoringActivitiesPanel({
         {advanced && (
           <label className="font-mono text-xs">
             repeat rule
-            <select
+            <AppSelect
               value={repeat}
-              onChange={(event) => setRepeat(event.target.value as typeof repeat)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              <option value="repeat">each distinct result</option>
-              <option value="once">once per participant</option>
-              <option value="once-per-source">once per result source</option>
-            </select>
+              onValueChange={(value) => setRepeat(value as typeof repeat)}
+              options={[
+                { value: "repeat", label: "each distinct result" },
+                { value: "once", label: "once per participant" },
+                { value: "once-per-source", label: "once per result source" },
+              ]}
+              variant="field"
+              ariaLabel="Repeat rule"
+              className="mt-2"
+            />
           </label>
         )}
         <label className="flex min-h-11 items-center gap-3 font-mono text-xs">

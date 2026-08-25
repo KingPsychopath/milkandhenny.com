@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES } from "@/features/event-scoring/templates";
 import type { AdminScoringActivity, ScoringAction, ScoringData } from "./event-scoring-types";
 
@@ -37,6 +38,7 @@ export function ScoringDiscoveriesPanel({
   const [claimFrequency, setClaimFrequency] = useState<"once" | "cooldown">("once");
   const [cooldownMinutes, setCooldownMinutes] = useState(5);
   const [maximumClaimsPerParticipant, setMaximumClaimsPerParticipant] = useState("");
+  const [starterTemplateId, setStarterTemplateId] = useState("");
   const [tiers, setTiers] = useState("10, 7, 5");
   const [clues, setClues] = useState("one|First clue\ntwo|Second clue");
   const [issued, setIssued] = useState<string[]>([]);
@@ -142,41 +144,46 @@ export function ScoringDiscoveriesPanel({
       <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="font-mono text-xs sm:col-span-2">
           start from a template
-          <select
-            defaultValue=""
-            onChange={(event) => {
-              const selected = EVENT_SCORING_TEMPLATES.find(
-                (item) => item.id === event.target.value,
-              );
+          <AppSelect
+            value={starterTemplateId}
+            onValueChange={(value) => {
+              setStarterTemplateId(value);
+              const selected = EVENT_SCORING_TEMPLATES.find((item) => item.id === value);
               if (!selected || selected.kind !== "discovery" || !selected.method) return;
               setName(selected.label);
               setMethod(selected.method);
               setPoints(selected.rule.fixedPoints ?? 5);
             }}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">Blank discovery</option>
-            {EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "discovery").map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "Blank discovery" },
+              ...EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "discovery").map(
+                (item) => ({
+                  value: item.id,
+                  label: item.label,
+                }),
+              ),
+            ]}
+            variant="field"
+            ariaLabel="Discovery template"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           activity
-          <select
+          <AppSelect
             value={activityId}
-            onChange={(event) => setActivityId(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="">No score activity</option>
-            {discoveryActivities.map((activity) => (
-              <option key={activity.id} value={activity.id}>
-                {activity.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setActivityId}
+            options={[
+              { value: "", label: "No score activity" },
+              ...discoveryActivities.map((activity) => ({
+                value: activity.id,
+                label: activity.name,
+              })),
+            ]}
+            variant="field"
+            ariaLabel="Score activity"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           name
@@ -189,17 +196,17 @@ export function ScoringDiscoveriesPanel({
         </label>
         <label className="font-mono text-xs">
           claim method
-          <select
+          <AppSelect
             value={method}
-            onChange={(event) => setMethod(event.target.value as typeof method)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {METHODS.map((value) => (
-              <option key={value} value={value}>
-                {value.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setMethod(value as typeof method)}
+            options={METHODS.map((value) => ({
+              value,
+              label: value.replaceAll("-", " "),
+            }))}
+            variant="field"
+            ariaLabel="Claim method"
+            className="mt-2"
+          />
           {(method === "code" || method === "word" || method === "phrase") && (
             <span className="mt-2 block theme-muted">
               Static codes can be photographed or shared. Use a claimant limit, short window, or QR
@@ -209,17 +216,17 @@ export function ScoringDiscoveriesPanel({
         </label>
         <label className="font-mono text-xs">
           point mode
-          <select
+          <AppSelect
             value={pointMode}
-            onChange={(event) => setPointMode(event.target.value as typeof pointMode)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {POINT_MODES.map((value) => (
-              <option key={value} value={value}>
-                {value.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
+            onValueChange={(value) => setPointMode(value as typeof pointMode)}
+            options={POINT_MODES.map((value) => ({
+              value,
+              label: value.replaceAll("-", " "),
+            }))}
+            variant="field"
+            ariaLabel="Point mode"
+            className="mt-2"
+          />
         </label>
         {pointMode !== "none" && (
           <label className="font-mono text-xs">
@@ -271,14 +278,17 @@ export function ScoringDiscoveriesPanel({
         {method !== "collected-clues" && (
           <label className="font-mono text-xs">
             claims per person
-            <select
+            <AppSelect
               value={claimFrequency}
-              onChange={(event) => setClaimFrequency(event.target.value as typeof claimFrequency)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              <option value="once">once only</option>
-              <option value="cooldown">repeat after cooldown</option>
-            </select>
+              onValueChange={(value) => setClaimFrequency(value as typeof claimFrequency)}
+              options={[
+                { value: "once", label: "once only" },
+                { value: "cooldown", label: "repeat after cooldown" },
+              ]}
+              variant="field"
+              ariaLabel="Claims per person"
+              className="mt-2"
+            />
           </label>
         )}
         {method !== "collected-clues" && claimFrequency === "cooldown" && (

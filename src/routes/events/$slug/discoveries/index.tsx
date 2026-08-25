@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
+import { AppSelect } from "@/components/AppSelect";
 import { getDiscoveryClaimPageFn } from "@/features/event-scoring/public.functions";
 import {
   formatDiscoveryCooldown,
@@ -51,6 +52,11 @@ function DiscoveriesRoute() {
 
   async function claim() {
     if (!presented.trim()) return;
+    if (!activeParticipantId && tickets.length > 1 && !ticketId) {
+      setIsError(true);
+      setMessage("Choose the ticket playing this hunt.");
+      return;
+    }
     setBusy(true);
     setMessage("");
     setIsError(false);
@@ -128,19 +134,20 @@ function DiscoveriesRoute() {
             {!activeParticipantId && tickets.length > 1 && (
               <label className="block font-mono text-xs">
                 ticket playing this hunt
-                <select
-                  required
+                <AppSelect
                   value={ticketId}
-                  onChange={(event) => setTicketId(event.target.value)}
-                  className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-                >
-                  <option value="">choose a ticket</option>
-                  {tickets.map((ticket) => (
-                    <option key={ticket.ticketId} value={ticket.ticketId}>
-                      {ticket.holderName}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setTicketId}
+                  options={[
+                    { value: "", label: "choose a ticket" },
+                    ...tickets.map((ticket) => ({
+                      value: ticket.ticketId,
+                      label: ticket.holderName,
+                    })),
+                  ]}
+                  variant="field"
+                  ariaLabel="Ticket playing this hunt"
+                  className="mt-2"
+                />
               </label>
             )}
             <label htmlFor="discovery-entry" className="block font-mono text-xs">

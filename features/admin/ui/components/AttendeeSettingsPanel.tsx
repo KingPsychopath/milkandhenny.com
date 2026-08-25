@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { ATTENDEE_CAPABILITIES, type CapabilityMap } from "@/features/attendee-operations/types";
 import { AdminAccessSettings } from "./AdminAccessSettings";
 import { AlertSettings } from "./AlertSettings";
@@ -223,18 +224,17 @@ export function AttendeeSettingsPanel({
             <label htmlFor="event-policy" className="block font-mono text-xs">
               event activation
             </label>
-            <select
+            <AppSelect
               id="event-policy"
               value={eventSlug}
-              onChange={(event) => selectEvent(event.target.value)}
-              className="mt-2 min-h-11 border theme-border bg-background px-3 font-mono text-sm"
-            >
-              {data.events.map((event) => (
-                <option key={event.slug} value={event.slug}>
-                  {event.title} · {event.status}
-                </option>
-              ))}
-            </select>
+              onValueChange={selectEvent}
+              options={data.events.map((event) => ({
+                value: event.slug,
+                label: `${event.title} · ${event.status}`,
+              }))}
+              variant="field"
+              className="mt-2"
+            />
           </div>
           {selectedEvent ? (
             <p className="pb-3 font-mono text-micro theme-muted">

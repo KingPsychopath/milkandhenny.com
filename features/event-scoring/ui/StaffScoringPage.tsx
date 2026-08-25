@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import { searchStaffParticipantsFn } from "../staff-scoring.functions";
 import {
@@ -234,22 +235,22 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
             <div className="mt-6 space-y-6">
               <label className="block font-mono text-xs">
                 activity
-                <select
+                <AppSelect
                   value={activityId}
-                  onChange={(event) => {
-                    setActivityId(event.target.value);
+                  onValueChange={(value) => {
+                    setActivityId(value);
                     setReviewReady(false);
                     setNeedsConfirmation(false);
                     setConfirmedRemaining(undefined);
                   }}
-                  className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-                >
-                  {data.activities.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))}
-                </select>
+                  options={data.activities.map((entry) => ({
+                    value: entry.id,
+                    label: entry.name,
+                  }))}
+                  variant="field"
+                  ariaLabel="Scoring activity"
+                  className="mt-2"
+                />
               </label>
 
               {data.canUploadMedia && (
@@ -316,32 +317,36 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="font-mono text-xs">
                       visibility
-                      <select
+                      <AppSelect
                         value={mediaVisibility}
-                        onChange={(event) =>
-                          setMediaVisibility(event.target.value as typeof mediaVisibility)
+                        onValueChange={(value) =>
+                          setMediaVisibility(value as typeof mediaVisibility)
                         }
-                        className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-                      >
-                        <option value="event-album">event album</option>
-                        <option value="admin-evidence">admin evidence</option>
-                        <option value="discard">discard</option>
-                      </select>
+                        options={[
+                          { value: "event-album", label: "event album" },
+                          { value: "admin-evidence", label: "admin evidence" },
+                          { value: "discard", label: "discard" },
+                        ]}
+                        variant="field"
+                        ariaLabel="Media visibility"
+                        className="mt-2"
+                      />
                     </label>
                     <label className="font-mono text-xs">
                       consent
-                      <select
+                      <AppSelect
                         value={mediaConsent}
-                        onChange={(event) =>
-                          setMediaConsent(event.target.value as typeof mediaConsent)
-                        }
-                        className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-                      >
-                        <option value="not-requested">not requested</option>
-                        <option value="requested">requested</option>
-                        <option value="obtained">obtained</option>
-                        <option value="declined">declined</option>
-                      </select>
+                        onValueChange={(value) => setMediaConsent(value as typeof mediaConsent)}
+                        options={[
+                          { value: "not-requested", label: "not requested" },
+                          { value: "requested", label: "requested" },
+                          { value: "obtained", label: "obtained" },
+                          { value: "declined", label: "declined" },
+                        ]}
+                        variant="field"
+                        ariaLabel="Media consent"
+                        className="mt-2"
+                      />
                     </label>
                   </div>
                 </fieldset>

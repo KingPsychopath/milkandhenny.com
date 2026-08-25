@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { formatMoney } from "@/features/events/types";
 import {
   beginOwnTicketExchangeFn,
@@ -257,54 +258,49 @@ export function ManageTickets({
           <label className="mt-5 block font-mono text-micro theme-muted" htmlFor="exchange-ticket">
             ticket
           </label>
-          <select
+          <AppSelect
             id="exchange-ticket"
             value={ticketId}
-            onChange={(event) => {
-              setTicketId(event.target.value);
+            onValueChange={(value) => {
+              setTicketId(value);
               setTargetTypeId("");
             }}
-            className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
-          >
-            {management.tickets.map((ticket) => (
-              <option
-                key={ticket.id}
-                value={ticket.id}
-                disabled={
-                  ticket.status !== "valid" || ticket.redeemed || Boolean(ticket.activeExchange)
-                }
-              >
-                {ticket.holderName} — {ticket.ticketTypeName}
-                {ticket.activeExchange
-                  ? " (change pending)"
-                  : ticket.redeemed
-                    ? " (checked in)"
-                    : ""}
-              </option>
-            ))}
-          </select>
+            options={management.tickets.map((ticket) => ({
+              value: ticket.id,
+              disabled:
+                ticket.status !== "valid" || ticket.redeemed || Boolean(ticket.activeExchange),
+              label: `${ticket.holderName} — ${ticket.ticketTypeName}${
+                ticket.activeExchange ? " (change pending)" : ticket.redeemed ? " (checked in)" : ""
+              }`,
+            }))}
+            variant="field"
+            className="mt-1"
+          />
 
           <label className="mt-4 block font-mono text-micro theme-muted" htmlFor="exchange-type">
             change to
           </label>
-          <select
+          <AppSelect
             id="exchange-type"
             value={targetTypeId}
-            onChange={(event) => setTargetTypeId(event.target.value)}
-            className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
-          >
-            <option value="">choose a ticket type</option>
-            {eligibleOptions.map((option) => (
-              <option key={option.id} value={option.id} disabled={!option.available}>
-                {option.name} — {formatMoney(option.priceMinor, option.currency)}
-                {!option.available
-                  ? option.unavailableReason === "sold-out"
-                    ? " (sold out)"
-                    : " (not on sale)"
-                  : ""}
-              </option>
-            ))}
-          </select>
+            onValueChange={setTargetTypeId}
+            options={[
+              { value: "", label: "choose a ticket type" },
+              ...eligibleOptions.map((option) => ({
+                value: option.id,
+                disabled: !option.available,
+                label: `${option.name} — ${formatMoney(option.priceMinor, option.currency)}${
+                  !option.available
+                    ? option.unavailableReason === "sold-out"
+                      ? " (sold out)"
+                      : " (not on sale)"
+                    : ""
+                }`,
+              })),
+            ]}
+            variant="field"
+            className="mt-1"
+          />
 
           {selectedType && (
             <p className="mt-3 font-mono text-micro theme-subtle leading-relaxed">

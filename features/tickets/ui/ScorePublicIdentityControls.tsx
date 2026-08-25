@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
+
 export function ScorePublicIdentityControls({
   ticketId,
   initialAlias,
@@ -43,15 +45,18 @@ export function ScorePublicIdentityControls({
       <div className="space-y-3 border-y theme-border py-4">
         <label className="block font-mono text-xs">
           display
-          <select
+          <AppSelect
             value={mode}
-            onChange={(event) => setMode(event.target.value as typeof mode)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            <option value="alias">show my alias</option>
-            <option value="anonymous">show as anonymous</option>
-            <option value="hidden">leave the public board</option>
-          </select>
+            onValueChange={(value) => setMode(value as typeof mode)}
+            options={[
+              { value: "alias", label: "show my alias" },
+              { value: "anonymous", label: "show as anonymous" },
+              { value: "hidden", label: "leave the public board" },
+            ]}
+            variant="field"
+            ariaLabel="Public score display"
+            className="mt-2"
+          />
         </label>
         {mode === "alias" && (
           <label className="block font-mono text-xs">

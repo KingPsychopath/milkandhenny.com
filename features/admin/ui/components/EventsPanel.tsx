@@ -2362,30 +2362,30 @@ function EventOperations({
                       <span className="font-mono text-micro theme-muted tracking-wide">
                         change to
                       </span>
-                      <select
+                      <AppSelect
                         value={exchangingTicket.targetTicketTypeId}
-                        onChange={(inputEvent) =>
+                        onValueChange={(value) =>
                           setExchangingTicket((current) =>
-                            current
-                              ? { ...current, targetTicketTypeId: inputEvent.target.value }
-                              : current,
+                            current ? { ...current, targetTicketTypeId: value } : current,
                           )
                         }
-                        className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-                      >
-                        <option value="">choose a ticket type</option>
-                        {event.ticketTypes
-                          .filter((type) => type.id !== ticket.ticketTypeId)
-                          .map((type) => {
-                            const soldOut = (summary.byType[type.id]?.remaining ?? 0) === 0;
-                            return (
-                              <option key={type.id} value={type.id} disabled={soldOut}>
-                                {type.name} — {formatMoney(type.priceMinor, type.currency)}
-                                {soldOut ? " (sold out)" : ""}
-                              </option>
-                            );
-                          })}
-                      </select>
+                        options={[
+                          { value: "", label: "choose a ticket type" },
+                          ...event.ticketTypes
+                            .filter((type) => type.id !== ticket.ticketTypeId)
+                            .map((type) => {
+                              const soldOut = (summary.byType[type.id]?.remaining ?? 0) === 0;
+                              return {
+                                value: type.id,
+                                label: `${type.name} — ${formatMoney(type.priceMinor, type.currency)}${soldOut ? " (sold out)" : ""}`,
+                                disabled: soldOut,
+                              };
+                            }),
+                        ]}
+                        variant="field"
+                        ariaLabel="Change ticket type"
+                        className="mt-1"
+                      />
                     </label>
                     <AdminFormAction>
                       <button

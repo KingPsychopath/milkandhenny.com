@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import {
   simulateScoreClaim,
   TEST_SCENARIOS,
@@ -36,29 +37,25 @@ export function ScoringTestModePanel({ data }: { data: ScoringData }) {
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="font-mono text-xs">
           activity
-          <select
+          <AppSelect
             value={activityId}
-            onChange={(event) => setActivityId(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {data.activities.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setActivityId}
+            options={data.activities.map((entry) => ({ value: entry.id, label: entry.name }))}
+            variant="field"
+            ariaLabel="Activity"
+            className="mt-2"
+          />
         </label>
         <label className="font-mono text-xs">
           scenario
-          <select
+          <AppSelect
             value={scenario}
-            onChange={(event) => setScenario(event.target.value as TestScenario)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          >
-            {TEST_SCENARIOS.map((entry) => (
-              <option key={entry}>{entry}</option>
-            ))}
-          </select>
+            onValueChange={(value) => setScenario(value as TestScenario)}
+            options={TEST_SCENARIOS.map((entry) => ({ value: entry, label: entry }))}
+            variant="field"
+            ariaLabel="Test scenario"
+            className="mt-2"
+          />
         </label>
       </div>
       {result && (
