@@ -96,6 +96,67 @@ type AdminTicket = DoorTicketView & {
   currency?: string;
 };
 
+type TicketListFilter = "all" | "valid" | "checked-in" | "not-checked-in" | "refunded" | "void";
+type TicketListSort = "newest" | "oldest" | "name" | "status";
+
+const TICKET_FILTER_OPTIONS = [
+  { value: "all", label: "all tickets" },
+  { value: "valid", label: "live tickets" },
+  { value: "checked-in", label: "checked in" },
+  { value: "not-checked-in", label: "not checked in" },
+  { value: "refunded", label: "refunded" },
+  { value: "void", label: "cancelled" },
+] as const;
+
+const TICKET_SORT_OPTIONS = [
+  { value: "newest", label: "newest issued" },
+  { value: "oldest", label: "oldest issued" },
+  { value: "name", label: "name a–z" },
+  { value: "status", label: "status" },
+] as const;
+
+function isTicketListFilter(value: string): value is TicketListFilter {
+  return TICKET_FILTER_OPTIONS.some((option) => option.value === value);
+}
+
+function isTicketListSort(value: string): value is TicketListSort {
+  return TICKET_SORT_OPTIONS.some((option) => option.value === value);
+}
+
+function ticketListStatus(ticket: AdminTicket) {
+  if (ticket.status === "refunded") return "refunded";
+  if (ticket.status === "void") return "cancelled";
+  return ticket.redeemedAt ? "checked in" : "not checked in";
+}
+
+function ticketMatchesFilter(ticket: AdminTicket, filter: TicketListFilter) {
+  switch (filter) {
+    case "all":
+      return true;
+    case "valid":
+      return ticket.status === "valid";
+    case "checked-in":
+      return ticket.status === "valid" && Boolean(ticket.redeemedAt);
+    case "not-checked-in":
+      return ticket.status === "valid" && !ticket.redeemedAt;
+    case "refunded":
+      return ticket.status === "refunded";
+    case "void":
+      return ticket.status === "void";
+  }
+}
+
+function formatTicketIssuedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "issue date unavailable";
+  return `issued ${date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Europe/London",
+  })}`;
+}
+
 type EventTicketSummary = {
   total: number;
   valid: number;
@@ -1729,6 +1790,8 @@ function EventOperations({
   stepUp: StepUpHelpers;
 }) {
   const [query, setQuery] = useState("");
+  const [ticketFilter, setTicketFilter] = useState<TicketListFilter>("all");
+  const [ticketSort, setTicketSort] = useState<TicketListSort>("newest");
   const [showAddGuest, setShowAddGuest] = useState(false);
   const [busyTicketId, setBusyTicketId] = useState<string | null>(null);
   const [editingTicket, setEditingTicket] = useState<{
@@ -1835,17 +1898,25 @@ function EventOperations({
   const remaining = Math.max(0, capacity - summary.valid);
   const overage = Math.max(0, summary.valid - capacity);
   const term = query.trim().toLowerCase();
-  const tickets = useMemo(
-    () =>
-      summary.tickets.filter(
-        (ticket) =>
-          !term ||
+  const tickets = useMemo(() => {
+    const filtered = summary.tickets.filter(
+      (ticket) =>
+        ticketMatchesFilter(ticket, ticketFilter) &&
+        (!term ||
           ticket.holderName.toLowerCase().includes(term) ||
           ticket.email?.toLowerCase().includes(term) ||
-          ticket.id.toLowerCase().includes(term),
-      ),
-    [summary.tickets, term],
-  );
+          ticket.id.toLowerCase().includes(term)),
+    );
+    return filtered.toSorted((left, right) => {
+      if (ticketSort === "name") return left.holderName.localeCompare(right.holderName);
+      if (ticketSort === "status") {
+        const statusOrder = ticketListStatus(left).localeCompare(ticketListStatus(right));
+        return statusOrder || left.holderName.localeCompare(right.holderName);
+      }
+      const issuedOrder = left.issuedAt.localeCompare(right.issuedAt);
+      return ticketSort === "oldest" ? issuedOrder : -issuedOrder;
+    });
+  }, [summary.tickets, term, ticketFilter, ticketSort]);
 
   return (
     <div className="mt-4 border-t theme-border pt-4">
@@ -1884,7 +1955,16 @@ function EventOperations({
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted">
         <span>{summary.total} issued lifetime</span>
-        {summary.refunded > 0 && <span>{summary.refunded} refunded</span>}
+        {summary.refunded > 0 && (
+          <button
+            type="button"
+            onClick={() => setTicketFilter("refunded")}
+            aria-pressed={ticketFilter === "refunded"}
+            className="min-h-11 underline decoration-dotted underline-offset-4 hover:text-foreground"
+          >
+            {summary.refunded} refunded · show
+          </button>
+        )}
         {summary.void > 0 && <span>{summary.void} void</span>}
         {summary.grossMinor !== summary.netMinor && summary.currency && (
           <span>{formatMoney(summary.grossMinor, summary.currency)} gross</span>
@@ -1927,13 +2007,41 @@ function EventOperations({
           value={query}
           onChange={(inputEvent) => setQuery(inputEvent.target.value)}
           placeholder="start typing…"
-          className="mt-1 min-h-10 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+          className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
         />
       </label>
 
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <div className="grid gap-1">
+          <span className="font-mono text-micro theme-muted">show</span>
+          <AppSelect
+            value={ticketFilter}
+            onValueChange={(value) => {
+              if (isTicketListFilter(value)) setTicketFilter(value);
+            }}
+            options={TICKET_FILTER_OPTIONS}
+            ariaLabel="Filter tickets"
+          />
+        </div>
+        <div className="grid gap-1">
+          <span className="font-mono text-micro theme-muted">sort</span>
+          <AppSelect
+            value={ticketSort}
+            onValueChange={(value) => {
+              if (isTicketListSort(value)) setTicketSort(value);
+            }}
+            options={TICKET_SORT_OPTIONS}
+            ariaLabel="Sort tickets"
+          />
+        </div>
+        <p className="min-h-11 content-center font-mono text-micro theme-faint" aria-live="polite">
+          {tickets.length} of {summary.total}
+        </p>
+      </div>
+
       {tickets.length === 0 ? (
         <p className="py-4 font-mono text-xs theme-faint">
-          {summary.total === 0 ? "no tickets issued yet" : "no attendee matches"}
+          {summary.total === 0 ? "no tickets issued yet" : "no tickets match these filters"}
         </p>
       ) : (
         <ul className="mt-2 max-h-96 divide-y theme-border overflow-y-auto border-y theme-border">
@@ -1953,12 +2061,8 @@ function EventOperations({
                       {ticket.kind === "comp" ? " · comp" : ""}
                     </p>
                     <p className="mt-0.5 font-mono text-micro theme-faint">
-                      {ticket.id} ·{" "}
-                      {ticket.status !== "valid"
-                        ? ticket.status
-                        : ticket.redeemedAt
-                          ? "checked in"
-                          : "not checked in"}
+                      {ticket.id} · {ticketListStatus(ticket)} ·{" "}
+                      {formatTicketIssuedAt(ticket.issuedAt)}
                     </p>
                   </div>
                   <a
