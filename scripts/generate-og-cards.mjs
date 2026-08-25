@@ -17,6 +17,12 @@ const cards = {
   "draw-country.png": ["draw the country", "how close can you get from memory?", "drawing game"],
   "forehead.png": ["forehead", "guess the card from your friends' clues", "party game"],
   "icebreaker.png": ["icebreaker", "reveal a colour. find your people.", "social tool"],
+  "hot-and-cold.png": [
+    "hot and cold",
+    "guess the hidden word. lower numbers are hotter.",
+    "daily word game",
+    "0 finds it",
+  ],
   "liars.png": ["liars", "mafia or imposter. leave the arguing to the room.", "social deduction"],
   "pitch-night.png": ["after school club", "pitches · games · music · food", "milk & henny"],
   "pitch-studio.png": [
@@ -69,7 +75,7 @@ function wrapText(value, maxCharacters) {
   return lines;
 }
 
-function cardSvg([title, subtitle, eyebrow]) {
+function cardSvg([title, subtitle, eyebrow, footer = "1200 × 630"]) {
   const titleLines = wrapText(title, 24);
   const subtitleLines = wrapText(subtitle, 38);
   const titleStart = titleLines.length === 1 ? 282 : 245;
@@ -104,7 +110,7 @@ function cardSvg([title, subtitle, eyebrow]) {
   ${titleMarkup}
   ${subtitleMarkup}
   <text x="100" y="584" class="brand">milk &amp; henny</text>
-  <text x="1100" y="584" text-anchor="end" class="eyebrow">1200 × 630</text>
+  <text x="1100" y="584" text-anchor="end" class="eyebrow">${escapeXml(footer)}</text>
 </svg>`;
 }
 

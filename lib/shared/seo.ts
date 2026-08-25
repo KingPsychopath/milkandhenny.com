@@ -14,6 +14,7 @@ const OG_IMAGES = {
   centre: `/og/centre.png?v=${OG_ASSET_VERSION}`,
   drawCountry: `/og/draw-country.png?v=${OG_ASSET_VERSION}`,
   forehead: `/og/forehead.png?v=${OG_ASSET_VERSION}`,
+  hotAndCold: `/og/hot-and-cold.png?v=${OG_ASSET_VERSION}`,
   icebreaker: `/og/icebreaker.png?v=${OG_ASSET_VERSION}`,
   liars: `/og/liars.png?v=${OG_ASSET_VERSION}`,
   pitchNight: `/og/pitch-night.png?v=${OG_ASSET_VERSION}`,
