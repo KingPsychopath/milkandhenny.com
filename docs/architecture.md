@@ -33,6 +33,26 @@ The host supplies a port and environment variables. Railway, Docker Compose, Kub
 
 Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
 
+## Cross-feature composition
+
+Feature modules do not call one another in both directions. Cross-feature read models and workflows live at a neutral composition edge:
+
+```text
+events ───────┐
+tickets ──────┼─> event-operations ─> routes / server functions
+scoring ──────┘
+
+games ─> game-results durable outbox ─> explicit scoring consumer
+```
+
+`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. Redis persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and scoring can be disabled without changing game rules.
+
+Event scoring keeps stable public boundaries while splitting implementation by responsibility. The admin route dispatches to focused configuration, ledger, discovery, staffing, identity, and media handlers. Its persistence barrel delegates to aggregate-specific repositories for settings and activities, participants and teams, ledger, pools and staff, identity, and history and media.
+
+Authentication follows the same shape: `auth.server.ts` is a stable server-only boundary over separate token/session, authorization, verification, and rate-limit modules. Upload access remains its own capability rather than accumulating in the main authentication module.
+
+Staff identity is explicit. Personal assignments link to an `event_people` record and retain their role preset; shared stations remain deliberately personless. Remembered, revocable staff and scanner access is available from the root navigation after refresh. Attendee score identity remains the event participant ID: canonical names are private identity data, generated aliases are the safe default, and a chosen public alias can change without moving scores or changing the person.
+
 ## Browser navigation and state
 
 The URL owns durable, addressable resources. React state owns live interaction.

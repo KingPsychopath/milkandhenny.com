@@ -130,6 +130,26 @@ Confirm each decision before the affected implementation begins.
 - [x] Event deletion is blocked once durable scoring history exists; cancellation archives it.
 - [x] No legacy schema, compatibility alias, or transitional scoring API remains.
 
+### Architecture hardening
+
+- [x] The scoring admin API is a thin transport route with focused configuration, ledger,
+      discovery, staffing, identity, media, export, and read handlers.
+- [x] The scoring store is split by aggregate behind one stable server-only persistence boundary.
+- [x] Events, tickets, and scoring have no bidirectional feature dependency; cross-feature page
+      and ticket workflows are composed by `features/event-operations`.
+- [x] Giant staff-scoring, transfer-gallery, and pitch-editor render components are split into
+      focused UI, controller, and lightbox responsibilities.
+- [x] Games publish neutral, versioned official results through a durable outbox and do not import
+      scoring or install a process-global scoring callback.
+- [x] Authentication is split internally into token/session, authorization, verification, rate
+      limiting, and separate upload-access responsibilities.
+- [x] Personal staff assignments link to durable people, shared stations remain personless, role
+      presets survive assignment, and remembered role access is reachable after refresh.
+- [x] `game-moderator` can run activities and award a manually selected winner; permission checks,
+      rather than the preset label, remain authoritative.
+- [x] Participant identity separates immutable participant/person IDs, private canonical names,
+      generated public aliases, and changeable chosen aliases without moving ledger history.
+
 ## 2. Person and participant identity
 
 - [x] Every durable human can have an opaque `personId`.
