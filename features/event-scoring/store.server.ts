@@ -63,6 +63,7 @@ type ParticipantRow = {
   person_id: string | null;
   ticket_id: string | null;
   public_alias: string;
+  display_mode: "alias" | "anonymous" | "hidden";
   display_name: string | null;
   status: string;
   checked_in_at: Date | null;
@@ -219,6 +220,7 @@ function toParticipant(
     personId: row.person_id ?? undefined,
     ticketId: row.ticket_id ?? undefined,
     publicAlias: row.public_alias,
+    displayMode: row.display_mode,
     displayName: row.display_name ?? undefined,
     status: row.status as ScoreParticipant["status"],
     checkedInAt: iso(row.checked_in_at),
@@ -608,10 +610,49 @@ export async function listLeaderboardParticipants(
        ) tm on true
       where p.event_slug = $1
         and p.status not in ('void', 'merged')
+        and p.display_mode <> 'hidden'
       order by balance desc, p.public_alias, p.id`,
     [eventSlug],
   );
   return rows.map(toParticipant);
+}
+
+export async function updateParticipantPublicIdentity(input: {
+  eventSlug: string;
+  participantId: string;
+  displayMode: ScoreParticipant["displayMode"];
+  publicAlias?: string;
+}): Promise<
+  ScoreStoreResult<{ publicAlias: string; displayMode: ScoreParticipant["displayMode"] }>
+> {
+  const alias = input.publicAlias?.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (input.displayMode === "alias" && alias !== undefined) {
+    if (alias.length < 2 || alias.length > 40)
+      return { ok: false, status: 400, error: "An alias must use 2 to 40 characters" };
+    if (/[@<>\p{Cc}]/u.test(alias))
+      return { ok: false, status: 400, error: "That alias contains unsupported characters" };
+  }
+  try {
+    const row = await queryOne<{
+      public_alias: string;
+      display_mode: ScoreParticipant["displayMode"];
+    }>(
+      `update event_participants
+          set public_alias = coalesce($4, public_alias), display_mode = $3, updated_at = now()
+        where id = $1 and event_slug = $2 and status = 'active'
+        returning public_alias, display_mode`,
+      [input.participantId, input.eventSlug, input.displayMode, alias ?? null],
+    );
+    if (!row) return { ok: false, status: 404, error: "Participant not found" };
+    return {
+      ok: true,
+      value: { publicAlias: row.public_alias, displayMode: row.display_mode },
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("event_participants_public_alias_idx"))
+      return { ok: false, status: 409, error: "That public alias is already in use" };
+    throw error;
+  }
 }
 
 export async function searchEventParticipants(
@@ -937,9 +978,7 @@ export async function listScoreMediaLinks(eventSlug: string): Promise<ScoreMedia
   }));
 }
 
-export async function listParticipantMerges(
-  eventSlug: string,
-): Promise<
+export async function listParticipantMerges(eventSlug: string): Promise<
   Array<{
     id: string;
     sourceParticipantId: string;

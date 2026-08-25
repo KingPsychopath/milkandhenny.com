@@ -186,6 +186,8 @@ export type TicketPageResult =
       album: EventAlbumView;
       score?: {
         participantId: string;
+        publicAlias: string;
+        displayMode: "alias" | "anonymous" | "hidden";
         points: number;
         revision: number;
         rank: number;
@@ -290,6 +292,8 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       score: scoreResult?.ok
         ? {
             participantId: scoreResult.value.participant.id,
+            publicAlias: scoreResult.value.participant.publicAlias,
+            displayMode: scoreResult.value.participant.displayMode,
             points: scoreResult.value.participant.balance,
             revision: scoreResult.value.participant.revision,
             rank: scoreResult.value.rank,

@@ -21,6 +21,7 @@ import { ShareTicketButton } from "./ShareTicketButton";
 import { AttendeeSessionControls } from "./AttendeeSessionControls";
 import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScoreSyncStatus } from "./ScoreSyncStatus";
+import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
 
 /**
  * The ticket itself.
@@ -57,6 +58,8 @@ export function TicketPage({
   album: EventAlbumView;
   score?: {
     participantId: string;
+    publicAlias: string;
+    displayMode: "alias" | "anonymous" | "hidden";
     points: number;
     revision: number;
     rank: number;
@@ -386,6 +389,11 @@ export function TicketPage({
             </p>
             <ScoreNotificationNotice ticketId={ticket.id} />
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
+            <ScorePublicIdentityControls
+              ticketId={ticket.id}
+              initialAlias={score.publicAlias}
+              initialMode={score.displayMode}
+            />
             {score.teamRank !== undefined && (
               <p className="mt-1 font-mono text-micro theme-subtle">
                 rank {score.teamRank} within your team

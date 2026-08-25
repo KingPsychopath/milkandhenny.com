@@ -15,6 +15,7 @@ import {
   rebuildEventProjections,
   reverseScore,
   setTeamMembership,
+  updateParticipantPublicIdentity,
 } from "@/features/event-scoring/store.server";
 import { renameEventSlug } from "@/features/events/store.server";
 import { markTicketStatus } from "@/features/tickets/store.server";
@@ -155,6 +156,27 @@ describeWithDatabase("event scoring postgres", () => {
 
     await getOrCreateSettings("scoring-night");
     expect((await findSettings("scoring-night"))?.state).toBe("off");
+  });
+
+  it("keeps public display choices separate from participant and score identity", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    expect(participant).toBeTruthy();
+    expect(
+      await updateParticipantPublicIdentity({
+        eventSlug: "scoring-night",
+        participantId: participant!.id,
+        displayMode: "alias",
+        publicAlias: "Night Owl",
+      }),
+    ).toMatchObject({ ok: true, value: { publicAlias: "Night Owl", displayMode: "alias" } });
+    expect(
+      await updateParticipantPublicIdentity({
+        eventSlug: "scoring-night",
+        participantId: participant!.id,
+        displayMode: "hidden",
+      }),
+    ).toMatchObject({ ok: true, value: { publicAlias: "Night Owl", displayMode: "hidden" } });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.id).toBe(participant!.id);
   });
 
   it("merges and splits projections without rewriting ledger postings", async () => {

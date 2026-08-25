@@ -143,6 +143,7 @@ export type ScoreParticipant = {
   personId?: string;
   ticketId?: string;
   publicAlias: string;
+  displayMode: "alias" | "anonymous" | "hidden";
   displayName?: string;
   teamName?: string;
   status: "active" | "refunded" | "void" | "disqualified" | "merged";

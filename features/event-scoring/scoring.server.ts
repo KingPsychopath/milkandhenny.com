@@ -527,7 +527,7 @@ export async function publicLeaderboard(input: {
       boardStatus,
       rows: ranked.map((score) => ({
         rank: score.rank,
-        publicAlias: score.publicAlias,
+        publicAlias: score.displayMode === "anonymous" ? "Anonymous" : score.publicAlias,
         points: score.balance,
         team: score.teamName,
         isCurrentAttendee: score.participantId === input.currentParticipantId,
@@ -544,7 +544,7 @@ export async function personalScore(input: {
   ScoringOperationResult<{
     participant: Pick<
       ScoreParticipant,
-      "id" | "publicAlias" | "teamName" | "status" | "checkedInAt"
+      "id" | "publicAlias" | "displayMode" | "teamName" | "status" | "checkedInAt"
     > &
       Pick<ScoreProjection, "balance" | "revision" | "lastTransactionAt">;
     rank: number;
@@ -589,6 +589,7 @@ export async function personalScore(input: {
       participant: {
         id: participant.id,
         publicAlias: participant.publicAlias,
+        displayMode: participant.displayMode,
         teamName: participant.teamName,
         status: participant.status,
         checkedInAt: participant.checkedInAt,

@@ -1978,6 +1978,17 @@ const MIGRATIONS: Migration[] = [
         on score_discovery_clues (discovery_id, clue_key);
     `,
   },
+  {
+    id: "0040_event_scoring_public_identity",
+    sql: `
+      alter table event_participants
+        add column display_mode text not null default 'alias'
+          check (display_mode in ('alias', 'anonymous', 'hidden'));
+
+      create unique index event_participants_public_alias_idx
+        on event_participants (event_slug, lower(public_alias));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
