@@ -35,7 +35,9 @@ export function AccessPage({ returnTo }: AccessPageProps) {
       });
       const body = await responseBody(response);
       if (!response.ok) throw new Error(body.error ?? "The email could not be sent");
-      setMessage("Check your email. The link and code expire in 15 minutes.");
+      setMessage(
+        "Check your email. The link and code expire in 15 minutes; a newer email replaces any earlier code.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The email could not be sent");
     } finally {
@@ -100,7 +102,10 @@ export function AccessPage({ returnTo }: AccessPageProps) {
           id="access-email"
           name="email"
           type="email"
+          inputMode="email"
           autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}

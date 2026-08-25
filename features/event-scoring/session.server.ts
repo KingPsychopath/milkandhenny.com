@@ -39,6 +39,12 @@ export type AttendeeSession = {
   lastSeenAt: string;
 };
 
+export type PersonAttendeeSessionSummary = {
+  activeSessions: number;
+  lastSeenAt?: string;
+  authenticatedAt?: string;
+};
+
 const developmentSessions = new Map<string, AttendeeSession>();
 const developmentSessionLocks = new Map<string, Promise<void>>();
 
@@ -91,6 +97,76 @@ async function readById(id: string): Promise<AttendeeSession | null> {
   const redis = getRedis();
   if (redis) return parseStored(await redis.get(`${SESSION_PREFIX}${id}`));
   return allowMemoryFallback() ? (developmentSessions.get(id) ?? null) : null;
+}
+
+async function storedSessions(): Promise<AttendeeSession[]> {
+  const redis = getRedis();
+  if (redis) {
+    const sessions: AttendeeSession[] = [];
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, {
+        match: `${SESSION_PREFIX}*`,
+        count: 100,
+      });
+      cursor = nextCursor;
+      if (keys.length === 0) continue;
+      const pipeline = redis.pipeline();
+      for (const key of keys) pipeline.get(key);
+      const values = await pipeline.exec();
+      for (const value of values) {
+        const session = parseStored(value);
+        if (session) sessions.push(session);
+      }
+    } while (cursor !== "0");
+    return sessions;
+  }
+  if (!allowMemoryFallback()) throw new Error("Attendee session persistence is unavailable");
+  return [...developmentSessions.values()];
+}
+
+export async function attendeeSessionSummaries(
+  personIds: readonly string[],
+): Promise<Map<string, PersonAttendeeSessionSummary>> {
+  const wanted = new Set(personIds);
+  const summaries = new Map<string, PersonAttendeeSessionSummary>();
+  if (wanted.size === 0) return summaries;
+  for (const session of await storedSessions()) {
+    if (!session.personId || !wanted.has(session.personId)) continue;
+    const current = summaries.get(session.personId);
+    const lastSeenAt =
+      !current?.lastSeenAt || Date.parse(session.lastSeenAt) > Date.parse(current.lastSeenAt)
+        ? session.lastSeenAt
+        : current.lastSeenAt;
+    const authenticatedAt =
+      session.authenticatedAt &&
+      (!current?.authenticatedAt ||
+        Date.parse(session.authenticatedAt) > Date.parse(current.authenticatedAt))
+        ? session.authenticatedAt
+        : current?.authenticatedAt;
+    summaries.set(session.personId, {
+      activeSessions: (current?.activeSessions ?? 0) + 1,
+      lastSeenAt,
+      authenticatedAt,
+    });
+  }
+  return summaries;
+}
+
+export async function revokeAttendeeSessionsForPerson(personId: string): Promise<number> {
+  const sessions = (await storedSessions()).filter((session) => session.personId === personId);
+  if (sessions.length === 0) return 0;
+  const redis = getRedis();
+  if (redis) {
+    const pipeline = redis.pipeline();
+    for (const session of sessions) pipeline.del(`${SESSION_PREFIX}${session.id}`);
+    await pipeline.exec();
+  } else if (allowMemoryFallback()) {
+    for (const session of sessions) developmentSessions.delete(session.id);
+  } else {
+    throw new Error("Attendee session persistence is unavailable");
+  }
+  return sessions.length;
 }
 
 async function write(session: AttendeeSession): Promise<void> {

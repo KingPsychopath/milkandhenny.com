@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
+import { identityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import {
   CLAIM_RATELIMIT_MAX,
   CLAIM_RATELIMIT_WINDOW_SECONDS,
@@ -113,6 +114,8 @@ export type IssueTicketsInput = {
   bypassSalesWindow?: boolean;
   /** Explicit admission beyond capacity; callers must make this visible to staff. */
   bypassCapacity?: boolean;
+  /** Public acquisition checks this; fulfilment of an already-paid checkout does not. */
+  enforceIdentityAcquisition?: boolean;
 };
 
 export type IssuedTickets = {
@@ -139,6 +142,18 @@ export async function issueTickets(
 
   if (input.email !== undefined && !isValidEmail(input.email)) {
     return { ok: false, status: 400, error: "That email address doesn't look right" };
+  }
+  if (
+    input.enforceIdentityAcquisition === true &&
+    input.email &&
+    !(await identityMayAcquire(input.email))
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "This email cannot claim new tickets. Existing tickets and orders are still available in your account.",
+    };
   }
 
   const event = await getEvent(input.eventSlug);

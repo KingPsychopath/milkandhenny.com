@@ -450,6 +450,8 @@ export function AdminDashboard({
           authFetch={authFetch}
           onError={setErrorMessage}
           onStatus={setStatusMessage}
+          ensureStepUpToken={ensureStepUpTokenResult}
+          withStepUpHeaders={withStepUpHeaders}
         />
       ) : null}
 

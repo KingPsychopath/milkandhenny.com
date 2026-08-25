@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { log } from "@/lib/platform/logger.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { recordMarketingConsent } from "@/features/communications/marketing-consent.server";
+import { identityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import {
   MARKETING_PRIVACY_NOTICE_VERSION,
   TICKET_MARKETING_CONSENT_VERSION,
@@ -93,6 +94,14 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   if (!ticketType) return { ok: false, status: 404, error: "Ticket type not found" };
 
   const email = normaliseEmail(input.email);
+  if (!(await identityMayAcquire(email))) {
+    return {
+      ok: false,
+      status: 403,
+      error:
+        "This email cannot buy new tickets. Existing tickets and orders are still available in your account.",
+    };
+  }
   const reference =
     input.checkoutRequestId && /^[A-Za-z0-9_-]{16,64}$/.test(input.checkoutRequestId)
       ? input.checkoutRequestId

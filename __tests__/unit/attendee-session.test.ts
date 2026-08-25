@@ -27,6 +27,33 @@ vi.mock("@/lib/platform/redis.server", () => ({
       if (state.records.get(keys[0]!) !== args[0]) return 0;
       return state.records.delete(keys[0]!) ? 1 : 0;
     },
+    scan: async (_cursor: string, options: { match?: string }) => [
+      "0",
+      [...state.records.keys()].filter((key) =>
+        options.match?.endsWith("*") ? key.startsWith(options.match.slice(0, -1)) : true,
+      ),
+    ],
+    pipeline: () => {
+      const commands: Array<{ command: "get" | "del"; key: string }> = [];
+      const pipeline = {
+        get(key: string) {
+          commands.push({ command: "get", key });
+          return pipeline;
+        },
+        del(key: string) {
+          commands.push({ command: "del", key });
+          return pipeline;
+        },
+        async exec() {
+          return commands.map(({ command, key }) =>
+            command === "get"
+              ? (state.records.get(key) ?? null)
+              : Number(state.records.delete(key)),
+          );
+        },
+      };
+      return pipeline;
+    },
   }),
 }));
 
@@ -53,9 +80,11 @@ vi.mock("@/features/event-scoring/store.server", () => ({
 }));
 
 import {
+  attendeeSessionSummaries,
   authenticateAttendeeSession,
   getAttendeeSession,
   openAttendeeTicket,
+  revokeAttendeeSessionsForPerson,
   signOutAttendeeSession,
 } from "@/features/event-scoring/session.server";
 
@@ -143,5 +172,35 @@ describe("attendee session authentication", () => {
         expect.objectContaining({ ticketId: "01ARZ3NDEKTSV4RT", mode: "scoring" }),
       ]),
     );
+  });
+
+  it("summarizes and revokes every authenticated session for one person", async () => {
+    const first = await authenticateAttendeeSession({
+      personId: "person_session",
+      verifiedEmailHash: "a".repeat(64),
+    });
+    state.cookies.clear();
+    const second = await authenticateAttendeeSession({
+      personId: "person_session",
+      verifiedEmailHash: "a".repeat(64),
+    });
+    state.cookies.clear();
+    await authenticateAttendeeSession({
+      personId: "person_other",
+      verifiedEmailHash: "b".repeat(64),
+    });
+
+    expect(
+      (await attendeeSessionSummaries(["person_session"])).get("person_session"),
+    ).toMatchObject({
+      activeSessions: 2,
+    });
+    expect(await revokeAttendeeSessionsForPerson("person_session")).toBe(2);
+    expect(state.records.has(`event-scoring:attendee-session:${first.id}`)).toBe(false);
+    expect(state.records.has(`event-scoring:attendee-session:${second.id}`)).toBe(false);
+    expect((await attendeeSessionSummaries(["person_session"])).has("person_session")).toBe(false);
+    expect((await attendeeSessionSummaries(["person_other"])).get("person_other")).toMatchObject({
+      activeSessions: 1,
+    });
   });
 });

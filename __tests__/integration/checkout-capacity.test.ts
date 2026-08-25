@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 process.env.AUTH_SECRET = "test-secret-value-long-enough-to-pass";
 
@@ -128,6 +129,31 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
     expect(
       (await getEventsIndex()).upcoming.find((event) => event.slug === "capacity-night"),
     ).toEqual(expect.objectContaining({ soldOut: false }));
+  });
+
+  it("blocks a restricted identity from starting a new purchase", async () => {
+    await seedEvent({ quantity: 4 });
+    const email = "restricted@example.com";
+    await query(
+      `insert into event_people
+         (id,canonical_name,acquisition_status,acquisition_restricted_at,
+          acquisition_restricted_by,acquisition_restriction_reason)
+       values ('person_restricted','Restricted person','restricted',now(),'root-owner','support review')`,
+    );
+    await query(
+      `insert into event_person_identifiers
+         (id,person_id,kind,value_hash,verified_at,display_hint)
+       values ('identifier_restricted','person_restricted','email',$1,now(),'r•••@example.com')`,
+      [createHash("sha256").update(email).digest("hex")],
+    );
+
+    expect(await startCheckout(checkoutInput("restricted-reference", email))).toEqual({
+      ok: false,
+      status: 403,
+      error:
+        "This email cannot buy new tickets. Existing tickets and orders are still available in your account.",
+    });
+    expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("releases an expired Checkout hold", async () => {

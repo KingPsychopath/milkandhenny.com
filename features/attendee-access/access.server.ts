@@ -181,6 +181,15 @@ export async function requestAttendeeAccess(input: {
         where email_hash = $1 and consumed_at is null`,
       [emailHash],
     );
+    // A new credential replaces the old one. Cancel its still-pending email
+    // too, so a recovered provider cannot later deliver several dead links.
+    await client.query(
+      `update email_outbox
+          set status = 'cancelled',message = null,cancelled_at = now(),updated_at = now()
+        where recipient_hash = $1 and kind = 'attendee-access'
+          and status = 'pending' and cancelled_at is null`,
+      [emailHash],
+    );
     await client.query(
       `insert into event_person_login_challenges
          (id,email,email_hash,token_hash,code_hash,purpose,person_id_hint,return_to,expires_at)

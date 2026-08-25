@@ -17,6 +17,7 @@ import {
 import { createOrResolveInvitedPerson, ensurePendingInvitedPerson } from "./invited-person.server";
 import { emitDomainEvent } from "./notifications.server";
 import { GLOBAL_ADMIN_ROLE_PRESETS, type GlobalAdminRole } from "./types";
+import { identityMayAcquire } from "./identity-policy.server";
 
 const ADMIN_ROLE_PRESETS = Object.keys(GLOBAL_ADMIN_ROLE_PRESETS) as GlobalAdminRole[];
 export type AdminRolePreset = GlobalAdminRole;
@@ -107,6 +108,13 @@ export async function inviteNamedAdmin(input: {
   const appOrigin = origin(input.origin);
   if (!appOrigin) return { ok: false, status: 503, error: "Application URL is not configured" };
   const email = normaliseEmail(input.email);
+  if (!(await identityMayAcquire(email))) {
+    return {
+      ok: false,
+      status: 403,
+      error: "This identity cannot receive new admin permissions. Existing access is unchanged.",
+    };
+  }
   const expiresAt = input.expiresAt
     ? new Date(input.expiresAt)
     : new Date(Date.now() + 72 * 60 * 60_000);

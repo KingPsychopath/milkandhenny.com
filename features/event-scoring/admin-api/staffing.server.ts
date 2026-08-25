@@ -1,4 +1,5 @@
 import { createTeam, setTeamMembership } from "../store.server";
+import { IdentityAcquisitionRestrictedError } from "@/features/attendee-operations/identity-policy.server";
 import {
   adjustStaffPool,
   createStaffAccess,
@@ -94,31 +95,38 @@ export const staffingActions: AdminScoringActionHandlers = {
         { status: 400 },
       );
 
-    const assignment = await createStaffAccess({
-      eventSlug,
-      label,
-      assignmentType,
-      preset: preset as StaffPreset,
-      actorId,
-      reason,
-      overrides:
-        body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
-          ? Object.fromEntries(
-              STAFF_PERMISSIONS.flatMap((permission) => {
-                const value = (body.overrides as Record<string, unknown>)[permission];
-                return typeof value === "boolean" ? [[permission, value]] : [];
-              }),
-            )
-          : undefined,
-      scope:
-        body.scope && typeof body.scope === "object" && !Array.isArray(body.scope)
-          ? (body.scope as Record<string, unknown>)
-          : undefined,
-      expiresAt: stringValue(body.expiresAt),
-      recipientEmail: stringValue(body.recipientEmail),
-      origin: new URL(request.url).origin,
-    });
-    return Response.json({ assignment }, { status: 201 });
+    try {
+      const assignment = await createStaffAccess({
+        eventSlug,
+        label,
+        assignmentType,
+        preset: preset as StaffPreset,
+        actorId,
+        reason,
+        overrides:
+          body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
+            ? Object.fromEntries(
+                STAFF_PERMISSIONS.flatMap((permission) => {
+                  const value = (body.overrides as Record<string, unknown>)[permission];
+                  return typeof value === "boolean" ? [[permission, value]] : [];
+                }),
+              )
+            : undefined,
+        scope:
+          body.scope && typeof body.scope === "object" && !Array.isArray(body.scope)
+            ? (body.scope as Record<string, unknown>)
+            : undefined,
+        expiresAt: stringValue(body.expiresAt),
+        recipientEmail: stringValue(body.recipientEmail),
+        origin: new URL(request.url).origin,
+      });
+      return Response.json({ assignment }, { status: 201 });
+    } catch (error) {
+      if (error instanceof IdentityAcquisitionRestrictedError) {
+        return Response.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
   },
 
   "revoke-staff": async ({ eventSlug, actorId, body }) => {

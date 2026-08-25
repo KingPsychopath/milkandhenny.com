@@ -2,6 +2,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
+type StepUp = () => Promise<{ ok: true; token: string } | { ok: false }>;
+type StepUpHeaders = (token: string, headers?: Record<string, string>) => Record<string, string>;
 type InboxItem = {
   id: string;
   caseId?: string;
@@ -30,6 +32,15 @@ type Person = {
   personId: string;
   canonicalName?: string;
   verifiedEmails: string[];
+  access: {
+    acquisitionStatus: "active" | "restricted";
+    restrictedAt?: string;
+    restrictedBy?: string;
+    restrictionReason?: string;
+    activeSessions: number;
+    lastSeenAt?: string;
+    authenticatedAt?: string;
+  };
   tickets: Array<{
     id: string;
     eventSlug: string;
@@ -65,10 +76,14 @@ export function AttendeeOperationsPanel({
   authFetch,
   onError,
   onStatus,
+  ensureStepUpToken,
+  withStepUpHeaders,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
+  ensureStepUpToken: StepUp;
+  withStepUpHeaders: StepUpHeaders;
 }) {
   const [tab, setTab] = useState<"inbox" | "people" | "preview">("inbox");
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -83,6 +98,7 @@ export function AttendeeOperationsPanel({
   const [categoryFilter, setCategoryFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
   const [savedViews, setSavedViews] = useState<InboxView[]>([]);
+  const [identityBusy, setIdentityBusy] = useState(false);
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
@@ -167,8 +183,7 @@ export function AttendeeOperationsPanel({
     onStatus("Inbox view saved on this device.");
   }
 
-  async function findPeople(event: FormEvent) {
-    event.preventDefault();
+  async function loadPeople(selectedPersonId?: string) {
     setLoading(true);
     try {
       const response = await authFetch(
@@ -176,12 +191,63 @@ export function AttendeeOperationsPanel({
       );
       const body = (await response.json()) as { people?: Person[]; error?: string };
       if (!response.ok) throw new Error(body.error ?? "People could not be searched");
-      setPeople(body.people ?? []);
-      setSelected(undefined);
+      const nextPeople = body.people ?? [];
+      setPeople(nextPeople);
+      setSelected(
+        selectedPersonId
+          ? nextPeople.find((person) => person.personId === selectedPersonId)
+          : undefined,
+      );
     } catch (error) {
       onError(error instanceof Error ? error.message : "People could not be searched");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function findPeople(event: FormEvent) {
+    event.preventDefault();
+    await loadPeople();
+  }
+
+  async function manageIdentity(person: Person, action: "sign-out" | "restrict" | "restore") {
+    const label =
+      action === "sign-out"
+        ? "sign this person out on every device"
+        : action === "restrict"
+          ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
+          : "allow this person to acquire new tickets and permissions again";
+    if (!window.confirm(`Are you sure you want to ${label}?`)) return;
+    const reason = window.prompt("Reason for the audit log")?.trim();
+    if (!reason) return;
+    setIdentityBusy(true);
+    try {
+      const step = await ensureStepUpToken();
+      if (!step.ok) return;
+      const response = await authFetch("/api/admin/operations/people", {
+        method: "PATCH",
+        headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
+        body: JSON.stringify({ personId: person.personId, action, reason }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        revokedSessions?: number;
+        revokedPendingPermissions?: number;
+      };
+      if (!response.ok) throw new Error(body.error ?? "Identity access could not be updated");
+      const revoked = body.revokedSessions ?? 0;
+      onStatus(
+        action === "restore"
+          ? "New ticket and permission acquisition restored."
+          : action === "restrict"
+            ? `New acquisition restricted; ${body.revokedPendingPermissions ?? 0} pending permission invitation${body.revokedPendingPermissions === 1 ? "" : "s"} revoked.`
+            : `${revoked} session${revoked === 1 ? "" : "s"} revoked.`,
+      );
+      await loadPeople(person.personId);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Identity access could not be updated");
+    } finally {
+      setIdentityBusy(false);
     }
   }
 
@@ -432,7 +498,7 @@ export function AttendeeOperationsPanel({
               ))}
             </ul>
             {selected ? (
-              <PersonDrawer person={selected} />
+              <PersonDrawer person={selected} busy={identityBusy} onManage={manageIdentity} />
             ) : (
               <p className="font-mono text-xs theme-muted">
                 Choose a person for the read-only attendee view.
@@ -449,7 +515,18 @@ export function AttendeeOperationsPanel({
   );
 }
 
-function PersonDrawer({ person }: { person: Person }) {
+function PersonDrawer({
+  person,
+  busy,
+  onManage,
+}: {
+  person: Person;
+  busy: boolean;
+  onManage: (person: Person, action: "sign-out" | "restrict" | "restore") => Promise<void>;
+}) {
+  const recentlyActive =
+    person.access.lastSeenAt !== undefined &&
+    Date.now() - Date.parse(person.access.lastSeenAt) < 5 * 60 * 1_000;
   return (
     <aside className="border-y theme-border py-5" aria-label="Attendee detail">
       <p className="font-mono text-micro uppercase tracking-widest theme-muted">
@@ -472,12 +549,67 @@ function PersonDrawer({ person }: { person: Person }) {
           </dd>
         </div>
         <div>
+          <dt className="theme-muted">sessions</dt>
+          <dd className="mt-1">
+            {person.access.activeSessions} active session
+            {person.access.activeSessions === 1 ? "" : "s"}
+            {recentlyActive ? " · active in the last 5 minutes" : ""}
+          </dd>
+          {person.access.lastSeenAt ? (
+            <dd className="mt-1 theme-muted">
+              last seen {new Date(person.access.lastSeenAt).toLocaleString()}
+            </dd>
+          ) : null}
+        </div>
+        <div>
+          <dt className="theme-muted">new tickets and permissions</dt>
+          <dd className="mt-1">{person.access.acquisitionStatus}</dd>
+          {person.access.restrictionReason ? (
+            <dd className="mt-1 theme-muted">
+              restricted{" "}
+              {person.access.restrictedAt
+                ? new Date(person.access.restrictedAt).toLocaleString()
+                : ""}
+              {` · ${person.access.restrictionReason}`}
+            </dd>
+          ) : null}
+        </div>
+        <div>
           <dt className="theme-muted">devices / invitations</dt>
           <dd className="mt-1">
             {person.staffDevices} staff devices · {person.pendingInvitations} pending
           </dd>
         </div>
       </dl>
+      <div className="mt-5 flex flex-wrap gap-3 border-y theme-border py-4">
+        <button
+          type="button"
+          disabled={busy || person.access.activeSessions === 0}
+          onClick={() => void onManage(person, "sign-out")}
+          className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+        >
+          sign out everywhere
+        </button>
+        {person.access.acquisitionStatus === "active" ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onManage(person, "restrict")}
+            className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+          >
+            restrict new access
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onManage(person, "restore")}
+            className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+          >
+            restore new access
+          </button>
+        )}
+      </div>
       <h4 className="mt-6 font-mono text-xs font-bold">tickets</h4>
       <ul className="mt-2 divide-y border-y theme-border">
         {person.tickets.map((ticket) => (

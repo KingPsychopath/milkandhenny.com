@@ -7,6 +7,7 @@ import {
   revokeActionLink,
 } from "@/features/attendee-operations/action-links.server";
 import { ensurePendingInvitedPerson } from "@/features/attendee-operations/invited-person.server";
+import { requireIdentityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import { emitDomainEvent } from "@/features/attendee-operations/notifications.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
@@ -191,6 +192,10 @@ export async function createStaffAccess(input: {
     "";
   if (!appOrigin) throw new Error("Application URL is not configured");
   const recipient = normaliseEmail(input.recipientEmail);
+  await requireIdentityMayAcquire(
+    recipient,
+    "This identity cannot receive new staff permissions. Existing access is unchanged.",
+  );
   const expiresAt = input.expiresAt
     ? new Date(input.expiresAt)
     : new Date(Date.now() + 72 * 60 * 60_000);

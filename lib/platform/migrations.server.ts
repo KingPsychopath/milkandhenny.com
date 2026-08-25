@@ -2947,6 +2947,32 @@ const MIGRATIONS: Migration[] = [
         ));
     `,
   },
+  {
+    id: "0058_attendee_identity_acquisition_status",
+    sql: `
+      alter table event_people
+        add column acquisition_status text not null default 'active'
+          check (acquisition_status in ('active','restricted')),
+        add column acquisition_restricted_at timestamptz,
+        add column acquisition_restricted_by text,
+        add column acquisition_restriction_reason text;
+
+      alter table event_people add constraint event_people_acquisition_restriction_check check (
+        (acquisition_status = 'active'
+          and acquisition_restricted_at is null
+          and acquisition_restricted_by is null
+          and acquisition_restriction_reason is null)
+        or
+        (acquisition_status = 'restricted'
+          and acquisition_restricted_at is not null
+          and acquisition_restricted_by is not null
+          and char_length(acquisition_restriction_reason) between 3 and 500)
+      );
+
+      create index event_people_acquisition_restricted_idx
+        on event_people (acquisition_restricted_at desc) where acquisition_status = 'restricted';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

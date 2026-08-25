@@ -1,9 +1,19 @@
 import { query } from "@/lib/platform/postgres.server";
+import { attendeeSessionSummaries } from "@/features/event-scoring/session.server";
 
 export type PersonDirectoryEntry = {
   personId: string;
   canonicalName?: string;
   verifiedEmails: string[];
+  access: {
+    acquisitionStatus: "active" | "restricted";
+    restrictedAt?: string;
+    restrictedBy?: string;
+    restrictionReason?: string;
+    activeSessions: number;
+    lastSeenAt?: string;
+    authenticatedAt?: string;
+  };
   tickets: Array<{
     id: string;
     eventSlug: string;
@@ -38,8 +48,17 @@ export type PersonDirectoryEntry = {
 export async function searchPeople(queryText: string, limit = 30): Promise<PersonDirectoryEntry[]> {
   const search = queryText.trim().toLocaleLowerCase("en-GB");
   const boundedLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
-  const people = await query<{ id: string; canonical_name: string | null }>(
-    `select distinct person.id,person.canonical_name
+  const people = await query<{
+    id: string;
+    canonical_name: string | null;
+    acquisition_status: "active" | "restricted";
+    acquisition_restricted_at: Date | null;
+    acquisition_restricted_by: string | null;
+    acquisition_restriction_reason: string | null;
+  }>(
+    `select distinct person.id,person.canonical_name,person.acquisition_status,
+            person.acquisition_restricted_at,person.acquisition_restricted_by,
+            person.acquisition_restriction_reason
        from event_people person
        left join event_person_identifiers identifier on identifier.person_id = person.id
        left join event_participants participant on participant.person_id = person.id
@@ -56,30 +75,31 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
   );
   if (!people.length) return [];
   const ids = people.map((person) => person.id);
-  const [emails, tickets, globalRoles, eventRoles, invitations, devices] = await Promise.all([
-    query<{ person_id: string; display_hint: string }>(
-      `select person_id,coalesce(display_hint,'verified email') as display_hint
+  const [emails, tickets, globalRoles, eventRoles, invitations, devices, sessions] =
+    await Promise.all([
+      query<{ person_id: string; display_hint: string }>(
+        `select person_id,coalesce(display_hint,'verified email') as display_hint
          from event_person_identifiers
         where person_id = any($1::text[]) and kind = 'email' and verified_at is not null
         order by verified_at desc`,
-      [ids],
-    ),
-    query<{
-      person_id: string;
-      id: string;
-      event_slug: string;
-      event_title: string;
-      holder_name: string;
-      status: string;
-      order_id: string;
-      participant_id: string;
-      checked_in_at: Date | null;
-      amount_paid_minor: number | null;
-      currency: string | null;
-      notes: string | null;
-      other_order_tickets: string;
-    }>(
-      `select participant.person_id,ticket.id,ticket.event_slug,event.title as event_title,
+        [ids],
+      ),
+      query<{
+        person_id: string;
+        id: string;
+        event_slug: string;
+        event_title: string;
+        holder_name: string;
+        status: string;
+        order_id: string;
+        participant_id: string;
+        checked_in_at: Date | null;
+        amount_paid_minor: number | null;
+        currency: string | null;
+        notes: string | null;
+        other_order_tickets: string;
+      }>(
+        `select participant.person_id,ticket.id,ticket.event_slug,event.title as event_title,
               ticket.holder_name,ticket.status,ticket.order_id,participant.id as participant_id,
               participant.checked_in_at,ticket.amount_paid_minor,ticket.currency,ticket.notes,
               (select count(*) - 1 from tickets sibling where sibling.order_id = ticket.order_id)::text as other_order_tickets
@@ -88,40 +108,41 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
          join events event on event.slug = ticket.event_slug
         where participant.person_id = any($1::text[])
         order by event.starts_at desc,ticket.issued_at`,
-      [ids],
-    ),
-    query<{ person_id: string; role_preset: string; status: string; expires_at: Date | null }>(
-      `select person_id,role_preset,status,expires_at from global_admin_grants
+        [ids],
+      ),
+      query<{ person_id: string; role_preset: string; status: string; expires_at: Date | null }>(
+        `select person_id,role_preset,status,expires_at from global_admin_grants
         where person_id = any($1::text[]) order by created_at desc`,
-      [ids],
-    ),
-    query<{
-      person_id: string;
-      event_slug: string;
-      label: string;
-      status: string;
-      expires_at: Date | null;
-    }>(
-      `select person_id,event_slug,label,status,expires_at from score_staff_assignments
+        [ids],
+      ),
+      query<{
+        person_id: string;
+        event_slug: string;
+        label: string;
+        status: string;
+        expires_at: Date | null;
+      }>(
+        `select person_id,event_slug,label,status,expires_at from score_staff_assignments
         where person_id = any($1::text[]) order by created_at desc`,
-      [ids],
-    ),
-    query<{ person_id: string; count: string }>(
-      `select person_id,count(*)::text as count from (
+        [ids],
+      ),
+      query<{ person_id: string; count: string }>(
+        `select person_id,count(*)::text as count from (
          select purchaser_person_id as person_id from ticket_assignments where status = 'pending'
          union all select sender_person_id from ticket_transfers where status = 'pending'
        ) pending where person_id = any($1::text[]) group by person_id`,
-      [ids],
-    ),
-    query<{ person_id: string; count: string }>(
-      `select assignment.person_id,count(device.device_id)::text as count
+        [ids],
+      ),
+      query<{ person_id: string; count: string }>(
+        `select assignment.person_id,count(device.device_id)::text as count
          from score_staff_assignments assignment
          join score_staff_devices device on device.assignment_id = assignment.id and device.revoked_at is null
         where assignment.person_id = any($1::text[])
         group by assignment.person_id`,
-      [ids],
-    ),
-  ]);
+        [ids],
+      ),
+      attendeeSessionSummaries(ids),
+    ]);
   const ticketIds = tickets.map((ticket) => ticket.id);
   const participantIds = tickets.map((ticket) => ticket.participant_id);
   const [transfers, returns, exchanges, scores, communications, audit] = ticketIds.length
@@ -185,6 +206,15 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
     verifiedEmails: emails
       .filter((email) => email.person_id === person.id)
       .map((email) => email.display_hint),
+    access: {
+      acquisitionStatus: person.acquisition_status,
+      restrictedAt: person.acquisition_restricted_at?.toISOString(),
+      restrictedBy: person.acquisition_restricted_by ?? undefined,
+      restrictionReason: person.acquisition_restriction_reason ?? undefined,
+      activeSessions: sessions.get(person.id)?.activeSessions ?? 0,
+      lastSeenAt: sessions.get(person.id)?.lastSeenAt,
+      authenticatedAt: sessions.get(person.id)?.authenticatedAt,
+    },
     tickets: tickets
       .filter((ticket) => ticket.person_id === person.id)
       .map((ticket) => ({

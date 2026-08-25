@@ -103,6 +103,7 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
           email: data.email,
           quantity: data.quantity,
           kind: "free",
+          enforceIdentityAcquisition: true,
         });
       }),
     );
