@@ -2,11 +2,26 @@ import { expect, test } from "@playwright/test";
 
 test("anonymous account navigation reaches sign in without an error boundary", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("link", { name: "account", exact: true }).click();
+  const accountLink = page.getByRole("link", { name: "account", exact: true });
+  await expect
+    .poll(() => accountLink.evaluate((element) => getComputedStyle(element).pointerEvents))
+    .toBe("auto");
+  await page.evaluate(() => {
+    (window as Window & { accountNavigationMarker?: string }).accountNavigationMarker =
+      "same-document";
+  });
+  await accountLink.click();
 
   await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);
   await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "oops" })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as Window & { accountNavigationMarker?: string }).accountNavigationMarker,
+      ),
+    )
+    .toBe("same-document");
 });
 
 test("missing pages offer back and home recovery", async ({ page }) => {

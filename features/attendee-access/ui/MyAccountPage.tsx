@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
-import { attendeeSignInHref, type AttendeeAccount } from "../types";
+import type { AttendeeAccount } from "../types";
 
 type AccountResponse = {
   authenticated: boolean;
@@ -37,6 +37,7 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
 }
 
 export function MyAccountPage() {
+  const navigate = useNavigate();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<AttendeeAccount | null>(null);
@@ -55,7 +56,7 @@ export function MyAccountPage() {
       })
       .then((body) => {
         if (!body.authenticated || !body.account) {
-          window.location.replace(attendeeSignInHref("/my"));
+          void navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
           return;
         }
         setAccount(body.account);
@@ -64,7 +65,7 @@ export function MyAccountPage() {
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [navigate]);
 
   async function saveName(event: FormEvent) {
     event.preventDefault();
@@ -110,7 +111,7 @@ export function MyAccountPage() {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Could not sign out");
       }
-      window.location.assign(attendeeSignInHref("/my"));
+      await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
@@ -148,7 +149,7 @@ export function MyAccountPage() {
         if (response.status === 403) setEmailStepUpRequired(true);
         throw new Error(body.error ?? "The sign-in email could not be removed");
       }
-      window.location.assign(attendeeSignInHref("/my"));
+      await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
       setBusy(false);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 
 import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGameNavigation";
 
@@ -9,7 +9,10 @@ export function AttendeeAccessLink() {
     pathname === "/my" || pathname === "/access" || pathname.startsWith("/admin");
   const [safeGameScreen, setSafeGameScreen] = useState(false);
   const [nearTop, setNearTop] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
   const scrollFrame = useRef<number | null>(null);
+
+  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
     if (hiddenSurface) return;
@@ -46,12 +49,15 @@ export function AttendeeAccessLink() {
   if (hiddenSurface) return null;
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
   return (
-    <a
-      href="/my"
-      style={{ opacity: nearTop ? 1 : 0, pointerEvents: nearTop ? "auto" : "none" }}
+    <Link
+      to="/my"
+      style={{
+        opacity: nearTop ? 1 : 0,
+        pointerEvents: hydrated && nearTop ? "auto" : "none",
+      }}
       className="mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20"
     >
       account
-    </a>
+    </Link>
   );
 }

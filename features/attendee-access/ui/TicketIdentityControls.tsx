@@ -156,9 +156,9 @@ export function TicketIdentityControlsView({
         <div>
           <p className="font-mono text-micro theme-muted">
             saved to your account{account?.name ? ` as ${account.name}` : ""} ·{" "}
-            <a href="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
+            <Link to="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
               manage
-            </a>
+            </Link>
           </p>
           <button
             type="button"
