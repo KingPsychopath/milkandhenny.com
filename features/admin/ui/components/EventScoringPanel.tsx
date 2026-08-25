@@ -36,7 +36,7 @@ export function EventScoringPanel({
   const [data, setData] = useState<ScoringData | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load(showBusy = true) {
+  async function load(showBusy = true, auditFilter?: Record<string, string>) {
     if (!eventSlug.trim()) {
       onError("Enter an event slug first.");
       return;
@@ -44,8 +44,9 @@ export function EventScoringPanel({
     if (showBusy) setBusy(true);
     onError("");
     try {
+      const query = new URLSearchParams(auditFilter).toString();
       const response = await authFetch(
-        `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring`,
+        `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring${query ? `?${query}` : ""}`,
       );
       if (!response.ok) throw new Error("Could not load scoring settings");
       setData((await response.json()) as ScoringData);
@@ -240,7 +241,12 @@ export function EventScoringPanel({
           />
           <ScoringTestModePanel data={data} />
           <ScoringMediaPanel data={data} onAction={performAction} />
-          <ScoringAuditPanel audit={data.audit} onExport={downloadExport} />
+          <ScoringAuditPanel
+            audit={data.audit}
+            activities={data.activities}
+            onFilter={async (filter) => load(false, filter)}
+            onExport={downloadExport}
+          />
           <ScoringIdentityPanel merges={data.merges} onAction={performAction} />
           <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
           <ScoringCorrectionsPanel

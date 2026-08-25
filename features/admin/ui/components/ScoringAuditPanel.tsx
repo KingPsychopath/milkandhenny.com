@@ -1,12 +1,25 @@
-import type { ScoringData } from "./event-scoring-types";
+import { useState } from "react";
+
+import type { AdminScoringActivity, ScoringData } from "./event-scoring-types";
 
 export function ScoringAuditPanel({
   audit,
+  activities,
+  onFilter,
   onExport,
 }: {
   audit: ScoringData["audit"];
+  activities: AdminScoringActivity[];
+  onFilter: (filter: Record<string, string>) => Promise<void>;
   onExport: () => Promise<void>;
 }) {
+  const [participant, setParticipant] = useState("");
+  const [actor, setActor] = useState("");
+  const [activity, setActivity] = useState("");
+  const [source, setSource] = useState("");
+  const [status, setStatus] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   return (
     <section aria-labelledby="scoring-audit-heading" className="border-t theme-border pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -26,6 +39,106 @@ export function ScoringAuditPanel({
           download export
         </button>
       </div>
+      <form
+        className="mt-4 grid gap-3 sm:grid-cols-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onFilter(
+            Object.fromEntries(
+              Object.entries({
+                auditParticipant: participant,
+                auditActor: actor,
+                auditActivity: activity,
+                auditSource: source,
+                auditStatus: status,
+                auditFrom: from,
+                auditTo: to,
+              }).filter(([, value]) => value),
+            ),
+          );
+        }}
+      >
+        <label className="font-mono text-xs">
+          participant ID
+          <input
+            value={participant}
+            onChange={(event) => setParticipant(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <label className="font-mono text-xs">
+          actor, assignment, station, or device
+          <input
+            value={actor}
+            onChange={(event) => setActor(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <label className="font-mono text-xs">
+          activity
+          <select
+            value={activity}
+            onChange={(event) => setActivity(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            <option value="">all activities</option>
+            {activities.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="font-mono text-xs">
+          source
+          <select
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            <option value="">all sources</option>
+            {["manual", "game", "discovery", "check-in", "transfer", "reversal", "correction"].map(
+              (entry) => (
+                <option key={entry}>{entry}</option>
+              ),
+            )}
+          </select>
+        </label>
+        <label className="font-mono text-xs">
+          status
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            <option value="">all states</option>
+            {["accepted", "held", "rejected", "reversed"].map((entry) => (
+              <option key={entry}>{entry}</option>
+            ))}
+          </select>
+        </label>
+        <label className="font-mono text-xs">
+          from
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={(event) => setFrom(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <label className="font-mono text-xs">
+          to
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={(event) => setTo(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <button className="min-h-11 self-end border theme-border px-4 font-mono text-xs hover:opacity-70">
+          filter audit
+        </button>
+      </form>
       <ol className="mt-4 max-h-80 divide-y theme-border overflow-y-auto border-y theme-border">
         {audit.map((entry) => (
           <li

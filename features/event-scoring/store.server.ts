@@ -833,8 +833,10 @@ export async function listScoreAuditEvents(input: {
   participantId?: string;
   actorId?: string;
   activityId?: string;
-  sourceId?: string;
+  sourceType?: ScoreSourceType;
   status?: ScoreTransactionStatus;
+  from?: string;
+  to?: string;
   limit?: number;
 }): Promise<ScoreAuditEvent[]> {
   const rows = await query<{
@@ -851,22 +853,31 @@ export async function listScoreAuditEvents(input: {
     metadata: unknown;
     created_at: Date;
   }>(
-    `select * from score_audit_events
-      where event_slug = $1
-        and ($2::text is null or actor_id = $2)
-        and ($3::text is null or entity_id = $3)
-        and ($4::text is null or metadata->>'activityId' = $4)
-        and ($5::text is null or metadata->>'sourceId' = $5)
-        and ($6::text is null or metadata->>'status' = $6)
-      order by created_at desc, id desc
-      limit $7`,
+    `select audit.* from score_audit_events audit
+       left join score_transactions transaction
+         on audit.entity_type = 'score_transaction' and transaction.id = audit.entity_id
+      where audit.event_slug = $1
+        and ($2::text is null or $2 in (audit.actor_id, audit.assignment_id, audit.station_id, audit.device_id))
+        and ($3::text is null or exists (
+          select 1 from score_postings posting
+           where posting.transaction_id = transaction.id and posting.participant_id = $3
+        ))
+        and ($4::text is null or transaction.activity_id = $4)
+        and ($5::text is null or transaction.source_type = $5)
+        and ($6::text is null or transaction.status = $6)
+        and ($7::timestamptz is null or audit.created_at >= $7)
+        and ($8::timestamptz is null or audit.created_at <= $8)
+      order by audit.created_at desc, audit.id desc
+      limit $9`,
     [
       input.eventSlug,
       input.actorId ?? null,
       input.participantId ?? null,
       input.activityId ?? null,
-      input.sourceId ?? null,
+      input.sourceType ?? null,
       input.status ?? null,
+      input.from ?? null,
+      input.to ?? null,
       Math.min(Math.max(input.limit ?? 100, 1), 500),
     ],
   );

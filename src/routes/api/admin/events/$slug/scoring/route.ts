@@ -84,7 +84,8 @@ async function handleGET(request: Request, slug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
-    const search = new URL(request.url).searchParams.get("participant");
+    const params = new URL(request.url).searchParams;
+    const search = params.get("participant");
     if (search) {
       return Response.json({ participants: await searchEventParticipants(slug, search) });
     }
@@ -110,7 +111,21 @@ async function handleGET(request: Request, slug: string) {
       listStaffAssignments(slug),
       listScoreMediaLinks(slug),
       getEventDrop(slug),
-      listScoreAuditEvents({ eventSlug: slug, limit: 100 }),
+      listScoreAuditEvents({
+        eventSlug: slug,
+        participantId: params.get("auditParticipant") ?? undefined,
+        actorId: params.get("auditActor") ?? undefined,
+        activityId: params.get("auditActivity") ?? undefined,
+        sourceType: (params.get("auditSource") ?? undefined) as Parameters<
+          typeof listScoreAuditEvents
+        >[0]["sourceType"],
+        status: (params.get("auditStatus") ?? undefined) as Parameters<
+          typeof listScoreAuditEvents
+        >[0]["status"],
+        from: params.get("auditFrom") ?? undefined,
+        to: params.get("auditTo") ?? undefined,
+        limit: 100,
+      }),
       listParticipantMerges(slug),
     ]);
     return Response.json({

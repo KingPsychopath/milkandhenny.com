@@ -10,6 +10,7 @@ import {
   getOrCreateSettings,
   listScoreNotifications,
   listScoreMediaLinks,
+  listScoreAuditEvents,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -1023,6 +1024,16 @@ describeWithDatabase("event scoring postgres", () => {
       }),
     ).toMatchObject({ ok: true });
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(6);
+    expect(
+      await listScoreAuditEvents({
+        eventSlug: "scoring-night",
+        participantId: participant!.id,
+        actorId: access.id,
+        activityId: activity.id,
+        sourceType: "manual",
+        status: "accepted",
+      }),
+    ).toHaveLength(2);
   });
 
   it("adds to and reclaims only unused staff pool points", async () => {
