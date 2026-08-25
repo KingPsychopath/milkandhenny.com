@@ -56,22 +56,32 @@ export function isGameSettingsGame(value: unknown): value is GameSettingsGame {
   return GAME_SETTINGS_GAMES.includes(value as GameSettingsGame);
 }
 
+// Keyed by game so adding a member to GAME_SETTINGS_GAMES fails to compile until both maps
+// cover it, instead of silently falling through to another game's parser.
+const GAME_SETTINGS_DEFAULTS: { [Game in GameSettingsGame]: GameSettings & { game: Game } } = {
+  "same-brain": SAME_BRAIN_GAME_SETTINGS,
+  liars: LIARS_GAME_SETTINGS,
+  centre: CENTRE_GAME_SETTINGS,
+  twin: TWIN_GAME_SETTINGS,
+  "draw-country": DRAW_COUNTRY_GAME_SETTINGS,
+  "hot-and-cold": HOT_AND_COLD_GAME_SETTINGS,
+};
+
+const GAME_SETTINGS_PARSERS: { [Game in GameSettingsGame]: (value: unknown) => GameSettings } = {
+  "same-brain": parseSameBrainGameSettings,
+  liars: parseLiarsGameSettings,
+  centre: parseCentreGameSettings,
+  twin: parseTwinGameSettings,
+  "draw-country": parseDrawCountryGameSettings,
+  "hot-and-cold": parseHotAndColdGameSettings,
+};
+
 export function defaultGameSettings(game: GameSettingsGame): GameSettings {
-  if (game === "same-brain") return { ...SAME_BRAIN_GAME_SETTINGS };
-  if (game === "liars") return { ...LIARS_GAME_SETTINGS };
-  if (game === "centre") return { ...CENTRE_GAME_SETTINGS };
-  if (game === "twin") return { ...TWIN_GAME_SETTINGS };
-  if (game === "hot-and-cold") return { ...HOT_AND_COLD_GAME_SETTINGS };
-  return { ...DRAW_COUNTRY_GAME_SETTINGS };
+  return { ...GAME_SETTINGS_DEFAULTS[game] };
 }
 
 export function parseGameSettings(value: unknown, game: GameSettingsGame): GameSettings {
-  if (game === "same-brain") return parseSameBrainGameSettings(value);
-  if (game === "liars") return parseLiarsGameSettings(value);
-  if (game === "centre") return parseCentreGameSettings(value);
-  if (game === "twin") return parseTwinGameSettings(value);
-  if (game === "hot-and-cold") return parseHotAndColdGameSettings(value);
-  return parseDrawCountryGameSettings(value);
+  return GAME_SETTINGS_PARSERS[game](value);
 }
 
 export function gameSettingsDocument(

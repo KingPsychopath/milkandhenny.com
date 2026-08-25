@@ -33,11 +33,19 @@ import {
   HOT_AND_COLD_GUESS_LIMITS,
   HOT_AND_COLD_PLAYER_LIMITS,
   HOT_AND_COLD_ROUND_LIMITS,
+  HOT_AND_COLD_TURN_SECOND_OPTIONS,
   prepareGuess,
   roundWinnerIds,
 } from "./hot-and-cold-rules";
 import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import { randomHotAndColdTargets } from "./hot-and-cold-words.server";
+
+function turnSecondsOption(value: number | undefined): number | undefined {
+  return value !== undefined &&
+    (HOT_AND_COLD_TURN_SECOND_OPTIONS as readonly number[]).includes(value)
+    ? value
+    : undefined;
+}
 import type {
   HotAndColdAction,
   HotAndColdActionResult,
@@ -333,9 +341,7 @@ export async function createHotAndColdRoom(input: {
         input.guessesPerPlayer ?? HOT_AND_COLD_DEFAULT_GUESSES,
       ),
     ),
-    turnSeconds: [0, 10, 15, 20, 30].includes(input.turnSeconds ?? 20)
-      ? (input.turnSeconds ?? 20)
-      : HOT_AND_COLD_DEFAULT_TURN_SECONDS,
+    turnSeconds: turnSecondsOption(input.turnSeconds) ?? HOT_AND_COLD_DEFAULT_TURN_SECONDS,
     targets: randomHotAndColdTargets(rounds),
     playedTargets: [],
     players: [
@@ -581,11 +587,18 @@ export async function applyHotAndColdAction(input: {
       return accept();
     }
     if (action.type === "game.configure" && room.phase === "lobby" && !room.managed) {
-      if (action.rounds) room.rounds = Math.min(7, Math.max(1, action.rounds));
+      if (action.rounds)
+        room.rounds = Math.min(
+          HOT_AND_COLD_ROUND_LIMITS.max,
+          Math.max(HOT_AND_COLD_ROUND_LIMITS.min, action.rounds),
+        );
       if (action.guessesPerPlayer)
-        room.guessesPerPlayer = Math.min(10, Math.max(2, action.guessesPerPlayer));
-      if (action.turnSeconds !== undefined && [0, 10, 15, 20, 30].includes(action.turnSeconds))
-        room.turnSeconds = action.turnSeconds;
+        room.guessesPerPlayer = Math.min(
+          HOT_AND_COLD_GUESS_LIMITS.max,
+          Math.max(HOT_AND_COLD_GUESS_LIMITS.min, action.guessesPerPlayer),
+        );
+      const turnSeconds = turnSecondsOption(action.turnSeconds);
+      if (turnSeconds !== undefined) room.turnSeconds = turnSeconds;
       room.targets = randomHotAndColdTargets(room.rounds, room.playedTargets);
       changed(room);
       return accept();

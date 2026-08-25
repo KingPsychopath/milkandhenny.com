@@ -4,6 +4,7 @@ import {
   HOT_AND_COLD_DEFAULT_TURN_SECONDS,
   HOT_AND_COLD_GUESS_LIMITS,
   HOT_AND_COLD_ROUND_LIMITS,
+  HOT_AND_COLD_TURN_SECOND_OPTIONS,
 } from "./hot-and-cold-rules";
 
 export interface HotAndColdGameSettings {
@@ -32,13 +33,18 @@ export function parseHotAndColdGameSettings(value: unknown): HotAndColdGameSetti
     rounds < HOT_AND_COLD_ROUND_LIMITS.min ||
     rounds > HOT_AND_COLD_ROUND_LIMITS.max
   )
-    throw new Error("Rounds must be between 1 and 7.");
+    throw new Error(
+      `Rounds must be between ${HOT_AND_COLD_ROUND_LIMITS.min} and ${HOT_AND_COLD_ROUND_LIMITS.max}.`,
+    );
   if (
     !Number.isInteger(guessesPerPlayer) ||
     guessesPerPlayer < HOT_AND_COLD_GUESS_LIMITS.min ||
     guessesPerPlayer > HOT_AND_COLD_GUESS_LIMITS.max
   )
-    throw new Error("Guesses must be between 2 and 10.");
-  if (![0, 10, 15, 20, 30].includes(turnSeconds)) throw new Error("Choose a supported turn time.");
+    throw new Error(
+      `Guesses must be between ${HOT_AND_COLD_GUESS_LIMITS.min} and ${HOT_AND_COLD_GUESS_LIMITS.max}.`,
+    );
+  if (!(HOT_AND_COLD_TURN_SECOND_OPTIONS as readonly number[]).includes(turnSeconds))
+    throw new Error("Choose a supported turn time.");
   return { game: "hot-and-cold", rounds, guessesPerPlayer, turnSeconds };
 }

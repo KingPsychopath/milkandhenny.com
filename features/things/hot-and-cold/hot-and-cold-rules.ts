@@ -6,6 +6,8 @@ export const HOT_AND_COLD_GUESS_LIMITS = { min: 2, max: 10 } as const;
 export const HOT_AND_COLD_DEFAULT_ROUNDS = 3;
 export const HOT_AND_COLD_DEFAULT_GUESSES = 4;
 export const HOT_AND_COLD_DEFAULT_TURN_SECONDS = 20;
+/** Zero disables the turn timer. */
+export const HOT_AND_COLD_TURN_SECOND_OPTIONS = [0, 10, 15, 20, 30] as const;
 
 export type HeatBand = "found" | "burning" | "hot" | "warm" | "cool" | "cold" | "frozen";
 
