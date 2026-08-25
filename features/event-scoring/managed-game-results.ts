@@ -1,4 +1,4 @@
-import type { OfficialResultPlayer } from "@/features/things/shared/official-game-results";
+import type { OfficialResultPlayer } from "@/features/game-results/types";
 
 export function pitchesPlayersFromBallots(input: {
   candidateParticipantIds: string[];

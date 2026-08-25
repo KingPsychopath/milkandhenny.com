@@ -62,7 +62,7 @@ import {
   awardStaffPoints,
   getStaffScoringPage,
 } from "@/features/event-scoring/staff-scoring.server";
-import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
+import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
 import { buildTicketQrPayload } from "@/features/tickets/qr.server";
 import {
   closeOfflineScoreReservation,
@@ -79,7 +79,7 @@ import {
   icebreakerEncounterPlayers,
   pitchesPlayersFromBallots,
 } from "@/features/event-scoring/managed-game-results";
-import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
+import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
 import {
   applyPenalty,
   awardPoints,

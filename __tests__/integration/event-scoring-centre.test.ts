@@ -10,7 +10,7 @@ import {
 } from "@/features/event-scoring/store.server";
 import { launchEventCentreGame } from "@/features/event-scoring/game-launch.server";
 import { consumeOfficialGameResult } from "@/features/event-scoring/games.server";
-import { registerOfficialGameResultConsumer } from "@/features/things/shared/official-game-results.server";
+import { subscribeOfficialResultWake } from "@/features/game-results/outbox.server";
 import { applyCentreAction, readCentreSnapshot } from "@/features/things/centre/centre-room.server";
 import {
   CENTRE_CELL,
@@ -61,9 +61,12 @@ function solvedRoute(
 }
 
 describeWithDatabase("event-linked Centre scoring", () => {
+  let stopResultConsumer: (() => Promise<void>) | undefined;
   beforeAll(async () => {
-    // In production the nitro plugin registers this consumer; tests wire it directly.
-    registerOfficialGameResultConsumer(consumeOfficialGameResult);
+    // In production the Nitro composition plugin owns this subscription.
+    stopResultConsumer = subscribeOfficialResultWake(async (envelopes) => {
+      for (const envelope of envelopes) await consumeOfficialGameResult(envelope);
+    });
     await applySchema();
   });
   beforeEach(async () => {
@@ -83,7 +86,7 @@ describeWithDatabase("event-linked Centre scoring", () => {
   });
   afterEach(() => vi.useRealTimers());
   afterAll(async () => {
-    registerOfficialGameResultConsumer(undefined);
+    await stopResultConsumer?.();
     await closeDatabase();
   });
 

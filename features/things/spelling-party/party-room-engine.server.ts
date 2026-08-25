@@ -31,11 +31,11 @@ import {
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
 import {
-  deliverOfficialResultsAfterCommit,
+  publishOfficialResultsAfterCommit,
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
-} from "../shared/official-game-results.server";
-import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
+} from "@/features/game-results/outbox.server";
+import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
 import { partyAudioAssetKey, partyDeck, type PartyWord } from "./party-content.server";
 import { rankSpellingAnswers } from "./spelling-closeness";
 import type {
@@ -305,7 +305,7 @@ async function withRoom<T>(
     const queued = multiplayerRoomStateChanged(before, loaded.room)
       ? await saveRoom(loaded.room, loaded.keys, envelope ? [envelope] : [])
       : [];
-    deliverOfficialResultsAfterCommit(queued);
+    publishOfficialResultsAfterCommit(queued);
     return result;
   }
   const initial = await loadRoom(id);
@@ -328,7 +328,7 @@ async function withRoom<T>(
       return result;
     },
   );
-  deliverOfficialResultsAfterCommit(queued);
+  publishOfficialResultsAfterCommit(queued);
   return result;
 }
 

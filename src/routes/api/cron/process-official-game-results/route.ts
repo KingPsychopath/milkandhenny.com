@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
-import { processPendingOfficialGameResults } from "@/features/event-scoring/games.server";
+import {
+  consumeOfficialGameResult,
+  processPendingOfficialGameResults,
+} from "@/features/event-scoring/games.server";
 import { processScheduledScoringTransitions } from "@/features/event-scoring/scoring.server";
-import { drainOfficialGameResultOutbox } from "@/features/things/shared/official-game-results.server";
+import { drainOfficialGameResultOutbox } from "@/features/game-results/outbox.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -13,7 +16,7 @@ async function handlePOST(request: Request) {
   const startedAt = Date.now();
   try {
     const [outbox, result, scoringTransitions] = await Promise.all([
-      drainOfficialGameResultOutbox(),
+      drainOfficialGameResultOutbox(consumeOfficialGameResult),
       processPendingOfficialGameResults(),
       processScheduledScoringTransitions(),
     ]);

@@ -35,10 +35,10 @@ import {
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
 import {
-  deliverOfficialResultsAfterCommit,
+  publishOfficialResultsAfterCommit,
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
-} from "../shared/official-game-results.server";
+} from "@/features/game-results/outbox.server";
 import { liarsNarration, liarsWordPair } from "./liars-content.server";
 import { liarsBoard } from "./liars-words";
 import {
@@ -386,7 +386,7 @@ async function withRoom<T>(
           ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
           envelopes: envelope ? [envelope] : [],
         });
-        deliverOfficialResultsAfterCommit(queued);
+        publishOfficialResultsAfterCommit(queued);
       }
       return result;
     },

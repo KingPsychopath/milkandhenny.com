@@ -26,7 +26,7 @@ import {
   linkGamePlayer,
   processOfficialGameResult,
 } from "./games.server";
-import { sealOfficialGameResult } from "@/features/things/shared/official-game-results.server";
+import { sealOfficialGameResult } from "@/features/game-results/outbox.server";
 import { icebreakerEncounterPlayers, pitchesPlayersFromBallots } from "./managed-game-results";
 
 async function closeBinding(channelId: string, reason: string) {

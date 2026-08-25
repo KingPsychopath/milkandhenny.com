@@ -6,8 +6,8 @@ vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/features/things/shared/official-game-results.server", () => ({
-  deliverOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+vi.mock("@/features/game-results/outbox.server", () => ({
+  publishOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
     deliveredResults.push(...queued.map(({ envelope }) => envelope)),
   ),
   persistRoomWithOfficialResults: vi.fn(),

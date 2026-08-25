@@ -8,8 +8,8 @@ import type {
   OfficialGameResultEnvelope,
   OfficialGameResultScope,
   OfficialResultPlayer,
-} from "@/features/things/shared/official-game-results";
-import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
+} from "@/features/game-results/types";
+import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
 import { activityCanAccept, convertRulePoints, type ActivityStatus, type ScoreRule } from "./types";
 import { recordScoreInTransaction, reverseScoreInTransaction } from "./store.server";
 

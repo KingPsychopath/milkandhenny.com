@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
+vi.mock("@/lib/platform/redis-direct.server", () => ({
+  getDirectRedisConfig: () => null,
+}));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 import {
   persistRoomWithOfficialResults,
+  publishOfficialResultsAfterCommit,
   sealOfficialGameResult,
-} from "@/features/things/shared/official-game-results.server";
+  subscribeOfficialResultWake,
+} from "@/features/game-results/outbox.server";
 import { pairedGameOfficialResult } from "@/features/things/remote/paired-game-room-engine.server";
 
 describe("official game result outbox", () => {
@@ -99,5 +104,32 @@ describe("official game result outbox", () => {
     expect(writes[0]?.key).toBe("things:centre:ROOM:state");
     expect(writes[1]?.key).toContain("things:official-result-outbox:gsc_test:game:1:1");
     expect(queued).toEqual([{ key: writes[1]?.key, envelope }]);
+  });
+
+  it("publishes advisory wakes to explicit subscribers without owning a scoring callback", async () => {
+    const envelope = sealOfficialGameResult({
+      channelId: "gsc_test",
+      revision: 1,
+      result: {
+        gameKind: "centre",
+        gameInstanceId: "ROOM",
+        resultId: "game:1",
+        scope: "game",
+        players: [],
+      },
+    });
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = subscribeOfficialResultWake(first);
+    const stopSecond = subscribeOfficialResultWake(second);
+
+    publishOfficialResultsAfterCommit([{ key: "memory:1", envelope }]);
+    await vi.waitFor(() => {
+      expect(first).toHaveBeenCalledWith([envelope]);
+      expect(second).toHaveBeenCalledWith([envelope]);
+    });
+
+    await stopFirst();
+    await stopSecond();
   });
 });

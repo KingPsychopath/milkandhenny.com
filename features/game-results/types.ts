@@ -1,6 +1,4 @@
-// The games whose room engines emit official results for event scoring. This is deliberately
-// narrower than GAME_SETTINGS_GAMES: liars and hot-and-cold have settings but no official
-// results yet, and spelling-party emits results without configurable settings.
+// Only games with a stable, authoritative result contract belong here.
 export const OFFICIAL_GAME_KINDS = [
   "centre",
   "twin",

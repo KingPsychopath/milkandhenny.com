@@ -27,11 +27,11 @@ import {
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
 import {
-  deliverOfficialResultsAfterCommit,
+  publishOfficialResultsAfterCommit,
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
-} from "../shared/official-game-results.server";
-import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
+} from "@/features/game-results/outbox.server";
+import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
 import { centreEntrancePoint, generateCentreMaze } from "./centre-generator";
 import { centreRoomRedisKeys } from "./centre-keys";
 import { validateCentreRoute, validateCentreRouteProgress } from "./centre-trace";
@@ -210,7 +210,7 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
     const envelope = !wasFinished && room.phase === "finished" ? centreOfficialResult(room) : null;
     if (envelope)
-      deliverOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
+      publishOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
     return result;
   }
   const initial = await loadRoom(roomId);
@@ -236,7 +236,7 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     }
     return result;
   });
-  deliverOfficialResultsAfterCommit(queued);
+  publishOfficialResultsAfterCommit(queued);
   return result;
 }
 

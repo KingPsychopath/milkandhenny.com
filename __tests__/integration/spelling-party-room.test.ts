@@ -6,12 +6,11 @@ vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/features/things/shared/official-game-results.server", async (importOriginal) => {
-  const original =
-    await importOriginal<typeof import("@/features/things/shared/official-game-results.server")>();
+vi.mock("@/features/game-results/outbox.server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/features/game-results/outbox.server")>();
   return {
     ...original,
-    deliverOfficialResultsAfterCommit: vi.fn(
+    publishOfficialResultsAfterCommit: vi.fn(
       (queued: Array<{ envelope: Record<string, unknown> }>) =>
         deliveredOfficialResults.push(...queued.map(({ envelope }) => envelope)),
     ),

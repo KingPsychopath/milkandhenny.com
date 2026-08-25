@@ -34,10 +34,10 @@ import type {
 } from "./types";
 import { PAIRED_GAME_PRESENCE_TTL_SECONDS } from "./paired-game-timing";
 import {
-  deliverOfficialResultsAfterCommit,
+  publishOfficialResultsAfterCommit,
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
-} from "../shared/official-game-results.server";
+} from "@/features/game-results/outbox.server";
 
 const JUDGE_LEASE_TTL_SECONDS = 30;
 const COMMAND_MAX_AGE_MS = 12_000;
@@ -494,7 +494,7 @@ export async function syncPairedGamePlayer(input: {
       })
     : [];
   await redis.set(roomKeys.playerPresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS });
-  deliverOfficialResultsAfterCommit(queued);
+  publishOfficialResultsAfterCommit(queued);
   return {
     ok: true,
     commands,
