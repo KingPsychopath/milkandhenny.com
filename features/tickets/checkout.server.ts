@@ -12,6 +12,7 @@ import {
   isPaymentsConfigured,
   listPaymentRefunds,
   refundPayment,
+  retrievePaymentBalance,
   retrieveSession,
 } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
@@ -23,13 +24,19 @@ import {
   listTicketsForCheckout,
   listTicketsForOrder,
   markOrderRefunded,
-  markOrderRefundPending,
+  markTicketOrderRefunded,
+  markTicketOrderRefundPending,
 } from "./store.server";
 import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
 import { isValidEmail, normaliseEmail, type TicketRecord } from "./types";
+import {
+  cancelAwaitingOrderExchanges,
+  exchangeRefundTotalForPayment,
+  listOrderExchangePayments,
+} from "./exchange.server";
 
 /**
  * Paid ticket purchase.
@@ -373,8 +380,14 @@ export async function reconcilePaymentRefunds(
   );
   if (amountRefundedMinor === 0) return { amountRefundedMinor, tickets: [] };
 
+  // A cheaper ticket exchange is a partial refund without cancelling the QR.
+  // Remove those exchange refunds before applying the remainder to admission.
+  const exchangeRefundedMinor = await exchangeRefundTotalForPayment(paymentIntentId);
+  const cancellationRefundedMinor = Math.max(0, amountRefundedMinor - exchangeRefundedMinor);
+  if (cancellationRefundedMinor === 0) return { amountRefundedMinor, tickets: [] };
+
   const refundRef = succeeded.at(-1)?.id ?? paymentIntentId;
-  const tickets = await markOrderRefunded(paymentIntentId, refundRef, amountRefundedMinor);
+  const tickets = await markOrderRefunded(paymentIntentId, refundRef, cancellationRefundedMinor);
   const confirmationTickets =
     tickets.length > 0 ? tickets : await listRefundedTicketsForPayment(paymentIntentId, refundRef);
   if (confirmationTickets.length > 0) {
@@ -748,18 +761,38 @@ export async function refundOrder(input: {
     };
   }
 
-  const refund = await refundPayment({
-    paymentIntentId: anchor.payment_ref,
-    reference: `order:${anchor.order_id}`,
-  });
-  if (!refund.ok) return { ok: false, status: 502, error: refund.error };
+  const cancelledExchanges = await cancelAwaitingOrderExchanges(anchor.order_id);
+  if (!cancelledExchanges.ok) return cancelledExchanges;
 
-  if (refund.status === "failed" || refund.status === "canceled") {
-    return { ok: false, status: 502, error: "Stripe could not process the refund" };
+  const exchangePayments = await listOrderExchangePayments(anchor.order_id);
+  const payments = [
+    ...exchangePayments,
+    { exchangeId: "purchase", paymentIntentId: anchor.payment_ref },
+  ];
+  const refunds = [];
+  for (const payment of payments) {
+    const balance = await retrievePaymentBalance(payment.paymentIntentId);
+    if (!balance) {
+      return { ok: false, status: 502, error: "Could not verify the refundable balance" };
+    }
+    if (balance.remainingMinor === 0) continue;
+    const refund = await refundPayment({
+      paymentIntentId: payment.paymentIntentId,
+      amountMinor: balance.remainingMinor,
+      reference: `order:${anchor.order_id}:${payment.exchangeId}`,
+      metadata: { orderId: anchor.order_id, refundPurpose: "order_refund" },
+    });
+    if (!refund.ok) return { ok: false, status: 502, error: refund.error };
+    if (refund.status === "failed" || refund.status === "canceled") {
+      return { ok: false, status: 502, error: "Stripe could not process the refund" };
+    }
+    refunds.push(refund);
   }
 
-  if (refund.status !== "succeeded") {
-    const pending = await markOrderRefundPending(anchor.payment_ref, refund.refundId);
+  const refundReference =
+    refunds.map((refund) => refund.refundId).join(":") || `already-refunded:${anchor.order_id}`;
+  if (refunds.some((refund) => refund.status !== "succeeded")) {
+    const pending = await markTicketOrderRefundPending(anchor.order_id, refundReference);
     log.info("checkout.refund", "Order refund is pending", {
       orderId: anchor.order_id,
       count: pending.length,
@@ -771,7 +804,7 @@ export async function refundOrder(input: {
     };
   }
 
-  const updated = await markOrderRefunded(anchor.payment_ref, refund.refundId);
+  const updated = await markTicketOrderRefunded(anchor.order_id, refundReference);
   let emailQueued = false;
   if (updated.length > 0) {
     const event = await getEvent(anchor.event_slug);

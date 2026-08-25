@@ -111,6 +111,8 @@ export async function applySchema(): Promise<void> {
     drop table if exists scanner_links cascade;
     drop table if exists checkpoint_usage cascade;
     drop table if exists checkpoints cascade;
+    drop table if exists ticket_exchange_refunds cascade;
+    drop table if exists ticket_exchanges cascade;
     drop table if exists checkout_sessions cascade;
     drop table if exists tickets cascade;
     drop table if exists ticket_types cascade;

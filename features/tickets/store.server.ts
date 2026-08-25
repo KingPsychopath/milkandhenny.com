@@ -243,7 +243,17 @@ export async function insertTicketsWithCapacity(
         [input.eventSlug, input.ticketTypeId],
       );
       const sold = Number.parseInt(soldResult.rows[0]?.sold ?? "0", 10);
-      const typeRemaining = Math.max(0, ticketType.quantity - sold);
+      // An exchange keeps its current seat while reserving the destination.
+      // Count those short-lived reservations here so a normal checkout cannot
+      // take a place after someone has started paying the price difference.
+      const reservedResult = await client.query<{ reserved: string }>(
+        `select count(*)::text as reserved from ticket_exchanges
+          where event_slug = $1 and to_ticket_type_id = $2
+            and status in ('processing', 'awaiting_payment', 'refund_pending')`,
+        [input.eventSlug, input.ticketTypeId],
+      );
+      const reserved = Number.parseInt(reservedResult.rows[0]?.reserved ?? "0", 10);
+      const typeRemaining = Math.max(0, ticketType.quantity - sold - reserved);
       let eventRemaining = Number.POSITIVE_INFINITY;
       if (event.capacity !== null) {
         const eventSoldResult = await client.query<{ sold: string }>(
@@ -495,6 +505,49 @@ export async function markOrderRefundPending(
       [rows.rows.map((row) => row.id)],
     );
     return rows.rows.map(toTicket);
+  });
+}
+
+/** Invalidate every QR while a multi-payment order refund is settling. */
+export async function markTicketOrderRefundPending(
+  orderId: string,
+  refundRef: string,
+): Promise<TicketRecord[]> {
+  return transaction(async (client) => {
+    const { rows } = await client.query<TicketRow>(
+      `update tickets set status = 'void', refund_ref = $2
+        where order_id = $1 and status = 'valid'
+        returning *`,
+      [orderId, refundRef],
+    );
+    await client.query(
+      `update event_participants set status = 'void', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.map((row) => row.id)],
+    );
+    return rows.map(toTicket);
+  });
+}
+
+/** Finish a refund for an order funded by its purchase plus exchange payments. */
+export async function markTicketOrderRefunded(
+  orderId: string,
+  refundRef: string,
+): Promise<TicketRecord[]> {
+  return transaction(async (client) => {
+    const { rows } = await client.query<TicketRow>(
+      `update tickets
+          set status = 'refunded', refunded_at = now(), refund_ref = $2
+        where order_id = $1 and status <> 'refunded'
+        returning *`,
+      [orderId, refundRef],
+    );
+    await client.query(
+      `update event_participants set status = 'refunded', updated_at = now()
+        where ticket_id = any($1::text[])`,
+      [rows.map((row) => row.id)],
+    );
+    return rows.map(toTicket);
   });
 }
 

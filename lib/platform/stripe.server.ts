@@ -142,6 +142,17 @@ export async function createCheckoutSession(input: CreateCheckoutInput): Promise
   return { id: session.id, url: session.url };
 }
 
+/** Expire an unpaid hosted Checkout session before cancelling its local intent. */
+export async function expireCheckoutSession(sessionId: string): Promise<boolean> {
+  try {
+    const session = await getClient().checkout.sessions.expire(sessionId);
+    return session.status === "expired" && session.payment_status !== "paid";
+  } catch (error) {
+    log.error("stripe.checkout", "Could not expire Checkout session", { sessionId }, error);
+    return false;
+  }
+}
+
 export type RefundResult =
   | {
       ok: true;
@@ -161,6 +172,7 @@ export async function refundPayment(input: {
   paymentIntentId: string;
   amountMinor?: number;
   reference: string;
+  metadata?: Record<string, string>;
 }): Promise<RefundResult> {
   try {
     const refund = await getClient().refunds.create(
@@ -168,6 +180,7 @@ export async function refundPayment(input: {
         payment_intent: input.paymentIntentId,
         ...(input.amountMinor !== undefined ? { amount: input.amountMinor } : {}),
         reason: "requested_by_customer",
+        metadata: input.metadata,
       },
       { idempotencyKey: `refund:${input.reference}` },
     );
@@ -222,11 +235,38 @@ export async function retrieveSession(sessionId: string): Promise<{
   }
 }
 
+/** Remaining refundable value on one PaymentIntent. */
+export async function retrievePaymentBalance(paymentIntentId: string): Promise<{
+  amountMinor: number;
+  amountRefundedMinor: number;
+  remainingMinor: number;
+} | null> {
+  try {
+    const paymentIntent = await getClient().paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"],
+    });
+    const charge =
+      paymentIntent.latest_charge && typeof paymentIntent.latest_charge !== "string"
+        ? paymentIntent.latest_charge
+        : null;
+    const amountRefundedMinor = charge?.amount_refunded ?? 0;
+    return {
+      amountMinor: paymentIntent.amount,
+      amountRefundedMinor,
+      remainingMinor: Math.max(0, paymentIntent.amount - amountRefundedMinor),
+    };
+  } catch (error) {
+    log.error("stripe.payment", "Failed to retrieve payment balance", { paymentIntentId }, error);
+    return null;
+  }
+}
+
 export type PaymentRefund = {
   id: string;
   amountMinor: number;
   status: Stripe.Refund["status"];
   createdAt: number;
+  metadata: Record<string, string>;
 };
 
 /** Current Stripe refund truth for one PaymentIntent, oldest request first. */
@@ -245,6 +285,7 @@ export async function listPaymentRefunds(paymentIntentId: string): Promise<Payme
       amountMinor: refund.amount,
       status: refund.status,
       createdAt: refund.created,
+      metadata: (refund.metadata ?? {}) as Record<string, string>,
     }));
 }
 

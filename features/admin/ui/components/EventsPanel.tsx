@@ -91,6 +91,7 @@ type Draft = {
 };
 
 type AdminTicket = DoorTicketView & {
+  ticketTypeId: string;
   email?: string;
   issuedAt: string;
   amountPaidMinor?: number;
@@ -1804,6 +1805,16 @@ function EventOperations({
     name: string;
     email: string;
   } | null>(null);
+  const [exchangingTicket, setExchangingTicket] = useState<{
+    id: string;
+    holderName: string;
+    fromTicketTypeId: string;
+    targetTicketTypeId: string;
+  } | null>(null);
+  const [exchangePaymentLink, setExchangePaymentLink] = useState<{
+    ticketId: string;
+    url: string;
+  } | null>(null);
 
   const saveHolder = async () => {
     const editing = editingTicket;
@@ -1827,6 +1838,65 @@ function EventOperations({
       await reload();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to save");
+    } finally {
+      setBusyTicketId(null);
+    }
+  };
+
+  const exchangeTicket = async () => {
+    const exchange = exchangingTicket;
+    if (!exchange?.targetTicketTypeId) return;
+    const from = event.ticketTypes.find((type) => type.id === exchange.fromTicketTypeId);
+    const target = event.ticketTypes.find((type) => type.id === exchange.targetTicketTypeId);
+    if (!from || !target) return;
+    const delta = target.priceMinor - from.priceMinor;
+    const confirmed = await confirmAction({
+      title: `Change ${exchange.holderName}'s ticket?`,
+      description:
+        delta < 0
+          ? `${from.name} → ${target.name}. ${formatMoney(Math.abs(delta), target.currency)} will return to the original payment method. The QR stays the same.`
+          : delta > 0
+            ? `${from.name} → ${target.name}. A ${formatMoney(delta, target.currency)} Stripe payment link will be copied for the purchaser. The ticket changes after payment.`
+            : `${from.name} → ${target.name}. No money moves and the QR stays the same.`,
+      confirmLabel: delta > 0 ? "create payment link" : "change ticket",
+      intent: "default",
+    });
+    if (!confirmed) return;
+
+    const token = await stepUp.ensureStepUpToken();
+    if (!token.ok) {
+      if (!token.cancelled) onError(token.error ?? "Step-up failed");
+      return;
+    }
+    setBusyTicketId(exchange.id);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`, {
+        method: "POST",
+        headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "exchange",
+          ticketId: exchange.id,
+          targetTicketTypeId: exchange.targetTicketTypeId,
+        }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response, "Ticket change failed"));
+      const result = (await response.json()) as { state?: string; url?: string; message?: string };
+      if (result.state === "checkout" && result.url) {
+        setExchangePaymentLink({ ticketId: exchange.id, url: result.url });
+        try {
+          await navigator.clipboard.writeText(result.url);
+          onStatus(`Payment link ready and copied for ${exchange.holderName}`);
+        } catch {
+          onStatus(`Payment link ready for ${exchange.holderName}`);
+        }
+      } else {
+        onStatus(result.message ?? `${exchange.holderName}'s ticket changed`);
+      }
+      setExchangingTicket(null);
+      await reload();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Ticket change failed");
     } finally {
       setBusyTicketId(null);
     }
@@ -2144,6 +2214,27 @@ function EventOperations({
                   >
                     edit
                   </button>
+                  {isLive && !ticket.redeemedAt && event.ticketTypes.length > 1 && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setExchangingTicket((current) =>
+                          current?.id === ticket.id
+                            ? null
+                            : {
+                                id: ticket.id,
+                                holderName: ticket.holderName,
+                                fromTicketTypeId: ticket.ticketTypeId,
+                                targetTicketTypeId: "",
+                              },
+                        )
+                      }
+                      className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+                    >
+                      change type
+                    </button>
+                  )}
                   {busy && <span className="font-mono text-micro theme-faint">working…</span>}
                 </div>
                 {editingTicket?.id === ticket.id && (
@@ -2184,6 +2275,75 @@ function EventOperations({
                       </button>
                     </AdminFormAction>
                   </form>
+                )}
+                {exchangingTicket?.id === ticket.id && (
+                  <form
+                    onSubmit={(formEvent) => {
+                      formEvent.preventDefault();
+                      void exchangeTicket();
+                    }}
+                    className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_auto]"
+                  >
+                    <label className="admin-form-field block">
+                      <span className="font-mono text-micro theme-muted tracking-wide">
+                        change to
+                      </span>
+                      <select
+                        value={exchangingTicket.targetTicketTypeId}
+                        onChange={(inputEvent) =>
+                          setExchangingTicket((current) =>
+                            current
+                              ? { ...current, targetTicketTypeId: inputEvent.target.value }
+                              : current,
+                          )
+                        }
+                        className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
+                      >
+                        <option value="">choose a ticket type</option>
+                        {event.ticketTypes
+                          .filter((type) => type.id !== ticket.ticketTypeId)
+                          .map((type) => (
+                            <option key={type.id} value={type.id}>
+                              {type.name} — {formatMoney(type.priceMinor, type.currency)}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <AdminFormAction>
+                      <button
+                        type="submit"
+                        disabled={busy || !exchangingTicket.targetTicketTypeId}
+                        className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+                      >
+                        review change
+                      </button>
+                    </AdminFormAction>
+                  </form>
+                )}
+                {exchangePaymentLink?.ticketId === ticket.id && (
+                  <div className="mt-2 rounded border theme-border p-3">
+                    <p className="font-mono text-micro theme-subtle leading-relaxed">
+                      Send this Stripe link to the purchaser. Their ticket changes only after the
+                      difference is paid.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <a
+                        href={exchangePaymentLink.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="min-h-11 content-center font-mono text-micro underline hover:opacity-70"
+                      >
+                        open payment link ↗
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => void navigator.clipboard.writeText(exchangePaymentLink.url)}
+                        className="min-h-11 font-mono text-micro underline hover:opacity-70"
+                      >
+                        copy link
+                      </button>
+                    </div>
+                  </div>
                 )}
               </li>
             );

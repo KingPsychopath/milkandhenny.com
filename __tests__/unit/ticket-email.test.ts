@@ -171,4 +171,55 @@ describe("ticket email", () => {
     );
     expect(message.html).toContain("/api/tickets/TKT0000000000000/ics");
   });
+
+  it("clearly offers later upgrades when a higher-priced ticket exists", async () => {
+    EVENT.ticketTypes = [
+      {
+        id: "entry",
+        name: "Entry",
+        priceMinor: 1500,
+        currency: "GBP",
+        quantity: 50,
+        perPersonLimit: 4,
+        hidden: false,
+      },
+      {
+        id: "vip",
+        name: "VIP",
+        priceMinor: 3000,
+        currency: "GBP",
+        quantity: 20,
+        perPersonLimit: 4,
+        hidden: false,
+      },
+    ];
+    try {
+      const message = await send(1);
+      expect(message.text).toContain("upgrades charge only the difference");
+      expect(message.html).toContain("upgrades charge only the difference");
+    } finally {
+      EVENT.ticketTypes = [];
+    }
+  });
+
+  it("keeps management subtle for the highest-priced ticket", async () => {
+    EVENT.ticketTypes = [
+      {
+        id: "entry",
+        name: "Entry",
+        priceMinor: 1500,
+        currency: "GBP",
+        quantity: 50,
+        perPersonLimit: 4,
+        hidden: false,
+      },
+    ];
+    try {
+      const message = await send(1);
+      expect(message.text).toContain("choose manage tickets if you need to update this order");
+      expect(message.text).not.toContain("upgrade");
+    } finally {
+      EVENT.ticketTypes = [];
+    }
+  });
 });

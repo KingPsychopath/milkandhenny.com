@@ -5,6 +5,7 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEvent } from "@/features/events/store.server";
 import { refundOrder } from "@/features/tickets/checkout.server";
+import { beginTicketExchange } from "@/features/tickets/exchange.server";
 import { sendTicketEmail } from "@/features/tickets/email.server";
 import { listTicketsForOrder, updateTicketHolder } from "@/features/tickets/store.server";
 import {
@@ -31,6 +32,7 @@ type ActionBody = {
   holderName?: unknown;
   email?: unknown;
   ticketTypeId?: unknown;
+  targetTicketTypeId?: unknown;
   quantity?: unknown;
   notes?: unknown;
   sendEmail?: unknown;
@@ -147,6 +149,32 @@ async function handlePOST(request: Request, slug: string) {
           state: result.value.state,
           refunded: result.value.refunded,
         });
+      }
+
+      case "exchange": {
+        const stepUpErr = await requireAdminStepUp(request);
+        if (stepUpErr) return stepUpErr;
+
+        const ticketId = asString(body.ticketId);
+        const targetTicketTypeId = asString(body.targetTicketTypeId);
+        if (!ticketId || !isValidTicketId(ticketId) || !targetTicketTypeId) {
+          return Response.json(
+            { error: "A ticket and new ticket type are required" },
+            { status: 400 },
+          );
+        }
+        const ticket = await getTicket(ticketId);
+        if (!ticket || ticket.eventSlug !== slug) {
+          return Response.json({ error: "Ticket not found" }, { status: 404 });
+        }
+        const result = await beginTicketExchange({
+          ticketId,
+          targetTicketTypeId,
+          actorType: "admin",
+          origin: getBaseUrlForRequest(request),
+        });
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        return Response.json({ ok: true, ...result.value });
       }
 
       case "void": {

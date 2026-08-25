@@ -2139,6 +2139,61 @@ const MIGRATIONS: Migration[] = [
       $$;
     `,
   },
+  {
+    id: "0047_ticket_exchanges",
+    sql: `
+      create table ticket_exchanges (
+        id                 text primary key
+                           check (id ~ '^tex_[A-Za-z0-9_-]{16,64}$'),
+        event_slug         text not null references events (slug) on delete restrict,
+        order_id           text not null,
+        ticket_id          text not null references tickets (id) on delete restrict,
+        from_ticket_type_id text not null,
+        to_ticket_type_id  text not null,
+        actor_type         text not null check (actor_type in ('purchaser', 'admin')),
+        status             text not null
+                           check (status in (
+                             'processing', 'awaiting_payment', 'refund_pending',
+                             'completed', 'failed', 'cancelled', 'expired'
+                           )),
+        amount_delta_minor integer not null,
+        currency           text not null,
+        checkout_ref       text unique,
+        payment_ref        text unique,
+        dispute_ref        text,
+        error_message      text,
+        created_at         timestamptz not null default now(),
+        updated_at         timestamptz not null default now(),
+        completed_at       timestamptz,
+        foreign key (event_slug, from_ticket_type_id)
+          references ticket_types (event_slug, id) on delete restrict,
+        foreign key (event_slug, to_ticket_type_id)
+          references ticket_types (event_slug, id) on delete restrict
+      );
+
+      create unique index ticket_exchanges_active_ticket_idx
+        on ticket_exchanges (ticket_id)
+        where status in ('processing', 'awaiting_payment', 'refund_pending');
+      create index ticket_exchanges_order_idx
+        on ticket_exchanges (order_id, created_at desc);
+      create index ticket_exchanges_payment_idx
+        on ticket_exchanges (payment_ref);
+
+      create table ticket_exchange_refunds (
+        exchange_id   text not null references ticket_exchanges (id) on delete restrict,
+        payment_ref   text not null,
+        amount_minor  integer not null check (amount_minor > 0),
+        refund_ref    text unique,
+        status        text not null
+                      check (status in ('processing', 'pending', 'succeeded', 'failed')),
+        updated_at    timestamptz not null default now(),
+        primary key (exchange_id, payment_ref)
+      );
+
+      create index ticket_exchange_refunds_payment_idx
+        on ticket_exchange_refunds (payment_ref, status);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

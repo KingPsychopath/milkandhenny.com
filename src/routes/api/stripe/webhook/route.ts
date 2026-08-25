@@ -17,6 +17,14 @@ import {
   updateCheckoutRefundStatus,
 } from "@/features/tickets/checkout.server";
 import {
+  completePendingExchangeRefund,
+  expireTicketExchangeCheckout,
+  fulfilTicketExchangeCheckout,
+  restoreExchangePaymentDispute,
+  voidExchangePaymentDispute,
+  voidExchangePaymentRefund,
+} from "@/features/tickets/exchange.server";
+import {
   markOrderDisputed,
   markRefundFailed,
   restoreDisputedTickets,
@@ -81,6 +89,17 @@ async function handlePOST(request: Request) {
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         const session = event.data.object as { id: string };
+        const exchange = await fulfilTicketExchangeCheckout(session.id, origin);
+        if (exchange) {
+          if (exchange.state === "failed" || exchange.state === "unknown") {
+            throw new Error("Ticket exchange checkout could not be fulfilled");
+          }
+          log.info("stripe.webhook", "Ticket exchange checkout handled", {
+            sessionId: session.id,
+            outcome: exchange.state,
+          });
+          break;
+        }
         const result = await fulfilCheckout(session.id, origin);
         log.info("stripe.webhook", "Checkout handled", {
           sessionId: session.id,
@@ -97,6 +116,7 @@ async function handlePOST(request: Request) {
       case "checkout.session.expired":
       case "checkout.session.async_payment_failed": {
         const session = event.data.object as { id: string };
+        if (await expireTicketExchangeCheckout(session.id)) break;
         // Nothing was issued, so this is bookkeeping only: it stops abandoned
         // or failed baskets sitting as `pending` forever. A delayed payment
         // method (bank debit) that later fails lands here too.
@@ -111,6 +131,17 @@ async function handlePOST(request: Request) {
           metadata?: Record<string, string>;
         };
         if (charge.payment_intent) {
+          if (
+            await voidExchangePaymentRefund(
+              charge.payment_intent,
+              charge.metadata?.checkoutReference ?? charge.payment_intent,
+            )
+          ) {
+            log.error("stripe.webhook", "Upgrade payment refunded; ticket voided", {
+              paymentIntent: charge.payment_intent,
+            });
+            break;
+          }
           const reconciled = await reconcilePaymentRefunds(
             charge.payment_intent,
             charge.amount_refunded ?? 0,
@@ -139,12 +170,23 @@ async function handlePOST(request: Request) {
           id: string;
           status: string | null;
           payment_intent: string | { id: string } | null;
+          metadata?: Record<string, string>;
         };
         const paymentIntentId =
           typeof refund.payment_intent === "string"
             ? refund.payment_intent
             : (refund.payment_intent?.id ?? null);
         await updateCheckoutRefundStatus(refund.id, refund.status);
+        if (
+          await completePendingExchangeRefund(
+            refund.id,
+            refund.status,
+            origin,
+            refund.metadata?.ticketExchangeId,
+            refund.metadata?.ticketExchangePaymentRef,
+          )
+        )
+          break;
         if (paymentIntentId && refund.status === "succeeded") {
           await reconcilePaymentRefunds(paymentIntentId);
         }
@@ -166,6 +208,12 @@ async function handlePOST(request: Request) {
           status: string;
         };
         if (dispute.payment_intent && dispute.status === "won") {
+          if (await restoreExchangePaymentDispute(dispute.payment_intent, dispute.id)) {
+            log.info("stripe.webhook", "Upgrade dispute won; ticket restored", {
+              disputeId: dispute.id,
+            });
+            break;
+          }
           // The charge stands, so the ticket should too. Only reverses a
           // dispute-driven void — a real refund set `refunded_at` and stays put.
           const restored = await restoreDisputedTickets(dispute.payment_intent, dispute.id);
@@ -204,6 +252,13 @@ async function handlePOST(request: Request) {
       case "charge.dispute.created": {
         const dispute = event.data.object as { payment_intent: string | null; id: string };
         if (dispute.payment_intent) {
+          if (await voidExchangePaymentDispute(dispute.payment_intent, dispute.id)) {
+            log.error("stripe.webhook", "Upgrade payment disputed; ticket voided", {
+              paymentIntent: dispute.payment_intent,
+              disputeId: dispute.id,
+            });
+            break;
+          }
           const metadata = await retrievePaymentMetadata(dispute.payment_intent);
           await markUnfulfilledCheckoutDisputed({
             paymentIntentId: dispute.payment_intent,

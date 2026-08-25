@@ -5,7 +5,7 @@ import { log } from "@/lib/platform/logger.server";
 import { buildEventUrl, buildTicketIcsUrl, buildTicketUrl } from "@/features/events/routes";
 import { buildEventIcs, buildTicketHolderIcsOptions } from "@/features/events/ics";
 import { formatEventDateTime, formatMoney, threeWordMapUrl } from "@/features/events/types";
-import type { EventRecord } from "@/features/events/types";
+import type { EventRecord, TicketType } from "@/features/events/types";
 import { buildTicketQrPayload } from "./qr.server";
 import type { TicketRecord } from "./types";
 import { BASE_URL } from "@/lib/shared/config";
@@ -109,6 +109,18 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
   const calendarUrl = buildTicketIcsUrl(origin, tickets[0].id);
   const when = formatEventDateTime(event.startsAt, event.timezone);
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
+  const canUpgrade = tickets.some((ticket) => {
+    const current = event.ticketTypes.find((type) => type.id === ticket.ticketTypeId);
+    return Boolean(
+      current &&
+      event.ticketTypes.some(
+        (type) =>
+          !type.hidden &&
+          type.currency.toLowerCase() === current.currency.toLowerCase() &&
+          type.priceMinor > current.priceMinor,
+      ),
+    );
+  });
   const lines = [
     `You're in — ${event.title}`,
     "",
@@ -130,6 +142,9 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     tickets.length > 1
       ? "Share each guest's own link. A shared link opens only that ticket."
       : null,
+    canUpgrade
+      ? "Want a different ticket later? If another type is available, open the purchaser ticket and choose manage tickets — upgrades charge only the difference."
+      : "Open the purchaser ticket and choose manage tickets if you need to update this order.",
     "",
     `Add to calendar: ${calendarUrl}`,
     "The .ics attached to this email does the same thing offline.",
@@ -160,6 +175,18 @@ function buildHtml(
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
   const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, tickets[0].id));
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
+  const canUpgrade = tickets.some((ticket) => {
+    const current = event.ticketTypes.find((type) => type.id === ticket.ticketTypeId);
+    return Boolean(
+      current &&
+      event.ticketTypes.some(
+        (type) =>
+          !type.hidden &&
+          type.currency.toLowerCase() === current.currency.toLowerCase() &&
+          type.priceMinor > current.priceMinor,
+      ),
+    );
+  });
   const detail = [
     event.doorsAt
       ? `Doors ${escapeHtml(formatEventDateTime(event.doorsAt, event.timezone))}`
@@ -223,6 +250,7 @@ function buildHtml(
     <p style="margin:20px 0 0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       Open the link at the door and we'll scan it. Screenshots work too.
       ${tickets.length > 1 ? "Share each guest's own link; it opens only that ticket." : ""}
+      ${canUpgrade ? "Want a different ticket later? If another type is available, open the purchaser ticket and choose manage tickets — upgrades charge only the difference." : "Open the purchaser ticket and choose manage tickets if you need to update this order."}
       ${event.lastEntryAt ? `Last entry ${escapeHtml(formatEventDateTime(event.lastEntryAt, event.timezone))}.` : ""}
       ${event.ageLimit ? escapeHtml(event.ageLimit) + "." : ""}
     </p>
@@ -299,6 +327,125 @@ export async function sendTicketEmail(input: {
 }
 
 export type RenderedEmail = { subject: string; text: string; html: string };
+
+/** One concise receipt for a change; the permanent QR links do not need resending. */
+export async function sendTicketExchangeEmail(input: {
+  event: EventRecord;
+  tickets: TicketRecord[];
+  changedTicket: TicketRecord;
+  fromType: TicketType;
+  toType: TicketType;
+  amountDeltaMinor: number;
+  managerUrl: string;
+  exchangeId: string;
+}): Promise<TicketEmailResult> {
+  const recipient = input.tickets.find((ticket) => ticket.email)?.email;
+  if (!recipient) return { queued: false, error: "No email address on this order" };
+
+  const difference = formatMoney(Math.abs(input.amountDeltaMinor), input.toType.currency);
+  const moneyLine =
+    input.amountDeltaMinor < 0
+      ? `${difference} is going back to the original payment method.`
+      : input.amountDeltaMinor > 0
+        ? `${difference} was paid for the change.`
+        : "There was no price difference.";
+  const when = formatEventDateTime(input.event.startsAt, input.event.timezone);
+  const text = [
+    `Ticket changed — ${input.event.title}`,
+    "",
+    `${input.changedTicket.holderName}: ${input.fromType.name} → ${input.toType.name}`,
+    moneyLine,
+    "",
+    "The ticket link and QR code have not changed.",
+    input.tickets.length > 1
+      ? `The other ${input.tickets.length - 1} ticket${input.tickets.length === 2 ? "" : "s"} in the order are unchanged.`
+      : null,
+    `Manage tickets: ${input.managerUrl}`,
+    "",
+    `${input.event.title} · ${when}`,
+    "",
+    "— milk & henny",
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+  const html = renderBrandedEmail({
+    origin: BASE_URL,
+    label: "ticket changed",
+    title: `${input.fromType.name} → ${input.toType.name}`,
+    meta: `${input.event.title} · ${when}`,
+    contentHtml: `<p style="margin:0 0 12px"><strong>${escapeHtml(input.changedTicket.holderName)}</strong></p>
+      <p style="margin:0 0 16px">${escapeHtml(moneyLine)}</p>
+      <p style="margin:0 0 16px;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The ticket link and QR code have not changed.${input.tickets.length > 1 ? ` The other ${input.tickets.length - 1} ticket${input.tickets.length === 2 ? "" : "s"} in the order are unchanged.` : ""}</p>
+      <p style="margin:0"><a href="${escapeHtml(input.managerUrl)}" style="color:#b45309">manage tickets</a></p>`,
+  });
+  const result = await sendEmail(
+    {
+      channel: "tickets",
+      to: recipient,
+      subject: `Ticket changed — ${input.event.title}`,
+      text,
+      html,
+    },
+    { idempotencyKey: `tickets:exchange:${input.exchangeId}` },
+  );
+  if (!result.ok) {
+    log.error("tickets.email", "Exchange email failed", {
+      slug: input.event.slug,
+      exchangeId: input.exchangeId,
+      status: result.status,
+    });
+    return { queued: false, error: result.error };
+  }
+  return { queued: true };
+}
+
+/** Recovery link for an upgrade that still needs its Stripe difference paid. */
+export async function sendTicketExchangePaymentEmail(input: {
+  event: EventRecord;
+  ticket: Pick<TicketRecord, "holderName" | "email">;
+  targetType: TicketType;
+  amountMinor: number;
+  checkoutUrl: string;
+  exchangeId: string;
+}): Promise<TicketEmailResult> {
+  if (!input.ticket.email) return { queued: false, error: "No email address on this ticket" };
+  const amount = formatMoney(input.amountMinor, input.targetType.currency);
+  const when = formatEventDateTime(input.event.startsAt, input.event.timezone);
+  const text = [
+    `Complete your ticket change — ${input.event.title}`,
+    "",
+    `${input.ticket.holderName}'s ticket is ready to change to ${input.targetType.name}.`,
+    `Pay the ${amount} difference here: ${input.checkoutUrl}`,
+    "",
+    "The ticket changes only after payment succeeds. Until then, the current ticket and QR remain valid.",
+    "This payment link expires after 30 minutes. You can start again from manage tickets if needed.",
+    "",
+    `${input.event.title} · ${when}`,
+    "",
+    "— milk & henny",
+  ].join("\n");
+  const html = renderBrandedEmail({
+    origin: BASE_URL,
+    label: "complete ticket change",
+    title: `Change to ${input.targetType.name}`,
+    meta: `${input.event.title} · ${when}`,
+    contentHtml: `<p style="margin:0 0 12px">${escapeHtml(input.ticket.holderName)}'s ticket is ready to change.</p>
+      <p style="margin:0 0 16px"><a href="${escapeHtml(input.checkoutUrl)}" style="color:#b45309">pay ${escapeHtml(amount)} difference</a></p>
+      <p style="margin:0;color:#78716c;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">The ticket changes only after payment succeeds. Until then, the current ticket and QR remain valid. This link expires after 30 minutes.</p>`,
+  });
+  const result = await sendEmail(
+    {
+      channel: "tickets",
+      to: input.ticket.email,
+      subject: `Complete your ticket change — ${input.event.title}`,
+      text,
+      html,
+    },
+    { idempotencyKey: `tickets:exchange-payment:${input.exchangeId}` },
+  );
+  if (!result.ok) return { queued: false, error: result.error };
+  return { queued: true };
+}
 
 /**
  * An update from the organiser to attendees, in the same clothes as the

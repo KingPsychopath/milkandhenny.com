@@ -312,6 +312,7 @@ export type EventTicketSummary = {
   currency?: string;
   byType: Record<string, { name: string; issued: number; redeemed: number }>;
   tickets: (DoorTicketView & {
+    ticketTypeId: string;
     email?: string;
     issuedAt: string;
     amountPaidMinor?: number;
@@ -366,6 +367,7 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
         ticket,
         (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket",
       ),
+      ticketTypeId: ticket.ticketTypeId,
       email: ticket.email,
       issuedAt: ticket.issuedAt,
       amountPaidMinor: ticket.amountPaidMinor,

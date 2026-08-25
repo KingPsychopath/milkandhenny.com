@@ -17,6 +17,7 @@ import {
 } from "@/features/events/types";
 import { describeCheckpoints, type OrderTicketView, type TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
+import { ManageTickets } from "./ManageTickets";
 import { ShareTicketButton } from "./ShareTicketButton";
 import { AttendeeSessionControls } from "./AttendeeSessionControls";
 import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
@@ -170,10 +171,23 @@ export function TicketPage({
               })}
             </ul>
             <p className="mt-2 font-mono text-micro theme-faint leading-relaxed">
-              Send each guest their own link. Keep yours — it&apos;s the only one that can refund
-              the order.
+              Send each guest their own link. Keep yours — it manages changes and refunds for the
+              order.
             </p>
           </nav>
+        )}
+
+        {ticket.kind === "paid" && canManageOrder && managerTicketId && (
+          <div className="mt-4">
+            <ManageTickets
+              managerTicketId={managerTicketId}
+              disabledReason={
+                doorsOpen
+                  ? "Ticket changes closed when doors opened. Message us if something needs correcting."
+                  : undefined
+              }
+            />
+          </div>
         )}
 
         {orderSize > 1 && !canManageOrder && (
