@@ -391,8 +391,14 @@ describeWithDatabase("event scoring postgres", () => {
       }),
     ]);
     expect(result.filter((entry) => entry.ok)).toHaveLength(1);
+    const accepted = result.find((entry) => entry.ok);
     expect(
-      (await query<{ team_id: string }>(`select team_id from score_postings limit 1`))[0]?.team_id,
+      (
+        await query<{ team_id: string }>(
+          `select team_id from score_postings where transaction_id = $1`,
+          [accepted?.ok ? accepted.value.id : "missing"],
+        )
+      )[0]?.team_id,
     ).toBe(team.ok ? team.value.id : "missing");
   });
 

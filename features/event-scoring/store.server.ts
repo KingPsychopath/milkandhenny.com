@@ -454,7 +454,11 @@ export async function setTeamMembership(input: {
       );
       if (!participant.rows[0] || !team.rows[0])
         return { ok: false, status: 404, error: "Team or participant not found" };
-      const startsAt = input.startsAt ?? new Date().toISOString();
+      const startsAt =
+        input.startsAt ??
+        (
+          await client.query<{ starts_at: Date }>(`select clock_timestamp() as starts_at`)
+        ).rows[0]!.starts_at.toISOString();
       await client.query(
         `update score_team_memberships
             set ends_at = $3
@@ -1144,10 +1148,11 @@ async function insertTransaction(
     const team = await client.query<{ team_id: string }>(
       `select team_id from score_team_memberships
         where participant_id = $1
-          and starts_at <= now()
-          and (ends_at is null or ends_at > now())
+          and event_slug = $2
+          and starts_at <= clock_timestamp()
+          and (ends_at is null or ends_at > clock_timestamp())
         order by starts_at desc limit 1`,
-      [posting.participantId],
+      [posting.participantId, input.eventSlug],
     );
     await client.query(
       `insert into score_postings
