@@ -69,7 +69,7 @@ export type CommunicationLinkMetric = {
   totalClicks: number;
 };
 
-type Candidate = { email: string; displayName: string | null; source: string };
+type CandidateRow = { email: string; display_name: string | null; source: string };
 
 function hashEmail(email: string): string {
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
@@ -132,34 +132,39 @@ function validMedia(value: unknown): CommunicationMedia[] {
 }
 
 async function syncContacts(): Promise<void> {
-  const candidates = await query<Candidate>(`
-    select lower(email) as email, nullif(trim(max(holder_name)), '') as display_name, 'event' as source
+  const candidates = await query<CandidateRow>(`
+    select lower(trim(email)) as email,
+           nullif(trim(max(holder_name)), '') as display_name,
+           'event' as source
       from tickets
      where email is not null and trim(email) <> ''
-     group by lower(email)
+     group by lower(trim(email))
     union all
-    select lower(owner_email) as email, nullif(trim(max(owner_name)), '') as display_name, 'pitch' as source
+    select lower(trim(owner_email)) as email,
+           nullif(trim(max(owner_name)), '') as display_name,
+           'pitch' as source
       from pitch_decks
      where owner_email is not null and trim(owner_email) <> ''
-     group by lower(owner_email)
+     group by lower(trim(owner_email))
   `);
-  const merged = new Map<string, Candidate & { sources: Set<string> }>();
-  for (const candidate of candidates) {
-    const email = candidate.email.trim().toLowerCase();
+  const merged = new Map<
+    string,
+    { email: string; displayName: string | null; sources: Set<string> }
+  >();
+  for (const row of candidates) {
+    const email = row.email;
     if (!email) continue;
-    candidate.displayName = candidate.displayName?.trim() || null;
+    const displayName = row.display_name?.trim() || null;
     const key = hashEmail(email);
     const existing = merged.get(key);
     if (existing) {
-      existing.sources.add(candidate.source);
-      if (!existing.displayName && candidate.displayName)
-        existing.displayName = candidate.displayName;
+      existing.sources.add(row.source);
+      if (!existing.displayName && displayName) existing.displayName = displayName;
     } else {
       merged.set(key, {
         email,
-        displayName: candidate.displayName,
-        source: candidate.source,
-        sources: new Set([candidate.source]),
+        displayName,
+        sources: new Set([row.source]),
       });
     }
   }
