@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types";
 import { verifyTicketSignature } from "@/features/tickets/qr.server";
+import { redeemTicket } from "@/features/tickets/tickets.server";
 import { getEvent } from "@/features/events/store.server";
 import { queryOne } from "@/lib/platform/postgres.server";
 import {
   awardPoints,
+  checkInForScoring,
   listScoringActivities,
   reversePoints,
   type ScoringOperationResult,
@@ -71,6 +73,7 @@ export async function getStaffScoringPage(input: {
       label: string;
       assignmentType: StoredStaffAssignment["assignmentType"];
       canAward: boolean;
+      canAdmit: boolean;
       canTransfer: boolean;
       canReverse: boolean;
       canReviewHeld: boolean;
@@ -95,6 +98,7 @@ export async function getStaffScoringPage(input: {
     label: assignment.label,
     assignmentType: assignment.assignmentType,
     canAward: hasStaffPermission(assignment, "awardPoints"),
+    canAdmit: hasStaffPermission(assignment, "admitTickets"),
     canTransfer: hasStaffPermission(assignment, "transferPoints"),
     canReverse: hasStaffPermission(assignment, "reverseAwards"),
     canReviewHeld: hasStaffPermission(assignment, "reviewHeldActions"),
@@ -108,6 +112,35 @@ export async function getStaffScoringPage(input: {
         (stationId !== undefined && pool.ownerId === stationId),
     ),
   };
+}
+
+export async function admitStaffTicket(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  scanned: string;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  if (!context || !hasStaffPermission(context.assignment, "admitTickets"))
+    return { ok: false as const, status: 403, error: "This staff link cannot admit tickets" };
+  const outcome = await redeemTicket({
+    scanned: input.scanned,
+    eventSlug: input.eventSlug,
+    redeemedBy: context.assignment.label,
+  });
+  if (outcome.result === "admitted" && outcome.ticket) {
+    const checkInActivity = (await listScoringActivities(input.eventSlug)).find(
+      (activity) => activity.template === "check-in" && activity.status === "live",
+    );
+    await checkInForScoring({
+      eventSlug: input.eventSlug,
+      ticketId: outcome.ticket.id,
+      idempotencyKey: `admission-${outcome.ticket.id}`,
+      actorId: context.assignment.id,
+      checkInPoints: checkInActivity?.rule.fixedPoints,
+    });
+  }
+  return { ok: true as const, value: outcome };
 }
 
 export async function searchStaffParticipants(input: {

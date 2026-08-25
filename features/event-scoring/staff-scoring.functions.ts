@@ -5,6 +5,7 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 
 import {
   awardStaffPoints,
+  admitStaffTicket,
   getStaffScoringPage,
   reverseStaffAward,
   resolveStaffScannedParticipant,
@@ -76,6 +77,10 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
         }
       : result;
   });
+
+export const admitStaffTicketFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; token: string; scanned: string }) => data)
+  .handler(({ data }) => admitStaffTicket({ ...data, deviceId: ensureDeviceId() }));
 
 export const reverseStaffAwardFn = createServerFn({ method: "POST" })
   .validator(
