@@ -3,6 +3,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
+import { HotAndColdResultShare } from "./HotAndColdResultShare";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { revealDailyHotAndColdFn, scoreDailyHotAndColdGuessFn } from "./hot-and-cold.functions";
 import type { SoloHotAndColdGuess } from "./types";
@@ -21,6 +22,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     target: null,
     gaveUp: false,
   });
+  const [recovered, setRecovered] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   useEffect(() => {
@@ -29,15 +31,18 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       if (stored) setState(JSON.parse(stored) as DailyState);
     } catch {
       /* play without recovery */
+    } finally {
+      setRecovered(true);
     }
   }, [puzzle]);
   useEffect(() => {
+    if (!recovered) return;
     try {
       localStorage.setItem(hotAndColdBrowserKeys.daily(puzzle), JSON.stringify(state));
     } catch {
       /* play without recovery */
     }
-  }, [puzzle, state]);
+  }, [puzzle, recovered, state]);
   const ledger = useMemo(
     () =>
       state.guesses.map((guess) => ({
@@ -129,6 +134,11 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             <p className="font-serif text-xl theme-muted">
               {state.gaveUp ? "Tomorrow is another word." : "You found the heat."}
             </p>
+            <HotAndColdResultShare
+              label={`daily #${puzzle}`}
+              guesses={state.guesses}
+              outcome={state.gaveUp ? "revealed" : "found"}
+            />
             <button
               type="button"
               className="mt-5 min-h-11 font-mono text-xs underline underline-offset-4"

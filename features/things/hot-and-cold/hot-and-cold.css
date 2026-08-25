@@ -178,6 +178,64 @@
   grid-column: 2;
   color: var(--stone-500);
 }
+.heat-result-share {
+  margin: 2.5rem auto 0;
+  padding: 1.5rem 0;
+  border-top: 1px solid var(--stone-200);
+}
+.heat-share-trail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.45rem;
+  margin: 1.6rem 0;
+  padding: 0;
+  list-style: none;
+}
+.heat-share-trail li:not(.heat-share-trail-empty) {
+  display: grid;
+  height: 3.6rem;
+  place-items: end stretch;
+  overflow: hidden;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.heat-share-trail li span {
+  display: block;
+  min-height: 18%;
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.heat-share-trail li[data-band="cold"] span {
+  min-height: 31%;
+}
+.heat-share-trail li[data-band="cool"] span {
+  min-height: 43%;
+}
+.heat-share-trail li[data-band="warm"] span {
+  min-height: 58%;
+  background: color-mix(in srgb, var(--heat-ember) 35%, transparent);
+}
+.heat-share-trail li[data-band="hot"] span {
+  min-height: 74%;
+  background: color-mix(in srgb, var(--heat-ember) 62%, transparent);
+}
+.heat-share-trail li[data-band="burning"] span {
+  min-height: 88%;
+  background: color-mix(in srgb, var(--heat-ember) 82%, transparent);
+}
+.heat-share-trail li[data-band="found"] span {
+  min-height: 100%;
+  background: var(--heat-ember);
+  box-shadow: 0 0 1.4rem color-mix(in srgb, var(--heat-ember) 55%, transparent);
+}
+.heat-share-trail-empty {
+  grid-column: 1 / -1;
+  min-height: 3.6rem;
+  display: grid;
+  place-items: center;
+  font: 500 0.65rem/1 var(--font-mono);
+  color: var(--stone-500);
+}
 .heat-composer {
   position: fixed;
   z-index: 20;

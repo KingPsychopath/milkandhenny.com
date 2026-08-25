@@ -7,6 +7,7 @@ import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.fu
 import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
+import { HotAndColdResultShare } from "./HotAndColdResultShare";
 import { useHotAndColdRoom } from "./useHotAndColdRoom";
 import type { HotAndColdAction, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
@@ -377,6 +378,13 @@ export function HotAndColdRoomApp({
             <p className="mt-2 font-mono text-xs theme-muted">
               {snapshot.round?.exact ? "found the word" : "came closest"}
             </p>
+            {snapshot.round ? (
+              <HotAndColdResultShare
+                label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
+                guesses={snapshot.round.guesses}
+                outcome={snapshot.round.exact ? "found" : "closest"}
+              />
+            ) : null}
             {snapshot.canControl ? (
               <button
                 type="button"
