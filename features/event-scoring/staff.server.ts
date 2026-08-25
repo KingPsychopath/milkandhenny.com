@@ -22,7 +22,7 @@ import {
 export const STAFF_PRESETS = {
   "door-scanner": ["admitTickets"] as const,
   "door-manager": ["admitTickets", "requestGuests", "addGuests", "approveRequests"] as const,
-  "game-moderator": ["runActivities", "viewParticipantPoints"] as const,
+  "game-moderator": ["runActivities", "viewParticipantPoints", "awardPoints"] as const,
   "points-marshal": ["viewParticipantPoints", "awardPoints"] as const,
   "activity-manager": [
     "viewParticipantPoints",
