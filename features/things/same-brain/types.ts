@@ -107,6 +107,7 @@ export interface SameBrainSnapshot extends MultiplayerSequence {
   phase: SameBrainPhase;
   revision: number;
   serverNow: number;
+  expiresAt: number;
   round: number;
   rounds: number;
   scoring: SameBrainScoring;

@@ -574,6 +574,7 @@ function snapshot(
     revision: room.revision,
     sequence: room.sequence,
     serverNow: now,
+    expiresAt: room.expiresAt,
     round: room.round,
     rounds: room.rounds,
     scoring: room.scoring,

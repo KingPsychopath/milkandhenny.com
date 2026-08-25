@@ -104,6 +104,15 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
   });
   const sound = useGameSound(liarsBrowserKeys.muted());
   const snapshot = room.snapshot;
+  const roomExpiry = snapshot?.expiresAt;
+  useEffect(() => {
+    if (!roomExpiry) return;
+    writeExpiringLocalValue(
+      liarsBrowserKeys.playerSession(roomId),
+      { ...credentials, expiresAt: roomExpiry },
+      roomExpiry,
+    );
+  }, [credentials, roomExpiry, roomId]);
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
     game: "liars",

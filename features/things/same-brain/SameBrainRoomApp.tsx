@@ -95,6 +95,15 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = room.snapshot;
+  const roomExpiry = snapshot?.expiresAt;
+  useEffect(() => {
+    if (!roomExpiry) return;
+    writeExpiringLocalValue(
+      sameBrainBrowserKeys.playerSession(roomId),
+      { ...credentials, expiresAt: roomExpiry },
+      roomExpiry,
+    );
+  }, [credentials, roomExpiry, roomId]);
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
     game: "same-brain",
