@@ -1,20 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getAttendeeSession, openAttendeeTicket } from "@/features/event-scoring/session.server";
+import { openAttendeeTicket, ticketPointSelection } from "@/features/event-scoring/session.server";
 import { getTicket } from "@/features/tickets/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request, ticketId: string) {
   try {
-    const session = await getAttendeeSession();
-    const entry = session?.tickets.find((candidate) => candidate.ticketId === ticketId);
-    return Response.json({
-      mode: entry?.mode ?? "view-only",
-      active: Boolean(
-        entry && session?.activeParticipantByEventId[entry.eventId] === entry.participantId,
-      ),
-      eventHasActive: Boolean(entry && session?.activeParticipantByEventId[entry.eventId]),
-    });
+    return Response.json(await ticketPointSelection(ticketId));
   } catch (error) {
     return apiErrorFromRequest(
       request,

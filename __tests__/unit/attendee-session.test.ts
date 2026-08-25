@@ -92,6 +92,7 @@ import {
   openAttendeeTicket,
   revokeAttendeeSessionsForPerson,
   signOutAttendeeSession,
+  ticketPointSelection,
 } from "@/features/event-scoring/session.server";
 
 describe("attendee session authentication", () => {
@@ -181,7 +182,7 @@ describe("attendee session authentication", () => {
     );
   });
 
-  it("uses a signed-in person's sole claimed event place without asking again", async () => {
+  it("uses a signed-in person's first claimed event place until they choose another", async () => {
     await authenticateAttendeeSession({
       personId: "person_session",
       verifiedEmailHash: "a".repeat(64),
@@ -190,7 +191,19 @@ describe("attendee session authentication", () => {
     expect(await activeParticipantForEvent("session-night")).toBe("participant_claimed");
 
     state.linkedParticipants = ["participant_claimed", "participant_other"];
-    expect(await activeParticipantForEvent("session-night")).toBeUndefined();
+    expect(await activeParticipantForEvent("session-night")).toBe("participant_claimed");
+
+    state.linkedParticipants = ["participant_session"];
+    expect(await ticketPointSelection("01ARZ3NDEKTSV4RS")).toEqual({
+      mode: "scoring",
+      active: true,
+      eventHasActive: true,
+    });
+    expect(await ticketPointSelection("01ARZ3NDEKTSV4RT")).toEqual({
+      mode: "view-only",
+      active: false,
+      eventHasActive: true,
+    });
   });
 
   it("summarizes and revokes every authenticated session for one person", async () => {

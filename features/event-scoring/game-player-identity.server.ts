@@ -5,9 +5,9 @@ import { linkGamePlayer } from "./games.server";
 import { activeParticipantForEvent } from "./session.server";
 
 /**
- * Connects an authenticated game join to the attendee's sole active event participant.
- * Typed names never participate in this decision; ambiguous multi-ticket accounts must choose a
- * ticket explicitly before the game can award points automatically.
+ * Connects an authenticated game join to the attendee's active event participant. An explicit
+ * ticket choice wins; otherwise the person's earliest claimed active ticket is the stable default.
+ * Typed names never participate in this decision.
  */
 export async function linkCurrentAttendeeGamePlayer(input: {
   gameKind: OfficialGameKind;

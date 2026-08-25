@@ -381,10 +381,28 @@ export async function activeParticipantForEvent(eventSlug: string): Promise<stri
   const linked = await query<{ id: string }>(
     `select id from event_participants
       where event_slug = $1 and person_id = $2 and status = 'active'
-      order by created_at asc limit 2`,
+      order by created_at asc,id asc limit 1`,
     [eventSlug, session.personId],
   );
-  return linked.length === 1 ? linked[0]?.id : undefined;
+  return linked[0]?.id;
+}
+
+export async function ticketPointSelection(ticketId: string): Promise<{
+  mode: AttendeeTicketAccess["mode"];
+  active: boolean;
+  eventHasActive: boolean;
+}> {
+  const ticket = await getTicket(ticketId);
+  if (!ticket) return { mode: "view-only", active: false, eventHasActive: false };
+  const participant = await participantForTicket(ticketId);
+  if (!participant) return { mode: "view-only", active: false, eventHasActive: false };
+  const activeParticipantId = await activeParticipantForEvent(ticket.eventSlug);
+  const active = activeParticipantId === participant.id;
+  return {
+    mode: active ? "scoring" : "view-only",
+    active,
+    eventHasActive: Boolean(activeParticipantId),
+  };
 }
 
 export async function openedTicketsForEvent(eventSlug: string): Promise<AttendeeTicketAccess[]> {
