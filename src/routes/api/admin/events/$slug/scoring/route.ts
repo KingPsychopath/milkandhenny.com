@@ -57,10 +57,11 @@ import {
   type StaffPreset,
 } from "@/features/event-scoring/staff.server";
 import {
-  buildDiscoveryPrintPack,
+  buildEventPrintPack,
   renderDiscoveryPrintPdf,
 } from "@/features/event-scoring/print.server";
 import { printLayout } from "@/features/event-scoring/print";
+import { PRINT_PACK_KINDS } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
   isLeaderboardVisibility,
@@ -698,8 +699,13 @@ async function handlePOST(request: Request, slug: string) {
       const discoveryIds = Array.isArray(body.discoveryIds)
         ? body.discoveryIds.filter((value): value is string => typeof value === "string")
         : undefined;
-      const result = await buildDiscoveryPrintPack({
+      const kind =
+        typeof body.kind === "string" && PRINT_PACK_KINDS.includes(body.kind as never)
+          ? (body.kind as (typeof PRINT_PACK_KINDS)[number])
+          : "hunt";
+      const result = await buildEventPrintPack({
         eventSlug: slug,
+        kind,
         layout,
         paper:
           body.paper === "letter" || body.paper === "a5" || body.paper === "card"
@@ -717,7 +723,7 @@ async function handlePOST(request: Request, slug: string) {
         return new Response(new Uint8Array(pdf), {
           headers: {
             "Cache-Control": "no-store",
-            "Content-Disposition": `attachment; filename="${slug}-discovery-pack.pdf"`,
+            "Content-Disposition": `attachment; filename="${slug}-${kind}-pack.pdf"`,
             "Content-Type": "application/pdf",
           },
         });

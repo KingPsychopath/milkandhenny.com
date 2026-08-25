@@ -16,6 +16,7 @@ import {
   printLayout,
   type PrintLayout,
   type PrintPack,
+  type PrintPackKind,
   validatePrintPack,
 } from "./print";
 
@@ -74,6 +75,7 @@ export async function buildDiscoveryPrintPack(input: {
   ).flat();
   const pack: PrintPack = {
     eventSlug: input.eventSlug,
+    kind: "hunt",
     title: event.title,
     subtitle: event.startsAt
       ? new Date(event.startsAt).toLocaleDateString("en-GB", { dateStyle: "long" })
@@ -116,6 +118,115 @@ export async function buildDiscoveryPrintPack(input: {
     qrDataUrls[item.id] = dataUrl;
   }
   return { ok: true, pack, qrDataUrls };
+}
+
+export async function buildEventPrintPack(input: {
+  eventSlug: string;
+  kind: PrintPackKind;
+  layout: PrintLayout;
+  paper?: PrintPack["paper"];
+  includePoints?: boolean;
+  includePlacementNotes?: boolean;
+  includeCutGuides?: boolean;
+  includePageNumbers?: boolean;
+  discoveryIds?: string[];
+}) {
+  if (input.kind === "hunt") return buildDiscoveryPrintPack(input);
+  const event = await getEvent(input.eventSlug);
+  if (!event) return { ok: false as const, status: 404, error: "Event not found" };
+  const definitions: Record<
+    Exclude<PrintPackKind, "hunt">,
+    { title: string; subtitle: string; path: string; private: boolean }
+  > = {
+    setup: {
+      title: "Event setup checklist",
+      subtitle: "Place signs, test every QR, and confirm scoring state.",
+      path: `/events/${input.eventSlug}`,
+      private: true,
+    },
+    instructions: {
+      title: "How to take part",
+      subtitle: "Open your ticket, scan a clue, and confirm each claim.",
+      path: `/events/${input.eventSlug}/discoveries`,
+      private: false,
+    },
+    placement: {
+      title: "Private placement list",
+      subtitle: "Record each clue location and revision before doors open.",
+      path: `/events/${input.eventSlug}`,
+      private: true,
+    },
+    control: {
+      title: "Private answer and control sheet",
+      subtitle: "Keep this sheet with the event manager.",
+      path: `/events/${input.eventSlug}`,
+      private: true,
+    },
+    moderator: {
+      title: "Moderator instructions",
+      subtitle: "Choose an operation before scanning. Review every award before saving.",
+      path: `/events/${input.eventSlug}`,
+      private: true,
+    },
+    leaderboard: {
+      title: "Live event leaderboard",
+      subtitle: "Scan to see confirmed event scores.",
+      path: `/events/${input.eventSlug}/score`,
+      private: false,
+    },
+    "ticket-score": {
+      title: "Your ticket and score",
+      subtitle: "Open your ticket link to see points, rank, and clues.",
+      path: `/events/${input.eventSlug}`,
+      private: false,
+    },
+    "photo-upload": {
+      title: "Share event photographs",
+      subtitle: "Uploads follow the event consent policy and expire with the album.",
+      path: `/events/${input.eventSlug}`,
+      private: false,
+    },
+  };
+  const definition = definitions[input.kind];
+  const destination = `${BASE_URL}${definition.path}`;
+  const pack: PrintPack = {
+    kind: input.kind,
+    eventSlug: input.eventSlug,
+    title: event.title,
+    subtitle: event.startsAt
+      ? new Date(event.startsAt).toLocaleDateString("en-GB", { dateStyle: "long" })
+      : undefined,
+    paper: input.paper ?? "a4",
+    layout: input.layout,
+    includePoints: false,
+    includePlacementNotes: false,
+    includeCutGuides: input.includeCutGuides ?? true,
+    includePageNumbers: input.includePageNumbers ?? true,
+    items: [
+      {
+        id: input.kind,
+        title: definition.title,
+        subtitle: definition.subtitle,
+        destination,
+        fallbackCode: definition.path,
+        revision: 1,
+        private: definition.private,
+      },
+    ],
+  };
+  const errors = validatePrintPack(pack);
+  if (errors.length > 0) return { ok: false as const, status: 422, error: errors.join("; ") };
+  const dataUrl = await QRCode.toDataURL(destination, { margin: 4, width: 512 });
+  const encoded = dataUrl.split(",", 2)[1];
+  if (!encoded) return { ok: false as const, status: 500, error: "QR generation failed" };
+  const decoded = await sharp(Buffer.from(encoded, "base64"))
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const code = jsQR(new Uint8ClampedArray(decoded.data), decoded.info.width, decoded.info.height);
+  if (!code || code.data !== destination)
+    return { ok: false as const, status: 422, error: "QR validation failed" };
+  return { ok: true as const, pack, qrDataUrls: { [input.kind]: dataUrl } };
 }
 
 type PdfObject = string | Buffer;
@@ -228,7 +339,8 @@ export async function renderDiscoveryPrintPdf(input: {
       const qrSize = Math.min(cellWidth * 0.58, cellHeight * 0.6);
       const qrX = x + (cellWidth - qrSize) / 2;
       const qrY = y + cellHeight * 0.21;
-      if (input.pack.includeCutGuides !== false) commands.push(`${x} ${y} ${cellWidth} ${cellHeight} re S`);
+      if (input.pack.includeCutGuides !== false)
+        commands.push(`${x} ${y} ${cellWidth} ${cellHeight} re S`);
       commands.push(
         `BT /FB ${Math.min(18, Math.max(10, cellWidth * 0.055))} Tf ${x + inset} ${y + cellHeight - inset - 16} Td (${pdfText(item.title)}) Tj ET`,
         `q ${qrSize} 0 0 ${qrSize} ${qrX} ${qrY} cm /Q${index} Do Q`,
@@ -240,7 +352,9 @@ export async function renderDiscoveryPrintPdf(input: {
         commands.push(`BT /FB 9 Tf ${x + inset} ${y + inset} Td (${item.points} points) Tj ET`);
       }
       if (input.pack.includePlacementNotes && item.placementNote) {
-        commands.push(`BT /FR 7 Tf ${x + inset} ${y + inset + 12} Td (${pdfText(item.placementNote)}) Tj ET`);
+        commands.push(
+          `BT /FR 7 Tf ${x + inset} ${y + inset + 12} Td (${pdfText(item.placementNote)}) Tj ET`,
+        );
       }
     }
     const pageNumber = Math.floor(offset / pageCapacity) + 1;
@@ -256,6 +370,7 @@ export async function renderDiscoveryPrintPdf(input: {
     );
   }
   objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
-  objects[pagesId - 1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`;
+  objects[pagesId - 1] =
+    `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`;
   return compilePdf(objects, catalogId);
 }

@@ -25,6 +25,7 @@ export type PrintPackItem = {
 };
 
 export type PrintPack = {
+  kind?: PrintPackKind;
   eventSlug: string;
   title: string;
   subtitle?: string;
@@ -36,6 +37,19 @@ export type PrintPack = {
   includePageNumbers?: boolean;
   items: PrintPackItem[];
 };
+
+export const PRINT_PACK_KINDS = [
+  "hunt",
+  "setup",
+  "instructions",
+  "placement",
+  "control",
+  "moderator",
+  "leaderboard",
+  "ticket-score",
+  "photo-upload",
+] as const;
+export type PrintPackKind = (typeof PRINT_PACK_KINDS)[number];
 
 export function printLayout(value: unknown): value is PrintLayout {
   return typeof value === "string" && value in PRINT_LAYOUTS;

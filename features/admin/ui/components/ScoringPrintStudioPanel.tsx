@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-import { PRINT_LAYOUTS, type PrintLayout } from "@/features/event-scoring/print";
+import {
+  PRINT_LAYOUTS,
+  PRINT_PACK_KINDS,
+  type PrintLayout,
+  type PrintPackKind,
+} from "@/features/event-scoring/print";
 
 export function ScoringPrintStudioPanel({
   discoveryCount,
@@ -12,6 +17,7 @@ export function ScoringPrintStudioPanel({
   const [layout, setLayout] = useState<PrintLayout>("eight-clues");
   const [paper, setPaper] = useState<"a4" | "letter" | "a5" | "card">("a4");
   const [busy, setBusy] = useState(false);
+  const [kind, setKind] = useState<PrintPackKind>("hunt");
 
   return (
     <section aria-labelledby="scoring-print-heading" className="border-t theme-border pt-6">
@@ -26,9 +32,25 @@ export function ScoringPrintStudioPanel({
         onSubmit={(event) => {
           event.preventDefault();
           setBusy(true);
-          void onDownload({ action: "print-pdf", layout, paper }).finally(() => setBusy(false));
+          void onDownload({ action: "print-pdf", kind, layout, paper }).finally(() =>
+            setBusy(false),
+          );
         }}
       >
+        <label className="font-mono text-xs">
+          pack
+          <select
+            value={kind}
+            onChange={(event) => setKind(event.target.value as PrintPackKind)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            {PRINT_PACK_KINDS.map((value) => (
+              <option key={value} value={value}>
+                {value.replaceAll("-", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="font-mono text-xs">
           paper
           <select
@@ -57,7 +79,7 @@ export function ScoringPrintStudioPanel({
           </select>
         </label>
         <button
-          disabled={busy || discoveryCount === 0}
+          disabled={busy || (kind === "hunt" && discoveryCount === 0)}
           className="min-h-11 self-end border border-foreground px-4 font-mono text-xs hover:opacity-70 disabled:opacity-40"
         >
           {busy ? "building PDF..." : "download PDF"}
