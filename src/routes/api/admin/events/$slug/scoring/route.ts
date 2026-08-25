@@ -13,6 +13,8 @@ import {
   createTeam,
   listHeldScoreTransactions,
   listPools,
+  listStaffAssignments,
+  listStaffDevices,
   listTeams,
   rebuildEventProjections,
   setTeamMembership,
@@ -29,7 +31,12 @@ import {
   transferPoints,
   updateScoringActivity,
 } from "@/features/event-scoring/scoring.server";
-import { createStaffAccess, type StaffPreset } from "@/features/event-scoring/staff.server";
+import {
+  createStaffAccess,
+  revokeStaffAccess,
+  revokeStaffAccessDevice,
+  type StaffPreset,
+} from "@/features/event-scoring/staff.server";
 import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
 import { printLayout } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -37,6 +44,7 @@ import {
   isLeaderboardVisibility,
   isScoringState,
   type ScoreRule,
+  STAFF_PERMISSIONS,
 } from "@/features/event-scoring/types";
 
 function recordBody(body: unknown): Record<string, unknown> | null {
@@ -53,15 +61,29 @@ async function handleGET(request: Request, slug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
-    const [settings, activities, pools, discoveries, teams, held] = await Promise.all([
+    const [settings, activities, pools, discoveries, teams, held, staff] = await Promise.all([
       getScoring(slug),
       listScoringActivities(slug),
       listPools(slug),
       listDiscoveries(slug),
       listTeams(slug),
       listHeldScoreTransactions(slug),
+      listStaffAssignments(slug),
     ]);
-    return Response.json({ settings, activities, pools, discoveries, teams, held });
+    return Response.json({
+      settings,
+      activities,
+      pools,
+      discoveries,
+      teams,
+      held,
+      staff: await Promise.all(
+        staff.map(async (assignment) => ({
+          ...assignment,
+          devices: await listStaffDevices(assignment.id),
+        })),
+      ),
+    });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
   }
@@ -428,6 +450,16 @@ async function handlePOST(request: Request, slug: string) {
         label,
         assignmentType,
         preset: preset as StaffPreset,
+        actorId,
+        overrides:
+          body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
+            ? Object.fromEntries(
+                STAFF_PERMISSIONS.flatMap((permission) => {
+                  const value = (body.overrides as Record<string, unknown>)[permission];
+                  return typeof value === "boolean" ? [[permission, value]] : [];
+                }),
+              )
+            : undefined,
         scope:
           body.scope && typeof body.scope === "object" && !Array.isArray(body.scope)
             ? (body.scope as Record<string, unknown>)
@@ -435,6 +467,35 @@ async function handlePOST(request: Request, slug: string) {
         expiresAt: stringValue(body.expiresAt),
       });
       return Response.json({ assignment: result }, { status: 201 });
+    }
+
+    if (action === "revoke-staff") {
+      const assignmentId = stringValue(body.assignmentId);
+      if (!assignmentId)
+        return Response.json({ error: "Staff assignment is required" }, { status: 400 });
+      const revoked = await revokeStaffAccess({ eventSlug: slug, assignmentId, actorId });
+      return revoked
+        ? Response.json({ revoked: true })
+        : Response.json({ error: "Active staff assignment not found" }, { status: 404 });
+    }
+
+    if (action === "revoke-staff-device") {
+      const assignmentId = stringValue(body.assignmentId);
+      const deviceId = stringValue(body.deviceId);
+      if (!assignmentId || !deviceId)
+        return Response.json(
+          { error: "Staff assignment and device are required" },
+          { status: 400 },
+        );
+      const revoked = await revokeStaffAccessDevice({
+        eventSlug: slug,
+        assignmentId,
+        deviceId,
+        actorId,
+      });
+      return revoked
+        ? Response.json({ revoked: true })
+        : Response.json({ error: "Active staff device not found" }, { status: 404 });
     }
 
     if (action === "print-pack") {

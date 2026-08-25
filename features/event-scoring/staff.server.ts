@@ -1,11 +1,14 @@
 import { randomBytes } from "node:crypto";
 
+import { query } from "@/lib/platform/postgres.server";
+
 import {
   createStaffAssignment,
   createPool,
   recordStaffDevice,
   resolveStaffAssignment,
   revokeStaffAssignment,
+  revokeStaffDevice as revokeStoredStaffDevice,
   type StoredStaffAssignment,
 } from "./store.server";
 import {
@@ -74,6 +77,7 @@ export async function createStaffAccess(input: {
   overrides?: Partial<StaffPermissionSet>;
   scope?: Record<string, unknown>;
   expiresAt?: string;
+  actorId: string;
 }): Promise<StaffAccess> {
   const token = `staff_${randomBytes(24).toString("base64url")}`;
   const assignment = await createStaffAssignment({
@@ -85,6 +89,17 @@ export async function createStaffAccess(input: {
     scope: input.scope,
     expiresAt: input.expiresAt,
   });
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'staff.assignment.created','admin',$2,'staff_assignment',$3,$4::jsonb)`,
+    [
+      input.eventSlug,
+      input.actorId,
+      assignment.id,
+      JSON.stringify({ assignmentType: input.assignmentType, label: input.label }),
+    ],
+  );
   return { ...assignment, token };
 }
 
@@ -94,7 +109,9 @@ export async function resolveStaffAccess(input: {
   deviceId?: string;
 }): Promise<StoredStaffAssignment | null> {
   const assignment = await resolveStaffAssignment(input.eventSlug, input.token);
-  if (assignment && input.deviceId) await recordStaffDevice(assignment.id, input.deviceId);
+  if (assignment && input.deviceId && !(await recordStaffDevice(assignment.id, input.deviceId))) {
+    return null;
+  }
   return assignment;
 }
 
@@ -124,6 +141,35 @@ export async function issueStaffPool(input: {
   return createPool(input);
 }
 
-export async function revokeStaffAccess(assignmentId: string): Promise<void> {
-  await revokeStaffAssignment(assignmentId);
+export async function revokeStaffAccess(input: {
+  eventSlug: string;
+  assignmentId: string;
+  actorId: string;
+}): Promise<boolean> {
+  const revoked = await revokeStaffAssignment(input.eventSlug, input.assignmentId);
+  if (!revoked) return false;
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id)
+     values ($1,'staff.assignment.revoked','admin',$2,'staff_assignment',$3)`,
+    [input.eventSlug, input.actorId, input.assignmentId],
+  );
+  return true;
+}
+
+export async function revokeStaffAccessDevice(input: {
+  eventSlug: string;
+  assignmentId: string;
+  deviceId: string;
+  actorId: string;
+}): Promise<boolean> {
+  const revoked = await revokeStoredStaffDevice(input);
+  if (!revoked) return false;
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, assignment_id, device_id, entity_type, entity_id)
+     values ($1,'staff.device.revoked','admin',$2,$3,$4,'staff_device',$4)`,
+    [input.eventSlug, input.actorId, input.assignmentId, input.deviceId],
+  );
+  return true;
 }

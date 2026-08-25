@@ -34,6 +34,12 @@ import {
   replaceDiscoveryClueSecret,
 } from "@/features/event-scoring/discoveries.server";
 import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
+import {
+  createStaffAccess,
+  resolveStaffAccess,
+  revokeStaffAccess,
+  revokeStaffAccessDevice,
+} from "@/features/event-scoring/staff.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
@@ -757,5 +763,59 @@ describeWithDatabase("event scoring postgres", () => {
     expect(await award("checked-award-one")).toEqual(accepted);
     expect(await award("checked-award-two")).toMatchObject({ ok: false, status: 409 });
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(4);
+  });
+
+  it("revokes one staff device without revoking the assignment", async () => {
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Points table",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      overrides: { transferPoints: true },
+    });
+    expect(access.permissions.awardPoints).toBe(true);
+    expect(access.permissions.transferPoints).toBe(true);
+    expect(
+      await resolveStaffAccess({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "device-one",
+      }),
+    ).toMatchObject({ id: access.id });
+    expect(
+      await revokeStaffAccessDevice({
+        eventSlug: "scoring-night",
+        assignmentId: access.id,
+        deviceId: "device-one",
+        actorId: "admin-test",
+      }),
+    ).toBe(true);
+    expect(
+      await resolveStaffAccess({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "device-one",
+      }),
+    ).toBeNull();
+    expect(
+      await resolveStaffAccess({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "device-two",
+      }),
+    ).toMatchObject({ id: access.id });
+    await revokeStaffAccess({
+      eventSlug: "scoring-night",
+      assignmentId: access.id,
+      actorId: "admin-test",
+    });
+    expect(
+      await resolveStaffAccess({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "device-two",
+      }),
+    ).toBeNull();
   });
 });

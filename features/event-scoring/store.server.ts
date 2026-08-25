@@ -122,6 +122,13 @@ export type StoredStaffAssignment = {
   revokedAt?: string;
 };
 
+export type StoredStaffDevice = {
+  assignmentId: string;
+  deviceId: string;
+  lastSeenAt: string;
+  revokedAt?: string;
+};
+
 export type RecordScoreInput = {
   eventSlug: string;
   activityId?: string;
@@ -1574,6 +1581,15 @@ export async function createStaffAssignment(input: {
   return toStaffAssignment(row);
 }
 
+export async function listStaffAssignments(eventSlug: string): Promise<StoredStaffAssignment[]> {
+  const rows = await query<StaffAssignmentRow>(
+    `select * from score_staff_assignments
+      where event_slug = $1 order by created_at desc, id`,
+    [eventSlug],
+  );
+  return rows.map(toStaffAssignment);
+}
+
 function toStaffAssignment(row: StaffAssignmentRow): StoredStaffAssignment {
   return {
     id: row.id,
@@ -1604,21 +1620,67 @@ export async function resolveStaffAssignment(
   return toStaffAssignment(row);
 }
 
-export async function revokeStaffAssignment(assignmentId: string): Promise<boolean> {
+export async function revokeStaffAssignment(
+  eventSlug: string,
+  assignmentId: string,
+): Promise<boolean> {
   const rows = await query(
-    `update score_staff_assignments set status = 'revoked', revoked_at = now() where id = $1`,
-    [assignmentId],
+    `update score_staff_assignments set status = 'revoked', revoked_at = now()
+      where id = $1 and event_slug = $2 and revoked_at is null
+      returning id`,
+    [assignmentId, eventSlug],
   );
   return rows.length > 0;
 }
 
-export async function recordStaffDevice(assignmentId: string, deviceId: string): Promise<void> {
-  await query(
+export async function recordStaffDevice(assignmentId: string, deviceId: string): Promise<boolean> {
+  const rows = await query(
     `insert into score_staff_devices (assignment_id, device_id)
      values ($1,$2)
-     on conflict (assignment_id, device_id) do update set last_seen_at = now(), revoked_at = null`,
+     on conflict (assignment_id, device_id) do update set last_seen_at = now()
+       where score_staff_devices.revoked_at is null
+     returning assignment_id`,
     [assignmentId, deviceId],
   );
+  return rows.length > 0;
+}
+
+export async function listStaffDevices(assignmentId: string): Promise<StoredStaffDevice[]> {
+  const rows = await query<{
+    assignment_id: string;
+    device_id: string;
+    last_seen_at: Date;
+    revoked_at: Date | null;
+  }>(
+    `select assignment_id, device_id, last_seen_at, revoked_at
+       from score_staff_devices where assignment_id = $1 order by last_seen_at desc, device_id`,
+    [assignmentId],
+  );
+  return rows.map((row) => ({
+    assignmentId: row.assignment_id,
+    deviceId: row.device_id,
+    lastSeenAt: row.last_seen_at.toISOString(),
+    revokedAt: row.revoked_at?.toISOString(),
+  }));
+}
+
+export async function revokeStaffDevice(input: {
+  eventSlug: string;
+  assignmentId: string;
+  deviceId: string;
+}): Promise<boolean> {
+  const rows = await query(
+    `update score_staff_devices devices set revoked_at = now()
+      from score_staff_assignments assignments
+     where devices.assignment_id = assignments.id
+       and assignments.event_slug = $1
+       and devices.assignment_id = $2
+       and devices.device_id = $3
+       and devices.revoked_at is null
+     returning devices.assignment_id`,
+    [input.eventSlug, input.assignmentId, input.deviceId],
+  );
+  return rows.length > 0;
 }
 
 export async function markParticipantCheckedIn(
