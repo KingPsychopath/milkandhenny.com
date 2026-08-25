@@ -1,8 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
+import { AppImage } from "@/components/AppImage";
+import { useQrCode } from "@/hooks/useQrCode";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GiveUpControl } from "../shared/GiveUpControl";
+import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HeatLedger } from "./HeatLedger";
@@ -104,6 +107,14 @@ export function HotAndColdRoomApp({
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const snapshot = live.snapshot;
+  const invite =
+    typeof location === "undefined"
+      ? ""
+      : buildHotAndColdInviteUrl(location.origin, credentials.roomId, credentials.joinToken);
+  const { dataUrl: inviteQr, failed: inviteQrFailed } = useQrCode(
+    snapshot?.phase === "lobby" ? invite : null,
+    320,
+  );
   const latestId = snapshot?.round?.guesses.at(-1)?.id;
   useEffect(() => {
     if (!latestId) return;
@@ -151,10 +162,6 @@ export function HotAndColdRoomApp({
     mine: guess.playerId === credentials.playerId,
   }));
   if (snapshot.phase === "lobby") {
-    const invite =
-      typeof location === "undefined"
-        ? ""
-        : buildHotAndColdInviteUrl(location.origin, snapshot.roomId, credentials.joinToken);
     return (
       <div className="hot-and-cold min-h-svh">
         <header className="mx-auto flex max-w-lg items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
@@ -168,6 +175,34 @@ export function HotAndColdRoomApp({
             the room is open
           </p>
           <h1 className="mt-3 font-serif text-5xl font-semibold">find the heat together.</h1>
+          <section
+            className="mt-8 flex flex-col items-center text-center"
+            aria-label="Join the room"
+          >
+            {inviteQr ? (
+              <AppImage
+                src={inviteQr}
+                alt={`QR code to join room ${snapshot.roomId}`}
+                width={320}
+                height={320}
+                className="w-56 rounded-3xl bg-white p-3"
+              />
+            ) : inviteQrFailed ? (
+              <p className="font-mono text-xs theme-muted">
+                QR unavailable — use the room code or invite link.
+              </p>
+            ) : (
+              <div className="grid size-56 place-items-center rounded-3xl border theme-border font-mono text-xs theme-muted">
+                making QR…
+              </div>
+            )}
+            <p className="mt-5 font-mono text-micro uppercase tracking-[.18em] theme-muted">
+              scan to join
+            </p>
+            <p className="mt-1 font-mono text-3xl font-bold tracking-[.2em] text-[var(--things-amber)]">
+              {snapshot.roomId}
+            </p>
+          </section>
           <button
             type="button"
             onClick={() => void navigator.clipboard.writeText(invite)}
@@ -192,13 +227,11 @@ export function HotAndColdRoomApp({
                 </li>
               ))}
           </ul>
-          <button
-            type="button"
-            onClick={() => void send({ type: "readiness.set", ready: !me?.ready })}
-            className="mt-5 min-h-11 font-mono text-xs underline underline-offset-4"
-          >
-            {me?.ready ? "set not ready" : "I’m ready"}
-          </button>
+          <PlayerReadyControl
+            ready={me?.ready ?? false}
+            tone="light"
+            onChange={(ready) => void send({ type: "readiness.set", ready })}
+          />
           <details className="mt-8 border-y theme-border py-3">
             <summary className="min-h-11 cursor-pointer font-mono text-xs theme-muted">
               room settings

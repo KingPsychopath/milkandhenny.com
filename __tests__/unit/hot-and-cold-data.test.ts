@@ -30,7 +30,8 @@ describe("Hot and Cold generated data", () => {
     expect(manifest.version).toBe(1);
     expect(manifest.words.length).toBeGreaterThan(30_000);
     expect(manifest.words).not.toContain("tyler");
-    expect(manifest.words).not.toContain("london");
+    expect(manifest.words).toContain("london");
+    expect(manifest.words).toContain("mozart");
     expect(manifest.aliases.dogs).toBe("dog");
     expect(manifest.aliases.watching).toBe("watch");
     expect(manifest.aliases.won).toBe("win");

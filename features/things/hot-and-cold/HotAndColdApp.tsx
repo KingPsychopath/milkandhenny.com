@@ -99,9 +99,17 @@ export function HotAndColdApp({
             <GameLaunchMeta tone="theme">daily #{puzzle} · unlimited guesses</GameLaunchMeta>
             {defaultPool ? (
               <GamePoolDefaultLaunch pool={defaultPool} tone="theme" emphasis="secondary">
-                find a public room
+                find a room
               </GamePoolDefaultLaunch>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={() => setPanel(panel === "join" ? null : "join")}
+                className="mt-5 flex min-h-16 w-full items-center justify-center rounded-full border theme-border px-7 text-center font-mono text-sm font-bold transition-opacity hover:opacity-90"
+              >
+                join a room
+              </button>
+            )}
             <GameLaunchChoices tone="theme">
               <button
                 type="button"
@@ -110,13 +118,15 @@ export function HotAndColdApp({
               >
                 {defaultPool ? "private room" : "open a room"}
               </button>
-              <button
-                type="button"
-                className="min-h-11"
-                onClick={() => setPanel(panel === "join" ? null : "join")}
-              >
-                join by code
-              </button>
+              {defaultPool ? (
+                <button
+                  type="button"
+                  className="min-h-11"
+                  onClick={() => setPanel(panel === "join" ? null : "join")}
+                >
+                  join by code
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="min-h-11"

@@ -75,6 +75,13 @@ const EXCLUDED_WORDS = new Set([
   "wouldn",
 ]);
 
+// Named entities need a deliberate editorial bar. Places and culturally useful
+// figures can create good semantic trails; ordinary given names do not.
+const INCLUDED_NAMED_ENTITIES = new Map([
+  ["london", ["the capital city of England and the United Kingdom, on the River Thames"]],
+  ["mozart", ["an Austrian composer of the Classical period"]],
+]);
+
 function decodeXml(value: string) {
   return value
     .replaceAll("&apos;", "'")
@@ -91,7 +98,11 @@ function cleanWord(value: string) {
 
 function cleanLexicalWord(value: string) {
   const decoded = decodeXml(value);
-  return decoded === decoded.toLocaleLowerCase("en-GB") ? cleanWord(decoded) : null;
+  const word = cleanWord(decoded);
+  return decoded === decoded.toLocaleLowerCase("en-GB") ||
+    (word && INCLUDED_NAMED_ENTITIES.has(word))
+    ? word
+    : null;
 }
 
 function cleanDefinition(value: string) {
@@ -158,6 +169,15 @@ function parseWordNet(xml: string) {
       .map((id) => synsetDefinitions.get(id))
       .filter((definition): definition is string => Boolean(definition))
       .slice(0, 3);
+  for (const [word, definitions] of INCLUDED_NAMED_ENTITIES)
+    if (!lexical.has(word))
+      lexical.set(word, {
+        definitions,
+        forms: new Set<string>(),
+        frequency: 0,
+        partsOfSpeech: new Set(["n"]),
+        synsets: new Set<string>(),
+      });
   return { lexical, synsetNeighbours };
 }
 

@@ -35,16 +35,13 @@ export function HotAndColdResultShare({
 
   return (
     <section className="heat-result-share" aria-labelledby="heat-result-share-title">
-      <div className="flex items-end justify-between gap-5">
+      <div>
         <div className="text-left">
           <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">your trail</p>
           <h2 id="heat-result-share-title" className="mt-2 font-serif text-3xl font-semibold">
             from frost to fire.
           </h2>
         </div>
-        <span className="font-mono text-micro uppercase tracking-[.14em] theme-faint">
-          spoiler free
-        </span>
       </div>
 
       <ol className="heat-share-trail" aria-label="Chronological heat milestones">
