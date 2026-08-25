@@ -2074,6 +2074,20 @@ const MIGRATIONS: Migration[] = [
         on score_activity_templates (created_by, lower(name));
     `,
   },
+  {
+    id: "0044_event_scoring_operations",
+    sql: `
+      create table score_operational_events (
+        id          bigint generated always as identity primary key,
+        event_slug  text not null references events (slug) on delete restrict,
+        kind        text not null check (kind in ('write-failure','session-failure','media-failure')),
+        detail      jsonb not null default '{}'::jsonb,
+        created_at  timestamptz not null default now()
+      );
+      create index score_operational_events_window_idx
+        on score_operational_events (event_slug, kind, created_at desc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

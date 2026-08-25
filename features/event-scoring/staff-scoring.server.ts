@@ -35,6 +35,7 @@ import {
   type StoredStaffAssignment,
 } from "./store.server";
 import { convertRulePoints, type ScoreParticipant, type ScoreTransaction } from "./types";
+import { recordScoringOperationalEvent } from "./operations.server";
 
 export type StaffScoringContext = {
   assignment: StoredStaffAssignment;
@@ -574,17 +575,25 @@ export async function awardStaffPoints(input: {
     return awarded;
   }
   const drop = await getEventDrop(input.eventSlug);
-  await createScoreMediaLink({
-    eventSlug: input.eventSlug,
-    activityId: activity.id,
-    transactionId: awarded.value.id,
-    participantId: participant.id,
-    staffActorId: context.assignment.id,
-    storageRef: input.media.storageRef,
-    visibility: input.media.visibility,
-    consentState: input.media.consentState,
-    expiresAt: drop?.expiresAt,
-  });
+  try {
+    await createScoreMediaLink({
+      eventSlug: input.eventSlug,
+      activityId: activity.id,
+      transactionId: awarded.value.id,
+      participantId: participant.id,
+      staffActorId: context.assignment.id,
+      storageRef: input.media.storageRef,
+      visibility: input.media.visibility,
+      consentState: input.media.consentState,
+      expiresAt: drop?.expiresAt,
+    });
+  } catch {
+    await recordScoringOperationalEvent({
+      eventSlug: input.eventSlug,
+      kind: "media-failure",
+      operation: "staff-award-attachment",
+    }).catch(() => undefined);
+  }
   return awarded;
 }
 

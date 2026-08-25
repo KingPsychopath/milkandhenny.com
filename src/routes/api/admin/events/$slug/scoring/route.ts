@@ -73,6 +73,7 @@ import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.serve
 import { printLayout } from "@/features/event-scoring/print";
 import { PRINT_PACK_KINDS } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { getScoringOperationsSnapshot } from "@/features/event-scoring/operations.server";
 import {
   isLeaderboardVisibility,
   isScoringState,
@@ -115,6 +116,7 @@ async function handleGET(request: Request, slug: string) {
       anomalies,
       merges,
       personalTemplates,
+      operations,
     ] = await Promise.all([
       getScoring(slug),
       listScoringActivities(slug),
@@ -144,6 +146,7 @@ async function handleGET(request: Request, slug: string) {
       listScoreAnomalyFlags(slug),
       listParticipantMerges(slug),
       listPersonalActivityTemplates(actorId),
+      getScoringOperationsSnapshot(slug),
     ]);
     return Response.json({
       settings,
@@ -177,6 +180,7 @@ async function handleGET(request: Request, slug: string) {
       anomalies,
       merges,
       personalTemplates,
+      operations,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);

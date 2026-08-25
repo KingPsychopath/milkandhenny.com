@@ -70,6 +70,10 @@ import {
   reserveOfflineScoreBudget,
 } from "@/features/event-scoring/offline.server";
 import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
+import {
+  getScoringOperationsSnapshot,
+  recordScoringOperationalEvent,
+} from "@/features/event-scoring/operations.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   applyPenalty,
@@ -206,6 +210,25 @@ describeWithDatabase("event scoring postgres", () => {
       name: "Final winner",
       status: "draft",
       rule: { fixedPoints: 7 },
+    });
+  });
+
+  it("reports private scoring health and deterministic alert thresholds", async () => {
+    await Promise.all(
+      [1, 2, 3].map(() =>
+        recordScoringOperationalEvent({
+          eventSlug: "scoring-night",
+          kind: "write-failure",
+          operation: "integration-check",
+        }),
+      ),
+    );
+    const snapshot = await getScoringOperationsSnapshot("scoring-night");
+    expect(snapshot).toMatchObject({ writeFailures: 3, projectionDrift: 0 });
+    expect(snapshot.alerts).toContainEqual({
+      code: "repeated-write-failure",
+      severity: "critical",
+      message: "3 score writes failed in 15 minutes.",
     });
   });
 

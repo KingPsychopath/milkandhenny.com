@@ -11,6 +11,7 @@ import { ScoringAuditPanel } from "./ScoringAuditPanel";
 import { ScoringIdentityPanel } from "./ScoringIdentityPanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import { ScoringTestModePanel } from "./ScoringTestModePanel";
+import { ScoringOperationsPanel } from "./ScoringOperationsPanel";
 import type { ScoringData } from "./event-scoring-types";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -244,6 +245,7 @@ export function EventScoringPanel({
             onDownload={downloadPrint}
           />
           <ScoringTestModePanel data={data} />
+          <ScoringOperationsPanel operations={data.operations} />
           <ScoringMediaPanel data={data} onAction={performAction} />
           <ScoringAuditPanel
             audit={data.audit}

@@ -55,6 +55,7 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists score_operational_events cascade;
     drop table if exists score_activity_templates cascade;
     drop table if exists score_prize_finalizations cascade;
     drop table if exists score_media_links cascade;

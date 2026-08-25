@@ -47,6 +47,21 @@ export type ScoringData = {
     rule: ScoreRule;
     updatedAt: string;
   }>;
+  operations: {
+    windowMinutes: number;
+    scoreWrites: number;
+    rejectedCommands: number;
+    heldActions: number;
+    projectionDrift: number;
+    exhaustedPools: number;
+    discoveryClaims: number;
+    discoveryRejected: number;
+    mediaLinks: number;
+    mediaFailures: number;
+    writeFailures: number;
+    sessionFailures: number;
+    alerts: Array<{ code: string; severity: "warning" | "critical"; message: string }>;
+  };
   pools: AdminScoringPool[];
   held: { id: string; sourceType: string; createdAt: string }[];
   heldOfficialResults: Array<{
