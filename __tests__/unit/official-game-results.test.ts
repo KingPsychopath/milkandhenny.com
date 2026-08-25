@@ -9,8 +9,39 @@ import {
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
 } from "@/features/things/shared/official-game-results.server";
+import { pairedGameOfficialResult } from "@/features/things/remote/paired-game-room-engine.server";
 
 describe("official game result outbox", () => {
+  it("accepts only a paired server result for Heads Up and Spelling Bee", () => {
+    const envelope = pairedGameOfficialResult({
+      roomId: "ROOM",
+      channelId: "gsc_remote",
+      snapshot: {
+        game: "heads-up",
+        phase: "results",
+        deckName: "People",
+        currentLabel: null,
+        nextLabel: null,
+        secondsRemaining: 0,
+        paused: false,
+        score: 4,
+        results: [],
+        updatedAt: 1,
+        roundId: "round-1",
+        itemId: null,
+        revision: 8,
+        connectionEpoch: "epoch-1",
+        commandReceipts: [],
+      },
+    });
+    expect(envelope).toMatchObject({
+      gameKind: "heads-up",
+      resultId: "round:round-1",
+      revision: 8,
+      players: [{ playerId: "player:ROOM", rawScore: 4 }],
+    });
+  });
+
   it("keeps an unbound room on the single state-write path", async () => {
     const set = vi.fn().mockResolvedValue("OK");
     const multi = vi.fn();

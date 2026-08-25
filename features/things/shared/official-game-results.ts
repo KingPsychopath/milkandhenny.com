@@ -7,6 +7,11 @@ export const OFFICIAL_GAME_KINDS = [
   "draw-country",
   "same-brain",
   "spelling-party",
+  "liars",
+  "pitches",
+  "heads-up",
+  "spelling-bee",
+  "icebreaker",
 ] as const;
 
 export type OfficialGameKind = (typeof OFFICIAL_GAME_KINDS)[number];

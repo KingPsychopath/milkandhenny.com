@@ -34,6 +34,11 @@ import {
   requestMultiplayerReadiness,
   setMultiplayerPlayerReady,
 } from "../shared/multiplayer-readiness";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
 import { liarsNarration, liarsWordPair } from "./liars-content.server";
 import { liarsBoard } from "./liars-words";
 import {
@@ -141,6 +146,7 @@ interface LiarsRoomState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
+  officialResultChannelId?: string;
   mode: LiarsMode;
   roomMode: LiarsRoomMode;
   phase: LiarsPhase;
@@ -321,6 +327,31 @@ async function saveRoom(room: LiarsRoomState, keys = liarsRoomRedisKeys(room.roo
   else memoryRooms.set(room.roomId, room);
 }
 
+function liarsOfficialResult(room: LiarsRoomState) {
+  if (!room.officialResultChannelId || room.phase !== "ending" || !room.winner) return null;
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: room.revision,
+    result: {
+      gameKind: "liars",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber}`,
+      scope: "game",
+      players: room.players
+        .filter((player) => player.role !== null)
+        .map((player) => {
+          const won = player.role ? liarsRoleSide(player.role) === room.winner : false;
+          return {
+            playerId: player.id,
+            outcome: player.leftAt ? ("withdrawn" as const) : ("completed" as const),
+            placement: won ? 1 : 2,
+            won,
+          };
+        }),
+    },
+  });
+}
+
 async function withRoom<T>(
   id: string,
   use: (room: LiarsRoomState, keys: LiarsRedisKeys) => T | Promise<T>,
@@ -343,8 +374,20 @@ async function withRoom<T>(
       const room = await redis.get<LiarsRoomState>(initial.keys.state);
       if (!room || room.expiresAt <= Date.now()) return null;
       const before = JSON.stringify(room);
+      const wasEnding = room.phase === "ending";
       const result = await use(room, initial.keys);
-      if (multiplayerRoomStateChanged(before, room)) await saveRoom(room, initial.keys);
+      if (multiplayerRoomStateChanged(before, room)) {
+        applyRoomExpiry(room);
+        const envelope = !wasEnding ? liarsOfficialResult(room) : null;
+        const queued = await persistRoomWithOfficialResults({
+          redis,
+          stateKey: initial.keys.state,
+          room,
+          ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+          envelopes: envelope ? [envelope] : [],
+        });
+        deliverOfficialResultsAfterCommit(queued);
+      }
       return result;
     },
   );
@@ -1303,6 +1346,7 @@ export async function createLiarsRoom(input: {
   toggles?: Partial<LiarsToggles>;
   timings?: Partial<LiarsTimings>;
   managed?: boolean;
+  officialResultChannelId?: string;
 }): Promise<LiarsRoomCredentials> {
   const hostToken = token();
   const joinToken = token();
@@ -1314,6 +1358,7 @@ export async function createLiarsRoom(input: {
   const room: LiarsRoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     mode: input.mode,
     roomMode: input.roomMode,
     phase: "lobby",

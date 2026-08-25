@@ -9,6 +9,15 @@ import {
 import type { SameBrainToggles } from "@/features/things/same-brain/types";
 import { createPartyRoom, joinPartyRoom } from "@/features/things/spelling-party/party-room.server";
 import type { PartyCustomDeckInput } from "@/features/things/spelling-party/types";
+import { createPairedGameRoom } from "@/features/things/remote/paired-game-room.server";
+import type { RemoteHeadsUpSetup, RemoteSpellingSetup } from "@/features/things/remote/types";
+import { createLiarsRoom, joinLiarsRoom } from "@/features/things/liars/liars-room.server";
+import type {
+  LiarsMode,
+  LiarsRoomMode,
+  LiarsTimings,
+  LiarsToggles,
+} from "@/features/things/liars/types";
 import { query } from "@/lib/platform/postgres.server";
 import { activateGameScoreBinding, createGameScoreBinding, linkGamePlayer } from "./games.server";
 
@@ -323,6 +332,135 @@ export async function launchEventSpellingPartyGame(input: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Spelling Party launch failed";
+    await closeBinding(channelId, message);
+    throw error;
+  }
+}
+
+async function launchEventPairedGame(input: {
+  eventSlug: string;
+  activityId: string;
+  participantId: string;
+  setup: RemoteHeadsUpSetup | RemoteSpellingSetup;
+}) {
+  const binding = await createGameScoreBinding({
+    eventSlug: input.eventSlug,
+    activityId: input.activityId,
+    gameKind: input.setup.game,
+    acceptedScope: "round",
+  });
+  if (!binding.ok) return binding;
+  const channelId = binding.value.channelId;
+  try {
+    const room = await createPairedGameRoom({
+      creatorRole: "player",
+      setup: input.setup,
+      officialResultChannelId: channelId,
+    });
+    const activated = await activateGameScoreBinding({
+      channelId,
+      gameInstanceId: room.roomId,
+    });
+    if (!activated.ok) {
+      await closeBinding(channelId, activated.error);
+      return activated;
+    }
+    const linked = await linkGamePlayer({
+      channelId,
+      gamePlayerId: `player:${room.roomId}`,
+      participantId: input.participantId,
+    });
+    if (!linked.ok) {
+      await closeBinding(channelId, linked.error);
+      return linked;
+    }
+    return { ok: true as const, value: room };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Paired game launch failed";
+    await closeBinding(channelId, message);
+    throw error;
+  }
+}
+
+export function launchEventHeadsUpGame(input: {
+  eventSlug: string;
+  activityId: string;
+  participantId: string;
+  setup: RemoteHeadsUpSetup;
+}) {
+  return launchEventPairedGame(input);
+}
+
+export function launchEventSpellingBeeGame(input: {
+  eventSlug: string;
+  activityId: string;
+  participantId: string;
+  setup: RemoteSpellingSetup;
+}) {
+  return launchEventPairedGame(input);
+}
+
+export async function launchEventLiarsGame(input: {
+  eventSlug: string;
+  activityId: string;
+  hostParticipantId: string;
+  hostName: string;
+  mode: LiarsMode;
+  roomMode: LiarsRoomMode;
+  toggles?: Partial<LiarsToggles>;
+  timings?: Partial<LiarsTimings>;
+}) {
+  const binding = await createGameScoreBinding({
+    eventSlug: input.eventSlug,
+    activityId: input.activityId,
+    gameKind: "liars",
+    acceptedScope: "game",
+  });
+  if (!binding.ok) return binding;
+  const channelId = binding.value.channelId;
+  try {
+    const room = await createLiarsRoom({
+      mode: input.mode,
+      roomMode: input.roomMode,
+      toggles: input.toggles,
+      timings: input.timings,
+      managed: true,
+      officialResultChannelId: channelId,
+    });
+    const joined = await joinLiarsRoom({
+      roomId: room.roomId,
+      joinToken: room.joinToken,
+      hostToken: room.hostToken,
+      name: input.hostName,
+      joinId: `event-score:${channelId}`,
+    });
+    if (!joined.ok) {
+      await closeBinding(channelId, joined.error);
+      return { ok: false as const, status: 409, error: joined.error };
+    }
+    const activated = await activateGameScoreBinding({
+      channelId,
+      gameInstanceId: room.roomId,
+    });
+    if (!activated.ok) {
+      await closeBinding(channelId, activated.error);
+      return activated;
+    }
+    const linked = await linkGamePlayer({
+      channelId,
+      gamePlayerId: joined.playerId,
+      participantId: input.hostParticipantId,
+    });
+    if (!linked.ok) {
+      await closeBinding(channelId, linked.error);
+      return linked;
+    }
+    return {
+      ok: true as const,
+      value: { ...room, playerId: joined.playerId, playerToken: joined.playerToken },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Liars game launch failed";
     await closeBinding(channelId, message);
     throw error;
   }

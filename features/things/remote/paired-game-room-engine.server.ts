@@ -33,6 +33,11 @@ import type {
   PairedGameRoomRole,
 } from "./types";
 import { PAIRED_GAME_PRESENCE_TTL_SECONDS } from "./paired-game-timing";
+import {
+  deliverOfficialResultsAfterCommit,
+  persistRoomWithOfficialResults,
+  sealOfficialGameResult,
+} from "../shared/official-game-results.server";
 
 const JUDGE_LEASE_TTL_SECONDS = 30;
 const COMMAND_MAX_AGE_MS = 12_000;
@@ -43,6 +48,7 @@ interface RoomMeta {
   playerHash: string;
   judgeHash: string;
   expiresAt: number;
+  officialResultChannelId?: string;
 }
 
 interface MemoryRoom {
@@ -115,6 +121,32 @@ function logSnapshotTransitions(previous: RemoteSyncedSnapshot | null, next: Rem
   ).length;
   if (timedOut > 0)
     log.info("things.paired-game-room", "Words timed out", { game: next.game, count: timedOut });
+}
+
+export function pairedGameOfficialResult(input: {
+  roomId: string;
+  channelId: string;
+  snapshot: RemoteSyncedSnapshot;
+}) {
+  if (input.snapshot.phase !== "results") return null;
+  return sealOfficialGameResult({
+    channelId: input.channelId,
+    revision: input.snapshot.revision,
+    result: {
+      gameKind: input.snapshot.game,
+      gameInstanceId: input.roomId,
+      resultId: `round:${input.snapshot.roundId ?? input.snapshot.connectionEpoch}`,
+      scope: "round",
+      players: [
+        {
+          playerId: `player:${input.roomId}`,
+          outcome: "completed",
+          rawScore: input.snapshot.score,
+          won: true,
+        },
+      ],
+    },
+  });
 }
 
 function rejectJudgeCommand(
@@ -249,6 +281,7 @@ export async function authorizePairedGameSocket(input: {
 export async function createPairedGameRoom(input: {
   creatorRole: PairedGameRoomRole;
   setup: RemoteGameSetup;
+  officialResultChannelId?: string;
 }): Promise<PairedGameRoomCredentials> {
   const playerToken = createMultiplayerCredential();
   const judgeToken = createMultiplayerCredential();
@@ -263,6 +296,7 @@ export async function createPairedGameRoom(input: {
     playerHash: hashMultiplayerCredential(playerToken),
     judgeHash: hashMultiplayerCredential(judgeToken),
     expiresAt,
+    officialResultChannelId: input.officialResultChannelId,
   };
   const redis = getRedis();
   if (!redis && process.env.NODE_ENV === "production") {
@@ -441,12 +475,26 @@ export async function syncPairedGamePlayer(input: {
     storedSnapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
     input.snapshot.revision >= storedSnapshot.revision;
   if (shouldStoreSnapshot) logSnapshotTransitions(storedSnapshot, input.snapshot);
-  await Promise.all([
-    shouldStoreSnapshot
-      ? redis.set(roomKeys.snapshot, { ...input.snapshot, updatedAt: now }, { ex: roomTtl })
-      : Promise.resolve(null),
-    redis.set(roomKeys.playerPresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS }),
-  ]);
+  const stored = { ...input.snapshot, updatedAt: now };
+  const official =
+    shouldStoreSnapshot && input.snapshot.phase === "results" && meta.officialResultChannelId
+      ? pairedGameOfficialResult({
+          roomId: input.roomId,
+          channelId: meta.officialResultChannelId,
+          snapshot: input.snapshot,
+        })
+      : null;
+  const queued = shouldStoreSnapshot
+    ? await persistRoomWithOfficialResults({
+        redis,
+        stateKey: roomKeys.snapshot,
+        room: stored,
+        ttlSeconds: roomTtl,
+        envelopes: official ? [official] : [],
+      })
+    : [];
+  await redis.set(roomKeys.playerPresence, now, { ex: PAIRED_GAME_PRESENCE_TTL_SECONDS });
+  deliverOfficialResultsAfterCommit(queued);
   return {
     ok: true,
     commands,
