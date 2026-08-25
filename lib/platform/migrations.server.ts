@@ -2973,6 +2973,29 @@ const MIGRATIONS: Migration[] = [
         on event_people (acquisition_restricted_at desc) where acquisition_status = 'restricted';
     `,
   },
+  {
+    id: "0059_game_pool_current_settings",
+    sql: `
+      alter table game_pool_entrances
+        drop constraint game_pool_entrances_game_check;
+      alter table game_pool_entrances
+        add constraint game_pool_entrances_game_check check (game in (
+          'same-brain','liars','centre','twin','draw-country','hot-and-cold'
+        ));
+
+      -- Same Brain's pre-launch semantic-matching settings are obsolete. Reset
+      -- configured entrances and runs to the current deterministic game model.
+      update game_pool_entrances
+         set preset = '{"game":"same-brain","rounds":8,"sayItAloud":true,"eliminateOddOne":false,"revealAuthors":true}'::jsonb,
+             updated_at = now()
+       where game = 'same-brain';
+      update game_pool_runs run
+         set preset = '{"game":"same-brain","rounds":8,"sayItAloud":true,"eliminateOddOne":false,"revealAuthors":true}'::jsonb,
+             updated_at = now()
+        from game_pool_entrances entrance
+       where entrance.id = run.entrance_id and entrance.game = 'same-brain';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

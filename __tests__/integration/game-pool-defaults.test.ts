@@ -7,8 +7,10 @@ import {
   setGamePoolRunStatus,
   updateGamePoolEntrance,
 } from "@/features/things/pool/store.server";
+import { listGamePoolsForAdmin } from "@/features/things/pool/admin.server";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import { getGamePoolPublicView } from "@/features/things/pool/pool.server";
+import { runMigrations } from "@/lib/platform/migrations.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
@@ -187,5 +189,42 @@ describeWithDatabase("game-pool public defaults (postgres)", () => {
     expect(firstOccupant?.id).not.toContain(assignmentId);
     expect(JSON.stringify(first)).not.toContain("player-secret");
     expect(JSON.stringify(first)).not.toContain("sprite-client-id");
+  });
+
+  it("moves configured pools onto the current settings contract", async () => {
+    const obsolete = {
+      game: "same-brain",
+      rounds: 8,
+      scoring: "embedding",
+      sayItAloud: true,
+      eliminateOddOne: false,
+    };
+    await query(`update game_pool_entrances set preset = $1::jsonb where game = 'same-brain'`, [
+      JSON.stringify(obsolete),
+    ]);
+    await query(
+      `update game_pool_runs run set preset = $1::jsonb
+        from game_pool_entrances entrance
+       where entrance.id = run.entrance_id and entrance.game = 'same-brain'`,
+      [JSON.stringify(obsolete)],
+    );
+    await query(`delete from schema_migrations where id = '0059_game_pool_current_settings'`);
+
+    await runMigrations();
+
+    await expect(listGamePoolsForAdmin()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          game: "same-brain",
+          gameSettings: GAME_POOL_DEFAULTS["same-brain"].gameSettings,
+        }),
+      ]),
+    );
+    await expect(
+      createGamePoolEntrance({
+        game: "hot-and-cold",
+        actionId: "current-settings-hot-and-cold",
+      }),
+    ).resolves.toMatchObject({ game: "hot-and-cold" });
   });
 });

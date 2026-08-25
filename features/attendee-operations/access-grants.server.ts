@@ -459,16 +459,17 @@ export async function listNamedAdminGrants(): Promise<
     activated_at: Date | null;
     created_at: Date;
   }>(
-    `select grant.id,grant.person_id,person.canonical_name,identifier.display_hint,
-            grant.role_preset,grant.status,grant.expires_at,grant.activated_at,grant.created_at
-       from global_admin_grants grant
-       join event_people person on person.id = grant.person_id
+    `select admin_grant.id,admin_grant.person_id,person.canonical_name,identifier.display_hint,
+            admin_grant.role_preset,admin_grant.status,admin_grant.expires_at,
+            admin_grant.activated_at,admin_grant.created_at
+       from global_admin_grants admin_grant
+       join event_people person on person.id = admin_grant.person_id
        left join lateral (
          select display_hint from event_person_identifiers
-          where person_id = grant.person_id and kind = 'email'
+          where person_id = admin_grant.person_id and kind = 'email'
           order by verified_at desc nulls last,created_at desc limit 1
        ) identifier on true
-      order by grant.created_at desc`,
+      order by admin_grant.created_at desc`,
   );
   return rows.map((row) => ({
     id: row.id,
