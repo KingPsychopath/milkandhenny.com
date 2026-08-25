@@ -79,6 +79,19 @@ export type ScoringData = {
     entityId: string;
     createdAt: string;
   }>;
+  anomalies: Array<{
+    id: number;
+    transactionId?: string;
+    participantId?: string;
+    activityId?: string;
+    actorId?: string;
+    assignmentId?: string;
+    stationId?: string;
+    deviceId?: string;
+    signal: string;
+    state: string;
+    createdAt: string;
+  }>;
   merges: Array<{
     id: string;
     sourceParticipantId: string;

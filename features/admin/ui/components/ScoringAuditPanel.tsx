@@ -4,11 +4,13 @@ import type { AdminScoringActivity, ScoringData } from "./event-scoring-types";
 
 export function ScoringAuditPanel({
   audit,
+  anomalies,
   activities,
   onFilter,
   onExport,
 }: {
   audit: ScoringData["audit"];
+  anomalies: ScoringData["anomalies"];
   activities: AdminScoringActivity[];
   onFilter: (filter: Record<string, string>) => Promise<void>;
   onExport: () => Promise<void>;
@@ -158,6 +160,29 @@ export function ScoringAuditPanel({
           </li>
         ))}
       </ol>
+      {anomalies.length > 0 && (
+        <div className="mt-5">
+          <h5 className="font-serif text-lg">Signals for human review</h5>
+          <p className="mt-1 font-mono text-xs theme-muted">
+            Signals are context only. They do not accuse a guest or merge identity.
+          </p>
+          <ol className="mt-3 divide-y theme-border border-y theme-border">
+            {anomalies.map((entry) => (
+              <li key={entry.id} className="py-3 font-mono text-micro">
+                <span>
+                  {entry.signal} · {entry.state}
+                </span>
+                <span className="ml-3 theme-muted">
+                  {entry.assignmentId ?? entry.stationId ?? entry.actorId ?? "system"}
+                  {entry.deviceId ? ` · device ${entry.deviceId}` : ""}
+                  {entry.activityId ? ` · activity ${entry.activityId}` : ""}
+                  {` · ${new Date(entry.createdAt).toLocaleString()}`}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </section>
   );
 }

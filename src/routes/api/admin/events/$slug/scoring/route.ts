@@ -19,6 +19,7 @@ import {
   listPools,
   listScoreMediaLinks,
   listScoreAuditEvents,
+  listScoreAnomalyFlags,
   listLeaderboardParticipants,
   listParticipantMerges,
   listStaffAssignments,
@@ -106,6 +107,7 @@ async function handleGET(request: Request, slug: string) {
       media,
       drop,
       audit,
+      anomalies,
       merges,
     ] = await Promise.all([
       getScoring(slug),
@@ -133,6 +135,7 @@ async function handleGET(request: Request, slug: string) {
         to: params.get("auditTo") ?? undefined,
         limit: 100,
       }),
+      listScoreAnomalyFlags(slug),
       listParticipantMerges(slug),
     ]);
     return Response.json({
@@ -164,6 +167,7 @@ async function handleGET(request: Request, slug: string) {
           }
         : null,
       audit,
+      anomalies,
       merges,
     });
   } catch (error) {
@@ -229,6 +233,8 @@ async function handlePOST(request: Request, slug: string) {
           body.photoConsentPolicy === "not-required"
             ? body.photoConsentPolicy
             : undefined,
+        allowStaffSelfAwards:
+          typeof body.allowStaffSelfAwards === "boolean" ? body.allowStaffSelfAwards : undefined,
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ settings: result.value });

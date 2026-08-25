@@ -41,6 +41,7 @@ type ScoringSettingsRow = {
   public_names: string;
   public_ranking_policy: string;
   photo_consent_policy: string;
+  allow_staff_self_awards: boolean;
   revision: string | number;
 };
 
@@ -191,6 +192,7 @@ function toSettings(row: ScoringSettingsRow): ScoringSettings {
       row.photo_consent_policy,
       "ask",
     ) as ScoringSettings["photoConsentPolicy"],
+    allowStaffSelfAwards: row.allow_staff_self_awards,
     revision: Number(row.revision),
   };
 }
@@ -292,6 +294,7 @@ export async function updateSettings(
       | "publicNames"
       | "publicRankingPolicy"
       | "photoConsentPolicy"
+      | "allowStaffSelfAwards"
     >
   >,
 ): Promise<ScoringSettings> {
@@ -305,6 +308,7 @@ export async function updateSettings(
             public_names = coalesce($7, public_names),
             public_ranking_policy = coalesce($8, public_ranking_policy),
             photo_consent_policy = coalesce($9, photo_consent_policy),
+            allow_staff_self_awards = coalesce($10, allow_staff_self_awards),
             revision = revision + 1,
             updated_at = now()
       where event_slug = $1
@@ -319,6 +323,7 @@ export async function updateSettings(
       changes.publicNames ?? null,
       changes.publicRankingPolicy ?? null,
       changes.photoConsentPolicy ?? null,
+      changes.allowStaffSelfAwards ?? null,
     ],
   );
   if (!row) throw new Error("Event scoring settings not found");
@@ -1218,6 +1223,38 @@ export async function recordScoreInTransaction(
   }
 
   const participantIds = [...new Set(input.postings.map((posting) => posting.participantId))];
+  if (input.assignmentId && !settings.allowStaffSelfAwards) {
+    const selfAward = await client.query<{ participant_id: string }>(
+      `select participants.id as participant_id
+         from score_staff_assignments assignments
+         join event_participants participants on participants.person_id = assignments.person_id
+        where assignments.id = $1 and participants.id = any($2::text[])
+        limit 1`,
+      [input.assignmentId, participantIds],
+    );
+    if (selfAward.rows[0]) {
+      await client.query(
+        `insert into score_audit_events
+           (event_slug,action,actor_type,actor_id,assignment_id,station_id,device_id,entity_type,entity_id,metadata)
+         values ($1,'security.self-award.blocked','staff',$2,$3,$4,$5,'participant',$6,$7::jsonb)`,
+        [
+          input.eventSlug,
+          input.actorId ?? null,
+          input.assignmentId,
+          input.stationId ?? null,
+          input.deviceId ?? null,
+          selfAward.rows[0].participant_id,
+          JSON.stringify({ activityId: input.activityId ?? null }),
+        ],
+      );
+      return {
+        ok: false,
+        status: 403,
+        error: "This event does not allow staff to award themselves",
+      };
+    }
+  }
+
   const participantResult = await client.query<{
     id: string;
     event_slug: string;
@@ -1464,7 +1501,71 @@ async function insertTransaction(
     ],
   );
 
+  if (input.actorType === "staff" && (input.assignmentId || input.deviceId)) {
+    const recent = await client.query<{ count: string }>(
+      `select count(*)::text as count from score_transactions
+        where event_slug = $1 and created_at >= now() - interval '60 seconds'
+          and ($2::text is null or activity_id = $2)
+          and ($3::text is null or actor_id = $3)
+          and ($4::text is null or device_id = $4)`,
+      [input.eventSlug, input.activityId ?? null, input.actorId ?? null, input.deviceId ?? null],
+    );
+    const count = Number(recent.rows[0]?.count ?? 0);
+    if (count >= 20) {
+      await client.query(
+        `insert into score_anomaly_flags
+           (event_slug,transaction_id,participant_id,activity_id,actor_id,assignment_id,station_id,device_id,signal,detail)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,'rapid-repetition',$9::jsonb)`,
+        [
+          input.eventSlug,
+          transactionId,
+          input.postings[0]?.participantId ?? null,
+          input.activityId ?? null,
+          input.actorId ?? null,
+          input.assignmentId ?? null,
+          input.stationId ?? null,
+          input.deviceId ?? null,
+          JSON.stringify({ actionsInMinute: count }),
+        ],
+      );
+    }
+  }
+
   return { ok: true, value: toTransaction(row, input.postings) };
+}
+
+export async function listScoreAnomalyFlags(eventSlug: string) {
+  const rows = await query<{
+    id: string | number;
+    transaction_id: string | null;
+    participant_id: string | null;
+    activity_id: string | null;
+    actor_id: string | null;
+    assignment_id: string | null;
+    station_id: string | null;
+    device_id: string | null;
+    signal: string;
+    detail: unknown;
+    state: string;
+    created_at: Date;
+  }>(
+    `select * from score_anomaly_flags where event_slug = $1 order by created_at desc, id desc limit 200`,
+    [eventSlug],
+  );
+  return rows.map((row) => ({
+    id: Number(row.id),
+    transactionId: row.transaction_id ?? undefined,
+    participantId: row.participant_id ?? undefined,
+    activityId: row.activity_id ?? undefined,
+    actorId: row.actor_id ?? undefined,
+    assignmentId: row.assignment_id ?? undefined,
+    stationId: row.station_id ?? undefined,
+    deviceId: row.device_id ?? undefined,
+    signal: row.signal,
+    detail: recordObject(row.detail),
+    state: row.state,
+    createdAt: row.created_at.toISOString(),
+  }));
 }
 
 export async function reverseScore(

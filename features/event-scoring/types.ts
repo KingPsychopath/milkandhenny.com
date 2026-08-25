@@ -109,6 +109,7 @@ export type ScoringSettings = {
   publicNames: "generated" | "choice" | "canonical";
   publicRankingPolicy: "include" | "exclude-refunded" | "exclude-disqualified";
   photoConsentPolicy: "ask" | "required" | "not-required";
+  allowStaffSelfAwards: boolean;
   revision: number;
 };
 

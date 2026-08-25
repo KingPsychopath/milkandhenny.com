@@ -12,6 +12,7 @@ import {
   listPools,
   listScoreMediaLinks,
   listScoreAuditEvents,
+  listScoreAnomalyFlags,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -1125,6 +1126,67 @@ describeWithDatabase("event scoring postgres", () => {
     });
     if (previousSecret === undefined) delete process.env.AUTH_SECRET;
     else process.env.AUTH_SECRET = previousSecret;
+  });
+
+  it("blocks known staff self-awards and flags rapid repetition for human review", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Review signals",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 1, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Known marshal",
+      assignmentType: "personal",
+      preset: "event-manager",
+      actorId: "admin-test",
+      scope: { activityIds: [activity.id] },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "staff",
+      ownerId: access.id,
+      points: 30,
+    });
+    await query(`insert into event_people (id,canonical_name) values ('person-staff','Marshal')`);
+    await query(`update event_participants set person_id = 'person-staff' where id = $1`, [
+      participant!.id,
+    ]);
+    await query(`update score_staff_assignments set person_id = 'person-staff' where id = $1`, [
+      access.id,
+    ]);
+    const award = (commandId: string) =>
+      awardStaffPoints({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "signal-device",
+        activityId: activity.id,
+        participantId: participant!.id,
+        commandId,
+      });
+    expect(await award("blocked-self-award")).toMatchObject({ ok: false, status: 403 });
+    expect(
+      await listScoreAuditEvents({ eventSlug: "scoring-night", participantId: participant!.id }),
+    ).toEqual([]);
+    expect(
+      await listScoreAuditEvents({ eventSlug: "scoring-night", actorId: access.id }),
+    ).toMatchObject([{ action: "security.self-award.blocked" }]);
+    await query(
+      `update event_scoring_settings set allow_staff_self_awards = true where event_slug = 'scoring-night'`,
+    );
+    for (let index = 0; index < 20; index += 1) {
+      expect(await award(`rapid-${index}`)).toMatchObject({ ok: true });
+    }
+    expect(await listScoreAnomalyFlags("scoring-night")).toMatchObject([
+      { signal: "rapid-repetition", assignmentId: access.id, deviceId: "signal-device" },
+    ]);
   });
 
   it("adds to and reclaims only unused staff pool points", async () => {

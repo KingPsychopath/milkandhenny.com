@@ -243,6 +243,7 @@ export function EventScoringPanel({
           <ScoringMediaPanel data={data} onAction={performAction} />
           <ScoringAuditPanel
             audit={data.audit}
+            anomalies={data.anomalies}
             activities={data.activities}
             onFilter={async (filter) => load(false, filter)}
             onExport={downloadExport}

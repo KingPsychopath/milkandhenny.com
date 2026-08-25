@@ -2027,6 +2027,32 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0042_event_scoring_anomaly_review",
+    sql: `
+      alter table event_scoring_settings
+        add column allow_staff_self_awards boolean not null default false;
+
+      create table score_anomaly_flags (
+        id              bigint generated always as identity primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        transaction_id  text references score_transactions (id) on delete restrict,
+        participant_id  text references event_participants (id) on delete restrict,
+        activity_id     text references score_activities (id) on delete restrict,
+        actor_id        text,
+        assignment_id   text,
+        station_id      text,
+        device_id       text,
+        signal          text not null,
+        detail          jsonb not null default '{}'::jsonb,
+        state           text not null default 'open' check (state in ('open', 'reviewed', 'dismissed')),
+        created_at      timestamptz not null default now()
+      );
+
+      create index score_anomaly_flags_review_idx
+        on score_anomaly_flags (event_slug, state, created_at desc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

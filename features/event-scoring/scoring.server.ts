@@ -154,6 +154,7 @@ export async function configureScoring(input: {
   publicNames?: ScoringSettings["publicNames"];
   publicRankingPolicy?: ScoringSettings["publicRankingPolicy"];
   photoConsentPolicy?: ScoringSettings["photoConsentPolicy"];
+  allowStaffSelfAwards?: boolean;
   actorId: string;
 }): Promise<ScoringOperationResult<ScoringSettings>> {
   const event = await getEvent(input.eventSlug);
