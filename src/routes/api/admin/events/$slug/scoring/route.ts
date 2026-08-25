@@ -13,16 +13,21 @@ import {
 } from "@/features/event-scoring/discoveries.server";
 import {
   acceptHeldScore,
+  createScoreMediaLink,
   createTeam,
   listHeldScoreTransactions,
   listPools,
+  listScoreMediaLinks,
   listStaffAssignments,
   listStaffDevices,
   listTeams,
   rebuildEventProjections,
   searchEventParticipants,
   setTeamMembership,
+  deleteScoreMediaLink,
+  updateScoreMediaConsent,
 } from "@/features/event-scoring/store.server";
+import { getEventDrop } from "@/features/events/drop.server";
 import {
   awardPoints,
   applyPenalty,
@@ -77,15 +82,18 @@ async function handleGET(request: Request, slug: string) {
     if (search) {
       return Response.json({ participants: await searchEventParticipants(slug, search) });
     }
-    const [settings, activities, pools, discoveries, teams, held, staff] = await Promise.all([
-      getScoring(slug),
-      listScoringActivities(slug),
-      listPools(slug),
-      listDiscoveries(slug),
-      listTeams(slug),
-      listHeldScoreTransactions(slug),
-      listStaffAssignments(slug),
-    ]);
+    const [settings, activities, pools, discoveries, teams, held, staff, media, drop] =
+      await Promise.all([
+        getScoring(slug),
+        listScoringActivities(slug),
+        listPools(slug),
+        listDiscoveries(slug),
+        listTeams(slug),
+        listHeldScoreTransactions(slug),
+        listStaffAssignments(slug),
+        listScoreMediaLinks(slug),
+        getEventDrop(slug),
+      ]);
     return Response.json({
       settings,
       activities,
@@ -105,6 +113,14 @@ async function handleGET(request: Request, slug: string) {
           devices: await listStaffDevices(assignment.id),
         })),
       ),
+      media,
+      mediaDrop: drop
+        ? {
+            uploadPath: drop.live ? `/drop/${drop.token}` : undefined,
+            albumPath: `/t/${drop.transferId}`,
+            expiresAt: drop.expiresAt,
+          }
+        : null,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
@@ -687,6 +703,55 @@ async function handlePOST(request: Request, slug: string) {
         });
       }
       return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "link-media") {
+      const storageRef = stringValue(body.storageRef);
+      if (!storageRef)
+        return Response.json({ error: "A stored media reference is required" }, { status: 400 });
+      const result = await createScoreMediaLink({
+        eventSlug: slug,
+        activityId: stringValue(body.activityId),
+        transactionId: stringValue(body.transactionId),
+        participantId: stringValue(body.participantId),
+        staffActorId: actorId,
+        storageRef,
+        visibility:
+          body.visibility === "event-album" || body.visibility === "discard"
+            ? body.visibility
+            : "admin-evidence",
+        consentState:
+          body.consentState === "requested" ||
+          body.consentState === "obtained" ||
+          body.consentState === "declined"
+            ? body.consentState
+            : "not-requested",
+        expiresAt: stringValue(body.expiresAt),
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ media: result.value }, { status: 201 });
+    }
+
+    if (action === "media-consent") {
+      const mediaId = stringValue(body.mediaId);
+      const consentState = body.consentState;
+      if (
+        !mediaId ||
+        !["not-requested", "requested", "obtained", "declined"].includes(String(consentState))
+      )
+        return Response.json({ error: "Media and consent state are required" }, { status: 400 });
+      return Response.json({
+        updated: await updateScoreMediaConsent(
+          mediaId,
+          consentState as "not-requested" | "requested" | "obtained" | "declined",
+        ),
+      });
+    }
+
+    if (action === "delete-media") {
+      const mediaId = stringValue(body.mediaId);
+      if (!mediaId) return Response.json({ error: "Media is required" }, { status: 400 });
+      return Response.json({ deleted: await deleteScoreMediaLink(mediaId) });
     }
 
     return Response.json({ error: "Unknown scoring action" }, { status: 400 });

@@ -908,6 +908,35 @@ export async function createScoreMediaLink(input: {
   };
 }
 
+export async function listScoreMediaLinks(eventSlug: string): Promise<ScoreMediaLink[]> {
+  const rows = await query<{
+    id: string;
+    event_slug: string;
+    activity_id: string | null;
+    transaction_id: string | null;
+    participant_id: string | null;
+    staff_actor_id: string | null;
+    storage_ref: string;
+    visibility: ScoreMediaLink["visibility"];
+    consent_state: ScoreMediaLink["consentState"];
+    expires_at: Date | null;
+    deleted_at: Date | null;
+  }>(`select * from score_media_links where event_slug = $1 order by created_at desc`, [eventSlug]);
+  return rows.map((row) => ({
+    id: row.id,
+    eventSlug: row.event_slug,
+    activityId: row.activity_id ?? undefined,
+    transactionId: row.transaction_id ?? undefined,
+    participantId: row.participant_id ?? undefined,
+    staffActorId: row.staff_actor_id ?? undefined,
+    storageRef: row.storage_ref,
+    visibility: row.visibility,
+    consentState: row.consent_state,
+    expiresAt: row.expires_at?.toISOString(),
+    deletedAt: row.deleted_at?.toISOString(),
+  }));
+}
+
 export async function updateScoreMediaConsent(
   mediaId: string,
   consentState: ScoreMediaLink["consentState"],

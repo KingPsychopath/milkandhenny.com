@@ -56,6 +56,15 @@ export type ScoringData = {
     clues: Array<{ key: string; label: string; replacementRevision: number }>;
   }>;
   staff: AdminStaffAssignment[];
+  media: Array<{
+    id: string;
+    storageRef: string;
+    visibility: "event-album" | "admin-evidence" | "discard";
+    consentState: "not-requested" | "requested" | "obtained" | "declined";
+    expiresAt?: string;
+    deletedAt?: string;
+  }>;
+  mediaDrop: { uploadPath?: string; albumPath: string; expiresAt: string } | null;
 };
 
 export type ScoringAction = (

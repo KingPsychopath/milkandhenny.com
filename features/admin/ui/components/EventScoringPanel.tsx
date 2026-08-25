@@ -6,6 +6,7 @@ import { ScoringCorrectionsPanel } from "./ScoringCorrectionsPanel";
 import { ScoringPoolsPanel } from "./ScoringPoolsPanel";
 import { ScoringPrintStudioPanel } from "./ScoringPrintStudioPanel";
 import { ScoringLifecyclePanel } from "./ScoringLifecyclePanel";
+import { ScoringMediaPanel } from "./ScoringMediaPanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import type { ScoringData } from "./event-scoring-types";
 
@@ -203,6 +204,7 @@ export function EventScoringPanel({
             discoveryCount={data.discoveries.length}
             onDownload={downloadPrint}
           />
+          <ScoringMediaPanel data={data} onAction={performAction} />
           <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
           <ScoringCorrectionsPanel
             eventSlug={eventSlug.trim()}
