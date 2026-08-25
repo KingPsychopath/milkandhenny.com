@@ -274,6 +274,7 @@ async function requiredNamedAdminPermission(
     pathname.includes("/content") ||
     pathname.includes("/albums") ||
     pathname.includes("/word-shares") ||
+    pathname.includes("/word-media") ||
     pathname.includes("/words") ||
     pathname.includes("/pitches") ||
     pathname.includes("/surveys") ||
