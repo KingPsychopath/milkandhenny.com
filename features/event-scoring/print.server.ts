@@ -1,15 +1,23 @@
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import sharp from "sharp";
+import { deflateSync } from "node:zlib";
 
 import { getEvent } from "@/features/events/store.server";
+import { BASE_URL } from "@/lib/shared/config";
 import {
   discoveryClueCredential,
   discoveryCredential,
   listDiscoveries,
   listDiscoveryClues,
 } from "./discoveries.server";
-import { printLayout, type PrintLayout, type PrintPack, validatePrintPack } from "./print";
+import {
+  PRINT_LAYOUTS,
+  printLayout,
+  type PrintLayout,
+  type PrintPack,
+  validatePrintPack,
+} from "./print";
 
 export async function buildDiscoveryPrintPack(input: {
   eventSlug: string;
@@ -17,6 +25,8 @@ export async function buildDiscoveryPrintPack(input: {
   paper?: PrintPack["paper"];
   includePoints?: boolean;
   includePlacementNotes?: boolean;
+  includeCutGuides?: boolean;
+  includePageNumbers?: boolean;
   discoveryIds?: string[];
 }): Promise<
   | { ok: true; pack: PrintPack; qrDataUrls: Record<string, string> }
@@ -72,11 +82,13 @@ export async function buildDiscoveryPrintPack(input: {
     layout: input.layout,
     includePoints: input.includePoints ?? true,
     includePlacementNotes: input.includePlacementNotes ?? false,
+    includeCutGuides: input.includeCutGuides ?? true,
+    includePageNumbers: input.includePageNumbers ?? true,
     items: printItems.map((item) => {
       return {
         id: item.id,
         title: item.title,
-        destination: `/events/${encodeURIComponent(input.eventSlug)}/discoveries/${encodeURIComponent(item.discoveryId)}#clue=${encodeURIComponent(item.credential)}`,
+        destination: `${BASE_URL}/events/${encodeURIComponent(input.eventSlug)}/discoveries/${encodeURIComponent(item.discoveryId)}#clue=${encodeURIComponent(item.credential)}`,
         fallbackCode: item.credential,
         revision: item.revision,
         private: false,
@@ -104,4 +116,146 @@ export async function buildDiscoveryPrintPack(input: {
     qrDataUrls[item.id] = dataUrl;
   }
   return { ok: true, pack, qrDataUrls };
+}
+
+type PdfObject = string | Buffer;
+
+const PAPER_POINTS: Record<PrintPack["paper"], [number, number]> = {
+  a4: [595.28, 841.89],
+  letter: [612, 792],
+  a5: [419.53, 595.28],
+  card: [288, 432],
+};
+
+function pdfText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7e]/g, "-")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)");
+}
+
+function streamObject(dictionary: string, data: Buffer | string): Buffer {
+  const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data, "latin1");
+  return Buffer.concat([
+    Buffer.from(`<< ${dictionary} /Length ${bytes.length} >>\nstream\n`, "latin1"),
+    bytes,
+    Buffer.from("\nendstream", "latin1"),
+  ]);
+}
+
+function compilePdf(objects: PdfObject[], rootId: number): Buffer {
+  const chunks: Buffer[] = [Buffer.from("%PDF-1.7\n%\xE2\xE3\xCF\xD3\n", "binary")];
+  const offsets = [0];
+  let length = chunks[0]!.length;
+  for (const [index, object] of objects.entries()) {
+    offsets.push(length);
+    const body = Buffer.isBuffer(object) ? object : Buffer.from(object, "latin1");
+    const chunk = Buffer.concat([
+      Buffer.from(`${index + 1} 0 obj\n`, "latin1"),
+      body,
+      Buffer.from("\nendobj\n", "latin1"),
+    ]);
+    chunks.push(chunk);
+    length += chunk.length;
+  }
+  const xref = length;
+  const lines = [`xref`, `0 ${objects.length + 1}`, "0000000000 65535 f "];
+  for (const offset of offsets.slice(1)) lines.push(`${String(offset).padStart(10, "0")} 00000 n `);
+  lines.push(
+    `trailer`,
+    `<< /Size ${objects.length + 1} /Root ${rootId} 0 R >>`,
+    `startxref`,
+    String(xref),
+    "%%EOF",
+  );
+  chunks.push(Buffer.from(`${lines.join("\n")}\n`, "latin1"));
+  return Buffer.concat(chunks);
+}
+
+/** Render a self-contained PDF in the Node runtime. QR source images are validated first. */
+export async function renderDiscoveryPrintPdf(input: {
+  pack: PrintPack;
+  qrDataUrls: Record<string, string>;
+}): Promise<Buffer> {
+  const errors = validatePrintPack(input.pack);
+  if (errors.length > 0) throw new Error(errors.join("; "));
+  const [pageWidth, pageHeight] = PAPER_POINTS[input.pack.paper];
+  const layout = PRINT_LAYOUTS[input.pack.layout];
+  const pageCapacity = layout.columns * layout.rows;
+  const margin = 28;
+  const gap = 12;
+  const cellWidth = (pageWidth - margin * 2 - gap * (layout.columns - 1)) / layout.columns;
+  const cellHeight = (pageHeight - margin * 2 - gap * (layout.rows - 1)) / layout.rows;
+  const objects: PdfObject[] = [];
+  const add = (object: PdfObject) => (objects.push(object), objects.length);
+  const catalogId = add("");
+  const pagesId = add("");
+  const regularFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const boldFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  const monoFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>");
+  const pageIds: number[] = [];
+
+  for (let offset = 0; offset < input.pack.items.length; offset += pageCapacity) {
+    const pageItems = input.pack.items.slice(offset, offset + pageCapacity);
+    const imageIds: number[] = [];
+    for (const item of pageItems) {
+      const dataUrl = input.qrDataUrls[item.id];
+      const encoded = dataUrl?.split(",", 2)[1];
+      if (!encoded) throw new Error(`Missing validated QR for ${item.id}`);
+      const raw = await sharp(Buffer.from(encoded, "base64"))
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      imageIds.push(
+        add(
+          streamObject(
+            `/Type /XObject /Subtype /Image /Width ${raw.info.width} /Height ${raw.info.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode`,
+            deflateSync(raw.data),
+          ),
+        ),
+      );
+    }
+
+    const commands: string[] = ["0 G 0 g 0.7 w"];
+    for (const [index, item] of pageItems.entries()) {
+      const column = index % layout.columns;
+      const row = Math.floor(index / layout.columns);
+      const x = margin + column * (cellWidth + gap);
+      const y = pageHeight - margin - (row + 1) * cellHeight - row * gap;
+      const inset = Math.min(18, cellWidth * 0.08);
+      const qrSize = Math.min(cellWidth * 0.58, cellHeight * 0.6);
+      const qrX = x + (cellWidth - qrSize) / 2;
+      const qrY = y + cellHeight * 0.21;
+      if (input.pack.includeCutGuides !== false) commands.push(`${x} ${y} ${cellWidth} ${cellHeight} re S`);
+      commands.push(
+        `BT /FB ${Math.min(18, Math.max(10, cellWidth * 0.055))} Tf ${x + inset} ${y + cellHeight - inset - 16} Td (${pdfText(item.title)}) Tj ET`,
+        `q ${qrSize} 0 0 ${qrSize} ${qrX} ${qrY} cm /Q${index} Do Q`,
+        `BT /FR ${Math.min(10, Math.max(7, cellWidth * 0.032))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.15} Td (${pdfText("Scan to open the clue")}) Tj ET`,
+        `BT /FM ${Math.min(11, Math.max(8, cellWidth * 0.035))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.09} Td (${pdfText(item.fallbackCode)}) Tj ET`,
+        `BT /FR ${Math.min(7, Math.max(5, cellWidth * 0.022))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.035} Td (${pdfText(`Revision ${item.revision}`)}) Tj ET`,
+      );
+      if (input.pack.includePoints && item.points !== undefined) {
+        commands.push(`BT /FB 9 Tf ${x + inset} ${y + inset} Td (${item.points} points) Tj ET`);
+      }
+      if (input.pack.includePlacementNotes && item.placementNote) {
+        commands.push(`BT /FR 7 Tf ${x + inset} ${y + inset + 12} Td (${pdfText(item.placementNote)}) Tj ET`);
+      }
+    }
+    const pageNumber = Math.floor(offset / pageCapacity) + 1;
+    commands.push(`BT /FR 7 Tf ${margin} 12 Td (${pdfText(input.pack.title)}) Tj ET`);
+    if (input.pack.includePageNumbers !== false)
+      commands.push(`BT /FR 7 Tf ${pageWidth - margin - 38} 12 Td (Page ${pageNumber}) Tj ET`);
+    const contentId = add(streamObject("", commands.join("\n")));
+    const xObjects = imageIds.map((id, index) => `/Q${index} ${id} 0 R`).join(" ");
+    pageIds.push(
+      add(
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFontId} 0 R /FB ${boldFontId} 0 R /FM ${monoFontId} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
+      ),
+    );
+  }
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`;
+  return compilePdf(objects, catalogId);
 }

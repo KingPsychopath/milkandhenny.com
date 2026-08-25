@@ -44,7 +44,10 @@ import {
   revokeStaffAccessDevice,
   type StaffPreset,
 } from "@/features/event-scoring/staff.server";
-import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
+import {
+  buildDiscoveryPrintPack,
+  renderDiscoveryPrintPdf,
+} from "@/features/event-scoring/print.server";
 import { printLayout } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
@@ -628,7 +631,7 @@ async function handlePOST(request: Request, slug: string) {
         : Response.json({ error: "Active staff device not found" }, { status: 404 });
     }
 
-    if (action === "print-pack") {
+    if (action === "print-pack" || action === "print-pdf") {
       const layout = stringValue(body.layout);
       if (!layout || !printLayout(layout))
         return Response.json({ error: "A valid print layout is required" }, { status: 400 });
@@ -644,9 +647,21 @@ async function handlePOST(request: Request, slug: string) {
             : "a4",
         includePoints: body.includePoints !== false,
         includePlacementNotes: body.includePlacementNotes === true,
+        includeCutGuides: body.includeCutGuides !== false,
+        includePageNumbers: body.includePageNumbers !== false,
         discoveryIds,
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      if (action === "print-pdf") {
+        const pdf = await renderDiscoveryPrintPdf(result);
+        return new Response(new Uint8Array(pdf), {
+          headers: {
+            "Cache-Control": "no-store",
+            "Content-Disposition": `attachment; filename="${slug}-discovery-pack.pdf"`,
+            "Content-Type": "application/pdf",
+          },
+        });
+      }
       return Response.json(result, { headers: { "Cache-Control": "no-store" } });
     }
 

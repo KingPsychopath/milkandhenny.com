@@ -4,6 +4,7 @@ import { ScoringActivitiesPanel } from "./ScoringActivitiesPanel";
 import { ScoringDiscoveriesPanel } from "./ScoringDiscoveriesPanel";
 import { ScoringCorrectionsPanel } from "./ScoringCorrectionsPanel";
 import { ScoringPoolsPanel } from "./ScoringPoolsPanel";
+import { ScoringPrintStudioPanel } from "./ScoringPrintStudioPanel";
 import { ScoringLifecyclePanel } from "./ScoringLifecyclePanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import type { ScoringData } from "./event-scoring-types";
@@ -84,6 +85,35 @@ export function EventScoringPanel({
   async function changeState(state: string) {
     const result = await performAction({ action: "state", state });
     if (result) onStatus(`Scoring is now ${state}.`);
+  }
+
+  async function downloadPrint(body: Record<string, unknown>) {
+    const stepUp = await ensureStepUpToken();
+    if (!stepUp.ok) {
+      if (stepUp.error) onError(stepUp.error);
+      return;
+    }
+    onError("");
+    const response = await authFetch(
+      `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring`,
+      {
+        method: "POST",
+        headers: withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify(body),
+      },
+    );
+    if (!response.ok) {
+      const result = (await response.json().catch(() => null)) as { error?: string } | null;
+      onError(result?.error ?? "Could not build the print pack");
+      return;
+    }
+    const href = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `${eventSlug.trim()}-discovery-pack.pdf`;
+    link.click();
+    URL.revokeObjectURL(href);
+    onStatus("Print pack downloaded.");
   }
 
   return (
@@ -168,6 +198,10 @@ export function EventScoringPanel({
             activities={data.activities}
             discoveries={data.discoveries}
             onAction={performAction}
+          />
+          <ScoringPrintStudioPanel
+            discoveryCount={data.discoveries.length}
+            onDownload={downloadPrint}
           />
           <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
           <ScoringCorrectionsPanel

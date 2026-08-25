@@ -20,6 +20,8 @@ export type PrintPackItem = {
   fallbackCode: string;
   revision: number;
   private: boolean;
+  points?: number;
+  placementNote?: string;
 };
 
 export type PrintPack = {
@@ -30,6 +32,8 @@ export type PrintPack = {
   layout: PrintLayout;
   includePoints: boolean;
   includePlacementNotes: boolean;
+  includeCutGuides?: boolean;
+  includePageNumbers?: boolean;
   items: PrintPackItem[];
 };
 
@@ -51,7 +55,7 @@ export function validatePrintPack(pack: PrintPack): string[] {
   for (const item of pack.items) {
     if (ids.has(item.id)) errors.push(`Duplicate print item ${item.id}`);
     ids.add(item.id);
-    if (!item.destination.startsWith("/"))
+    if (!item.destination.startsWith("/") && !item.destination.startsWith("https://"))
       errors.push(`Print item ${item.id} has an unsafe destination`);
     if (!item.fallbackCode.trim()) errors.push(`Print item ${item.id} has no fallback code`);
     if (!Number.isInteger(item.revision) || item.revision < 1)
