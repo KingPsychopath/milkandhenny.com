@@ -206,7 +206,6 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             <HotAndColdResultShare
               label={`daily #${puzzle}`}
               guesses={playerGuesses}
-              outcome={state.gaveUp ? "revealed" : "found"}
               hintsUsed={state.hintsUsed}
             />
             <button

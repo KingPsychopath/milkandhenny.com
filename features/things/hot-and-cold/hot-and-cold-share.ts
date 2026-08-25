@@ -51,12 +51,10 @@ export function buildHotAndColdTrail(guesses: readonly HotAndColdShareGuess[], l
 export function buildHotAndColdShareResult({
   label,
   guesses,
-  outcome,
   hintsUsed = 0,
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
-  outcome: "found" | "revealed" | "closest";
   hintsUsed?: number;
 }): HotAndColdShareResult {
   const trail = buildHotAndColdTrail(guesses);
@@ -69,8 +67,6 @@ export function buildHotAndColdShareResult({
       : null;
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
   const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
-  const outcomeLabel =
-    outcome === "found" ? "Found" : outcome === "revealed" ? "Revealed" : "Closest wins";
   const closest =
     bestRank === null
       ? "No ranked guesses"
@@ -79,7 +75,6 @@ export function buildHotAndColdShareResult({
         : `Closest #${bestRank.toLocaleString("en-US")}`;
   const symbols = trail.length ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ") : "—";
   const outcomeSummary = [
-    outcomeLabel,
     guessLabel,
     hintsUsed > 0 ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}` : null,
   ]

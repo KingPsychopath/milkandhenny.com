@@ -6,17 +6,15 @@ import { buildHotAndColdShareResult, type HotAndColdShareGuess } from "./hot-and
 export function HotAndColdResultShare({
   label,
   guesses,
-  outcome,
   hintsUsed = 0,
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
-  outcome: "found" | "revealed" | "closest";
   hintsUsed?: number;
 }) {
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [status, setStatus] = useState<"idle" | "shared" | "copied" | "failed">("idle");
-  const result = buildHotAndColdShareResult({ label, guesses, outcome, hintsUsed });
+  const result = buildHotAndColdShareResult({ label, guesses, hintsUsed });
   const closestLabel =
     result.bestRank === null
       ? "—"
