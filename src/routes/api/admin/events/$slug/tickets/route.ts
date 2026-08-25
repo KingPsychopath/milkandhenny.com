@@ -4,7 +4,7 @@ import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEvent } from "@/features/events/store.server";
-import { refundOrder } from "@/features/tickets/checkout.server";
+import { refundTicket } from "@/features/tickets/checkout.server";
 import { beginTicketExchange } from "@/features/tickets/exchange.server";
 import { sendTicketEmail } from "@/features/tickets/email.server";
 import { listTicketsForOrder, updateTicketHolder } from "@/features/tickets/store.server";
@@ -148,7 +148,11 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticket || ticket.eventSlug !== slug) {
           return Response.json({ error: "Ticket not found" }, { status: 404 });
         }
-        const result = await refundOrder({ ticketId, reason: "admin" });
+        const result = await refundTicket({
+          ticketId,
+          reason: "admin",
+          actorId: "root-owner",
+        });
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({
           ok: true,

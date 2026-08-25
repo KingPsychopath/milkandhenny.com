@@ -26,6 +26,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as ThingsRouteImport } from './routes/things'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as ActionTokenRouteImport } from './routes/action/$token'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminCliAuthRouteImport } from './routes/admin/cli-auth'
 import { Route as AdminEditorRouteImport } from './routes/admin/editor'
@@ -77,6 +78,7 @@ import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/w
 import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
 import { Route as ApiAttendeeAccessRouteRouteImport } from './routes/api/attendee/access/route'
 import { Route as ApiAttendeeSessionRouteRouteImport } from './routes/api/attendee/session/route'
+import { Route as ApiAttendeeTicketOperationsRouteRouteImport } from './routes/api/attendee/ticket-operations/route'
 import { Route as ApiCommunicationsClickRouteRouteImport } from './routes/api/communications/click/route'
 import { Route as ApiCronCleanupAttendeeAccessRouteRouteImport } from './routes/api/cron/cleanup-attendee-access/route'
 import { Route as ApiCronCleanupCommunicationLinksRouteRouteImport } from './routes/api/cron/cleanup-communication-links/route'
@@ -126,6 +128,9 @@ import { Route as ApiAdminCliAuthRequestRouteRouteImport } from './routes/api/ad
 import { Route as ApiAdminCommunicationsIdRouteRouteImport } from './routes/api/admin/communications/$id/route'
 import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
 import { Route as ApiAdminGamePoolsIdRouteRouteImport } from './routes/api/admin/game-pools/$id/route'
+import { Route as ApiAdminOperationsInboxRouteRouteImport } from './routes/api/admin/operations/inbox/route'
+import { Route as ApiAdminOperationsPeopleRouteRouteImport } from './routes/api/admin/operations/people/route'
+import { Route as ApiAdminOperationsSettingsRouteRouteImport } from './routes/api/admin/operations/settings/route'
 import { Route as ApiAdminSurveysIdRouteRouteImport } from './routes/api/admin/surveys/$id/route'
 import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
 import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
@@ -274,6 +279,11 @@ const ThingsRoute = ThingsRouteImport.update({
 const UploadRoute = UploadRouteImport.update({
   id: '/upload',
   path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActionTokenRoute = ActionTokenRouteImport.update({
+  id: '/action/$token',
+  path: '/action/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
@@ -535,6 +545,12 @@ const ApiAttendeeSessionRouteRoute = ApiAttendeeSessionRouteRouteImport.update({
   path: '/api/attendee/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAttendeeTicketOperationsRouteRoute =
+  ApiAttendeeTicketOperationsRouteRouteImport.update({
+    id: '/api/attendee/ticket-operations',
+    path: '/api/attendee/ticket-operations',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCommunicationsClickRouteRoute =
   ApiCommunicationsClickRouteRouteImport.update({
     id: '/api/communications/click',
@@ -798,6 +814,24 @@ const ApiAdminGamePoolsIdRouteRoute =
     id: '/$id',
     path: '/$id',
     getParentRoute: () => ApiAdminGamePoolsRouteRoute,
+  } as any)
+const ApiAdminOperationsInboxRouteRoute =
+  ApiAdminOperationsInboxRouteRouteImport.update({
+    id: '/api/admin/operations/inbox',
+    path: '/api/admin/operations/inbox',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiAdminOperationsPeopleRouteRoute =
+  ApiAdminOperationsPeopleRouteRouteImport.update({
+    id: '/api/admin/operations/people',
+    path: '/api/admin/operations/people',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiAdminOperationsSettingsRouteRoute =
+  ApiAdminOperationsSettingsRouteRouteImport.update({
+    id: '/api/admin/operations/settings',
+    path: '/api/admin/operations/settings',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiAdminSurveysIdRouteRoute = ApiAdminSurveysIdRouteRouteImport.update({
   id: '/$id',
@@ -1199,6 +1233,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
@@ -1245,6 +1280,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
   '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
+  '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
@@ -1294,6 +1330,9 @@ export interface FileRoutesByFullPath {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
+  '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
+  '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
@@ -1382,6 +1421,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
@@ -1428,6 +1468,7 @@ export interface FileRoutesByTo {
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
   '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
+  '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
@@ -1477,6 +1518,9 @@ export interface FileRoutesByTo {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
+  '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
+  '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
@@ -1566,6 +1610,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
@@ -1612,6 +1657,7 @@ export interface FileRoutesById {
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
   '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
+  '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
@@ -1661,6 +1707,9 @@ export interface FileRoutesById {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
+  '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
+  '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
@@ -1751,6 +1800,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
     | '/drop/$token'
@@ -1797,6 +1847,7 @@ export interface FileRouteTypes {
     | '/api/admin/word-shares'
     | '/api/attendee/access'
     | '/api/attendee/session'
+    | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-communication-links'
@@ -1846,6 +1897,9 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/inbox'
+    | '/api/admin/operations/people'
+    | '/api/admin/operations/settings'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -1934,6 +1988,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
     | '/drop/$token'
@@ -1980,6 +2035,7 @@ export interface FileRouteTypes {
     | '/api/admin/word-shares'
     | '/api/attendee/access'
     | '/api/attendee/session'
+    | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-communication-links'
@@ -2029,6 +2085,9 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/inbox'
+    | '/api/admin/operations/people'
+    | '/api/admin/operations/settings'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -2117,6 +2176,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
     | '/drop/$token'
@@ -2163,6 +2223,7 @@ export interface FileRouteTypes {
     | '/api/admin/word-shares'
     | '/api/attendee/access'
     | '/api/attendee/session'
+    | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-communication-links'
@@ -2212,6 +2273,9 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/inbox'
+    | '/api/admin/operations/people'
+    | '/api/admin/operations/settings'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -2301,6 +2365,7 @@ export interface RootRouteChildren {
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
   ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
+  ActionTokenRoute: typeof ActionTokenRoute
   AdminCliAuthRoute: typeof AdminCliAuthRoute
   AdminEditorRoute: typeof AdminEditorRoute
   DropTokenRoute: typeof DropTokenRoute
@@ -2336,6 +2401,7 @@ export interface RootRouteChildren {
   ApiAdminWordSharesRouteRoute: typeof ApiAdminWordSharesRouteRouteWithChildren
   ApiAttendeeAccessRouteRoute: typeof ApiAttendeeAccessRouteRoute
   ApiAttendeeSessionRouteRoute: typeof ApiAttendeeSessionRouteRoute
+  ApiAttendeeTicketOperationsRouteRoute: typeof ApiAttendeeTicketOperationsRouteRoute
   ApiCommunicationsClickRouteRoute: typeof ApiCommunicationsClickRouteRoute
   ApiCronCleanupAttendeeAccessRouteRoute: typeof ApiCronCleanupAttendeeAccessRouteRoute
   ApiCronCleanupCommunicationLinksRouteRoute: typeof ApiCronCleanupCommunicationLinksRouteRoute
@@ -2361,6 +2427,9 @@ export interface RootRouteChildren {
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminCliAuthExchangeRouteRoute: typeof ApiAdminCliAuthExchangeRouteRoute
   ApiAdminCliAuthRequestRouteRoute: typeof ApiAdminCliAuthRequestRouteRoute
+  ApiAdminOperationsInboxRouteRoute: typeof ApiAdminOperationsInboxRouteRoute
+  ApiAdminOperationsPeopleRouteRoute: typeof ApiAdminOperationsPeopleRouteRoute
+  ApiAdminOperationsSettingsRouteRoute: typeof ApiAdminOperationsSettingsRouteRoute
   ApiAdminTokensRevokeRouteRoute: typeof ApiAdminTokensRevokeRouteRoute
   ApiAdminTokensSessionsRouteRoute: typeof ApiAdminTokensSessionsRouteRouteWithChildren
   ApiEmailEventsCloudflareRouteRoute: typeof ApiEmailEventsCloudflareRouteRoute
@@ -2503,6 +2572,13 @@ declare module '@tanstack/react-router' {
       path: '/upload'
       fullPath: '/upload'
       preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/action/$token': {
+      id: '/action/$token'
+      path: '/action/$token'
+      fullPath: '/action/$token'
+      preLoaderRoute: typeof ActionTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -2862,6 +2938,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAttendeeSessionRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/attendee/ticket-operations': {
+      id: '/api/attendee/ticket-operations'
+      path: '/api/attendee/ticket-operations'
+      fullPath: '/api/attendee/ticket-operations'
+      preLoaderRoute: typeof ApiAttendeeTicketOperationsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/communications/click': {
       id: '/api/communications/click'
       path: '/api/communications/click'
@@ -3204,6 +3287,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/admin/game-pools/$id'
       preLoaderRoute: typeof ApiAdminGamePoolsIdRouteRouteImport
       parentRoute: typeof ApiAdminGamePoolsRouteRoute
+    }
+    '/api/admin/operations/inbox': {
+      id: '/api/admin/operations/inbox'
+      path: '/api/admin/operations/inbox'
+      fullPath: '/api/admin/operations/inbox'
+      preLoaderRoute: typeof ApiAdminOperationsInboxRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/operations/people': {
+      id: '/api/admin/operations/people'
+      path: '/api/admin/operations/people'
+      fullPath: '/api/admin/operations/people'
+      preLoaderRoute: typeof ApiAdminOperationsPeopleRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/operations/settings': {
+      id: '/api/admin/operations/settings'
+      path: '/api/admin/operations/settings'
+      fullPath: '/api/admin/operations/settings'
+      preLoaderRoute: typeof ApiAdminOperationsSettingsRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/admin/surveys/$id': {
       id: '/api/admin/surveys/$id'
@@ -4088,6 +4192,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRouteRoute: ApiHealthRouteRoute,
   ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
+  ActionTokenRoute: ActionTokenRoute,
   AdminCliAuthRoute: AdminCliAuthRoute,
   AdminEditorRoute: AdminEditorRoute,
   DropTokenRoute: DropTokenRoute,
@@ -4124,6 +4229,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminWordSharesRouteRoute: ApiAdminWordSharesRouteRouteWithChildren,
   ApiAttendeeAccessRouteRoute: ApiAttendeeAccessRouteRoute,
   ApiAttendeeSessionRouteRoute: ApiAttendeeSessionRouteRoute,
+  ApiAttendeeTicketOperationsRouteRoute: ApiAttendeeTicketOperationsRouteRoute,
   ApiCommunicationsClickRouteRoute: ApiCommunicationsClickRouteRoute,
   ApiCronCleanupAttendeeAccessRouteRoute:
     ApiCronCleanupAttendeeAccessRouteRoute,
@@ -4153,6 +4259,9 @@ const rootRouteChildren: RootRouteChildren = {
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
   ApiAdminCliAuthExchangeRouteRoute: ApiAdminCliAuthExchangeRouteRoute,
   ApiAdminCliAuthRequestRouteRoute: ApiAdminCliAuthRequestRouteRoute,
+  ApiAdminOperationsInboxRouteRoute: ApiAdminOperationsInboxRouteRoute,
+  ApiAdminOperationsPeopleRouteRoute: ApiAdminOperationsPeopleRouteRoute,
+  ApiAdminOperationsSettingsRouteRoute: ApiAdminOperationsSettingsRouteRoute,
   ApiAdminTokensRevokeRouteRoute: ApiAdminTokensRevokeRouteRoute,
   ApiAdminTokensSessionsRouteRoute:
     ApiAdminTokensSessionsRouteRouteWithChildren,

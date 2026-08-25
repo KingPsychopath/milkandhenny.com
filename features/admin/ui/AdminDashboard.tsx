@@ -17,6 +17,9 @@ import { BestDressedPanel } from "./components/BestDressedPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
 import { CommunicationsPanel } from "./components/CommunicationsPanel";
+import { AttendeeOperationsPanel } from "./components/AttendeeOperationsPanel";
+import { AttendeeSettingsPanel } from "./components/AttendeeSettingsPanel";
+import { AdminCommandPalette } from "./components/AdminCommandPalette";
 import {
   AdminSectionNav,
   type AdminSection,
@@ -129,6 +132,7 @@ export function AdminDashboard({
   const [content, setContent] = useState<ContentSummaryResponse | null>(null);
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
+  const [operationsAttention, setOperationsAttention] = useState(0);
 
   const {
     authFetch,
@@ -179,6 +183,15 @@ export function AdminDashboard({
   useEffect(() => {
     if (view === "overview" || view === "system") void refreshDashboard();
   }, [refreshDashboard, view]);
+
+  useEffect(() => {
+    void authFetch("/api/admin/operations/inbox")
+      .then(async (response) =>
+        response.ok ? ((await response.json()) as { unresolved?: number }) : null,
+      )
+      .then((inbox) => setOperationsAttention(inbox?.unresolved ?? 0))
+      .catch(() => undefined);
+  }, [authFetch, view]);
 
   const ensureStepUpToken = async (): Promise<string | null> => {
     const result = await ensureStepUpTokenResult();
@@ -242,9 +255,22 @@ export function AdminDashboard({
   return (
     <div className="mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-8">
       <header className="mb-10">
-        <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-          private workspace
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+            private workspace
+          </p>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => onViewChange("operations")}
+              aria-label={`${operationsAttention} unresolved attendee operation${operationsAttention === 1 ? "" : "s"}`}
+              className="min-h-11 font-mono text-xs theme-muted hover:opacity-70"
+            >
+              attention{operationsAttention ? ` · ${operationsAttention}` : ""}
+            </button>
+            <AdminCommandPalette onNavigate={onViewChange} />
+          </div>
+        </div>
         <h1 className="mt-2 font-serif text-4xl font-semibold tracking-tight">
           <Link to="/" className="hover:opacity-80 transition-opacity">
             {SITE_BRAND}
@@ -362,6 +388,24 @@ export function AdminDashboard({
             onStatus={setStatusMessage}
           />
         </section>
+      ) : null}
+
+      {view === "operations" ? (
+        <AttendeeOperationsPanel
+          authFetch={authFetch}
+          onError={setErrorMessage}
+          onStatus={setStatusMessage}
+        />
+      ) : null}
+
+      {view === "settings" ? (
+        <AttendeeSettingsPanel
+          authFetch={authFetch}
+          onError={setErrorMessage}
+          onStatus={setStatusMessage}
+          ensureStepUpToken={ensureStepUpTokenResult}
+          withStepUpHeaders={withStepUpHeaders}
+        />
       ) : null}
 
       <section className="space-y-10">

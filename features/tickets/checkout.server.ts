@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { log } from "@/lib/platform/logger.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
@@ -24,6 +24,7 @@ import {
   listTicketsForCheckout,
   listTicketsForOrder,
   markOrderRefunded,
+  markTicketStatus,
   markTicketOrderRefunded,
   markTicketOrderRefundPending,
 } from "./store.server";
@@ -827,6 +828,8 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
 
   let issued;
   try {
+    const allocationBase = Math.floor(claimed.amount_minor / Math.max(1, claimed.quantity));
+    const allocationRemainder = claimed.amount_minor - allocationBase * claimed.quantity;
     issued = await issueTickets({
       eventSlug: claimed.event_slug,
       ticketTypeId: claimed.ticket_type_id,
@@ -840,9 +843,12 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       // The reservation was accepted while sales were open. Closing sales
       // while the buyer is at Stripe must not invalidate a paid order.
       bypassSalesWindow: true,
-      // Per ticket, not the order total: the refund UI shows this figure, and
-      // partial refunds are settled by summing what each ticket actually cost.
-      amountPaidMinor: Math.round(claimed.amount_minor / Math.max(1, claimed.quantity)),
+      // Preserve the exact paid total even when it does not divide evenly.
+      // The first few tickets receive one extra minor unit deterministically.
+      amountAllocationsMinor: Array.from(
+        { length: claimed.quantity },
+        (_, index) => allocationBase + (index < allocationRemainder ? 1 : 0),
+      ),
       currency: claimed.currency,
     });
   } catch (error) {
@@ -939,11 +945,293 @@ export type SelfRefundResult = TicketOpResult<{
 }>;
 
 /**
- * Refund an order at the buyer's request.
+ * Refund exactly one child ticket. The ticket is made unusable in the same
+ * transaction that reserves its refund allocation, closing the check-in race.
+ * A failed provider call restores it; a pending provider response remains
+ * visibly void until the refund webhook settles it.
+ */
+export async function refundTicket(input: {
+  ticketId: string;
+  reason: "self-serve" | "admin";
+  actorId?: string;
+}): Promise<SelfRefundResult> {
+  const prepared = await transaction(async (client) => {
+    const selected = await client.query<{
+      id: string;
+      event_slug: string;
+      order_id: string;
+      payment_ref: string | null;
+      amount_paid_minor: number | null;
+      currency: string | null;
+      status: string;
+      redeemed_at: Date | null;
+    }>(
+      `select id,event_slug,order_id,payment_ref,amount_paid_minor,currency,status,redeemed_at
+          from tickets where id = $1 for update`,
+      [input.ticketId],
+    );
+    const ticket = selected.rows[0];
+    if (!ticket) return { ok: false as const, status: 404, error: "Ticket not found" };
+    if (ticket.status === "refunded")
+      return { ok: true as const, alreadyRefunded: true as const, ticket };
+    if (ticket.status !== "valid")
+      return { ok: false as const, status: 409, error: "This ticket is not refundable" };
+    if (ticket.redeemed_at)
+      return { ok: false as const, status: 409, error: "This ticket has already checked in" };
+    if (!ticket.payment_ref || !ticket.amount_paid_minor || !ticket.currency)
+      return { ok: false as const, status: 400, error: "This ticket has no refundable payment" };
+    const exchange = await client.query(
+      `select 1 from ticket_exchanges where ticket_id = $1
+        and status in ('processing','awaiting_payment','refund_pending') limit 1`,
+      [ticket.id],
+    );
+    if (exchange.rowCount)
+      return { ok: false as const, status: 409, error: "Finish or cancel the ticket change first" };
+    const acceptedTransfer = await client.query(
+      `select 1 from ticket_transfers where ticket_id = $1 and status = 'accepted' limit 1`,
+      [ticket.id],
+    );
+    if (acceptedTransfer.rowCount)
+      return {
+        ok: false as const,
+        status: 409,
+        error: "A transferred ticket needs the current holder's consent before refund",
+      };
+    const pendingTransfers = await client.query<{ action_link_id: string | null }>(
+      `update ticket_transfers
+          set status = 'invalidated',invalidated_at = now(),
+              invalidation_reason = 'refund-started',updated_at = now()
+        where ticket_id = $1 and status = 'pending' returning action_link_id`,
+      [ticket.id],
+    );
+    for (const transfer of pendingTransfers.rows) {
+      if (transfer.action_link_id) {
+        await client.query(
+          `update attendee_action_links
+              set revoked_at = now(),revoke_reason = 'refund-started'
+            where id = $1 and consumed_at is null`,
+          [transfer.action_link_id],
+        );
+      }
+    }
+    const allocationId = `refund_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+    await client.query(
+      `insert into ticket_refund_allocations
+         (id,ticket_id,event_slug,payment_ref,amount_minor,currency,initiated_by_type,initiated_by_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        allocationId,
+        ticket.id,
+        ticket.event_slug,
+        ticket.payment_ref,
+        ticket.amount_paid_minor,
+        ticket.currency,
+        input.reason === "admin" ? "admin" : "attendee",
+        input.actorId ?? null,
+      ],
+    );
+    await client.query(`update tickets set status = 'void' where id = $1`, [ticket.id]);
+    await client.query(
+      `update event_participants set status = 'void',updated_at = now() where ticket_id = $1`,
+      [ticket.id],
+    );
+    await client.query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,event_slug,entity_type,entity_id,
+          before_state,after_state,reason,affected_count,correlation_id)
+       values ('ticket.refund.started',$1,$2,$3,'ticket',$4,
+               '{"status":"valid"}'::jsonb,'{"status":"void","refund":"processing"}'::jsonb,
+               $5,1,$6)`,
+      [
+        input.reason === "admin" ? "root-owner" : "attendee",
+        input.actorId ?? null,
+        ticket.event_slug,
+        ticket.id,
+        input.reason,
+        allocationId,
+      ],
+    );
+    return { ok: true as const, alreadyRefunded: false as const, ticket, allocationId };
+  });
+  if (!prepared.ok) return prepared;
+  if (prepared.alreadyRefunded)
+    return { ok: true, value: { state: "succeeded", refunded: 0, emailQueued: false } };
+
+  const refund = await refundPayment({
+    paymentIntentId: prepared.ticket.payment_ref!,
+    amountMinor: prepared.ticket.amount_paid_minor!,
+    reference: `ticket:${prepared.ticket.id}:${prepared.allocationId}`,
+    metadata: {
+      ticketId: prepared.ticket.id,
+      allocationId: prepared.allocationId,
+      orderId: prepared.ticket.order_id,
+      refundPurpose: "ticket_refund",
+    },
+  });
+  if (!refund.ok || refund.status === "failed" || refund.status === "canceled") {
+    await transaction(async (client) => {
+      await client.query(
+        `update ticket_refund_allocations
+            set state = 'failed',failure_reason = $2,updated_at = now(),completed_at = now()
+          where id = $1`,
+        [prepared.allocationId, refund.ok ? "Provider rejected the refund" : refund.error],
+      );
+      await client.query(`update tickets set status = 'valid' where id = $1 and status = 'void'`, [
+        prepared.ticket.id,
+      ]);
+      await client.query(
+        `update event_participants set status = 'active',updated_at = now()
+          where ticket_id = $1 and status = 'void'`,
+        [prepared.ticket.id],
+      );
+    });
+    const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
+    await emitDomainEvent({
+      kind: "refund.failed",
+      deduplicationKey: `refund-allocation:${prepared.allocationId}:failed`,
+      actorType: input.reason === "admin" ? "admin" : "attendee",
+      actorId: input.actorId,
+      eventSlug: prepared.ticket.event_slug,
+      entityRefs: { ticketId: prepared.ticket.id, allocationId: prepared.allocationId },
+      severity: "critical",
+      admin: {
+        title: "Ticket refund failed",
+        body: "The provider rejected a per-ticket refund. The ticket was restored and needs review.",
+        deepLink: `/admin?view=operations&ticket=${encodeURIComponent(prepared.ticket.id)}`,
+        category: "refund-failed",
+        createCase: true,
+      },
+    });
+    return {
+      ok: false,
+      status: 502,
+      error: refund.ok ? "Stripe could not process the refund" : refund.error,
+    };
+  }
+
+  const state = refund.status === "succeeded" ? "succeeded" : "pending";
+  await query(
+    `update ticket_refund_allocations
+        set state = $2,refund_ref = $3,updated_at = now(),
+            completed_at = case when $2 = 'succeeded' then now() else null end
+      where id = $1`,
+    [prepared.allocationId, state, refund.refundId],
+  );
+  if (state === "pending") {
+    const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
+    await emitDomainEvent({
+      kind: "refund.pending",
+      deduplicationKey: `refund-allocation:${prepared.allocationId}:pending`,
+      actorType: input.reason === "admin" ? "root-owner" : "attendee",
+      actorId: input.actorId,
+      eventSlug: prepared.ticket.event_slug,
+      entityRefs: { ticketId: prepared.ticket.id, allocationId: prepared.allocationId },
+    });
+    return { ok: true, value: { state: "pending", refunded: 1, emailQueued: false } };
+  }
+  const updated = await markTicketStatus(prepared.ticket.id, "refunded", refund.refundId);
+  const event = await getEvent(prepared.ticket.event_slug);
+  const delivery =
+    updated && event
+      ? await sendRefundEmail({
+          event,
+          tickets: [updated],
+          source: input.reason === "admin" ? "admin" : "self-service",
+        })
+      : null;
+  const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
+  await emitDomainEvent({
+    kind: "refund.completed",
+    deduplicationKey: `refund-allocation:${prepared.allocationId}:completed`,
+    actorType: input.reason === "admin" ? "root-owner" : "attendee",
+    actorId: input.actorId,
+    eventSlug: prepared.ticket.event_slug,
+    entityRefs: { ticketId: prepared.ticket.id, allocationId: prepared.allocationId },
+  });
+  return {
+    ok: true,
+    value: {
+      state: "succeeded",
+      refunded: updated ? 1 : 0,
+      emailQueued: delivery?.queued ?? false,
+    },
+  };
+}
+
+export async function updateAllocatedTicketRefund(
+  refundId: string,
+  status: string | null,
+): Promise<boolean> {
+  if (status !== "succeeded" && status !== "failed" && status !== "canceled") return false;
+  const existing = await queryOne<{ state: string }>(
+    `select state from ticket_refund_allocations where refund_ref = $1`,
+    [refundId],
+  );
+  if (!existing) return false;
+  if (existing.state === "succeeded" || existing.state === "failed") return true;
+  const rows = await query<{ ticket_id: string; event_slug: string }>(
+    `update ticket_refund_allocations
+        set state = $2,updated_at = now(),completed_at = now(),
+            failure_reason = case when $2 = 'failed' then 'Provider reported refund failure' else null end
+      where refund_ref = $1 and state in ('processing','pending')
+      returning ticket_id,event_slug`,
+    [refundId, status === "succeeded" ? "succeeded" : "failed"],
+  );
+  const allocation = rows[0];
+  if (!allocation) return false;
+  if (status === "succeeded") {
+    const ticket = await markTicketStatus(allocation.ticket_id, "refunded", refundId);
+    const event = await getEvent(allocation.event_slug);
+    if (ticket && event) {
+      await sendRefundEmail({
+        event,
+        tickets: [ticket],
+        source: "system",
+        idempotencyKey: `tickets:refund:${ticket.id}:${refundId}`,
+      });
+    }
+    const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
+    await emitDomainEvent({
+      kind: "refund.completed",
+      deduplicationKey: `refund:${refundId}:completed`,
+      actorType: "system",
+      eventSlug: allocation.event_slug,
+      entityRefs: { ticketId: allocation.ticket_id, refundId },
+    });
+  } else {
+    await query(`update tickets set status = 'valid' where id = $1 and status = 'void'`, [
+      allocation.ticket_id,
+    ]);
+    await query(
+      `update event_participants set status = 'active',updated_at = now()
+        where ticket_id = $1 and status = 'void'`,
+      [allocation.ticket_id],
+    );
+    const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
+    await emitDomainEvent({
+      kind: "refund.failed",
+      deduplicationKey: `refund:${refundId}:failed`,
+      actorType: "system",
+      eventSlug: allocation.event_slug,
+      entityRefs: { ticketId: allocation.ticket_id, refundId },
+      severity: "critical",
+      admin: {
+        title: "Ticket refund failed",
+        body: "A pending per-ticket refund failed at the payment provider. The ticket was restored.",
+        deepLink: `/admin?view=operations&ticket=${encodeURIComponent(allocation.ticket_id)}`,
+        category: "refund-failed",
+        createCase: true,
+      },
+    });
+  }
+  return true;
+}
+
+/**
+ * Bulk-refund an order for event-cancellation operations.
  *
- * Refuses once any ticket in the order has been scanned: the door record is
- * the evidence that they turned up, and refunding after entry is a dispute
- * to have with a human, not a button.
+ * Normal attendee and admin controls use `refundTicket`; this remains a
+ * deliberate bulk workflow for cancelling every ticket in an order.
  */
 export async function refundOrder(input: {
   ticketId: string;

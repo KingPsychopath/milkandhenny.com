@@ -10,6 +10,8 @@ import {
   TICKET_MARKETING_CONSENT_VERSION,
 } from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
+import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
+import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
 import { toTicketHolderEvent } from "@/features/events/types";
 import { TicketsService } from "./tickets-service.server";
@@ -18,13 +20,14 @@ import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
 import {
   isCheckoutSessionId,
-  refundOrder,
+  refundTicket,
   resolveCheckoutOutcome,
   startCheckout,
 } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
-import { rememberManagedTicketOrder } from "./order-cookie.server";
+import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveScannerLink } from "./scanner-links.server";
+import { getTicket } from "./store.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
   isValidEmail,
@@ -408,8 +411,8 @@ export type RefundResult =
 /**
  * Self-serve refund from the ticket page.
  *
- * The primary ticket id is the purchaser credential. Child ticket ids are
- * rejected by `refundOrder`, as are refunds after anyone checks in.
+ * Each child ticket owns its allocation. The page grants order authority;
+ * this workflow invalidates only the selected ticket.
  */
 export const refundOwnTicketFn = createServerFn({ method: "POST" })
   .validator((data: { ticketId: string }) => data)
@@ -417,7 +420,28 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
     if (!isValidTicketId(data.ticketId)) {
       return { ok: false, error: "That ticket reference doesn't look right" };
     }
-    const result = await refundOrder({ ticketId: data.ticketId, reason: "self-serve" });
+    const ticket = await getTicket(data.ticketId);
+    if (!ticket) return { ok: false, error: "Ticket not found" };
+    const browserOrders = readManagedTicketOrders();
+    let personOrders: string[] = [];
+    let attendeePersonId: string | undefined;
+    try {
+      const session = await getAttendeeSession();
+      if (session?.personId) {
+        attendeePersonId = session.personId;
+        personOrders = await managedOrderIdsForPerson(session.personId);
+      }
+    } catch {
+      // Signed purchaser authority remains sufficient when attendee access is unavailable.
+    }
+    if (![...browserOrders, ...personOrders].includes(ticket.orderId)) {
+      return { ok: false, error: "Open the purchaser ticket before requesting this refund" };
+    }
+    const result = await refundTicket({
+      ticketId: data.ticketId,
+      reason: "self-serve",
+      actorId: attendeePersonId,
+    });
     if (!result.ok) return { ok: false, error: result.error };
     return {
       ok: true,

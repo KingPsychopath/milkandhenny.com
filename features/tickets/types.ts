@@ -12,6 +12,9 @@ export type TicketKind = (typeof TICKET_KINDS)[number];
 
 export type TicketRecord = {
   id: string;
+  /** Rotatable bearer reference used after a transfer; the internal id stays stable. */
+  accessReference?: string;
+  authorityVersion?: number;
   eventSlug: string;
   ticketTypeId: string;
   kind: TicketKind;
@@ -77,6 +80,7 @@ export function describeCheckpoints(names: readonly string[]): string | null {
 /** Safe sibling-ticket detail exposed to someone holding one ticket in the order. */
 export type OrderTicketView = {
   id: string;
+  publicId?: string;
   holderName: string;
   status: TicketStatus;
   redeemedAt?: string;
@@ -87,6 +91,7 @@ export type OrderTicketView = {
 /** Bearer-page projection; payment references and buyer email never reach the browser. */
 export type TicketPageTicket = {
   id: string;
+  publicId?: string;
   holderName: string;
   kind: TicketKind;
   status: TicketStatus;

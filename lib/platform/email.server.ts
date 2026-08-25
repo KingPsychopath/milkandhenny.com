@@ -13,7 +13,7 @@ import type { EmailContext, EmailKind, EmailSource } from "../shared/email-opera
  * someone's entry to an event.
  */
 
-export type EmailChannel = "tickets" | "studio" | "communications";
+export type EmailChannel = "tickets" | "studio" | "communications" | "access" | "operations";
 
 type CloudflareEmailConfig = {
   provider: "cloudflare";
@@ -66,8 +66,16 @@ const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name:
     name: "milk & henny studio",
   },
   communications: {
-    environmentVariable: "EMAIL_STUDIO_FROM",
-    name: "milk & henny",
+    environmentVariable: "EMAIL_COMMUNICATIONS_FROM",
+    name: "milk & henny events",
+  },
+  access: {
+    environmentVariable: "EMAIL_ACCESS_FROM",
+    name: "milk & henny access",
+  },
+  operations: {
+    environmentVariable: "EMAIL_OPERATIONS_FROM",
+    name: "milk & henny alerts",
   },
 };
 
@@ -96,7 +104,11 @@ function localSender(channel: EmailChannel): { address: string; name: string } {
   return {
     address:
       process.env[sender.environmentVariable]?.trim() ||
-      (channel === "tickets" ? "tickets@local.test" : "studio@local.test"),
+      (channel === "tickets"
+        ? "tickets@local.test"
+        : channel === "studio"
+          ? "studio@local.test"
+          : `${channel}@local.test`),
     name: sender.name,
   };
 }
@@ -148,6 +160,9 @@ export function describeEmailCapability(): {
 } {
   const tickets = getEmailConfig("tickets");
   const studio = getEmailConfig("studio");
+  const communications = getEmailConfig("communications");
+  const access = getEmailConfig("access");
+  const operations = getEmailConfig("operations");
   const mailpitUrl =
     tickets?.provider === "mailpit"
       ? tickets.baseUrl
@@ -155,7 +170,12 @@ export function describeEmailCapability(): {
         ? studio.baseUrl
         : null;
   const provider = tickets?.provider ?? studio?.provider ?? null;
-  const configured = tickets !== null && studio !== null;
+  const configured =
+    tickets !== null &&
+    studio !== null &&
+    communications !== null &&
+    access !== null &&
+    operations !== null;
   return {
     configured,
     // Mailpit is observed directly through its inbox. Cloudflare needs the
@@ -169,7 +189,9 @@ export function describeEmailCapability(): {
     senders: {
       tickets: tickets?.sender.address ?? null,
       studio: studio?.sender.address ?? null,
-      communications: studio?.sender.address ?? null,
+      communications: communications?.sender.address ?? null,
+      access: access?.sender.address ?? null,
+      operations: operations?.sender.address ?? null,
     },
     replyTo: tickets?.replyTo ?? studio?.replyTo ?? process.env.EMAIL_REPLY_TO?.trim() ?? null,
   };

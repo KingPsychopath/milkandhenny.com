@@ -470,7 +470,7 @@ export function TransfersPanel({
         className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-mono text-xs theme-muted">transfer manager</p>
+          <p className="font-mono text-xs theme-muted">private file delivery</p>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"

@@ -1963,10 +1963,10 @@ function EventOperations({
   ) => {
     if (action === "refund") {
       const confirmed = await confirmAction({
-        title: `Refund ${ticket.holderName}'s order?`,
+        title: `Refund ${ticket.holderName}'s ticket?`,
         description:
-          "Money goes back to the original card and every QR on the order stops working. This cannot be undone.",
-        confirmLabel: "refund order",
+          "This ticket's allocated amount goes back to the original card and only this QR stops working. This cannot be undone.",
+        confirmLabel: "refund ticket",
         intent: "danger",
       });
       if (!confirmed) return;
@@ -2009,8 +2009,8 @@ function EventOperations({
             ? refundPending
               ? `${ticket.holderName}'s refund is processing`
               : result.emailQueued
-                ? `${ticket.holderName}'s order refunded · confirmation email queued`
-                : `${ticket.holderName}'s order refunded · confirmation email needs attention`
+                ? `${ticket.holderName}'s ticket refunded · confirmation email queued`
+                : `${ticket.holderName}'s ticket refunded · confirmation email needs attention`
             : action === "void"
               ? `${ticket.holderName}'s ticket cancelled`
               : action === "redeem"

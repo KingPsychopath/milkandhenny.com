@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import type { AttendeeAccount } from "../types";
 
-export function TicketIdentityControls({ ticketId }: { ticketId: string }) {
+export function TicketIdentityControls({
+  ticketId,
+  canManageOrder,
+}: {
+  ticketId: string;
+  canManageOrder: boolean;
+}) {
   const [account, setAccount] = useState<AttendeeAccount | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [inAppBrowser, setInAppBrowser] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [showSend, setShowSend] = useState(false);
 
   useEffect(() => {
     setInAppBrowser(
@@ -24,6 +32,13 @@ export function TicketIdentityControls({ ticketId }: { ticketId: string }) {
 
   const personallyClaimed = account?.tickets.some(
     (ticket) => ticket.id === ticketId && ticket.personallyClaimed,
+  );
+  const currentTicket = account?.tickets.find((ticket) => ticket.id === ticketId);
+  const anotherClaimedTicket = account?.tickets.find(
+    (ticket) =>
+      ticket.id !== ticketId &&
+      ticket.personallyClaimed &&
+      ticket.eventSlug === currentTicket?.eventSlug,
   );
 
   async function claim() {
@@ -55,25 +70,82 @@ export function TicketIdentityControls({ ticketId }: { ticketId: string }) {
     }
   }
 
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    const response = await fetch("/api/attendee/ticket-operations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: personallyClaimed ? "transfer" : "assign",
+        ticketId,
+        recipientEmail,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    setMessage(
+      response.ok
+        ? personallyClaimed
+          ? "Transfer invitation sent. You keep the ticket until it is accepted."
+          : "Assignment invitation sent. You can cancel it from You while it is pending."
+        : (body.error ?? "The invitation could not be sent"),
+    );
+    if (response.ok) {
+      setRecipientEmail("");
+      setShowSend(false);
+    }
+    setBusy(false);
+  }
+
   if (!loaded) return null;
   return (
     <section aria-label="Keep this ticket across devices" className="mt-3">
       {personallyClaimed ? (
-        <p className="font-mono text-micro theme-muted">
-          saved to You{account?.name ? ` as ${account.name}` : ""} ·{" "}
-          <Link to="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
-            manage
-          </Link>
-        </p>
+        <div>
+          <p className="font-mono text-micro theme-muted">
+            saved to You{account?.name ? ` as ${account.name}` : ""} ·{" "}
+            <Link to="/my" className="inline-flex min-h-11 items-center underline hover:opacity-70">
+              manage
+            </Link>
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowSend((current) => !current)}
+            className="min-h-11 py-3 font-mono text-micro underline hover:opacity-70"
+          >
+            send to someone
+          </button>
+        </div>
       ) : account ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void claim()}
-          className="min-h-11 py-3 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
-        >
-          {busy ? "connecting…" : "save this ticket to You"}
-        </button>
+        <div className="flex flex-wrap gap-x-5">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void claim()}
+            className="min-h-11 py-3 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+          >
+            {busy
+              ? "connecting…"
+              : anotherClaimedTicket
+                ? "use this ticket instead"
+                : "use this ticket"}
+          </button>
+          {anotherClaimedTicket ? (
+            <span className="inline-flex min-h-11 items-center font-mono text-micro theme-faint">
+              keep using {anotherClaimedTicket.holderName}
+            </span>
+          ) : null}
+          {canManageOrder ? (
+            <button
+              type="button"
+              onClick={() => setShowSend((current) => !current)}
+              className="min-h-11 py-3 font-mono text-micro underline hover:opacity-70"
+            >
+              send to someone
+            </button>
+          ) : null}
+        </div>
       ) : (
         <p className="font-mono text-micro theme-muted">
           save this ticket across devices ·{" "}
@@ -86,6 +158,36 @@ export function TicketIdentityControls({ ticketId }: { ticketId: string }) {
           </Link>
         </p>
       )}
+      {showSend ? (
+        <form onSubmit={send} className="mt-3 border-y theme-border py-4">
+          <label htmlFor={`ticket-recipient-${ticketId}`} className="block font-mono text-xs">
+            recipient email
+          </label>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input
+              id={`ticket-recipient-${ticketId}`}
+              type="email"
+              required
+              value={recipientEmail}
+              onChange={(event) => setRecipientEmail(event.target.value)}
+              autoComplete="email"
+              className="min-h-11 min-w-0 flex-1 border theme-border bg-background px-3 font-mono text-sm"
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+            >
+              {busy ? "sending…" : personallyClaimed ? "review and transfer" : "send assignment"}
+            </button>
+          </div>
+          <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+            {personallyClaimed
+              ? "You remain the holder until the recipient accepts. Scoring and refunds pause while pending."
+              : "The recipient receives only this child ticket, never the rest of the order."}
+          </p>
+        </form>
+      ) : null}
       {message && (
         <p role="status" className="mt-3 font-mono text-xs theme-muted">
           {message}

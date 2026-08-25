@@ -87,13 +87,6 @@ export function TicketPage({
   const invalid = ticket.status !== "valid";
   // Self-serve refunds close when doors open; after that it is a conversation.
   const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
-  const anyOrderTicketRedeemed = orderTickets.some((entry) => Boolean(entry.redeemedAt));
-  const anyOrderTicketInvalid = orderTickets.some((entry) => entry.status !== "valid");
-  const orderAmountMinor = orderTickets.reduce(
-    (sum, entry) => sum + (entry.amountPaidMinor ?? 0),
-    0,
-  );
-  const orderCurrency = orderTickets.find((entry) => entry.currency)?.currency;
   const checkpoints = describeCheckpoints(checkpointNames);
   // The purchaser ticket is the order's credential — see `resolveTicketOrderAccess`.
   // Whoever holds this id gets every sibling QR and the refund button, so it is
@@ -154,7 +147,7 @@ export function TicketPage({
                   <li key={entry.id} className="grid grid-cols-[1fr_2.5rem] items-center gap-2">
                     <Link
                       to="/ticket/$id"
-                      params={{ id: entry.id }}
+                      params={{ id: entry.publicId ?? entry.id }}
                       search={preview ? { preview: true } : {}}
                       aria-current={current ? "page" : undefined}
                       className={`flex min-w-0 items-baseline gap-2 rounded-lg border px-3 py-2 font-mono text-micro transition-opacity hover:opacity-70 ${
@@ -175,7 +168,7 @@ export function TicketPage({
                         <span className="font-mono text-micro theme-faint">yours</span>
                       ) : entry.status === "valid" && !preview ? (
                         <ShareTicketButton
-                          ticketId={entry.id}
+                          ticketId={entry.publicId ?? entry.id}
                           holderName={entry.holderName}
                           eventTitle={event.title}
                           label="send"
@@ -386,7 +379,7 @@ export function TicketPage({
           </a>
           {!preview && !isManagerTicket && (
             <ShareTicketButton
-              ticketId={ticket.id}
+              ticketId={ticket.publicId ?? ticket.id}
               holderName={ticket.holderName}
               eventTitle={event.title}
               className="text-xs"
@@ -522,7 +515,9 @@ export function TicketPage({
           </section>
         )}
 
-        {!preview && <TicketIdentityControls ticketId={ticket.id} />}
+        {!preview && (
+          <TicketIdentityControls ticketId={ticket.id} canManageOrder={canManageOrder} />
+        )}
 
         {/* A way to reach a human, on the page they will actually have open.
             Step-free access, a name that needs changing, a QR the door cannot
@@ -545,17 +540,14 @@ export function TicketPage({
         {!preview && ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-8 border-t theme-border pt-6">
             <RefundTicketButton
-              ticketId={managerTicketId}
-              ticketCount={orderSize}
-              amountMinor={orderAmountMinor || ticket.amountPaidMinor}
-              currency={orderCurrency ?? ticket.currency}
+              ticketId={ticket.id}
+              amountMinor={ticket.amountPaidMinor}
+              currency={ticket.currency}
               disabledReason={
-                anyOrderTicketInvalid
-                  ? orderSize === 1
-                    ? "This ticket has been refunded."
-                    : "This order has already been partly or fully refunded. Message us if something's wrong."
-                  : anyOrderTicketRedeemed
-                    ? "Someone on this order is already checked in. Message us and we'll review it with the door record."
+                invalid
+                  ? "This ticket has already been refunded or voided."
+                  : redeemed
+                    ? "This ticket is already checked in. Message us and we'll review it with the door record."
                     : doorsOpen
                       ? "Doors are open, so refunds are no longer self-serve. Message us."
                       : undefined

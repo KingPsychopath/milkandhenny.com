@@ -55,6 +55,19 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists attendee_operations_audit_events cascade;
+    drop table if exists admin_alert_recipients cascade;
+    drop table if exists admin_notifications cascade;
+    drop table if exists admin_attention_cases cascade;
+    drop table if exists attendee_domain_events cascade;
+    drop table if exists global_admin_grants cascade;
+    drop table if exists ticket_refund_allocations cascade;
+    drop table if exists ticket_return_requests cascade;
+    drop table if exists ticket_transfers cascade;
+    drop table if exists ticket_assignments cascade;
+    drop table if exists attendee_action_links cascade;
+    drop table if exists event_operation_policies cascade;
+    drop table if exists attendee_operation_settings cascade;
     drop table if exists event_order_managers cascade;
     drop table if exists event_ticket_identity_claims cascade;
     drop table if exists event_person_login_challenges cascade;
@@ -137,8 +150,20 @@ export async function truncateAll(): Promise<void> {
   await query(
     `truncate event_order_managers, event_ticket_identity_claims,
               event_person_login_challenges, event_person_identifiers, event_people,
+              attendee_operations_audit_events, admin_alert_recipients, admin_notifications,
+              admin_attention_cases, attendee_domain_events, global_admin_grants,
+              ticket_refund_allocations, ticket_return_requests, ticket_transfers,
+              ticket_assignments, attendee_action_links, event_operation_policies,
               event_drops, guest_requests, scanner_link_devices, scanner_links,
               checkpoint_usage, checkpoints, site_settings cascade`,
+  ).catch(() => {});
+  await query(
+    `update attendee_operation_settings set
+       global_availability = '{"scoring":true,"publicLeaderboard":true,"manualStaffAwards":true,"discoveries":true,"guestPhotos":true,"transfers":false,"onwardTransfers":false,"complimentaryTransfers":false}'::jsonb,
+       new_event_defaults = '{"scoring":false,"publicLeaderboard":false,"manualStaffAwards":false,"discoveries":false,"guestPhotos":false,"transfers":false,"onwardTransfers":false,"complimentaryTransfers":false}'::jsonb,
+       emergency_paused = '{}'::jsonb, revision = 1, updated_by = 'root-owner',
+       update_reason = null, updated_at = now()
+     where id = true`,
   ).catch(() => {});
   await query(
     `update pitch_platform_settings set mode = 'enabled', updated_at = now() where singleton = true`,

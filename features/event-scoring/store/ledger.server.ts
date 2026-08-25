@@ -253,6 +253,19 @@ export async function recordScoreInTransaction(
   }
 
   const activityAward = ["manual", "game", "discovery", "check-in"].includes(input.sourceType);
+  if (activityAward) {
+    const pendingTransfer = await client.query(
+      `select 1
+         from event_participants participants
+         join ticket_transfers transfers on transfers.ticket_id = participants.ticket_id
+        where participants.id = any($1::text[]) and transfers.status = 'pending'
+        limit 1`,
+      [participantIds],
+    );
+    if (pendingTransfer.rowCount) {
+      return { ok: false, status: 409, error: "Ticket transfer is pending; activity is paused" };
+    }
+  }
   const activityRepeatRuleApplies = activityAward && input.sourceType !== "discovery";
   if (
     activityAward &&

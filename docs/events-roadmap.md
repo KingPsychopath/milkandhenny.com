@@ -7,8 +7,8 @@ ticketing marketplace. This roadmap orders work by what can lose money or hold u
 
 - One bundled delivery email per order, with an inline first QR and a link to every ticket.
 - Every ticket page can move through the other tickets in its order.
-- Whole-order refunds invalidate every QR and send a separate confirmation email.
-- Self-serve refunds stop when doors open or when anyone on the order has checked in.
+- Per-ticket refunds invalidate only the selected QR and send a separate confirmation email.
+- Self-serve refunds stop when doors open or when the selected ticket has checked in.
 - The scanner recognises an order and offers `check in all` or the scanned ticket only.
 - Event capacity is enforced across all ticket types in the final database transaction.
 - Paid checkout requires explicit acceptance; the accepted terms and refund-policy snapshot are
@@ -31,8 +31,8 @@ ticketing marketplace. This roadmap orders work by what can lose money or hold u
 ## Phase 3 — discovery and ownership
 
 - Event search/typeahead once the index is large enough to need it.
-- Named plus-ones, ticket transfer, and buyer-managed attendee names without changing the order
-  owner or payment record.
+- Named plus-ones and buyer-managed attendee names without changing the order owner or payment
+  record. Assignment and transfer are implemented behind global and event-level default-off gates.
 - Waitlist promotion with expiring, capacity-safe offers.
 - Apple Wallet and Google Wallet passes. These are signed pass products, not email attachments.
 - Optional Stripe receipt link in the order view while Stripe remains the financial receipt owner.

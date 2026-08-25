@@ -8,10 +8,37 @@ export type AttendeeAccount = {
     eventSlug: string;
     eventTitle: string;
     holderName: string;
+    status: string;
+    startsAt: string;
     points: number;
+    rank?: number;
+    publicAlias?: string;
+    scoreHistory: Array<{ points: number; reason: string; createdAt: string }>;
     personallyClaimed: boolean;
     managesOrder: boolean;
   }>;
+  ticketOperations: {
+    incomingAssignments: AttendeeTicketOperation[];
+    incomingTransfers: AttendeeTicketOperation[];
+    outgoingAssignments: AttendeeTicketOperation[];
+    outgoingTransfers: AttendeeTicketOperation[];
+  };
+  access: Array<{
+    kind: "global" | "event";
+    label: string;
+    eventSlug?: string;
+    status: string;
+    expiresAt?: string;
+  }>;
+};
+
+export type AttendeeTicketOperation = {
+  id: string;
+  ticketId: string;
+  eventSlug: string;
+  eventTitle: string;
+  status: string;
+  expiresAt: string;
 };
 
 export function safeReturnTo(value: unknown): string {

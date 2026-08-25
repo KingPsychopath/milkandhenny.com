@@ -138,6 +138,23 @@ describeWithDatabase("checkout outcome (postgres)", () => {
     expect(outcome.tickets.filter((ticket) => !ticket.parentTicketId)).toHaveLength(1);
   });
 
+  it("preserves an indivisible order total across per-ticket refund allocations", async () => {
+    await seedPaidEvent();
+    await seedCheckout("pending", 2, 30);
+    await query(`update checkout_sessions set amount_minor = 3001 where id = $1`, [SESSION_ID]);
+    stripe.retrieveSession.mockResolvedValue({ ...paidSession(), amountMinor: 3001 });
+
+    const outcome = await resolveCheckoutOutcome(SESSION_ID, ORIGIN);
+
+    expect(outcome.state).toBe("complete");
+    const allocations = await query<{ amount_paid_minor: number }>(
+      `select amount_paid_minor from tickets order by issued_at,id`,
+    );
+    expect(allocations.map((row) => row.amount_paid_minor).sort((a, b) => b - a)).toEqual([
+      1501, 1500,
+    ]);
+  });
+
   it("never issues tickets for a session Stripe says is unpaid", async () => {
     await seedPaidEvent();
     await seedCheckout("pending", 2, 30);

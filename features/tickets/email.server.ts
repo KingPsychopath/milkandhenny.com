@@ -158,9 +158,9 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     "",
     "Ticket terms:",
     event.terms ??
-      "Tickets are for this named, dated event. Entry is subject to the event details and house rules.",
+      "Tickets are for this named, dated event. Transfers are reassignment or gifting only; Milk & Henny does not arrange or protect private resale payments.",
     event.refundPolicy ??
-      "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.",
+      "Eligible refunds apply to one unused ticket at a time before doors open and return only to the original payment method. A transferred ticket needs purchaser and current-holder consent. After check-in, contact us for review.",
     "",
     "— milk & henny",
   ];
@@ -257,8 +257,8 @@ function buildHtml(
     </p>
     <div style="border-top:1px solid #e7e5e4;margin-top:20px;padding-top:16px;color:#78716c;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">
       <strong style="color:#1c1917">Ticket terms</strong><br>
-      ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Entry is subject to the event details and house rules.")}<br><br>
-      ${escapeHtml(event.refundPolicy ?? "Self-serve refunds are available before doors open while nobody on the order has checked in. After that, contact us so the door record can be reviewed.")}
+      ${escapeHtml(event.terms ?? "Tickets are for this named, dated event. Transfers are reassignment or gifting only; Milk & Henny does not arrange or protect private resale payments.")}<br><br>
+      ${escapeHtml(event.refundPolicy ?? "Eligible refunds apply to one unused ticket at a time before doors open and return only to the original payment method. A transferred ticket needs purchaser and current-holder consent. After check-in, contact us for review.")}
     </div>
     <p style="margin:24px 0 0"><img src="${ticketMascotUrl}" width="480" height="132" alt="A little pixel character celebrates your ticket" style="display:block;width:100%;height:auto;border:0"></p>`;
   return renderBrandedEmail({

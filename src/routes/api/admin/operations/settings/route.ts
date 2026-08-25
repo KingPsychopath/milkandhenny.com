@@ -1,0 +1,111 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import {
+  getEventOperationsPolicy,
+  getGlobalOperationsSettings,
+  updateEventOperationsPolicy,
+  updateGlobalOperationsSettings,
+} from "@/features/attendee-operations/capabilities.server";
+import { listEvents } from "@/features/events/store.server";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+
+async function handleGET(request: Request) {
+  const auth = await requireAuth(request, "admin");
+  if (auth) return auth;
+  try {
+    const events = await listEvents({ includeHidden: true });
+    const [global, policies] = await Promise.all([
+      getGlobalOperationsSettings(),
+      Promise.all(events.map((event) => getEventOperationsPolicy(event.slug))),
+    ]);
+    return Response.json({
+      global,
+      events: events.map((event, index) => ({
+        slug: event.slug,
+        title: event.title,
+        status: event.status,
+        policy: policies[index],
+      })),
+    });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "attendee-operations.settings.read",
+      "Could not load settings",
+      error,
+    );
+  }
+}
+
+async function handlePATCH(request: Request) {
+  const auth = await requireAuth(request, "admin");
+  if (auth) return auth;
+  try {
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return Response.json({ error: "Invalid request" }, { status: 400 });
+    if (body.scope === "global") {
+      const stepUp = await requireAdminStepUp(request);
+      if (stepUp) return stepUp;
+      if (
+        body.section !== "globalAvailability" &&
+        body.section !== "newEventDefaults" &&
+        body.section !== "emergencyPaused"
+      ) {
+        return Response.json({ error: "Unknown settings section" }, { status: 400 });
+      }
+      const global = await updateGlobalOperationsSettings({
+        section: body.section,
+        values:
+          body.values && typeof body.values === "object" && !Array.isArray(body.values)
+            ? body.values
+            : {},
+        actorId: "root-owner",
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+      });
+      return Response.json({ global });
+    }
+    if (body.scope === "event" && typeof body.eventSlug === "string") {
+      const policy = await updateEventOperationsPolicy({
+        eventSlug: body.eventSlug,
+        capabilities:
+          body.capabilities &&
+          typeof body.capabilities === "object" &&
+          !Array.isArray(body.capabilities)
+            ? body.capabilities
+            : undefined,
+        transferOpensAt:
+          body.transferOpensAt === null || typeof body.transferOpensAt === "string"
+            ? body.transferOpensAt
+            : undefined,
+        transferClosesAt:
+          body.transferClosesAt === null || typeof body.transferClosesAt === "string"
+            ? body.transferClosesAt
+            : undefined,
+        actorId: "root-owner",
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+      });
+      return Response.json({ policy });
+    }
+    return Response.json({ error: "Unknown settings scope" }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Settings could not be saved";
+    return message.includes("require") || message.includes("invalid") || message.includes("must")
+      ? Response.json({ error: message }, { status: 400 })
+      : apiErrorFromRequest(
+          request,
+          "attendee-operations.settings.update",
+          "Could not save settings",
+          error,
+        );
+  }
+}
+
+export const Route = createFileRoute("/api/admin/operations/settings")({
+  server: {
+    handlers: {
+      GET: ({ request }) => handleGET(request),
+      PATCH: ({ request }) => handlePATCH(request),
+    },
+  },
+});

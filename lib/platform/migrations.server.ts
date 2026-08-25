@@ -2536,6 +2536,345 @@ const MIGRATIONS: Migration[] = [
         foreign key (outbox_id) references email_outbox (id) on delete set null;
     `,
   },
+  {
+    id: "0054_attendee_operations",
+    sql: `
+      -- Global gates and event snapshots are intentionally separate. Enabling
+      -- a global capability never changes an existing event, and transfers
+      -- remain unavailable until both levels explicitly allow them.
+      create table attendee_operation_settings (
+        id                  boolean primary key default true check (id),
+        global_availability jsonb not null default '{
+          "scoring": true,
+          "publicLeaderboard": true,
+          "manualStaffAwards": true,
+          "discoveries": true,
+          "guestPhotos": true,
+          "transfers": false,
+          "onwardTransfers": false,
+          "complimentaryTransfers": false
+        }'::jsonb,
+        new_event_defaults  jsonb not null default '{
+          "scoring": false,
+          "publicLeaderboard": false,
+          "manualStaffAwards": false,
+          "discoveries": false,
+          "guestPhotos": false,
+          "transfers": false,
+          "onwardTransfers": false,
+          "complimentaryTransfers": false
+        }'::jsonb,
+        emergency_paused    jsonb not null default '{}'::jsonb,
+        revision            bigint not null default 1 check (revision >= 1),
+        updated_by          text not null default 'root-owner',
+        update_reason       text,
+        updated_at          timestamptz not null default now()
+      );
+      insert into attendee_operation_settings (id) values (true);
+
+      create table event_operation_policies (
+        event_slug          text primary key references events (slug)
+                            on update cascade on delete cascade,
+        capabilities        jsonb not null,
+        transfer_opens_at   timestamptz,
+        transfer_closes_at  timestamptz,
+        policy_version      bigint not null default 1 check (policy_version >= 1),
+        snapshotted_at      timestamptz not null default now(),
+        updated_by          text not null,
+        update_reason       text,
+        updated_at          timestamptz not null default now(),
+        check (transfer_closes_at is null or transfer_opens_at is null
+               or transfer_closes_at > transfer_opens_at)
+      );
+
+      -- One standard for every emailed authority link. Raw credentials are
+      -- never stored, and consumption is an atomic state transition.
+      create table attendee_action_links (
+        id                  text primary key,
+        token_hash          text not null unique check (char_length(token_hash) = 64),
+        purpose             text not null check (purpose in (
+                              'ticket-assignment', 'ticket-transfer', 'ticket-return',
+                              'refund-consent', 'staff-invitation', 'admin-invitation'
+                            )),
+        intended_email_hash text not null check (char_length(intended_email_hash) = 64),
+        intended_email_hint text not null check (char_length(intended_email_hint) <= 254),
+        entity_type         text not null,
+        entity_id           text not null,
+        payload             jsonb not null default '{}'::jsonb,
+        issued_by_type      text not null check (issued_by_type in ('root-owner','admin','staff','attendee','system')),
+        issued_by_id        text,
+        expires_at          timestamptz not null,
+        consumed_at         timestamptz,
+        consumed_by         text references event_people (id) on delete set null,
+        revoked_at          timestamptz,
+        revoke_reason       text,
+        created_at          timestamptz not null default now(),
+        check (octet_length(payload::text) <= 8192),
+        check (consumed_at is null or revoked_at is null)
+      );
+      create index attendee_action_links_expiry_idx
+        on attendee_action_links (expires_at) where consumed_at is null and revoked_at is null;
+      create index attendee_action_links_entity_idx
+        on attendee_action_links (entity_type, entity_id, created_at desc);
+
+      alter table tickets
+        add column access_reference text check (
+          access_reference is null or access_reference ~ '^[0-9A-HJKMNP-TV-Z]{16}$'
+        ),
+        add column authority_version integer not null default 1 check (authority_version >= 1);
+      create unique index tickets_access_reference_idx
+        on tickets (access_reference) where access_reference is not null;
+
+      create table ticket_assignments (
+        id                    text primary key,
+        event_slug            text not null references events (slug)
+                              on update cascade on delete restrict,
+        ticket_id             text not null references tickets (id) on delete restrict,
+        purchaser_person_id   text not null references event_people (id) on delete restrict,
+        recipient_email       text not null check (char_length(recipient_email) between 3 and 254),
+        recipient_email_hash  text not null check (char_length(recipient_email_hash) = 64),
+        recipient_email_hint  text not null check (char_length(recipient_email_hint) <= 254),
+        action_link_id        text references attendee_action_links (id) on delete set null,
+        status                text not null default 'pending'
+                              check (status in ('pending','claimed','cancelled','expired')),
+        claimed_by_person_id  text references event_people (id) on delete restrict,
+        expires_at            timestamptz not null,
+        claimed_at            timestamptz,
+        cancelled_at          timestamptz,
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now()
+      );
+      create unique index ticket_assignments_pending_ticket_idx
+        on ticket_assignments (ticket_id) where status = 'pending';
+
+      create table ticket_transfers (
+        id                    text primary key,
+        event_slug            text not null references events (slug)
+                              on update cascade on delete restrict,
+        ticket_id             text not null references tickets (id) on delete restrict,
+        sender_person_id      text not null references event_people (id) on delete restrict,
+        recipient_email       text not null check (char_length(recipient_email) between 3 and 254),
+        recipient_email_hash  text not null check (char_length(recipient_email_hash) = 64),
+        recipient_email_hint  text not null check (char_length(recipient_email_hint) <= 254),
+        action_link_id        text references attendee_action_links (id) on delete set null,
+        policy_version        bigint not null,
+        status                text not null default 'pending' check (status in (
+                                'pending','accepted','declined','cancelled','expired','invalidated'
+                              )),
+        accepted_by_person_id text references event_people (id) on delete restrict,
+        expires_at            timestamptz not null,
+        accepted_at           timestamptz,
+        declined_at           timestamptz,
+        cancelled_at          timestamptz,
+        invalidated_at        timestamptz,
+        invalidation_reason   text,
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now()
+      );
+      create unique index ticket_transfers_pending_ticket_idx
+        on ticket_transfers (ticket_id) where status = 'pending';
+      create index ticket_transfers_people_idx
+        on ticket_transfers (sender_person_id, created_at desc);
+
+      create table ticket_return_requests (
+        id                    text primary key,
+        event_slug            text not null references events (slug)
+                              on update cascade on delete restrict,
+        ticket_id             text not null references tickets (id) on delete restrict,
+        purchaser_person_id   text not null references event_people (id) on delete restrict,
+        holder_person_id      text not null references event_people (id) on delete restrict,
+        initiated_by_person_id text not null references event_people (id) on delete restrict,
+        action_link_id        text references attendee_action_links (id) on delete set null,
+        status                text not null default 'awaiting-consent' check (status in (
+                                'awaiting-consent','confirmed','declined','under-review',
+                                'refund-pending','refunded','failed','cancelled'
+                              )),
+        amount_minor          integer check (amount_minor is null or amount_minor >= 0),
+        currency              text,
+        consented_at          timestamptz,
+        resolved_at           timestamptz,
+        resolution_reason     text,
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now()
+      );
+      create unique index ticket_return_requests_active_ticket_idx
+        on ticket_return_requests (ticket_id)
+        where status in ('awaiting-consent','confirmed','under-review','refund-pending');
+
+      create table ticket_refund_allocations (
+        id                  text primary key,
+        ticket_id           text not null references tickets (id) on delete restrict,
+        event_slug          text not null references events (slug)
+                            on update cascade on delete restrict,
+        payment_ref         text not null,
+        refund_ref          text unique,
+        amount_minor        integer not null check (amount_minor >= 0),
+        currency            text not null,
+        state               text not null default 'processing'
+                            check (state in ('processing','pending','succeeded','failed','cancelled')),
+        initiated_by_type   text not null check (initiated_by_type in ('attendee','admin','system')),
+        initiated_by_id     text,
+        failure_reason      text,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        completed_at        timestamptz
+      );
+      create unique index ticket_refund_allocations_active_ticket_idx
+        on ticket_refund_allocations (ticket_id)
+        where state in ('processing','pending','succeeded');
+      create index ticket_refund_allocations_payment_idx
+        on ticket_refund_allocations (payment_ref, created_at);
+
+      create table global_admin_grants (
+        id                  text primary key,
+        person_id           text not null references event_people (id) on delete cascade,
+        role_preset         text not null check (role_preset in (
+                              'owner','admin','finance','support','communications','content','auditor'
+                            )),
+        overrides           jsonb not null default '{}'::jsonb,
+        status              text not null default 'pending'
+                            check (status in ('pending','active','paused','revoked','expired')),
+        starts_at           timestamptz not null default now(),
+        expires_at          timestamptz,
+        issued_by_type      text not null check (issued_by_type in ('root-owner','admin')),
+        issued_by_id        text,
+        invitation_link_id  text references attendee_action_links (id) on delete set null,
+        created_at          timestamptz not null default now(),
+        activated_at        timestamptz,
+        revoked_at          timestamptz,
+        audit_metadata      jsonb not null default '{}'::jsonb
+      );
+      create unique index global_admin_grants_active_person_role_idx
+        on global_admin_grants (person_id, role_preset)
+        where status in ('pending','active','paused');
+
+      -- Durable domain facts feed both the customer and operator projections.
+      create table attendee_domain_events (
+        id                  text primary key,
+        kind                text not null,
+        deduplication_key   text not null unique,
+        actor_type          text not null,
+        actor_id            text,
+        event_slug          text references events (slug) on update cascade on delete set null,
+        entity_refs         jsonb not null default '{}'::jsonb,
+        severity            text not null default 'info'
+                            check (severity in ('info','prompt','warning','critical')),
+        correlation_id      text not null,
+        payload             jsonb not null default '{}'::jsonb,
+        occurred_at         timestamptz not null default now(),
+        created_at          timestamptz not null default now(),
+        check (octet_length(entity_refs::text) <= 8192),
+        check (octet_length(payload::text) <= 16384)
+      );
+      create index attendee_domain_events_kind_idx
+        on attendee_domain_events (kind, occurred_at desc);
+
+      create table admin_attention_cases (
+        id                  text primary key,
+        category            text not null,
+        severity            text not null check (severity in ('prompt','warning','critical')),
+        event_slug          text references events (slug) on update cascade on delete set null,
+        related_entities    jsonb not null default '{}'::jsonb,
+        status              text not null default 'new'
+                            check (status in ('new','seen','in-progress','resolved','dismissed')),
+        assignee_person_id  text references event_people (id) on delete set null,
+        private_note        jsonb not null default '{}'::jsonb,
+        resolution_reason   text,
+        source_event_id     text references attendee_domain_events (id) on delete set null,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        resolved_at         timestamptz
+      );
+      create index admin_attention_cases_queue_idx
+        on admin_attention_cases (status, severity, updated_at desc);
+
+      create table admin_notifications (
+        id                  text primary key,
+        source_event_id     text not null references attendee_domain_events (id) on delete cascade,
+        case_id             text references admin_attention_cases (id) on delete set null,
+        title               text not null check (char_length(title) <= 200),
+        body                text not null check (char_length(body) <= 1000),
+        event_slug          text references events (slug) on update cascade on delete set null,
+        deep_link           text not null check (deep_link like '/%' and deep_link not like '//%'),
+        status              text not null default 'new'
+                            check (status in ('new','seen','in-progress','resolved','dismissed')),
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        resolved_at         timestamptz,
+        unique (source_event_id)
+      );
+      create index admin_notifications_inbox_idx
+        on admin_notifications (status, created_at desc);
+
+      create table admin_alert_recipients (
+        id                  text primary key,
+        person_id           text references event_people (id) on delete set null,
+        email_hash          text not null check (char_length(email_hash) = 64),
+        email_hint          text not null check (char_length(email_hint) <= 254),
+        categories          text[] not null default array['critical']::text[],
+        event_slugs         text[] not null default '{}'::text[],
+        cadence             text not null default 'immediate'
+                            check (cadence in ('immediate','digest')),
+        digest_hour         integer check (digest_hour between 0 and 23),
+        quiet_hours         jsonb not null default '{}'::jsonb,
+        critical_override   boolean not null default true,
+        fallback            boolean not null default false,
+        status              text not null default 'active' check (status in ('active','paused','revoked')),
+        verified_at         timestamptz not null,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now()
+      );
+
+      create table attendee_operations_audit_events (
+        id                  bigint generated always as identity primary key,
+        action              text not null,
+        actor_type          text not null,
+        actor_id            text,
+        event_slug          text references events (slug) on update cascade on delete set null,
+        entity_type         text not null,
+        entity_id           text not null,
+        before_state        jsonb,
+        after_state         jsonb,
+        reason              text,
+        affected_count      integer,
+        correlation_id      text,
+        created_at          timestamptz not null default now()
+      );
+      create index attendee_operations_audit_lookup_idx
+        on attendee_operations_audit_events (entity_type, entity_id, created_at desc);
+
+      -- Personal scoring/staff assignments become verified-person grants;
+      -- station assignments retain a rotatable bearer credential. Scanner
+      -- records can now point at that same station assignment.
+      alter table score_staff_assignments
+        alter column token_hash drop not null,
+        add column role_preset text,
+        add column invitation_state text not null default 'active'
+          check (invitation_state in ('pending','active','declined','expired','revoked')),
+        add column invited_email_hash text check (
+          invited_email_hash is null or char_length(invited_email_hash) = 64
+        ),
+        add column invitation_link_id text references attendee_action_links (id) on delete set null,
+        add column activated_at timestamptz,
+        add column last_used_at timestamptz;
+
+      alter table scanner_links
+        add column staff_assignment_id text references score_staff_assignments (id) on delete set null;
+
+      alter table email_outbox drop constraint if exists email_outbox_channel_check;
+      alter table email_outbox add constraint email_outbox_channel_check
+        check (channel in ('tickets','studio','communications','access','operations'));
+      alter table email_outbox drop constraint if exists email_outbox_kind_check;
+      alter table email_outbox add constraint email_outbox_kind_check check (kind in (
+        'ticket-issued','ticket-resend','ticket-refund','ticket-exchange',
+        'ticket-exchange-payment','attendee-access','ticket-assignment',
+        'ticket-transfer','ticket-return','staff-access','admin-access',
+        'operations-alert','operations-digest','event-broadcast','communication',
+        'communication-stage','communication-test','pitch-welcome','pitch-published',
+        'pitch-recovery','pitch-reminder'
+      ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

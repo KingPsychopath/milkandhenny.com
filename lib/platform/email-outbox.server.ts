@@ -78,7 +78,9 @@ function parseMessage(value: unknown): EmailMessage | null {
   if (
     (item.channel !== "tickets" &&
       item.channel !== "studio" &&
-      item.channel !== "communications") ||
+      item.channel !== "communications" &&
+      item.channel !== "access" &&
+      item.channel !== "operations") ||
     typeof item.to !== "string" ||
     typeof item.subject !== "string" ||
     typeof item.text !== "string" ||

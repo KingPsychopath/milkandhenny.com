@@ -572,6 +572,16 @@ export async function claimDiscovery(input: {
   }
   if (discovery.status !== "live")
     return { ok: false, status: 409, error: "This discovery is not live" };
+  const pendingTransfer = await queryOne<{ pending: boolean }>(
+    `select true as pending
+       from event_participants participants
+       join ticket_transfers transfers on transfers.ticket_id = participants.ticket_id
+      where participants.id = $1 and transfers.status = 'pending'`,
+    [input.participantId],
+  );
+  if (pendingTransfer) {
+    return { ok: false, status: 409, error: "Ticket transfer is pending; clues are paused" };
+  }
   const resolved = await resolveDiscovery(discovery, input.presented);
   if (!resolved.matched) return { ok: false, status: 400, error: "That clue does not match" };
   const clueKey = resolved.clueKey;

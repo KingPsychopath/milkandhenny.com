@@ -1,0 +1,77 @@
+import { createFileRoute } from "@tanstack/react-router";
+
+import { requireAuth } from "@/features/auth/auth.server";
+import {
+  listAdminInbox,
+  updateAdminNotification,
+  type AdminInboxItem,
+} from "@/features/attendee-operations/notifications.server";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
+
+async function handleGET(request: Request) {
+  const auth = await requireAuth(request, "admin");
+  if (auth) return auth;
+  try {
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status") as AdminInboxItem["status"] | null;
+    const valid = ["new", "seen", "in-progress", "resolved", "dismissed"].includes(status ?? "");
+    return Response.json(
+      await listAdminInbox({ status: valid ? (status ?? undefined) : undefined }),
+    );
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "attendee-operations.inbox.read",
+      "Could not load inbox",
+      error,
+    );
+  }
+}
+
+async function handlePATCH(request: Request) {
+  const auth = await requireAuth(request, "admin");
+  if (auth) return auth;
+  try {
+    const body = (await request.json().catch(() => null)) as {
+      id?: unknown;
+      status?: unknown;
+      reason?: unknown;
+    } | null;
+    const statuses = ["new", "seen", "in-progress", "resolved", "dismissed"] as const;
+    if (
+      !body ||
+      typeof body.id !== "string" ||
+      !statuses.some((status) => status === body.status)
+    ) {
+      return Response.json(
+        { error: "Notification and valid status are required" },
+        { status: 400 },
+      );
+    }
+    const updated = await updateAdminNotification({
+      id: body.id,
+      status: body.status as AdminInboxItem["status"],
+      actorId: "root-owner",
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    });
+    return updated
+      ? Response.json({ updated: true })
+      : Response.json({ error: "Notification not found" }, { status: 404 });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "attendee-operations.inbox.update",
+      "Could not update inbox",
+      error,
+    );
+  }
+}
+
+export const Route = createFileRoute("/api/admin/operations/inbox")({
+  server: {
+    handlers: {
+      GET: ({ request }) => handleGET(request),
+      PATCH: ({ request }) => handlePATCH(request),
+    },
+  },
+});

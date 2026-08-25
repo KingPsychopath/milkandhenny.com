@@ -318,7 +318,8 @@ export function EventDetailPage({
             ) : (
               <p>
                 Tickets are for this named, dated event. Entry is subject to the event details and
-                house rules shown above.
+                house rules shown above. Transfers are reassignment or gifting only; Milk &amp;
+                Henny does not arrange or protect private resale payments.
               </p>
             )}
           </div>
@@ -333,8 +334,10 @@ export function EventDetailPage({
               <PolicyMarkdown>{event.refundPolicy}</PolicyMarkdown>
             ) : (
               <p>
-                Self-serve refunds are available before doors open while nobody on the order has
-                checked in. After that, contact us so the door record can be reviewed.
+                Eligible self-serve refunds apply to the selected, unused ticket before doors open.
+                Money returns only to the original payment method. A transferred ticket needs the
+                purchaser and current holder to agree. After check-in, contact us so the door record
+                can be reviewed.
               </p>
             )}
           </div>

@@ -92,6 +92,34 @@ export function MyAccountPage() {
     window.location.assign("/");
   }
 
+  async function cancelOperation(kind: "assignment" | "transfer", operationId: string) {
+    setBusy(true);
+    const response = await fetch("/api/attendee/ticket-operations", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind, operationId }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) setMessage(body.error ?? "The invitation could not be cancelled");
+    else {
+      setMessage("Invitation cancelled.");
+      setAccount((current) => {
+        if (!current) return current;
+        const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
+        return {
+          ...current,
+          ticketOperations: {
+            ...current.ticketOperations,
+            [key]: current.ticketOperations[key].map((item) =>
+              item.id === operationId ? { ...item, status: "cancelled" } : item,
+            ),
+          },
+        };
+      });
+    }
+    setBusy(false);
+  }
+
   return (
     <main id="main" className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14">
       <Link to="/" className="font-mono text-micro theme-muted hover:text-foreground">
@@ -150,7 +178,7 @@ export function MyAccountPage() {
                               {ticket.personallyClaimed ? " · saved to You" : ""}
                             </span>
                             <span className="shrink-0 font-mono text-micro theme-muted">
-                              {ticket.points} pts →
+                              {ticket.points} pts{ticket.rank ? ` · #${ticket.rank}` : ""} →
                             </span>
                           </Link>
                         </li>
@@ -161,6 +189,72 @@ export function MyAccountPage() {
               </ul>
             )}
           </section>
+
+          {[
+            ...account.ticketOperations.incomingAssignments,
+            ...account.ticketOperations.incomingTransfers,
+            ...account.ticketOperations.outgoingAssignments,
+            ...account.ticketOperations.outgoingTransfers,
+          ].length > 0 ? (
+            <section
+              className="mt-10 border-t theme-border pt-6"
+              aria-labelledby="ticket-actions-heading"
+            >
+              <h2 id="ticket-actions-heading" className="font-serif text-2xl">
+                Ticket actions
+              </h2>
+              <ul className="mt-4 divide-y border-y theme-border">
+                {account.ticketOperations.outgoingAssignments.map((item) => (
+                  <OperationRow
+                    key={item.id}
+                    label="assignment sent"
+                    item={item}
+                    busy={busy}
+                    onCancel={() => void cancelOperation("assignment", item.id)}
+                  />
+                ))}
+                {account.ticketOperations.outgoingTransfers.map((item) => (
+                  <OperationRow
+                    key={item.id}
+                    label="transfer sent"
+                    item={item}
+                    busy={busy}
+                    onCancel={() => void cancelOperation("transfer", item.id)}
+                  />
+                ))}
+                {account.ticketOperations.incomingAssignments.map((item) => (
+                  <OperationRow key={item.id} label="incoming assignment" item={item} busy={busy} />
+                ))}
+                {account.ticketOperations.incomingTransfers.map((item) => (
+                  <OperationRow key={item.id} label="incoming transfer" item={item} busy={busy} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {account.access.length > 0 ? (
+            <section
+              className="mt-10 border-t theme-border pt-6"
+              aria-labelledby="staff-access-heading"
+            >
+              <h2 id="staff-access-heading" className="font-serif text-2xl">
+                Staff access
+              </h2>
+              <ul className="mt-4 divide-y border-y theme-border font-mono text-xs">
+                {account.access.map((grant, index) => (
+                  <li
+                    key={`${grant.kind}:${grant.eventSlug ?? "global"}:${grant.label}:${index}`}
+                    className="py-4"
+                  >
+                    <span>{grant.label.replaceAll("-", " ")}</span>
+                    <span className="ml-2 theme-muted">
+                      {grant.eventSlug ? `· ${grant.eventSlug} ` : "· global "}· {grant.status}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <details className="mt-10 border-t theme-border pt-2">
             <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
@@ -228,5 +322,40 @@ export function MyAccountPage() {
         </p>
       )}
     </main>
+  );
+}
+
+function OperationRow({
+  label,
+  item,
+  busy,
+  onCancel,
+}: {
+  label: string;
+  item: AttendeeAccount["ticketOperations"]["outgoingAssignments"][number];
+  busy: boolean;
+  onCancel?: () => void;
+}) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-4">
+      <div>
+        <p className="font-mono text-xs">
+          {label} · {item.eventTitle}
+        </p>
+        <p className="mt-1 font-mono text-micro theme-muted">
+          {item.status} · expires {new Date(item.expiresAt).toLocaleString()}
+        </p>
+      </div>
+      {onCancel && item.status === "pending" ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onCancel}
+          className="min-h-11 px-2 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
+        >
+          cancel
+        </button>
+      ) : null}
+    </li>
   );
 }

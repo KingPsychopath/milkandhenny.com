@@ -80,6 +80,9 @@ Two, with different blast radii:
 
 `EMAIL_API_KEY`, `EMAIL_TICKETS_FROM=tickets@tickets.milkandhenny.com`,
 `EMAIL_STUDIO_FROM=studio@notify.milkandhenny.com`, and
+`EMAIL_COMMUNICATIONS_FROM=events@notify.milkandhenny.com`,
+`EMAIL_ACCESS_FROM=access@notify.milkandhenny.com`,
+`EMAIL_OPERATIONS_FROM=alerts@notify.milkandhenny.com`, and
 `EMAIL_REPLY_TO=hello@milkandhenny.com` are set. `EMAIL_ACCOUNT_ID` falls back
 to `R2_ACCOUNT_ID`.
 

@@ -47,6 +47,8 @@ type TicketRow = {
   refunded_at: Date | null;
   refund_ref: string | null;
   notes: string | null;
+  access_reference: string | null;
+  authority_version: number;
 };
 
 function optional(value: string | null): string | undefined {
@@ -56,6 +58,8 @@ function optional(value: string | null): string | undefined {
 function toTicket(row: TicketRow): TicketRecord {
   return {
     id: row.id,
+    accessReference: optional(row.access_reference),
+    authorityVersion: row.authority_version,
     eventSlug: row.event_slug,
     ticketTypeId: row.ticket_type_id,
     kind: row.kind as TicketKind,
@@ -80,7 +84,10 @@ function toTicket(row: TicketRow): TicketRecord {
 
 export async function getTicket(id: string): Promise<TicketRecord | null> {
   if (!isValidTicketId(id)) return null;
-  const rows = await query<TicketRow>(`select * from tickets where id = $1`, [id]);
+  const rows = await query<TicketRow>(
+    `select * from tickets where id = $1 or access_reference = $1 order by (id = $1) desc limit 1`,
+    [id],
+  );
   return rows[0] ? toTicket(rows[0]) : null;
 }
 
@@ -206,6 +213,7 @@ export type NewTicket = {
   id: string;
   holderName: string;
   parentTicketId?: string;
+  amountPaidMinor?: number;
 };
 
 export type IssueInput = {
@@ -398,7 +406,7 @@ export async function insertTicketsWithCapacity(
           ticket.parentTicketId ?? null,
           input.paymentRef ?? null,
           input.checkoutRef ?? null,
-          input.amountPaidMinor ?? null,
+          ticket.amountPaidMinor ?? input.amountPaidMinor ?? null,
           input.currency ?? null,
           input.notes ?? null,
         ],
@@ -428,6 +436,17 @@ export async function claimRedemption(
   if (!isValidTicketId(id)) return { claimed: false, ticket: null };
 
   const claimed = await transaction(async (client) => {
+    const locked = await client.query<{ id: string }>(
+      `select id from tickets where id = $1 for update`,
+      [id],
+    );
+    if (!locked.rows[0]) return [];
+    const transfer = await client.query(
+      `select 1 from ticket_transfers
+        where ticket_id = $1 and status = 'pending' limit 1`,
+      [id],
+    );
+    if (transfer.rowCount) return [];
     const result = await client.query<TicketRow>(
       `update tickets
           set redeemed_at = now(),
@@ -738,7 +757,8 @@ export async function restoreDisputedTickets(
 export async function listValidTicketIds(slug: string): Promise<string[]> {
   if (!isValidEventSlug(slug)) return [];
   const rows = await query<{ id: string }>(
-    `select id from tickets where event_slug = $1 and status = 'valid'`,
+    `select coalesce(access_reference, id) as id
+       from tickets where event_slug = $1 and status = 'valid'`,
     [slug],
   );
   return rows.map((row) => row.id);

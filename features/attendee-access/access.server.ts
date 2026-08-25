@@ -17,6 +17,7 @@ import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
+import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { safeReturnTo, type AttendeeAccount } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -201,7 +202,7 @@ export async function requestAttendeeAccess(input: {
   const rendered = accessEmail({ email, origin: input.origin, challengeId, token, code });
   const sent = await sendEmail(
     {
-      channel: "tickets",
+      channel: "access",
       to: email,
       subject: "Your milk & henny access link",
       text: rendered.text,
@@ -551,7 +552,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     [personId],
   );
   if (!person) return null;
-  const [emails, tickets] = await Promise.all([
+  const [emails, tickets, ticketOperations, globalAccess, eventAccess] = await Promise.all([
     query<{ display_hint: string; verified_at: Date }>(
       `select coalesce(display_hint, 'verified email') as display_hint, verified_at
          from event_person_identifiers
@@ -564,14 +565,29 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       order_id: string;
       event_slug: string;
       event_title: string;
+      starts_at: Date;
       holder_name: string;
+      status: string;
       points: number;
+      public_alias: string | null;
+      rank: string | null;
+      participant_id: string | null;
       personally_claimed: boolean;
       manages_order: boolean;
     }>(
       `select distinct on (t.id)
-          t.id, t.order_id, t.event_slug, e.title as event_title, t.holder_name,
+          t.id, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
+          t.holder_name, t.status, p.id as participant_id,
           coalesce(sp.balance, 0)::integer as points,
+          coalesce(p.chosen_alias,p.generated_alias) as public_alias,
+          case when p.id is null then null else (
+            1 + (select count(*) from score_projections ranked
+                  join event_participants ranked_participant
+                    on ranked_participant.id = ranked.participant_id
+                 where ranked_participant.event_slug = t.event_slug
+                   and ranked_participant.status = 'active'
+                   and ranked.balance > coalesce(sp.balance, 0))
+          )::text end as rank,
           (p.person_id = $1) as personally_claimed,
           (om.id is not null) as manages_order
          from tickets t
@@ -584,7 +600,38 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
         order by t.id, t.issued_at desc`,
       [personId],
     ),
+    ticketOperationsForPerson(personId),
+    query<{ role_preset: string; status: string; expires_at: Date | null }>(
+      `select role_preset,status,expires_at from global_admin_grants
+        where person_id = $1 and status in ('pending','active','paused')
+        order by created_at desc`,
+      [personId],
+    ),
+    query<{ event_slug: string; label: string; status: string; expires_at: Date | null }>(
+      `select event_slug,label,status,expires_at from score_staff_assignments
+        where person_id = $1 and status in ('active','paused')
+        order by created_at desc`,
+      [personId],
+    ),
   ]);
+  const participantIds = tickets
+    .map((ticket) => ticket.participant_id)
+    .filter((participantId): participantId is string => Boolean(participantId));
+  const historyRows = participantIds.length
+    ? await query<{
+        participant_id: string;
+        points: number;
+        reason_code: string;
+        created_at: Date;
+      }>(
+        `select posting.participant_id,posting.points,score.reason_code,score.created_at
+           from score_postings posting
+           join score_transactions score on score.id = posting.transaction_id
+          where posting.participant_id = any($1::text[])
+          order by score.created_at desc limit 200`,
+        [participantIds],
+      )
+    : [];
   return {
     personId,
     name: person.canonical_name,
@@ -598,10 +645,37 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       eventSlug: row.event_slug,
       eventTitle: row.event_title,
       holderName: row.holder_name,
+      status: row.status,
+      startsAt: row.starts_at.toISOString(),
       points: row.points,
+      rank: row.rank ? Number(row.rank) : undefined,
+      publicAlias: row.public_alias ?? undefined,
+      scoreHistory: historyRows
+        .filter((history) => history.participant_id === row.participant_id)
+        .map((history) => ({
+          points: history.points,
+          reason: history.reason_code,
+          createdAt: history.created_at.toISOString(),
+        })),
       personallyClaimed: row.personally_claimed,
       managesOrder: row.manages_order,
     })),
+    ticketOperations,
+    access: [
+      ...globalAccess.map((grant) => ({
+        kind: "global" as const,
+        label: grant.role_preset,
+        status: grant.status,
+        expiresAt: grant.expires_at?.toISOString(),
+      })),
+      ...eventAccess.map((assignment) => ({
+        kind: "event" as const,
+        label: assignment.label,
+        eventSlug: assignment.event_slug,
+        status: assignment.status,
+        expiresAt: assignment.expires_at?.toISOString(),
+      })),
+    ],
   };
 }
 

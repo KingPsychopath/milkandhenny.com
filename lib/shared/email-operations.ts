@@ -1,4 +1,10 @@
-export const EMAIL_CHANNELS = ["tickets", "studio", "communications"] as const;
+export const EMAIL_CHANNELS = [
+  "tickets",
+  "studio",
+  "communications",
+  "access",
+  "operations",
+] as const;
 export type EmailChannel = (typeof EMAIL_CHANNELS)[number];
 
 export const EMAIL_OUTBOX_STATUSES = [
@@ -27,6 +33,13 @@ export const EMAIL_KINDS = [
   "ticket-exchange",
   "ticket-exchange-payment",
   "attendee-access",
+  "ticket-assignment",
+  "ticket-transfer",
+  "ticket-return",
+  "staff-access",
+  "admin-access",
+  "operations-alert",
+  "operations-digest",
   "event-broadcast",
   "communication",
   "communication-stage",
@@ -51,6 +64,12 @@ export interface EmailContext {
   deckId?: string;
   communicationId?: string;
   replayedFrom?: string;
+  assignmentId?: string;
+  transferId?: string;
+  returnRequestId?: string;
+  staffAssignmentId?: string;
+  adminGrantId?: string;
+  caseId?: string;
 }
 
 export const EMAIL_QUEUE_CONTENT_DAYS = 7;

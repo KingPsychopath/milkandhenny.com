@@ -105,6 +105,8 @@ export type IssueTicketsInput = {
   checkoutRef?: string;
   capacityHoldReference?: string;
   amountPaidMinor?: number;
+  /** Exact per-ticket allocations when an order total does not divide evenly. */
+  amountAllocationsMinor?: readonly number[];
   currency?: string;
   notes?: string;
   /** Staff may issue comps when public sales are closed. */
@@ -170,6 +172,13 @@ export async function issueTickets(
 
   const email = input.email ? normaliseEmail(input.email) : undefined;
   const orderId = generateOrderId();
+  if (
+    input.amountAllocationsMinor &&
+    (input.amountAllocationsMinor.length !== quantity ||
+      input.amountAllocationsMinor.some((amount) => !Number.isInteger(amount) || amount < 0))
+  ) {
+    return { ok: false, status: 400, error: "Ticket payment allocations are invalid" };
+  }
 
   // Ids are generated up front so plus-ones can point at the first ticket.
   const ids = Array.from({ length: quantity }, () => generateTicketId());
@@ -177,6 +186,7 @@ export async function issueTickets(
     id,
     holderName: index === 0 ? holderName : `${holderName} +${index}`,
     parentTicketId: index === 0 ? undefined : ids[0],
+    amountPaidMinor: input.amountAllocationsMinor?.[index],
   }));
 
   const outcome = await insertTicketsWithCapacity(
@@ -257,6 +267,12 @@ export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
   const existing = await getTicket(ticketId);
   if (!existing) return { result: "not-found" };
 
+  // A transfer rotates the bearer reference. Internal ids remain resolvable
+  // for administration, but an old QR must lose door authority immediately.
+  if (existing.accessReference && ticketId !== existing.accessReference) {
+    return { result: "invalid" };
+  }
+
   const event = await getEvent(existing.eventSlug);
   const ticketTypeName =
     (event ? findTicketType(event, existing.ticketTypeId)?.name : null) ?? "Ticket";
@@ -268,7 +284,7 @@ export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
     return { result: "void", ticket: toDoorView(existing, ticketTypeName) };
   }
 
-  const claim = await claimRedemption(ticketId, input.redeemedBy, input.offline === true);
+  const claim = await claimRedemption(existing.id, input.redeemedBy, input.offline === true);
 
   if (claim.claimed) {
     return { result: "admitted", ticket: toDoorView(claim.ticket, ticketTypeName) };
@@ -278,6 +294,7 @@ export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
   if (claim.ticket.status !== "valid") {
     return { result: "void", ticket: toDoorView(claim.ticket, ticketTypeName) };
   }
+  if (!claim.ticket.redeemedAt) return { result: "invalid" };
 
   return {
     result: "already-redeemed",

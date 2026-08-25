@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
+import { queryOne } from "@/lib/platform/postgres.server";
 import { getAttendeeSession, openAttendeeTicket } from "@/features/event-scoring/session.server";
 import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
 import { personalScore } from "@/features/event-scoring/scoring.server";
@@ -78,6 +79,21 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
     if (!loaded.ok || !loaded.value) return { found: false };
 
     const ticket = loaded.value;
+    if (!data.preview && ticket.accessReference && data.id !== ticket.accessReference) {
+      const attendeeSession = await getAttendeeSession().catch(() => null);
+      const personId = attendeeSession?.personId;
+      const [personOwnsTicket, personManagesOrder] = personId
+        ? await Promise.all([
+            queryOne<{ owns: boolean }>(
+              `select true as owns from event_participants
+                where ticket_id = $1 and person_id = $2`,
+              [ticket.id, personId],
+            ),
+            managedOrderIdsForPerson(personId).then((orders) => orders.includes(ticket.orderId)),
+          ])
+        : [null, false];
+      if (!personOwnsTicket && !personManagesOrder) return { found: false };
+    }
     const detailResult = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
@@ -143,6 +159,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       found: true,
       ticket: {
         id: ticket.id,
+        publicId: ticket.accessReference ?? ticket.id,
         holderName: ticket.holderName,
         kind: ticket.kind,
         status: ticket.status,
@@ -152,11 +169,12 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       },
       qrPayload: data.preview
         ? `milkandhenny:attendee-preview:${ticket.id}`
-        : buildTicketQrPayload(ticket.id),
+        : buildTicketQrPayload(ticket.accessReference ?? ticket.id),
       event: toTicketHolderEvent(event),
       orderTickets: access.tickets.map(
-        ({ id, holderName, status, redeemedAt, amountPaidMinor, currency }) => ({
+        ({ id, accessReference, holderName, status, redeemedAt, amountPaidMinor, currency }) => ({
           id,
+          publicId: accessReference ?? id,
           holderName,
           status,
           redeemedAt,

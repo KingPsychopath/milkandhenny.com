@@ -15,6 +15,11 @@ export const ADMIN_SECTIONS = [
     description: "Events, tickets, scanners, and pitches",
   },
   {
+    id: "operations",
+    label: "operations",
+    description: "Needs attention, attendees, tickets, and access",
+  },
+  {
     id: "communications",
     label: "communications",
     description: "Drafts, scheduled messages, media, and permissions",
@@ -26,8 +31,8 @@ export const ADMIN_SECTIONS = [
   },
   {
     id: "transfers",
-    label: "transfers",
-    description: "Active drops and media processing",
+    label: "file delivery",
+    description: "Private file drops and media processing",
   },
   {
     id: "best-dressed",
@@ -38,6 +43,11 @@ export const ADMIN_SECTIONS = [
     id: "system",
     label: "system",
     description: "Health, runtime, and sessions",
+  },
+  {
+    id: "settings",
+    label: "settings",
+    description: "Global capabilities, defaults, people, alerts, and audit",
   },
 ] as const;
 
@@ -86,7 +96,7 @@ export function AdminSectionNav({
       </div>
       <nav
         aria-label="Admin sections"
-        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 lg:grid-cols-6 sm:px-0"
+        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-4 lg:grid-cols-8 sm:px-0"
       >
         {PRIMARY_ADMIN_SECTIONS.map((section) => {
           const selected = section.id === primaryActive;

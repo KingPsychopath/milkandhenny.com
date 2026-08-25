@@ -14,6 +14,7 @@ import {
   markUnfulfilledCheckoutDisputed,
   reconcilePaymentRefunds,
   reopenWonDisputeCheckout,
+  updateAllocatedTicketRefund,
   updateCheckoutRefundStatus,
 } from "@/features/tickets/checkout.server";
 import {
@@ -177,6 +178,7 @@ async function handlePOST(request: Request) {
             ? refund.payment_intent
             : (refund.payment_intent?.id ?? null);
         await updateCheckoutRefundStatus(refund.id, refund.status);
+        const allocated = await updateAllocatedTicketRefund(refund.id, refund.status);
         if (
           await completePendingExchangeRefund(
             refund.id,
@@ -187,10 +189,10 @@ async function handlePOST(request: Request) {
           )
         )
           break;
-        if (paymentIntentId && refund.status === "succeeded") {
+        if (paymentIntentId && refund.status === "succeeded" && !allocated) {
           await reconcilePaymentRefunds(paymentIntentId);
         }
-        if (refund.status === "failed") {
+        if (refund.status === "failed" && !allocated) {
           const affected = await markRefundFailed(refund.id);
           log.error("stripe.webhook", "Refund failed; manual repayment is required", {
             refundId: refund.id,
