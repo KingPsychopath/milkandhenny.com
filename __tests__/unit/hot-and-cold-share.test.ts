@@ -18,7 +18,9 @@ describe("hot and cold result sharing", () => {
     expect(result.trail.map(({ sequence }) => sequence)).toEqual([1, 2, 4, 5]);
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
-    expect(result.text).toContain("found in 5 guesses");
+    expect(result.text).toBe(
+      "Hot & Cold · daily #12\n🧊 → 🔹 → 🔥 → ✨\nFound · 5 guesses\nClosest #400",
+    );
     expect(result.text).not.toContain("secret");
   });
 
@@ -31,6 +33,6 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).not.toContain(guess.word);
-    expect(result.text).toContain("first guess exact");
+    expect(result.text).toContain("Exact on the first guess");
   });
 });

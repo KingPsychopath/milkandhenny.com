@@ -69,29 +69,25 @@ export function buildHotAndColdShareResult({
       : null;
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
   const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
-  const resultLabel =
-    outcome === "found"
-      ? `found in ${guessLabel}`
-      : outcome === "revealed"
-        ? `revealed after ${guessLabel}`
-        : `closest after ${guessLabel}`;
-  const detail =
+  const outcomeLabel =
+    outcome === "found" ? "Found" : outcome === "revealed" ? "Revealed" : "Closest wins";
+  const closest =
     bestRank === null
-      ? "no trail"
-      : `${bestRank === 0 ? "first guess exact" : `closest lead-in #${bestRank.toLocaleString("en-US")}`} · coldest #${coldestRank?.toLocaleString("en-US")}`;
-  const symbols = trail.length ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" ") : "—";
+      ? "No ranked guesses"
+      : bestRank === 0
+        ? "Exact on the first guess"
+        : `Closest #${bestRank.toLocaleString("en-US")}`;
+  const symbols = trail.length ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ") : "—";
+  const outcomeSummary = [
+    outcomeLabel,
+    guessLabel,
+    hintsUsed > 0 ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 
   return {
-    text: [
-      `hot and cold · ${label}`,
-      resultLabel,
-      "",
-      symbols,
-      detail,
-      hintsUsed > 0 ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} used` : null,
-    ]
-      .filter((line): line is string => line !== null)
-      .join("\n"),
+    text: [`Hot & Cold · ${label}`, symbols, outcomeSummary, closest].join("\n"),
     trail,
     guessCount: guesses.length,
     bestRank,
