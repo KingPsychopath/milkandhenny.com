@@ -74,6 +74,7 @@ import { printLayout } from "@/features/event-scoring/print";
 import { PRINT_PACK_KINDS } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getScoringOperationsSnapshot } from "@/features/event-scoring/operations.server";
+import { confirmManagedEventGameResult } from "@/features/event-scoring/game-launch.server";
 import {
   isLeaderboardVisibility,
   isScoringState,
@@ -360,6 +361,58 @@ async function handlePOST(request: Request, slug: string) {
         poolId: stringValue(body.poolId),
         allowOverride: body.allowOverride === true,
       });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ transaction: result.value });
+    }
+
+    if (action === "confirm-managed-game-result") {
+      const kind = body.kind;
+      const activityId = stringValue(body.activityId);
+      const gameInstanceId = stringValue(body.gameInstanceId);
+      const resultId = stringValue(body.resultId);
+      if (
+        (kind !== "pitches" && kind !== "icebreaker") ||
+        !activityId ||
+        !gameInstanceId ||
+        !resultId
+      )
+        return Response.json({ error: "Managed game result is incomplete" }, { status: 400 });
+      const result = await confirmManagedEventGameResult(
+        kind === "pitches"
+          ? {
+              kind,
+              eventSlug: slug,
+              activityId,
+              gameInstanceId,
+              resultId,
+              candidateParticipantIds: Array.isArray(body.candidateParticipantIds)
+                ? body.candidateParticipantIds.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+              ballots: Array.isArray(body.ballots)
+                ? body.ballots.flatMap((value) => {
+                    const ballot = recordBody(value);
+                    const voterParticipantId = ballot && stringValue(ballot.voterParticipantId);
+                    const candidateParticipantId =
+                      ballot && stringValue(ballot.candidateParticipantId);
+                    return voterParticipantId && candidateParticipantId
+                      ? [{ voterParticipantId, candidateParticipantId }]
+                      : [];
+                  })
+                : [],
+            }
+          : {
+              kind,
+              eventSlug: slug,
+              activityId,
+              gameInstanceId,
+              resultId,
+              participantIds: Array.isArray(body.participantIds)
+                ? body.participantIds.filter((value): value is string => typeof value === "string")
+                : [],
+            },
+      );
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ transaction: result.value });
     }

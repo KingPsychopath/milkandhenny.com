@@ -74,6 +74,11 @@ import {
   getScoringOperationsSnapshot,
   recordScoringOperationalEvent,
 } from "@/features/event-scoring/operations.server";
+import { confirmManagedEventGameResult } from "@/features/event-scoring/game-launch.server";
+import {
+  icebreakerEncounterPlayers,
+  pitchesPlayersFromBallots,
+} from "@/features/event-scoring/managed-game-results";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   applyPenalty,
@@ -230,6 +235,63 @@ describeWithDatabase("event scoring postgres", () => {
       severity: "critical",
       message: "3 score writes failed in 15 minutes.",
     });
+  });
+
+  it("validates Pitches ballots and Icebreaker encounters before official scoring", async () => {
+    expect(
+      pitchesPlayersFromBallots({
+        candidateParticipantIds: ["one", "two"],
+        ballots: [
+          { voterParticipantId: "voter", candidateParticipantId: "one" },
+          { voterParticipantId: "voter", candidateParticipantId: "two" },
+        ],
+      }),
+    ).toMatchObject({ ok: false });
+    expect(icebreakerEncounterPlayers(["same", "same"])).toMatchObject({ ok: false });
+
+    await query(
+      `insert into tickets (id, event_slug, ticket_type_id, holder_name, order_id)
+       values ('01ARZ3NDEKTSV4R2', 'scoring-night', 'standard', 'Second', 'ord_second')`,
+    );
+    const first = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const second = await participantForTicket("01ARZ3NDEKTSV4R2");
+    expect(first && second).toBeTruthy();
+    if (!first || !second) return;
+    await markParticipantCheckedIn(first.id);
+    await markParticipantCheckedIn(second.id);
+    await getOrCreateSettings("scoring-night");
+    await changeScoringState({ eventSlug: "scoring-night", state: "ready", actorId: "admin" });
+    await changeScoringState({ eventSlug: "scoring-night", state: "live", actorId: "admin" });
+    const activity = await createScoringActivity({
+      eventSlug: "scoring-night",
+      name: "Meet somebody",
+      template: "completion",
+      rule: { mode: "fixed", fixedPoints: 2, repeat: "once", requiresCheckIn: true },
+      status: "live",
+      actorId: "admin",
+    });
+    expect(activity.ok).toBe(true);
+    if (!activity.ok) return;
+    const result = await confirmManagedEventGameResult({
+      kind: "icebreaker",
+      eventSlug: "scoring-night",
+      activityId: activity.value.id,
+      gameInstanceId: "icebreaker-night",
+      resultId: "encounter-one",
+      participantIds: [first.id, second.id],
+    });
+    expect(result.ok).toBe(true);
+    const repeated = await confirmManagedEventGameResult({
+      kind: "icebreaker",
+      eventSlug: "scoring-night",
+      activityId: activity.value.id,
+      gameInstanceId: "icebreaker-night",
+      resultId: "encounter-one",
+      participantIds: [first.id, second.id],
+    });
+    expect(repeated.ok).toBe(true);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(2);
+    expect((await participantForTicket("01ARZ3NDEKTSV4R2"))?.balance).toBe(2);
   });
 
   it("keeps public display choices separate from participant and score identity", async () => {

@@ -2088,6 +2088,18 @@ const MIGRATIONS: Migration[] = [
         on score_operational_events (event_slug, kind, created_at desc);
     `,
   },
+  {
+    id: "0045_event_scoring_extended_games",
+    sql: `
+      alter table event_game_score_bindings
+        drop constraint event_game_score_bindings_game_kind_check;
+      alter table event_game_score_bindings
+        add constraint event_game_score_bindings_game_kind_check check (game_kind in (
+          'centre', 'twin', 'draw-country', 'same-brain', 'spelling-party',
+          'liars', 'pitches', 'heads-up', 'spelling-bee', 'icebreaker'
+        ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
