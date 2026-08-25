@@ -34,6 +34,7 @@ import {
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
+  releaseActivityReservations,
   reverseScore,
   updateActivity,
   updateSettings,
@@ -227,6 +228,17 @@ export async function updateScoringActivity(input: {
       JSON.stringify({ ruleRevision: updated.ruleRevision }),
     ],
   );
+  if (input.status === "ended" || input.status === "cancelled") {
+    const releasedPoints = await releaseActivityReservations(updated.eventSlug, updated.id);
+    if (releasedPoints > 0) {
+      await query(
+        `insert into score_audit_events
+           (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+         values ($1,'activity.reservations.released','admin',$2,'activity',$3,$4::jsonb)`,
+        [updated.eventSlug, input.actorId, updated.id, JSON.stringify({ releasedPoints })],
+      );
+    }
+  }
   return { ok: true, value: updated };
 }
 

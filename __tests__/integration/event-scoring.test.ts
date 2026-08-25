@@ -16,6 +16,7 @@ import {
   participantForTicket,
   recordScore,
   rebuildEventProjections,
+  releaseActivityReservations,
   reverseScore,
   setTeamMembership,
   updateParticipantPublicIdentity,
@@ -1108,6 +1109,20 @@ describeWithDatabase("event scoring postgres", () => {
     });
     const pool = (await listPools("scoring-night"))[0];
     expect(pool).toMatchObject({ reserved: 0, spent: 3, available: 17 });
+    const second = await reserveOfflineScoreBudget({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "offline-device",
+      activityId: activity.id,
+      points: 6,
+    });
+    expect(second.ok).toBe(true);
+    expect(await releaseActivityReservations("scoring-night", activity.id)).toBe(6);
+    expect((await listPools("scoring-night"))[0]).toMatchObject({
+      reserved: 0,
+      spent: 3,
+      available: 17,
+    });
     if (previousSecret === undefined) delete process.env.AUTH_SECRET;
     else process.env.AUTH_SECRET = previousSecret;
   });

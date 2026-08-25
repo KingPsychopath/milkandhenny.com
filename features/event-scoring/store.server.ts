@@ -1755,6 +1755,35 @@ export async function listPools(eventSlug: string): Promise<
   }));
 }
 
+export async function releaseActivityReservations(
+  eventSlug: string,
+  activityId: string,
+): Promise<number> {
+  return transaction(async (client) => {
+    const released = await client.query<{ pool_id: string; points: number }>(
+      `with closed as (
+         update score_offline_reservations
+            set status = 'closed', closed_at = now()
+          where event_slug = $1 and activity_id = $2 and status = 'active'
+         returning pool_id, issued_points - spent_points as points
+       )
+       select pool_id, sum(points)::integer as points from closed group by pool_id`,
+      [eventSlug, activityId],
+    );
+    let total = 0;
+    for (const row of released.rows) {
+      await client.query(
+        `update score_pools
+            set reserved_points = reserved_points - $2, updated_at = now()
+          where id = $1 and reserved_points >= $2`,
+        [row.pool_id, row.points],
+      );
+      total += row.points;
+    }
+    return total;
+  });
+}
+
 export async function createStaffAssignment(input: {
   eventSlug: string;
   label: string;
