@@ -77,6 +77,7 @@ async function seedCheckout(status = "pending", quantity = 2, ageSeconds = 0) {
 function paidSession(quantity = 2) {
   return {
     paid: true,
+    status: "complete" as const,
     paymentIntentId: "pi_test_outcome",
     amountMinor: 1500 * quantity,
     currency: "gbp",

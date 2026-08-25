@@ -1,16 +1,13 @@
 import { log } from "@/lib/platform/logger.server";
-import { deleteEvent, getEvent, listEvents, putEvent, renameEventSlug } from "./store.server";
+import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
 import {
   isEventHeroHeight,
   isEventStatus,
   isPubliclyVisible,
-  isUpcoming,
   isValidEventSlug,
   slugifyEventTitle,
-  toPublicEvent,
   type EventRecord,
   type EventStatus,
-  type PublicEvent,
   type TicketType,
 } from "./types";
 
@@ -133,6 +130,24 @@ function normaliseTicketType(input: unknown, index: number): EventOpResult<Ticke
 }
 
 export type EventInput = Record<string, unknown>;
+
+function eventCommitmentConflict(error: unknown): EventOpResult<never> | null {
+  if (!error || typeof error !== "object") return null;
+  const code = "code" in error && typeof error.code === "string" ? error.code : "";
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+  if (code === "23514" && message.includes("committed places")) {
+    return { ok: false, status: 409, error: message };
+  }
+  if (code === "23503") {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "That ticket type has ticket or exchange history and cannot be removed. Hide it instead.",
+    };
+  }
+  return null;
+}
 
 /**
  * Validate and normalise caller-supplied event fields.
@@ -343,8 +358,13 @@ export async function updateEvent(
         error: `An event with slug "${normalised.value.slug}" exists`,
       };
     }
-    await renameEventSlug(existing.slug, normalised.value.slug);
-    await putEvent(normalised.value);
+    try {
+      await putEvent(normalised.value, { renameFrom: existing.slug });
+    } catch (error) {
+      const conflict = eventCommitmentConflict(error);
+      if (conflict) return conflict;
+      throw error;
+    }
     log.info("events.update", "Event slug changed", {
       from: existing.slug,
       to: normalised.value.slug,
@@ -355,7 +375,13 @@ export async function updateEvent(
       : { ok: false, status: 500, error: "Event could not be read after rename" };
   }
 
-  await putEvent(normalised.value);
+  try {
+    await putEvent(normalised.value);
+  } catch (error) {
+    const conflict = eventCommitmentConflict(error);
+    if (conflict) return conflict;
+    throw error;
+  }
   const updated = await getEvent(normalised.value.slug);
   return updated
     ? { ok: true, value: updated }
@@ -367,27 +393,6 @@ export async function removeEvent(slug: string): Promise<EventOpResult<void>> {
   if (!existing) return { ok: false, status: 404, error: "Event not found" };
   await deleteEvent(slug);
   return { ok: true, value: undefined };
-}
-
-export type EventsIndexData = {
-  upcoming: PublicEvent[];
-  past: PublicEvent[];
-};
-
-/** Upcoming ascending (soonest first), past descending (most recent first). */
-export async function getEventsIndex(now = Date.now()): Promise<EventsIndexData> {
-  const events = await listEvents();
-  const upcoming: PublicEvent[] = [];
-  const past: PublicEvent[] = [];
-
-  for (const event of events) {
-    (isUpcoming(event, now) ? upcoming : past).push(toPublicEvent(event));
-  }
-
-  upcoming.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-  past.sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
-
-  return { upcoming, past };
 }
 
 export { getEvent, listEvents };

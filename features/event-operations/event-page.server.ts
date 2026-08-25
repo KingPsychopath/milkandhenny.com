@@ -11,7 +11,10 @@ import {
 } from "@/features/events/types";
 import type { ResponsiveImageData } from "@/features/media/image";
 import { resolveAlbumImageUrls } from "@/features/media/resolve-album-image.server";
-import { getSoldCounts } from "@/features/tickets/store.server";
+import {
+  getTicketCapacitySnapshot,
+  type TicketCapacitySnapshot,
+} from "@/features/tickets/capacity.server";
 import { listPublishedPitches } from "@/features/things/pitches/pitches.server";
 import {
   PITCH_SHOWCASE_MARKDOWN_HREF,
@@ -28,34 +31,51 @@ export type TicketTypeAvailability = {
 
 export function buildAvailability(
   event: EventRecord,
-  sold: Record<string, number>,
+  capacity: TicketCapacitySnapshot,
   now = Date.now(),
 ): TicketTypeAvailability[] {
+  const soldTotal = Object.values(capacity.sold).reduce((total, count) => total + count, 0);
+  const checkoutTotal = Object.values(capacity.checkoutReserved).reduce(
+    (total, count) => total + count,
+    0,
+  );
   const eventRemaining =
     event.capacity === undefined
       ? Number.POSITIVE_INFINITY
-      : Math.max(
-          0,
-          event.capacity - Object.values(sold).reduce((total, count) => total + count, 0),
-        );
+      : Math.max(0, event.capacity - soldTotal - checkoutTotal);
 
   return event.ticketTypes
     .filter((type) => !type.hidden)
     .map((type) => {
-      const soldCount = sold[type.id] ?? 0;
-      const sales = ticketTypeSalesState(event, type, soldCount, now);
+      const soldCount = capacity.sold[type.id] ?? 0;
+      const occupied =
+        soldCount +
+        (capacity.checkoutReserved[type.id] ?? 0) +
+        (capacity.exchangeReserved[type.id] ?? 0);
+      const sales = ticketTypeSalesState(event, type, occupied, now);
       return {
         type,
         sold: soldCount,
-        remaining: Math.min(Math.max(0, type.quantity - soldCount), eventRemaining),
+        remaining: Math.min(Math.max(0, type.quantity - occupied), eventRemaining),
         sales: eventRemaining === 0 && sales.state === "on-sale" ? { state: "sold-out" } : sales,
       };
     });
 }
 
+export function isEventSoldOut(
+  event: Pick<EventRecord, "status">,
+  availability: TicketTypeAvailability[],
+): boolean {
+  return (
+    event.status === "sold-out" ||
+    (availability.length > 0 && availability.every((entry) => entry.remaining === 0))
+  );
+}
+
 export type EventPageData = {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
+  soldOut: boolean;
   pitchShowcase?: PublicPitchDeck[];
   heroImage?: ResponsiveImageData;
   descriptionImages: Record<string, ResponsiveImageData>;
@@ -93,14 +113,16 @@ export async function getEventPage(
   const imageSources = [event.heroImage, ...markdownImageSources(event.description)].filter(
     (source): source is string => Boolean(source),
   );
-  const [sold, pitchShowcase, images] = await Promise.all([
-    getSoldCounts(slug),
+  const [capacity, pitchShowcase, images] = await Promise.all([
+    getTicketCapacitySnapshot(slug),
     resolvePitchShowcase(event.description),
     resolveAlbumImageUrls(imageSources),
   ]);
+  const availability = buildAvailability(event, capacity);
   return {
     event: options.revealLocation ? toTicketHolderEvent(event) : toPublicEvent(event),
-    availability: buildAvailability(event, sold),
+    availability,
+    soldOut: isEventSoldOut(event, availability),
     pitchShowcase,
     heroImage: event.heroImage ? images[event.heroImage] : undefined,
     descriptionImages: Object.fromEntries(

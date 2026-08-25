@@ -2,7 +2,12 @@ import type { PoolClient } from "pg";
 
 import { log } from "@/lib/platform/logger.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
-import { isValidEventSlug } from "@/features/events/types";
+import { isValidEventSlug, ticketTypeSalesState, type EventRecord } from "@/features/events/types";
+import {
+  ACTIVE_EXCHANGE_HOLD_SQL,
+  countCheckoutHolds,
+  countExchangeHolds,
+} from "./capacity.server";
 import { isValidTicketId, type TicketKind, type TicketRecord, type TicketStatus } from "./types";
 
 /**
@@ -98,6 +103,43 @@ export async function listTicketsForEvent(slug: string): Promise<TicketRecord[]>
   return rows.map(toTicket);
 }
 
+export type ActiveTicketExchangeSummary = {
+  ticketId: string;
+  status: "processing" | "awaiting_payment" | "refund_pending";
+  toTicketTypeId: string;
+  toTicketTypeName: string;
+  errorMessage?: string;
+};
+
+export async function listActiveTicketExchangesForEvent(
+  slug: string,
+): Promise<ActiveTicketExchangeSummary[]> {
+  if (!isValidEventSlug(slug)) return [];
+  const rows = await query<{
+    ticket_id: string;
+    status: ActiveTicketExchangeSummary["status"];
+    to_ticket_type_id: string;
+    to_ticket_type_name: string;
+    error_message: string | null;
+  }>(
+    `select exchange.ticket_id, exchange.status, exchange.to_ticket_type_id,
+            type.name as to_ticket_type_name, exchange.error_message
+       from ticket_exchanges exchange
+       join ticket_types type
+         on type.event_slug = exchange.event_slug and type.id = exchange.to_ticket_type_id
+      where exchange.event_slug = $1 and exchange.${ACTIVE_EXCHANGE_HOLD_SQL}
+      order by exchange.created_at desc`,
+    [slug],
+  );
+  return rows.map((row) => ({
+    ticketId: row.ticket_id,
+    status: row.status,
+    toTicketTypeId: row.to_ticket_type_id,
+    toTicketTypeName: row.to_ticket_type_name,
+    errorMessage: row.error_message ?? undefined,
+  }));
+}
+
 export async function listTicketsForEmail(
   slug: string,
   emailHash: string,
@@ -175,17 +217,22 @@ export type IssueInput = {
   emailHash?: string;
   paymentRef?: string;
   checkoutRef?: string;
+  /** The local Checkout request whose reservation becomes these tickets. */
+  capacityHoldReference?: string;
   amountPaidMinor?: number;
   currency?: string;
   notes?: string;
-  /** Staff comping past a closed sales window or a full house. */
-  ignoreCapacity?: boolean;
+  /** Explicit staff-only admission beyond the configured public capacity. */
+  bypassCapacity?: boolean;
+  /** Recheck public sales rules under the same locks as issuance. */
+  enforceSalesWindow?: boolean;
 };
 
 export type IssueOutcome =
   | { ok: true; tickets: TicketRecord[] }
   | { ok: false; reason: "sold-out"; remaining: number }
   | { ok: false; reason: "per-person-limit"; limit: number }
+  | { ok: false; reason: "not-on-sale" }
   | { ok: false; reason: "unknown-type" };
 
 /**
@@ -203,15 +250,29 @@ export async function insertTicketsWithCapacity(
     // Lock the event before its ticket type. Every issuance takes locks in
     // this order, so ticket types selling concurrently cannot exceed the
     // room-wide cap or deadlock each other.
-    const eventResult = await client.query<{ capacity: number | null }>(
-      `select capacity from events where slug = $1 for update`,
-      [input.eventSlug],
-    );
+    const eventResult = await client.query<{
+      capacity: number | null;
+      status: EventRecord["status"];
+      starts_at: Date;
+      ends_at: Date | null;
+    }>(`select capacity, status, starts_at, ends_at from events where slug = $1 for update`, [
+      input.eventSlug,
+    ]);
     const event = eventResult.rows[0];
     if (!event) return { ok: false as const, reason: "unknown-type" as const };
 
-    const typeResult = await client.query<{ quantity: number; per_person_limit: number }>(
-      `select quantity, per_person_limit from ticket_types
+    const typeResult = await client.query<{
+      name: string;
+      price_minor: number;
+      currency: string;
+      quantity: number;
+      per_person_limit: number;
+      sales_start: Date | null;
+      sales_end: Date | null;
+      hidden: boolean;
+    }>(
+      `select name, price_minor, currency, quantity, per_person_limit,
+              sales_start, sales_end, hidden from ticket_types
         where event_slug = $1 and id = $2
         for update`,
       [input.eventSlug, input.ticketTypeId],
@@ -219,7 +280,33 @@ export async function insertTicketsWithCapacity(
     const ticketType = typeResult.rows[0];
     if (!ticketType) return { ok: false as const, reason: "unknown-type" as const };
 
-    if (!input.ignoreCapacity) {
+    if (input.enforceSalesWindow) {
+      if (ticketType.hidden) return { ok: false as const, reason: "unknown-type" as const };
+      const sales = ticketTypeSalesState(
+        {
+          status: event.status,
+          startsAt: event.starts_at.toISOString(),
+          endsAt: event.ends_at?.toISOString(),
+        },
+        {
+          id: input.ticketTypeId,
+          name: ticketType.name,
+          priceMinor: ticketType.price_minor,
+          currency: ticketType.currency,
+          quantity: ticketType.quantity,
+          perPersonLimit: ticketType.per_person_limit,
+          salesStart: ticketType.sales_start?.toISOString(),
+          salesEnd: ticketType.sales_end?.toISOString(),
+          hidden: ticketType.hidden,
+        },
+        0,
+      );
+      if (sales.state !== "on-sale") {
+        return { ok: false as const, reason: "not-on-sale" as const };
+      }
+    }
+
+    if (!input.bypassCapacity) {
       if (input.emailHash) {
         const heldResult = await client.query<{ held: string }>(
           `select count(*)::text as held from tickets
@@ -227,8 +314,19 @@ export async function insertTicketsWithCapacity(
               and email_hash = $3 and status = 'valid'`,
           [input.eventSlug, input.ticketTypeId, input.emailHash],
         );
+        const checkoutHeld = await countCheckoutHolds(client, {
+          eventSlug: input.eventSlug,
+          ticketTypeId: input.ticketTypeId,
+          emailHash: input.emailHash,
+          excludeReference: input.capacityHoldReference,
+        });
+        const exchangeHeld = await countExchangeHolds(client, {
+          eventSlug: input.eventSlug,
+          ticketTypeId: input.ticketTypeId,
+          emailHash: input.emailHash,
+        });
         const held = Number.parseInt(heldResult.rows[0]?.held ?? "0", 10);
-        if (held + newTickets.length > ticketType.per_person_limit) {
+        if (held + checkoutHeld + exchangeHeld + newTickets.length > ticketType.per_person_limit) {
           return {
             ok: false as const,
             reason: "per-person-limit" as const,
@@ -246,14 +344,19 @@ export async function insertTicketsWithCapacity(
       // An exchange keeps its current seat while reserving the destination.
       // Count those short-lived reservations here so a normal checkout cannot
       // take a place after someone has started paying the price difference.
-      const reservedResult = await client.query<{ reserved: string }>(
-        `select count(*)::text as reserved from ticket_exchanges
-          where event_slug = $1 and to_ticket_type_id = $2
-            and status in ('processing', 'awaiting_payment', 'refund_pending')`,
-        [input.eventSlug, input.ticketTypeId],
+      const checkoutReserved = await countCheckoutHolds(client, {
+        eventSlug: input.eventSlug,
+        ticketTypeId: input.ticketTypeId,
+        excludeReference: input.capacityHoldReference,
+      });
+      const exchangeReserved = await countExchangeHolds(client, {
+        eventSlug: input.eventSlug,
+        ticketTypeId: input.ticketTypeId,
+      });
+      const typeRemaining = Math.max(
+        0,
+        ticketType.quantity - sold - checkoutReserved - exchangeReserved,
       );
-      const reserved = Number.parseInt(reservedResult.rows[0]?.reserved ?? "0", 10);
-      const typeRemaining = Math.max(0, ticketType.quantity - sold - reserved);
       let eventRemaining = Number.POSITIVE_INFINITY;
       if (event.capacity !== null) {
         const eventSoldResult = await client.query<{ sold: string }>(
@@ -262,7 +365,11 @@ export async function insertTicketsWithCapacity(
           [input.eventSlug],
         );
         const eventSold = Number.parseInt(eventSoldResult.rows[0]?.sold ?? "0", 10);
-        eventRemaining = Math.max(0, event.capacity - eventSold);
+        const checkoutEventReserved = await countCheckoutHolds(client, {
+          eventSlug: input.eventSlug,
+          excludeReference: input.capacityHoldReference,
+        });
+        eventRemaining = Math.max(0, event.capacity - eventSold - checkoutEventReserved);
       }
       const remaining = Math.min(typeRemaining, eventRemaining);
       if (newTickets.length > remaining) {

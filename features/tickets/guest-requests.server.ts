@@ -183,7 +183,8 @@ export async function decideGuestRequest(input: {
     quantity: 1,
     kind: "comp",
     notes: `guest request by ${claimed.requested_by}`,
-    force: true,
+    bypassSalesWindow: true,
+    bypassCapacity: true,
   });
   if (!issued.ok) {
     await query(

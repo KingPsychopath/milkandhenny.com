@@ -21,7 +21,12 @@ import type {
   TicketExchangeStatus,
 } from "./exchange-types";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
-import { getSoldCounts, listTicketsForOrder } from "./store.server";
+import {
+  countCheckoutHolds,
+  countExchangeHolds,
+  getTicketCapacitySnapshot,
+} from "./capacity.server";
+import { listTicketsForOrder } from "./store.server";
 import type { TicketOpResult } from "./tickets.server";
 import { isValidTicketId } from "./types";
 
@@ -113,29 +118,21 @@ export async function getTicketExchangeManagement(input: {
   const manager = await verifyManager(input.managerTicketId, input.managerTicketId);
   if (!manager) return { ok: false, status: 403, error: "This link cannot manage that order" };
 
-  const [event, tickets, sold, exchanges] = await Promise.all([
+  const [event, tickets, capacity, exchanges] = await Promise.all([
     getEvent(manager.event_slug),
     listTicketsForOrder(manager.order_id),
-    getSoldCounts(manager.event_slug),
+    getTicketCapacitySnapshot(manager.event_slug),
     query<ExchangeRow>(
       `select * from ticket_exchanges
-        where event_slug = $1 and status in ('processing', 'awaiting_payment', 'refund_pending')
+        where order_id = $1 and status in ('processing', 'awaiting_payment', 'refund_pending')
         order by created_at desc`,
-      [manager.event_slug],
+      [manager.order_id],
     ),
   ]);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
 
   const types = new Map(event.ticketTypes.map((type) => [type.id, type]));
-  const active = new Map(
-    exchanges
-      .filter((exchange) => exchange.order_id === manager.order_id)
-      .map((exchange) => [exchange.ticket_id, exchange]),
-  );
-  const reservations = exchanges.reduce<Record<string, number>>((counts, exchange) => {
-    counts[exchange.to_ticket_type_id] = (counts[exchange.to_ticket_type_id] ?? 0) + 1;
-    return counts;
-  }, {});
+  const active = new Map(exchanges.map((exchange) => [exchange.ticket_id, exchange]));
   const orderTickets: ManagedExchangeTicket[] = tickets.map((ticket) => {
     const type = types.get(ticket.ticketTypeId);
     const exchange = active.get(ticket.id);
@@ -155,19 +152,36 @@ export async function getTicketExchangeManagement(input: {
             status: exchange.status,
             toTicketTypeName: target?.name ?? "Ticket",
             amountDeltaMinor: exchange.amount_delta_minor,
+            errorMessage: exchange.error_message ?? undefined,
           }
         : undefined,
     };
   });
-  const options = selfServiceTypes(event.ticketTypes).map((type) => ({
-    id: type.id,
-    name: type.name,
-    priceMinor: type.priceMinor,
-    currency: type.currency,
-    available:
-      ticketTypeSalesState(event, type, sold[type.id] ?? 0).state === "on-sale" &&
-      (sold[type.id] ?? 0) + (reservations[type.id] ?? 0) < type.quantity,
-  }));
+  const exchangeSalesEvent =
+    event.status === "sold-out" ? { ...event, status: "published" as const } : event;
+  const options = selfServiceTypes(event.ticketTypes).map((type) => {
+    const occupied =
+      (capacity.sold[type.id] ?? 0) +
+      (capacity.checkoutReserved[type.id] ?? 0) +
+      (capacity.exchangeReserved[type.id] ?? 0);
+    const sales = ticketTypeSalesState(exchangeSalesEvent, type, occupied);
+    const available = sales.state === "on-sale" && occupied < type.quantity;
+    return {
+      id: type.id,
+      name: type.name,
+      priceMinor: type.priceMinor,
+      currency: type.currency,
+      available,
+      ...(!available
+        ? {
+            unavailableReason:
+              sales.state === "sold-out" || occupied >= type.quantity
+                ? ("sold-out" as const)
+                : ("not-on-sale" as const),
+          }
+        : {}),
+    };
+  });
 
   return {
     ok: true,
@@ -272,15 +286,16 @@ async function reserveExchange(input: {
         where event_slug = $1 and ticket_type_id = $2 and status = 'valid'`,
       [ticket.event_slug, row.id],
     );
-    const reservationResult = await client.query<{ reserved: string }>(
-      `select count(*)::text as reserved from ticket_exchanges
-        where event_slug = $1 and to_ticket_type_id = $2
-          and status in ('processing', 'awaiting_payment', 'refund_pending')`,
-      [ticket.event_slug, row.id],
-    );
     const sold = Number(countResult.rows[0]?.sold ?? 0);
-    const reserved = Number(reservationResult.rows[0]?.reserved ?? 0);
-    if (sold + reserved >= row.quantity) {
+    const checkoutReserved = await countCheckoutHolds(client, {
+      eventSlug: ticket.event_slug,
+      ticketTypeId: row.id,
+    });
+    const exchangeReserved = await countExchangeHolds(client, {
+      eventSlug: ticket.event_slug,
+      ticketTypeId: row.id,
+    });
+    if (sold + checkoutReserved + exchangeReserved >= row.quantity) {
       return { error: `${row.name} is sold out`, status: 409 } as const;
     }
     const heldResult = await client.query<{ held: string }>(
@@ -293,9 +308,24 @@ async function reserveExchange(input: {
               and order_id = $3 and status = 'valid'`,
       [ticket.event_slug, row.id, ticket.email_hash ?? ticket.order_id],
     );
-    if (Number(heldResult.rows[0]?.held ?? 0) + 1 > row.per_person_limit) {
+    const checkoutPersonHeld = ticket.email_hash
+      ? await countCheckoutHolds(client, {
+          eventSlug: ticket.event_slug,
+          ticketTypeId: row.id,
+          emailHash: ticket.email_hash,
+        })
+      : 0;
+    const exchangePersonHeld = await countExchangeHolds(client, {
+      eventSlug: ticket.event_slug,
+      ticketTypeId: row.id,
+      ...(ticket.email_hash ? { emailHash: ticket.email_hash } : { orderId: ticket.order_id }),
+    });
+    if (
+      Number(heldResult.rows[0]?.held ?? 0) + checkoutPersonHeld + exchangePersonHeld + 1 >
+      row.per_person_limit
+    ) {
       return {
-        error: `Limit of ${row.per_person_limit} per order for ${row.name}`,
+        error: `Limit of ${row.per_person_limit} per ${input.actorType === "purchaser" ? "person" : "order"} for ${row.name}`,
         status: 409,
       } as const;
     }
@@ -725,7 +755,10 @@ export async function resolveTicketExchangeOutcome(input: {
     return { state: "complete", message: "Ticket changed.", ticketId: exchange.ticket_id };
   }
   if (activeStatus(exchange.status)) {
-    return { state: "pending", message: "Your ticket change is still processing." };
+    return {
+      state: "pending",
+      message: exchange.error_message ?? "Your ticket change is still processing.",
+    };
   }
   return {
     state: "failed",
@@ -767,11 +800,23 @@ export async function completePendingExchangeRefund(
       [exchange.id, allocation.payment_ref, refundId, normalizedStatus],
     );
     if (normalizedStatus === "failed") {
+      const succeeded = await client.query<{ count: string }>(
+        `select count(*)::text as count from ticket_exchange_refunds
+          where exchange_id = $1 and status = 'succeeded'`,
+        [exchange.id],
+      );
+      const partiallyRefunded = Number(succeeded.rows[0]?.count ?? 0) > 0;
       await client.query(
         `update ticket_exchanges
-            set status = 'failed', error_message = 'The partial refund failed', updated_at = now()
+            set status = $2, error_message = $3, updated_at = now()
           where id = $1`,
-        [exchange.id],
+        [
+          exchange.id,
+          partiallyRefunded ? "refund_pending" : "failed",
+          partiallyRefunded
+            ? "Part of the refund succeeded, but the remainder needs attention"
+            : "The partial refund failed",
+        ],
       );
       return;
     }

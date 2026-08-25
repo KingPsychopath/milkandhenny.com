@@ -107,6 +107,7 @@ export type CreateCheckoutInput = {
 export type CheckoutSession = {
   id: string;
   url: string;
+  expiresAt: string;
 };
 
 export async function createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutSession> {
@@ -139,7 +140,11 @@ export async function createCheckoutSession(input: CreateCheckoutInput): Promise
   );
 
   if (!session.url) throw new Error("Stripe returned a session with no redirect URL");
-  return { id: session.id, url: session.url };
+  return {
+    id: session.id,
+    url: session.url,
+    expiresAt: new Date(session.expires_at * 1000).toISOString(),
+  };
 }
 
 /** Expire an unpaid hosted Checkout session before cancelling its local intent. */
@@ -198,6 +203,7 @@ export async function refundPayment(input: {
 
 export async function retrieveSession(sessionId: string): Promise<{
   paid: boolean;
+  status: Stripe.Checkout.Session.Status | null;
   paymentIntentId: string | null;
   amountMinor: number | null;
   currency: string | null;
@@ -218,6 +224,7 @@ export async function retrieveSession(sessionId: string): Promise<{
         : null;
     return {
       paid: session.payment_status === "paid",
+      status: session.status,
       paymentIntentId:
         typeof session.payment_intent === "string"
           ? session.payment_intent

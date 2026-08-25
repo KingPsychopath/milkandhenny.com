@@ -2208,6 +2208,121 @@ const MIGRATIONS: Migration[] = [
         where state in ('accepted', 'held');
     `,
   },
+  {
+    id: "0049_checkout_capacity_holds",
+    sql: `
+      alter table checkout_sessions
+        add column checkout_url text,
+        add column expires_at timestamptz not null default (now() + interval '30 minutes');
+
+      create index checkout_sessions_capacity_idx
+        on checkout_sessions (event_slug, ticket_type_id, status, expires_at);
+      create index checkout_sessions_email_capacity_idx
+        on checkout_sessions (event_slug, ticket_type_id, email_hash, status, expires_at);
+
+      create or replace function enforce_event_capacity_floor() returns trigger
+      language plpgsql as $$
+      declare
+        committed integer;
+      begin
+        if new.capacity is null then return new; end if;
+        select
+          (select count(*) from tickets
+            where event_slug = old.slug and status = 'valid')
+          +
+          (select coalesce(sum(quantity), 0) from checkout_sessions
+            where event_slug = old.slug
+              and (
+                (status in ('creating', 'pending') and expires_at > now())
+                or status in ('payment_pending', 'fulfilling', 'payment_mismatch')
+              ))
+          into committed;
+        if new.capacity < committed then
+          raise exception 'Event capacity cannot be lower than % committed places', committed
+            using errcode = '23514';
+        end if;
+        return new;
+      end;
+      $$;
+
+      create trigger events_capacity_floor
+        before update of capacity on events
+        for each row execute function enforce_event_capacity_floor();
+
+      create or replace function enforce_ticket_type_capacity_floor() returns trigger
+      language plpgsql as $$
+      declare
+        committed integer;
+        target_quantity integer;
+      begin
+        select
+          (select count(*) from tickets
+            where event_slug = old.event_slug and ticket_type_id = old.id and status = 'valid')
+          +
+          (select coalesce(sum(quantity), 0) from checkout_sessions
+            where event_slug = old.event_slug and ticket_type_id = old.id
+              and (
+                (status in ('creating', 'pending') and expires_at > now())
+                or status in ('payment_pending', 'fulfilling', 'payment_mismatch')
+              ))
+          +
+          (select count(*) from ticket_exchanges
+            where event_slug = old.event_slug and to_ticket_type_id = old.id
+              and status in ('processing', 'awaiting_payment', 'refund_pending'))
+          into committed;
+        target_quantity := case when tg_op = 'DELETE' then 0 else new.quantity end;
+        if target_quantity < committed then
+          raise exception 'Ticket type % cannot be lower than % committed places', old.id, committed
+            using errcode = '23514';
+        end if;
+        if tg_op = 'DELETE' then return old; end if;
+        return new;
+      end;
+      $$;
+
+      create trigger ticket_types_capacity_floor
+        before update of quantity or delete on ticket_types
+        for each row execute function enforce_ticket_type_capacity_floor();
+    `,
+  },
+  {
+    id: "0050_complete_event_slug_cascades",
+    sql: `
+      -- These event-owned tables were introduced after the original slug
+      -- cascade migration. Keep a slug edit atomic across every newer child.
+      alter table score_offline_reservations
+        drop constraint score_offline_reservations_event_slug_fkey;
+      alter table score_offline_reservations
+        add constraint score_offline_reservations_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+
+      alter table score_anomaly_flags
+        drop constraint score_anomaly_flags_event_slug_fkey;
+      alter table score_anomaly_flags
+        add constraint score_anomaly_flags_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+
+      alter table score_operational_events
+        drop constraint score_operational_events_event_slug_fkey;
+      alter table score_operational_events
+        add constraint score_operational_events_event_slug_fkey
+        foreign key (event_slug) references events(slug) on update cascade on delete restrict;
+
+      alter table ticket_exchanges
+        drop constraint ticket_exchanges_event_slug_fkey,
+        drop constraint ticket_exchanges_event_slug_from_ticket_type_id_fkey,
+        drop constraint ticket_exchanges_event_slug_to_ticket_type_id_fkey;
+      alter table ticket_exchanges
+        add constraint ticket_exchanges_event_slug_fkey
+          foreign key (event_slug) references events(slug) on update cascade on delete restrict,
+        add constraint ticket_exchanges_event_slug_from_ticket_type_id_fkey
+          foreign key (event_slug, from_ticket_type_id)
+          references ticket_types(event_slug, id) on update cascade on delete restrict,
+        add constraint ticket_exchanges_event_slug_to_ticket_type_id_fkey
+          foreign key (event_slug, to_ticket_type_id)
+          references ticket_types(event_slug, id) on update cascade on delete restrict;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

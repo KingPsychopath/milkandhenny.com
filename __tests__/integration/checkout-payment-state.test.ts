@@ -65,6 +65,7 @@ async function seedCheckout(amountMinor = 1500) {
 function paidSession(amountMinor = 1500) {
   return {
     paid: true,
+    status: "complete" as const,
     paymentIntentId: "pi_test_payment_state",
     amountMinor,
     currency: "gbp",
@@ -110,7 +111,7 @@ describeWithDatabase("checkout payment state (postgres)", () => {
       await queryOne<{ status: string }>("select status from checkout_sessions where id = $1", [
         SESSION_ID,
       ]),
-    ).toEqual({ status: "pending" });
+    ).toEqual({ status: "payment_pending" });
   });
 
   it("does not record a terminally failed automatic refund as pending", async () => {
@@ -143,7 +144,7 @@ describeWithDatabase("checkout payment state (postgres)", () => {
       await queryOne<{ status: string }>("select status from checkout_sessions where id = $1", [
         SESSION_ID,
       ]),
-    ).toEqual({ status: "pending" });
+    ).toEqual({ status: "payment_pending" });
   });
 
   it("does not issue a ticket when Stripe's paid amount differs from the ledger", async () => {
@@ -176,7 +177,24 @@ describeWithDatabase("checkout payment state (postgres)", () => {
       await queryOne<{ status: string }>("select status from checkout_sessions where id = $1", [
         SESSION_ID,
       ]),
-    ).toEqual({ status: "pending" });
+    ).toEqual({ status: "payment_pending" });
+  });
+
+  it("honours a paid reservation when sales close while the buyer is at Stripe", async () => {
+    await seedPaidEvent();
+    await seedCheckout();
+    await query(`update events set status = 'sold-out' where slug = 'paid-night'`);
+    stripe.retrieveSession.mockResolvedValue(paidSession());
+
+    const result = await fulfilCheckout(SESSION_ID, "https://example.com");
+
+    expect(result.outcome).toBe("issued");
+    expect(
+      await queryOne<{ status: string; ticket_type_id: string }>(
+        `select status, ticket_type_id from tickets where checkout_ref = $1`,
+        [SESSION_ID],
+      ),
+    ).toEqual({ status: "valid", ticket_type_id: "entry" });
   });
 
   it("recovers tickets created before an interrupted checkout ledger update", async () => {
@@ -191,6 +209,7 @@ describeWithDatabase("checkout payment state (postgres)", () => {
       kind: "paid",
       paymentRef: "pi_test_payment_state",
       checkoutRef: SESSION_ID,
+      capacityHoldReference: REFERENCE,
       amountPaidMinor: 1500,
       currency: "GBP",
     });

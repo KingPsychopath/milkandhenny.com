@@ -58,6 +58,9 @@ function EventDetailRoute() {
   const jsonLd = buildEventJsonLd(event, {
     url: buildEventUrl(origin, event.slug),
     imageUrl: absoluteUrl(event.ogImage ?? event.heroImage ?? OG_IMAGES.events),
+    soldOutTicketTypeIds: new Set(
+      availability.filter((entry) => entry.remaining === 0).map((entry) => entry.type.id),
+    ),
   });
 
   return (
@@ -69,6 +72,7 @@ function EventDetailRoute() {
       <EventDetailPage
         event={event}
         availability={availability}
+        soldOut={data.soldOut}
         pitchShowcase={data.pitchShowcase}
         heroImage={data.heroImage}
         descriptionImages={data.descriptionImages}

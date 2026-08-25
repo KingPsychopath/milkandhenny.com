@@ -180,7 +180,7 @@ export function buildEventJsonLd(
     | "heroImage"
     | "ticketTypes"
   >,
-  options: { url: string; imageUrl?: string },
+  options: { url: string; imageUrl?: string; soldOutTicketTypeIds?: ReadonlySet<string> },
 ): Record<string, unknown> {
   const offers = event.ticketTypes
     .filter((type) => !type.hidden)
@@ -191,7 +191,9 @@ export function buildEventJsonLd(
       priceCurrency: type.currency,
       url: options.url,
       availability:
-        event.status === "sold-out" ? "https://schema.org/SoldOut" : "https://schema.org/InStock",
+        event.status === "sold-out" || options.soldOutTicketTypeIds?.has(type.id)
+          ? "https://schema.org/SoldOut"
+          : "https://schema.org/InStock",
     }));
 
   return {

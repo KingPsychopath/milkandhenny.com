@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   buildEventIcs,
+  buildEventJsonLd,
   buildPublicIcsOptions,
   buildTicketHolderIcsOptions,
 } from "@/features/events/ics";
@@ -159,5 +160,41 @@ describe("three-word hints", () => {
       buildEventIcs(EVENT, buildTicketHolderIcsOptions(EVENT, { eventUrl: EVENT_URL })),
     );
     expect(ics).toContain("https://what3words.com/plant.window.stairs");
+  });
+});
+
+describe("event structured data availability", () => {
+  it("marks only exhausted ticket types as sold out", () => {
+    const event: EventRecord = {
+      ...EVENT,
+      ticketTypes: [
+        {
+          id: "entry",
+          name: "Entry",
+          priceMinor: 1000,
+          currency: "GBP",
+          quantity: 10,
+          perPersonLimit: 4,
+          hidden: false,
+        },
+        {
+          id: "vip",
+          name: "VIP",
+          priceMinor: 2000,
+          currency: "GBP",
+          quantity: 2,
+          perPersonLimit: 2,
+          hidden: false,
+        },
+      ],
+    };
+    const jsonLd = buildEventJsonLd(event, {
+      url: EVENT_URL,
+      soldOutTicketTypeIds: new Set(["vip"]),
+    });
+    expect(jsonLd.offers).toEqual([
+      expect.objectContaining({ name: "Entry", availability: "https://schema.org/InStock" }),
+      expect.objectContaining({ name: "VIP", availability: "https://schema.org/SoldOut" }),
+    ]);
   });
 });

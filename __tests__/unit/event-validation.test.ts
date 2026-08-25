@@ -276,9 +276,47 @@ describe("event-wide capacity", () => {
     );
     if (!result.ok) throw new Error(result.error);
 
-    const availability = buildAvailability(result.value, { entry: 2, guest: 1 });
+    const availability = buildAvailability(result.value, {
+      sold: { entry: 2, guest: 1 },
+      checkoutReserved: {},
+      exchangeReserved: {},
+    });
     expect(availability.map((entry) => entry.remaining)).toEqual([0, 0]);
     expect(availability.map((entry) => entry.sales.state)).toEqual(["sold-out", "sold-out"]);
+  });
+
+  it("includes paid Checkout and ticket-exchange reservations in availability", () => {
+    const result = normaliseEventInput(
+      validInput({
+        capacity: 4,
+        ticketTypes: [
+          {
+            id: "entry",
+            name: "Entry",
+            priceMinor: 1000,
+            currency: "GBP",
+            quantity: 3,
+            perPersonLimit: 4,
+          },
+          {
+            id: "vip",
+            name: "VIP",
+            priceMinor: 2000,
+            currency: "GBP",
+            quantity: 2,
+            perPersonLimit: 4,
+          },
+        ],
+      }),
+    );
+    if (!result.ok) throw new Error(result.error);
+
+    const availability = buildAvailability(result.value, {
+      sold: { entry: 1 },
+      checkoutReserved: { entry: 1 },
+      exchangeReserved: { vip: 1 },
+    });
+    expect(availability.map((entry) => entry.remaining)).toEqual([1, 1]);
   });
 });
 

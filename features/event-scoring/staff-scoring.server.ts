@@ -249,7 +249,8 @@ export async function submitStaffGuest(input: {
       quantity: 1,
       kind: "comp",
       notes: `added by ${context.assignment.label}`,
-      force: true,
+      bypassSalesWindow: true,
+      bypassCapacity: true,
     });
     return issued.ok
       ? { ok: true as const, value: { mode: "added" as const, name } }

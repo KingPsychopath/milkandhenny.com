@@ -22,7 +22,7 @@ import {
   setTeamMembership,
   updateParticipantPublicIdentity,
 } from "@/features/event-scoring/store.server";
-import { renameEventSlug } from "@/features/events/store.server";
+import { getEvent, putEvent } from "@/features/events/store.server";
 import { markTicketStatus } from "@/features/tickets/store.server";
 import {
   activateGameScoreBinding,
@@ -586,7 +586,9 @@ describeWithDatabase("event scoring postgres", () => {
     const before = await query<{ event_id: string }>(
       `select event_id from events where slug = 'scoring-night'`,
     );
-    await renameEventSlug("scoring-night", "renamed-scoring-night");
+    const event = await getEvent("scoring-night");
+    if (!event) throw new Error("event missing");
+    await putEvent({ ...event, slug: "renamed-scoring-night" }, { renameFrom: event.slug });
     const after = await query<{ event_id: string }>(
       `select event_id from events where slug = 'renamed-scoring-night'`,
     );

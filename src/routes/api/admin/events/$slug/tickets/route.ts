@@ -36,6 +36,7 @@ type ActionBody = {
   quantity?: unknown;
   notes?: unknown;
   sendEmail?: unknown;
+  overrideCapacity?: unknown;
 };
 
 function asString(value: unknown): string | undefined {
@@ -73,9 +74,10 @@ async function handlePOST(request: Request, slug: string) {
           quantity,
           kind: "comp",
           notes: asString(body.notes),
-          // Admin comping bypasses the sales window and capacity on purpose:
-          // the person is being let in regardless, so the count should say so.
-          force: true,
+          // Door staff may issue outside the public sales window. Exceeding
+          // capacity remains a separate, explicit operator decision.
+          bypassSalesWindow: true,
+          bypassCapacity: body.overrideCapacity === true,
         });
         if (!issued.ok) return Response.json({ error: issued.error }, { status: issued.status });
 

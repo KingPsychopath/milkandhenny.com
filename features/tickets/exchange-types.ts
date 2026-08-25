@@ -16,6 +16,7 @@ export type TicketExchangeOption = {
   priceMinor: number;
   currency: string;
   available: boolean;
+  unavailableReason?: "sold-out" | "not-on-sale";
 };
 
 export type ManagedExchangeTicket = {
@@ -32,6 +33,7 @@ export type ManagedExchangeTicket = {
     status: TicketExchangeStatus;
     toTicketTypeName: string;
     amountDeltaMinor: number;
+    errorMessage?: string;
   };
 };
 

@@ -55,13 +55,13 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function StatusBanner({ status }: { status: ViewableEvent["status"] }) {
-  if (status === "published") return null;
+function StatusBanner({ status, soldOut }: { status: ViewableEvent["status"]; soldOut: boolean }) {
+  if (status === "published" && !soldOut) return null;
 
   const copy =
     status === "cancelled"
       ? "This event has been cancelled."
-      : status === "sold-out"
+      : status === "sold-out" || soldOut
         ? "This event is sold out."
         : status === "draft"
           ? "Draft — only you can see this."
@@ -85,6 +85,7 @@ function PolicyMarkdown({ children }: { children: string }) {
 export function EventDetailPage({
   event,
   availability,
+  soldOut,
   pitchShowcase,
   heroImage,
   descriptionImages,
@@ -92,6 +93,7 @@ export function EventDetailPage({
 }: {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
+  soldOut: boolean;
   pitchShowcase?: PublicPitchDeck[];
   heroImage?: ResponsiveImageData;
   descriptionImages?: Record<string, ResponsiveImageData>;
@@ -116,7 +118,7 @@ export function EventDetailPage({
       </header>
 
       <main id="main" className="max-w-2xl mx-auto flex-1 px-6 pb-24">
-        <StatusBanner status={event.status} />
+        <StatusBanner status={event.status} soldOut={soldOut} />
 
         {checkoutCancelled && (
           <p className="mb-6 px-4 py-3 border theme-border rounded-lg font-mono text-xs theme-subtle">

@@ -16,7 +16,6 @@ export class EventsService extends Context.Service<
     readonly create: typeof create;
     readonly update: typeof update;
     readonly remove: typeof remove;
-    readonly index: typeof index;
     readonly read: typeof read;
     readonly list: typeof list;
   }
@@ -25,7 +24,6 @@ export class EventsService extends Context.Service<
     create,
     update,
     remove,
-    index,
     read,
     list,
   });
@@ -45,10 +43,6 @@ function update(slug: string, input: EventInput) {
 
 function remove(slug: string) {
   return eventsOperation({ domain: "events", operation: "remove" }, () => engine.removeEvent(slug));
-}
-
-function index() {
-  return eventsOperation({ domain: "events", operation: "index" }, () => engine.getEventsIndex());
 }
 
 function read(slug: string) {

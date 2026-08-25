@@ -9,6 +9,7 @@ import {
 } from "@/features/communications/marketing-consent";
 import {
   createCheckoutSession,
+  expireCheckoutSession,
   isPaymentsConfigured,
   listPaymentRefunds,
   refundPayment,
@@ -19,7 +20,6 @@ import { getEvent } from "@/features/events/store.server";
 import { formatMoney, ticketTypeSalesState, type EventRecord } from "@/features/events/types";
 import { buildEventBoughtUrl, buildEventUrl, ticketPath } from "@/features/events/routes";
 import {
-  getSoldCounts,
   listRefundedTicketsForPayment,
   listTicketsForCheckout,
   listTicketsForOrder,
@@ -27,6 +27,7 @@ import {
   markTicketOrderRefunded,
   markTicketOrderRefundPending,
 } from "./store.server";
+import { countCheckoutHolds, countExchangeHolds } from "./capacity.server";
 import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
@@ -89,64 +90,272 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
 
   const ticketType = event.ticketTypes.find((type) => type.id === input.ticketTypeId);
   if (!ticketType) return { ok: false, status: 404, error: "Ticket type not found" };
-  if (ticketType.priceMinor <= 0) {
-    return { ok: false, status: 400, error: "This ticket is free — no payment needed" };
-  }
-  if (quantity > ticketType.perPersonLimit) {
-    return {
-      ok: false,
-      status: 409,
-      error: `Limit of ${ticketType.perPersonLimit} per person for ${ticketType.name}`,
-    };
-  }
-
-  const sold = await getSoldCounts(event.slug);
-  const sales = ticketTypeSalesState(event, ticketType, sold[ticketType.id] ?? 0);
-  if (sales.state !== "on-sale") {
-    return { ok: false, status: 409, error: "These tickets aren't on sale right now" };
-  }
-
-  const remaining = Math.max(0, ticketType.quantity - (sold[ticketType.id] ?? 0));
-  const eventRemaining =
-    event.capacity === undefined
-      ? Number.POSITIVE_INFINITY
-      : Math.max(
-          0,
-          event.capacity - Object.values(sold).reduce((total, count) => total + count, 0),
-        );
-  const available = Math.min(remaining, eventRemaining);
-  if (quantity > available) {
-    return {
-      ok: false,
-      status: 409,
-      error: available === 0 ? "Sold out" : `Only ${available} left`,
-    };
-  }
 
   const email = normaliseEmail(input.email);
   const reference =
     input.checkoutRequestId && /^[A-Za-z0-9_-]{16,64}$/.test(input.checkoutRequestId)
       ? input.checkoutRequestId
       : randomBytes(16).toString("base64url");
-  const amountMinor = ticketType.priceMinor * quantity;
-  if (!isCheckoutTotalSupported(ticketType.priceMinor, quantity, ticketType.currency)) {
-    const minimum = getCheckoutMinimumMinor(ticketType.currency);
+  const emailHash = hashEmail(email);
+  const reservation = await transaction(async (client) => {
+    const eventRow = await client.query<{
+      title: string;
+      status: EventRecord["status"];
+      starts_at: Date;
+      ends_at: Date | null;
+      capacity: number | null;
+      terms: string | null;
+      refund_policy: string | null;
+      transferable: boolean;
+    }>(
+      `select title, status, starts_at, ends_at, capacity, terms, refund_policy, transferable
+         from events where slug = $1 for update`,
+      [event.slug],
+    );
+    const typeRow = await client.query<{
+      name: string;
+      price_minor: number;
+      currency: string;
+      quantity: number;
+      per_person_limit: number;
+      sales_start: Date | null;
+      sales_end: Date | null;
+      hidden: boolean;
+    }>(
+      `select name, price_minor, currency, quantity, per_person_limit,
+              sales_start, sales_end, hidden from ticket_types
+        where event_slug = $1 and id = $2 for update`,
+      [event.slug, ticketType.id],
+    );
+    const storedEvent = eventRow.rows[0];
+    const storedType = typeRow.rows[0];
+    if (!storedEvent || !storedType) {
+      return { ok: false as const, status: 404, error: "Ticket type not found" };
+    }
+
+    const existing = await client.query<{
+      id: string;
+      event_slug: string;
+      ticket_type_id: string;
+      quantity: number;
+      email_hash: string;
+      amount_minor: number;
+      currency: string;
+      status: string;
+      checkout_url: string | null;
+      expires_at: Date;
+    }>(`select * from checkout_sessions where reference = $1 for update`, [reference]);
+    const prior = existing.rows[0];
+    if (
+      prior &&
+      (prior.event_slug !== event.slug ||
+        prior.ticket_type_id !== ticketType.id ||
+        prior.quantity !== quantity ||
+        prior.email_hash !== emailHash)
+    ) {
+      return { ok: false as const, status: 409, error: "This checkout request has changed" };
+    }
+    if (
+      prior?.status === "pending" &&
+      prior.checkout_url &&
+      prior.expires_at.getTime() > Date.now()
+    ) {
+      return {
+        ok: true as const,
+        existing: { id: prior.id, url: prior.checkout_url },
+      };
+    }
+    if (prior && prior.status !== "creating") {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "This checkout is no longer active. Start again.",
+      };
+    }
+
+    if (storedType.hidden) {
+      return { ok: false as const, status: 404, error: "Ticket type not found" };
+    }
+    if (storedType.price_minor <= 0) {
+      return { ok: false as const, status: 400, error: "This ticket is free — no payment needed" };
+    }
+    const sales = ticketTypeSalesState(
+      {
+        status: storedEvent.status,
+        startsAt: storedEvent.starts_at.toISOString(),
+        endsAt: storedEvent.ends_at?.toISOString(),
+      },
+      {
+        id: ticketType.id,
+        name: storedType.name,
+        priceMinor: storedType.price_minor,
+        currency: storedType.currency,
+        quantity: storedType.quantity,
+        perPersonLimit: storedType.per_person_limit,
+        salesStart: storedType.sales_start?.toISOString(),
+        salesEnd: storedType.sales_end?.toISOString(),
+        hidden: storedType.hidden,
+      },
+      0,
+    );
+    if (sales.state !== "on-sale") {
+      return { ok: false as const, status: 409, error: "These tickets aren't on sale right now" };
+    }
+    if (quantity > storedType.per_person_limit) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: `Limit of ${storedType.per_person_limit} per person for ${storedType.name}`,
+      };
+    }
+    const amountMinor = storedType.price_minor * quantity;
+    if (
+      prior &&
+      (prior.amount_minor !== amountMinor ||
+        prior.currency.toLowerCase() !== storedType.currency.toLowerCase())
+    ) {
+      return { ok: false as const, status: 409, error: "This checkout request has changed" };
+    }
+    if (!isCheckoutTotalSupported(storedType.price_minor, quantity, storedType.currency)) {
+      const minimum = getCheckoutMinimumMinor(storedType.currency);
+      return {
+        ok: false as const,
+        status: 409,
+        error: minimum
+          ? `Online payments must total at least ${formatMoney(minimum, storedType.currency)}`
+          : "That payment total is too low",
+      };
+    }
+
+    const heldResult = await client.query<{ held: string }>(
+      `select count(*)::text as held from tickets
+        where event_slug = $1 and ticket_type_id = $2
+          and email_hash = $3 and status = 'valid'`,
+      [event.slug, ticketType.id, emailHash],
+    );
+    const soldResult = await client.query<{ sold: string }>(
+      `select count(*)::text as sold from tickets
+        where event_slug = $1 and ticket_type_id = $2 and status = 'valid'`,
+      [event.slug, ticketType.id],
+    );
+    const eventSoldResult = await client.query<{ sold: string }>(
+      `select count(*)::text as sold from tickets
+        where event_slug = $1 and status = 'valid'`,
+      [event.slug],
+    );
+    const checkoutTypeHeld = await countCheckoutHolds(client, {
+      eventSlug: event.slug,
+      ticketTypeId: ticketType.id,
+      excludeReference: reference,
+    });
+    const checkoutEventHeld = await countCheckoutHolds(client, {
+      eventSlug: event.slug,
+      excludeReference: reference,
+    });
+    const checkoutPersonHeld = await countCheckoutHolds(client, {
+      eventSlug: event.slug,
+      ticketTypeId: ticketType.id,
+      emailHash,
+      excludeReference: reference,
+    });
+    const exchangeTypeHeld = await countExchangeHolds(client, {
+      eventSlug: event.slug,
+      ticketTypeId: ticketType.id,
+    });
+    const exchangePersonHeld = await countExchangeHolds(client, {
+      eventSlug: event.slug,
+      ticketTypeId: ticketType.id,
+      emailHash,
+    });
+    const held = Number(heldResult.rows[0]?.held ?? 0);
+    if (held + checkoutPersonHeld + exchangePersonHeld + quantity > storedType.per_person_limit) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: `Limit of ${storedType.per_person_limit} per person for ${ticketType.name}`,
+      };
+    }
+    const sold = Number(soldResult.rows[0]?.sold ?? 0);
+    const eventSold = Number(eventSoldResult.rows[0]?.sold ?? 0);
+    const typeRemaining = Math.max(
+      0,
+      storedType.quantity - sold - checkoutTypeHeld - exchangeTypeHeld,
+    );
+    const eventRemaining =
+      storedEvent.capacity === null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, storedEvent.capacity - eventSold - checkoutEventHeld);
+    const available = Math.min(typeRemaining, eventRemaining);
+    if (quantity > available) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: available === 0 ? "Sold out" : `Only ${available} left`,
+      };
+    }
+
+    if (!prior) {
+      await client.query(
+        `insert into checkout_sessions (
+           id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
+           amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot,
+           marketing_opted_in, marketing_opted_in_at, expires_at
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'creating',now(),$11::jsonb,$12,
+                   case when $12 then now() else null end, now() + interval '2 minutes')`,
+        [
+          `reservation_${reference}`,
+          event.slug,
+          ticketType.id,
+          quantity,
+          holderName,
+          email,
+          emailHash,
+          amountMinor,
+          storedType.currency,
+          reference,
+          JSON.stringify({
+            eventTerms: storedEvent.terms,
+            refundPolicy: storedEvent.refund_policy,
+            transferable: storedEvent.transferable,
+          }),
+          input.marketingOptIn === true,
+        ],
+      );
+    } else {
+      await client.query(
+        `update checkout_sessions
+            set status = 'creating', expires_at = now() + interval '2 minutes', updated_at = now()
+          where reference = $1`,
+        [reference],
+      );
+    }
     return {
-      ok: false,
-      status: 409,
-      error: minimum
-        ? `Online payments must total at least ${formatMoney(minimum, ticketType.currency)}`
-        : "That payment total is too low",
+      ok: true as const,
+      existing: null,
+      checkout: {
+        eventTitle: storedEvent.title,
+        ticketTypeName: storedType.name,
+        priceMinor: storedType.price_minor,
+        currency: storedType.currency,
+      },
+    };
+  });
+  if (!reservation.ok) return reservation;
+  if (reservation.existing) {
+    return {
+      ok: true,
+      value: { url: reservation.existing.url, sessionId: reservation.existing.id },
     };
   }
+  const checkout = reservation.checkout;
 
-  let session: { id: string; url: string };
+  let session: { id: string; url: string; expiresAt: string };
   try {
     session = await createCheckoutSession({
-      eventTitle: event.title,
-      ticketTypeName: ticketType.name,
-      priceMinor: ticketType.priceMinor,
-      currency: ticketType.currency,
+      eventTitle: checkout.eventTitle,
+      ticketTypeName: checkout.ticketTypeName,
+      priceMinor: checkout.priceMinor,
+      currency: checkout.currency,
       quantity,
       email,
       // The brace template is Stripe's, substituted on the redirect. Built by
@@ -165,36 +374,45 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
     });
   } catch (error) {
     log.error("checkout.create", "Stripe session creation failed", { slug: event.slug }, error);
+    await query(
+      `update checkout_sessions set status = 'failed', updated_at = now()
+        where reference = $1 and status = 'creating'`,
+      [reference],
+    );
     return { ok: false, status: 502, error: "Could not start checkout. Try again." };
   }
 
-  await query(
-    `insert into checkout_sessions (
-       id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
-       amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot,
-       marketing_opted_in, marketing_opted_in_at
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',now(),$11::jsonb,$12,
-               case when $12 then now() else null end)
-     on conflict (id) do nothing`,
-    [
-      session.id,
-      event.slug,
-      ticketType.id,
-      quantity,
-      holderName,
-      email,
-      hashEmail(email),
-      amountMinor,
-      ticketType.currency,
-      reference,
-      JSON.stringify({
-        eventTerms: event.terms ?? null,
-        refundPolicy: event.refundPolicy ?? null,
-        transferable: event.transferable,
-      }),
-      input.marketingOptIn === true,
-    ],
-  );
+  try {
+    const persisted = await query<{ id: string }>(
+      `update checkout_sessions
+          set id = $2, checkout_url = $3, expires_at = $4, status = 'pending', updated_at = now()
+        where reference = $1 and status = 'creating'
+        returning id`,
+      [reference, session.id, session.url, session.expiresAt],
+    );
+    if (persisted.length === 0) {
+      const current = await queryOne<{ id: string; status: string; checkout_url: string | null }>(
+        `select id, status, checkout_url from checkout_sessions where reference = $1`,
+        [reference],
+      );
+      if (
+        current?.id !== session.id ||
+        current.status !== "pending" ||
+        current.checkout_url !== session.url
+      ) {
+        throw new Error("Checkout reservation was not persisted");
+      }
+    }
+  } catch (error) {
+    await expireCheckoutSession(session.id);
+    await query(
+      `update checkout_sessions set status = 'failed', updated_at = now()
+        where reference = $1 and status = 'creating'`,
+      [reference],
+    ).catch(() => undefined);
+    log.error("checkout.create", "Checkout ledger finalization failed", { reference }, error);
+    return { ok: false, status: 502, error: "Could not start checkout. Try again." };
+  }
 
   return { ok: true, value: { url: session.url, sessionId: session.id } };
 }
@@ -266,7 +484,7 @@ export async function expireCheckout(sessionId: string): Promise<void> {
   await query(
     `update checkout_sessions
         set status = 'expired', updated_at = now()
-      where id = $1 and status = 'pending'`,
+      where id = $1 and status in ('pending', 'payment_pending')`,
     [sessionId],
   );
 }
@@ -419,7 +637,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
           set status = 'fulfilling', processing_started_at = now(), updated_at = now()
         where id = $1
           and (
-            status = 'pending'
+            status in ('pending', 'payment_pending')
             or (status = 'fulfilling' and processing_started_at < now() - interval '2 minutes')
           )
         returning id, event_slug, ticket_type_id, quantity, holder_name, email,
@@ -473,11 +691,12 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
 
   const session = await retrieveSession(sessionId);
   if (!session?.paid) {
+    const waitingStatus = session?.status === "complete" ? "payment_pending" : "pending";
     await query(
       `update checkout_sessions
-          set status = 'pending', processing_started_at = null, updated_at = now()
+          set status = $2, processing_started_at = null, updated_at = now()
         where id = $1`,
-      [sessionId],
+      [sessionId, waitingStatus],
     );
     return session
       ? { outcome: "awaiting-payment" }
@@ -505,7 +724,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
   if (!session.paymentIntentId) {
     await query(
       `update checkout_sessions
-          set status = 'pending', processing_started_at = null, updated_at = now()
+          set status = 'payment_pending', processing_started_at = null, updated_at = now()
         where id = $1`,
       [sessionId],
     );
@@ -540,7 +759,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     if (refund && !refund.ok) {
       await query(
         `update checkout_sessions
-            set status = 'pending', processing_started_at = null, updated_at = now()
+            set status = 'payment_pending', processing_started_at = null, updated_at = now()
           where id = $1`,
         [sessionId],
       );
@@ -549,7 +768,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     if (refund && (refund.status === "failed" || refund.status === "canceled")) {
       await query(
         `update checkout_sessions
-            set status = 'pending', processing_started_at = null, updated_at = now()
+            set status = 'payment_pending', processing_started_at = null, updated_at = now()
           where id = $1`,
         [sessionId],
       );
@@ -615,6 +834,10 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       kind: "paid",
       paymentRef: session.paymentIntentId ?? undefined,
       checkoutRef: sessionId,
+      capacityHoldReference: claimed.reference ?? undefined,
+      // The reservation was accepted while sales were open. Closing sales
+      // while the buyer is at Stripe must not invalidate a paid order.
+      bypassSalesWindow: true,
       // Per ticket, not the order total: the refund UI shows this figure, and
       // partial refunds are settled by summing what each ticket actually cost.
       amountPaidMinor: Math.round(claimed.amount_minor / Math.max(1, claimed.quantity)),
@@ -626,7 +849,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     // — money kept, no tickets, forever.
     await query(
       `update checkout_sessions
-          set status = 'pending', processing_started_at = null, updated_at = now()
+          set status = 'payment_pending', processing_started_at = null, updated_at = now()
         where id = $1 and status = 'fulfilling'`,
       [sessionId],
     );
@@ -648,7 +871,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     if (!refund.ok) {
       await query(
         `update checkout_sessions
-            set status = 'pending', processing_started_at = null, updated_at = now()
+            set status = 'payment_pending', processing_started_at = null, updated_at = now()
           where id = $1`,
         [sessionId],
       );
@@ -657,7 +880,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     if (refund.status === "failed" || refund.status === "canceled") {
       await query(
         `update checkout_sessions
-            set status = 'pending', processing_started_at = null, updated_at = now()
+            set status = 'payment_pending', processing_started_at = null, updated_at = now()
           where id = $1`,
         [sessionId],
       );
@@ -906,7 +1129,7 @@ export async function resolveCheckoutOutcome(
   let row = await readCheckoutOutcomeRow(sessionId);
   if (!row) return { state: "unknown" };
 
-  if (row.status === "pending" && row.fulfil_ready) {
+  if ((row.status === "pending" || row.status === "payment_pending") && row.fulfil_ready) {
     try {
       await fulfilCheckout(sessionId, origin);
     } catch (error) {

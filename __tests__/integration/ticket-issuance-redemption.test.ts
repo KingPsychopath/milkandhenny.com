@@ -377,9 +377,19 @@ describeWithDatabase("tickets (postgres)", () => {
       ).toBe(true);
     });
 
-    it("lets staff comp past a full house with force", async () => {
+    it("requires an explicit capacity override for a comp past a full house", async () => {
       await seedEvent(1);
       await issueOne("Alice");
+
+      const refused = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Guest of honour",
+        quantity: 1,
+        kind: "comp",
+        bypassSalesWindow: true,
+      });
+      expect(refused.ok).toBe(false);
 
       const comped = await issueTickets({
         eventSlug: SLUG,
@@ -387,7 +397,8 @@ describeWithDatabase("tickets (postgres)", () => {
         holderName: "Guest of honour",
         quantity: 1,
         kind: "comp",
-        force: true,
+        bypassSalesWindow: true,
+        bypassCapacity: true,
       });
       expect(comped.ok).toBe(true);
     });

@@ -15,6 +15,7 @@ import {
   getSoldCounts,
   getTicket,
   insertTicketsWithCapacity,
+  listActiveTicketExchangesForEvent,
   listTicketsForEmail,
   listTicketsForEvent,
   listTicketsForOrder,
@@ -31,6 +32,7 @@ import {
   isTicketSigningConfigured,
   verifyTicketSignature,
 } from "./qr.server";
+import { getTicketCapacitySnapshot } from "./capacity.server";
 import {
   isValidEmail,
   isValidTicketId,
@@ -101,11 +103,14 @@ export type IssueTicketsInput = {
   kind: TicketKind;
   paymentRef?: string;
   checkoutRef?: string;
+  capacityHoldReference?: string;
   amountPaidMinor?: number;
   currency?: string;
   notes?: string;
-  /** Bypasses the sales window and capacity. Staff comping at the door. */
-  force?: boolean;
+  /** Staff may issue comps when public sales are closed. */
+  bypassSalesWindow?: boolean;
+  /** Explicit admission beyond capacity; callers must make this visible to staff. */
+  bypassCapacity?: boolean;
 };
 
 export type IssuedTickets = {
@@ -140,7 +145,10 @@ export async function issueTickets(
   const ticketType = findTicketType(event, input.ticketTypeId);
   if (!ticketType) return { ok: false, status: 404, error: "Ticket type not found" };
 
-  if (!input.force) {
+  if (!input.bypassSalesWindow) {
+    if (ticketType.hidden) {
+      return { ok: false, status: 404, error: "Ticket type not found" };
+    }
     const sales = ticketTypeSalesState(event, ticketType, 0);
     if (sales.state === "cancelled") {
       return { ok: false, status: 409, error: "This event has been cancelled" };
@@ -151,13 +159,13 @@ export async function issueTickets(
     if (sales.state === "closed") {
       return { ok: false, status: 409, error: "Ticket sales have closed" };
     }
-    if (quantity > ticketType.perPersonLimit) {
-      return {
-        ok: false,
-        status: 409,
-        error: `Limit of ${ticketType.perPersonLimit} per person for ${ticketType.name}`,
-      };
-    }
+  }
+  if (!input.bypassCapacity && quantity > ticketType.perPersonLimit) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Limit of ${ticketType.perPersonLimit} per person for ${ticketType.name}`,
+    };
   }
 
   const email = input.email ? normaliseEmail(input.email) : undefined;
@@ -181,10 +189,12 @@ export async function issueTickets(
       emailHash: email ? hashEmail(email) : undefined,
       paymentRef: input.paymentRef,
       checkoutRef: input.checkoutRef,
+      capacityHoldReference: input.capacityHoldReference,
       amountPaidMinor: input.amountPaidMinor,
       currency: input.currency ?? ticketType.currency,
       notes: input.notes,
-      ignoreCapacity: input.force === true,
+      bypassCapacity: input.bypassCapacity === true,
+      enforceSalesWindow: input.bypassSalesWindow !== true,
     },
     newTickets,
   );
@@ -199,6 +209,9 @@ export async function issueTickets(
         status: 409,
         error: `Limit of ${outcome.limit} per person for ${ticketType.name}`,
       };
+    }
+    if (outcome.reason === "not-on-sale") {
+      return { ok: false, status: 409, error: "These tickets aren't on sale right now" };
     }
     return {
       ok: false,
@@ -310,18 +323,43 @@ export type EventTicketSummary = {
   grossMinor: number;
   netMinor: number;
   currency?: string;
-  byType: Record<string, { name: string; issued: number; redeemed: number }>;
+  reserved: number;
+  byType: Record<
+    string,
+    {
+      name: string;
+      issued: number;
+      redeemed: number;
+      valid: number;
+      reserved: number;
+      remaining: number;
+    }
+  >;
   tickets: (DoorTicketView & {
     ticketTypeId: string;
     email?: string;
     issuedAt: string;
     amountPaidMinor?: number;
     currency?: string;
+    activeExchange?: {
+      status: "processing" | "awaiting_payment" | "refund_pending";
+      toTicketTypeId: string;
+      toTicketTypeName: string;
+      errorMessage?: string;
+    };
   })[];
 };
 
 export async function getEventTickets(eventSlug: string): Promise<EventTicketSummary> {
-  const [event, tickets] = await Promise.all([getEvent(eventSlug), listTicketsForEvent(eventSlug)]);
+  const [event, tickets, capacity, exchanges] = await Promise.all([
+    getEvent(eventSlug),
+    listTicketsForEvent(eventSlug),
+    getTicketCapacitySnapshot(eventSlug),
+    listActiveTicketExchangesForEvent(eventSlug),
+  ]);
+  const activeExchangeByTicket = new Map(
+    exchanges.map((exchange) => [exchange.ticketId, exchange]),
+  );
 
   const byType: EventTicketSummary["byType"] = {};
   let redeemed = 0;
@@ -334,9 +372,17 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
 
   for (const ticket of tickets) {
     const name = (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket";
-    const bucket = byType[ticket.ticketTypeId] ?? { name, issued: 0, redeemed: 0 };
+    const bucket = byType[ticket.ticketTypeId] ?? {
+      name,
+      issued: 0,
+      redeemed: 0,
+      valid: 0,
+      reserved: 0,
+      remaining: 0,
+    };
     bucket.issued += 1;
     if (ticket.status === "valid") {
+      bucket.valid += 1;
       valid += 1;
       netMinor += ticket.amountPaidMinor ?? 0;
       if (ticket.redeemedAt) {
@@ -352,6 +398,27 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
     byType[ticket.ticketTypeId] = bucket;
   }
 
+  for (const type of event?.ticketTypes ?? []) {
+    const bucket = byType[type.id] ?? {
+      name: type.name,
+      issued: 0,
+      redeemed: 0,
+      valid: 0,
+      reserved: 0,
+      remaining: 0,
+    };
+    bucket.valid = capacity.sold[type.id] ?? 0;
+    bucket.reserved =
+      (capacity.checkoutReserved[type.id] ?? 0) + (capacity.exchangeReserved[type.id] ?? 0);
+    bucket.remaining = Math.max(0, type.quantity - bucket.valid - bucket.reserved);
+    byType[type.id] = bucket;
+  }
+
+  const reserved = Object.values(capacity.checkoutReserved).reduce(
+    (total, count) => total + count,
+    0,
+  );
+
   return {
     total: tickets.length,
     valid,
@@ -361,6 +428,7 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
     grossMinor,
     netMinor,
     currency,
+    reserved,
     byType,
     tickets: tickets.map((ticket) => ({
       ...toDoorView(
@@ -372,6 +440,7 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
       issuedAt: ticket.issuedAt,
       amountPaidMinor: ticket.amountPaidMinor,
       currency: ticket.currency,
+      activeExchange: activeExchangeByTicket.get(ticket.id),
     })),
   };
 }

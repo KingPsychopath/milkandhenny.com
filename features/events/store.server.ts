@@ -253,12 +253,33 @@ async function replaceTicketTypes(
   }
 }
 
-export async function putEvent(event: EventRecord): Promise<void> {
+export async function putEvent(
+  event: EventRecord,
+  options: { renameFrom?: string } = {},
+): Promise<void> {
   if (!isValidEventSlug(event.slug)) {
     throw new Error(`Refusing to store event with invalid slug: ${event.slug}`);
   }
 
   await transaction(async (client) => {
+    if (options.renameFrom && options.renameFrom !== event.slug) {
+      if (!isValidEventSlug(options.renameFrom)) throw new Error("Invalid event slug");
+      const existing = await client.query<{ event_id: string }>(
+        `select event_id from events where slug = $1 for update`,
+        [options.renameFrom],
+      );
+      if (existing.rows.length === 0) throw new Error("Event not found");
+      const clash = await client.query<{ event_id: string }>(
+        `select event_id from events where slug = $1`,
+        [event.slug],
+      );
+      if (clash.rows.length > 0) throw new Error("Event slug already exists");
+      await client.query(`update events set slug = $2, updated_at = now() where slug = $1`, [
+        options.renameFrom,
+        event.slug,
+      ]);
+    }
+
     await client.query(
       `insert into events (
          slug, title, tagline, status, starts_at, ends_at, doors_at, last_entry_at, timezone,
@@ -343,30 +364,6 @@ export async function deleteEvent(slug: string): Promise<void> {
   if (!isValidEventSlug(slug)) return;
   await query(`delete from events where slug = $1`, [slug]);
   log.info("events.delete", "Event deleted", { slug });
-}
-
-/** Move a route slug while preserving the immutable event row and all child links. */
-export async function renameEventSlug(oldSlug: string, newSlug: string): Promise<void> {
-  if (!isValidEventSlug(oldSlug) || !isValidEventSlug(newSlug)) {
-    throw new Error("Invalid event slug");
-  }
-  if (oldSlug === newSlug) return;
-  await transaction(async (client) => {
-    const existing = await client.query<{ event_id: string }>(
-      `select event_id from events where slug = $1 for update`,
-      [oldSlug],
-    );
-    if (existing.rows.length === 0) throw new Error("Event not found");
-    const clash = await client.query<{ event_id: string }>(
-      `select event_id from events where slug = $1`,
-      [newSlug],
-    );
-    if (clash.rows.length > 0) throw new Error("Event slug already exists");
-    await client.query(`update events set slug = $2, updated_at = now() where slug = $1`, [
-      oldSlug,
-      newSlug,
-    ]);
-  });
 }
 
 export async function eventHasTickets(slug: string): Promise<boolean> {

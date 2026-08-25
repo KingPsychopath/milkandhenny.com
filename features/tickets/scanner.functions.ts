@@ -265,7 +265,8 @@ export const guestSubmitFn = createServerFn({ method: "POST" })
         quantity: 1,
         kind: "comp",
         notes: `added at the door by ${link.label}`,
-        force: true,
+        bypassSalesWindow: true,
+        bypassCapacity: true,
       });
       if (!issued.ok) return { authorised: true, ok: false, error: issued.error };
       return { authorised: true, ok: true, mode: "added", holderName: name };

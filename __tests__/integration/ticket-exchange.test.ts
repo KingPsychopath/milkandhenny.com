@@ -22,14 +22,17 @@ vi.mock("@/features/tickets/email.server", () => ({
   sendTicketExchangePaymentEmail: vi.fn().mockResolvedValue({ queued: true }),
 }));
 
-import { normaliseEventInput } from "@/features/events/events.server";
+import { normaliseEventInput, updateEvent } from "@/features/events/events.server";
 import { putEvent } from "@/features/events/store.server";
 import {
   beginTicketExchange,
+  completePendingExchangeRefund,
   fulfilTicketExchangeCheckout,
+  getTicketExchangeManagement,
 } from "@/features/tickets/exchange.server";
 import { getTicket } from "@/features/tickets/store.server";
-import { issueTickets } from "@/features/tickets/tickets.server";
+import { getEventTickets, issueTickets } from "@/features/tickets/tickets.server";
+import { query, queryOne } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
 const SLUG = "ticket-exchange";
@@ -46,6 +49,14 @@ async function seedEvent() {
       { id: "balcony", name: "Balcony", priceMinor: 1000, currency: "GBP", quantity: 20 },
       { id: "early", name: "Early", priceMinor: 500, currency: "GBP", quantity: 20 },
       { id: "vip", name: "VIP", priceMinor: 2000, currency: "GBP", quantity: 1 },
+      {
+        id: "limited",
+        name: "Limited",
+        priceMinor: 2000,
+        currency: "GBP",
+        quantity: 2,
+        perPersonLimit: 1,
+      },
     ],
   });
   if (!result.ok) throw new Error(result.error);
@@ -100,6 +111,28 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
     expect((await getTicket(tickets[0].id))?.ticketTypeId).toBe("entry");
     expect((await getTicket(tickets[1].id))?.ticketTypeId).toBe("balcony");
     expect((await getTicket(tickets[1].id))?.amountPaidMinor).toBe(1000);
+  });
+
+  it("keeps tickets and exchange history attached when the event slug changes", async () => {
+    const [ticket] = await paidOrder();
+    const exchange = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "balcony",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(exchange.ok && exchange.value.state).toBe("completed");
+
+    const renamed = await updateEvent(SLUG, { slug: "ticket-exchange-renamed" });
+    expect(renamed.ok).toBe(true);
+    expect((await getTicket(ticket.id))?.eventSlug).toBe("ticket-exchange-renamed");
+    expect(
+      await queryOne<{ event_slug: string }>(
+        `select event_slug from ticket_exchanges where ticket_id = $1`,
+        [ticket.id],
+      ),
+    ).toEqual({ event_slug: "ticket-exchange-renamed" });
   });
 
   it("partially refunds the difference for a cheaper ticket", async () => {
@@ -183,6 +216,85 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
     expect((await getTicket(ticket.id))?.amountPaidMinor).toBe(2000);
   });
 
+  it("shows a Checkout-held upgrade as sold out and rejects the exchange", async () => {
+    const [ticket] = await paidOrder();
+    await query(
+      `insert into checkout_sessions (
+         id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
+         amount_minor, currency, reference, status
+       ) values ('cs_vip_hold_123456','ticket-exchange','vip',1,'Other buyer',
+                 'other@example.com','other-hash',2000,'GBP','vip-hold-reference','pending')`,
+    );
+
+    const management = await getTicketExchangeManagement({ managerTicketId: ticket.id });
+    expect(management.ok).toBe(true);
+    expect(management.ok && management.value.options.find((option) => option.id === "vip")).toEqual(
+      expect.objectContaining({ available: false, unavailableReason: "sold-out" }),
+    );
+
+    const exchange = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "vip",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(exchange).toEqual({ ok: false, status: 409, error: "VIP is sold out" });
+  });
+
+  it("allows an existing buyer to upgrade when only new event sales are marked sold out", async () => {
+    const [ticket] = await paidOrder();
+    await query(`update events set status = 'sold-out' where slug = $1`, [SLUG]);
+    stripe.createCheckoutSession.mockResolvedValue({
+      id: "cs_exchange_sold_event_123456",
+      url: "https://checkout.stripe.test/session",
+    });
+
+    const management = await getTicketExchangeManagement({ managerTicketId: ticket.id });
+    expect(management.ok).toBe(true);
+    expect(
+      management.ok && management.value.options.find((option) => option.id === "vip")?.available,
+    ).toBe(true);
+
+    const exchange = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "vip",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(exchange.ok && exchange.value.state).toBe("checkout");
+  });
+
+  it("counts pending exchanges against the target per-person limit", async () => {
+    const tickets = await paidOrder(2);
+    stripe.createCheckoutSession.mockResolvedValue({
+      id: "cs_exchange_limited_123456",
+      url: "https://checkout.stripe.test/session",
+    });
+    const first = await beginTicketExchange({
+      managerTicketId: tickets[0].id,
+      ticketId: tickets[0].id,
+      targetTicketTypeId: "limited",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(first.ok && first.value.state).toBe("checkout");
+
+    const second = await beginTicketExchange({
+      managerTicketId: tickets[0].id,
+      ticketId: tickets[1].id,
+      targetTicketTypeId: "limited",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(second).toEqual({
+      ok: false,
+      status: 409,
+      error: "Limit of 1 per person for Limited",
+    });
+  });
+
   it("splits a later downgrade across the upgrade and original payments", async () => {
     const [ticket] = await paidOrder();
     stripe.createCheckoutSession.mockResolvedValue({
@@ -237,5 +349,84 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
       1000, 500,
     ]);
     expect((await getTicket(ticket.id))?.amountPaidMinor).toBe(500);
+  });
+
+  it("keeps a partially completed multi-payment refund blocked for attention", async () => {
+    const [ticket] = await paidOrder();
+    stripe.createCheckoutSession.mockResolvedValue({
+      id: "cs_exchange_partial_refund_123456",
+      url: "https://checkout.stripe.test/session",
+    });
+    const upgrade = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "vip",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    if (!upgrade.ok) throw new Error(upgrade.error);
+    stripe.retrieveSession.mockResolvedValue({
+      paid: true,
+      paymentIntentId: "pi_upgrade_partial",
+      amountMinor: 1000,
+      currency: "gbp",
+      email: "alice@example.com",
+      metadata: { ticketExchangeId: upgrade.value.exchangeId },
+      amountRefundedMinor: 0,
+      disputed: false,
+    });
+    await fulfilTicketExchangeCheckout(
+      "cs_exchange_partial_refund_123456",
+      "https://milkandhenny.com",
+    );
+
+    stripe.retrievePaymentBalance.mockImplementation(async (paymentIntentId: string) => ({
+      amountMinor: paymentIntentId === "pi_upgrade_partial" ? 1000 : 2000,
+      amountRefundedMinor: 0,
+      remainingMinor: paymentIntentId === "pi_upgrade_partial" ? 1000 : 2000,
+    }));
+    stripe.refundPayment
+      .mockResolvedValueOnce({
+        ok: true,
+        refundId: "re_partial_succeeded",
+        status: "succeeded",
+        amountMinor: 1000,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        refundId: "re_partial_pending",
+        status: "pending",
+        amountMinor: 500,
+      });
+    const downgrade = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "early",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    expect(downgrade.ok && downgrade.value.state).toBe("refund_pending");
+    if (!downgrade.ok) throw new Error(downgrade.error);
+
+    await completePendingExchangeRefund("re_partial_pending", "failed", "https://milkandhenny.com");
+    expect(
+      await queryOne<{ status: string; error_message: string | null }>(
+        `select status, error_message from ticket_exchanges where id = $1`,
+        [downgrade.value.exchangeId],
+      ),
+    ).toEqual({
+      status: "refund_pending",
+      error_message: "Part of the refund succeeded, but the remainder needs attention",
+    });
+    expect((await getTicket(ticket.id))?.ticketTypeId).toBe("vip");
+    expect(
+      (await getEventTickets(SLUG)).tickets.find((entry) => entry.id === ticket.id)?.activeExchange,
+    ).toEqual(
+      expect.objectContaining({
+        status: "refund_pending",
+        toTicketTypeName: "Early",
+        errorMessage: "Part of the refund succeeded, but the remainder needs attention",
+      }),
+    );
   });
 });

@@ -3,8 +3,11 @@ import { useMemo, useState } from "react";
 
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND } from "@/lib/shared/config";
+import type {
+  EventsIndexData,
+  EventsIndexItem,
+} from "@/features/event-operations/events-index.server";
 import { formatEventDate, formatEventTime, formatMoney, type PublicEvent } from "../types";
-import type { EventsIndexData } from "../events.server";
 
 /**
  * The events index.
@@ -42,9 +45,14 @@ function priceLabel(event: PublicEvent): string | null {
   return visible.length > 1 ? `from ${formatted}` : formatted;
 }
 
-function StatusPill({ status }: { status: PublicEvent["status"] }) {
-  if (status === "published") return null;
-  const label = status === "sold-out" ? "sold out" : status === "cancelled" ? "cancelled" : status;
+function StatusPill({ event }: { event: EventsIndexItem }) {
+  if (event.status === "published" && !event.soldOut) return null;
+  const label =
+    event.status === "cancelled"
+      ? "cancelled"
+      : event.status === "sold-out" || event.soldOut
+        ? "sold out"
+        : event.status;
   return (
     <span className="font-mono text-micro tracking-widest uppercase theme-subtle border theme-border rounded-full px-2 py-0.5">
       {label}
@@ -52,7 +60,7 @@ function StatusPill({ status }: { status: PublicEvent["status"] }) {
   );
 }
 
-function EventRow({ event, past }: { event: PublicEvent; past?: boolean }) {
+function EventRow({ event, past }: { event: EventsIndexItem; past?: boolean }) {
   const { day, month } = dateParts(event);
   const price = priceLabel(event);
 
@@ -74,7 +82,7 @@ function EventRow({ event, past }: { event: PublicEvent; past?: boolean }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-serif text-lg text-foreground leading-snug">{event.title}</h3>
-          <StatusPill status={event.status} />
+          <StatusPill event={event} />
         </div>
 
         {event.tagline && (

@@ -96,6 +96,12 @@ type AdminTicket = DoorTicketView & {
   issuedAt: string;
   amountPaidMinor?: number;
   currency?: string;
+  activeExchange?: {
+    status: "processing" | "awaiting_payment" | "refund_pending";
+    toTicketTypeId: string;
+    toTicketTypeName: string;
+    errorMessage?: string;
+  };
 };
 
 type TicketListFilter = "all" | "valid" | "checked-in" | "not-checked-in" | "refunded" | "void";
@@ -168,14 +174,38 @@ type EventTicketSummary = {
   grossMinor: number;
   netMinor: number;
   currency?: string;
+  reserved: number;
+  byType: Record<
+    string,
+    {
+      name: string;
+      issued: number;
+      redeemed: number;
+      valid: number;
+      reserved: number;
+      remaining: number;
+    }
+  >;
   tickets: AdminTicket[];
 };
 
 function parseEventTicketSummary(value: unknown): EventTicketSummary | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  const numeric = ["total", "valid", "redeemed", "refunded", "void", "grossMinor", "netMinor"];
+  const numeric = [
+    "total",
+    "valid",
+    "redeemed",
+    "refunded",
+    "void",
+    "grossMinor",
+    "netMinor",
+    "reserved",
+  ];
   if (!numeric.every((key) => typeof record[key] === "number")) return null;
+  if (!record.byType || typeof record.byType !== "object" || Array.isArray(record.byType)) {
+    return null;
+  }
   if (!Array.isArray(record.tickets)) return null;
   return record as EventTicketSummary;
 }
@@ -371,12 +401,16 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 /** Issue complimentary tickets: name, optional email, type, and plus-ones. */
 function AddGuestForm({
   event,
+  availability,
+  eventRemaining,
   authFetch,
   onError,
   onStatus,
   onIssued,
 }: {
   event: EventRecord;
+  availability: EventTicketSummary["byType"];
+  eventRemaining: number;
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
@@ -387,7 +421,11 @@ function AddGuestForm({
   const [email, setEmail] = useState("");
   const [ticketTypeId, setTicketTypeId] = useState(event.ticketTypes[0]?.id ?? "");
   const [quantity, setQuantity] = useState("1");
+  const [overrideCapacity, setOverrideCapacity] = useState(false);
   const [busy, setBusy] = useState(false);
+  const parsedQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
+  const typeRemaining = availability[ticketTypeId]?.remaining ?? 0;
+  const needsCapacityOverride = parsedQuantity > Math.min(typeRemaining, eventRemaining);
 
   const submit = async () => {
     if (!name.trim()) {
@@ -405,7 +443,8 @@ function AddGuestForm({
           holderName: name.trim(),
           email: email.trim() || undefined,
           ticketTypeId,
-          quantity: Number.parseInt(quantity, 10) || 1,
+          quantity: parsedQuantity,
+          overrideCapacity: needsCapacityOverride && overrideCapacity,
         }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to add guest"));
@@ -420,6 +459,7 @@ function AddGuestForm({
       setName("");
       setEmail("");
       setQuantity("1");
+      setOverrideCapacity(false);
       await onIssued();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to add guest");
@@ -452,7 +492,10 @@ function AddGuestForm({
           id={typeId}
           value={ticketTypeId}
           onValueChange={setTicketTypeId}
-          options={event.ticketTypes.map((type) => ({ value: type.id, label: type.name }))}
+          options={event.ticketTypes.map((type) => ({
+            value: type.id,
+            label: `${type.name}${(availability[type.id]?.remaining ?? 0) === 0 ? " (sold out)" : ""}`,
+          }))}
           variant="field"
           className="mt-1 rounded text-sm"
         />
@@ -464,10 +507,22 @@ function AddGuestForm({
         type="number"
         hint="2+ adds plus-ones under the same name"
       />
+      {needsCapacityOverride && (
+        <label className="flex min-h-11 items-center gap-2 sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={overrideCapacity}
+            onChange={(inputEvent) => setOverrideCapacity(inputEvent.target.checked)}
+          />
+          <span className="font-mono text-micro theme-subtle">
+            admit beyond capacity — this will show as an overage
+          </span>
+        </label>
+      )}
       <div className="sm:col-span-2">
         <button
           type="submit"
-          disabled={busy || !ticketTypeId}
+          disabled={busy || !ticketTypeId || (needsCapacityOverride && !overrideCapacity)}
           className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
         >
           {busy ? "issuing…" : "issue comp ticket"}
@@ -1970,8 +2025,8 @@ function EventOperations({
 
   const capacity =
     event.capacity ?? event.ticketTypes.reduce((total, type) => total + type.quantity, 0);
-  const remaining = Math.max(0, capacity - summary.valid);
-  const overage = Math.max(0, summary.valid - capacity);
+  const remaining = Math.max(0, capacity - summary.valid - summary.reserved);
+  const overage = Math.max(0, summary.valid + summary.reserved - capacity);
   const term = query.trim().toLowerCase();
   const tickets = useMemo(() => {
     const filtered = summary.tickets.filter(
@@ -2001,6 +2056,9 @@ function EventOperations({
           <p className="font-mono text-lg text-foreground">
             {summary.valid}/{capacity}
           </p>
+          {summary.reserved > 0 && (
+            <p className="font-mono text-micro theme-faint">+{summary.reserved} in checkout</p>
+          )}
         </div>
         <div>
           <p className="font-mono text-micro theme-muted">
@@ -2067,6 +2125,8 @@ function EventOperations({
         {showAddGuest && (
           <AddGuestForm
             event={event}
+            availability={summary.byType}
+            eventRemaining={remaining}
             authFetch={authFetch}
             onError={onError}
             onStatus={onStatus}
@@ -2139,6 +2199,15 @@ function EventOperations({
                       {ticket.id} · {ticketListStatus(ticket)} ·{" "}
                       {formatTicketIssuedAt(ticket.issuedAt)}
                     </p>
+                    {ticket.activeExchange && (
+                      <p
+                        role={ticket.activeExchange.errorMessage ? "alert" : "status"}
+                        className="mt-1 font-mono text-micro text-[var(--prose-hashtag)]"
+                      >
+                        {ticket.activeExchange.errorMessage ??
+                          `change to ${ticket.activeExchange.toTicketTypeName} pending`}
+                      </p>
+                    )}
                   </div>
                   <a
                     href={`/ticket/${ticket.id}`}
@@ -2214,27 +2283,30 @@ function EventOperations({
                   >
                     edit
                   </button>
-                  {isLive && !ticket.redeemedAt && event.ticketTypes.length > 1 && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        setExchangingTicket((current) =>
-                          current?.id === ticket.id
-                            ? null
-                            : {
-                                id: ticket.id,
-                                holderName: ticket.holderName,
-                                fromTicketTypeId: ticket.ticketTypeId,
-                                targetTicketTypeId: "",
-                              },
-                        )
-                      }
-                      className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
-                    >
-                      change type
-                    </button>
-                  )}
+                  {isLive &&
+                    !ticket.redeemedAt &&
+                    !ticket.activeExchange &&
+                    event.ticketTypes.length > 1 && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setExchangingTicket((current) =>
+                            current?.id === ticket.id
+                              ? null
+                              : {
+                                  id: ticket.id,
+                                  holderName: ticket.holderName,
+                                  fromTicketTypeId: ticket.ticketTypeId,
+                                  targetTicketTypeId: "",
+                                },
+                          )
+                        }
+                        className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+                      >
+                        change type
+                      </button>
+                    )}
                   {busy && <span className="font-mono text-micro theme-faint">working…</span>}
                 </div>
                 {editingTicket?.id === ticket.id && (
@@ -2302,11 +2374,15 @@ function EventOperations({
                         <option value="">choose a ticket type</option>
                         {event.ticketTypes
                           .filter((type) => type.id !== ticket.ticketTypeId)
-                          .map((type) => (
-                            <option key={type.id} value={type.id}>
-                              {type.name} — {formatMoney(type.priceMinor, type.currency)}
-                            </option>
-                          ))}
+                          .map((type) => {
+                            const soldOut = (summary.byType[type.id]?.remaining ?? 0) === 0;
+                            return (
+                              <option key={type.id} value={type.id} disabled={soldOut}>
+                                {type.name} — {formatMoney(type.priceMinor, type.currency)}
+                                {soldOut ? " (sold out)" : ""}
+                              </option>
+                            );
+                          })}
                       </select>
                     </label>
                     <AdminFormAction>

@@ -132,6 +132,7 @@ export function ClaimTicketForm({
         });
 
         if (!checkout.ok) {
+          checkoutRequestId.current = null;
           setState({ status: "error", message: checkout.error });
           return;
         }

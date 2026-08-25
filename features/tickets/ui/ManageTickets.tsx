@@ -152,14 +152,16 @@ export function ManageTickets({
     );
   }
 
-  if (!management || !selectedTicket) return null;
+  if (!management) return null;
 
-  const eligibleOptions = management.options.filter(
-    (option) =>
-      option.id !== selectedTicket.ticketTypeId && option.currency === selectedTicket.currency,
-  );
+  const eligibleOptions = selectedTicket
+    ? management.options.filter(
+        (option) =>
+          option.id !== selectedTicket.ticketTypeId && option.currency === selectedTicket.currency,
+      )
+    : [];
 
-  if (state === "confirming" && selectedType) {
+  if (state === "confirming" && selectedTicket && selectedType) {
     const consequence =
       amountDelta < 0
         ? `${formatMoney(Math.abs(amountDelta), selectedType.currency)} will return to the original payment method.`
@@ -238,67 +240,95 @@ export function ManageTickets({
         Change one ticket at a time. Names, links and QR codes stay as they are.
       </p>
 
-      <label className="mt-5 block font-mono text-micro theme-muted" htmlFor="exchange-ticket">
-        ticket
-      </label>
-      <select
-        id="exchange-ticket"
-        value={ticketId}
-        onChange={(event) => {
-          setTicketId(event.target.value);
-          setTargetTypeId("");
-        }}
-        className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
-      >
-        {management.tickets.map((ticket) => (
-          <option
+      {management.tickets
+        .filter((ticket) => ticket.activeExchange)
+        .map((ticket) => (
+          <p
             key={ticket.id}
-            value={ticket.id}
-            disabled={
-              ticket.status !== "valid" || ticket.redeemed || Boolean(ticket.activeExchange)
-            }
+            role={ticket.activeExchange?.errorMessage ? "alert" : "status"}
+            className="mt-3 rounded-lg border theme-border px-3 py-2 font-mono text-micro theme-subtle leading-relaxed"
           >
-            {ticket.holderName} — {ticket.ticketTypeName}
-            {ticket.activeExchange ? " (change pending)" : ticket.redeemed ? " (checked in)" : ""}
-          </option>
+            {ticket.holderName}: {ticket.activeExchange?.errorMessage ?? "ticket change pending"}.
+          </p>
         ))}
-      </select>
 
-      <label className="mt-4 block font-mono text-micro theme-muted" htmlFor="exchange-type">
-        change to
-      </label>
-      <select
-        id="exchange-type"
-        value={targetTypeId}
-        onChange={(event) => setTargetTypeId(event.target.value)}
-        className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
-      >
-        <option value="">choose a ticket type</option>
-        {eligibleOptions.map((option) => (
-          <option key={option.id} value={option.id} disabled={!option.available}>
-            {option.name} — {formatMoney(option.priceMinor, option.currency)}
-            {!option.available ? " (unavailable)" : ""}
-          </option>
-        ))}
-      </select>
+      {selectedTicket ? (
+        <>
+          <label className="mt-5 block font-mono text-micro theme-muted" htmlFor="exchange-ticket">
+            ticket
+          </label>
+          <select
+            id="exchange-ticket"
+            value={ticketId}
+            onChange={(event) => {
+              setTicketId(event.target.value);
+              setTargetTypeId("");
+            }}
+            className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
+          >
+            {management.tickets.map((ticket) => (
+              <option
+                key={ticket.id}
+                value={ticket.id}
+                disabled={
+                  ticket.status !== "valid" || ticket.redeemed || Boolean(ticket.activeExchange)
+                }
+              >
+                {ticket.holderName} — {ticket.ticketTypeName}
+                {ticket.activeExchange
+                  ? " (change pending)"
+                  : ticket.redeemed
+                    ? " (checked in)"
+                    : ""}
+              </option>
+            ))}
+          </select>
 
-      {selectedType && (
-        <p className="mt-3 font-mono text-micro theme-subtle leading-relaxed">
-          {amountDelta < 0
-            ? `${formatMoney(Math.abs(amountDelta), selectedType.currency)} refund`
-            : amountDelta > 0
-              ? `${formatMoney(amountDelta, selectedType.currency)} to pay`
-              : "no price difference"}
+          <label className="mt-4 block font-mono text-micro theme-muted" htmlFor="exchange-type">
+            change to
+          </label>
+          <select
+            id="exchange-type"
+            value={targetTypeId}
+            onChange={(event) => setTargetTypeId(event.target.value)}
+            className="mt-1 min-h-11 w-full rounded-lg border theme-border-strong bg-background px-3 font-mono text-xs"
+          >
+            <option value="">choose a ticket type</option>
+            {eligibleOptions.map((option) => (
+              <option key={option.id} value={option.id} disabled={!option.available}>
+                {option.name} — {formatMoney(option.priceMinor, option.currency)}
+                {!option.available
+                  ? option.unavailableReason === "sold-out"
+                    ? " (sold out)"
+                    : " (not on sale)"
+                  : ""}
+              </option>
+            ))}
+          </select>
+
+          {selectedType && (
+            <p className="mt-3 font-mono text-micro theme-subtle leading-relaxed">
+              {amountDelta < 0
+                ? `${formatMoney(Math.abs(amountDelta), selectedType.currency)} refund`
+                : amountDelta > 0
+                  ? `${formatMoney(amountDelta, selectedType.currency)} to pay`
+                  : "no price difference"}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={!selectedType || !selectedType.available}
+            onClick={() => setState("confirming")}
+            className="mt-4 min-h-11 rounded-lg border theme-border-strong px-4 font-mono text-xs disabled:opacity-50"
+          >
+            {actionLabel}
+          </button>
+        </>
+      ) : (
+        <p role="status" className="mt-4 font-mono text-micro theme-muted leading-relaxed">
+          There are no other tickets available to change right now.
         </p>
       )}
-      <button
-        type="button"
-        disabled={!selectedType || !selectedType.available}
-        onClick={() => setState("confirming")}
-        className="mt-4 min-h-11 rounded-lg border theme-border-strong px-4 font-mono text-xs disabled:opacity-50"
-      >
-        {actionLabel}
-      </button>
     </section>
   );
 }
