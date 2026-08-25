@@ -411,7 +411,7 @@ export function discoveryClaimPoints(
   let points = 0;
   switch (rule.pointMode) {
     case "once":
-      points = claimNumber === 1 ? (rule.pointsPerClue ?? 0) : 0;
+      points = rule.pointsPerClue ?? 0;
       break;
     case "fixed-pool":
     case "first-claimants":

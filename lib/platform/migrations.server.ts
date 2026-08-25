@@ -1959,6 +1959,25 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0039_discovery_collections",
+    sql: `
+      create table score_discovery_clues (
+        id                   text primary key,
+        discovery_id         text not null references score_discoveries (id) on delete cascade,
+        clue_key             text not null check (char_length(clue_key) between 1 and 80),
+        label                text not null check (char_length(label) between 1 and 160),
+        token_hash           text not null unique check (char_length(token_hash) = 64),
+        replacement_revision integer not null default 1 check (replacement_revision >= 1),
+        created_at           timestamptz not null default now(),
+        updated_at           timestamptz not null default now(),
+        unique (discovery_id, clue_key)
+      );
+
+      create index score_discovery_clues_discovery_idx
+        on score_discovery_clues (discovery_id, clue_key);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

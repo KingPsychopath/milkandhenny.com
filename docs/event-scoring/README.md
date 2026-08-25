@@ -378,40 +378,40 @@ Extended integrations:
 
 ## 14. Discoveries and Easter egg hunts
 
-- [ ] Admins can create a single discovery or a named discovery set.
-- [ ] Claim methods include QR, code, word, three-word phrase, and collected clues.
-- [ ] A normal phone camera can open a discovery URL.
+- [x] Admins can create a single discovery or a named discovery set.
+- [x] Claim methods include QR, code, word, three-word phrase, and collected clues.
+- [x] A normal phone camera can open a discovery URL.
 - [ ] The ticket or score page includes `Scan a clue` and `Enter a code`.
-- [ ] A page load or link preview never consumes a claim.
-- [ ] Claiming requires an explicit server-side POST from an identified attendee session.
+- [x] A page load or link preview never consumes a claim.
+- [x] Claiming requires an explicit server-side POST from an identified attendee session.
 - [ ] An unidentified browser can open a ticket and return to the pending discovery.
-- [ ] Claim tokens and phrases are random, unguessable for their value, and stored as hashes.
-- [ ] Codes normalize case and whitespace without creating ambiguous matches.
+- [x] Claim tokens and phrases are random, unguessable for their value, and stored as hashes.
+- [x] Codes normalize case and whitespace without creating ambiguous matches.
 - [ ] Generated words avoid offensive, easily confused, and unsuitable combinations.
-- [ ] Incorrect attempts are rate-limited without locking out valid users unfairly.
-- [ ] One participant cannot claim one discovery twice unless the rule explicitly permits it.
-- [ ] Collected-clue progress is durable and event-scoped.
-- [ ] Completion bonuses issue exactly once.
-- [ ] Discovery eligibility can require check-in, team, ticket type, or time window.
+- [x] Incorrect attempts are rate-limited without locking out valid users unfairly.
+- [x] One participant cannot claim one discovery twice unless the rule explicitly permits it.
+- [x] Collected-clue progress is durable and event-scoped.
+- [x] Completion bonuses issue exactly once.
+- [x] Discovery eligibility can require check-in, team, ticket type, or time window.
 - [ ] Status supports draft, scheduled, live, paused, exhausted, ended, and cancelled.
 - [ ] Static-code sharing risk is stated in the setup UI.
 - [ ] Higher-value claims can use rotating QRs, short windows, or staff confirmation.
-- [ ] A leaked clue can be replaced without replacing the whole hunt.
-- [ ] Physical loss or damage of a clue has a replacement workflow.
+- [x] A leaked clue can be replaced without replacing the whole hunt.
+- [x] Physical loss or damage of a clue has a replacement workflow.
 
 Supported point modes:
 
-- [ ] Once per participant with no global pool.
-- [ ] Fixed global point pool.
-- [ ] First configured number of claimants.
-- [ ] One total winner.
-- [ ] Diminishing claimant tiers.
-- [ ] Points per clue.
-- [ ] Completion-only award.
-- [ ] Points per clue plus completion bonus.
-- [ ] Exact-award exhaustion by default.
-- [ ] Optional remainder award.
-- [ ] Concurrent final claims cannot overspend the pool.
+- [x] Once per participant with no global pool.
+- [x] Fixed global point pool.
+- [x] First configured number of claimants.
+- [x] One total winner.
+- [x] Diminishing claimant tiers.
+- [x] Points per clue.
+- [x] Completion-only award.
+- [x] Points per clue plus completion bonus.
+- [x] Exact-award exhaustion by default.
+- [x] Optional remainder award.
+- [x] Concurrent final claims cannot overspend the pool.
 
 ## 15. Activity and hunt templates
 

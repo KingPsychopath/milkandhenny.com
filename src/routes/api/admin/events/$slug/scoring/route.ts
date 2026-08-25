@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
-import { createDiscovery, listDiscoveries } from "@/features/event-scoring/discoveries.server";
+import {
+  createDiscovery,
+  listDiscoveries,
+  replaceDiscoveryClueSecret,
+  replaceDiscoverySecret,
+} from "@/features/event-scoring/discoveries.server";
 import {
   acceptHeldScore,
   createPool,
@@ -272,10 +277,42 @@ async function handlePOST(request: Request, slug: string) {
         name,
         method: method as Parameters<typeof createDiscovery>[0]["method"],
         rule: body.rule as Parameters<typeof createDiscovery>[0]["rule"],
+        clues: Array.isArray(body.clues)
+          ? body.clues.flatMap((clue) => {
+              if (!clue || typeof clue !== "object" || Array.isArray(clue)) return [];
+              const record = clue as Record<string, unknown>;
+              const key = stringValue(record.key);
+              const label = stringValue(record.label);
+              return key && label ? [{ key, label }] : [];
+            })
+          : undefined,
         includeSecret: true,
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ discovery: result.value }, { status: 201 });
+    }
+
+    if (action === "replace-discovery-secret") {
+      const discoveryId = stringValue(body.discoveryId);
+      if (!discoveryId) return Response.json({ error: "Discovery is required" }, { status: 400 });
+      const result = await replaceDiscoverySecret({ eventSlug: slug, discoveryId, actorId });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json(result.value, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "replace-discovery-clue") {
+      const discoveryId = stringValue(body.discoveryId);
+      const clueKey = stringValue(body.clueKey);
+      if (!discoveryId || !clueKey)
+        return Response.json({ error: "Discovery and clue are required" }, { status: 400 });
+      const result = await replaceDiscoveryClueSecret({
+        eventSlug: slug,
+        discoveryId,
+        clueKey,
+        actorId,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json(result.value, { headers: { "Cache-Control": "no-store" } });
     }
 
     if (action === "rebuild-projections") {

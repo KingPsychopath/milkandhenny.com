@@ -34,7 +34,21 @@ export type Discovery = {
   replacementRevision: number;
 };
 
-export type DiscoverySetup = Discovery & { claimToken?: string; code?: string };
+export type DiscoveryClueSetup = {
+  key: string;
+  label: string;
+  claimToken: string;
+  replacementRevision: number;
+};
+
+export type DiscoverySetup = Discovery & {
+  claimToken?: string;
+  code?: string;
+  clues?: DiscoveryClueSetup[];
+};
+
+export type DiscoveryClaimProgress = { claimed: number; total: number; complete: boolean };
+export type DiscoveryClue = Omit<DiscoveryClueSetup, "claimToken">;
 
 export type DiscoveryResult<T> =
   | { ok: true; value: T }
@@ -67,6 +81,15 @@ export function discoveryCredential(input: {
   return input.method === "qr" ? `clue_${value}` : normalizeDiscoveryCode(value.slice(0, 14));
 }
 
+export function discoveryClueCredential(input: {
+  discoveryId: string;
+  clueKey: string;
+  revision: number;
+}): string {
+  const payload = `${input.discoveryId}:clue:${input.clueKey}:${input.revision}`;
+  return `clue_${createHmac("sha256", credentialKey()).update(payload).digest("base64url")}`;
+}
+
 function toDiscovery(row: DiscoveryRow): Discovery {
   return {
     id: row.id,
@@ -88,6 +111,7 @@ export async function createDiscovery(input: {
   status?: DiscoveryRow["status"];
   rule: DiscoveryRule;
   includeSecret?: boolean;
+  clues?: Array<{ key: string; label: string }>;
 }): Promise<DiscoveryResult<DiscoverySetup>> {
   const event = await getEvent(input.eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
@@ -95,6 +119,24 @@ export async function createDiscovery(input: {
   if (!activity || activity.eventSlug !== input.eventSlug)
     return { ok: false, status: 404, error: "Activity not found" };
   if (!input.name.trim()) return { ok: false, status: 400, error: "Name the discovery" };
+  const clues = (input.clues ?? []).map((clue) => ({
+    key: normalizeDiscoveryCode(clue.key).replaceAll(" ", "-").toLocaleLowerCase("en-GB"),
+    label: clue.label.trim(),
+  }));
+  if (
+    input.method === "collected-clues" &&
+    (clues.length < 2 ||
+      clues.length > 100 ||
+      clues.some(
+        (clue) => !/^[a-z0-9-]{1,80}$/.test(clue.key) || !clue.label || clue.label.length > 160,
+      ) ||
+      new Set(clues.map((clue) => clue.key)).size !== clues.length)
+  ) {
+    return { ok: false, status: 400, error: "A collected hunt needs 2 to 100 unique clues" };
+  }
+  if (input.method !== "collected-clues" && clues.length > 0) {
+    return { ok: false, status: 400, error: "Only a collected hunt can contain several clues" };
+  }
   const discoveryId = id("disc");
   const secret =
     input.method === "qr"
@@ -104,23 +146,43 @@ export async function createDiscovery(input: {
     input.method === "code" || input.method === "word" || input.method === "phrase"
       ? discoveryCredential({ discoveryId, method: input.method, revision: 1 })
       : null;
-  const row = await queryOne<DiscoveryRow>(
-    `insert into score_discoveries
-       (id, event_slug, activity_id, name, method, status, token_hash, code_hash, rule)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-     returning id, event_slug, activity_id, name, method, status, rule, replacement_revision`,
-    [
+  const clueSetups = clues.map((clue) => ({
+    ...clue,
+    claimToken: discoveryClueCredential({
       discoveryId,
-      input.eventSlug,
-      input.activityId,
-      input.name.trim(),
-      input.method,
-      input.status ?? "draft",
-      secret ? digest(secret) : null,
-      code ? digest(normalizeDiscoveryCode(code)) : null,
-      JSON.stringify(input.rule),
-    ],
-  );
+      clueKey: clue.key,
+      revision: 1,
+    }),
+    replacementRevision: 1,
+  }));
+  const row = await transaction(async (client) => {
+    const inserted = await client.query<DiscoveryRow>(
+      `insert into score_discoveries
+         (id, event_slug, activity_id, name, method, status, token_hash, code_hash, rule)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+       returning id, event_slug, activity_id, name, method, status, rule, replacement_revision`,
+      [
+        discoveryId,
+        input.eventSlug,
+        input.activityId,
+        input.name.trim(),
+        input.method,
+        input.status ?? "draft",
+        secret ? digest(secret) : null,
+        code ? digest(normalizeDiscoveryCode(code)) : null,
+        JSON.stringify(input.rule),
+      ],
+    );
+    for (const clue of clueSetups) {
+      await client.query(
+        `insert into score_discovery_clues
+           (id, discovery_id, clue_key, label, token_hash)
+         values ($1,$2,$3,$4,$5)`,
+        [id("dclue"), discoveryId, clue.key, clue.label, digest(clue.claimToken)],
+      );
+    }
+    return inserted.rows[0] ?? null;
+  });
   if (!row) return { ok: false, status: 500, error: "Discovery could not be created" };
   return {
     ok: true,
@@ -128,6 +190,7 @@ export async function createDiscovery(input: {
       ...toDiscovery(row),
       claimToken: input.includeSecret === false ? undefined : (secret ?? undefined),
       code: input.includeSecret === false ? undefined : (code ?? undefined),
+      clues: input.includeSecret === false ? undefined : clueSetups,
     },
   };
 }
@@ -150,7 +213,70 @@ export async function listDiscoveries(eventSlug: string): Promise<Discovery[]> {
   return rows.map(toDiscovery);
 }
 
+export async function listDiscoveryClues(discoveryId: string): Promise<DiscoveryClue[]> {
+  const rows = await query<{
+    clue_key: string;
+    label: string;
+    replacement_revision: number;
+  }>(
+    `select clue_key, label, replacement_revision
+       from score_discovery_clues where discovery_id = $1 order by created_at, clue_key`,
+    [discoveryId],
+  );
+  return rows.map((row) => ({
+    key: row.clue_key,
+    label: row.label,
+    replacementRevision: row.replacement_revision,
+  }));
+}
+
+export async function replaceDiscoveryClueSecret(input: {
+  eventSlug: string;
+  discoveryId: string;
+  clueKey: string;
+  actorId: string;
+}): Promise<DiscoveryResult<{ claimToken: string; replacementRevision: number }>> {
+  const current = await queryOne<{
+    event_slug: string;
+    replacement_revision: number;
+  }>(
+    `select discoveries.event_slug, clues.replacement_revision
+       from score_discovery_clues clues
+       join score_discoveries discoveries on discoveries.id = clues.discovery_id
+      where clues.discovery_id = $1 and clues.clue_key = $2 and discoveries.event_slug = $3`,
+    [input.discoveryId, input.clueKey, input.eventSlug],
+  );
+  if (!current) return { ok: false, status: 404, error: "Discovery clue not found" };
+  const replacementRevision = current.replacement_revision + 1;
+  const claimToken = discoveryClueCredential({
+    discoveryId: input.discoveryId,
+    clueKey: input.clueKey,
+    revision: replacementRevision,
+  });
+  await transaction(async (client) => {
+    await client.query(
+      `update score_discovery_clues
+          set token_hash = $3, replacement_revision = $4, updated_at = now()
+        where discovery_id = $1 and clue_key = $2`,
+      [input.discoveryId, input.clueKey, digest(claimToken), replacementRevision],
+    );
+    await client.query(
+      `insert into score_audit_events
+         (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+       values ($1,'discovery.clue.replaced','admin',$2,'discovery',$3,$4::jsonb)`,
+      [
+        current.event_slug,
+        input.actorId,
+        input.discoveryId,
+        JSON.stringify({ clueKey: input.clueKey, revision: replacementRevision }),
+      ],
+    );
+  });
+  return { ok: true, value: { claimToken, replacementRevision } };
+}
+
 export async function replaceDiscoverySecret(input: {
+  eventSlug: string;
   discoveryId: string;
   actorId: string;
 }): Promise<DiscoveryResult<{ claimToken: string; replacementRevision: number }>> {
@@ -160,8 +286,8 @@ export async function replaceDiscoverySecret(input: {
     replacement_revision: number;
   }>(
     `select event_slug, method, replacement_revision
-       from score_discoveries where id = $1`,
-    [input.discoveryId],
+       from score_discoveries where id = $1 and event_slug = $2`,
+    [input.discoveryId, input.eventSlug],
   );
   if (!current) return { ok: false, status: 404, error: "Discovery not found" };
   const replacementRevision = current.replacement_revision + 1;
@@ -199,19 +325,30 @@ export async function replaceDiscoverySecret(input: {
   };
 }
 
-async function resolveDiscovery(discovery: Discovery, value: string): Promise<boolean> {
+async function resolveDiscovery(
+  discovery: Discovery,
+  value: string,
+): Promise<{ matched: boolean; clueKey: string | null }> {
   if (discovery.method === "qr") {
     const row = await queryOne<{ id: string }>(
       `select id from score_discoveries where id = $1 and token_hash = $2`,
       [discovery.id, digest(value)],
     );
-    return Boolean(row);
+    return { matched: Boolean(row), clueKey: null };
+  }
+  if (discovery.method === "collected-clues") {
+    const row = await queryOne<{ clue_key: string }>(
+      `select clue_key from score_discovery_clues
+        where discovery_id = $1 and token_hash = $2`,
+      [discovery.id, digest(value)],
+    );
+    return { matched: Boolean(row), clueKey: row?.clue_key ?? null };
   }
   const row = await queryOne<{ id: string }>(
     `select id from score_discoveries where id = $1 and code_hash = $2`,
     [discovery.id, digest(normalizeDiscoveryCode(value))],
   );
-  return Boolean(row);
+  return { matched: Boolean(row), clueKey: null };
 }
 
 export async function claimDiscovery(input: {
@@ -219,20 +356,24 @@ export async function claimDiscovery(input: {
   participantId: string;
   presented: string;
   commandId: string;
-  clueKey?: string;
-}): Promise<DiscoveryResult<{ state: DiscoveryClaimState; points: number; transaction?: string }>> {
+}): Promise<
+  DiscoveryResult<{
+    state: DiscoveryClaimState;
+    points: number;
+    transaction?: string;
+    progress?: DiscoveryClaimProgress;
+  }>
+> {
   const discovery = await getDiscovery(input.discoveryId);
   if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
   const participant = await getParticipant(input.participantId);
   if (!participant || participant.eventSlug !== discovery.eventSlug)
     return { ok: false, status: 404, error: "Participant not found" };
-  if (input.clueKey) {
-    return { ok: false, status: 400, error: "A discovery can only be claimed once" };
-  }
   if (discovery.status !== "live")
     return { ok: false, status: 409, error: "This discovery is not live" };
-  if (!(await resolveDiscovery(discovery, input.presented)))
-    return { ok: false, status: 400, error: "That clue does not match" };
+  const resolved = await resolveDiscovery(discovery, input.presented);
+  if (!resolved.matched) return { ok: false, status: 400, error: "That clue does not match" };
+  const clueKey = resolved.clueKey;
   if (discovery.rule.requiresCheckIn && !participant.checkedInAt)
     return { ok: false, status: 409, error: "Check in before claiming this clue" };
   if (!isWithinWindow(Date.now(), discovery.rule.startsAt, discovery.rule.endsAt))
@@ -264,11 +405,32 @@ export async function claimDiscovery(input: {
     }>(
       `select id, state, points, transaction_id
          from score_discovery_claims
-        where discovery_id = $1 and participant_id = $2 and clue_key is null`,
-      [input.discoveryId, input.participantId],
+        where discovery_id = $1 and participant_id = $2 and clue_key is not distinct from $3`,
+      [input.discoveryId, input.participantId, clueKey],
     );
     if (existing.rows[0]) return { duplicate: existing.rows[0] };
-    const claimNumberRows = await client.query<{ count: string; points: string }>(
+    const clueTotals =
+      discovery.method === "collected-clues"
+        ? await client.query<{ total: string; claimed: string }>(
+            `select
+               (select count(*)::text from score_discovery_clues where discovery_id = $1) as total,
+               (select count(*)::text from score_discovery_claims
+                 where discovery_id = $1 and participant_id = $2 and clue_key is not null
+                   and state in ('accepted', 'held')) as claimed`,
+            [input.discoveryId, input.participantId],
+          )
+        : null;
+    const totalClues = Number(clueTotals?.rows[0]?.total ?? 0);
+    const claimedBefore = Number(clueTotals?.rows[0]?.claimed ?? 0);
+    const progress =
+      discovery.method === "collected-clues"
+        ? {
+            claimed: claimedBefore + 1,
+            total: totalClues,
+            complete: totalClues > 0 && claimedBefore + 1 === totalClues,
+          }
+        : undefined;
+    const claimNumberRows = await client.query<{ count: string }>(
       `select count(*)::text as count
          from score_discovery_claims
         where discovery_id = $1 and state in ('accepted', 'held')`,
@@ -276,8 +438,9 @@ export async function claimDiscovery(input: {
     );
     const claimNumber = Number(claimNumberRows.rows[0]?.count ?? 0) + 1;
     if (
-      discovery.rule.claimantLimit !== undefined &&
-      claimNumber > Math.max(0, Math.trunc(discovery.rule.claimantLimit))
+      (discovery.rule.claimantLimit !== undefined &&
+        claimNumber > Math.max(0, Math.trunc(discovery.rule.claimantLimit))) ||
+      (discovery.rule.pointMode === "one-winner" && claimNumber > 1)
     ) {
       return { limitReached: true };
     }
@@ -287,19 +450,16 @@ export async function claimDiscovery(input: {
         where discovery_id = $1 and state in ('accepted', 'held')`,
       [input.discoveryId],
     );
-    let points = discoveryClaimPoints(
-      discovery.rule,
-      claimNumber,
-      discovery.method === "collected-clues",
-    );
+    let points = discoveryClaimPoints(discovery.rule, claimNumber, progress?.complete ?? false);
     if (discovery.rule.pointMode === "fixed-pool" && discovery.rule.poolPoints !== undefined) {
-      points = Math.min(
-        points,
-        Math.max(
-          0,
-          Math.trunc(discovery.rule.poolPoints) - Number(claimedPoints.rows[0]?.total ?? 0),
-        ),
+      const remaining = Math.max(
+        0,
+        Math.trunc(discovery.rule.poolPoints) - Number(claimedPoints.rows[0]?.total ?? 0),
       );
+      if (remaining < points) {
+        if (discovery.rule.remainderAward === "discard") return { limitReached: true };
+        points = remaining;
+      }
     }
     if (points <= 0 && discovery.rule.pointMode === "fixed-pool") {
       return { limitReached: true };
@@ -317,7 +477,7 @@ export async function claimDiscovery(input: {
         input.participantId,
         input.commandId,
         points,
-        null,
+        clueKey,
       ],
     );
     if (!inserted.rows[0]) {
@@ -329,12 +489,12 @@ export async function claimDiscovery(input: {
       }>(
         `select id, state, points, transaction_id
            from score_discovery_claims
-          where discovery_id = $1 and participant_id = $2 and clue_key is null`,
-        [input.discoveryId, input.participantId],
+          where discovery_id = $1 and participant_id = $2 and clue_key is not distinct from $3`,
+        [input.discoveryId, input.participantId, clueKey],
       );
       return duplicate.rows[0] ? { duplicate: duplicate.rows[0] } : { duplicate: null };
     }
-    return { duplicate: null, claimId, points };
+    return { duplicate: null, claimId, points, progress };
   });
   if ("limitReached" in claim && claim.limitReached) {
     return { ok: false, status: 409, error: "This discovery has no claimant points left" };
@@ -367,7 +527,7 @@ export async function claimDiscovery(input: {
     await query(`update score_discovery_claims set state = 'held' where id = $1`, [claimId]);
     return { ok: true, value: { state: "held", points } };
   }
-  return settleDiscoveryClaim(discovery, input.participantId, claimId, points);
+  return settleDiscoveryClaim(discovery, input.participantId, claimId, points, claim.progress);
 }
 
 async function settleDiscoveryClaim(
@@ -375,10 +535,18 @@ async function settleDiscoveryClaim(
   participantId: string,
   claimId: string,
   points: number,
-): Promise<DiscoveryResult<{ state: DiscoveryClaimState; points: number; transaction?: string }>> {
+  progress?: DiscoveryClaimProgress,
+): Promise<
+  DiscoveryResult<{
+    state: DiscoveryClaimState;
+    points: number;
+    transaction?: string;
+    progress?: DiscoveryClaimProgress;
+  }>
+> {
   if (points === 0) {
     await query(`update score_discovery_claims set state = 'accepted' where id = $1`, [claimId]);
-    return { ok: true, value: { state: "accepted", points: 0 } };
+    return { ok: true, value: { state: "accepted", points: 0, progress } };
   }
   const scored = await recordScore({
     eventSlug: discovery.eventSlug,
@@ -401,5 +569,5 @@ async function settleDiscoveryClaim(
     state,
     scored.value.id,
   ]);
-  return { ok: true, value: { state, points, transaction: scored.value.id } };
+  return { ok: true, value: { state, points, transaction: scored.value.id, progress } };
 }

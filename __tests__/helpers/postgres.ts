@@ -61,6 +61,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists score_audit_events cascade;
     drop table if exists score_staff_devices cascade;
     drop table if exists score_staff_assignments cascade;
+    drop table if exists score_discovery_clues cascade;
     drop table if exists score_discovery_claims cascade;
     drop table if exists score_discoveries cascade;
     drop table if exists score_game_receipts cascade;

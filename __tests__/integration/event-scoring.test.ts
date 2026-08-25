@@ -28,6 +28,12 @@ import {
   claimGamePlayerResult,
   issueGamePlayerClaimToken,
 } from "@/features/event-scoring/game-claims.server";
+import {
+  claimDiscovery,
+  createDiscovery,
+  replaceDiscoveryClueSecret,
+} from "@/features/event-scoring/discoveries.server";
+import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
@@ -614,5 +620,106 @@ describeWithDatabase("event scoring postgres", () => {
       await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
     ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
+  });
+
+  it("settles collected clues and the completion bonus exactly once", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Collect them all",
+      template: "discovery",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 1, repeat: "repeat", requiresCheckIn: false },
+    });
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const created = await createDiscovery({
+      eventSlug: "scoring-night",
+      activityId: activity.id,
+      name: "Two hidden clues",
+      method: "collected-clues",
+      status: "live",
+      rule: {
+        pointMode: "per-clue-plus-completion",
+        pointsPerClue: 2,
+        completionBonus: 5,
+        requiresCheckIn: false,
+        remainderAward: "discard",
+      },
+      clues: [
+        { key: "amber-door", label: "Amber door" },
+        { key: "stone-step", label: "Stone step" },
+      ],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const firstToken = created.value.clues?.[0]?.claimToken ?? "missing";
+    const originalSecondToken = created.value.clues?.[1]?.claimToken ?? "missing";
+    const replacement = await replaceDiscoveryClueSecret({
+      eventSlug: "scoring-night",
+      discoveryId: created.value.id,
+      clueKey: "stone-step",
+      actorId: "admin-1",
+    });
+    expect(replacement.ok).toBe(true);
+    const secondToken = replacement.ok ? replacement.value.claimToken : "missing";
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant!.id,
+        presented: originalSecondToken,
+        commandId: "discovery-old-replaced-clue",
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
+    const printPack = await buildDiscoveryPrintPack({
+      eventSlug: "scoring-night",
+      layout: "two-per-page",
+      discoveryIds: [created.value.id],
+    });
+    expect(printPack.ok && printPack.pack.items).toHaveLength(2);
+    expect(printPack.ok && Object.keys(printPack.qrDataUrls)).toHaveLength(2);
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant!.id,
+        presented: firstToken,
+        commandId: "discovery-command-one",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        state: "accepted",
+        points: 2,
+        transaction: expect.any(String),
+        progress: { claimed: 1, total: 2, complete: false },
+      },
+    });
+    const finalClaims = await Promise.all([
+      claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant!.id,
+        presented: secondToken,
+        commandId: "discovery-command-two-a",
+      }),
+      claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant!.id,
+        presented: secondToken,
+        commandId: "discovery-command-two-b",
+      }),
+    ]);
+    expect(finalClaims.every((result) => result.ok && result.value.points === 7)).toBe(true);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(9);
+    expect(
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from score_discovery_claims
+            where discovery_id = $1 and participant_id = $2`,
+          [created.value.id, participant!.id],
+        )
+      )[0]?.count,
+    ).toBe("2");
   });
 });

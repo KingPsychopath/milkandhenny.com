@@ -3,7 +3,12 @@ import jsQR from "jsqr";
 import sharp from "sharp";
 
 import { getEvent } from "@/features/events/store.server";
-import { discoveryCredential, listDiscoveries } from "./discoveries.server";
+import {
+  discoveryClueCredential,
+  discoveryCredential,
+  listDiscoveries,
+  listDiscoveryClues,
+} from "./discoveries.server";
 import { printLayout, type PrintLayout, type PrintPack, validatePrintPack } from "./print";
 
 export async function buildDiscoveryPrintPack(input: {
@@ -25,6 +30,38 @@ export async function buildDiscoveryPrintPack(input: {
   );
   if (discoveries.length === 0)
     return { ok: false, status: 400, error: "Choose at least one discovery" };
+  const printItems = (
+    await Promise.all(
+      discoveries.map(async (discovery) => {
+        if (discovery.method === "collected-clues") {
+          return (await listDiscoveryClues(discovery.id)).map((clue) => ({
+            id: `${discovery.id}:${clue.key}`,
+            title: `${discovery.name} — ${clue.label}`,
+            credential: discoveryClueCredential({
+              discoveryId: discovery.id,
+              clueKey: clue.key,
+              revision: clue.replacementRevision,
+            }),
+            revision: clue.replacementRevision,
+            discoveryId: discovery.id,
+          }));
+        }
+        return [
+          {
+            id: discovery.id,
+            title: discovery.name,
+            credential: discoveryCredential({
+              discoveryId: discovery.id,
+              method: discovery.method,
+              revision: discovery.replacementRevision,
+            }),
+            revision: discovery.replacementRevision,
+            discoveryId: discovery.id,
+          },
+        ];
+      }),
+    )
+  ).flat();
   const pack: PrintPack = {
     eventSlug: input.eventSlug,
     title: event.title,
@@ -35,18 +72,13 @@ export async function buildDiscoveryPrintPack(input: {
     layout: input.layout,
     includePoints: input.includePoints ?? true,
     includePlacementNotes: input.includePlacementNotes ?? false,
-    items: discoveries.map((discovery) => {
-      const credential = discoveryCredential({
-        discoveryId: discovery.id,
-        method: discovery.method,
-        revision: discovery.replacementRevision,
-      });
+    items: printItems.map((item) => {
       return {
-        id: discovery.id,
-        title: discovery.name,
-        destination: `/events/${encodeURIComponent(input.eventSlug)}/discoveries/${encodeURIComponent(discovery.id)}#clue=${encodeURIComponent(credential)}`,
-        fallbackCode: credential,
-        revision: discovery.replacementRevision,
+        id: item.id,
+        title: item.title,
+        destination: `/events/${encodeURIComponent(input.eventSlug)}/discoveries/${encodeURIComponent(item.discoveryId)}#clue=${encodeURIComponent(item.credential)}`,
+        fallbackCode: item.credential,
+        revision: item.revision,
         private: false,
       };
     }),
