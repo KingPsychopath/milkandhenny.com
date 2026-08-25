@@ -14,9 +14,20 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: 0.8rem 0 1rem;
+  margin-inline: -1.25rem;
+  padding: 0.8rem 1.25rem 1rem;
   text-align: center;
-  background: linear-gradient(var(--background) 72%, transparent);
+  background:
+    radial-gradient(
+      circle at 50% 2.5rem,
+      color-mix(in srgb, var(--heat-ember) 10%, transparent),
+      transparent 4.75rem
+    ),
+    radial-gradient(
+      ellipse 78% 110% at 50% 0,
+      color-mix(in srgb, var(--background) 94%, transparent) 0 52%,
+      transparent 100%
+    );
 }
 .heat-source-flame {
   display: grid;
