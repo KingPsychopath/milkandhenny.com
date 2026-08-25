@@ -131,7 +131,9 @@ export function ScoreSyncStatus({
   }, [eventSlug, participantId, ticketId]);
   return (
     <span>
-      {online ? `synchronized ${new Date(lastSynchronizedAt).toLocaleTimeString()}` : "offline - showing last confirmed score"}
+      {online
+        ? `synchronized ${new Date(lastSynchronizedAt).toLocaleTimeString()}`
+        : "offline - showing last confirmed score"}
     </span>
   );
 }
