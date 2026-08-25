@@ -1,10 +1,11 @@
-import { semanticSimilarity } from "../shared/semantic-embeddings.server";
-import { heatBand, similarityRank } from "./hot-and-cold-rules";
+import { heatBand } from "./hot-and-cold-rules";
+import { rankHotAndColdWord, resolveHotAndColdGuess } from "./hot-and-cold-lexicon.server";
 
-export async function scoreHotAndColdGuess(target: string, guess: string) {
-  if (target === guess) return { rank: 0, band: "found" as const };
-  const similarity = await semanticSimilarity(target, guess);
-  if (similarity === null) throw new Error("The word scorer is unavailable");
-  const rank = similarityRank(similarity);
-  return { rank, band: heatBand(rank) };
+export class HotAndColdInvalidGuessError extends Error {}
+
+export async function scoreHotAndColdGuess(target: string, raw: string) {
+  const word = await resolveHotAndColdGuess(raw);
+  if (!word) throw new HotAndColdInvalidGuessError("That word is not in our dictionary");
+  const rank = await rankHotAndColdWord(target, word);
+  return { word, rank, band: heatBand(rank) };
 }

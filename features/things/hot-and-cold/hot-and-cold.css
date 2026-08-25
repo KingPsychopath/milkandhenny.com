@@ -24,6 +24,7 @@
   );
 }
 .heat-source-flame {
+  position: relative;
   display: grid;
   place-items: center;
   width: 3.5rem;
@@ -33,6 +34,30 @@
   color: var(--heat-ember);
   box-shadow: 0 0 3rem color-mix(in srgb, var(--heat-ember) 35%, transparent);
   animation: heat-breathe 2.6s ease-in-out infinite;
+}
+.heat-source-flame:not([data-found])::before {
+  content: "";
+  width: 1.45rem;
+  height: 1.8rem;
+  border-radius: 70% 30% 64% 36%;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--heat-ember) 54%, var(--background)),
+    var(--heat-ember)
+  );
+  transform: rotate(38deg);
+  box-shadow: 0 0 1.8rem color-mix(in srgb, var(--heat-ember) 48%, transparent);
+}
+.heat-source-flame:not([data-found])::after {
+  content: "";
+  position: absolute;
+  width: 0.55rem;
+  height: 0.8rem;
+  bottom: 0.9rem;
+  border-radius: 70% 30% 65% 35%;
+  background: var(--background);
+  transform: rotate(38deg);
+  opacity: 0.72;
 }
 .heat-source p {
   margin-top: 0.15rem;
@@ -159,6 +184,22 @@
   margin-top: 1rem;
   font: italic 1rem/1.5 var(--font-serif);
 }
+.heat-explainer {
+  margin: 0.25rem 0 1.5rem;
+  padding: 1rem 0 1.15rem;
+  border-block: 1px solid var(--stone-200);
+}
+.heat-explainer h2 {
+  font: 600 0.68rem/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.heat-explainer p {
+  max-width: 36rem;
+  margin-top: 0.65rem;
+  font: 0.9rem/1.55 var(--font-serif);
+  color: var(--stone-500);
+}
 .heat-target {
   display: grid;
   grid-template-columns: 5.2rem 1fr;
@@ -282,6 +323,9 @@
   font: 500 0.64rem/1 var(--font-mono);
   color: var(--stone-500);
 }
+.heat-composer-tools > span {
+  padding-top: 0.9rem;
+}
 .heat-composer-actions {
   display: flex;
   align-items: start;
@@ -289,6 +333,19 @@
 }
 .heat-composer-actions button {
   min-height: 2.75rem;
+  white-space: nowrap;
+}
+.heat-composer-actions button:disabled {
+  opacity: 0.42;
+}
+@media (max-width: 30rem) {
+  .heat-composer-tools {
+    align-items: start;
+    gap: 0.6rem;
+  }
+  .heat-composer-actions {
+    gap: 0.9rem;
+  }
 }
 @media (hover: hover) and (pointer: fine) {
   .heat-keyboard-toggle {

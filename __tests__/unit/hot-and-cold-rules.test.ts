@@ -4,7 +4,6 @@ import {
   heatBand,
   orderGuesses,
   roundWinnerIds,
-  similarityRank,
 } from "@/features/things/hot-and-cold/hot-and-cold-rules";
 import {
   HOT_AND_COLD_TARGETS,
@@ -13,11 +12,9 @@ import {
 
 describe("Hot and Cold rules", () => {
   it("keeps zero exact and makes lower ranks hotter", () => {
-    expect(similarityRank(1)).toBe(0);
-    expect(similarityRank(0.8)).toBeLessThan(similarityRank(0.4));
     expect(heatBand(0)).toBe("found");
     expect(heatBand(49)).toBe("burning");
-    expect(heatBand(50_000)).toBe("frozen");
+    expect(heatBand(28_000)).toBe("frozen");
   });
 
   it("orders the shared ledger by rank and preserves arrival order for ties", () => {

@@ -14,15 +14,9 @@ export function heatBand(rank: number): HeatBand {
   if (rank < 50) return "burning";
   if (rank < 500) return "hot";
   if (rank < 5_000) return "warm";
-  if (rank < 20_000) return "cool";
-  if (rank < 50_000) return "cold";
+  if (rank < 15_000) return "cool";
+  if (rank < 28_000) return "cold";
   return "frozen";
-}
-
-/** Maps model similarity to a stable distance-like number. Zero remains exact only. */
-export function similarityRank(similarity: number) {
-  if (similarity >= 0.999_999) return 0;
-  return Math.max(1, Math.min(99_999, Math.round(10 ** (5.7 - 5 * similarity))));
 }
 
 export function prepareGuess(raw: string) {

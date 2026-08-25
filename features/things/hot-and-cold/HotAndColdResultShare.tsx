@@ -7,14 +7,16 @@ export function HotAndColdResultShare({
   label,
   guesses,
   outcome,
+  hintsUsed = 0,
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   outcome: "found" | "revealed" | "closest";
+  hintsUsed?: number;
 }) {
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [status, setStatus] = useState<"idle" | "shared" | "copied" | "failed">("idle");
-  const result = buildHotAndColdShareResult({ label, guesses, outcome });
+  const result = buildHotAndColdShareResult({ label, guesses, outcome, hintsUsed });
   const closestLabel =
     result.bestRank === null
       ? "—"
@@ -77,6 +79,12 @@ export function HotAndColdResultShare({
           </dd>
         </div>
       </dl>
+
+      {hintsUsed > 0 ? (
+        <p className="mt-3 text-left font-mono text-micro theme-muted">
+          assisted · {hintsUsed} hint{hintsUsed === 1 ? "" : "s"}
+        </p>
+      ) : null}
 
       <button
         type="button"

@@ -13,8 +13,9 @@ import {
   joinHotAndColdRoom,
   readHotAndColdSnapshot,
 } from "./hot-and-cold-room.server";
-import { prepareGuess } from "./hot-and-cold-rules";
-import { scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
+import { heatBand, prepareGuess } from "./hot-and-cold-rules";
+import { hotAndColdHint } from "./hot-and-cold-lexicon.server";
+import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import { dailyHotAndColdTarget, hotAndColdPuzzleNumber } from "./hot-and-cold-words.server";
 import type { HotAndColdAction } from "./types";
 
@@ -116,15 +117,43 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
     if (!word) throw new Error("Type one English word");
     return { word };
   })
-  .handler(async ({ data }) => ({
-    word: data.word,
-    puzzle: hotAndColdPuzzleNumber(),
-    ...(await scoreHotAndColdGuess(dailyHotAndColdTarget(), data.word)),
-  }));
+  .handler(async ({ data }) => {
+    try {
+      return {
+        ok: true as const,
+        puzzle: hotAndColdPuzzleNumber(),
+        ...(await scoreHotAndColdGuess(dailyHotAndColdTarget(), data.word)),
+      };
+    } catch (error) {
+      if (error instanceof HotAndColdInvalidGuessError)
+        return {
+          ok: false as const,
+          error: "That word is not in our dictionary",
+          puzzle: hotAndColdPuzzleNumber(),
+        };
+      throw error;
+    }
+  });
 export const revealDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
   target: dailyHotAndColdTarget(),
 }));
+export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    const usedWords = Array.isArray(data.usedWords)
+      ? data.usedWords
+          .slice(0, 128)
+          .map((word) => prepareGuess(multiplayerBoundedText(word, 32)))
+          .filter((word): word is string => Boolean(word))
+      : [];
+    return { hintIndex: Math.min(2, integer(data.hintIndex)), usedWords };
+  })
+  .handler(async ({ data }) => {
+    const target = dailyHotAndColdTarget();
+    const hint = await hotAndColdHint(target, data.hintIndex, data.usedWords);
+    return { ...hint, band: heatBand(hint.rank), puzzle: hotAndColdPuzzleNumber() };
+  });
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
 }));

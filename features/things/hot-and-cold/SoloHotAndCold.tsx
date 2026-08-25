@@ -5,7 +5,11 @@ import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare } from "./HotAndColdResultShare";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
-import { revealDailyHotAndColdFn, scoreDailyHotAndColdGuessFn } from "./hot-and-cold.functions";
+import {
+  getDailyHotAndColdHintFn,
+  revealDailyHotAndColdFn,
+  scoreDailyHotAndColdGuessFn,
+} from "./hot-and-cold.functions";
 import type { SoloHotAndColdGuess } from "./types";
 
 interface DailyState {
@@ -13,6 +17,7 @@ interface DailyState {
   guesses: SoloHotAndColdGuess[];
   target: string | null;
   gaveUp: boolean;
+  hintsUsed: number;
 }
 export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () => void }) {
   const haptics = useWebHaptics();
@@ -21,14 +26,24 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     guesses: [],
     target: null,
     gaveUp: false,
+    hintsUsed: 0,
   });
   const [recovered, setRecovered] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
+  const [showHow, setShowHow] = useState(false);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle));
-      if (stored) setState(JSON.parse(stored) as DailyState);
+      if (stored) {
+        const saved = JSON.parse(stored) as Partial<DailyState>;
+        setState((current) => ({
+          ...current,
+          ...saved,
+          guesses: saved.guesses ?? [],
+          hintsUsed: saved.hintsUsed ?? saved.guesses?.filter(({ hint }) => hint).length ?? 0,
+        }));
+      }
     } catch {
       /* play without recovery */
     } finally {
@@ -48,7 +63,8 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       state.guesses.map((guess) => ({
         ...guess,
         id: `${guess.sequence}:${guess.word}`,
-        mine: true,
+        mine: !guess.hint,
+        playerName: guess.hint ? "hint" : undefined,
       })),
     [state.guesses],
   );
@@ -61,6 +77,15 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     }
     try {
       const result = await scoreDailyHotAndColdGuessFn({ data: { word } });
+      if (!result.ok) {
+        setMessage("not in our word list");
+        return false;
+      }
+      const canonicalExisting = state.guesses.find((item) => item.word === result.word);
+      if (canonicalExisting) {
+        setMessage(`already #${canonicalExisting.rank.toLocaleString()}`);
+        return false;
+      }
       const next = {
         word: result.word,
         rank: result.rank,
@@ -79,9 +104,39 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
         result.rank === 0 ? "success" : result.rank < 500 ? "warning" : "selection",
       );
       return true;
-    } catch {
-      setMessage("the scorer is warming up — try again");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.toLowerCase() : "";
+      setMessage(
+        reason.includes("dictionary")
+          ? "not in our word list"
+          : "the scorer is warming up — try again",
+      );
       return false;
+    }
+  };
+  const requestHint = async () => {
+    try {
+      const result = await getDailyHotAndColdHintFn({
+        data: { hintIndex: state.hintsUsed, usedWords: state.guesses.map(({ word }) => word) },
+      });
+      const next: SoloHotAndColdGuess = {
+        word: result.word,
+        rank: result.rank,
+        band: result.band,
+        sequence: state.guesses.length + 1,
+        createdAt: Date.now(),
+        hint: true,
+      };
+      setState((current) => ({
+        ...current,
+        guesses: [...current.guesses, next],
+        hintsUsed: current.hintsUsed + 1,
+      }));
+      setNewest(`${next.sequence}:${next.word}`);
+      setMessage(`hint · #${next.rank.toLocaleString()}`);
+      void haptics.trigger("selection");
+    } catch {
+      setMessage("no more hints today");
     }
   };
   const giveUp = async () => {
@@ -90,6 +145,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     return true;
   };
   const done = Boolean(state.target);
+  const playerGuesses = state.guesses.filter(({ hint }) => !hint);
   const hottest = ledger.reduce<(typeof ledger)[number] | null>(
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
@@ -101,33 +157,46 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           ← hot and cold
         </button>
         <span>daily #{puzzle}</span>
-        {!done ? (
-          <GiveUpControl
-            tone="dark"
-            title="Reveal today’s word?"
-            description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
-            onGiveUp={giveUp}
-            className="min-h-11 justify-self-end font-mono text-micro theme-faint"
-          />
-        ) : (
-          <span />
-        )}
+        <button
+          type="button"
+          className="grid size-11 place-items-center justify-self-end rounded-full font-mono text-xs theme-faint"
+          aria-label="How heat works"
+          aria-expanded={showHow}
+          aria-controls="how-heat-works"
+          onClick={() => setShowHow((open) => !open)}
+        >
+          ?
+        </button>
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
-          <div className="heat-source-flame" aria-hidden="true">
-            {done ? "✦" : "♨"}
+          <div className="heat-source-flame" data-found={done || undefined} aria-hidden="true">
+            {done ? "✦" : null}
           </div>
           <p>
             {done
               ? state.gaveUp
                 ? "revealed"
-                : `found in ${state.guesses.length}`
+                : `found in ${playerGuesses.length}`
               : hottest
                 ? `hottest · #${hottest.rank.toLocaleString()}`
                 : "0 · the secret word"}
           </p>
         </div>
+        {showHow ? (
+          <section id="how-heat-works" className="heat-explainer" aria-label="How heat works">
+            <h2>how does a word get hot?</h2>
+            <p>
+              Hot words live near the secret in language. They can mean something similar, belong to
+              the same group, form a familiar pair, or even be opposites. Lower ranks are hotter;
+              zero is the exact word.
+            </p>
+            <p>
+              We rank a fixed list of common dictionary words before the game. Names are not
+              accepted, and normal forms such as “dogs” resolve to “dog”.
+            </p>
+          </section>
+        ) : null}
         <HeatLedger guesses={ledger} newestId={newest} target={state.target} />
         {done ? (
           <section className="pb-24 text-center">
@@ -136,8 +205,9 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             </p>
             <HotAndColdResultShare
               label={`daily #${puzzle}`}
-              guesses={state.guesses}
+              guesses={playerGuesses}
               outcome={state.gaveUp ? "revealed" : "found"}
+              hintsUsed={state.hintsUsed}
             />
             <button
               type="button"
@@ -149,7 +219,29 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           </section>
         ) : null}
       </main>
-      {!done ? <GuessComposer message={message} onGuess={guess} /> : null}
+      {!done ? (
+        <GuessComposer
+          message={message}
+          onGuess={guess}
+          actions={
+            <>
+              <button
+                type="button"
+                disabled={state.hintsUsed >= 3}
+                onClick={() => void requestHint()}
+              >
+                {state.hintsUsed >= 3 ? "hints used" : "hint"}
+              </button>
+              <GiveUpControl
+                tone="dark"
+                title="Reveal today’s word?"
+                description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
+                onGiveUp={giveUp}
+              />
+            </>
+          }
+        />
+      ) : null}
     </div>
   );
 }

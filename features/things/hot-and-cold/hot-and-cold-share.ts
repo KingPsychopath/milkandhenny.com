@@ -52,10 +52,12 @@ export function buildHotAndColdShareResult({
   label,
   guesses,
   outcome,
+  hintsUsed = 0,
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   outcome: "found" | "revealed" | "closest";
+  hintsUsed?: number;
 }): HotAndColdShareResult {
   const trail = buildHotAndColdTrail(guesses);
   const ranked = guesses.map(({ rank }) => rank);
@@ -80,7 +82,16 @@ export function buildHotAndColdShareResult({
   const symbols = trail.length ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" ") : "—";
 
   return {
-    text: [`hot and cold · ${label}`, resultLabel, "", symbols, detail].join("\n"),
+    text: [
+      `hot and cold · ${label}`,
+      resultLabel,
+      "",
+      symbols,
+      detail,
+      hintsUsed > 0 ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} used` : null,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
     trail,
     guessCount: guesses.length,
     bestRank,

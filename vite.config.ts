@@ -26,7 +26,10 @@ export default defineConfig({
     tanstackStart(),
     nitro({
       serverDir: "server",
-      serverAssets: [{ baseName: "party-audio", dir: "./assets/party-spelling-audio" }],
+      serverAssets: [
+        { baseName: "hot-and-cold", dir: "./assets/hot-and-cold" },
+        { baseName: "party-audio", dir: "./assets/party-spelling-audio" },
+      ],
       features: {
         websocket: true,
       },

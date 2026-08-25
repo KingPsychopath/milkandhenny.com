@@ -125,4 +125,5 @@ export interface SoloHotAndColdGuess {
   band: HeatBand;
   sequence: number;
   createdAt: number;
+  hint?: boolean;
 }

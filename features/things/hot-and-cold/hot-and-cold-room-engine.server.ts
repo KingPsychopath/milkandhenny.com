@@ -36,7 +36,7 @@ import {
   prepareGuess,
   roundWinnerIds,
 } from "./hot-and-cold-rules";
-import { scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
+import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import { randomHotAndColdTargets } from "./hot-and-cold-words.server";
 import type {
   HotAndColdAction,
@@ -456,6 +456,7 @@ export async function applyHotAndColdAction(input: {
     rank: number;
     band: HotAndColdGuess["band"];
   } | null = null;
+  let invalidDictionaryWord = false;
   if (input.action.type === "guess.submit") {
     const word = prepareGuess(input.action.word);
     if (word) {
@@ -466,10 +467,10 @@ export async function applyHotAndColdAction(input: {
           scored = {
             roundId: room.round.id,
             target,
-            word,
             ...(await scoreHotAndColdGuess(target, word)),
           };
-        } catch {
+        } catch (error) {
+          invalidDictionaryWord = error instanceof HotAndColdInvalidGuessError;
           scored = null;
         }
     }
@@ -528,7 +529,10 @@ export async function applyHotAndColdAction(input: {
       )
         return reject("action_unavailable", "It is not your turn");
       if (!prepareGuess(action.word)) return reject("invalid_guess", "Type one English word");
-      if (!scored) return reject("scorer_unavailable", "The word scorer is warming up. Try again.");
+      if (!scored)
+        return invalidDictionaryWord
+          ? reject("invalid_guess", "That word is not in our dictionary")
+          : reject("scorer_unavailable", "The word scorer is warming up. Try again.");
       if (scored.roundId !== room.round.id || scored.target !== room.round.target)
         return reject("action_unavailable", "The round moved on. Try your guess again.");
       if (room.round.guesses.some(({ word }) => word === scored?.word))

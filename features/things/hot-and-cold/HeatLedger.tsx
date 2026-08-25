@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { heatBand, orderGuesses } from "./hot-and-cold-rules";
 import type { HeatBand } from "./hot-and-cold-rules";
 
@@ -34,7 +34,26 @@ export function HeatLedger({
   emptyMessage?: string;
 }) {
   const ledger = useRef<HTMLOListElement>(null);
+  const positions = useRef(new Map<string, number>());
   const ordered = orderGuesses(guesses);
+  useLayoutEffect(() => {
+    if (!ledger.current) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const nextPositions = new Map<string, number>();
+    for (const item of ledger.current.querySelectorAll<HTMLElement>("[data-ledger-item]")) {
+      const id = item.dataset.ledgerItem;
+      if (!id) continue;
+      const nextTop = item.getBoundingClientRect().top;
+      const previousTop = positions.current.get(id);
+      nextPositions.set(id, nextTop);
+      if (!reducedMotion && previousTop !== undefined && Math.abs(previousTop - nextTop) > 1)
+        item.animate(
+          [{ transform: `translateY(${previousTop - nextTop}px)` }, { transform: "translateY(0)" }],
+          { duration: 520, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+        );
+    }
+    positions.current = nextPositions;
+  }, [ordered]);
   useEffect(() => {
     if (!newestId || !ledger.current) return;
     const row = ledger.current.querySelector<HTMLElement>(
@@ -74,7 +93,7 @@ export function HeatLedger({
           .join(" · ");
         previousBand = band;
         return (
-          <li key={guess.id}>
+          <li key={guess.id} data-ledger-item={guess.id}>
             {divider ? (
               <div className={`heat-band heat-band--${band}`}>
                 <span>{LABELS[band]}</span>
