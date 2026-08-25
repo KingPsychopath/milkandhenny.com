@@ -548,6 +548,20 @@ export async function processOfficialGameResultSafely(
   }
 }
 
+/**
+ * The outbox consumer: ingest one sealed envelope and settle it when new. A retryable refusal
+ * (binding still provisioning, an earlier revision still in flight) keeps the envelope queued;
+ * only a permanent refusal consumes it.
+ */
+export async function consumeOfficialGameResult(
+  envelope: OfficialGameResultEnvelope,
+): Promise<boolean> {
+  const ingested = await ingestOfficialGameResult(envelope);
+  if (!ingested.ok) return !ingested.retryable;
+  if (!ingested.value.duplicate) await processOfficialGameResultSafely(ingested.value.id);
+  return true;
+}
+
 export async function processPendingOfficialGameResults(limit = 50): Promise<{
   selected: number;
   processed: number;

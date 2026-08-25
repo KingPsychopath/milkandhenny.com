@@ -9,6 +9,8 @@ import {
   participantForTicket,
 } from "@/features/event-scoring/store.server";
 import { launchEventCentreGame } from "@/features/event-scoring/game-launch.server";
+import { consumeOfficialGameResult } from "@/features/event-scoring/games.server";
+import { registerOfficialGameResultConsumer } from "@/features/things/shared/official-game-results.server";
 import { applyCentreAction, readCentreSnapshot } from "@/features/things/centre/centre-room.server";
 import {
   CENTRE_CELL,
@@ -59,7 +61,11 @@ function solvedRoute(
 }
 
 describeWithDatabase("event-linked Centre scoring", () => {
-  beforeAll(async () => applySchema());
+  beforeAll(async () => {
+    // In production the nitro plugin registers this consumer; tests wire it directly.
+    registerOfficialGameResultConsumer(consumeOfficialGameResult);
+    await applySchema();
+  });
   beforeEach(async () => {
     await truncateAll();
     await query(
@@ -76,7 +82,10 @@ describeWithDatabase("event-linked Centre scoring", () => {
     );
   });
   afterEach(() => vi.useRealTimers());
-  afterAll(async () => closeDatabase());
+  afterAll(async () => {
+    registerOfficialGameResultConsumer(undefined);
+    await closeDatabase();
+  });
 
   it("stores the finished room result before applying its configured event points once", async () => {
     vi.useFakeTimers();
