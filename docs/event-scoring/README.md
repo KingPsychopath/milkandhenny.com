@@ -140,8 +140,8 @@ Confirm each decision before the affected implementation begins.
 - [ ] Old verified email is retained only as permitted historical evidence.
 - [ ] Game nicknames can change without changing identity.
 - [ ] The public alias is separate from canonical and ticket-holder names.
-- [ ] An unknown game player can hold an unclaimed participant result.
-- [ ] A signed claim token can connect that result later.
+- [x] An unknown game player can hold an unclaimed participant result.
+- [x] A signed claim token can connect that result later.
 - [ ] A future passwordless login or passkey links to `personId` without moving ledger entries.
 
 ## 3. Tickets, orders, and simultaneous access
@@ -346,19 +346,19 @@ Required permission boundaries:
 
 ## 13. Automatic game scoring
 
-- [ ] Games store a server-authoritative result before scoring.
-- [ ] Games never edit event balances directly.
+- [x] Games store a server-authoritative result before scoring.
+- [x] Games never edit event balances directly.
 - [x] A durable source receipt connects the game result to one scoring activity.
 - [x] The receipt records the event, game instance, round or match, participants, and result.
-- [ ] The scoring workflow validates event state, activity state, player links, rule, and limits.
+- [x] The scoring workflow validates event state, activity state, player links, rule, and limits.
 - [x] Raw game scores convert to normalized event points.
 - [x] Reprocessing a result cannot duplicate points.
 - [x] Failed processing can retry safely.
 - [x] A cancelled game result is not scored.
 - [x] A corrected game result reverses the prior score before applying the new one.
 - [x] Reconnects and repeated finish messages cannot settle a game twice.
-- [ ] Unclaimed players can receive an event participant placeholder and claim it later.
-- [ ] Browser-only local results remain untrusted until server or moderator confirmation.
+- [x] Unclaimed players can receive an event participant placeholder and claim it later.
+- [x] Browser-only local results remain untrusted until server or moderator confirmation.
 
 Initial integrations:
 

@@ -43,7 +43,7 @@ export type OfficialResultProcessingOutcome =
   | { state: "processed" | "corrected" | "cancelled" | "ignored"; resultId: string }
   | { state: "held"; resultId: string; reason: string };
 
-function opaqueId(prefix: "gsc" | "ogr" | "sgr") {
+function opaqueId(prefix: "ep" | "gsc" | "ogr" | "sgr") {
   return `${prefix}_${randomBytes(18).toString("base64url")}`;
 }
 
@@ -192,13 +192,85 @@ export async function ingestOfficialGameResult(
 function resultPlayers(value: unknown): OfficialResultPlayer[] | null {
   if (!Array.isArray(value)) return null;
   const players: OfficialResultPlayer[] = [];
+  const playerIds = new Set<string>();
   for (const entry of value) {
     if (!entry || typeof entry !== "object") return null;
     const player = entry as Record<string, unknown>;
-    if (typeof player.playerId !== "string" || typeof player.outcome !== "string") return null;
+    if (
+      typeof player.playerId !== "string" ||
+      player.playerId.length < 1 ||
+      player.playerId.length > 160 ||
+      playerIds.has(player.playerId) ||
+      !["completed", "did-not-finish", "withdrawn", "disqualified"].includes(
+        String(player.outcome),
+      ) ||
+      (player.rawScore !== undefined &&
+        (typeof player.rawScore !== "number" || !Number.isFinite(player.rawScore))) ||
+      (player.placement !== undefined &&
+        (typeof player.placement !== "number" ||
+          !Number.isInteger(player.placement) ||
+          player.placement < 1)) ||
+      (player.durationMs !== undefined &&
+        (typeof player.durationMs !== "number" ||
+          !Number.isFinite(player.durationMs) ||
+          player.durationMs < 0)) ||
+      (player.won !== undefined && typeof player.won !== "boolean")
+    )
+      return null;
+    playerIds.add(player.playerId);
     players.push(player as OfficialResultPlayer);
   }
   return players;
+}
+
+async function ensureGamePlayerLinks(
+  client: PoolClient,
+  row: ProcessRow,
+  players: OfficialResultPlayer[],
+): Promise<Map<string, string>> {
+  const links = await client.query<{ game_player_id: string; participant_id: string }>(
+    `select links.game_player_id, links.participant_id
+       from event_game_player_links links
+       join event_participants participants on participants.id = links.participant_id
+      where links.channel_id = $1 and participants.status = 'active'
+      for update of participants`,
+    [row.channel_id],
+  );
+  const participantByPlayer = new Map(
+    links.rows.map((link) => [link.game_player_id, link.participant_id]),
+  );
+  for (const player of players) {
+    if (participantByPlayer.has(player.playerId)) continue;
+    const participantId = opaqueId("ep");
+    const publicAlias = `player-${randomBytes(5).toString("hex")}`;
+    await client.query(
+      `insert into event_participants (id, event_slug, public_alias)
+       values ($1,$2,$3)`,
+      [participantId, row.event_slug, publicAlias],
+    );
+    await client.query(
+      `insert into event_game_player_links (channel_id, game_player_id, participant_id)
+       values ($1,$2,$3)`,
+      [row.channel_id, player.playerId, participantId],
+    );
+    await client.query(
+      `insert into score_audit_events
+         (event_slug, action, actor_type, entity_type, entity_id, metadata)
+       values ($1,'game.player.placeholder-created','system','participant',$2,$3::jsonb)`,
+      [
+        row.event_slug,
+        participantId,
+        JSON.stringify({
+          channelId: row.channel_id,
+          gameKind: row.game_kind,
+          gameInstanceId: row.game_instance_id,
+          gamePlayerId: player.playerId,
+        }),
+      ],
+    );
+    participantByPlayer.set(player.playerId, participantId);
+  }
+  return participantByPlayer;
 }
 
 async function holdResult(client: PoolClient, result: ResultRow, reason: string) {
@@ -280,20 +352,7 @@ async function processResult(
   }
   const players = resultPlayers(row.players);
   if (!players) return holdResult(client, row, "The official player result is invalid");
-  const links = await client.query<{ game_player_id: string; participant_id: string }>(
-    `select links.game_player_id, links.participant_id
-       from event_game_player_links links
-       join event_participants participants on participants.id = links.participant_id
-      where links.channel_id = $1 and participants.status = 'active'
-      for update of participants`,
-    [row.channel_id],
-  );
-  const participantByPlayer = new Map(
-    links.rows.map((link) => [link.game_player_id, link.participant_id]),
-  );
-  if (players.some((player) => !participantByPlayer.has(player.playerId))) {
-    return holdResult(client, row, "A game player still needs an event participant");
-  }
+  const participantByPlayer = await ensureGamePlayerLinks(client, row, players);
 
   const postings =
     row.operation === "record"

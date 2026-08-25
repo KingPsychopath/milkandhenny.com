@@ -164,6 +164,7 @@ import { Route as ApiAdminEventsSlugScoringRouteRouteImport } from './routes/api
 import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
 import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
 import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/route'
+import { Route as ApiEventsSlugGameResultsClaimRouteRouteImport } from './routes/api/events/$slug/game-results/claim/route'
 import { Route as ApiTicketsIdScoreNotificationsRouteRouteImport } from './routes/api/tickets/$id/score/notifications/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
 import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
@@ -1012,6 +1013,12 @@ const ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute =
     path: '/api/events/$slug/discoveries/$discoveryId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiEventsSlugGameResultsClaimRouteRoute =
+  ApiEventsSlugGameResultsClaimRouteRouteImport.update({
+    id: '/api/events/$slug/game-results/claim',
+    path: '/api/events/$slug/game-results/claim',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiTicketsIdScoreNotificationsRouteRoute =
   ApiTicketsIdScoreNotificationsRouteRouteImport.update({
     id: '/notifications',
@@ -1247,6 +1254,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -1417,6 +1425,7 @@ export interface FileRoutesByTo {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -1588,6 +1597,7 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
@@ -1760,6 +1770,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -1930,6 +1941,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -2100,6 +2112,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
@@ -2206,6 +2219,7 @@ export interface RootRouteChildren {
   ApiUploadWordsPresignRouteRoute: typeof ApiUploadWordsPresignRouteRoute
   ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  ApiEventsSlugGameResultsClaimRouteRoute: typeof ApiEventsSlugGameResultsClaimRouteRoute
   ApiUploadTransferAppendFinalizeRouteRoute: typeof ApiUploadTransferAppendFinalizeRouteRoute
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
   ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
@@ -3298,6 +3312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/events/$slug/game-results/claim': {
+      id: '/api/events/$slug/game-results/claim'
+      path: '/api/events/$slug/game-results/claim'
+      fullPath: '/api/events/$slug/game-results/claim'
+      preLoaderRoute: typeof ApiEventsSlugGameResultsClaimRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/tickets/$id/score/notifications': {
       id: '/api/tickets/$id/score/notifications'
       path: '/notifications'
@@ -3893,6 +3914,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUploadWordsTargetsRouteRoute: ApiUploadWordsTargetsRouteRoute,
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute:
     ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren,
+  ApiEventsSlugGameResultsClaimRouteRoute:
+    ApiEventsSlugGameResultsClaimRouteRoute,
   ApiUploadTransferAppendFinalizeRouteRoute:
     ApiUploadTransferAppendFinalizeRouteRoute,
   ApiUploadTransferAppendPresignRouteRoute:

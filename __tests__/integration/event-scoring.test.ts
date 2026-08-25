@@ -24,6 +24,10 @@ import {
   processOfficialGameResult,
   retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
+import {
+  claimGamePlayerResult,
+  issueGamePlayerClaimToken,
+} from "@/features/event-scoring/game-claims.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
@@ -37,6 +41,7 @@ function centreEnvelope(input: {
   revision: number;
   operation?: "record" | "cancel";
   placement?: number;
+  players?: Array<{ playerId: string; outcome: "completed"; placement: number }>;
 }): OfficialGameResultEnvelope {
   const unsigned = {
     schemaVersion: 1,
@@ -50,13 +55,13 @@ function centreEnvelope(input: {
     players:
       input.operation === "cancel"
         ? []
-        : [
+        : (input.players ?? [
             {
               playerId: "player-1",
               outcome: "completed" as const,
               placement: input.placement ?? 1,
             },
-          ],
+          ]),
     committedAt: new Date(1_700_000_000_000 + input.revision).toISOString(),
   } as const satisfies Omit<OfficialGameResultEnvelope, "payloadHash">;
   return {
@@ -528,5 +533,86 @@ describeWithDatabase("event scoring postgres", () => {
       { revision: 3, status: "corrected", points: "3", has_reversal: true },
       { revision: 4, status: "cancelled", points: "0", has_reversal: true },
     ]);
+  });
+
+  it("creates event-local placeholders for unclaimed official game players", async () => {
+    const ticketParticipant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Unclaimed players",
+      template: "placement",
+      status: "live",
+      rule: {
+        mode: "placement",
+        placementPoints: { "1": 7, "2": 3 },
+        repeat: "once-per-source",
+        requiresCheckIn: false,
+      },
+    });
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const binding = await createGameScoreBinding({
+      eventSlug: "scoring-night",
+      activityId: activity.id,
+      gameKind: "centre",
+      acceptedScope: "game",
+    });
+    const channelId = binding.ok ? binding.value.channelId : "missing";
+    expect(await activateGameScoreBinding({ channelId, gameInstanceId: "game-1" })).toEqual({
+      ok: true,
+    });
+    const ingested = await ingestOfficialGameResult(
+      centreEnvelope({
+        channelId,
+        revision: 1,
+        players: [
+          { playerId: "unclaimed-one", outcome: "completed", placement: 1 },
+          { playerId: "unclaimed-two", outcome: "completed", placement: 2 },
+        ],
+      }),
+    );
+    expect(ingested.ok).toBe(true);
+    expect(
+      await processOfficialGameResult(ingested.ok ? ingested.value.id : "missing"),
+    ).toMatchObject({ state: "processed" });
+    expect(
+      await query<{
+        game_player_id: string;
+        ticket_id: string | null;
+        points: number;
+      }>(
+        `select links.game_player_id, participants.ticket_id, postings.points
+           from event_game_player_links links
+           join event_participants participants on participants.id = links.participant_id
+           join score_postings postings on postings.participant_id = participants.id
+          where links.channel_id = $1
+          order by links.game_player_id`,
+        [channelId],
+      ),
+    ).toEqual([
+      { game_player_id: "unclaimed-one", ticket_id: null, points: 7 },
+      { game_player_id: "unclaimed-two", ticket_id: null, points: 3 },
+    ]);
+    const claimToken = await issueGamePlayerClaimToken({
+      channelId,
+      gamePlayerId: "unclaimed-one",
+    });
+    expect(claimToken.ok).toBe(true);
+    const token = claimToken.ok ? claimToken.value.token : "missing";
+    expect(
+      await claimGamePlayerResult({
+        token: `${token}tampered`,
+        targetParticipantId: ticketParticipant!.id,
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
+    ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
+    expect(
+      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
+    ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
   });
 });
