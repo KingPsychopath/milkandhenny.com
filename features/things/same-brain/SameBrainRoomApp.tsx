@@ -33,7 +33,7 @@ import {
 } from "./SameBrainViews";
 import { buildSameBrainPlayerInviteUrl } from "./same-brain-invite";
 import { useSameBrainRoom } from "./useSameBrainRoom";
-import type { SameBrainPlayerCredentials, SameBrainScoring, SameBrainSnapshot } from "./types";
+import type { SameBrainPlayerCredentials, SameBrainSnapshot } from "./types";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import {
@@ -349,8 +349,8 @@ function LobbyPhase({
     <>
       <LobbyIntro
         title="Find the answer you share."
-        description="Everyone answers the same question. Match the group to score."
-        rules="Answer each prompt on your own phone. Matching answers score together, and the less obvious your answer is, the more it is worth."
+        description="Answer on your own phone. When the round locks, the room sees every answer together."
+        rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
       />
       <MultiplayerLobby
         actions={
@@ -437,33 +437,6 @@ function LobbyPhase({
                 />
               </label>
 
-              <fieldset className="mt-4">
-                <legend className="font-mono text-xs text-white/60">answer matching</legend>
-                {(
-                  [
-                    ["embedding", "match similar answers", "sea and ocean can score together"],
-                    ["exact", "match exact answers", "only the same word scores together"],
-                  ] as Array<[SameBrainScoring, string, string]>
-                ).map(([value, label, hint]) => (
-                  <label
-                    key={value}
-                    className="mt-2 flex min-h-11 items-start gap-3 font-mono text-xs text-white/70"
-                  >
-                    <input
-                      type="radio"
-                      name="scoring"
-                      checked={snapshot.scoring === value}
-                      onChange={() => void sendHost({ type: "game.configure", scoring: value })}
-                      className="mt-1"
-                    />
-                    <span>
-                      {label}
-                      <span className="block text-white/35">{hint}</span>
-                    </span>
-                  </label>
-                ))}
-              </fieldset>
-
               <Toggle
                 label="say the answers out loud"
                 hint="counts everyone down, then shows each person their own answer"
@@ -486,14 +459,6 @@ function LobbyPhase({
                 checked={snapshot.toggles.revealAuthors}
                 onChange={(next) =>
                   void sendHost({ type: "game.configure", toggles: { revealAuthors: next } })
-                }
-              />
-              <Toggle
-                label="show when answers were merged"
-                hint="so the group can overrule a match out loud"
-                checked={snapshot.toggles.showMachineWorking}
-                onChange={(next) =>
-                  void sendHost({ type: "game.configure", toggles: { showMachineWorking: next } })
                 }
               />
             </fieldset>
@@ -674,7 +639,7 @@ function SubmitPhase({
       {isHost ? (
         <div className="mt-6 flex flex-wrap gap-3">
           <ActionButton tone="quiet" onClick={() => void sendHost({ type: "phase.advance" })}>
-            score it now
+            show answers now
           </ActionButton>
           <ActionButton tone="quiet" onClick={() => void sendHost({ type: "game.skipQuestion" })}>
             different question

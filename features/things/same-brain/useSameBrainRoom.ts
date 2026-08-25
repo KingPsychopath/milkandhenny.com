@@ -36,8 +36,8 @@ export function useSameBrainRoom(input: {
     roomKey: `${input.roomId}:${input.playerId}:${input.playerToken}`,
     initialSnapshot: input.initialSnapshot,
     read,
-    // Both moments the room moves on its own. A read landing just after `phaseEndsAt` is what closes
-    // submit and triggers scoring, so this is not only cosmetic — it is the game's clock.
+    // Both moments the room moves on its own. A read landing just after `phaseEndsAt` advances the
+    // room, so this is not only cosmetic — it is the game's clock.
     boundariesOf: (snapshot) => [snapshot.phaseEndsAt],
   });
 

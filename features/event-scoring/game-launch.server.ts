@@ -6,7 +6,7 @@ import {
   createSameBrainRoom,
   joinSameBrainRoom,
 } from "@/features/things/same-brain/same-brain-room.server";
-import type { SameBrainScoring, SameBrainToggles } from "@/features/things/same-brain/types";
+import type { SameBrainToggles } from "@/features/things/same-brain/types";
 import { createPartyRoom, joinPartyRoom } from "@/features/things/spelling-party/party-room.server";
 import type { PartyCustomDeckInput } from "@/features/things/spelling-party/types";
 import { query } from "@/lib/platform/postgres.server";
@@ -190,7 +190,6 @@ export async function launchEventSameBrainGame(input: {
   hostParticipantId: string;
   hostName: string;
   rounds?: number;
-  scoring?: SameBrainScoring;
   toggles?: Partial<SameBrainToggles>;
 }): Promise<
   | {
@@ -213,7 +212,6 @@ export async function launchEventSameBrainGame(input: {
   try {
     const room = await createSameBrainRoom({
       rounds: input.rounds,
-      scoring: input.scoring,
       toggles: input.toggles,
       managed: true,
       officialResultChannelId: channelId,

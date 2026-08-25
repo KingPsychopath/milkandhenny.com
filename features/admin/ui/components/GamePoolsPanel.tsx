@@ -108,26 +108,6 @@ function GameSettingsFields({
         {numberField("rounds", settings.rounds, 3, 20, (rounds) =>
           onChange({ ...settings, rounds }),
         )}
-        <label className="font-mono text-xs theme-muted">
-          scoring
-          <AppSelect
-            value={settings.scoring}
-            onValueChange={(value) =>
-              onChange({
-                ...settings,
-                scoring: value === "exact" ? "exact" : "embedding",
-              })
-            }
-            options={[
-              { value: "embedding", label: "meaning" },
-              { value: "exact", label: "exact words" },
-            ]}
-            tone="theme"
-            variant="field"
-            ariaLabel="Scoring"
-            className="mt-2"
-          />
-        </label>
         <PoolCheck
           label="say answers aloud"
           checked={settings.sayItAloud}
@@ -137,6 +117,11 @@ function GameSettingsFields({
           label="eliminate the odd one"
           checked={settings.eliminateOddOne}
           onChange={(eliminateOddOne) => onChange({ ...settings, eliminateOddOne })}
+        />
+        <PoolCheck
+          label="show answer names"
+          checked={settings.revealAuthors}
+          onChange={(revealAuthors) => onChange({ ...settings, revealAuthors })}
         />
       </div>
     );

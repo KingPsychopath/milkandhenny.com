@@ -236,10 +236,8 @@ export function Scoreboard({
  * The reveal.
  *
  * Groups are drawn largest first with the herd marked, because the shape of the room is the joke and
- * the points are the footnote. Two rules about what is *not* here: no similarity number is ever
- * shown to a player — "0.71" is not a reason and invites an argument with a decimal — and the model
- * only ever appears as a plain sentence about words it merged, which the group is free to overrule
- * out loud. That is the whole of its authority.
+ * the points are the footnote. Every submitted word is visible here only after the round locks. A
+ * host can group two answers when the room agrees that a typo meant the same thing.
  */
 export function RevealBoard({
   result,
@@ -249,8 +247,7 @@ export function RevealBoard({
   result: SameBrainRoundResult;
   snapshot: SameBrainSnapshot;
   /**
-   * Host only. Folds one group into another and re-scores — how a typo, a regional word or anything
-   * the scorer misread gets fixed by the people who heard what was meant.
+   * Host only. Folds one group into another and re-scores after the room agrees.
    */
   onMerge?: (from: number, to: number) => void;
 }) {
@@ -273,6 +270,9 @@ export function RevealBoard({
 
   return (
     <div className="mt-6">
+      <p className="font-mono text-xs text-white/40">
+        answers are open · if a typo meant the same thing, the host can group it below
+      </p>
       {result.herdIndex === null ? (
         <p className="font-serif text-2xl text-white/85">
           {result.answers.length === 0
@@ -310,7 +310,8 @@ export function RevealBoard({
                   isHerd ? "text-[var(--things-amber)]" : "text-white/70"
                 }`}
               >
-                {cluster.label}
+                {result.answers.find(({ playerId }) => playerId === cluster.playerIds[0])?.text ??
+                  cluster.label}
               </span>
               {onMerge && mergeTarget !== null && index !== mergeTarget ? (
                 <button
@@ -318,29 +319,27 @@ export function RevealBoard({
                   onClick={() => onMerge(index, mergeTarget)}
                   className="min-h-8 border border-white/20 px-2 font-mono text-micro text-white/50 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
                 >
-                  same as {result.clusters[mergeTarget].label}
+                  group with{" "}
+                  {result.answers.find(
+                    ({ playerId }) => playerId === result.clusters[mergeTarget].playerIds[0],
+                  )?.text ?? result.clusters[mergeTarget].label}
                 </button>
               ) : null}
               <span className="ml-auto font-mono text-xs text-white/35">
                 {cluster.playerIds.length}
               </span>
             </p>
-            {snapshot.toggles.revealAuthors ? (
-              <p className="mt-1 font-mono text-xs text-white/45">
-                {cluster.playerIds
-                  .map((playerId) => {
-                    const written = result.answers.find(
-                      (answer) => answer.playerId === playerId,
-                    )?.text;
-                    // Their own spelling matters when the group merged several: "Sam said ocean"
-                    // is the interesting fact, not that Sam is in the sea group.
-                    return written && written.toLocaleLowerCase() !== cluster.label
-                      ? `${nameOf(playerId)} (${written})`
-                      : nameOf(playerId);
-                  })
-                  .join(", ")}
-              </p>
-            ) : null}
+            <ul className="mt-1 space-y-1 font-mono text-xs text-white/45">
+              {cluster.playerIds.map((playerId) => {
+                const written = result.answers.find((answer) => answer.playerId === playerId)?.text;
+                return (
+                  <li key={playerId}>
+                    {snapshot.toggles.revealAuthors ? `${nameOf(playerId)} · ` : null}
+                    <span className="text-white/65">{written ?? cluster.label}</span>
+                  </li>
+                );
+              })}
+            </ul>
           </li>
         ))}
       </ul>
@@ -353,13 +352,7 @@ export function RevealBoard({
       ) : null}
 
       {result.corrected ? (
-        <p className="mt-4 font-mono text-xs text-white/40">the room corrected this one.</p>
-      ) : null}
-
-      {snapshot.toggles.showMachineWorking && result.machineNote ? (
-        <p className="mt-4 border-t border-white/10 pt-3 font-mono text-xs text-white/40">
-          the machine thought: {result.machineNote}
-        </p>
+        <p className="mt-4 font-mono text-xs text-white/40">the room grouped these answers.</p>
       ) : null}
     </div>
   );

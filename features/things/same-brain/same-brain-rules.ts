@@ -2,7 +2,6 @@ import type {
   SameBrainAnswer,
   SameBrainCluster,
   SameBrainRoundResult,
-  SameBrainScoring,
   SameBrainTimings,
   SameBrainToggles,
 } from "./types";
@@ -10,10 +9,8 @@ import type {
 /**
  * Every rule in the game, pure and synchronous.
  *
- * Nothing here imports the model, or Redis, or anything that can fail. The one thing the scorer
- * needs from the outside is a similarity number, and that arrives as a function argument — which is
- * why the whole of this file can be tested with a two-line stub, and why a model that will not load
- * degrades the game rather than breaking it.
+ * Nothing here imports Redis or anything that can fail. Every round is scored from the same
+ * normalised strings, so the result is immediate and easy to explain in the reveal.
  */
 
 export const SAME_BRAIN_PLAYER_LIMITS = { min: 3, max: 16 } as const;
@@ -24,33 +21,6 @@ export const SAME_BRAIN_DEFAULT_ROUNDS = 8;
 export const SAME_BRAIN_CONNECTED_WINDOW_MS = 25_000;
 export const SAME_BRAIN_HOST_CLAIM_AFTER_MS = 60_000;
 
-/**
- * How close two answers must sit before they count as the same answer.
- *
- * Set by sweeping `scripts/same-brain-calibrate.ts` over its 30 hand-labelled rounds, not by taste.
- * The cost of being wrong is asymmetric: merging two people who did not agree invents a herd that
- * never existed and takes points off whoever actually agreed, while failing to merge only leaves the
- * group to argue about whether "sofa" and "settee" were the same answer — which they enjoy. So this
- * is chosen for the fewest wrong merges, not the best hit rate.
- *
- * What the sweep found (exact match alone gets 14/30 rounds right, missing 21 agreeing pairs):
- *
- *   0.65   21 rounds   13 correct merges   7 wrong
- *   0.72   21 rounds   13 correct merges   7 wrong
- *   0.75   19 rounds   11 correct merges   4 wrong
- *   0.80   19 rounds   10 correct merges   1 wrong   ← here
- *   0.85   18 rounds    9 correct merges   1 wrong
- *
- * 0.72 looked appealing on hit rate and was wrong: at roughly two correct merges per mistake it
- * merged surgeon with doctor and most of the days of the week. 0.80 trades three correct merges for
- * six fewer mistakes and is the knee of the curve. Below 0.75 the model is not safe to let near a
- * score at all.
- *
- * The one wrong merge that survives everywhere is Monday with Tuesday — see the closed-set warning
- * in `same-brain-questions.ts`, which is a content problem rather than a threshold one.
- */
-export const SAME_BRAIN_SIMILARITY_THRESHOLD = 0.8;
-
 /** A clear majority beats blandness. See `scoreClusters`. */
 export const SAME_BRAIN_POINTS_MAJORITY = 2;
 export const SAME_BRAIN_POINTS_UNANIMOUS = 1;
@@ -58,7 +28,6 @@ export const SAME_BRAIN_POINTS_UNANIMOUS = 1;
 export const SAME_BRAIN_DEFAULT_TOGGLES: SameBrainToggles = {
   sayItAloud: true,
   eliminateOddOne: false,
-  showMachineWorking: true,
   revealAuthors: true,
 };
 
@@ -101,10 +70,9 @@ const LEADING_NOISE = /^(?:the|a|an|some|my|your|his|her|their|its|our)\s+/;
 /**
  * Reduces an answer to the thing being compared.
  *
- * This function is most of the game's fairness. Everything downstream — exact clusters, the model's
- * cache key, what the reveal groups together — is built on it, so it errs towards collapsing
- * differences that no player would defend out loud, and stops well short of stemming: "cooking" and
- * "cook" stay apart, because a group would argue about those, and arguing is the game.
+ * This function is most of the game's fairness. It removes differences that nobody would defend out
+ * loud, but stops well short of stemming: "cooking" and "cook" stay apart because a group could
+ * argue about those, and arguing is the game.
  */
 export function normaliseAnswer(raw: string) {
   let value = raw
@@ -128,8 +96,8 @@ export function answerIsUsable(raw: string) {
 }
 
 /**
- * Groups answers by normalised string. No model, no async, no threshold — this is the game's floor,
- * and on its own it is a complete and playable ruleset.
+ * Groups answers by normalised string. This is deterministic and complete: every room sees the same
+ * groups from the same answers.
  */
 export function clusterByExactMatch(answers: SameBrainAnswer[]): SameBrainCluster[] {
   const groups = new Map<string, SameBrainCluster>();
@@ -143,57 +111,9 @@ export function clusterByExactMatch(answers: SameBrainAnswer[]): SameBrainCluste
       label: answer.normalised,
       spellings: [answer.normalised],
       playerIds: [answer.playerId],
-      merged: false,
     });
   }
   return [...groups.values()];
-}
-
-/**
- * Merges clusters whose answers mean the same thing.
- *
- * Deliberately conservative in three ways. It compares cluster *representatives* rather than every
- * pair, so a chain of individually-plausible hops cannot drag unrelated words into one heap. It
- * requires similarity against every member of the receiving group, not just its label, so a merge
- * has to be defensible against everything already in there. And it works largest-group-first, so
- * when a word could join two herds it joins the bigger one, which is the reading a room would give.
- *
- * `similarity` returns 0..1 and must be symmetric. It is injected — tests pass a lookup table, and
- * a model that failed to load simply never gets here.
- *
- * Equal-sized groups keep the order they arrived in, which is first-answered first, so the group's
- * label is the earliest spelling somebody actually typed. The sort must therefore stay stable and
- * must not fall back to comparing labels: ordering ties alphabetically would make the reveal say
- * "sea counted as ocean" or "ocean counted as sea" depending on nothing a player can see.
- */
-export function upgradeClusters(
-  clusters: SameBrainCluster[],
-  similarity: (a: string, b: string) => number,
-  threshold = SAME_BRAIN_SIMILARITY_THRESHOLD,
-): SameBrainCluster[] {
-  const ordered = [...clusters].sort(
-    (left, right) => right.playerIds.length - left.playerIds.length,
-  );
-  const merged: SameBrainCluster[] = [];
-
-  for (const cluster of ordered) {
-    const target = merged.find((candidate) =>
-      candidate.spellings.every((spelling) => similarity(spelling, cluster.label) >= threshold),
-    );
-    if (!target) {
-      merged.push({
-        ...cluster,
-        spellings: [...cluster.spellings],
-        playerIds: [...cluster.playerIds],
-      });
-      continue;
-    }
-    target.playerIds.push(...cluster.playerIds);
-    target.spellings.push(...cluster.spellings);
-    target.merged = true;
-  }
-
-  return merged;
 }
 
 /**
@@ -247,25 +167,8 @@ export function oddPlayerOf(clusters: SameBrainCluster[], herdIndex: number | nu
   return loners[0].playerIds[0];
 }
 
-/** What the reveal says about the model, in the model's own terms, so a group can overrule it. */
-export function machineNoteOf(clusters: SameBrainCluster[]) {
-  const merged = clusters.filter(
-    ({ merged: wasMerged, spellings }) => wasMerged && spellings.length > 1,
-  );
-  if (merged.length === 0) return null;
-  return merged
-    .map((cluster) => {
-      const [first, ...rest] = cluster.spellings;
-      return `${rest.join(" and ")} counted as ${first}`;
-    })
-    .join("; ");
-}
-
 /**
  * The whole scoring pass for one round, from raw answers to a result the reveal can render.
- *
- * `similarity` may be null — because the model is off, or because it did not load. The round still
- * scores; it just scores on spelling alone.
  */
 export function scoreRound(input: {
   round: number;
@@ -273,15 +176,8 @@ export function scoreRound(input: {
   answers: SameBrainAnswer[];
   /** People still in the game, including anyone who did not answer. */
   playerCount: number;
-  scoring: SameBrainScoring;
-  similarity: ((a: string, b: string) => number) | null;
-  threshold?: number;
 }): SameBrainRoundResult {
-  const exact = clusterByExactMatch(input.answers);
-  const useModel = input.scoring === "embedding" && input.similarity !== null;
-  const clusters = useModel
-    ? upgradeClusters(exact, input.similarity as (a: string, b: string) => number, input.threshold)
-    : exact;
+  const clusters = clusterByExactMatch(input.answers);
 
   const { herdIndex, pointsEach, noScoreReason } = scoreClusters(clusters, input.playerCount);
   return {
@@ -292,7 +188,6 @@ export function scoreRound(input: {
     herdIndex,
     pointsEach,
     oddPlayerId: oddPlayerOf(clusters, herdIndex),
-    machineNote: useModel ? machineNoteOf(clusters) : null,
     noScoreReason,
   };
 }

@@ -24,23 +24,6 @@ vi.mock("@/features/things/shared/official-game-results.server", () => ({
   ),
 }));
 
-/**
- * The model is replaced by a lookup table.
- *
- * The engine tests are about the room — phases, locks, reconnects, who scores — and loading 23MB of
- * ONNX to answer "is sea like ocean" would make them slow, network-dependent and no more truthful.
- * The real embeddings are exercised by `scripts/same-brain-calibrate.ts`, which is where a threshold
- * regression would show up. `SYNONYMS` is the seam: the engine cannot tell this from the real thing.
- */
-const SYNONYMS = new Set(["sea|ocean", "ocean|sea", "keys|house keys", "house keys|keys"]);
-vi.mock("@/features/things/same-brain/same-brain-embeddings.server", () => ({
-  sameBrainSimilarity: async (words: string[]) =>
-    words.length < 2
-      ? null
-      : (a: string, b: string) => (a === b ? 1 : SYNONYMS.has(`${a}|${b}`) ? 0.9 : 0.1),
-  sameBrainEmbeddingReady: async () => true,
-}));
-
 import {
   applySameBrainHostAction,
   applySameBrainPlayerAction,
@@ -50,7 +33,7 @@ import {
 } from "../../features/things/same-brain/same-brain-room.server";
 import { startSameBrainScenario } from "../../features/things/same-brain/same-brain-room-engine.server";
 import { SAME_BRAIN_SCENARIOS } from "../../features/things/same-brain/same-brain-scenarios";
-import type { SameBrainScoring, SameBrainSnapshot } from "../../features/things/same-brain/types";
+import type { SameBrainSnapshot } from "../../features/things/same-brain/types";
 
 afterEach(() => {
   deliveredResults.length = 0;
@@ -69,21 +52,19 @@ interface Seat {
 /**
  * The spoken beat is off unless a test asks for it.
  *
- * It sits between scoring and the reveal, so leaving it on would make every scoring assertion go
+ * It sits between answer locking and the reveal, so leaving it on would make every scoring assertion go
  * through a seven-second countdown it is not about. The beat has its own describe block; everything
  * here is about who scores.
  */
 async function room(
   names: string[],
   options: {
-    scoring?: SameBrainScoring;
     rounds?: number;
     toggles?: Record<string, boolean>;
     officialResultChannelId?: string;
   } = {},
 ) {
   const created = await createSameBrainRoom({
-    scoring: options.scoring ?? "exact",
     rounds: options.rounds,
     toggles: { sayItAloud: false, ...options.toggles },
     officialResultChannelId: options.officialResultChannelId,
@@ -282,22 +263,16 @@ describe("same brain room", () => {
     expect(snapshot.players.every(({ score }) => score === 0)).toBe(true);
   });
 
-  it("merges near-misses under the embedding method and says so", async () => {
-    const created = await room(["Abel", "Maya", "Daniel"], { scoring: "embedding" });
-    await begin(created);
-    await answerAll(created, 1, ["the sea", "ocean", "canal"]);
-    const snapshot = await read(created.roomId, created.seats[0]);
-    expect(snapshot.result?.machineNote).toBe("ocean counted as sea");
-    expect(snapshot.players.find(({ name }) => name === "Maya")?.score).toBe(2);
-  });
-
-  it("keeps the same answers apart under the exact method", async () => {
-    const created = await room(["Abel", "Maya", "Daniel"], { scoring: "exact" });
+  it("normalises harmless differences but leaves different words for the room", async () => {
+    const created = await room(["Abel", "Maya", "Daniel"]);
     await begin(created);
     await answerAll(created, 1, ["the sea", "ocean", "canal"]);
     const snapshot = await read(created.roomId, created.seats[0]);
     expect(snapshot.result?.herdIndex).toBeNull();
-    expect(snapshot.result?.machineNote).toBeNull();
+    expect(snapshot.result?.clusters.find(({ label }) => label === "sea")?.playerIds).toEqual([
+      expect.any(String),
+    ]);
+    expect(snapshot.result?.answers.map(({ text }) => text)).toEqual(["the sea", "ocean", "canal"]);
   });
 
   it("scores on whoever answered when a submit times out", async () => {
@@ -555,9 +530,8 @@ describe("same brain room", () => {
   });
 
   /**
-   * The room overruling the scorer. This is the answer to typos and to anything a threshold gets
-   * wrong, so the arithmetic has to be exact — a correction that leaked a point would quietly
-   * corrupt the whole game.
+   * The host grouping a typo after the reveal. The arithmetic has to be exact — a correction that
+   * leaked a point would quietly corrupt the whole game.
    */
   describe("host corrections", () => {
     const typoRoom = async () => {
@@ -592,14 +566,14 @@ describe("same brain room", () => {
         after.result?.clusters.find(({ label }) => label === "butter")?.playerIds,
       ).toHaveLength(3);
       expect(after.players.find(({ name }) => name === "Daniel")?.score).toBe(2);
-      // Everybody who was already scoring keeps exactly what they had — no double award.
+      // Everybody who was already in the room keeps exactly what they had — no double award.
       expect(after.players.find(({ name }) => name === "Abel")?.score).toBe(2);
       expect(after.players.find(({ name }) => name === "Priya")?.score).toBe(0);
       // Priya is now alone against a herd of three, which she was not before.
       expect(after.result?.oddPlayerId).toBe(created.seats[3].playerId);
     });
 
-    it("puts the round back exactly as the scorer left it", async () => {
+    it("puts the round back exactly as it was", async () => {
       const created = await typoRoom();
       const before = await read(created.roomId, created.seats[0]);
       const butter = before.result?.clusters.findIndex(({ label }) => label === "butter") as number;
@@ -816,11 +790,10 @@ describe("same brain scenarios", () => {
     return scenario;
   };
 
-  const openScenario = async (id: string, scoring?: SameBrainScoring) => {
+  const openScenario = async (id: string) => {
     const scenario = scenarioOf(id);
     const started = await startSameBrainScenario({
       names: ["Abel", "Maya", "Daniel", "Priya", "Tom", "Ana"].slice(0, scenario.players),
-      scoring: scoring ?? scenario.scoring ?? "exact",
       toggles: scenario.toggles,
       question: scenario.question,
       answers: scenario.answers,
@@ -838,13 +811,11 @@ describe("same brain scenarios", () => {
 
   /**
    * A scenario is opened to look at a scored round, so it must still be showing that round when it
-   * renders. The harness's short-phase timings once gave the reveal eight seconds — less than a cold
-   * model load — and the position had advanced to a fresh random question before it appeared.
+   * renders.
    */
   it("holds the reveal open long enough to look at, whatever timings were asked for", async () => {
     const started = await startSameBrainScenario({
       names: ["Abel", "Maya", "Daniel"],
-      scoring: "exact",
       question: "Name something in a toolbox",
       answers: { 0: "hammer", 1: "hammer", 2: "spanner" },
       // What the harness sends with "short phases" ticked.
@@ -872,7 +843,6 @@ describe("same brain scenarios", () => {
     for (const scenario of SAME_BRAIN_SCENARIOS) {
       const started = await startSameBrainScenario({
         names: ["Abel", "Maya", "Daniel", "Priya", "Tom", "Ana"].slice(0, scenario.players),
-        scoring: scenario.scoring ?? "exact",
         toggles: scenario.toggles,
         question: scenario.question,
         answers: scenario.answers,
@@ -901,25 +871,21 @@ describe("same brain scenarios", () => {
     expect(snapshot.players.find(({ name }) => name === "Ana")?.out).toBe(true);
   });
 
-  it("spelling-split: exact leaves a pair, embedding builds a herd of three", async () => {
-    const strict = await openScenario("spelling-split", "exact");
+  it("spelling-split: normalisation leaves a pair and keeps ocean separate", async () => {
+    const { snapshot } = await openScenario("spelling-split");
+    expect(snapshot.result?.clusters.find(({ label }) => label === "sea")?.playerIds).toHaveLength(
+      2,
+    );
     expect(
-      strict.snapshot.result?.clusters.find(({ label }) => label === "sea")?.playerIds,
-    ).toHaveLength(2);
-
-    const merged = await openScenario("spelling-split", "embedding");
-    expect(
-      merged.snapshot.result?.clusters.find(({ label }) => label === "sea")?.playerIds,
-    ).toHaveLength(3);
-    expect(merged.snapshot.result?.machineNote).toBe("ocean counted as sea");
+      snapshot.result?.clusters.find(({ label }) => label === "ocean")?.playerIds,
+    ).toHaveLength(1);
   });
 
-  it("punctuation-only: four agree with no model involved", async () => {
+  it("punctuation-only: four agree after normalisation", async () => {
     const { snapshot } = await openScenario("punctuation-only");
     expect(
       snapshot.result?.clusters.find(({ label }) => label === "butter")?.playerIds,
     ).toHaveLength(4);
-    expect(snapshot.result?.machineNote).toBeNull();
   });
 
   it("dead-split: nobody scores", async () => {

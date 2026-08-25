@@ -18,18 +18,18 @@ FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# The sentence-embedding weights for same brain, fetched at build time rather than committed (23MB
+# The sentence-embedding weights for Hot & Cold, fetched at build time rather than committed (23MB
 # that never changes) or downloaded at boot (a live round would depend on the Hugging Face CDN).
 # Its own stage so the layer caches: the weights are pinned and re-fetching them on every source
 # change would be pure waste. A failure here is not fatal — the game scores on exact matches without
 # them — so the build continues either way.
 FROM dependencies AS model
-COPY scripts/fetch-same-brain-model.ts ./scripts/
+COPY scripts/fetch-semantic-model.ts ./scripts/
 COPY tsconfig.cli.json tsconfig.json ./
 # Created up front so the COPY in the runtime stage has something to copy even if the fetch fails.
 RUN mkdir -p models && \
-  (pnpm exec tsx --tsconfig tsconfig.cli.json scripts/fetch-same-brain-model.ts || \
-  echo "same brain: continuing without embedding weights")
+  (pnpm exec tsx --tsconfig tsconfig.cli.json scripts/fetch-semantic-model.ts || \
+  echo "semantic scorer: continuing without embedding weights")
 
 FROM dependencies AS build
 ENV NODE_OPTIONS="--max-old-space-size=6144"
@@ -55,7 +55,7 @@ ENV PORT=3000
 WORKDIR /app
 
 COPY --from=build --chown=node:node /app/.output ./.output
-# same brain reads these from ./models at runtime; absent, it scores on exact matches.
+# Keep the local model available for rebuilding Hot & Cold's semantic rank assets.
 COPY --from=model --chown=node:node /app/models ./models
 COPY --chown=node:node ops ./ops
 USER node

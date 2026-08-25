@@ -61,14 +61,9 @@ function joinRoom(input: Parameters<typeof engine.joinSameBrainRoom>[0]) {
   );
 }
 
-/**
- * The generous timeout is the model's. A round whose words are all cache misses pays for a cold
- * `feature-extraction` pass, and a reveal arriving late is much better than a reveal that fails —
- * the scorer has its own shorter internal deadline and degrades to exact matches before this fires.
- */
 function readSnapshot(input: Parameters<typeof engine.readSameBrainSnapshot>[0]) {
   return multiplayerOperation(
-    { game: "same-brain", operation: "read_snapshot", reconciliation: true, timeoutMs: 15_000 },
+    { game: "same-brain", operation: "read_snapshot", reconciliation: true, timeoutMs: 4_000 },
     () => engine.readSameBrainSnapshot(input),
   );
 }

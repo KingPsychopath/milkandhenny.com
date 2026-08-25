@@ -15,13 +15,11 @@
  * The test to apply before adding one: say it out loud, then guess the top answer. If you cannot,
  * it is too wide. If you are certain, it is too narrow.
  *
- * There is a third failure mode, and it was found by the calibration sweep rather than by playing.
- * A question whose answers are all drawn from one small closed set — days of the week, months,
- * colours, numbers, planets — puts every possible answer in nearly the same place in embedding
- * space, because what the model encodes about "Monday" is mostly that it is a day. "Name a day of
- * the week nobody likes" was in this bank and merged Monday with Tuesday at every threshold tested,
- * which hands two people a herd they did not earn. It has been removed. Closed-set questions can
- * only be scored on exact matches, so until that is a per-question setting they do not belong here.
+ * There is a third failure mode: a question whose answers are all drawn from one small closed set —
+ * days of the week, months, colours, numbers, planets — gives the room too little space to think.
+ * "Name a day of the week nobody likes" was in this bank and made every round about arguing over a
+ * tiny list rather than finding a shared answer. It has been removed. Closed-set questions do not
+ * belong here.
  */
 
 export interface SameBrainQuestionGroup {

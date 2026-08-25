@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "audio:spelling": "tsx scripts/generate-party-spelling-audio.ts",
-    "calibrate:same-brain": "tsx --tsconfig tsconfig.cli.json scripts/same-brain-calibrate.ts",
-    "model:same-brain": "tsx --tsconfig tsconfig.cli.json scripts/fetch-same-brain-model.ts",
+    "data:hot-and-cold": "tsx --tsconfig tsconfig.cli.json scripts/generate-hot-and-cold-data.ts",
+    "model:semantic": "tsx --tsconfig tsconfig.cli.json scripts/fetch-semantic-model.ts",
     "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",
     "prebuild": "node scripts/copy-excalidraw-fonts.mjs",
@@ -90,6 +90,7 @@
     "oxfmt": "^0.59.0",
     "oxlint": "^1.78.0",
     "sharp": "^0.35.3",
+    "subtlex-word-frequencies": "2.0.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
     "vite": "^7.3.6",

@@ -1,17 +1,16 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { AppSelect } from "@/components/AppSelect";
 import {
   createSameBrainRoomFn,
   exportSameBrainRoomFn,
-  forceSameBrainScoreFn,
+  closeSameBrainSubmitFn,
   importSameBrainRoomFn,
   joinSameBrainRoomFn,
   startSameBrainScenarioFn,
 } from "./same-brain-room.functions";
 import { SAME_BRAIN_SCENARIOS, type SameBrainScenario } from "./same-brain-scenarios";
 import { SameBrainRoom } from "./SameBrainRoomApp";
-import type { SameBrainPlayerCredentials, SameBrainScoring } from "./types";
+import type { SameBrainPlayerCredentials } from "./types";
 import { useActionDialog } from "@/hooks/useActionDialog";
 
 /**
@@ -21,11 +20,8 @@ import { useActionDialog } from "@/hooks/useActionDialog";
  * own poll loop, its own wake socket and its own snapshot. The harness does nothing a player could
  * not do; it only spares you five phones.
  *
- * What it adds beyond the liars harness is the method switch. This game's open question is not "does
- * the state machine work" but "does the scorer agree with a human", and that is only answerable by
- * running the *same answers* through both methods and looking at the two reveals. So a scenario
- * carries its answers, and the row of method buttons reopens it unchanged with only the scoring
- * swapped. Any round can be re-run either way without retyping a thing.
+ * Scenarios carry their answers, so the harness can open exact game positions without making a tester
+ * type six answers into six panels.
  */
 const NAMES = [
   "Abel",
@@ -66,7 +62,6 @@ function readCaptures(): Capture[] {
 export function SameBrainDevHarness() {
   const [count, setCount] = useState(6);
   const [fast, setFast] = useState(true);
-  const [scoring, setScoring] = useState<SameBrainScoring>("embedding");
   const [seats, setSeats] = useState<SameBrainPlayerCredentials[] | null>(null);
   const [names, setNames] = useState<string[]>([]);
   const [hostToken, setHostToken] = useState<string | null>(null);
@@ -105,8 +100,7 @@ export function SameBrainDevHarness() {
     );
   };
 
-  /** Opens a scenario, optionally overriding the method it was written for. */
-  const openScenario = async (scenario: SameBrainScenario, method?: SameBrainScoring) => {
+  const openScenario = async (scenario: SameBrainScenario) => {
     setBusy(true);
     setError(null);
     try {
@@ -114,7 +108,6 @@ export function SameBrainDevHarness() {
         data: {
           names: NAMES.slice(0, scenario.players),
           rounds: scenario.id === "long-game" ? 3 : undefined,
-          scoring: method ?? scenario.scoring ?? scoring,
           toggles: scenario.toggles,
           question: scenario.question,
           answers: scenario.answers,
@@ -132,9 +125,8 @@ export function SameBrainDevHarness() {
       // Scenarios where only some seats answered still have an open submit; close it so the panel
       // opens on the reveal, which is the thing worth looking at.
       if (scenario.answers && Object.keys(scenario.answers).length < scenario.players)
-        await forceSameBrainScoreFn({ data: { roomId: started.roomId } });
+        await closeSameBrainSubmitFn({ data: { roomId: started.roomId } });
       setLastScenario(scenario);
-      if (method) setScoring(method);
       adopt(started);
     } catch {
       setError("could not open that scenario");
@@ -148,7 +140,7 @@ export function SameBrainDevHarness() {
     setError(null);
     try {
       const created = await createSameBrainRoomFn({
-        data: { scoring, ...(fast ? { timings: SHORT_TIMINGS } : {}) },
+        data: fast ? { timings: SHORT_TIMINGS } : {},
       });
       const joined: Array<{ name: string; playerId: string; playerToken: string }> = [];
       for (const name of NAMES.slice(0, count)) {
@@ -255,7 +247,6 @@ export function SameBrainDevHarness() {
         {seats ? (
           <>
             <span className="text-white/45">{seats[0]?.roomId}</span>
-            <span className="text-white/35">scoring: {scoring}</span>
             <span className="text-white/30">
               every panel is the real player surface · drive them exactly as a player would
             </span>
@@ -274,20 +265,6 @@ export function SameBrainDevHarness() {
               />
             </label>
             <label className="flex items-center gap-2">
-              scoring
-              <AppSelect
-                value={scoring}
-                onValueChange={(value) => setScoring(value as SameBrainScoring)}
-                options={[
-                  { value: "embedding", label: "embedding" },
-                  { value: "exact", label: "exact" },
-                ]}
-                tone="night"
-                variant="pill"
-                ariaLabel="Scoring"
-              />
-            </label>
-            <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={fast}
@@ -300,15 +277,9 @@ export function SameBrainDevHarness() {
         <span className="ml-auto flex gap-2">
           {seats ? (
             <>
-              {/* The whole point of the harness: the same answers, the other method, one tap. */}
               {lastScenario ? (
-                <Chip
-                  onClick={() =>
-                    void openScenario(lastScenario, scoring === "embedding" ? "exact" : "embedding")
-                  }
-                  disabled={busy}
-                >
-                  re-run as {scoring === "embedding" ? "exact" : "embedding"}
+                <Chip onClick={() => void openScenario(lastScenario)} disabled={busy}>
+                  re-open scenario
                 </Chip>
               ) : null}
               <Chip onClick={() => void capture()} disabled={busy}>
@@ -354,8 +325,8 @@ export function SameBrainDevHarness() {
               start from a position
             </p>
             <p className="mt-1 font-mono text-xs text-white/35">
-              Answers included, already scored. Open one either way to see what the method changes —
-              the same list is walked by the integration tests.
+              Answers are included, so each position opens in the same exact matching used by a real
+              room. The list is also walked by the integration tests.
             </p>
             <ul className="mt-3 grid gap-x-6 sm:grid-cols-2">
               {SAME_BRAIN_SCENARIOS.map((scenario) => (
@@ -371,11 +342,8 @@ export function SameBrainDevHarness() {
                     expects: {scenario.expect}
                   </p>
                   <span className="mt-2 flex gap-2">
-                    <Chip onClick={() => void openScenario(scenario, "embedding")} disabled={busy}>
-                      embedding
-                    </Chip>
-                    <Chip onClick={() => void openScenario(scenario, "exact")} disabled={busy}>
-                      exact
+                    <Chip onClick={() => void openScenario(scenario)} disabled={busy}>
+                      open
                     </Chip>
                   </span>
                 </li>

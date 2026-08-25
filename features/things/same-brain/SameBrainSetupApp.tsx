@@ -18,7 +18,6 @@ import { sameBrainPlayerPath } from "./same-brain-invite";
 import { SAME_BRAIN_PLAYER_LIMITS, SAME_BRAIN_ROUND_LIMITS } from "./same-brain-rules";
 import { SAME_BRAIN_GAME_SETTINGS } from "./settings";
 import { SoloSameBrain } from "./SoloSameBrain";
-import type { SameBrainScoring } from "./types";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
@@ -27,9 +26,8 @@ import { useGameScreenHistory } from "../shared/useGameScreenHistory";
  * One page, two doors: open a room for a group of phones, or play the one-phone version where the
  * app only ever holds the question and the people in the room do the rest.
  *
- * House rules live behind "more" rather than on the surface. A group opening this wants one button;
- * the four settings underneath change how the game feels but nobody picks them the first time, and
- * they are remembered per device so the group that does care sets them once.
+ * Settings live behind one secondary action. A group opening this wants one clear door; the options
+ * underneath change the feel of the game and are remembered on this device.
  */
 export function SameBrainSetupApp({
   defaultPool,
@@ -40,11 +38,10 @@ export function SameBrainSetupApp({
   // Remembered on this device, so a group's setup is one tap next time rather than five.
   const { preferences, set, replace } = useGamePreferences("same-brain", {
     rounds: SAME_BRAIN_GAME_SETTINGS.rounds,
-    scoring: SAME_BRAIN_GAME_SETTINGS.scoring,
     sayItAloud: SAME_BRAIN_GAME_SETTINGS.sayItAloud,
     eliminateOddOne: SAME_BRAIN_GAME_SETTINGS.eliminateOddOne,
+    revealAuthors: SAME_BRAIN_GAME_SETTINGS.revealAuthors,
   });
-  const scoring: SameBrainScoring = preferences.scoring === "exact" ? "exact" : "embedding";
   const rounds = Math.min(
     SAME_BRAIN_ROUND_LIMITS.max,
     Math.max(SAME_BRAIN_ROUND_LIMITS.min, preferences.rounds),
@@ -72,10 +69,10 @@ export function SameBrainSetupApp({
       const created = await createSameBrainRoomFn({
         data: {
           rounds,
-          scoring,
           toggles: {
             sayItAloud: preferences.sayItAloud,
             eliminateOddOne: preferences.eliminateOddOne,
+            revealAuthors: preferences.revealAuthors,
           },
         },
       });
@@ -159,7 +156,7 @@ export function SameBrainSetupApp({
                 onClick={() => setPanel(panel === "more" ? null : "more")}
                 className="min-h-11"
               >
-                house rules
+                settings
               </button>
             </GameLaunchChoices>
 
@@ -192,15 +189,15 @@ export function SameBrainSetupApp({
 
                 <SetupToggle
                   label="say the answers out loud"
-                  hint="counts everyone down, then shows you your own word — for a room, not a call"
+                  hint="everyone sees their own answer, then says it together"
                   checked={preferences.sayItAloud}
                   onChange={(next) => set("sayItAloud", next)}
                 />
                 <SetupToggle
-                  label="count near-misses as the same answer"
-                  hint="sea and ocean score together; off, only identical answers do"
-                  checked={scoring === "embedding"}
-                  onChange={(next) => set("scoring", next ? "embedding" : "exact")}
+                  label="show who wrote each answer"
+                  hint="names appear beside answers on the reveal"
+                  checked={preferences.revealAuthors}
+                  onChange={(next) => set("revealAuthors", next)}
                 />
                 <SetupToggle
                   label="the odd one out is eliminated"
@@ -209,15 +206,15 @@ export function SameBrainSetupApp({
                   onChange={(next) => set("eliminateOddOne", next)}
                 />
                 <p className="mt-4 font-mono text-xs text-white/30">
-                  All of these can still be changed in the lobby before anybody answers.
+                  The host can change these in the lobby before the game starts.
                 </p>
                 <GameSettingsTransfer
                   document={gameSettingsDocument("same-brain", {
                     game: "same-brain",
                     rounds,
-                    scoring,
                     sayItAloud: preferences.sayItAloud,
                     eliminateOddOne: preferences.eliminateOddOne,
+                    revealAuthors: preferences.revealAuthors,
                   })}
                   onApply={replace}
                 />

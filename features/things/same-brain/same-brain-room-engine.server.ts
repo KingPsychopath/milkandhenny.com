@@ -40,7 +40,6 @@ import {
 } from "../shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "../shared/official-game-results";
 import { sameBrainQuestion } from "./same-brain-questions";
-import { sameBrainSimilarity } from "./same-brain-embeddings.server";
 import {
   SAME_BRAIN_CONNECTED_WINDOW_MS,
   SAME_BRAIN_DEFAULT_ROUNDS,
@@ -50,7 +49,6 @@ import {
   SAME_BRAIN_MAX_NAME_LENGTH,
   SAME_BRAIN_PLAYER_LIMITS,
   SAME_BRAIN_ROUND_LIMITS,
-  SAME_BRAIN_SIMILARITY_THRESHOLD,
   SAME_BRAIN_TIMING_BOUNDS,
   answerIsUsable,
   normaliseAnswer,
@@ -72,7 +70,6 @@ import type {
   SameBrainRoomCredentials,
   SameBrainRoomErrorCode,
   SameBrainRoundResult,
-  SameBrainScoring,
   SameBrainSnapshot,
   SameBrainSnapshotResult,
   SameBrainTimings,
@@ -83,11 +80,8 @@ import type {
  * The room. Same layering as liars — load, lock, mutate, save — because that shape is already proven
  * against reconnects, duplicate actions and a host whose phone died.
  *
- * The one structural difference is that scoring is asynchronous, and it is the only asynchronous
- * thing in the state machine. A model call must not happen inside the lock, so `advance` does not
- * score: it records a debt on `scoringRound`, and `pump` pays that debt between lock acquisitions.
- * The phase machine itself stays synchronous and driveable by fake timers, and a slow model delays
- * one reveal rather than blocking every other phone's poll behind a held lock.
+ * Scoring is synchronous and deterministic. Closing a submit phase immediately creates the reveal,
+ * so there is no hidden work or second state transition for another phone to trigger.
  */
 
 const FINISHED_GRACE_SECONDS = 20 * 60;
@@ -125,7 +119,6 @@ interface SameBrainRoomState {
   gameNumber: number;
   round: number;
   rounds: number;
-  scoring: SameBrainScoring;
   toggles: SameBrainToggles;
   timings: SameBrainTimings;
   phaseStartedAt: number;
@@ -138,17 +131,12 @@ interface SameBrainRoomState {
   question: string | null;
   recentQuestions: string[];
   result: SameBrainRoundResult | null;
-  /** What the scorer produced before any host correction, so "put it back" is exact. */
+  /** What the room produced before any host correction, so "put it back" is exact. */
   resultBaseline: SameBrainRoundResult | null;
   history: SameBrainRoundResult[];
   processedActions: string[];
   joinReceiptIds: string[];
   winnerIds: string[];
-  /**
-   * Set when submit closes and cleared once the round has been scored. A room in this state is
-   * mid-scoring: it renders as submit-closed and refuses new answers, but has no reveal yet.
-   */
-  scoringRound: number | null;
 }
 
 interface JoinReceipt {
@@ -421,25 +409,12 @@ function startRound(room: SameBrainRoomState, now: number) {
   room.round += 1;
   room.result = null;
   room.resultBaseline = null;
-  room.scoringRound = null;
   for (const player of room.players) player.answer = null;
   room.question = sameBrainQuestion(room.recentQuestions, (max) => randomInt(max));
   // Long enough that a group playing all evening does not see a repeat, short enough that the state
   // blob stays small.
   room.recentQuestions = [...room.recentQuestions, room.question].slice(-40);
   enterPhase(room, "prompt", now);
-}
-
-/**
- * Closes submissions and hands the round to the scorer.
- *
- * Nothing is scored here — this only marks the room as owing a score, because the scoring may need
- * the model and the lock must not be held across it.
- */
-function closeSubmit(room: SameBrainRoomState, now: number) {
-  room.scoringRound = room.round;
-  room.phaseEndsAt = now;
-  changed(room);
 }
 
 function finish(room: SameBrainRoomState, now: number) {
@@ -471,8 +446,6 @@ function afterReveal(room: SameBrainRoomState, now: number) {
  * so tests can drive a whole game with fake timers.
  */
 function advance(room: SameBrainRoomState, now = Date.now()) {
-  // A room mid-scoring waits for the score, however long the model takes.
-  if (room.scoringRound !== null) return;
   if (room.pausedAt !== null) return;
 
   for (let guard = 0; guard < 8; guard += 1) {
@@ -502,13 +475,7 @@ function everyoneAnswered(room: SameBrainRoomState) {
   return active.length > 0 && active.every(({ answer }) => answer !== null);
 }
 
-/**
- * Scores the round the room is waiting on, and applies the consequences.
- *
- * Split out from `advance` because it is the one asynchronous step: it may ask the model for
- * similarities. Called outside the lock, then re-applied under it.
- */
-async function computeResult(room: SameBrainRoomState): Promise<SameBrainRoundResult> {
+function computeResult(room: SameBrainRoomState): SameBrainRoundResult {
   const answers: SameBrainAnswer[] = playing(room)
     .filter((player) => player.answer !== null && answerIsUsable(player.answer))
     .map((player) => ({
@@ -517,21 +484,18 @@ async function computeResult(room: SameBrainRoomState): Promise<SameBrainRoundRe
       normalised: normaliseAnswer(player.answer as string),
     }));
 
-  const similarity =
-    room.scoring === "embedding"
-      ? await sameBrainSimilarity(answers.map(({ normalised }) => normalised))
-      : null;
-
   return scoreRound({
     round: room.round,
     question: room.question ?? "",
     answers,
     // Everyone still in the game, not everyone who answered — see `scoreClusters`.
     playerCount: playing(room).length,
-    scoring: room.scoring,
-    similarity,
-    threshold: SAME_BRAIN_SIMILARITY_THRESHOLD,
   });
+}
+
+function closeSubmit(room: SameBrainRoomState, now: number) {
+  room.phaseEndsAt = now;
+  applyResult(room, computeResult(room), now);
 }
 
 /**
@@ -564,7 +528,6 @@ function applyResult(room: SameBrainRoomState, result: SameBrainRoundResult, now
   room.result = result;
   room.resultBaseline = result;
   room.history.push(result);
-  room.scoringRound = null;
   awardResult(room, result, 1);
 
   /**
@@ -583,34 +546,9 @@ function applyResult(room: SameBrainRoomState, result: SameBrainRoundResult, now
   enterPhase(room, "reveal", now);
 }
 
-/**
- * Runs the room's clock forward and pays any scoring debt, until nothing is outstanding.
- *
- * Every entry point calls this before doing its own work, so whichever phone happens to poll first
- * is the one that moves the room on — there is no scheduler, and no phone is special. The loop
- * matters because one pass can create work for the next: a submit that times out becomes a debt,
- * paying it opens a reveal, and a reveal whose timer already passed starts the next round.
- *
- * The `scoringRound` re-check under the lock is what stops two phones double-scoring the same round:
- * whichever takes the lock second finds the debt already paid and does nothing. Bounded rather than
- * `while (true)` so a bug in the phase machine cannot spin a request forever.
- */
+/** Runs the room clock before a read or action. The first phone to touch an expired room advances it. */
 async function pump(roomId: string) {
-  for (let pass = 0; pass < 3; pass += 1) {
-    const pending = await withRoom(roomId, (room) => {
-      advance(room, Date.now());
-      return room.scoringRound;
-    });
-    if (pending === null || pending === undefined) return;
-
-    const loaded = await loadRoom(roomId);
-    if (!loaded || loaded.room.scoringRound !== pending) continue;
-    const result = await computeResult(loaded.room);
-
-    await withRoom(roomId, (room) => {
-      if (room.scoringRound === pending) applyResult(room, result, Date.now());
-    });
-  }
+  await withRoom(roomId, (room) => advance(room, Date.now()));
 }
 
 // ---------------------------------------------------------------------------
@@ -653,7 +591,6 @@ function snapshot(
     expiresAt: room.expiresAt,
     round: room.round,
     rounds: room.rounds,
-    scoring: room.scoring,
     toggles: room.toggles,
     timings: room.timings,
     phaseStartedAt: room.phaseStartedAt,
@@ -685,7 +622,6 @@ function snapshot(
 
 export async function createSameBrainRoom(input: {
   rounds?: number;
-  scoring?: SameBrainScoring;
   toggles?: Partial<SameBrainToggles>;
   timings?: Partial<SameBrainTimings>;
   managed?: boolean;
@@ -711,7 +647,6 @@ export async function createSameBrainRoom(input: {
     gameNumber: 1,
     round: 0,
     rounds: clampRounds(input.rounds ?? SAME_BRAIN_DEFAULT_ROUNDS),
-    scoring: input.scoring ?? "embedding",
     toggles: { ...SAME_BRAIN_DEFAULT_TOGGLES, ...input.toggles },
     timings: sameBrainTimings(input.timings),
     phaseStartedAt: now,
@@ -729,12 +664,11 @@ export async function createSameBrainRoom(input: {
     processedActions: [],
     joinReceiptIds: [],
     winnerIds: [],
-    scoringRound: null,
   };
   if (!getRedis() && process.env.NODE_ENV === "production")
     throw new Error("Same brain rooms require Redis");
   await saveRoom(room);
-  log.info("things.same-brain", "Room created", { rounds: room.rounds, scoring: room.scoring });
+  log.info("things.same-brain", "Room created", { rounds: room.rounds });
   return { roomId, hostToken, joinToken, expiresAt };
 }
 
@@ -907,7 +841,6 @@ export async function applySameBrainHostAction(input: {
       if (room.phase !== "lobby")
         return reject(view(), "action_unavailable", "House rules are set before the game starts");
       if (action.rounds !== undefined) room.rounds = clampRounds(action.rounds);
-      if (action.scoring !== undefined) room.scoring = action.scoring;
       if (action.toggles) room.toggles = { ...room.toggles, ...action.toggles };
       if (action.timings) room.timings = sameBrainTimings({ ...room.timings, ...action.timings });
       changed(room);
@@ -1017,18 +950,7 @@ export async function applySameBrainHostAction(input: {
       return reject(view(), "action_unavailable", "Nothing to skip");
     }
 
-    /**
-     * The room correcting the scorer.
-     *
-     * Everything the machine can get wrong lands here — a typo, a regional word, a synonym it missed,
-     * two words it merged that the room says are different. Deliberately not solved by a cleverer
-     * matcher: edit distance close enough to catch "buttter" also catches beach/peach and
-     * desert/dessert, which is the disease rather than the cure. The people who heard what was meant
-     * are a better judge than any threshold, and this is where they say so.
-     *
-     * Re-scored from the corrected grouping rather than patched, so the unanimous rate, the odd one
-     * out and the elimination rule all fall out of the same code as a normal round.
-     */
+    /** The host can correct an exact grouping when the room agrees two answers meant the same thing. */
     if (action.type === "result.merge" || action.type === "result.reset") {
       if (room.phase !== "reveal" || !room.result)
         return reject(view(), "action_unavailable", "There is no result to change");
@@ -1063,7 +985,6 @@ export async function applySameBrainHostAction(input: {
               ...cluster,
               playerIds: [...cluster.playerIds, ...clusters[action.from].playerIds],
               spellings: [...cluster.spellings, ...clusters[action.from].spellings],
-              merged: true,
             }
           : { ...cluster, playerIds: [...cluster.playerIds], spellings: [...cluster.spellings] },
       );
@@ -1118,7 +1039,6 @@ export async function applySameBrainHostAction(input: {
       room.resultBaseline = null;
       room.history = [];
       room.winnerIds = [];
-      room.scoringRound = null;
       room.question = null;
       for (const player of room.players) {
         player.score = 0;
@@ -1229,7 +1149,6 @@ export async function applySameBrainPlayerAction(input: {
         return reject(view(), "phase_ended", "That round has closed");
       if (action.round !== room.round)
         return reject(view(), "phase_ended", "That round has closed");
-      if (room.scoringRound !== null) return reject(view(), "phase_ended", "That round has closed");
 
       if (action.type === "answer.clear") {
         player.answer = null;
@@ -1250,16 +1169,6 @@ export async function applySameBrainPlayerAction(input: {
   });
 
   if (!result) return failure("room_unavailable", "Room unavailable");
-  // The last answer in closes the round, so the person who submitted it would otherwise be the only
-  // player looking at a dead submit screen until their next poll. Pay the debt and answer with the
-  // reveal instead — the same snapshot everyone else is about to receive.
-  if (result.accepted && result.snapshot.phase === "submit") {
-    await pump(input.roomId);
-    const settled = await withRoom(input.roomId, (room) =>
-      snapshot(room, input.playerId, Date.now()),
-    );
-    if (settled) return accept(settled);
-  }
   return result;
 }
 
@@ -1344,14 +1253,13 @@ export async function reissueSameBrainHostToken(roomId: string) {
 /**
  * Opens a room already populated, started, and optionally already answered.
  *
- * The answers are the point. A scoring corner — three spellings of the sea, a room split down the
+ * The answers are the point. A rules corner — three spellings of the sea, a room split down the
  * middle, one person alone — cannot be reached by asking five real people to type the right thing,
  * so the scenario types it for them and the round then scores exactly as it would in a real game.
  */
 export async function startSameBrainScenario(input: {
   names: string[];
   rounds?: number;
-  scoring?: SameBrainScoring;
   toggles?: Partial<SameBrainToggles>;
   timings?: Partial<SameBrainTimings>;
   question?: string;
@@ -1360,17 +1268,13 @@ export async function startSameBrainScenario(input: {
   developmentOnly();
   const created = await createSameBrainRoom({
     rounds: input.rounds,
-    scoring: input.scoring,
     // A scenario opens on a result to be inspected, so the spoken beat is skipped unless the scenario
     // is specifically about it — same reasoning as pinning the reveal open below.
     toggles: { sayItAloud: false, ...input.toggles },
     /**
      * The reveal is held open for as long as the bounds allow, whatever the caller asked for.
      *
-     * A scenario is opened to *look* at a scored round, and the harness's short-phase timings give
-     * the reveal eight seconds — less than a cold model load takes, so the position you opened had
-     * already advanced to a fresh random question by the time it rendered. Short phases are for
-     * iterating on the submit loop; they must not apply to the thing being inspected.
+     * A scenario is opened to look at a scored round, so the reveal stays open long enough to inspect.
      */
     timings: { ...input.timings, reveal: SAME_BRAIN_TIMING_BOUNDS.reveal[1] },
   });
@@ -1410,14 +1314,14 @@ export async function startSameBrainScenario(input: {
       if (everyoneAnswered(room)) closeSubmit(room, now);
     }
   });
-  // Answers that filled the room leave a score owing, exactly as in a real game.
+  // Answers that filled the room close the round, exactly as in a real game.
   await pump(created.roomId);
 
   return { error: null, roomId: created.roomId, hostToken: created.hostToken, seats };
 }
 
-/** Closes submit and scores, for scenarios where only some seats answered. */
-export async function forceSameBrainScore(roomId: string) {
+/** Closes submit for scenarios where only some seats answered. */
+export async function closeSameBrainSubmit(roomId: string) {
   developmentOnly();
   await withRoom(roomId, (room) => {
     if (room.phase === "submit" || room.phase === "prompt") closeSubmit(room, Date.now());

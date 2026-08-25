@@ -18,7 +18,7 @@ import {
 } from "./same-brain-room.server";
 import {
   exportSameBrainRoom,
-  forceSameBrainScore,
+  closeSameBrainSubmit,
   importSameBrainRoom,
   reissueSameBrainHostToken,
   startSameBrainScenario,
@@ -27,7 +27,6 @@ import {
 import type {
   SameBrainHostAction,
   SameBrainPlayerAction,
-  SameBrainScoring,
   SameBrainTimings,
   SameBrainToggles,
 } from "./types";
@@ -39,15 +38,9 @@ const credential = multiplayerCredential;
 const sequence = multiplayerSequence;
 const actionId = (value: unknown) => text(value, 80);
 
-function scoring(value: unknown): SameBrainScoring {
-  if (value === "exact" || value === "embedding") return value;
-  throw new Error("Invalid scoring method");
-}
-
 const TOGGLE_KEYS: Array<keyof SameBrainToggles> = [
   "sayItAloud",
   "eliminateOddOne",
-  "showMachineWorking",
   "revealAuthors",
 ];
 
@@ -75,7 +68,6 @@ function hostAction(value: unknown): SameBrainHostAction {
       actionId: id,
       type: data.type,
       ...(data.rounds === undefined ? {} : { rounds: sequence(data.rounds) }),
-      ...(data.scoring === undefined ? {} : { scoring: scoring(data.scoring) }),
       ...(data.toggles === undefined ? {} : { toggles: toggles(data.toggles) }),
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
     };
@@ -137,7 +129,6 @@ export const createSameBrainRoomFn = createServerFn({ method: "POST" })
     const data = record(value);
     return {
       rounds: data.rounds === undefined ? undefined : sequence(data.rounds),
-      scoring: data.scoring === undefined ? undefined : scoring(data.scoring),
       toggles: data.toggles === undefined ? undefined : toggles(data.toggles),
       timings: data.timings === undefined ? undefined : timings(data.timings),
     };
@@ -256,7 +247,6 @@ export const startSameBrainScenarioFn = createServerFn({ method: "POST" })
     return {
       names,
       rounds: data.rounds === undefined ? undefined : sequence(data.rounds),
-      scoring: data.scoring === undefined ? undefined : scoring(data.scoring),
       toggles: data.toggles === undefined ? undefined : toggles(data.toggles),
       timings: data.timings === undefined ? undefined : timings(data.timings),
       question: data.question === undefined ? undefined : text(data.question, 140),
@@ -272,6 +262,6 @@ export const startSameBrainScenarioFn = createServerFn({ method: "POST" })
   })
   .handler(({ data }) => startSameBrainScenario(data));
 
-export const forceSameBrainScoreFn = createServerFn({ method: "POST" })
+export const closeSameBrainSubmitFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => ({ roomId: roomId(record(value).roomId) }))
-  .handler(({ data }) => forceSameBrainScore(data.roomId));
+  .handler(({ data }) => closeSameBrainSubmit(data.roomId));

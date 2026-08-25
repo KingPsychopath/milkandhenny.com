@@ -46,10 +46,10 @@ export async function createPoolRoomAndJoin(input: {
     const room = await createSameBrainRoom({
       managed: true,
       rounds: settings.rounds,
-      scoring: settings.scoring,
       toggles: {
         sayItAloud: settings.sayItAloud,
         eliminateOddOne: settings.eliminateOddOne,
+        revealAuthors: settings.revealAuthors,
       },
     });
     const joined = await joinSameBrainRoom({

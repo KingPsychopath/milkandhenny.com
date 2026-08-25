@@ -6,11 +6,8 @@ import { Eyebrow, Headline } from "./SameBrainViews";
 /**
  * The one-phone version: a question, and nothing else.
  *
- * No server, no room, no scoring and deliberately no embeddings. Around one table the whole
- * adjudication problem the model exists to solve — did "sea" and "ocean" count as the same answer —
- * is settled better and faster by five people shouting at each other than by anything this app
- * could compute, and the moment it renders a verdict it takes that argument away. So it holds the
- * question up and gets out of the way.
+ * No server and no room. Around one table the group decides which answers matched and keeps score
+ * themselves, so this screen only holds up the question and gets out of the way.
  */
 export function SoloSameBrain({ onExit }: { onExit: () => void }) {
   // Shuffled once per sitting so a group that plays twice does not get the same running order.

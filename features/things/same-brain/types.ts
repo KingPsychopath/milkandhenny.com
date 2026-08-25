@@ -7,16 +7,6 @@ import type {
 } from "../shared/multiplayer";
 
 /**
- * How two answers are judged to be the same answer.
- *
- * `exact` compares normalised strings and nothing else: deterministic, explicable, and the whole
- * game works on it. `embedding` additionally merges near-misses — sea/ocean, knife/cutlery — which
- * is the only job the model has. It never decides who is odd, only whether two people who agreed
- * in substance are treated as having agreed.
- */
-export type SameBrainScoring = "exact" | "embedding";
-
-/**
  * `sayIt` is the beat between locking answers and seeing the result: every phone counts down
  * together, then shows its owner their own word to read out loud. Nobody else's word is on any
  * screen during it, so the room hears all of them at once and the screen only confirms it afterwards.
@@ -31,8 +21,6 @@ export interface SameBrainToggles {
   sayItAloud: boolean;
   /** House rule. A player alone in their answer is out of the game, not merely unscored. */
   eliminateOddOne: boolean;
-  /** Name the answers the model merged, so a group can overrule it out loud. */
-  showMachineWorking: boolean;
   /** Off makes the reveal anonymous, which is a different and louder game. */
   revealAuthors: boolean;
 }
@@ -62,22 +50,20 @@ export interface SameBrainPlayerSummary {
   answered: boolean;
 }
 
-/** One group of players judged to have given the same answer. */
+/** One group of players who gave the same normalised answer. */
 export interface SameBrainCluster {
   /** The answer that represents the group — the earliest spelling anybody typed in it. */
   label: string;
   /** Every distinct spelling that landed in this group, `label` first. */
   spellings: string[];
   playerIds: string[];
-  /** True when the model merged spellings the exact pass had kept apart. */
-  merged: boolean;
 }
 
 export interface SameBrainAnswer {
   playerId: string;
   /** Exactly what they typed, for the reveal. */
   text: string;
-  /** What the scorer compared. */
+  /** The normalised form used for grouping. */
   normalised: string;
 }
 
@@ -91,8 +77,6 @@ export interface SameBrainRoundResult {
   pointsEach: number;
   /** Set only when exactly one player stood alone against a herd. */
   oddPlayerId: string | null;
-  /** Present when the model changed the outcome, for the reveal to quote. */
-  machineNote: string | null;
   /** Set when nobody scored, so the reveal can say why rather than showing an empty herd. */
   noScoreReason: "split" | null;
   /** True once the host has merged groups by hand, so the reveal can say the room decided this. */
@@ -110,7 +94,6 @@ export interface SameBrainSnapshot extends MultiplayerSequence {
   expiresAt: number;
   round: number;
   rounds: number;
-  scoring: SameBrainScoring;
   toggles: SameBrainToggles;
   timings: SameBrainTimings;
   phaseStartedAt: number;
@@ -161,7 +144,6 @@ export type SameBrainHostAction = MultiplayerAction &
     | {
         type: "game.configure";
         rounds?: number;
-        scoring?: SameBrainScoring;
         toggles?: Partial<SameBrainToggles>;
         timings?: Partial<SameBrainTimings>;
       }
@@ -171,11 +153,8 @@ export type SameBrainHostAction = MultiplayerAction &
     | { type: "phase.advance" }
     | { type: "phase.pause" | "phase.resume" }
     /**
-     * The room overruling the scorer, at the reveal, on the round being looked at.
-     *
-     * This is how typos, regional words, missed synonyms and anything the model got wrong all get
-     * fixed — by the people who heard what was meant, rather than by a cleverer guess. `from` and
-     * `to` are indices into `result.clusters`; the round is re-scored from scratch afterwards.
+     * The host can group two answers when the room agrees they meant the same thing. `from` and `to`
+     * are indices into `result.clusters`; the round is re-scored from the chosen grouping.
      */
     | { type: "result.merge"; round: number; from: number; to: number }
     | { type: "result.reset"; round: number }

@@ -52,9 +52,9 @@ vi.mock("@/features/things/pool/store.server", () => ({
       settings: {
         game: "same-brain",
         rounds: 8,
-        scoring: "embedding",
         sayItAloud: true,
         eliminateOddOne: false,
+        revealAuthors: true,
       },
     },
     targetSize: 8,
@@ -76,9 +76,9 @@ vi.mock("@/features/things/pool/store.server", () => ({
         settings: {
           game: "same-brain",
           rounds: 8,
-          scoring: "embedding",
           sayItAloud: true,
           eliminateOddOne: false,
+          revealAuthors: true,
         },
       },
       targetSize: 8,
@@ -122,9 +122,9 @@ describe("game-pool room invites", () => {
               preset: {
                 game: "same-brain",
                 rounds: 8,
-                scoring: "embedding",
                 sayItAloud: true,
                 eliminateOddOne: false,
+                revealAuthors: true,
               },
             },
           ],
@@ -193,9 +193,9 @@ describe("game-pool room invites", () => {
               preset: {
                 game: "same-brain",
                 rounds: 8,
-                scoring: "embedding",
                 sayItAloud: true,
                 eliminateOddOne: false,
+                revealAuthors: true,
               },
             },
           ],

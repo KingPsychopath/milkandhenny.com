@@ -1,13 +1,10 @@
-import type { SameBrainScoring, SameBrainTimings, SameBrainToggles } from "./types";
+import type { SameBrainTimings, SameBrainToggles } from "./types";
 
 /**
  * Named starting positions, for the dev harness and for tests.
  *
- * This game's awkward corners are all in the scoring, and almost none of them turn up by chance —
- * you cannot get five people to type "sea", "ocean" and "the sea" on purpose while also watching
- * what the reveal does with it. So each scenario carries the answers as well as the setup: the
- * harness fills them in, the round scores for real, and the same list is walked by the integration
- * tests.
+ * Each scenario carries the answers as well as the setup: the harness fills them in, the round scores
+ * for real, and the same list is walked by the integration tests.
  *
  * `answers` is seat index to what that seat types. Seats with no entry answer nothing, which is its
  * own case worth having.
@@ -18,7 +15,6 @@ export interface SameBrainScenario {
   /** What this position is for — the thing you are trying to look at. */
   about: string;
   players: number;
-  scoring?: SameBrainScoring;
   toggles?: Partial<SameBrainToggles>;
   /**
    * Overrides the harness's short phases. Only needed by scenarios that are *about* a countdown: a
@@ -59,7 +55,6 @@ export const SAME_BRAIN_SCENARIOS: SameBrainScenario[] = [
     about:
       "The same position with the house rule on, which is the only way anybody leaves this game.",
     players: 6,
-    scoring: "exact",
     toggles: { eliminateOddOne: true },
     question: "Name something cold",
     answers: { 0: "ice", 1: "ice", 2: "ice", 3: "ice", 4: "ice", 5: "breakup" },
@@ -67,25 +62,23 @@ export const SAME_BRAIN_SCENARIOS: SameBrainScenario[] = [
   },
   {
     id: "spelling-split",
-    name: "the same answer, three spellings",
+    name: "normalised answers",
     about:
-      "The round the model exists for. Everybody meant the sea; nobody typed the same string. On exact matches this is a dead round, and switching the method mid-scenario shows the difference in one tap.",
+      "Case, punctuation and a leading article do not split an answer. Different words stay different so the room can decide for itself.",
     players: 5,
     question: "Name somewhere you would not swim",
     answers: { 0: "the sea", 1: "sea", 2: "ocean", 3: "canal", 4: "river" },
-    expect:
-      "exact: nothing scores except the sea/the sea pair. embedding: sea, the sea and ocean form one herd of three",
+    expect: "the sea and sea form one group; ocean, canal and river stay separate",
   },
   {
     id: "punctuation-only",
     name: "punctuation is not disagreement",
     about:
-      "Answers that differ by an apostrophe, a capital, an article and a hyphen. All handled before the model is asked, and a regression here would quietly break every round.",
+      "Answers that differ by an apostrophe, a capital, an article and a hyphen. All handled before grouping, and a regression here would quietly break every round.",
     players: 5,
-    scoring: "exact",
     question: "Name something people put on toast",
     answers: { 0: "Butter", 1: "butter.", 2: "the butter", 3: " BUTTER ", 4: "jam" },
-    expect: "one herd of four on exact matches alone, with no model involved",
+    expect: "one herd of four after normalisation",
   },
   {
     id: "dead-split",
@@ -151,7 +144,6 @@ export const SAME_BRAIN_SCENARIOS: SameBrainScenario[] = [
     about:
       "The spoken beat, stretched out so you can watch it. Every panel counts down to the same moment and then shows only its own word — check that the four countdowns move together and that no panel shows anybody else's answer.",
     players: 4,
-    scoring: "exact",
     toggles: { sayItAloud: true },
     // Twenty seconds of countdown and four of hold, rather than three and four.
     timings: { sayIt: 20_000 },

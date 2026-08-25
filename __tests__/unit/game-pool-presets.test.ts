@@ -17,7 +17,9 @@ describe("game-pool presets", () => {
   it("uses the low-friction public-room defaults", () => {
     expect(GAME_POOL_DEFAULTS["same-brain"]).toMatchObject({
       targetSize: 8,
-      gameSettings: { settings: { rounds: 8, scoring: "embedding" } },
+      gameSettings: {
+        settings: { rounds: 8, sayItAloud: true, eliminateOddOne: false, revealAuthors: true },
+      },
     });
     expect(GAME_POOL_DEFAULTS.liars).toMatchObject({
       targetSize: 9,
