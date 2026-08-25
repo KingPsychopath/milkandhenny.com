@@ -40,6 +40,20 @@ function validRealtimeMessage(value: string) {
   try {
     const message: unknown = JSON.parse(value);
     if (isMultiplayerServerMessage(message) && message.type === "wake") return true;
+    // Terminations must cross replicas: a kick or room close published on one
+    // instance has to reach sockets held by another, or the removed player
+    // keeps a live connection until the idle sweep.
+    if (isMultiplayerServerMessage(message) && message.type === "terminal") {
+      return (
+        (message.reason === "removed" ||
+          message.reason === "room_closed" ||
+          message.reason === "session_ended") &&
+        (message.playerId === undefined ||
+          (typeof message.playerId === "string" && message.playerId.length <= 80)) &&
+        (message.role === undefined ||
+          (typeof message.role === "string" && message.role.length <= 40))
+      );
+    }
     if (!message || typeof message !== "object" || Array.isArray(message)) return false;
     const presence = message as Record<string, unknown>;
     return (

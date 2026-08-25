@@ -453,22 +453,16 @@ export async function syncPairedGamePlayer(input: {
       return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
     }
   }
+  // Read-only on purpose. A DEL + RPUSH rewrite here raced the judge's
+  // concurrent RPUSH — a command appended between the read and the delete was
+  // erased before anyone saw it. The queue is already bounded (LTRIM to 50 on
+  // the judge side, room TTL on the key), and reads filter by sequence, so
+  // consumed or stale entries simply age out with the room.
   const queuedCommands = await redis.lrange<RemoteCommand>(roomKeys.commands, 0, -1);
   const commands = queuedCommands.filter(
     (command) =>
       command.sequence > input.lastCommandSequence && now - command.createdAt <= COMMAND_MAX_AGE_MS,
   );
-  const remainingCommands = queuedCommands.filter(
-    (command) =>
-      command.sequence > input.lastCommandSequence && now - command.createdAt <= COMMAND_MAX_AGE_MS,
-  );
-  if (remainingCommands.length !== queuedCommands.length) {
-    await redis.del(roomKeys.commands);
-    if (remainingCommands.length > 0) {
-      await redis.rpush(roomKeys.commands, ...remainingCommands);
-      await redis.expire(roomKeys.commands, roomTtl);
-    }
-  }
   const storedSnapshot = await redis.get<RemoteSyncedSnapshot>(roomKeys.snapshot);
   const shouldStoreSnapshot =
     !storedSnapshot ||

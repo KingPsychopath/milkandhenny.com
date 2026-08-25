@@ -87,16 +87,25 @@ type MultiplayerServices =
   | HotAndColdRoomService;
 
 function currentMultiplayerRuntime() {
-  return runtimeHolder[RUNTIME_KEY] as ManagedRuntime.ManagedRuntime<MultiplayerServices, never>;
+  return runtimeHolder[RUNTIME_KEY] as
+    | ManagedRuntime.ManagedRuntime<MultiplayerServices, never>
+    | undefined;
 }
 
 export function runMultiplayerEffect<A, E>(
   effect: Effect.Effect<A, E, MultiplayerServices>,
   signal?: AbortSignal,
-) {
+): Promise<A> {
   // Older Vite module graphs can keep this function after hot replacement. Resolve through the
   // process holder on every call so they cannot send work to the runtime that replacement closed.
-  return currentMultiplayerRuntime().runPromise(effect, signal ? { signal } : undefined);
+  const runtime = currentMultiplayerRuntime();
+  if (!runtime) {
+    // During shutdown the holder is already cleared while socket close events
+    // and the idle sweep still fire; those callers expect a rejection they can
+    // ignore, not a synchronous throw inside a timer callback.
+    return Promise.reject(new Error("Multiplayer runtime is disposed"));
+  }
+  return runtime.runPromise(effect, signal ? { signal } : undefined);
 }
 
 export function multiplayerTelemetrySnapshot() {
@@ -142,7 +151,7 @@ export function disposeMultiplayerRuntime() {
   const runtime = currentMultiplayerRuntime();
   delete runtimeHolder[RUNTIME_KEY];
   stopMemoryRoomSweeper();
-  return runtime.dispose();
+  return runtime ? runtime.dispose() : Promise.resolve();
 }
 
 startMemoryRoomSweeper();

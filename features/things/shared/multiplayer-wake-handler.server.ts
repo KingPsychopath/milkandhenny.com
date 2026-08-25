@@ -64,7 +64,10 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
   const helloInFlight = new Set<string>();
   const helloTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const roomConnectionCounts = new Map<string, number>();
-  const terminatedPeers = new Set<string>();
+  // Peer id → termination time. Entries normally clear on the close/error
+  // event; the timestamp lets the idle sweep evict peers whose close
+  // handshake never completes, so the map cannot grow without bound.
+  const terminatedPeers = new Map<string, number>();
   const channelFor = (session: Session) => options.channel(session.roomId);
   const wakeFor = (session: Session) =>
     JSON.stringify(options.wakeMessage?.(session) ?? { type: "wake" });
@@ -113,6 +116,13 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
               if (!playerMatches || !roleMatches) continue;
               try {
                 connection.peer.send(message);
+              } catch (error) {
+                // A half-closed socket must not abort the loop — every other
+                // player in the room still needs their terminal notice.
+                log.warn("things.multiplayer", "Realtime terminal send failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  game: options.game,
+                });
               } finally {
                 terminate(
                   connection.peer,
@@ -166,7 +176,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     _message: string,
   ) => {
     const { wasActive, wasPending } = forget(peer);
-    terminatedPeers.add(peer.id);
+    terminatedPeers.set(peer.id, Date.now());
     ignoreTelemetryFailure(
       record((telemetry) => telemetry.socketClosed(options.game, reason, wasActive, wasPending)),
     );
@@ -214,6 +224,13 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
       // A test adapter or an unusual deployment may not call `open`; keep its
       // accounting bounded even in that case.
       pendingPeers.delete(peerId);
+    }
+    for (const [peerId, terminatedAt] of terminatedPeers) {
+      // Normally cleared by the close/error event; a half-open socket whose
+      // close handshake never arrives would otherwise pin its entry forever.
+      if (now - terminatedAt > MULTIPLAYER_REALTIME_LIMITS.socketIdleTimeoutMs) {
+        terminatedPeers.delete(peerId);
+      }
     }
   }, MULTIPLAYER_REALTIME_LIMITS.socketIdleSweepIntervalMs);
   if (typeof idleSweepTimer === "object" && idleSweepTimer !== null && "unref" in idleSweepTimer)
@@ -351,6 +368,12 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
 
       const connection = connections.get(peer.id);
       if (!connection) {
+        // A frame can legitimately race the hello it follows: the client's
+        // advisory sends gate on the socket being open, not on `ready`, and
+        // `authorize` above is awaited. Drop the frame instead of closing
+        // with a terminal code the client will never reconnect from — the
+        // wake lane is advisory, so a lost frame costs one poll at most.
+        if (helloInFlight.has(peer.id)) return;
         terminate(
           peer,
           MULTIPLAYER_SOCKET_CLOSE.policyViolation,

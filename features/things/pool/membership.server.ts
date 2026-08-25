@@ -105,8 +105,27 @@ export async function markGamePoolPlayerLeft(input: { roomId: string; playerId: 
   return { released: operation.length };
 }
 
+/**
+ * The SQL guard below already refuses to touch a row seen in the last 30
+ * seconds, but the query itself still round-trips on every snapshot poll —
+ * for standalone rooms with no assignment row at all, too. This mirror of
+ * that window keeps the read path free of Postgres between heartbeats.
+ */
+const SEEN_THROTTLE_MS = 30_000;
+const lastSeenAttempts = new Map<string, number>();
+
 /** Keep a pool assignment alive while its room client is still polling. */
 export async function markGamePoolPlayerSeen(input: { roomId: string; playerId: string }) {
+  const key = `${input.roomId}:${input.playerId}`;
+  const now = Date.now();
+  const last = lastSeenAttempts.get(key);
+  if (last !== undefined && now - last < SEEN_THROTTLE_MS) return;
+  lastSeenAttempts.set(key, now);
+  if (lastSeenAttempts.size > 10_000) {
+    for (const [candidate, at] of lastSeenAttempts) {
+      if (now - at >= SEEN_THROTTLE_MS) lastSeenAttempts.delete(candidate);
+    }
+  }
   await query(
     `update game_pool_assignments
      set last_seen_at = now()

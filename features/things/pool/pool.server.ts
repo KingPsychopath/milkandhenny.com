@@ -425,6 +425,9 @@ export async function releaseGamePoolAssignment(input: { token: string; clientId
 }
 
 export async function authorizeGamePoolSocket(token: string, expectedRunId: string) {
+  // Shape-check before the database: this runs for unauthenticated hello
+  // frames, and a garbage token should cost a regex, not a Postgres query.
+  if (!/^[A-Za-z0-9_-]{16,128}$/.test(token)) return null;
   const entrance = await getGamePoolEntranceByToken(token);
   return entrance?.run?.id === expectedRunId ? { roomId: entrance.run.id } : null;
 }
