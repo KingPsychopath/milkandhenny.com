@@ -2,7 +2,18 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { getDiscovery } from "./discoveries.server";
 import { publicLeaderboard } from "./scoring.server";
-import { activeParticipantForEvent } from "./session.server";
+import { activeParticipantForEvent, getAttendeeSession } from "./session.server";
+
+export const getClaimedScoreLinksFn = createServerFn({ method: "GET" }).handler(async () => {
+  const session = await getAttendeeSession();
+  if (!session) return [];
+  const seen = new Set<string>();
+  return session.tickets.flatMap((ticket) => {
+    if (seen.has(ticket.eventSlug)) return [];
+    seen.add(ticket.eventSlug);
+    return [{ eventSlug: ticket.eventSlug, ticketId: ticket.ticketId }];
+  });
+});
 
 function identifier(value: unknown, label: string) {
   if (typeof value !== "string") throw new Error(`${label} is missing`);
