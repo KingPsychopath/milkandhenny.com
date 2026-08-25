@@ -14,7 +14,7 @@ import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
-import { ScannerReturnPrompt } from "@/components/ScannerReturnPrompt";
+import { WorkAccessReturnPrompt } from "@/components/WorkAccessReturnPrompt";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { ActiveRoomNotice } from "@/features/things/shared/ActiveRoomNotice";
 import { ClaimedScoreLinks } from "@/features/event-scoring/ui/ClaimedScoreLinks";
@@ -108,7 +108,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <BackToTop />
         <NavigationProgress />
         <OfflinePlatform />
-        <ScannerReturnPrompt />
+        <WorkAccessReturnPrompt />
         <ClaimedScoreLinks />
         {children}
         <ActiveRoomNotice />

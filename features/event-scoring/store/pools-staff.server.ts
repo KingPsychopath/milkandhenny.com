@@ -144,27 +144,39 @@ export async function createStaffAssignment(input: {
   eventSlug: string;
   label: string;
   assignmentType: StaffAssignmentType;
+  personId?: string;
   token: string;
   permissions: StaffPermissionSet;
   scope?: Record<string, unknown>;
   expiresAt?: string;
 }): Promise<StoredStaffAssignment> {
-  const row = await queryOne<StaffAssignmentRow>(
-    `insert into score_staff_assignments
-       (id, event_slug, label, assignment_type, token_hash, permissions, scope, expires_at)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)
-     returning *`,
-    [
-      id("staff"),
-      input.eventSlug,
-      input.label.trim(),
-      input.assignmentType,
-      hashStaffToken(input.token),
-      JSON.stringify(input.permissions),
-      JSON.stringify(input.scope ?? {}),
-      input.expiresAt ?? null,
-    ],
-  );
+  const row = await transaction(async (client) => {
+    const personId = input.assignmentType === "personal" ? (input.personId ?? id("person")) : null;
+    if (input.assignmentType === "personal" && !input.personId) {
+      await client.query(`insert into event_people (id, canonical_name) values ($1,$2)`, [
+        personId,
+        input.label.trim(),
+      ]);
+    }
+    const result = await client.query<StaffAssignmentRow>(
+      `insert into score_staff_assignments
+         (id, event_slug, person_id, label, assignment_type, token_hash, permissions, scope, expires_at)
+       values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
+       returning *`,
+      [
+        id("staff"),
+        input.eventSlug,
+        personId,
+        input.label.trim(),
+        input.assignmentType,
+        hashStaffToken(input.token),
+        JSON.stringify(input.permissions),
+        JSON.stringify(input.scope ?? {}),
+        input.expiresAt ?? null,
+      ],
+    );
+    return result.rows[0] ?? null;
+  });
   if (!row) throw new Error("Staff assignment could not be created");
   return toStaffAssignment(row);
 }
@@ -182,6 +194,7 @@ function toStaffAssignment(row: StaffAssignmentRow): StoredStaffAssignment {
   return {
     id: row.id,
     eventSlug: row.event_slug,
+    personId: row.person_id ?? undefined,
     label: row.label,
     assignmentType: row.assignment_type as StaffAssignmentType,
     permissions: recordObject(row.permissions) as unknown as StaffPermissionSet,

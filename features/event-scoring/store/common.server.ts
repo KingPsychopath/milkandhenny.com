@@ -97,6 +97,7 @@ export type PostingRow = {
 export type StaffAssignmentRow = {
   id: string;
   event_slug: string;
+  person_id: string | null;
   label: string;
   assignment_type: string;
   permissions: unknown;
@@ -109,6 +110,7 @@ export type StaffAssignmentRow = {
 export type StoredStaffAssignment = {
   id: string;
   eventSlug: string;
+  personId?: string;
   label: string;
   assignmentType: StaffAssignmentType;
   permissions: StaffPermissionSet;

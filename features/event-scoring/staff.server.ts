@@ -87,7 +87,7 @@ export async function createStaffAccess(input: {
     assignmentType: input.assignmentType,
     token,
     permissions: permissionsForPreset(input.preset, input.overrides),
-    scope: input.scope,
+    scope: { ...input.scope, rolePreset: input.preset },
     expiresAt: input.expiresAt,
   });
   await query(
@@ -98,7 +98,12 @@ export async function createStaffAccess(input: {
       input.eventSlug,
       input.actorId,
       assignment.id,
-      JSON.stringify({ assignmentType: input.assignmentType, label: input.label }),
+      JSON.stringify({
+        assignmentType: input.assignmentType,
+        label: input.label,
+        personId: assignment.personId,
+        preset: input.preset,
+      }),
     ],
   );
   return { ...assignment, token };

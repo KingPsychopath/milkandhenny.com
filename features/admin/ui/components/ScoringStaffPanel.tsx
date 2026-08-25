@@ -7,12 +7,24 @@ import type {
 } from "./event-scoring-types";
 
 const PRESETS = [
+  "door-scanner",
+  "door-manager",
   "game-moderator",
   "points-marshal",
   "activity-manager",
   "event-manager",
   "admin",
 ] as const;
+
+const PRESET_DESCRIPTIONS: Record<(typeof PRESETS)[number], string> = {
+  "door-scanner": "Checks guests in. Cannot add guests or change points.",
+  "door-manager": "Checks guests in and handles door guest requests.",
+  "game-moderator": "Runs activities and records their winners or results.",
+  "points-marshal": "Records manual awards and sees participant points.",
+  "activity-manager": "Runs, configures, and scores event activities.",
+  "event-manager": "Operates the event, including corrections and staff access.",
+  admin: "Full event authority, including identity and final leaderboard controls.",
+};
 
 const PERMISSIONS = [
   "viewParticipantPoints",
@@ -122,6 +134,11 @@ export function ScoringStaffPanel({
             <option value="personal">personal link</option>
             <option value="station">shared station</option>
           </select>
+          <span className="mt-2 block leading-relaxed theme-muted">
+            {assignmentType === "personal"
+              ? "Tied to one durable staff identity."
+              : "Shared by the station, not treated as one person."}
+          </span>
         </label>
         <label className="font-mono text-xs">
           preset
@@ -136,6 +153,9 @@ export function ScoringStaffPanel({
               </option>
             ))}
           </select>
+          <span className="mt-2 block leading-relaxed theme-muted">
+            {PRESET_DESCRIPTIONS[preset]}
+          </span>
         </label>
         <label className="font-mono text-xs">
           expires
@@ -227,7 +247,12 @@ export function ScoringStaffPanel({
             <div className="flex flex-wrap items-center gap-3">
               <span className="min-w-0 flex-1 font-serif">{assignment.label}</span>
               <span className="font-mono text-micro theme-muted">
-                {assignment.assignmentType} · {assignment.status}
+                {String(assignment.scope.rolePreset ?? assignment.assignmentType).replaceAll(
+                  "-",
+                  " ",
+                )}{" "}
+                · {assignment.status}
+                {assignment.personId ? ` · person ${assignment.personId.slice(-6)}` : ""}
               </span>
               {assignment.status === "active" && (
                 <button

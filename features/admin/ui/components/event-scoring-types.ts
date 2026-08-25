@@ -28,6 +28,7 @@ export type AdminStaffDevice = {
 
 export type AdminStaffAssignment = {
   id: string;
+  personId?: string;
   label: string;
   assignmentType: "personal" | "station";
   status: string;

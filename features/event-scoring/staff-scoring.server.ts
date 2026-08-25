@@ -85,6 +85,9 @@ export async function getStaffScoringPage(input: {
       eventSlug: string;
       eventTitle: string;
       label: string;
+      personId?: string;
+      rolePreset?: string;
+      expiresAt?: string;
       assignmentType: StoredStaffAssignment["assignmentType"];
       canAward: boolean;
       canAdmit: boolean;
@@ -167,6 +170,10 @@ export async function getStaffScoringPage(input: {
     eventSlug: input.eventSlug,
     eventTitle: event.title,
     label: assignment.label,
+    personId: assignment.personId,
+    rolePreset:
+      typeof assignment.scope.rolePreset === "string" ? assignment.scope.rolePreset : undefined,
+    expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
     canAward: hasStaffPermission(assignment, "awardPoints"),
     canAdmit: hasStaffPermission(assignment, "admitTickets"),

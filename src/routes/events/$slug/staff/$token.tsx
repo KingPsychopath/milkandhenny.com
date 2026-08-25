@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
 
+import { forgetStaffAccess, rememberStaffAccess } from "@/features/event-scoring/staff-memory";
 import { getStaffScoringPageFn } from "@/features/event-scoring/staff-scoring.functions";
 import { StaffScoringPage } from "@/features/event-scoring/ui/StaffScoringPage";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -20,7 +22,22 @@ export const Route = createFileRoute("/events/$slug/staff/$token")({
 
 function StaffScoringRoute() {
   const data = Route.useLoaderData();
-  const { token } = Route.useParams();
+  const { slug, token } = Route.useParams();
+  useEffect(() => {
+    if (!data.found) {
+      forgetStaffAccess(slug, token);
+      return;
+    }
+    rememberStaffAccess({
+      eventSlug: data.eventSlug,
+      eventTitle: data.eventTitle,
+      token,
+      label: data.label,
+      rolePreset: data.rolePreset,
+      assignmentType: data.assignmentType,
+      expiresAt: data.expiresAt,
+    });
+  }, [data, slug, token]);
   if (!data.found) {
     return (
       <main id="main" className="mx-auto max-w-2xl px-6 py-16 text-center">
