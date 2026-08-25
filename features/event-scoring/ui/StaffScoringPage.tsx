@@ -4,6 +4,7 @@ import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import {
   awardStaffPointsFn,
   admitStaffTicketFn,
+  reverseStaffAwardFn,
   resolveStaffScannedParticipantFn,
   searchStaffParticipantsFn,
 } from "../staff-scoring.functions";
@@ -29,7 +30,10 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
   const [reviewReady, setReviewReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [confirmedRemaining, setConfirmedRemaining] = useState<number | undefined>();
-  const [operation, setOperation] = useState<"admit" | "award">(data.canAdmit ? "admit" : "award");
+  const [operation, setOperation] = useState<"admit" | "run" | "award">(
+    data.canAdmit ? "admit" : data.canRun ? "run" : "award",
+  );
+  const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const commandId = useRef(crypto.randomUUID());
 
   const activity = data.activities.find((entry) => entry.id === activityId);
@@ -142,6 +146,30 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setCameraOpen(false);
   }
 
+  async function reverse(transactionId: string) {
+    const reason = window.prompt("Why are you undoing this award?");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    setError("");
+    const result = await reverseStaffAwardFn({
+      data: {
+        eventSlug: data.eventSlug,
+        token,
+        transactionId,
+        commandId: crypto.randomUUID(),
+        note: reason.trim(),
+      },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setRecentAwards((entries) =>
+      entries.map((entry) =>
+        entry.id === transactionId ? { ...entry, reversible: false } : entry,
+      ),
+    );
+    setStatus("The award was reversed. Its history remains in the audit log.");
+  }
+
   return (
     <main id="main" className="mx-auto max-w-2xl px-6 py-10">
       <header>
@@ -150,7 +178,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         <p className="mt-2 font-mono text-xs theme-muted">{data.label}</p>
       </header>
 
-      {data.canAdmit && data.canAward && (
+      {(data.canAdmit || data.canRun || data.canAward) && (
         <nav aria-label="Staff operation" className="mt-8 flex gap-3 border-y theme-border py-3">
           <button
             type="button"
@@ -160,15 +188,65 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
           >
             Admit guests
           </button>
-          <button
-            type="button"
-            onClick={() => setOperation("award")}
-            aria-pressed={operation === "award"}
-            className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
-          >
-            Award points
-          </button>
+          {data.canRun && (
+            <button
+              type="button"
+              onClick={() => setOperation("run")}
+              aria-pressed={operation === "run"}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+            >
+              Run an activity
+            </button>
+          )}
+          {data.canAward && (
+            <button
+              type="button"
+              onClick={() => setOperation("award")}
+              aria-pressed={operation === "award"}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+            >
+              Award points
+            </button>
+          )}
         </nav>
+      )}
+
+      {operation === "run" && data.canRun && (
+        <section aria-labelledby="run-heading" className="mt-10 border-t theme-border pt-7">
+          <h2 id="run-heading" className="font-serif text-2xl">
+            Run an activity
+          </h2>
+          <p className="mt-2 font-mono text-xs theme-muted">
+            Choose the result you are recording. Scanning starts only after you choose.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {[...data.activities]
+              .sort(
+                (left, right) =>
+                  Number(data.pinnedActivityIds.includes(right.id)) -
+                  Number(data.pinnedActivityIds.includes(left.id)),
+              )
+              .map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => {
+                    setActivityId(entry.id);
+                    setOperation("award");
+                    setReviewReady(false);
+                  }}
+                  className="min-h-14 border theme-border px-4 py-3 text-left hover:opacity-70"
+                >
+                  <span className="block font-serif text-lg">{entry.name}</span>
+                  <span className="mt-1 block font-mono text-micro theme-muted">
+                    {data.pinnedActivityIds.includes(entry.id)
+                      ? "pinned quick award"
+                      : "record result"}
+                  </span>
+                </button>
+              ))}
+          </div>
+        </section>
       )}
 
       {data.canAdmit && operation === "admit" && (
@@ -455,6 +533,40 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
             </div>
           </section>
         ))}
+
+      {data.canReverse && recentAwards.length > 0 && (
+        <section
+          aria-labelledby="recent-awards-heading"
+          className="mt-10 border-t theme-border pt-7"
+        >
+          <h2 id="recent-awards-heading" className="font-serif text-2xl">
+            Recent awards
+          </h2>
+          <ol className="mt-4 divide-y theme-border border-y theme-border">
+            {recentAwards.map((entry) => (
+              <li key={entry.id} className="flex min-h-11 items-center justify-between gap-4 py-3">
+                <span>
+                  <span className="block font-serif">{entry.participantLabel}</span>
+                  <span className="font-mono text-micro theme-muted">
+                    {entry.activityName} · {entry.points > 0 ? "+" : ""}
+                    {entry.points}
+                  </span>
+                </span>
+                {entry.reversible && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void reverse(entry.id)}
+                    className="min-h-11 px-3 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
+                  >
+                    undo
+                  </button>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </main>
   );
 }

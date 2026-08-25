@@ -4,7 +4,7 @@ import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types"
 import { verifyTicketSignature } from "@/features/tickets/qr.server";
 import { redeemTicket } from "@/features/tickets/tickets.server";
 import { getEvent } from "@/features/events/store.server";
-import { queryOne } from "@/lib/platform/postgres.server";
+import { query, queryOne } from "@/lib/platform/postgres.server";
 import {
   awardPoints,
   checkInForScoring,
@@ -77,6 +77,16 @@ export async function getStaffScoringPage(input: {
       canTransfer: boolean;
       canReverse: boolean;
       canReviewHeld: boolean;
+      canRun: boolean;
+      pinnedActivityIds: string[];
+      recentAwards: Array<{
+        id: string;
+        participantLabel: string;
+        activityName: string;
+        points: number;
+        createdAt: string;
+        reversible: boolean;
+      }>;
       activities: Awaited<ReturnType<typeof listScoringActivities>>;
       pools: Awaited<ReturnType<typeof listPools>>;
     }
@@ -84,10 +94,11 @@ export async function getStaffScoringPage(input: {
   const context = await resolveStaffScoringContext(input);
   if (!context) return { found: false };
   const { assignment } = context;
-  const [event, activities, pools] = await Promise.all([
+  const [event, activities, pools, recentAwards] = await Promise.all([
     getEvent(input.eventSlug),
     listScoringActivities(input.eventSlug),
     listPools(input.eventSlug),
+    listOwnRecentAwards(input.eventSlug, assignment.id),
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
@@ -102,6 +113,19 @@ export async function getStaffScoringPage(input: {
     canTransfer: hasStaffPermission(assignment, "transferPoints"),
     canReverse: hasStaffPermission(assignment, "reverseAwards"),
     canReviewHeld: hasStaffPermission(assignment, "reviewHeldActions"),
+    canRun: hasStaffPermission(assignment, "runActivities"),
+    pinnedActivityIds: Array.isArray(assignment.scope.pinnedActivityIds)
+      ? assignment.scope.pinnedActivityIds.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [],
+    recentAwards: recentAwards.map((entry) => ({
+      ...entry,
+      reversible:
+        entry.reversible &&
+        hasStaffPermission(assignment, "reverseAwards") &&
+        Date.now() - Date.parse(entry.createdAt) <= 15 * 60 * 1_000,
+    })),
     activities: activities.filter(
       (activity) => activity.status === "live" && canUseActivity(assignment, activity.id),
     ),
@@ -112,6 +136,44 @@ export async function getStaffScoringPage(input: {
         (stationId !== undefined && pool.ownerId === stationId),
     ),
   };
+}
+
+async function listOwnRecentAwards(eventSlug: string, assignmentId: string) {
+  const rows = await query<{
+    id: string;
+    participant_label: string;
+    activity_name: string;
+    points: number;
+    created_at: Date;
+    reversed: boolean;
+  }>(
+    `select transactions.id,
+            coalesce(participants.display_name, participants.public_alias) as participant_label,
+            activities.name as activity_name,
+            postings.points,
+            transactions.created_at,
+            exists (select 1 from score_transactions reversal
+                     where reversal.original_transaction_id = transactions.id) as reversed
+       from score_audit_events audit
+       join score_transactions transactions
+         on transactions.id = audit.entity_id and audit.entity_type = 'score_transaction'
+       join score_postings postings on postings.transaction_id = transactions.id
+       join event_participants participants on participants.id = postings.participant_id
+       left join score_activities activities on activities.id = transactions.activity_id
+      where audit.event_slug = $1 and audit.assignment_id = $2
+        and transactions.status = 'accepted'
+      order by transactions.created_at desc, transactions.id
+      limit 12`,
+    [eventSlug, assignmentId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    participantLabel: row.participant_label,
+    activityName: row.activity_name ?? "Points award",
+    points: row.points,
+    createdAt: row.created_at.toISOString(),
+    reversible: !row.reversed,
+  }));
 }
 
 export async function admitStaffTicket(input: {
@@ -282,6 +344,9 @@ export async function reverseStaffAward(input: {
     [input.eventSlug, input.transactionId, context.assignment.id],
   );
   if (!ownAudit) return { ok: false, status: 403, error: "Staff can reverse only their own award" };
+  if (Date.now() - Date.parse(transaction.createdAt) > 15 * 60 * 1_000) {
+    return { ok: false, status: 409, error: "The quick undo window has ended; ask a manager" };
+  }
   return reversePoints({
     eventSlug: input.eventSlug,
     transactionId: input.transactionId,
