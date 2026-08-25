@@ -69,9 +69,18 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     await expect(
       page.getByText("This switches event points from your other ticket."),
     ).toBeVisible();
-    await page.getByRole("link", { name: "you", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "You" })).toBeVisible();
-    await expect(page.getByText("Ticket links work without signing in.")).toBeVisible();
+    const mobileAccountBox = await page
+      .getByRole("link", { name: "account", exact: true })
+      .boundingBox();
+    const mobileLampBox = await page
+      .getByRole("button", { name: /Switch to .* mode/ })
+      .boundingBox();
+    expect(mobileAccountBox).not.toBeNull();
+    expect(mobileLampBox).not.toBeNull();
+    expect(boxesOverlap(mobileAccountBox!, mobileLampBox!)).toBe(false);
+    await page.getByRole("link", { name: "account", exact: true }).click();
+    await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);
+    await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
     await context.close();
     await browser.close();
   }
@@ -88,13 +97,15 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
   });
   const desktopPage = await desktopContext.newPage();
   await desktopPage.goto(`/ticket/${firstTicket}`);
-  const youBox = await desktopPage.getByRole("link", { name: "you", exact: true }).boundingBox();
+  const accountBox = await desktopPage
+    .getByRole("link", { name: "account", exact: true })
+    .boundingBox();
   const lampBox = await desktopPage
     .getByRole("button", { name: /Switch to .* mode/ })
     .boundingBox();
-  expect(youBox).not.toBeNull();
+  expect(accountBox).not.toBeNull();
   expect(lampBox).not.toBeNull();
-  expect(boxesOverlap(youBox!, lampBox!)).toBe(false);
+  expect(boxesOverlap(accountBox!, lampBox!)).toBe(false);
   await desktopContext.close();
   await desktopBrowser.close();
 

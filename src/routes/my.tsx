@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+import { requireAttendeeIdentityFn } from "@/features/attendee-access/access.functions";
 import { MyAccountPage } from "@/features/attendee-access/ui/MyAccountPage";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/my")({
+  loader: () => requireAttendeeIdentityFn({ data: "/my" }),
   head: () =>
     buildSeoHead({
       title: `You — ${SITE_NAME}`,

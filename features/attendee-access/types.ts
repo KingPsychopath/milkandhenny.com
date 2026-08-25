@@ -47,7 +47,21 @@ export type AttendeeTicketOperation = {
 export function safeReturnTo(value: unknown): string {
   if (typeof value !== "string") return "/my";
   const trimmed = value.trim();
-  return trimmed.startsWith("/") && !trimmed.startsWith("//") && trimmed.length <= 500
-    ? trimmed
-    : "/my";
+  if (
+    !trimmed.startsWith("/") ||
+    trimmed.startsWith("//") ||
+    trimmed.includes("\\") ||
+    trimmed.length > 500 ||
+    [...trimmed].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint < 32 || codePoint === 127;
+    })
+  ) {
+    return "/my";
+  }
+  return trimmed;
+}
+
+export function attendeeSignInHref(returnTo: unknown): string {
+  return `/access?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 
 import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGameNavigation";
@@ -8,6 +8,8 @@ export function AttendeeAccessLink() {
   const hiddenSurface =
     pathname === "/my" || pathname === "/access" || pathname.startsWith("/admin");
   const [safeGameScreen, setSafeGameScreen] = useState(false);
+  const [nearTop, setNearTop] = useState(true);
+  const scrollFrame = useRef<number | null>(null);
 
   useEffect(() => {
     if (hiddenSurface) return;
@@ -23,14 +25,33 @@ export function AttendeeAccessLink() {
     return () => window.removeEventListener(SAFE_GAME_NAVIGATION_EVENT, update);
   }, [hiddenSurface, pathname]);
 
+  useEffect(() => {
+    if (hiddenSurface) return;
+    const update = () => {
+      if (scrollFrame.current !== null) return;
+      scrollFrame.current = requestAnimationFrame(() => {
+        setNearTop(window.scrollY < 80);
+        scrollFrame.current = null;
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", update);
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+    };
+  }, [hiddenSurface, pathname]);
+
   if (hiddenSurface) return null;
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
   return (
     <Link
       to="/my"
-      className="fixed right-4 top-4 z-30 min-h-11 border theme-border bg-background px-3 py-3 font-mono text-micro shadow-sm hover:opacity-70 sm:right-24 sm:top-3"
+      style={{ opacity: nearTop ? 1 : 0, pointerEvents: nearTop ? "auto" : "none" }}
+      className="mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20"
     >
-      you
+      account
     </Link>
   );
 }

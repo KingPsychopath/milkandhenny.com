@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
-import type { AttendeeAccount } from "../types";
+import { attendeeSignInHref, type AttendeeAccount } from "../types";
 
 type AccountResponse = {
   authenticated: boolean;
@@ -54,8 +54,12 @@ export function MyAccountPage() {
         return (await response.json()) as AccountResponse;
       })
       .then((body) => {
+        if (!body.authenticated || !body.account) {
+          window.location.replace(attendeeSignInHref("/my"));
+          return;
+        }
         setAccount(body.account);
-        setName(body.account?.name ?? "");
+        setName(body.account.name ?? "");
         setEmailStepUpRequired(body.emailStepUpRequired);
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load"))
@@ -106,7 +110,7 @@ export function MyAccountPage() {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(body.error ?? "Could not sign out");
       }
-      window.location.assign("/access?returnTo=/my");
+      window.location.assign(attendeeSignInHref("/my"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
@@ -144,7 +148,7 @@ export function MyAccountPage() {
         if (response.status === 403) setEmailStepUpRequired(true);
         throw new Error(body.error ?? "The sign-in email could not be removed");
       }
-      window.location.assign("/access?returnTo=/my");
+      window.location.assign(attendeeSignInHref("/my"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
       setBusy(false);
@@ -221,23 +225,8 @@ export function MyAccountPage() {
         ← milk &amp; henny
       </Link>
       <h1 className="mt-10 font-serif text-4xl">You</h1>
-      {loading ? (
-        <p className="mt-6 font-mono text-xs theme-muted">loading…</p>
-      ) : !account ? (
-        <section className="mt-8 border-y theme-border py-6">
-          <p className="font-serif text-xl">Keep your tickets and scores together.</p>
-          <p className="mt-2 max-w-md font-mono text-xs leading-relaxed theme-muted">
-            Ticket links work without signing in. Verify your email only if you want to recover them
-            on another device.
-          </p>
-          <Link
-            to="/access"
-            search={{ returnTo: "/my" }}
-            className="mt-4 inline-block min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
-          >
-            email me a one-time link →
-          </Link>
-        </section>
+      {loading || !account ? (
+        <p className="mt-6 font-mono text-xs theme-muted">{message || "loading…"}</p>
       ) : (
         <>
           <p className="mt-3 font-mono text-xs theme-muted">
@@ -485,11 +474,11 @@ export function MyAccountPage() {
           </details>
         </>
       )}
-      {message && (
+      {message && account ? (
         <p role="status" className="mt-5 font-mono text-xs theme-muted">
           {message}
         </p>
-      )}
+      ) : null}
       {actionDialog}
     </main>
   );
