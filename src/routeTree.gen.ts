@@ -169,6 +169,7 @@ import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './
 import { Route as ApiEventsSlugDiscoveriesClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/claim/route'
 import { Route as ApiEventsSlugGameResultsClaimRouteRouteImport } from './routes/api/events/$slug/game-results/claim/route'
 import { Route as ApiTicketsIdScoreNotificationsRouteRouteImport } from './routes/api/tickets/$id/score/notifications/route'
+import { Route as ApiTicketsIdScoreProfileRouteRouteImport } from './routes/api/tickets/$id/score/profile/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
 import { Route as ApiUploadTransferAppendFinalizeRouteRouteImport } from './routes/api/upload/transfer/append/finalize/route'
 import { Route as ApiUploadTransferAppendPresignRouteRouteImport } from './routes/api/upload/transfer/append/presign/route'
@@ -1045,6 +1046,12 @@ const ApiTicketsIdScoreNotificationsRouteRoute =
     path: '/notifications',
     getParentRoute: () => ApiTicketsIdScoreRouteRoute,
   } as any)
+const ApiTicketsIdScoreProfileRouteRoute =
+  ApiTicketsIdScoreProfileRouteRouteImport.update({
+    id: '/profile',
+    path: '/profile',
+    getParentRoute: () => ApiTicketsIdScoreRouteRoute,
+  } as any)
 const ApiTransfersIdFilesFileIdRouteRoute =
   ApiTransfersIdFilesFileIdRouteRouteImport.update({
     id: '/files/$fileId',
@@ -1279,6 +1286,7 @@ export interface FileRoutesByFullPath {
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
+  '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1453,6 +1461,7 @@ export interface FileRoutesByTo {
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
+  '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1628,6 +1637,7 @@ export interface FileRoutesById {
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
+  '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
   '/api/upload/transfer/append/finalize': typeof ApiUploadTransferAppendFinalizeRouteRoute
   '/api/upload/transfer/append/presign': typeof ApiUploadTransferAppendPresignRouteRoute
@@ -1804,6 +1814,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
+    | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -1978,6 +1989,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
+    | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -2152,6 +2164,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
+    | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
     | '/api/upload/transfer/append/finalize'
     | '/api/upload/transfer/append/presign'
@@ -3386,6 +3399,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTicketsIdScoreNotificationsRouteRouteImport
       parentRoute: typeof ApiTicketsIdScoreRouteRoute
     }
+    '/api/tickets/$id/score/profile': {
+      id: '/api/tickets/$id/score/profile'
+      path: '/profile'
+      fullPath: '/api/tickets/$id/score/profile'
+      preLoaderRoute: typeof ApiTicketsIdScoreProfileRouteRouteImport
+      parentRoute: typeof ApiTicketsIdScoreRouteRoute
+    }
     '/api/transfers/$id/files/$fileId': {
       id: '/api/transfers/$id/files/$fileId'
       path: '/files/$fileId'
@@ -3852,12 +3872,14 @@ const ApiAdminTokensSessionsRouteRouteWithChildren =
 
 interface ApiTicketsIdScoreRouteRouteChildren {
   ApiTicketsIdScoreNotificationsRouteRoute: typeof ApiTicketsIdScoreNotificationsRouteRoute
+  ApiTicketsIdScoreProfileRouteRoute: typeof ApiTicketsIdScoreProfileRouteRoute
 }
 
 const ApiTicketsIdScoreRouteRouteChildren: ApiTicketsIdScoreRouteRouteChildren =
   {
     ApiTicketsIdScoreNotificationsRouteRoute:
       ApiTicketsIdScoreNotificationsRouteRoute,
+    ApiTicketsIdScoreProfileRouteRoute: ApiTicketsIdScoreProfileRouteRoute,
   }
 
 const ApiTicketsIdScoreRouteRouteWithChildren =

@@ -1,18 +1,29 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import {
   awardStaffPointsFn,
   admitStaffTicketFn,
+  closeOfflineScoreReservationFn,
+  reconcileOfflineScoreCommandsFn,
+  reserveOfflineScoreBudgetFn,
   reverseStaffAwardFn,
   resolveStaffScannedParticipantFn,
   searchStaffParticipantsFn,
 } from "../staff-scoring.functions";
+import type { OfflineScoreCommand } from "../offline.server";
 import type { getStaffScoringPage } from "../staff-scoring.server";
 import { convertRulePoints } from "../types";
 
 type PageData = Extract<Awaited<ReturnType<typeof getStaffScoringPage>>, { found: true }>;
 type Participant = Awaited<ReturnType<typeof searchStaffParticipantsFn>>[number];
+type OfflineReservation = {
+  id: string;
+  activityId: string;
+  points: number;
+  spent: number;
+  expiresAt: string;
+};
 
 export function StaffScoringPage({ data, token }: { data: PageData; token: string }) {
   const [activityId, setActivityId] = useState(data.activities[0]?.id ?? "");
@@ -41,11 +52,64 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     data.canAdmit ? "admit" : data.canRun ? "run" : "award",
   );
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
+  const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();
+  const [offlineCommands, setOfflineCommands] = useState<OfflineScoreCommand[]>([]);
   const commandId = useRef(crypto.randomUUID());
 
   const activity = data.activities.find((entry) => entry.id === activityId);
   const pool = data.pools.find((entry) => entry.activityId === activityId) ?? data.pools[0];
   const previewPoints = activity ? convertRulePoints(activity.rule, { placement, rawScore }) : 0;
+
+  useEffect(() => {
+    const key = `mah-offline-score:${data.eventSlug}`;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as {
+        reservation?: OfflineReservation;
+        commands?: OfflineScoreCommand[];
+      } | null;
+      if (saved?.reservation) setOfflineReservation(saved.reservation);
+      if (Array.isArray(saved?.commands)) setOfflineCommands(saved.commands);
+    } catch {
+      sessionStorage.removeItem(key);
+    }
+  }, [data.eventSlug]);
+
+  useEffect(() => {
+    const key = `mah-offline-score:${data.eventSlug}`;
+    if (!offlineReservation) sessionStorage.removeItem(key);
+    else
+      sessionStorage.setItem(
+        key,
+        JSON.stringify({ reservation: offlineReservation, commands: offlineCommands }),
+      );
+  }, [data.eventSlug, offlineCommands, offlineReservation]);
+
+  useEffect(() => {
+    async function reconcile() {
+      if (!navigator.onLine || !offlineReservation || offlineCommands.length === 0) return;
+      const result = await reconcileOfflineScoreCommandsFn({
+        data: {
+          eventSlug: data.eventSlug,
+          token,
+          reservationId: offlineReservation.id,
+          commands: offlineCommands,
+        },
+      });
+      if (!result.ok) return setError(result.error);
+      setStatus(
+        result.value.map((entry) => `${entry.commandId.slice(-6)} ${entry.state}`).join(" · "),
+      );
+      setOfflineCommands([]);
+      await closeOfflineScoreReservationFn({
+        data: { eventSlug: data.eventSlug, token, reservationId: offlineReservation.id },
+      });
+      setOfflineReservation(undefined);
+    }
+    const online = () => void reconcile();
+    window.addEventListener("online", online);
+    void reconcile();
+    return () => window.removeEventListener("online", online);
+  }, [data.eventSlug, offlineCommands, offlineReservation, token]);
 
   async function search() {
     if (query.trim().length < 2) {
@@ -68,6 +132,42 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
   async function award(confirmLarge = false) {
     if (!activityId || !participant) {
       setError("Choose an activity and a participant.");
+      return;
+    }
+    if (!navigator.onLine) {
+      if (!offlineReservation || offlineReservation.activityId !== activityId) {
+        setError("This device has no offline budget for the selected activity.");
+        return;
+      }
+      if (!scanned.trim()) {
+        setError("Offline scoring needs the signed ticket QR. Search-only awards stay online.");
+        return;
+      }
+      if (mediaRef.trim()) {
+        setError(
+          "The photo is still local. Remove it, queue the score, then upload it after reconnecting.",
+        );
+        return;
+      }
+      const spent = offlineReservation.spent + previewPoints;
+      if (spent > offlineReservation.points) {
+        setError("This device has used its offline point budget.");
+        return;
+      }
+      const command: OfflineScoreCommand = {
+        commandId: commandId.current,
+        localSequence: offlineCommands.length + 1,
+        participantProof: scanned.trim(),
+        result: { placement, rawScore },
+        deviceTime: new Date().toISOString(),
+      };
+      setOfflineCommands((commands) => [...commands, command]);
+      setOfflineReservation({ ...offlineReservation, spent });
+      setStatus(`${previewPoints} points queued on this device. They are not accepted yet.`);
+      setParticipant(null);
+      setScanned("");
+      setReviewReady(false);
+      commandId.current = crypto.randomUUID();
       return;
     }
     setBusy(true);
@@ -110,6 +210,20 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setNote("");
     setMediaRef("");
     commandId.current = crypto.randomUUID();
+  }
+
+  async function prepareOffline() {
+    if (!activityId) return;
+    setBusy(true);
+    setError("");
+    const result = await reserveOfflineScoreBudgetFn({
+      data: { eventSlug: data.eventSlug, token, activityId, points: 50, expiresInMinutes: 60 },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setOfflineReservation(result.value);
+    setOfflineCommands([]);
+    setStatus(`Offline budget ready: ${result.value.points} points for 60 minutes.`);
   }
 
   async function resolveScan(raw = scanned) {
@@ -595,6 +709,27 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                   {error}
                 </p>
               )}
+              <div className="border-t theme-border pt-4">
+                {offlineReservation?.activityId === activityId ? (
+                  <p className="font-mono text-xs" role="status">
+                    Offline budget: {offlineReservation.points - offlineReservation.spent} points
+                    left · {offlineCommands.length} pending commands
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void prepareOffline()}
+                    className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+                  >
+                    prepare this device for offline scoring
+                  </button>
+                )}
+                <p className="mt-2 font-mono text-micro theme-muted">
+                  Offline awards require a ticket scan and a fixed server budget. They stay pending
+                  until reconnect.
+                </p>
+              </div>
               {status && (
                 <p role="status" className="font-mono text-xs">
                   {status}

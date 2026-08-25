@@ -1989,6 +1989,44 @@ const MIGRATIONS: Migration[] = [
         on event_participants (event_slug, lower(public_alias));
     `,
   },
+  {
+    id: "0041_event_scoring_offline_reservations",
+    sql: `
+      create table if not exists score_offline_reservations (
+        id              text primary key,
+        event_slug      text not null references events (slug) on delete restrict,
+        assignment_id   text not null references score_staff_assignments (id) on delete restrict,
+        device_id       text not null,
+        activity_id     text not null references score_activities (id) on delete restrict,
+        pool_id         text not null references score_pools (id) on delete restrict,
+        issued_points   integer not null check (issued_points > 0),
+        spent_points    integer not null default 0 check (spent_points >= 0),
+        status          text not null default 'active' check (status in ('active', 'closed', 'expired')),
+        expires_at      timestamptz not null,
+        created_at      timestamptz not null default now(),
+        closed_at       timestamptz,
+        check (spent_points <= issued_points)
+      );
+
+      create unique index if not exists score_offline_reservations_device_idx
+        on score_offline_reservations (assignment_id, device_id, activity_id)
+        where status = 'active';
+
+      create table if not exists score_offline_commands (
+        command_id            text primary key,
+        reservation_id        text not null references score_offline_reservations (id) on delete restrict,
+        local_sequence        integer not null check (local_sequence >= 1),
+        participant_proof_hash text not null check (char_length(participant_proof_hash) = 64),
+        result                jsonb not null,
+        device_time           timestamptz not null,
+        state                 text not null check (state in ('accepted', 'held', 'rejected')),
+        reason                text,
+        transaction_id        text references score_transactions (id) on delete restrict,
+        created_at            timestamptz not null default now(),
+        unique (reservation_id, local_sequence)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

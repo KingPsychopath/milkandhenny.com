@@ -11,6 +11,12 @@ import {
   resolveStaffScannedParticipant,
   searchStaffParticipants,
 } from "./staff-scoring.server";
+import {
+  closeOfflineScoreReservation,
+  reconcileOfflineScoreCommands,
+  reserveOfflineScoreBudget,
+  type OfflineScoreCommand,
+} from "./offline.server";
 
 const DEVICE_COOKIE = "mah-score-staff-device";
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
@@ -101,3 +107,30 @@ export const reverseStaffAwardFn = createServerFn({ method: "POST" })
     const result = await reverseStaffAward({ ...data, deviceId: ensureDeviceId() });
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
+
+export const reserveOfflineScoreBudgetFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      eventSlug: string;
+      token: string;
+      activityId: string;
+      points: number;
+      expiresInMinutes?: number;
+    }) => data,
+  )
+  .handler(({ data }) => reserveOfflineScoreBudget({ ...data, deviceId: ensureDeviceId() }));
+
+export const reconcileOfflineScoreCommandsFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      eventSlug: string;
+      token: string;
+      reservationId: string;
+      commands: OfflineScoreCommand[];
+    }) => data,
+  )
+  .handler(({ data }) => reconcileOfflineScoreCommands({ ...data, deviceId: ensureDeviceId() }));
+
+export const closeOfflineScoreReservationFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; token: string; reservationId: string }) => data)
+  .handler(({ data }) => closeOfflineScoreReservation({ ...data, deviceId: ensureDeviceId() }));

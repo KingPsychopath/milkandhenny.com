@@ -186,6 +186,7 @@ export type ScoreProjection = {
 export type RankedScore = ScoreProjection & {
   rank: number;
   publicAlias: string;
+  displayMode?: ScoreParticipant["displayMode"];
   teamId?: string;
   teamName?: string;
 };
@@ -352,6 +353,7 @@ export function convertRulePoints(
 export function rankScores(
   scores: readonly (ScoreProjection & {
     publicAlias: string;
+    displayMode?: ScoreParticipant["displayMode"];
     teamId?: string;
     teamName?: string;
   })[],

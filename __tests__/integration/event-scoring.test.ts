@@ -9,6 +9,7 @@ import {
   findSettings,
   getOrCreateSettings,
   listScoreNotifications,
+  listPools,
   listScoreMediaLinks,
   listScoreAuditEvents,
   markParticipantCheckedIn,
@@ -55,6 +56,12 @@ import {
   getStaffScoringPage,
 } from "@/features/event-scoring/staff-scoring.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
+import { buildTicketQrPayload } from "@/features/tickets/qr.server";
+import {
+  closeOfflineScoreReservation,
+  reconcileOfflineScoreCommands,
+  reserveOfflineScoreBudget,
+} from "@/features/event-scoring/offline.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
   applyPenalty,
@@ -1034,6 +1041,75 @@ describeWithDatabase("event scoring postgres", () => {
         status: "accepted",
       }),
     ).toHaveLength(2);
+  });
+
+  it("reconciles a bounded offline device budget exactly once", async () => {
+    const previousSecret = process.env.AUTH_SECRET;
+    process.env.AUTH_SECRET = "offline-score-test-secret";
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Offline winner",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 3, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Offline marshal",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      scope: { activityIds: [activity.id], offlineBudgetMax: 12 },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "station",
+      ownerId: access.id,
+      points: 20,
+    });
+    const reserved = await reserveOfflineScoreBudget({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "offline-device",
+      activityId: activity.id,
+      points: 9,
+    });
+    expect(reserved.ok).toBe(true);
+    if (!reserved.ok) return;
+    const command = {
+      commandId: "offline-command-one",
+      localSequence: 1,
+      participantProof: buildTicketQrPayload("01ARZ3NDEKTSV4RR"),
+      result: {},
+      deviceTime: new Date().toISOString(),
+    };
+    const input = {
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "offline-device",
+      reservationId: reserved.value.id,
+    };
+    expect(await reconcileOfflineScoreCommands({ ...input, commands: [command] })).toMatchObject({
+      ok: true,
+      value: [{ commandId: command.commandId, state: "accepted" }],
+    });
+    expect(await reconcileOfflineScoreCommands({ ...input, commands: [command] })).toMatchObject({
+      ok: true,
+      value: [{ commandId: command.commandId, state: "accepted" }],
+    });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(3);
+    expect(await closeOfflineScoreReservation(input)).toMatchObject({
+      ok: true,
+      value: { releasedPoints: 6 },
+    });
+    const pool = (await listPools("scoring-night"))[0];
+    expect(pool).toMatchObject({ reserved: 0, spent: 3, available: 17 });
+    if (previousSecret === undefined) delete process.env.AUTH_SECRET;
+    else process.env.AUTH_SECRET = previousSecret;
   });
 
   it("adds to and reclaims only unused staff pool points", async () => {
