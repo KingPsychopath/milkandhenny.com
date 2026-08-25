@@ -240,6 +240,7 @@ export function HotAndColdRoomApp({
               <label>
                 rounds
                 <input
+                  name="rounds"
                   type="number"
                   min="1"
                   max="7"
@@ -254,6 +255,7 @@ export function HotAndColdRoomApp({
               <label>
                 guesses
                 <input
+                  name="guesses-per-player"
                   type="number"
                   min="2"
                   max="10"
@@ -271,6 +273,7 @@ export function HotAndColdRoomApp({
               <label>
                 seconds
                 <select
+                  name="turn-seconds"
                   disabled={!snapshot.canControl || snapshot.managed}
                   value={snapshot.turnSeconds}
                   onChange={(event) =>
