@@ -75,11 +75,15 @@ import {
   applyPenalty,
   awardPoints,
   changeScoringState,
+  createActivityFromPersonalTemplate,
+  createScoringActivity,
   correctPointsAfterClose,
   finalizeLeaderboard,
   mergeParticipants,
+  listPersonalActivityTemplates,
   processScheduledScoringTransitions,
   reverseParticipantMerge,
+  savePersonalActivityTemplate,
 } from "@/features/event-scoring/scoring.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -173,6 +177,36 @@ describeWithDatabase("event scoring postgres", () => {
 
     await getOrCreateSettings("scoring-night");
     expect((await findSettings("scoring-night"))?.state).toBe("off");
+  });
+
+  it("saves an activity as a personal template without linking later edits", async () => {
+    const source = await createScoringActivity({
+      eventSlug: "scoring-night",
+      name: "House winner",
+      template: "winner",
+      rule: { mode: "fixed", fixedPoints: 7, repeat: "once", requiresCheckIn: true },
+      status: "draft",
+      actorId: "admin-1",
+    });
+    expect(source.ok).toBe(true);
+    if (!source.ok) return;
+    const saved = await savePersonalActivityTemplate({
+      activityId: source.value.id,
+      actorId: "admin-1",
+    });
+    expect(saved.ok && saved.value.rule.fixedPoints).toBe(7);
+    expect(await listPersonalActivityTemplates("another-admin")).toEqual([]);
+    const created = await createActivityFromPersonalTemplate({
+      eventSlug: "scoring-night",
+      templateId: saved.ok ? saved.value.id : "missing",
+      actorId: "admin-1",
+      name: "Final winner",
+    });
+    expect(created.ok && created.value).toMatchObject({
+      name: "Final winner",
+      status: "draft",
+      rule: { fixedPoints: 7 },
+    });
   });
 
   it("keeps public display choices separate from participant and score identity", async () => {

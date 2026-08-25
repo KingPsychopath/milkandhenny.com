@@ -18,9 +18,16 @@ const TEMPLATES = [
 
 export function ScoringActivitiesPanel({
   activities,
+  personalTemplates,
   onAction,
 }: {
   activities: AdminScoringActivity[];
+  personalTemplates: Array<{
+    id: string;
+    name: string;
+    activityTemplate: string;
+    rule: AdminScoringActivity["rule"];
+  }>;
   onAction: ScoringAction;
 }) {
   const [name, setName] = useState("");
@@ -30,6 +37,7 @@ export function ScoringActivitiesPanel({
   const [requiresCheckIn, setRequiresCheckIn] = useState(true);
   const [expectedAttendance, setExpectedAttendance] = useState(100);
   const [advanced, setAdvanced] = useState(false);
+  const [previewId, setPreviewId] = useState("");
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
@@ -65,6 +73,30 @@ export function ScoringActivitiesPanel({
         Activities
       </h4>
       <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
+        {personalTemplates.length > 0 && (
+          <label className="font-mono text-xs sm:col-span-2">
+            personal templates
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                if (!event.target.value) return;
+                void onAction({
+                  action: "create-from-activity-template",
+                  templateId: event.target.value,
+                });
+                event.target.value = "";
+              }}
+              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+            >
+              <option value="">Choose a saved template</option>
+              {personalTemplates.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="font-mono text-xs sm:col-span-2">
           start from a template
           <select
@@ -188,6 +220,25 @@ export function ScoringActivitiesPanel({
             >
               copy
             </button>
+            <button
+              type="button"
+              onClick={() =>
+                void onAction({ action: "save-activity-template", activityId: activity.id })
+              }
+              className="min-h-11 px-2 font-mono text-micro underline hover:opacity-70"
+            >
+              save template
+            </button>
+            <button
+              type="button"
+              aria-expanded={previewId === activity.id}
+              onClick={() =>
+                setPreviewId((current) => (current === activity.id ? "" : activity.id))
+              }
+              className="min-h-11 px-2 font-mono text-micro underline hover:opacity-70"
+            >
+              preview
+            </button>
             {(["live", "paused"].includes(activity.status)
               ? [activity.status === "live" ? "paused" : "live", "ended", "cancelled"]
               : []
@@ -203,6 +254,35 @@ export function ScoringActivitiesPanel({
                 {status}
               </button>
             ))}
+            {previewId === activity.id && (
+              <div className="w-full grid gap-4 border-t theme-border py-4 sm:grid-cols-2">
+                <section aria-label="Attendee preview">
+                  <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                    attendee preview
+                  </p>
+                  <p className="mt-2 font-serif text-lg">{activity.name}</p>
+                  <p className="mt-1 font-mono text-xs theme-muted">
+                    Confirmed results award points once under the configured rule. Draft previews do
+                    not change scores.
+                  </p>
+                </section>
+                <section aria-label="Moderator preview">
+                  <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                    moderator preview
+                  </p>
+                  <button
+                    type="button"
+                    disabled
+                    className="mt-2 min-h-11 w-full border theme-border px-4 text-left font-serif opacity-60"
+                  >
+                    Record {activity.template.replaceAll("-", " ")}
+                  </button>
+                  <p className="mt-1 font-mono text-xs theme-muted">
+                    Preview only. No scan, pool, or ledger write is possible here.
+                  </p>
+                </section>
+              </div>
+            )}
           </li>
         ))}
       </ul>

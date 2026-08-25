@@ -40,6 +40,13 @@ export type AdminStaffAssignment = {
 export type ScoringData = {
   settings: { state: string; leaderboardVisibility: string; revision: number };
   activities: AdminScoringActivity[];
+  personalTemplates: Array<{
+    id: string;
+    name: string;
+    activityTemplate: string;
+    rule: ScoreRule;
+    updatedAt: string;
+  }>;
   pools: AdminScoringPool[];
   held: { id: string; sourceType: string; createdAt: string }[];
   heldOfficialResults: Array<{

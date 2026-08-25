@@ -2053,6 +2053,27 @@ const MIGRATIONS: Migration[] = [
         on score_anomaly_flags (event_slug, state, created_at desc);
     `,
   },
+  {
+    id: "0043_event_scoring_activity_templates",
+    sql: `
+      create table score_activity_templates (
+        id                text primary key,
+        name              text not null check (char_length(name) between 1 and 160),
+        activity_template text not null check (activity_template in
+          ('winner','placement','participation','completion','team-result','audience-vote',
+           'scan-to-award','free-form','check-in','discovery')),
+        rule              jsonb not null,
+        created_by        text not null,
+        created_at        timestamptz not null default now(),
+        updated_at        timestamptz not null default now()
+      );
+
+      create index score_activity_templates_owner_idx
+        on score_activity_templates (created_by, updated_at desc);
+      create unique index score_activity_templates_name_idx
+        on score_activity_templates (created_by, lower(name));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

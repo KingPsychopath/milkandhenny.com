@@ -228,7 +228,11 @@ export function EventScoringPanel({
               {data.held.length + data.heldOfficialResults.length}
             </p>
           </div>
-          <ScoringActivitiesPanel activities={data.activities} onAction={performAction} />
+          <ScoringActivitiesPanel
+            activities={data.activities}
+            personalTemplates={data.personalTemplates}
+            onAction={performAction}
+          />
           <ScoringLifecyclePanel data={data} onAction={performAction} />
           <ScoringDiscoveriesPanel
             activities={data.activities}

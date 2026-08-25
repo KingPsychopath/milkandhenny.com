@@ -38,14 +38,17 @@ import {
   changeScoringState,
   configureScoring,
   copyScoringActivity,
+  createActivityFromPersonalTemplate,
   correctPointsAfterClose,
   createScoringActivity,
   finalizeLeaderboard,
   getScoring,
   listScoringActivities,
+  listPersonalActivityTemplates,
   reversePoints,
   mergeParticipants,
   reverseParticipantMerge,
+  savePersonalActivityTemplate,
   transferPoints,
   updateScoringActivity,
 } from "@/features/event-scoring/scoring.server";
@@ -91,6 +94,7 @@ async function handleGET(request: Request, slug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
+    const actorId = auth.payload?.jti ?? "admin-local";
     const params = new URL(request.url).searchParams;
     const search = params.get("participant");
     if (search) {
@@ -110,6 +114,7 @@ async function handleGET(request: Request, slug: string) {
       audit,
       anomalies,
       merges,
+      personalTemplates,
     ] = await Promise.all([
       getScoring(slug),
       listScoringActivities(slug),
@@ -138,6 +143,7 @@ async function handleGET(request: Request, slug: string) {
       }),
       listScoreAnomalyFlags(slug),
       listParticipantMerges(slug),
+      listPersonalActivityTemplates(actorId),
     ]);
     return Response.json({
       settings,
@@ -170,6 +176,7 @@ async function handleGET(request: Request, slug: string) {
       audit,
       anomalies,
       merges,
+      personalTemplates,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
@@ -295,6 +302,32 @@ async function handlePOST(request: Request, slug: string) {
         activityId,
         targetEventSlug: stringValue(body.targetEventSlug) ?? slug,
         actorId,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ activity: result.value }, { status: 201 });
+    }
+
+    if (action === "save-activity-template") {
+      const activityId = stringValue(body.activityId);
+      if (!activityId) return Response.json({ error: "Activity is required" }, { status: 400 });
+      const result = await savePersonalActivityTemplate({
+        activityId,
+        actorId,
+        name: stringValue(body.name),
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ personalTemplate: result.value }, { status: 201 });
+    }
+
+    if (action === "create-from-activity-template") {
+      const templateId = stringValue(body.templateId);
+      if (!templateId)
+        return Response.json({ error: "Personal template is required" }, { status: 400 });
+      const result = await createActivityFromPersonalTemplate({
+        eventSlug: slug,
+        templateId,
+        actorId,
+        name: stringValue(body.name),
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ activity: result.value }, { status: 201 });

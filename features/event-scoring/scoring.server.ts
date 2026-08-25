@@ -266,6 +266,116 @@ export async function copyScoringActivity(input: {
   });
 }
 
+export type PersonalActivityTemplate = {
+  id: string;
+  name: string;
+  activityTemplate: ActivityTemplate;
+  rule: ScoreRule;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listPersonalActivityTemplates(
+  actorId: string,
+): Promise<PersonalActivityTemplate[]> {
+  const rows = await query<{
+    id: string;
+    name: string;
+    activity_template: ActivityTemplate;
+    rule: ScoreRule;
+    created_at: Date;
+    updated_at: Date;
+  }>(
+    `select id, name, activity_template, rule, created_at, updated_at
+       from score_activity_templates
+      where created_by = $1
+      order by updated_at desc, id`,
+    [actorId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    activityTemplate: row.activity_template,
+    rule: row.rule,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  }));
+}
+
+export async function savePersonalActivityTemplate(input: {
+  activityId: string;
+  actorId: string;
+  name?: string;
+}): Promise<ScoringOperationResult<PersonalActivityTemplate>> {
+  const activity = await getActivity(input.activityId);
+  if (!activity) return { ok: false, status: 404, error: "Activity not found" };
+  const name = input.name?.trim() || activity.name;
+  if (!name) return { ok: false, status: 400, error: "Name the template" };
+  const row = await queryOne<{
+    id: string;
+    name: string;
+    activity_template: ActivityTemplate;
+    rule: ScoreRule;
+    created_at: Date;
+    updated_at: Date;
+  }>(
+    `insert into score_activity_templates
+       (id, name, activity_template, rule, created_by)
+     values ($1,$2,$3,$4::jsonb,$5)
+     on conflict (created_by, lower(name)) do update
+       set activity_template = excluded.activity_template,
+           rule = excluded.rule,
+           updated_at = now()
+     returning id, name, activity_template, rule, created_at, updated_at`,
+    [id("template"), name, activity.template, JSON.stringify(activity.rule), input.actorId],
+  );
+  if (!row) return { ok: false, status: 500, error: "Could not save the template" };
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'activity.template.saved','admin',$2,'activity_template',$3,$4::jsonb)`,
+    [activity.eventSlug, input.actorId, row.id, JSON.stringify({ activityId: activity.id })],
+  );
+  return {
+    ok: true,
+    value: {
+      id: row.id,
+      name: row.name,
+      activityTemplate: row.activity_template,
+      rule: row.rule,
+      createdAt: row.created_at.toISOString(),
+      updatedAt: row.updated_at.toISOString(),
+    },
+  };
+}
+
+export async function createActivityFromPersonalTemplate(input: {
+  eventSlug: string;
+  templateId: string;
+  actorId: string;
+  name?: string;
+}): Promise<ScoringOperationResult<ScoreActivity>> {
+  const saved = await queryOne<{
+    name: string;
+    activity_template: ActivityTemplate;
+    rule: ScoreRule;
+  }>(
+    `select name, activity_template, rule
+       from score_activity_templates
+      where id = $1 and created_by = $2`,
+    [input.templateId, input.actorId],
+  );
+  if (!saved) return { ok: false, status: 404, error: "Personal template not found" };
+  return createScoringActivity({
+    eventSlug: input.eventSlug,
+    name: input.name?.trim() || saved.name,
+    template: saved.activity_template,
+    rule: structuredClone(saved.rule),
+    status: "draft",
+    actorId: input.actorId,
+  });
+}
+
 export type AwardPointsInput = {
   eventSlug: string;
   activityId: string;
