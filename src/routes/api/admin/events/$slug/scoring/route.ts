@@ -18,6 +18,8 @@ import {
   listHeldScoreTransactions,
   listPools,
   listScoreMediaLinks,
+  listScoreAuditEvents,
+  listLeaderboardParticipants,
   listStaffAssignments,
   listStaffDevices,
   listTeams,
@@ -82,7 +84,7 @@ async function handleGET(request: Request, slug: string) {
     if (search) {
       return Response.json({ participants: await searchEventParticipants(slug, search) });
     }
-    const [settings, activities, pools, discoveries, teams, held, staff, media, drop] =
+    const [settings, activities, pools, discoveries, teams, held, staff, media, drop, audit] =
       await Promise.all([
         getScoring(slug),
         listScoringActivities(slug),
@@ -93,6 +95,7 @@ async function handleGET(request: Request, slug: string) {
         listStaffAssignments(slug),
         listScoreMediaLinks(slug),
         getEventDrop(slug),
+        listScoreAuditEvents({ eventSlug: slug, limit: 100 }),
       ]);
     return Response.json({
       settings,
@@ -121,6 +124,7 @@ async function handleGET(request: Request, slug: string) {
             expiresAt: drop.expiresAt,
           }
         : null,
+      audit,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
@@ -752,6 +756,39 @@ async function handlePOST(request: Request, slug: string) {
       const mediaId = stringValue(body.mediaId);
       if (!mediaId) return Response.json({ error: "Media is required" }, { status: 400 });
       return Response.json({ deleted: await deleteScoreMediaLink(mediaId) });
+    }
+
+    if (action === "export") {
+      const [settings, activities, participants, pools, discoveries, staff, audit, media] =
+        await Promise.all([
+          getScoring(slug),
+          listScoringActivities(slug),
+          listLeaderboardParticipants(slug),
+          listPools(slug),
+          listDiscoveries(slug),
+          listStaffAssignments(slug),
+          listScoreAuditEvents({ eventSlug: slug, limit: 500 }),
+          listScoreMediaLinks(slug),
+        ]);
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        eventSlug: slug,
+        settings,
+        activities,
+        participants,
+        pools,
+        discoveries,
+        staff,
+        audit,
+        media,
+      };
+      return new Response(JSON.stringify(exportData, null, 2), {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Disposition": `attachment; filename="${slug}-scoring-export.json"`,
+          "Content-Type": "application/json",
+        },
+      });
     }
 
     return Response.json({ error: "Unknown scoring action" }, { status: 400 });

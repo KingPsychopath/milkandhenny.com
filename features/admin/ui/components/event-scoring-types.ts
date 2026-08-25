@@ -65,6 +65,15 @@ export type ScoringData = {
     deletedAt?: string;
   }>;
   mediaDrop: { uploadPath?: string; albumPath: string; expiresAt: string } | null;
+  audit: Array<{
+    id: number;
+    action: string;
+    actorType: string;
+    actorId?: string;
+    entityType: string;
+    entityId: string;
+    createdAt: string;
+  }>;
 };
 
 export type ScoringAction = (

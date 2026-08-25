@@ -7,6 +7,7 @@ import { ScoringPoolsPanel } from "./ScoringPoolsPanel";
 import { ScoringPrintStudioPanel } from "./ScoringPrintStudioPanel";
 import { ScoringLifecyclePanel } from "./ScoringLifecyclePanel";
 import { ScoringMediaPanel } from "./ScoringMediaPanel";
+import { ScoringAuditPanel } from "./ScoringAuditPanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import type { ScoringData } from "./event-scoring-types";
 
@@ -117,6 +118,33 @@ export function EventScoringPanel({
     onStatus("Print pack downloaded.");
   }
 
+  async function downloadExport() {
+    const stepUp = await ensureStepUpToken();
+    if (!stepUp.ok) {
+      if (stepUp.error) onError(stepUp.error);
+      return;
+    }
+    const response = await authFetch(
+      `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring`,
+      {
+        method: "POST",
+        headers: withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ action: "export" }),
+      },
+    );
+    if (!response.ok) {
+      onError("Could not export scoring data");
+      return;
+    }
+    const href = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `${eventSlug.trim()}-scoring-export.json`;
+    link.click();
+    URL.revokeObjectURL(href);
+    onStatus("Scoring export downloaded.");
+  }
+
   return (
     <section aria-labelledby="event-scoring-heading" className="border-t theme-border pt-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -205,6 +233,7 @@ export function EventScoringPanel({
             onDownload={downloadPrint}
           />
           <ScoringMediaPanel data={data} onAction={performAction} />
+          <ScoringAuditPanel audit={data.audit} onExport={downloadExport} />
           <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
           <ScoringCorrectionsPanel
             eventSlug={eventSlug.trim()}
