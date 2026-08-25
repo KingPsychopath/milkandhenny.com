@@ -132,6 +132,52 @@ export function createMemoryRoomStore<Value>(namespace: string): Map<string, Val
   return holder[key] as Map<string, Value>;
 }
 
+type MemoryRoomSweep = (now: number) => void;
+
+interface MemoryRoomSweeperRegistry {
+  sweepers: Map<string, MemoryRoomSweep>;
+  timer?: ReturnType<typeof setInterval>;
+}
+
+const MEMORY_ROOM_SWEEPER_KEY = "__milkandhenny_memory_room_sweepers__";
+const MEMORY_ROOM_SWEEP_INTERVAL_MS = 60_000;
+
+function memoryRoomSweeperRegistry() {
+  const holder = globalThis as Record<string, unknown>;
+  holder[MEMORY_ROOM_SWEEPER_KEY] ??= {
+    sweepers: new Map<string, MemoryRoomSweep>(),
+  } satisfies MemoryRoomSweeperRegistry;
+  return holder[MEMORY_ROOM_SWEEPER_KEY] as MemoryRoomSweeperRegistry;
+}
+
+/** Registers development-only cleanup for a memory-backed room namespace. */
+export function registerMemoryRoomSweeper(namespace: string, sweep: MemoryRoomSweep) {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") return;
+  memoryRoomSweeperRegistry().sweepers.set(namespace, sweep);
+}
+
+export function sweepMemoryRoomStores(now = Date.now()) {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") return;
+  for (const sweep of memoryRoomSweeperRegistry().sweepers.values()) sweep(now);
+}
+
+/** Starts one process-local timer. The registry survives Vite's duplicate server module graphs. */
+export function startMemoryRoomSweeper() {
+  if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "test") return;
+  const registry = memoryRoomSweeperRegistry();
+  if (registry.timer) return;
+  sweepMemoryRoomStores();
+  registry.timer = setInterval(() => sweepMemoryRoomStores(), MEMORY_ROOM_SWEEP_INTERVAL_MS);
+  registry.timer.unref?.();
+}
+
+export function stopMemoryRoomSweeper() {
+  const registry = memoryRoomSweeperRegistry();
+  if (!registry.timer) return;
+  clearInterval(registry.timer);
+  registry.timer = undefined;
+}
+
 /**
  * A digest of a redacted snapshot, so an unchanged room costs a few bytes instead of a few
  * kilobytes.

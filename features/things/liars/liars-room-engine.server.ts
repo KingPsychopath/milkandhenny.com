@@ -12,6 +12,7 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
@@ -207,6 +208,17 @@ interface JoinReceipt {
 
 const memoryRooms = createMemoryRoomStore<LiarsRoomState>("liars");
 const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("liars-receipts");
+
+registerMemoryRoomSweeper("liars", (now) => {
+  for (const [roomId, room] of memoryRooms) {
+    if (room.expiresAt > now) continue;
+    memoryRooms.delete(roomId);
+    for (const joinId of room.joinReceiptIds)
+      memoryJoinReceipts.delete(memoryReceiptKey(roomId, joinId));
+  }
+  for (const [key, receipt] of memoryJoinReceipts)
+    if (receipt.expiresAt <= now) memoryJoinReceipts.delete(key);
+});
 let lockObserver: ((input: MultiplayerLockAttempt) => void) | null = null;
 
 export function setLiarsRoomLockObserver(observer: typeof lockObserver) {

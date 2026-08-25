@@ -9,6 +9,7 @@ import {
   multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
   withMultiplayerRoomLock,
@@ -107,6 +108,15 @@ interface RoomState {
 type Keys = ReturnType<typeof centreRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("centre");
 const memoryReplays = createMemoryRoomStore<CentreReplayPlayer>("centre-replay");
+
+registerMemoryRoomSweeper("centre", (now) => {
+  for (const [roomId, room] of memoryRooms) {
+    if (room.expiresAt > now) continue;
+    memoryRooms.delete(roomId);
+    for (const key of memoryReplays.keys())
+      if (key.includes(`:room:${roomId}:`)) memoryReplays.delete(key);
+  }
+});
 
 function changed(room: RoomState) {
   room.revision += 1;

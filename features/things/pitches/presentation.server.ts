@@ -1,15 +1,21 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
   createAvailableMultiplayerRoomId,
+  createMemoryRoomStore,
   createMultiplayerCredential,
   hashMultiplayerCredential,
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
-  multiplayerRoomExpiresAt,
+  registerMemoryRoomSweeper,
   rememberMultiplayerAction,
   remainingMultiplayerRoomTtlSeconds,
   withMultiplayerRoomLock,
 } from "@/features/things/shared/room-primitives.server";
+import {
+  MULTIPLAYER_PRESENCE_LEASE_SECONDS,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "@/features/things/shared/multiplayer";
 import { publishMultiplayerRoomWake } from "@/features/things/shared/multiplayer-runtime.server";
 import { readPublicPitchDeck } from "./store.server";
 import type {
@@ -39,7 +45,11 @@ export type PresentationResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; error: string };
 
-const memoryRooms = new Map<string, PresentationState>();
+const memoryRooms = createMemoryRoomStore<PresentationState>("pitch-presentation");
+
+registerMemoryRoomSweeper("pitch-presentation", (now) => {
+  for (const [roomId, room] of memoryRooms) if (room.expiresAt <= now) memoryRooms.delete(roomId);
+});
 
 function key(roomId: string) {
   return `pitches:presentation:${roomId}`;
@@ -47,6 +57,19 @@ function key(roomId: string) {
 
 function lockKey(roomId: string) {
   return `${key(roomId)}:lock`;
+}
+
+const PRESENTATION_RENEWAL_WINDOW_MS = 5 * 60 * 1_000;
+
+function refreshPresentationLease(state: PresentationState, now = Date.now()) {
+  const remaining = state.expiresAt - now;
+  if (
+    remaining > PRESENTATION_RENEWAL_WINDOW_MS &&
+    remaining <= MULTIPLAYER_PRESENCE_LEASE_SECONDS * 1_000
+  )
+    return false;
+  state.expiresAt = multiplayerPresenceLeaseExpiresAt(now);
+  return true;
 }
 
 function snapshot(state: PresentationState): PitchPresentationSnapshot {
@@ -67,9 +90,21 @@ function memoryAllowed(): boolean {
 
 async function readState(roomId: string): Promise<PresentationState | null> {
   const redis = getRedis();
-  if (redis) return (await redis.get<PresentationState>(key(roomId))) ?? null;
+  if (redis) {
+    const state = (await redis.get<PresentationState>(key(roomId))) ?? null;
+    if (state && state.expiresAt <= Date.now()) {
+      await redis.del(key(roomId));
+      return null;
+    }
+    return state;
+  }
   if (!memoryAllowed()) throw new Error("Presentation rooms require Redis");
-  return memoryRooms.get(roomId) ?? null;
+  const state = memoryRooms.get(roomId) ?? null;
+  if (state && state.expiresAt <= Date.now()) {
+    memoryRooms.delete(roomId);
+    return null;
+  }
+  return state;
 }
 
 async function saveState(state: PresentationState): Promise<void> {
@@ -109,6 +144,7 @@ export async function createPresentationRoom(eventTitle = "The Pitch Night"): Pr
     Boolean(await readState(candidate)),
   );
   const hostToken = createMultiplayerCredential();
+  const now = Date.now();
   const state: PresentationState = {
     roomId,
     eventTitle: eventTitle.trim().slice(0, 120) || "The Pitch Night",
@@ -117,7 +153,7 @@ export async function createPresentationRoom(eventTitle = "The Pitch Night"): Pr
     hostHash: hashMultiplayerCredential(hostToken),
     controllers: [],
     processedActionIds: [],
-    expiresAt: multiplayerRoomExpiresAt(),
+    expiresAt: multiplayerLobbyExpiresAt(now, 1),
   };
   await saveState(state);
   return {
@@ -145,6 +181,7 @@ export async function joinPresentation(
       lastSeenAt: now,
       tokenHash: hashMultiplayerCredential(controllerToken),
     });
+    state.expiresAt = multiplayerLobbyExpiresAt(now, 1);
     state.revision += 1;
     return {
       ok: true,
@@ -165,25 +202,33 @@ export async function readPresentation(
   roomId: string,
   input?: { hostToken: string } | { controllerId: string; controllerToken: string },
 ): Promise<PresentationResult<PitchPresentationSnapshot>> {
-  const state = await readState(roomId);
-  if (!state || state.expiresAt <= Date.now()) {
-    return { ok: false, status: 404, error: "Presentation not found" };
-  }
-  if (input && "hostToken" in input) {
-    if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) {
+  const redis = getRedis();
+  const run = async (): Promise<PresentationResult<PitchPresentationSnapshot>> => {
+    const state = await readState(roomId);
+    if (!state || state.expiresAt <= Date.now()) {
       return { ok: false, status: 404, error: "Presentation not found" };
     }
-  } else if (input) {
-    const controller = state.controllers.find((item) => item.id === input.controllerId);
-    if (!controller || !multiplayerCredentialsMatch(input.controllerToken, controller.tokenHash)) {
-      return { ok: false, status: 404, error: "Presentation not found" };
+    if (input && "hostToken" in input) {
+      if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) {
+        return { ok: false, status: 404, error: "Presentation not found" };
+      }
+    } else if (input) {
+      const controller = state.controllers.find((item) => item.id === input.controllerId);
+      if (
+        !controller ||
+        !multiplayerCredentialsMatch(input.controllerToken, controller.tokenHash)
+      ) {
+        return { ok: false, status: 404, error: "Presentation not found" };
+      }
     }
-  }
-  const value = snapshot(state);
-  return {
-    ok: true,
-    value: input ? value : { ...value, controllers: [] },
+    if (input && refreshPresentationLease(state)) await saveState(state);
+    const value = snapshot(state);
+    return {
+      ok: true,
+      value: input ? value : { ...value, controllers: [] },
+    };
   };
+  return redis ? withMultiplayerRoomLock(redis, { roomId, lockKey: lockKey(roomId) }, run) : run();
 }
 
 export async function authorizePresentationSocket(input: {
@@ -220,6 +265,7 @@ export async function approvePresentationController(input: {
     if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) {
       return { ok: false, status: 404, error: "Presentation not found" };
     }
+    refreshPresentationLease(state);
     const controller = state.controllers.find((item) => item.id === input.controllerId);
     if (!controller) return { ok: false, status: 404, error: "Remote not found" };
     controller.status = input.approved ? "approved" : "revoked";
@@ -252,6 +298,7 @@ export async function controlPresentation(input: {
     if (!isHost && !isController) {
       return { ok: false, status: 403, error: "This remote has not been approved" };
     }
+    refreshPresentationLease(state);
     if (multiplayerActionSeen(state.processedActionIds, input.actionId)) {
       return { ok: true, value: snapshot(state) };
     }

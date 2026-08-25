@@ -12,6 +12,7 @@ import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
 import { gameRealtimeChannel } from "./multiplayer-keys";
 import { MULTIPLAYER_GAME_REGISTRY, type MultiplayerGame } from "./multiplayer-telemetry";
+import { startMemoryRoomSweeper, stopMemoryRoomSweeper } from "./room-primitives.server";
 
 const multiplayerLayer = Layer.mergeAll(
   MultiplayerTelemetry.layer,
@@ -140,5 +141,8 @@ export function disposeMultiplayerRuntime() {
   // down and every effect fails on a closed scope.
   const runtime = currentMultiplayerRuntime();
   delete runtimeHolder[RUNTIME_KEY];
+  stopMemoryRoomSweeper();
   return runtime.dispose();
 }
+
+startMemoryRoomSweeper();

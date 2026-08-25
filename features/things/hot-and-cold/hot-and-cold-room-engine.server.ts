@@ -1,5 +1,9 @@
 import { getRedis } from "@/lib/platform/redis.server";
-import { multiplayerFailure } from "../shared/multiplayer";
+import {
+  multiplayerFailure,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
+} from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
   multiplayerUnreadyPlayers,
@@ -14,9 +18,9 @@ import {
   hashMultiplayerCredential,
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
-  multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
+  registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
   withMultiplayerRoomLock,
@@ -92,10 +96,23 @@ interface RoomState {
 }
 
 const memoryRooms = createMemoryRoomStore<RoomState>("hot-and-cold");
+
+registerMemoryRoomSweeper("hot-and-cold", (now) => {
+  for (const [roomId, room] of memoryRooms) if (room.expiresAt <= now) memoryRooms.delete(roomId);
+});
+
 const activePlayers = (room: RoomState) => room.players.filter((player) => !player.withdrawn);
+const FINISHED_GRACE_SECONDS = 15 * 60;
 const changed = (room: RoomState) => {
   room.revision += 1;
   room.sequence += 1;
+  const now = Date.now();
+  if (room.phase === "lobby" && room.expiresAt > now)
+    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayers(room).length);
+  else if (room.phase === "closed") room.expiresAt = now;
+  else if (room.phase === "finished") room.expiresAt = now + FINISHED_GRACE_SECONDS * 1_000;
+  else
+    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
 };
 
 async function loadRoom(roomId: string) {
@@ -103,11 +120,22 @@ async function loadRoom(roomId: string) {
   const room = redis
     ? await redis.get<RoomState>(hotAndColdRoomRedisKeys(roomId).state)
     : (memoryRooms.get(roomId) ?? null);
-  if (!room || room.expiresAt <= Date.now()) return null;
+  if (!room || room.expiresAt <= Date.now()) {
+    if (room && !redis) memoryRooms.delete(roomId);
+    return null;
+  }
   return room;
 }
 async function saveRoom(room: RoomState) {
   const redis = getRedis();
+  if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "closed")
+    room.expiresAt =
+      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
+  if (room.expiresAt <= Date.now()) {
+    if (redis) await redis.del(hotAndColdRoomRedisKeys(room.roomId).state);
+    else memoryRooms.delete(room.roomId);
+    return;
+  }
   if (redis)
     await redis.set(hotAndColdRoomRedisKeys(room.roomId).state, room, {
       ex: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
@@ -291,7 +319,7 @@ export async function createHotAndColdRoom(input: {
   const room: RoomState = {
     roomId,
     managed: input.managed,
-    expiresAt: multiplayerRoomExpiresAt(),
+    expiresAt: multiplayerLobbyExpiresAt(now, 1),
     revision: 1,
     sequence: 1,
     phase: "lobby",

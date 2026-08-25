@@ -8,12 +8,14 @@ import {
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
   multiplayerRoomExpired,
-  multiplayerRoomExpiresAt,
+  registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
 } from "../shared/room-primitives.server";
 import {
+  MULTIPLAYER_PRESENCE_LEASE_SECONDS,
   MULTIPLAYER_ROOM_ID_PATTERN,
-  MULTIPLAYER_ROOM_TTL_SECONDS,
+  multiplayerLobbyExpiresAt,
+  multiplayerPresenceLeaseExpiresAt,
   multiplayerFailure,
 } from "../shared/multiplayer";
 import type {
@@ -58,12 +60,52 @@ interface MemoryRoom {
 }
 
 const memoryRooms = createMemoryRoomStore<MemoryRoom>("remote");
+const REMOTE_ROOM_RENEWAL_WINDOW_MS = 5 * 60 * 1_000;
+
+registerMemoryRoomSweeper("remote", (now) => {
+  for (const [roomId, room] of memoryRooms)
+    if (room.meta.expiresAt <= now) memoryRooms.delete(roomId);
+});
 
 type RemoteRedisKeys = ReturnType<typeof pairedGameRoomRedisKeys>;
 
 interface RoomContext {
+  roomId: string;
   meta: RoomMeta;
   keys: RemoteRedisKeys;
+}
+
+function remotePersistentKeys(keys: RemoteRedisKeys) {
+  return [
+    keys.setup,
+    keys.snapshot,
+    keys.commands,
+    keys.commandIds,
+    keys.decidedItems,
+    keys.commandSequence,
+  ];
+}
+
+async function renewPairedGameRoom(context: RoomContext, now = Date.now()) {
+  const remaining = context.meta.expiresAt - now;
+  if (
+    remaining > REMOTE_ROOM_RENEWAL_WINDOW_MS &&
+    remaining <= MULTIPLAYER_PRESENCE_LEASE_SECONDS * 1_000
+  )
+    return;
+  const expiresAt = multiplayerPresenceLeaseExpiresAt(now);
+  context.meta.expiresAt = expiresAt;
+  const redis = getRedis();
+  if (!redis) {
+    const room = memoryRooms.get(context.roomId);
+    if (room) room.meta.expiresAt = expiresAt;
+    return;
+  }
+  const roomTtl = remainingMultiplayerRoomTtlSeconds(expiresAt, now);
+  await Promise.all([
+    redis.set(context.keys.meta, context.meta, { ex: roomTtl }),
+    ...remotePersistentKeys(context.keys).map((key) => redis.expire(key, roomTtl)),
+  ]);
 }
 
 function logSnapshotTransitions(previous: RemoteSyncedSnapshot | null, next: RemoteSyncedSnapshot) {
@@ -176,7 +218,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
       memoryRooms.delete(roomId);
       return null;
     }
-    return { meta: room.meta, keys: pairedGameRoomRedisKeys(roomId) };
+    return { roomId, meta: room.meta, keys: pairedGameRoomRedisKeys(roomId) };
   }
   const roomKeys = pairedGameRoomRedisKeys(roomId);
   const meta = await redis.get<RoomMeta>(roomKeys.meta);
@@ -185,7 +227,7 @@ async function readRoom(roomId: string): Promise<RoomContext | null> {
     await redis.del(...allPairedGameKeys(roomId));
     return null;
   }
-  return { meta, keys: roomKeys };
+  return { roomId, meta, keys: roomKeys };
 }
 
 export async function authorizePairedGameSocket(input: {
@@ -210,7 +252,8 @@ export async function createPairedGameRoom(input: {
 }): Promise<PairedGameRoomCredentials> {
   const playerToken = createMultiplayerCredential();
   const judgeToken = createMultiplayerCredential();
-  const expiresAt = multiplayerRoomExpiresAt();
+  const now = Date.now();
+  const expiresAt = multiplayerLobbyExpiresAt(now, 1);
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await readRoom(candidate)),
   );
@@ -231,8 +274,10 @@ export async function createPairedGameRoom(input: {
   if (redis) {
     const roomKeys = pairedGameRoomRedisKeys(roomId);
     await Promise.all([
-      redis.set(roomKeys.meta, meta, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
-      redis.set(roomKeys.setup, input.setup, { ex: MULTIPLAYER_ROOM_TTL_SECONDS }),
+      redis.set(roomKeys.meta, meta, { ex: remainingMultiplayerRoomTtlSeconds(expiresAt, now) }),
+      redis.set(roomKeys.setup, input.setup, {
+        ex: remainingMultiplayerRoomTtlSeconds(expiresAt, now),
+      }),
     ]);
   } else {
     memoryRooms.set(roomId, {
@@ -267,6 +312,7 @@ export async function readPairedGamePlayerSetup(input: {
     return remoteSetupFailure("invite_expired", "Invite expired");
   }
   const now = Date.now();
+  await renewPairedGameRoom(context, now);
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
@@ -306,6 +352,7 @@ export async function syncPairedGamePlayer(input: {
     return remotePlayerSyncFailure("game_mismatch", "Game mismatch");
   }
   const now = Date.now();
+  await renewPairedGameRoom(context, now);
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
@@ -419,6 +466,7 @@ export async function readPairedGameJudge(input: {
     return remoteJudgeFailure("invite_expired", "Invite expired");
   }
   const now = Date.now();
+  await renewPairedGameRoom(context, now);
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
@@ -494,6 +542,7 @@ export async function sendPairedGameJudgeCommand(input: {
   const commandAge = receivedAt - input.command.createdAt;
   if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000)
     return multiplayerFailure("command_expired", "Command expired");
+  await renewPairedGameRoom(context);
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(input.roomId);
@@ -624,6 +673,7 @@ export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRo
     200,
   );
   if (!valid) return { ok: false, closed: false };
+  await renewPairedGameRoom(context);
   const redis = getRedis();
   if (role === "judge" && context.meta.creatorRole === "player") {
     const meta = {
