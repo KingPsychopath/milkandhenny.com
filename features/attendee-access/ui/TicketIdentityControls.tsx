@@ -100,6 +100,57 @@ export function TicketIdentityControls({
 
   if (!loaded) return null;
   return (
+    <TicketIdentityControlsView
+      ticketId={ticketId}
+      account={account}
+      personallyClaimed={Boolean(personallyClaimed)}
+      anotherClaimedTicketName={anotherClaimedTicket?.holderName}
+      canManageOrder={canManageOrder}
+      busy={busy}
+      message={message}
+      inAppBrowser={inAppBrowser}
+      recipientEmail={recipientEmail}
+      showSend={showSend}
+      onClaim={() => void claim()}
+      onRecipientEmailChange={setRecipientEmail}
+      onSend={(event) => void send(event)}
+      onToggleSend={() => setShowSend((current) => !current)}
+    />
+  );
+}
+
+export function TicketIdentityControlsView({
+  ticketId,
+  account,
+  personallyClaimed,
+  anotherClaimedTicketName,
+  canManageOrder,
+  busy,
+  message,
+  inAppBrowser,
+  recipientEmail,
+  showSend,
+  onClaim,
+  onRecipientEmailChange,
+  onSend,
+  onToggleSend,
+}: {
+  ticketId: string;
+  account: Pick<AttendeeAccount, "name"> | null;
+  personallyClaimed: boolean;
+  anotherClaimedTicketName?: string;
+  canManageOrder: boolean;
+  busy: boolean;
+  message: string;
+  inAppBrowser: boolean;
+  recipientEmail: string;
+  showSend: boolean;
+  onClaim: () => void;
+  onRecipientEmailChange: (value: string) => void;
+  onSend: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleSend: () => void;
+}) {
+  return (
     <section aria-label="Keep this ticket across devices" className="mt-3">
       {personallyClaimed ? (
         <div>
@@ -111,7 +162,7 @@ export function TicketIdentityControls({
           </p>
           <button
             type="button"
-            onClick={() => setShowSend((current) => !current)}
+            onClick={onToggleSend}
             className="min-h-11 py-3 font-mono text-micro underline hover:opacity-70"
           >
             send to someone
@@ -122,24 +173,24 @@ export function TicketIdentityControls({
           <button
             type="button"
             disabled={busy}
-            onClick={() => void claim()}
+            onClick={onClaim}
             className="min-h-11 py-3 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
           >
             {busy
               ? "connecting…"
-              : anotherClaimedTicket
+              : anotherClaimedTicketName
                 ? "use this ticket instead"
                 : "use this ticket"}
           </button>
-          {anotherClaimedTicket ? (
+          {anotherClaimedTicketName ? (
             <span className="inline-flex min-h-11 items-center font-mono text-micro theme-faint">
-              keep using {anotherClaimedTicket.holderName}
+              keep using {anotherClaimedTicketName}
             </span>
           ) : null}
           {canManageOrder ? (
             <button
               type="button"
-              onClick={() => setShowSend((current) => !current)}
+              onClick={onToggleSend}
               className="min-h-11 py-3 font-mono text-micro underline hover:opacity-70"
             >
               send to someone
@@ -159,7 +210,7 @@ export function TicketIdentityControls({
         </p>
       )}
       {showSend ? (
-        <form onSubmit={send} className="mt-3 border-y theme-border py-4">
+        <form onSubmit={onSend} className="mt-3 border-y theme-border py-4">
           <label htmlFor={`ticket-recipient-${ticketId}`} className="block font-mono text-xs">
             recipient email
           </label>
@@ -169,7 +220,7 @@ export function TicketIdentityControls({
               type="email"
               required
               value={recipientEmail}
-              onChange={(event) => setRecipientEmail(event.target.value)}
+              onChange={(event) => onRecipientEmailChange(event.target.value)}
               autoComplete="email"
               className="min-h-11 min-w-0 flex-1 border theme-border bg-background px-3 font-mono text-sm"
             />

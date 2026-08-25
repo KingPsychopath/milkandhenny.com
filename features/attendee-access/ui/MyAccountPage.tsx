@@ -310,7 +310,7 @@ export function MyAccountPage() {
               </h2>
               <ul className="mt-4 divide-y border-y theme-border">
                 {account.ticketOperations.outgoingAssignments.map((item) => (
-                  <OperationRow
+                  <AttendeeOperationRow
                     key={item.id}
                     label="assignment sent"
                     item={item}
@@ -320,7 +320,7 @@ export function MyAccountPage() {
                   />
                 ))}
                 {account.ticketOperations.outgoingTransfers.map((item) => (
-                  <OperationRow
+                  <AttendeeOperationRow
                     key={item.id}
                     label="transfer sent"
                     item={item}
@@ -330,13 +330,23 @@ export function MyAccountPage() {
                   />
                 ))}
                 {account.ticketOperations.incomingAssignments.map((item) => (
-                  <OperationRow key={item.id} label="incoming assignment" item={item} busy={busy} />
+                  <AttendeeOperationRow
+                    key={item.id}
+                    label="incoming assignment"
+                    item={item}
+                    busy={busy}
+                  />
                 ))}
                 {account.ticketOperations.incomingTransfers.map((item) => (
-                  <OperationRow key={item.id} label="incoming transfer" item={item} busy={busy} />
+                  <AttendeeOperationRow
+                    key={item.id}
+                    label="incoming transfer"
+                    item={item}
+                    busy={busy}
+                  />
                 ))}
                 {account.ticketOperations.returnRequests.map((item) => (
-                  <OperationRow
+                  <AttendeeOperationRow
                     key={item.id}
                     label="ticket return"
                     item={item}
@@ -485,7 +495,7 @@ export function MyAccountPage() {
   );
 }
 
-function OperationRow({
+export function AttendeeOperationRow({
   label,
   item,
   busy,

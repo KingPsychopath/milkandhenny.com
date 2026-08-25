@@ -52,6 +52,7 @@ export type TicketPageResult =
         revision: number;
         rank: number;
         teamRank?: number;
+        leaderboardAvailable: boolean;
         synchronizedAt: string;
         orderPoints?: number;
         transactions: Array<{
@@ -199,6 +200,9 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
             revision: scoreResult.value.participant.revision,
             rank: scoreResult.value.rank,
             teamRank: scoreResult.value.teamRank,
+            leaderboardAvailable:
+              scoringSettings?.leaderboardVisibility === "public-live" ||
+              scoringSettings?.leaderboardVisibility === "public-final",
             synchronizedAt: new Date().toISOString(),
             transactions: scoreResult.value.transactions,
             orderPoints: orderScore?.ok ? orderScore.value.points : undefined,

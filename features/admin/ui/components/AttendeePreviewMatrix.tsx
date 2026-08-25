@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { TicketIdentityControlsView } from "@/features/attendee-access/ui/TicketIdentityControls";
+import { AttendeeOperationRow } from "@/features/attendee-access/ui/MyAccountPage";
+import type { AttendeeTicketOperation } from "@/features/attendee-access/types";
+import type { TicketHolderEvent } from "@/features/events/types";
+import { TicketPage } from "@/features/tickets/ui/TicketPage";
 
 const VARIANTS = [
   "single ticket",
@@ -22,100 +27,204 @@ const VARIANTS = [
 
 type Variant = (typeof VARIANTS)[number];
 
-const COPY: Record<Variant, { title: string; body: string; action?: string }> = {
-  "single ticket": {
-    title: "Your ticket",
-    body: "Admit one · General admission",
-    action: "show ticket",
-  },
-  "multi-ticket purchaser": {
-    title: "Your tickets",
-    body: "You manage three individual tickets.",
-    action: "manage tickets",
-  },
-  "unassigned group ticket": {
-    title: "Who will use this ticket?",
-    body: "It has not been assigned yet.",
-    action: "use this ticket",
-  },
-  "claimed ticket": {
-    title: "This ticket is yours",
-    body: "Your verified identity holds this admission.",
-    action: "open ticket",
-  },
-  "already using another ticket": {
-    title: "You are using another ticket",
-    body: "Choose whether to switch on this device.",
-    action: "use this ticket instead",
-  },
-  "pending incoming transfer": {
-    title: "A ticket is on its way to you",
-    body: "Review the transfer before accepting it.",
-    action: "review transfer",
-  },
-  "pending outgoing transfer": {
-    title: "Transfer pending",
-    body: "You remain the holder until the recipient accepts.",
-    action: "cancel transfer",
-  },
-  "accepted transfer": {
-    title: "Transfer complete",
-    body: "The new holder has the current ticket authority.",
-  },
-  "refunded / void": {
-    title: "Ticket no longer valid",
-    body: "This credential cannot be used for admission.",
-  },
-  "checked in": { title: "You’re checked in", body: "Admission recorded at 19:42." },
-  "scoring off": { title: "Activities", body: "Points are not running for this event." },
-  "leaderboard off": { title: "Your score · 120", body: "Public rankings are hidden." },
-  "clues off": { title: "Clues", body: "No clues are available right now." },
-  "refund consent pending": {
-    title: "Refund needs confirmation",
-    body: "The other party must agree before this ticket is refunded.",
-    action: "review request",
-  },
-  "offline score pending": {
-    title: "12 points pending",
-    body: "This device will submit the award when connectivity returns.",
-  },
+const EVENT: TicketHolderEvent = {
+  slug: "after-hours-preview",
+  title: "After Hours",
+  tagline: "Synthetic admin preview",
+  status: "published",
+  startsAt: "2027-10-16T19:00:00.000Z",
+  endsAt: "2027-10-17T01:00:00.000Z",
+  doorsAt: "2027-10-16T18:30:00.000Z",
+  lastEntryAt: "2027-10-16T21:00:00.000Z",
+  timezone: "Europe/London",
+  area: "Peckham",
+  venueName: "The Test Room",
+  address: "1 Example Lane, London",
+  doorCode: "1942",
+  threeWordHint: "amber.ticket.preview",
+  mapUrl: "https://maps.example.test",
+  stepFreeAccess: true,
+  lineup: [],
+  ticketTypes: [],
+  waitlistEnabled: false,
+  transferable: true,
+  createdAt: "2026-08-25T12:00:00.000Z",
+  updatedAt: "2026-08-25T12:00:00.000Z",
+  locationRevealed: true,
 };
+
+const OPERATION_VARIANTS = new Set<Variant>([
+  "pending incoming transfer",
+  "pending outgoing transfer",
+  "accepted transfer",
+  "refund consent pending",
+]);
+
+function operationFor(
+  variant: Variant,
+  status: string,
+): {
+  label: string;
+  item: AttendeeTicketOperation;
+  outgoing: boolean;
+} {
+  const label =
+    variant === "pending incoming transfer"
+      ? "incoming transfer"
+      : variant === "pending outgoing transfer"
+        ? "transfer sent"
+        : variant === "refund consent pending"
+          ? "ticket return"
+          : "incoming transfer";
+  return {
+    label,
+    outgoing: variant === "pending outgoing transfer" || variant === "refund consent pending",
+    item: {
+      id: `preview-${variant.replaceAll(" ", "-")}`,
+      ticketId: "01J6PREVIEWTICKET1",
+      eventSlug: EVENT.slug,
+      eventTitle: EVENT.title,
+      status,
+      expiresAt: "2027-10-15T19:00:00.000Z",
+    },
+  };
+}
 
 export function AttendeePreviewMatrix() {
   const [variant, setVariant] = useState<Variant>("single ticket");
   const [mobile, setMobile] = useState(true);
   const [dark, setDark] = useState(false);
-  const preview = COPY[variant];
+  const [showSend, setShowSend] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [operationStatus, setOperationStatus] = useState("pending");
+  const index = VARIANTS.indexOf(variant);
+
+  useEffect(() => {
+    setShowSend(false);
+    setRecipientEmail("");
+    setMessage("");
+    setOperationStatus(variant === "accepted transfer" ? "accepted" : "pending");
+  }, [variant]);
+
+  const identityState = useMemo(() => {
+    if (variant === "claimed ticket") {
+      return { account: { name: "Avery Finch" }, personallyClaimed: true } as const;
+    }
+    if (variant === "already using another ticket") {
+      return {
+        account: { name: "Avery Finch" },
+        personallyClaimed: false,
+        anotherClaimedTicketName: "Morgan Finch",
+      } as const;
+    }
+    if (variant === "unassigned group ticket") {
+      return { account: { name: "Avery Finch" }, personallyClaimed: false } as const;
+    }
+    return { account: null, personallyClaimed: false } as const;
+  }, [variant]);
+
+  const move = (offset: number) => {
+    const next = (index + offset + VARIANTS.length) % VARIANTS.length;
+    setVariant(VARIANTS[next]!);
+  };
+
+  function previewSend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(
+      identityState.personallyClaimed
+        ? "Transfer invitation sent. You keep the ticket until it is accepted."
+        : "Assignment invitation sent. You can cancel it from You while it is pending.",
+    );
+    setRecipientEmail("");
+    setShowSend(false);
+  }
+
+  const previewIdentityControls = (
+    <TicketIdentityControlsView
+      ticketId="01J6PREVIEWTICKET1"
+      account={identityState.account}
+      personallyClaimed={identityState.personallyClaimed}
+      anotherClaimedTicketName={identityState.anotherClaimedTicketName}
+      canManageOrder={variant === "multi-ticket purchaser" || variant === "unassigned group ticket"}
+      busy={false}
+      message={message}
+      inAppBrowser={false}
+      recipientEmail={recipientEmail}
+      showSend={showSend}
+      onClaim={() => setMessage("This ticket is now saved to You across devices.")}
+      onRecipientEmailChange={setRecipientEmail}
+      onSend={previewSend}
+      onToggleSend={() => setShowSend((current) => !current)}
+    />
+  );
+
+  const multiTicket = variant === "multi-ticket purchaser";
+  const ticketStatus = variant === "refunded / void" ? "refunded" : "valid";
+  const redeemedAt = variant === "checked in" ? "2027-10-16T19:42:00.000Z" : undefined;
+  const scoringOff = variant === "scoring off";
+  const score = scoringOff
+    ? undefined
+    : {
+        participantId: "participant-preview",
+        publicAlias: "amber fox",
+        displayMode: "alias" as const,
+        points: 120,
+        revision: 4,
+        rank: 7,
+        teamRank: 2,
+        synchronizedAt: "2027-10-16T20:15:00.000Z",
+        orderPoints: multiTicket ? 280 : undefined,
+        leaderboardAvailable: variant !== "leaderboard off",
+        transactions:
+          variant === "offline score pending"
+            ? [
+                {
+                  status: "held",
+                  reasonCode: "offline-award",
+                  points: 12,
+                  createdAt: "2027-10-16T20:14:00.000Z",
+                },
+              ]
+            : [],
+      };
+
   return (
     <section aria-labelledby="attendee-preview-heading">
       <div className="border-b theme-border pb-5">
-        <p className="font-mono text-micro uppercase tracking-widest theme-muted">safe preview</p>
+        <p className="font-mono text-micro uppercase tracking-widest theme-muted">production UI</p>
         <h3 id="attendee-preview-heading" className="mt-2 font-serif text-3xl">
-          Attendee states
+          Attendee experience
         </h3>
         <p className="mt-2 max-w-2xl font-mono text-xs leading-relaxed theme-muted">
-          Synthetic data only. Controls and links in this preview cannot mutate, send, claim,
-          transfer, check in, score, or refund anything.
+          This renders the same ticket and identity components attendees use. Only the data and
+          actions are synthetic, so production UI changes appear here automatically.
         </p>
       </div>
-      <div className="mt-5 flex flex-wrap gap-4">
+      <div className="mt-5 flex flex-wrap items-end gap-3">
+        <button type="button" onClick={() => move(-1)} className="mh-action mh-action--quiet">
+          ← previous
+        </button>
         <label className="font-mono text-xs">
-          state
+          invariant
           <AppSelect
             value={variant}
             onValueChange={(value) => setVariant(value as Variant)}
             options={VARIANTS.map((item) => ({ value: item, label: item }))}
-            ariaLabel="Preview state"
+            ariaLabel="Preview invariant"
             className="ml-2"
           />
         </label>
-        <label className="flex min-h-11 items-center gap-2 font-mono text-xs">
+        <button type="button" onClick={() => move(1)} className="mh-action mh-action--quiet">
+          next →
+        </button>
+        <label className="ml-auto flex min-h-11 items-center gap-2 font-mono text-xs">
           <input
             type="checkbox"
             checked={mobile}
             onChange={(event) => setMobile(event.target.checked)}
           />
-          mobile width
+          phone width
         </label>
         <label className="flex min-h-11 items-center gap-2 font-mono text-xs">
           <input
@@ -126,33 +235,84 @@ export function AttendeePreviewMatrix() {
           dark theme
         </label>
       </div>
+      <p className="mt-3 font-mono text-micro theme-muted">
+        {index + 1} of {VARIANTS.length} · synthetic records · no network mutations
+      </p>
       <div
-        className={`mt-6 overflow-auto border theme-border p-4 ${dark ? "dark bg-background text-foreground" : "bg-background text-foreground"}`}
+        className={`mt-5 overflow-auto border theme-border p-3 sm:p-5 ${dark ? "dark bg-background text-foreground" : "bg-background text-foreground"}`}
       >
-        <div
-          className={`${mobile ? "max-w-[24rem]" : "max-w-2xl"} mx-auto border-x theme-border bg-background px-6 py-8`}
-        >
-          <p className="border-y theme-border py-2 text-center font-mono text-micro font-bold uppercase tracking-widest">
-            admin preview · no real actions
-          </p>
-          <p className="mt-8 font-mono text-micro uppercase tracking-widest theme-muted">
-            you · after hours
-          </p>
-          <h4 className="mt-2 font-serif text-3xl">{preview.title}</h4>
-          <p className="mt-3 font-mono text-xs leading-relaxed theme-muted">{preview.body}</p>
-          {preview.action ? (
-            <button
-              type="button"
-              disabled
-              className="mt-6 min-h-11 border border-foreground px-4 font-mono text-xs opacity-60"
-            >
-              {preview.action}
-            </button>
-          ) : null}
-          <div className="mt-8 border-t theme-border pt-5">
-            <p className="font-mono text-micro theme-muted">Avery Finch · a•••@example.test</p>
-            <p className="mt-2 font-mono text-xs">Saturday, 20:00 · Peckham</p>
-          </div>
+        <div className={`${mobile ? "max-w-[26rem]" : "max-w-2xl"} mx-auto bg-background`}>
+          {OPERATION_VARIANTS.has(variant) ? (
+            <main className="min-h-[32rem] px-6 py-10">
+              <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                you · ticket actions
+              </p>
+              <h4 className="mt-2 font-serif text-3xl">Your ticket activity</h4>
+              <ul className="mt-6 divide-y border-y theme-border">
+                {(() => {
+                  const operation = operationFor(variant, operationStatus);
+                  return (
+                    <AttendeeOperationRow
+                      label={operation.label}
+                      item={operation.item}
+                      busy={false}
+                      onResend={
+                        operation.outgoing ? () => setMessage("Invitation resent.") : undefined
+                      }
+                      onCancel={
+                        operation.outgoing ? () => setOperationStatus("cancelled") : undefined
+                      }
+                    />
+                  );
+                })()}
+              </ul>
+              {message ? (
+                <p role="status" className="mt-4 font-mono text-xs theme-muted">
+                  {message}
+                </p>
+              ) : null}
+            </main>
+          ) : (
+            <TicketPage
+              ticket={{
+                id: "01J6PREVIEWTICKET1",
+                publicId: "PREVIEW-TICKET-1",
+                holderName: "Avery Finch",
+                kind: "paid",
+                status: ticketStatus,
+                redeemedAt,
+                amountPaidMinor: 2500,
+                currency: "GBP",
+              }}
+              event={EVENT}
+              qrPayload="milkandhenny:attendee-preview:01J6PREVIEWTICKET1"
+              orderTickets={
+                multiTicket
+                  ? [
+                      { id: "01J6PREVIEWTICKET1", holderName: "Avery Finch", status: "valid" },
+                      { id: "01J6PREVIEWTICKET2", holderName: "Morgan Finch", status: "valid" },
+                      { id: "01J6PREVIEWTICKET3", holderName: "Sam Finch", status: "valid" },
+                    ]
+                  : [{ id: "01J6PREVIEWTICKET1", holderName: "Avery Finch", status: ticketStatus }]
+              }
+              orderSize={multiTicket ? 3 : 1}
+              orderPosition={1}
+              canManageOrder={multiTicket || variant === "unassigned group ticket"}
+              managerTicketId="01J6PREVIEWTICKET1"
+              checkpointNames={["cloakroom", "welcome drink"]}
+              album={{
+                state: "open",
+                albumPath: "/gallery",
+                fileCount: 18,
+                expiresAt: "2027-11-16T19:00:00.000Z",
+              }}
+              hasDiscoveries={variant !== "clues off"}
+              score={score}
+              preview
+              embedded
+              previewIdentityControls={previewIdentityControls}
+            />
+          )}
         </div>
       </div>
     </section>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppImage } from "@/components/AppImage";
@@ -49,6 +50,8 @@ export function TicketPage({
   hasDiscoveries,
   score,
   preview = false,
+  previewIdentityControls,
+  embedded = false,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -62,6 +65,9 @@ export function TicketPage({
   album: EventAlbumView;
   hasDiscoveries: boolean;
   preview?: boolean;
+  /** Production identity UI supplied with synthetic state by the admin preview. */
+  previewIdentityControls?: ReactNode;
+  embedded?: boolean;
   score?: {
     participantId: string;
     publicAlias: string;
@@ -70,6 +76,7 @@ export function TicketPage({
     revision: number;
     rank: number;
     teamRank?: number;
+    leaderboardAvailable?: boolean;
     synchronizedAt: string;
     orderPoints?: number;
     transactions: Array<{
@@ -99,9 +106,10 @@ export function TicketPage({
     if (pending) setPendingDiscovery(pending);
   }, []);
 
+  const PageBody = embedded ? "div" : "main";
   return (
     <div className="min-h-screen bg-background">
-      <main id="main" className="max-w-md mx-auto px-6 pt-10 pb-16">
+      <PageBody id={embedded ? undefined : "main"} className="max-w-md mx-auto px-6 pt-10 pb-16">
         {preview && (
           <aside className="mb-6 border-y theme-border py-3 font-mono text-micro leading-relaxed">
             <strong className="block text-foreground">admin · attendee preview</strong>
@@ -402,12 +410,16 @@ export function TicketPage({
               >
                 event score
               </h2>
-              <a
-                href={`/events/${encodeURIComponent(event.slug)}/score`}
-                className="font-mono text-micro underline hover:opacity-70 transition-opacity"
-              >
-                leaderboard
-              </a>
+              {score.leaderboardAvailable !== false ? (
+                <a
+                  href={`/events/${encodeURIComponent(event.slug)}/score`}
+                  className="font-mono text-micro underline hover:opacity-70 transition-opacity"
+                >
+                  leaderboard
+                </a>
+              ) : (
+                <span className="font-mono text-micro theme-muted">rankings hidden</span>
+              )}
             </div>
             <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
               {confirmedScore ?? score.points} points
@@ -517,7 +529,9 @@ export function TicketPage({
           </section>
         )}
 
-        {!preview && (
+        {preview ? (
+          previewIdentityControls
+        ) : (
           <TicketIdentityControls ticketId={ticket.id} canManageOrder={canManageOrder} />
         )}
 
@@ -561,7 +575,7 @@ export function TicketPage({
         <p className="mt-10 text-center font-mono text-micro theme-faint tracking-wide">
           {SITE_BRAND.toLowerCase()}
         </p>
-      </main>
+      </PageBody>
     </div>
   );
 }
