@@ -136,55 +136,154 @@ export async function buildEventPrintPack(input: {
   if (!event) return { ok: false as const, status: 404, error: "Event not found" };
   const definitions: Record<
     Exclude<PrintPackKind, "hunt">,
-    { title: string; subtitle: string; path: string; private: boolean }
+    {
+      path: string;
+      private: boolean;
+      items: Array<{ title: string; subtitle: string }>;
+    }
   > = {
     setup: {
-      title: "Event setup checklist",
-      subtitle: "Place signs, test every QR, and confirm scoring state.",
       path: `/events/${input.eventSlug}`,
       private: true,
+      items: [
+        {
+          title: "Confirm event state",
+          subtitle: "Keep scoring ready until the final live preview is approved.",
+        },
+        {
+          title: "Check staff access",
+          subtitle: "Open each assigned device and revoke any link that is no longer needed.",
+        },
+        {
+          title: "Count point pools",
+          subtitle: "Confirm issued, reserved, held, spent, and available points.",
+        },
+        {
+          title: "Place and scan signs",
+          subtitle: "Test each printed QR and its fallback code from the expected distance.",
+        },
+        {
+          title: "Rehearse safe failures",
+          subtitle: "Test duplicate, paused, exhausted, expired, and unidentified outcomes.",
+        },
+        {
+          title: "Confirm closeout owner",
+          subtitle: "Name who will resolve held work, export results, and finalize prizes.",
+        },
+      ],
     },
     instructions: {
-      title: "How to take part",
-      subtitle: "Open your ticket, scan a clue, and confirm each claim.",
       path: `/events/${input.eventSlug}/discoveries`,
       private: false,
+      items: [
+        {
+          title: "How to take part",
+          subtitle: "Open your ticket before you scan a clue or enter a fallback code.",
+        },
+        {
+          title: "One claim per person",
+          subtitle: "A copied code does not prove that somebody visited a location.",
+        },
+        {
+          title: "Wait for confirmation",
+          subtitle: "Only a confirmed result changes your score and rank.",
+        },
+        {
+          title: "Need help?",
+          subtitle: "Show staff your ticket. Do not share its private link or QR.",
+        },
+      ],
     },
     placement: {
-      title: "Private placement list",
-      subtitle: "Record each clue location and revision before doors open.",
       path: `/events/${input.eventSlug}`,
       private: true,
+      items: [
+        {
+          title: "Placement list",
+          subtitle:
+            "Record each clue ID, visible revision, exact location, owner, and recovery plan.",
+        },
+        {
+          title: "Replacement log",
+          subtitle:
+            "When paper is replaced, confirm that only the old clue revision stops working.",
+        },
+      ],
     },
     control: {
-      title: "Private answer and control sheet",
-      subtitle: "Keep this sheet with the event manager.",
       path: `/events/${input.eventSlug}`,
       private: true,
+      items: [
+        {
+          title: "Answer and control sheet",
+          subtitle:
+            "Keep answers, fallback codes, clue states, and pool limits with the event manager.",
+        },
+        {
+          title: "Incident notes",
+          subtitle: "Record pauses, replacements, held claims, corrections, and the staff actor.",
+        },
+      ],
     },
     moderator: {
-      title: "Moderator instructions",
-      subtitle: "Choose an operation before scanning. Review every award before saving.",
       path: `/events/${input.eventSlug}`,
       private: true,
+      items: [
+        {
+          title: "Choose one operation",
+          subtitle: "Admit, run an activity, and award points are separate actions.",
+        },
+        {
+          title: "Review before award",
+          subtitle: "Confirm the participant, activity, outcome, points, and pool before saving.",
+        },
+        {
+          title: "Undo a recent mistake",
+          subtitle: "Use the immutable reversal. Never edit score history.",
+        },
+        {
+          title: "Escalate uncertain work",
+          subtitle: "Hold conflicts for a manager. Do not guess identity or accuse a guest.",
+        },
+      ],
     },
     leaderboard: {
-      title: "Live event leaderboard",
-      subtitle: "Scan to see confirmed event scores.",
       path: `/events/${input.eventSlug}/score`,
       private: false,
+      items: [
+        {
+          title: "Live event leaderboard",
+          subtitle: "Scan to see confirmed scores. Tied scores share a rank.",
+        },
+      ],
     },
     "ticket-score": {
-      title: "Your ticket and score",
-      subtitle: "Open your ticket link to see points, rank, and clues.",
       path: `/events/${input.eventSlug}`,
       private: false,
+      items: [
+        {
+          title: "Your ticket and score",
+          subtitle: "Open your private ticket link to see points, rank, history, and clues.",
+        },
+        {
+          title: "Keep the ticket private",
+          subtitle: "Anybody with the bearer link can open this attendee place.",
+        },
+      ],
     },
     "photo-upload": {
-      title: "Share event photographs",
-      subtitle: "Uploads follow the event consent policy and expire with the album.",
       path: `/events/${input.eventSlug}`,
       private: false,
+      items: [
+        {
+          title: "Share event photographs",
+          subtitle: "Ask before capture. Uploads follow the event consent and expiry policy.",
+        },
+        {
+          title: "Score and photo are separate",
+          subtitle: "A failed photo upload does not remove or repeat a valid points award.",
+        },
+      ],
     },
   };
   const definition = definitions[input.kind];
@@ -202,17 +301,15 @@ export async function buildEventPrintPack(input: {
     includePlacementNotes: false,
     includeCutGuides: input.includeCutGuides ?? true,
     includePageNumbers: input.includePageNumbers ?? true,
-    items: [
-      {
-        id: input.kind,
-        title: definition.title,
-        subtitle: definition.subtitle,
-        destination,
-        fallbackCode: definition.path,
-        revision: 1,
-        private: definition.private,
-      },
-    ],
+    items: definition.items.map((item, index) => ({
+      id: `${input.kind}-${index + 1}`,
+      title: item.title,
+      subtitle: item.subtitle,
+      destination,
+      fallbackCode: definition.path,
+      revision: 1,
+      private: definition.private,
+    })),
   };
   const errors = validatePrintPack(pack);
   if (errors.length > 0) return { ok: false as const, status: 422, error: errors.join("; ") };
@@ -226,7 +323,11 @@ export async function buildEventPrintPack(input: {
   const code = jsQR(new Uint8ClampedArray(decoded.data), decoded.info.width, decoded.info.height);
   if (!code || code.data !== destination)
     return { ok: false as const, status: 422, error: "QR validation failed" };
-  return { ok: true as const, pack, qrDataUrls: { [input.kind]: dataUrl } };
+  return {
+    ok: true as const,
+    pack,
+    qrDataUrls: Object.fromEntries(pack.items.map((item) => [item.id, dataUrl])),
+  };
 }
 
 type PdfObject = string | Buffer;
@@ -329,7 +430,10 @@ export async function renderDiscoveryPrintPdf(input: {
       );
     }
 
-    const commands: string[] = ["0 G 0 g 0.7 w"];
+    const commands: string[] = [
+      "0 G 0 g 0.7 w",
+      `BT /FM 8 Tf ${margin} ${pageHeight - 16} Td (MILK & HENNY) Tj ET`,
+    ];
     for (const [index, item] of pageItems.entries()) {
       const column = index % layout.columns;
       const row = Math.floor(index / layout.columns);
@@ -348,6 +452,12 @@ export async function renderDiscoveryPrintPdf(input: {
         `BT /FM ${Math.min(11, Math.max(8, cellWidth * 0.035))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.09} Td (${pdfText(item.fallbackCode)}) Tj ET`,
         `BT /FR ${Math.min(7, Math.max(5, cellWidth * 0.022))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.035} Td (${pdfText(`Revision ${item.revision}`)}) Tj ET`,
       );
+      if (item.subtitle) {
+        const text = item.subtitle.length > 88 ? `${item.subtitle.slice(0, 85)}...` : item.subtitle;
+        commands.push(
+          `BT /FR ${Math.min(8, Math.max(6, cellWidth * 0.026))} Tf ${x + inset} ${y + cellHeight * 0.18} Td (${pdfText(text)}) Tj ET`,
+        );
+      }
       if (input.pack.includePoints && item.points !== undefined) {
         commands.push(`BT /FB 9 Tf ${x + inset} ${y + inset} Td (${item.points} points) Tj ET`);
       }
