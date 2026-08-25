@@ -347,11 +347,6 @@
     gap: 0.9rem;
   }
 }
-@media (hover: hover) and (pointer: fine) {
-  .heat-keyboard-toggle {
-    display: none;
-  }
-}
 @keyframes heat-arrive {
   from {
     opacity: 0;

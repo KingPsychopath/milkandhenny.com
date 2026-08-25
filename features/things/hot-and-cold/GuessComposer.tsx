@@ -15,7 +15,6 @@ export function GuessComposer({
 }) {
   const [word, setWord] = useState("");
   const [busy, setBusy] = useState(false);
-  const [keyboard, setKeyboard] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const busyRef = useRef(false);
   const submit = async () => {
@@ -55,14 +54,10 @@ export function GuessComposer({
           value={word}
           disabled={disabled}
           autoComplete="off"
-          autoCapitalize="none"
-          autoCorrect="off"
           enterKeyHint="send"
           inputMode="text"
           maxLength={32}
           placeholder={disabled ? "watch the ledger" : "guess any word"}
-          onFocus={() => setKeyboard(true)}
-          onBlur={() => setKeyboard(false)}
           onChange={(event) => setWord(event.target.value.replace(/[^a-zA-Z'-]/g, ""))}
           onKeyDown={(event) => {
             if (event.key === "Escape") input.current?.blur();
@@ -83,19 +78,7 @@ export function GuessComposer({
         </button>
         <div className="heat-composer-tools">
           <span aria-live="polite">{message ?? turnLabel ?? "lower is hotter"}</span>
-          <div className="heat-composer-actions">
-            {actions}
-            <button
-              type="button"
-              className="heat-keyboard-toggle"
-              onClick={() => {
-                if (keyboard) input.current?.blur();
-                else input.current?.focus({ preventScroll: true });
-              }}
-            >
-              {keyboard ? "hide keyboard" : "show keyboard"}
-            </button>
-          </div>
+          {actions ? <div className="heat-composer-actions">{actions}</div> : null}
         </div>
       </div>
     </form>
