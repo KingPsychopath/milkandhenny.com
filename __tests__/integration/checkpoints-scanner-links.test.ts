@@ -45,7 +45,8 @@ import {
 import { getTicket, lookupTicketsByEmail } from "@/features/tickets/tickets.server";
 import { updateTicketHolder } from "@/features/tickets/store.server";
 import { renderEventMessage } from "@/features/tickets/email.server";
-import { buildTicketQrPayload } from "@/features/tickets/qr.server";
+import { buildTicketQrPayload, generateTicketId } from "@/features/tickets/qr.server";
+import { query } from "@/lib/platform/postgres.server";
 import { checkpointAllowanceFor } from "@/features/tickets/checkpoint-types";
 
 const SLUG = "supper-club";
@@ -137,6 +138,29 @@ describeWithDatabase("checkpoints (postgres)", () => {
       checkpointId: "dinner",
     });
     expect(second.result).toBe("exhausted");
+  });
+
+  it("accepts only the rotated public credential after a transfer", async () => {
+    const ticket = await issueOne("entry", "Transferred holder");
+    const publicId = generateTicketId();
+    await query(`update tickets set access_reference = $2 where id = $1`, [ticket.id, publicId]);
+
+    const oldCredential = await checkpointScan({
+      scanned: buildTicketQrPayload(ticket.id),
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+    });
+    expect(oldCredential.result).toBe("not-found");
+
+    const currentCredential = await checkpointScan({
+      scanned: buildTicketQrPayload(publicId),
+      eventSlug: SLUG,
+      checkpointId: "dinner",
+    });
+    expect(currentCredential.result).toBe("consumed");
+    if (currentCredential.result === "consumed") {
+      expect(currentCredential.ticket.ticketId).toBe(publicId);
+    }
   });
 
   it("honours per-type allowance overrides", async () => {

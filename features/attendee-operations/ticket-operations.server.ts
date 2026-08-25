@@ -100,6 +100,185 @@ function actionEmail(input: {
   };
 }
 
+async function sendOperationLifecycle(input: {
+  kind: "assignment" | "transfer";
+  operationId: string;
+  state: "accepted" | "declined" | "cancelled" | "expired" | "invalidated";
+}) {
+  const table = input.kind === "assignment" ? "ticket_assignments" : "ticket_transfers";
+  const senderEmail =
+    input.kind === "transfer"
+      ? `coalesce((
+           select prior.recipient_email from ticket_transfers prior
+            where prior.ticket_id = operation.ticket_id
+              and prior.status = 'accepted'
+              and prior.accepted_by_person_id = operation.sender_person_id
+            order by prior.accepted_at desc limit 1
+         ), ticket.email)`
+      : "ticket.email";
+  const row = (
+    await query<{
+      event_slug: string;
+      event_title: string;
+      holder_name: string;
+      recipient_email: string;
+      purchaser_email: string | null;
+    }>(
+      `select operation.event_slug,event.title as event_title,ticket.holder_name,
+              operation.recipient_email,${senderEmail} as purchaser_email
+         from ${table} operation
+         join tickets ticket on ticket.id = operation.ticket_id
+         join events event on event.slug = operation.event_slug
+        where operation.id = $1`,
+      [input.operationId],
+    )
+  )[0];
+  if (!row) return;
+  const descriptions = {
+    accepted:
+      input.kind === "transfer" ? "The ticket transfer was accepted." : "The ticket was claimed.",
+    declined: "The ticket transfer was declined. The original holder keeps the ticket.",
+    cancelled: `The ticket ${input.kind} invitation was cancelled.`,
+    expired: `The ticket ${input.kind} invitation expired without being used.`,
+    invalidated: "The ticket transfer invitation was invalidated by another ticket action.",
+  } as const;
+  const recipients = [...new Set([row.recipient_email, row.purchaser_email].filter(isValidEmail))];
+  for (const recipient of recipients) {
+    const delivery = await sendEmail(
+      {
+        channel: "access",
+        to: recipient,
+        subject: `${input.kind === "transfer" ? "Ticket transfer" : "Ticket assignment"} ${input.state} — ${row.event_title}`,
+        text: `${descriptions[input.state]}\n\nEvent: ${row.event_title}\nTicket: ${row.holder_name}\n\nOpen milkandhenny.com/my for the current state. If this was not expected, contact hello@milkandhenny.com.`,
+        html: renderBrandedEmail({
+          origin: operationOrigin() ?? "https://milkandhenny.com",
+          label: `ticket ${input.kind}`,
+          title: `${input.kind === "transfer" ? "Transfer" : "Assignment"} ${input.state}`,
+          meta: `${row.event_title} · ${row.holder_name}`,
+          contentHtml: `<p>${escapeEmailHtml(descriptions[input.state])}</p>`,
+          action: operationOrigin()
+            ? { label: "open You", url: buildAppUrl(operationOrigin()!, "/my") }
+            : undefined,
+          note: "If this was not expected, contact hello@milkandhenny.com. Private resale and private payments are not supported.",
+        }),
+      },
+      {
+        idempotencyKey: `ticket-${input.kind}:${input.operationId}:${input.state}:${actionEmailHash(recipient)}`,
+        kind: `ticket-${input.kind}`,
+        source: "system",
+        context:
+          input.kind === "assignment"
+            ? { eventSlug: row.event_slug, assignmentId: input.operationId }
+            : { eventSlug: row.event_slug, transferId: input.operationId },
+      },
+    );
+    if (!delivery.ok) {
+      await emitDomainEvent({
+        kind: "email.delivery_failed",
+        deduplicationKey: `ticket-${input.kind}:${input.operationId}:${input.state}:email-failed:${actionEmailHash(recipient)}`,
+        actorType: "system",
+        eventSlug: row.event_slug,
+        entityRefs: { operationId: input.operationId, state: input.state },
+        severity: "warning",
+        admin: {
+          title: `Ticket ${input.kind} update was not delivered`,
+          body: `The ${input.state} state is durable, but a customer update email failed.`,
+          deepLink: "/admin?view=operations",
+          category: "ticket-email-failure",
+          createCase: true,
+        },
+      });
+    }
+  }
+}
+
+async function sendReturnLifecycle(input: {
+  requestId: string;
+  state: "confirmed" | "declined" | "cancelled" | "expired" | "failed";
+  detail?: string;
+}) {
+  const row = (
+    await query<{
+      event_slug: string;
+      event_title: string;
+      holder_name: string;
+      purchaser_email: string;
+      holder_email: string | null;
+    }>(
+      `select request.event_slug,event.title as event_title,ticket.holder_name,
+              ticket.email as purchaser_email,accepted.recipient_email as holder_email
+         from ticket_return_requests request
+         join tickets ticket on ticket.id = request.ticket_id
+         join events event on event.slug = request.event_slug
+         left join lateral (
+           select recipient_email from ticket_transfers
+            where ticket_id = request.ticket_id and status = 'accepted'
+            order by accepted_at desc limit 1
+         ) accepted on true
+        where request.id = $1`,
+      [input.requestId],
+    )
+  )[0];
+  if (!row) return;
+  const descriptions = {
+    confirmed:
+      "Both parties confirmed the ticket return. Any money due is being returned to the original payment method.",
+    declined:
+      "The other party declined the ticket return. The ticket remains with its current holder.",
+    cancelled:
+      "The ticket return request was cancelled. The ticket remains with its current holder.",
+    expired: "The ticket return request expired without confirmation.",
+    failed:
+      "The return was confirmed, but the refund needs support review. The ticket remains unusable while we resolve it.",
+  } as const;
+  const description = `${descriptions[input.state]}${input.detail ? ` ${input.detail}` : ""}`;
+  const recipients = [...new Set([row.purchaser_email, row.holder_email].filter(isValidEmail))];
+  for (const recipient of recipients) {
+    const delivery = await sendEmail(
+      {
+        channel: "tickets",
+        to: recipient,
+        subject: `Ticket return ${input.state} — ${row.event_title}`,
+        text: `${description}\n\nEvent: ${row.event_title}\nTicket: ${row.holder_name}\n\nOpen milkandhenny.com/my for the durable current state. If this was not expected, contact hello@milkandhenny.com.`,
+        html: renderBrandedEmail({
+          origin: operationOrigin() ?? "https://milkandhenny.com",
+          label: "ticket return",
+          title: `Return ${input.state}`,
+          meta: `${row.event_title} · ${row.holder_name}`,
+          contentHtml: `<p>${escapeEmailHtml(description)}</p>`,
+          action: operationOrigin()
+            ? { label: "open You", url: buildAppUrl(operationOrigin()!, "/my") }
+            : undefined,
+          note: "Refunds return only to the original payment method. If this was not expected, contact hello@milkandhenny.com.",
+        }),
+      },
+      {
+        idempotencyKey: `ticket-return:${input.requestId}:${input.state}:${actionEmailHash(recipient)}`,
+        kind: "ticket-return",
+        source: "system",
+        context: { eventSlug: row.event_slug, returnRequestId: input.requestId },
+      },
+    );
+    if (!delivery.ok) {
+      await emitDomainEvent({
+        kind: "email.delivery_failed",
+        deduplicationKey: `ticket-return:${input.requestId}:${input.state}:email-failed:${actionEmailHash(recipient)}`,
+        actorType: "system",
+        eventSlug: row.event_slug,
+        entityRefs: { returnRequestId: input.requestId, state: input.state },
+        severity: "warning",
+        admin: {
+          title: "Ticket return update was not delivered",
+          body: "The return state is durable, but a customer update email failed.",
+          deepLink: "/admin?view=operations",
+          category: "ticket-email-failure",
+          createCase: true,
+        },
+      });
+    }
+  }
+}
+
 export async function requestTicketAssignment(input: {
   ticketId: string;
   purchaserPersonId: string;
@@ -466,9 +645,9 @@ export async function requestTicketTransfer(input: {
   }
 }
 
-export async function requestTransferredTicketRefund(input: {
+export async function requestTransferredTicketReturn(input: {
   ticketId: string;
-  purchaserPersonId: string;
+  requesterPersonId: string;
   origin?: string;
 }): Promise<
   TicketOperationResult<{ returnRequestId: string; expiresAt: string; emailQueued: boolean }>
@@ -486,30 +665,39 @@ export async function requestTransferredTicketRefund(input: {
         currency: string | null;
         participant_id: string;
         holder_person_id: string | null;
-        recipient_email: string | null;
+        holder_email: string | null;
+        purchaser_person_id: string;
+        purchaser_email: string;
       }>(
         `select ticket.event_slug,ticket.order_id,ticket.holder_name,ticket.amount_paid_minor,
                 ticket.currency,participant.id as participant_id,
                 participant.person_id as holder_person_id,
-                accepted.recipient_email
+                accepted.recipient_email as holder_email,
+                purchaser.person_id as purchaser_person_id,ticket.email as purchaser_email
            from tickets ticket
            join event_participants participant on participant.ticket_id = ticket.id
-           join event_order_managers manager
-             on manager.order_id = ticket.order_id and manager.person_id = $2 and manager.status = 'active'
+           join lateral (
+             select person_id from event_order_managers
+              where order_id = ticket.order_id and status = 'active'
+              order by created_at asc limit 1
+           ) purchaser on true
            left join lateral (
              select recipient_email from ticket_transfers
               where ticket_id = ticket.id and status = 'accepted'
               order by accepted_at desc limit 1
            ) accepted on true
           where ticket.id = $1 and ticket.status = 'valid' and ticket.redeemed_at is null
+            and ($2 = participant.person_id or $2 = purchaser.person_id)
           for update of ticket,participant`,
-        [input.ticketId, input.purchaserPersonId],
+        [input.ticketId, input.requesterPersonId],
       );
       const ticket = selected.rows[0];
-      if (!ticket) throw new TicketOperationError(404, "Refundable managed ticket not found");
-      if (!ticket.holder_person_id || ticket.holder_person_id === input.purchaserPersonId)
+      if (!ticket) throw new TicketOperationError(404, "Returnable ticket not found");
+      if (!ticket.holder_person_id || ticket.holder_person_id === ticket.purchaser_person_id)
         throw new TicketOperationError(409, "This ticket does not need another holder's consent");
-      if (!ticket.recipient_email)
+      const requesterIsHolder = input.requesterPersonId === ticket.holder_person_id;
+      const recipient = requesterIsHolder ? ticket.purchaser_email : ticket.holder_email;
+      if (!recipient)
         throw new TicketOperationError(409, "The current holder email needs admin review");
       const active = await client.query(
         `select 1 from ticket_return_requests
@@ -532,39 +720,42 @@ export async function requestTransferredTicketRefund(input: {
       const returnRequestId = id("return");
       const link = await issueActionLink(client, {
         purpose: "refund-consent",
-        intendedEmail: ticket.recipient_email,
+        intendedEmail: recipient,
         entityType: "ticket-return-request",
         entityId: returnRequestId,
         issuedByType: "attendee",
-        issuedById: input.purchaserPersonId,
+        issuedById: input.requesterPersonId,
         expiresAt,
       });
       await client.query(
         `insert into ticket_return_requests
            (id,event_slug,ticket_id,purchaser_person_id,holder_person_id,initiated_by_person_id,
-            action_link_id,amount_minor,currency,status)
-         values ($1,$2,$3,$4,$5,$4,$6,$7,$8,'awaiting-consent')`,
+            action_link_id,amount_minor,currency,status,expires_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'awaiting-consent',$10)`,
         [
           returnRequestId,
           ticket.event_slug,
           input.ticketId,
-          input.purchaserPersonId,
+          ticket.purchaser_person_id,
           ticket.holder_person_id,
+          input.requesterPersonId,
           link.id,
           ticket.amount_paid_minor,
           ticket.currency,
+          expiresAt,
         ],
       );
       await client.query(
         `insert into attendee_operations_audit_events
            (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason,correlation_id)
          values ('ticket.return.requested','attendee',$1,$2,'ticket-return-request',$3,null,
-                 $4::jsonb,'purchaser-requested-refund',$5)`,
+                 $4::jsonb,$5,$6)`,
         [
-          input.purchaserPersonId,
+          input.requesterPersonId,
           ticket.event_slug,
           returnRequestId,
           JSON.stringify({ status: "awaiting-consent", ticketId: input.ticketId }),
+          requesterIsHolder ? "current-holder-requested-return" : "purchaser-requested-refund",
           randomUUID(),
         ],
       );
@@ -575,7 +766,7 @@ export async function requestTransferredTicketRefund(input: {
       return {
         returnRequestId,
         token: link.token,
-        recipient: ticket.recipient_email,
+        recipient,
         eventSlug: ticket.event_slug,
         eventTitle: eventRows.rows[0]?.title ?? ticket.event_slug,
         ticketLabel: ticket.holder_name,
@@ -654,7 +845,9 @@ export async function acceptRefundConsent(
       const rows = await client.query<{ id: string; ticket_id: string; event_slug: string }>(
         `update ticket_return_requests
             set status = 'confirmed',consented_at = now(),updated_at = now()
-          where id = $1 and holder_person_id = $2 and status = 'awaiting-consent'
+          where id = $1 and status = 'awaiting-consent'
+            and $2 in (purchaser_person_id,holder_person_id)
+            and $2 <> initiated_by_person_id
           returning id,ticket_id,event_slug`,
         [link.entityId, person.personId],
       );
@@ -662,7 +855,7 @@ export async function acceptRefundConsent(
       if (!request)
         throw new TicketOperationError(
           409,
-          "This consent link does not match the ticket's current verified holder",
+          "This consent link does not match the ticket's other verified party",
         );
       await client.query(`update attendee_action_links set consumed_by = $2 where id = $1`, [
         link.id,
@@ -694,6 +887,15 @@ export async function acceptRefundConsent(
       actorId: consumed.value.personId,
       returnRequestId: consumed.value.requestId,
     });
+    await sendReturnLifecycle({
+      requestId: consumed.value.requestId,
+      state: refunded.ok ? "confirmed" : "failed",
+      detail: refunded.ok
+        ? refunded.value.state === "pending"
+          ? "The payment provider is still processing the refund."
+          : undefined
+        : refunded.error,
+    });
     return refunded;
   } catch (error) {
     return error instanceof TicketOperationError
@@ -710,11 +912,13 @@ export async function declineRefundConsent(
       if (link.purpose !== "refund-consent")
         throw new TicketOperationError(400, "This link is not a refund consent request");
       const person = await createOrResolveInvitedPerson(client, link);
-      const rows = await client.query<{ event_slug: string; ticket_id: string }>(
+      const rows = await client.query<{ id: string; event_slug: string; ticket_id: string }>(
         `update ticket_return_requests
             set status = 'declined',resolved_at = now(),resolution_reason = 'holder-declined',updated_at = now()
-          where id = $1 and holder_person_id = $2 and status = 'awaiting-consent'
-          returning event_slug,ticket_id`,
+          where id = $1 and status = 'awaiting-consent'
+            and $2 in (purchaser_person_id,holder_person_id)
+            and $2 <> initiated_by_person_id
+          returning id,event_slug,ticket_id`,
         [link.entityId, person.personId],
       );
       const row = rows.rows[0];
@@ -733,7 +937,9 @@ export async function declineRefundConsent(
       );
       return row;
     });
-    return consumed.ok ? { ok: true, value: { declined: true } } : consumed;
+    if (!consumed.ok) return consumed;
+    await sendReturnLifecycle({ requestId: consumed.value.id, state: "declined" });
+    return { ok: true, value: { declined: true } };
   } catch (error) {
     return error instanceof TicketOperationError
       ? { ok: false, status: error.status, error: error.message }
@@ -749,6 +955,7 @@ export async function acceptTicketAction(token: string): Promise<
     ticketId: string;
     publicTicketId: string;
     eventSlug: string;
+    operationId: string;
   }>
 > {
   try {
@@ -807,6 +1014,7 @@ export async function acceptTicketAction(token: string): Promise<
           ticketId: assignment.ticket_id,
           publicTicketId: assignment.ticket_id,
           eventSlug: assignment.event_slug,
+          operationId: link.entityId,
         };
       }
 
@@ -951,6 +1159,7 @@ export async function acceptTicketAction(token: string): Promise<
         ticketId: transfer.ticket_id,
         publicTicketId,
         eventSlug: transfer.event_slug,
+        operationId: link.entityId,
       };
     });
     if (!consumed.ok) return consumed;
@@ -968,6 +1177,11 @@ export async function acceptTicketAction(token: string): Promise<
       actorId: consumed.value.personId,
       eventSlug: consumed.value.eventSlug,
       entityRefs: { ticketId: consumed.value.ticketId },
+    });
+    await sendOperationLifecycle({
+      kind: consumed.value.purpose === "ticket-transfer" ? "transfer" : "assignment",
+      operationId: consumed.value.operationId,
+      state: "accepted",
     });
     return { ok: true, value: consumed.value };
   } catch (error) {
@@ -1079,7 +1293,7 @@ export async function declineTicketTransfer(
                  '{"status":"declined"}'::jsonb)`,
         [row.event_slug, link.entityId],
       );
-      return row;
+      return { ...row, operationId: link.entityId };
     });
     if (!consumed.ok) return consumed;
     await emitDomainEvent({
@@ -1088,6 +1302,11 @@ export async function declineTicketTransfer(
       actorType: "attendee",
       eventSlug: consumed.value.event_slug,
       entityRefs: { ticketId: consumed.value.ticket_id },
+    });
+    await sendOperationLifecycle({
+      kind: "transfer",
+      operationId: consumed.value.operationId,
+      state: "declined",
     });
     return { ok: true, value: { declined: true } };
   } catch (error) {
@@ -1189,6 +1408,11 @@ export async function cancelPendingTicketOperation(input: {
         ],
       );
     });
+    await sendOperationLifecycle({
+      kind: input.kind,
+      operationId: input.operationId,
+      state: "cancelled",
+    });
     return { ok: true, value: { cancelled: true } };
   } catch (error) {
     return error instanceof TicketOperationError
@@ -1197,70 +1421,230 @@ export async function cancelPendingTicketOperation(input: {
   }
 }
 
-export async function ticketOperationsForPerson(personId: string) {
-  const [incomingAssignments, incomingTransfers, outgoingAssignments, outgoingTransfers] =
-    await Promise.all([
-      query<{
-        id: string;
-        ticket_id: string;
+export async function cancelTransferredTicketReturn(input: {
+  returnRequestId: string;
+  actorPersonId: string;
+}): Promise<TicketOperationResult<{ cancelled: true }>> {
+  try {
+    await transaction(async (client) => {
+      const selected = await client.query<{
+        action_link_id: string | null;
+        event_slug: string;
+      }>(
+        `update ticket_return_requests
+            set status = 'cancelled',resolved_at = now(),resolution_reason = 'initiator-cancelled',
+                updated_at = now()
+          where id = $1 and initiated_by_person_id = $2 and status = 'awaiting-consent'
+          returning action_link_id,event_slug`,
+        [input.returnRequestId, input.actorPersonId],
+      );
+      const request = selected.rows[0];
+      if (!request) throw new TicketOperationError(404, "Pending return request not found");
+      if (request.action_link_id)
+        await revokeActionLink(client, request.action_link_id, "cancelled-by-initiator");
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,after_state,reason)
+         values ('ticket.return.cancelled','attendee',$1,$2,'ticket-return-request',$3,
+                 '{"status":"cancelled"}'::jsonb,'initiator cancelled return')`,
+        [input.actorPersonId, request.event_slug, input.returnRequestId],
+      );
+    });
+    await sendReturnLifecycle({ requestId: input.returnRequestId, state: "cancelled" });
+    return { ok: true, value: { cancelled: true } };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "The return request could not be cancelled" };
+  }
+}
+
+export async function resendPendingTicketOperation(input: {
+  kind: "assignment" | "transfer";
+  operationId: string;
+  actorPersonId: string;
+  origin?: string;
+}): Promise<TicketOperationResult<{ expiresAt: string; emailQueued: boolean }>> {
+  const origin = operationOrigin(input.origin);
+  if (!origin) return { ok: false, status: 503, error: "Public app URL is not configured" };
+  try {
+    const expiresAt = new Date(
+      Date.now() + (input.kind === "assignment" ? 7 * 24 : 48) * 60 * 60 * 1_000,
+    );
+    const created = await transaction(async (client) => {
+      const table = input.kind === "assignment" ? "ticket_assignments" : "ticket_transfers";
+      const ownerColumn = input.kind === "assignment" ? "purchaser_person_id" : "sender_person_id";
+      const selected = await client.query<{
+        action_link_id: string | null;
         event_slug: string;
         event_title: string;
-        status: string;
-        expires_at: Date;
+        holder_name: string;
+        recipient_email: string;
       }>(
-        `select assignment.id,assignment.ticket_id,assignment.event_slug,event.title as event_title,
+        `select operation.action_link_id,operation.event_slug,event.title as event_title,
+                ticket.holder_name,operation.recipient_email
+           from ${table} operation
+           join tickets ticket on ticket.id = operation.ticket_id
+           join events event on event.slug = operation.event_slug
+          where operation.id = $1 and operation.${ownerColumn} = $2
+            and operation.status = 'pending' for update of operation`,
+        [input.operationId, input.actorPersonId],
+      );
+      const operation = selected.rows[0];
+      if (!operation) throw new TicketOperationError(404, "Pending operation not found");
+      if (operation.action_link_id) {
+        await revokeActionLink(client, operation.action_link_id, "replaced-by-resend");
+      }
+      const link = await issueActionLink(client, {
+        purpose: input.kind === "assignment" ? "ticket-assignment" : "ticket-transfer",
+        intendedEmail: operation.recipient_email,
+        entityType: `ticket-${input.kind}`,
+        entityId: input.operationId,
+        issuedByType: "attendee",
+        issuedById: input.actorPersonId,
+        expiresAt,
+      });
+      await client.query(
+        `update ${table}
+            set action_link_id = $2,expires_at = $3,updated_at = now()
+          where id = $1`,
+        [input.operationId, link.id, expiresAt],
+      );
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,reason)
+         values ($1,'attendee',$2,$3,$4,$5,'invitation resent')`,
+        [
+          `ticket.${input.kind}.resent`,
+          input.actorPersonId,
+          operation.event_slug,
+          `ticket-${input.kind}`,
+          input.operationId,
+        ],
+      );
+      return { ...operation, token: link.token };
+    });
+    const delivery = await sendEmail(
+      actionEmail({
+        origin,
+        recipient: created.recipient_email,
+        eventTitle: created.event_title,
+        ticketLabel: created.holder_name,
+        action: input.kind,
+        actionUrl: buildAppUrl(origin, `/action/${created.token}`),
+        expiresAt,
+      }),
+      {
+        idempotencyKey: `ticket-${input.kind}:${input.operationId}:resend:${expiresAt.toISOString()}`,
+        kind: `ticket-${input.kind}`,
+        source: "self-service",
+        context:
+          input.kind === "assignment"
+            ? { eventSlug: created.event_slug, assignmentId: input.operationId }
+            : { eventSlug: created.event_slug, transferId: input.operationId },
+      },
+    );
+    return {
+      ok: true,
+      value: { expiresAt: expiresAt.toISOString(), emailQueued: delivery.ok },
+    };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : {
+          ok: false,
+          status: error instanceof Error && error.message.startsWith("Too many") ? 429 : 503,
+          error: error instanceof Error ? error.message : "The invitation could not be resent",
+        };
+  }
+}
+
+export async function ticketOperationsForPerson(personId: string) {
+  const [
+    incomingAssignments,
+    incomingTransfers,
+    outgoingAssignments,
+    outgoingTransfers,
+    returnRequests,
+  ] = await Promise.all([
+    query<{
+      id: string;
+      ticket_id: string;
+      event_slug: string;
+      event_title: string;
+      status: string;
+      expires_at: Date;
+    }>(
+      `select assignment.id,assignment.ticket_id,assignment.event_slug,event.title as event_title,
                 assignment.status,assignment.expires_at
            from ticket_assignments assignment join events event on event.slug = assignment.event_slug
            join event_person_identifiers identifier
              on identifier.value_hash = assignment.recipient_email_hash and identifier.person_id = $1
           order by assignment.created_at desc`,
-        [personId],
-      ),
-      query<{
-        id: string;
-        ticket_id: string;
-        event_slug: string;
-        event_title: string;
-        status: string;
-        expires_at: Date;
-      }>(
-        `select transfer.id,transfer.ticket_id,transfer.event_slug,event.title as event_title,
+      [personId],
+    ),
+    query<{
+      id: string;
+      ticket_id: string;
+      event_slug: string;
+      event_title: string;
+      status: string;
+      expires_at: Date;
+    }>(
+      `select transfer.id,transfer.ticket_id,transfer.event_slug,event.title as event_title,
                 transfer.status,transfer.expires_at
            from ticket_transfers transfer join events event on event.slug = transfer.event_slug
            join event_person_identifiers identifier
              on identifier.value_hash = transfer.recipient_email_hash and identifier.person_id = $1
           order by transfer.created_at desc`,
-        [personId],
-      ),
-      query<{
-        id: string;
-        ticket_id: string;
-        event_slug: string;
-        event_title: string;
-        status: string;
-        expires_at: Date;
-      }>(
-        `select assignment.id,assignment.ticket_id,assignment.event_slug,event.title as event_title,
+      [personId],
+    ),
+    query<{
+      id: string;
+      ticket_id: string;
+      event_slug: string;
+      event_title: string;
+      status: string;
+      expires_at: Date;
+    }>(
+      `select assignment.id,assignment.ticket_id,assignment.event_slug,event.title as event_title,
                 assignment.status,assignment.expires_at
            from ticket_assignments assignment join events event on event.slug = assignment.event_slug
           where assignment.purchaser_person_id = $1 order by assignment.created_at desc`,
-        [personId],
-      ),
-      query<{
-        id: string;
-        ticket_id: string;
-        event_slug: string;
-        event_title: string;
-        status: string;
-        expires_at: Date;
-      }>(
-        `select transfer.id,transfer.ticket_id,transfer.event_slug,event.title as event_title,
+      [personId],
+    ),
+    query<{
+      id: string;
+      ticket_id: string;
+      event_slug: string;
+      event_title: string;
+      status: string;
+      expires_at: Date;
+    }>(
+      `select transfer.id,transfer.ticket_id,transfer.event_slug,event.title as event_title,
                 transfer.status,transfer.expires_at
            from ticket_transfers transfer join events event on event.slug = transfer.event_slug
           where transfer.sender_person_id = $1 order by transfer.created_at desc`,
-        [personId],
-      ),
-    ]);
+      [personId],
+    ),
+    query<{
+      id: string;
+      ticket_id: string;
+      event_slug: string;
+      event_title: string;
+      status: string;
+      expires_at: Date;
+      initiated_by_person_id: string;
+    }>(
+      `select request.id,request.ticket_id,request.event_slug,event.title as event_title,
+                request.status,request.expires_at,request.initiated_by_person_id
+           from ticket_return_requests request
+           join events event on event.slug = request.event_slug
+          where $1 in (request.purchaser_person_id,request.holder_person_id)
+          order by request.created_at desc`,
+      [personId],
+    ),
+  ]);
   const map = (row: (typeof incomingAssignments)[number]) => ({
     id: row.id,
     ticketId: row.ticket_id,
@@ -1274,25 +1658,59 @@ export async function ticketOperationsForPerson(personId: string) {
     incomingTransfers: incomingTransfers.map(map),
     outgoingAssignments: outgoingAssignments.map(map),
     outgoingTransfers: outgoingTransfers.map(map),
+    returnRequests: returnRequests.map((row) => ({
+      ...map(row),
+      canCancel: row.initiated_by_person_id === personId && row.status === "awaiting-consent",
+    })),
   };
 }
 
 export async function expireTicketOperations(): Promise<{
   assignments: number;
   transfers: number;
+  returns: number;
 }> {
-  return transaction(async (client) => {
-    const assignments = await client.query<{ action_link_id: string | null }>(
+  const expired = await transaction(async (client) => {
+    const assignments = await client.query<{ id: string; action_link_id: string | null }>(
       `update ticket_assignments set status = 'expired',updated_at = now()
-        where status = 'pending' and expires_at <= now() returning action_link_id`,
+        where status = 'pending' and expires_at <= now() returning id,action_link_id`,
     );
-    const transfers = await client.query<{ action_link_id: string | null }>(
+    const transfers = await client.query<{ id: string; action_link_id: string | null }>(
       `update ticket_transfers set status = 'expired',updated_at = now()
-        where status = 'pending' and expires_at <= now() returning action_link_id`,
+        where status = 'pending' and expires_at <= now() returning id,action_link_id`,
     );
-    for (const row of [...assignments.rows, ...transfers.rows]) {
+    const returns = await client.query<{ id: string; action_link_id: string | null }>(
+      `update ticket_return_requests
+          set status = 'expired',resolved_at = now(),resolution_reason = 'consent-expired',updated_at = now()
+        where status = 'awaiting-consent' and expires_at <= now() returning id,action_link_id`,
+    );
+    for (const row of [...assignments.rows, ...transfers.rows, ...returns.rows]) {
       if (row.action_link_id) await revokeActionLink(client, row.action_link_id, "expired");
     }
-    return { assignments: assignments.rowCount ?? 0, transfers: transfers.rowCount ?? 0 };
+    return { assignments: assignments.rows, transfers: transfers.rows, returns: returns.rows };
   });
+  await Promise.all([
+    ...expired.assignments.map((assignment) =>
+      sendOperationLifecycle({
+        kind: "assignment",
+        operationId: assignment.id,
+        state: "expired",
+      }),
+    ),
+    ...expired.transfers.map((transfer) =>
+      sendOperationLifecycle({
+        kind: "transfer",
+        operationId: transfer.id,
+        state: "expired",
+      }),
+    ),
+    ...expired.returns.map((request) =>
+      sendReturnLifecycle({ requestId: request.id, state: "expired" }),
+    ),
+  ]);
+  return {
+    assignments: expired.assignments.length,
+    transfers: expired.transfers.length,
+    returns: expired.returns.length,
+  };
 }

@@ -2,6 +2,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getEvent } from "@/features/events/store.server";
+import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { getTicket } from "@/features/tickets/store.server";
 import {
   discoveryClaimPoints,
@@ -532,6 +533,7 @@ export async function findDiscoveryForPresented(
   eventSlug: string,
   presented: string,
 ): Promise<Discovery | null> {
+  if (!(await isCapabilityEffective(eventSlug, "discoveries"))) return null;
   const rawHash = digest(presented);
   const normalizedHash = digest(normalizeDiscoveryCode(presented));
   const row = await queryOne<{ id: string }>(
@@ -561,6 +563,15 @@ export async function claimDiscovery(input: {
 }): Promise<DiscoveryResult<DiscoveryClaimValue>> {
   const discovery = await getDiscovery(input.discoveryId);
   if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
+  if (!(await isCapabilityEffective(discovery.eventSlug, "discoveries"))) {
+    return { ok: false, status: 409, error: "Discoveries are paused for this event" };
+  }
+  if (
+    discovery.rule.pointMode !== "none" &&
+    !(await isCapabilityEffective(discovery.eventSlug, "scoring"))
+  ) {
+    return { ok: false, status: 409, error: "Scoring is paused for this event" };
+  }
   const [participant, event] = await Promise.all([
     getParticipant(input.participantId),
     getEvent(discovery.eventSlug),
@@ -851,7 +862,10 @@ function cooldownResult(
   const nextEligibleAt = createdAt.getTime() + rule.cooldownSeconds * 1000;
   return {
     nextEligibleAt: new Date(nextEligibleAt).toISOString(),
-    retryAfterSeconds: Math.max(0, Math.ceil((nextEligibleAt - Date.now()) / 1000)),
+    retryAfterSeconds: Math.min(
+      rule.cooldownSeconds,
+      Math.max(0, Math.ceil((nextEligibleAt - Date.now()) / 1000)),
+    ),
   };
 }
 

@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getEvent } from "@/features/events/store.server";
+import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import {
   activityCanAccept,
   canAcceptScore,
@@ -400,6 +401,15 @@ export type AwardPointsInput = {
 export async function awardPoints(
   input: AwardPointsInput,
 ): Promise<ScoringOperationResult<ScoreTransaction>> {
+  if (!(await isCapabilityEffective(input.eventSlug, "scoring"))) {
+    return { ok: false, status: 409, error: "Scoring is paused for this event" };
+  }
+  if (
+    (input.actorType === "admin" || input.actorType === "staff") &&
+    !(await isCapabilityEffective(input.eventSlug, "manualStaffAwards"))
+  ) {
+    return { ok: false, status: 409, error: "Manual awards are paused for this event" };
+  }
   const activity = await getActivity(input.activityId);
   if (!activity || activity.eventSlug !== input.eventSlug) {
     return { ok: false, status: 404, error: "Activity not found" };
@@ -621,6 +631,17 @@ export async function publicLeaderboard(input: {
           : settings.state === "closed"
             ? "closed"
             : "live";
+  if (!(await isCapabilityEffective(input.eventSlug, "publicLeaderboard"))) {
+    return {
+      ok: true,
+      value: {
+        state: settings.state,
+        visibility: settings.leaderboardVisibility,
+        boardStatus,
+        rows: [],
+      },
+    };
+  }
   const isVisible =
     settings.leaderboardVisibility === "public-live" ||
     settings.leaderboardVisibility === "public-final";
@@ -686,6 +707,9 @@ export async function personalScore(input: {
     }>;
   }>
 > {
+  if (!(await isCapabilityEffective(input.eventSlug, "scoring"))) {
+    return { ok: false, status: 404, error: "Scoring is not enabled" };
+  }
   const settings = await findSettings(input.eventSlug);
   if (!settings || settings.state === "off") {
     return { ok: false, status: 404, error: "Scoring is not enabled" };

@@ -196,14 +196,17 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
 
   const ticket = await queryOne<{
     id: string;
+    access_reference: string | null;
     event_slug: string;
     ticket_type_id: string;
     status: string;
     holder_name: string;
     order_id: string;
   }>(
-    `select id, event_slug, ticket_type_id, status, holder_name, order_id
-       from tickets where id = $1`,
+    `select id, access_reference, event_slug, ticket_type_id, status, holder_name, order_id
+       from tickets
+      where access_reference = $1
+         or (access_reference is null and id = $1)`,
     [ticketId],
   );
   if (!ticket) return { result: "not-found" };
@@ -216,7 +219,7 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
   const allowance = checkpointAllowanceFor(checkpoint, ticket.ticket_type_id);
 
   const view = (used: number): CheckpointTicketView => ({
-    ticketId: ticket.id,
+    ticketId: ticket.access_reference ?? ticket.id,
     holderName: ticket.holder_name,
     ticketTypeName,
     allowance,
@@ -229,7 +232,7 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     const existing = await queryOne<{ used: number }>(
       `select used from checkpoint_usage
         where event_slug = $1 and checkpoint_id = $2 and ticket_id = $3`,
-      [input.eventSlug, input.checkpointId, ticketId],
+      [input.eventSlug, input.checkpointId, ticket.id],
     );
     return { result: "consumed", ticket: view(existing?.used ?? 0), consumed: 0 };
   }
@@ -240,7 +243,7 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     const existing = await queryOne<{ used: number }>(
       `select used from checkpoint_usage
         where event_slug = $1 and checkpoint_id = $2 and ticket_id = $3`,
-      [input.eventSlug, input.checkpointId, ticketId],
+      [input.eventSlug, input.checkpointId, ticket.id],
     );
     return { result: "over-remaining", ticket: view(existing?.used ?? 0), requested: consume };
   }
@@ -280,7 +283,7 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
              last_used_by = $5
        where checkpoint_usage.used + $4 <= $6
        returning used`,
-      [input.eventSlug, input.checkpointId, ticketId, consume, input.scannedBy ?? null, allowance],
+      [input.eventSlug, input.checkpointId, ticket.id, consume, input.scannedBy ?? null, allowance],
     );
 
     if (rows[0]) {
@@ -303,7 +306,7 @@ export async function checkpointScan(input: CheckpointScanInput): Promise<Checkp
     const existing = await client.query<{ used: number; updated_at: Date }>(
       `select used, updated_at from checkpoint_usage
         where event_slug = $1 and checkpoint_id = $2 and ticket_id = $3`,
-      [input.eventSlug, input.checkpointId, ticketId],
+      [input.eventSlug, input.checkpointId, ticket.id],
     );
     const used = existing.rows[0]?.used ?? 0;
     if (used >= allowance) {

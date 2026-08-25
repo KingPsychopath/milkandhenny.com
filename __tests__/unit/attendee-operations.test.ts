@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ATTENDEE_CAPABILITIES,
   DEFAULT_GLOBAL_AVAILABILITY,
   DEFAULT_NEW_EVENT_CAPABILITIES,
   effectiveCapability,
   isTerminalTicketTransfer,
   permissionsForGlobalRole,
+  type CapabilityMap,
 } from "@/features/attendee-operations/types";
 
 describe("attendee operation capabilities", () => {
@@ -42,6 +44,24 @@ describe("attendee operation capabilities", () => {
         Date.parse("2026-08-25T11:00Z"),
       ),
     ).toBe(false);
+  });
+
+  it("lets the emergency pause stop every capability without changing event policy", () => {
+    const enabled = Object.fromEntries(
+      ATTENDEE_CAPABILITIES.map((capability) => [capability, true]),
+    ) as CapabilityMap;
+    for (const capability of ATTENDEE_CAPABILITIES) {
+      expect(
+        effectiveCapability(
+          {
+            globalAvailability: enabled,
+            emergencyPaused: { ...DEFAULT_NEW_EVENT_CAPABILITIES, [capability]: true },
+          },
+          { capabilities: enabled },
+          capability,
+        ),
+      ).toBe(false);
+    }
   });
 });
 

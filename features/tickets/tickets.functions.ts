@@ -11,7 +11,7 @@ import {
 } from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
 import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
-import { requestTransferredTicketRefund } from "@/features/attendee-operations/ticket-operations.server";
+import { requestTransferredTicketReturn } from "@/features/attendee-operations/ticket-operations.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
 import { toTicketHolderEvent } from "@/features/events/types";
@@ -389,7 +389,7 @@ export const getCheckoutOutcomeFn = createServerFn({ method: "GET" })
       tickets: tickets.map((ticket) => ({
         id: ticket.id,
         holderName: ticket.holderName,
-        qrPayload: buildTicketQrPayload(ticket.id),
+        qrPayload: buildTicketQrPayload(ticket.accessReference ?? ticket.id),
         status: ticket.status,
         redeemedAt: ticket.redeemedAt,
       })),
@@ -435,8 +435,23 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
     } catch {
       // Signed purchaser authority remains sufficient when attendee access is unavailable.
     }
-    if (![...browserOrders, ...personOrders].includes(ticket.orderId)) {
-      return { ok: false, error: "Open the purchaser ticket before requesting this refund" };
+    const managesOrder = [...browserOrders, ...personOrders].includes(ticket.orderId);
+    if (!managesOrder && !attendeePersonId)
+      return { ok: false, error: "Verify your email before requesting this ticket return" };
+    if (!managesOrder) {
+      const requested = await requestTransferredTicketReturn({
+        ticketId: data.ticketId,
+        requesterPersonId: attendeePersonId!,
+        origin: getBaseUrlForRequest(getRequest()),
+      });
+      return requested.ok
+        ? {
+            ok: true,
+            state: "consent-pending",
+            refunded: 0,
+            emailQueued: requested.value.emailQueued,
+          }
+        : { ok: false, error: requested.error };
     }
     const result = await refundTicket({
       ticketId: data.ticketId,
@@ -444,9 +459,9 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
       actorId: attendeePersonId,
     });
     if (!result.ok && result.error.includes("current holder's consent") && attendeePersonId) {
-      const requested = await requestTransferredTicketRefund({
+      const requested = await requestTransferredTicketReturn({
         ticketId: data.ticketId,
-        purchaserPersonId: attendeePersonId,
+        requesterPersonId: attendeePersonId,
         origin: getBaseUrlForRequest(getRequest()),
       });
       return requested.ok

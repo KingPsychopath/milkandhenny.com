@@ -92,7 +92,7 @@ export function MyAccountPage() {
     window.location.assign("/");
   }
 
-  async function cancelOperation(kind: "assignment" | "transfer", operationId: string) {
+  async function cancelOperation(kind: "assignment" | "transfer" | "return", operationId: string) {
     setBusy(true);
     const response = await fetch("/api/attendee/ticket-operations", {
       method: "DELETE",
@@ -105,13 +105,49 @@ export function MyAccountPage() {
       setMessage("Invitation cancelled.");
       setAccount((current) => {
         if (!current) return current;
-        const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
+        const key =
+          kind === "assignment"
+            ? "outgoingAssignments"
+            : kind === "transfer"
+              ? "outgoingTransfers"
+              : "returnRequests";
         return {
           ...current,
           ticketOperations: {
             ...current.ticketOperations,
             [key]: current.ticketOperations[key].map((item) =>
               item.id === operationId ? { ...item, status: "cancelled" } : item,
+            ),
+          },
+        };
+      });
+    }
+    setBusy(false);
+  }
+
+  async function resendOperation(kind: "assignment" | "transfer", operationId: string) {
+    setBusy(true);
+    const response = await fetch("/api/attendee/ticket-operations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "resend", kind, operationId }),
+    });
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      expiresAt?: string;
+    };
+    if (!response.ok) setMessage(body.error ?? "The invitation could not be resent");
+    else {
+      setMessage("Invitation resent.");
+      setAccount((current) => {
+        if (!current || !body.expiresAt) return current;
+        const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
+        return {
+          ...current,
+          ticketOperations: {
+            ...current.ticketOperations,
+            [key]: current.ticketOperations[key].map((item) =>
+              item.id === operationId ? { ...item, expiresAt: body.expiresAt! } : item,
             ),
           },
         };
@@ -170,7 +206,7 @@ export function MyAccountPage() {
                         <li key={ticket.id}>
                           <Link
                             to="/ticket/$id"
-                            params={{ id: ticket.id }}
+                            params={{ id: ticket.publicId }}
                             className="flex min-h-11 items-center justify-between gap-4 py-3 hover:opacity-70"
                           >
                             <span className="min-w-0 truncate font-mono text-xs">
@@ -195,6 +231,7 @@ export function MyAccountPage() {
             ...account.ticketOperations.incomingTransfers,
             ...account.ticketOperations.outgoingAssignments,
             ...account.ticketOperations.outgoingTransfers,
+            ...account.ticketOperations.returnRequests,
           ].length > 0 ? (
             <section
               className="mt-10 border-t theme-border pt-6"
@@ -211,6 +248,7 @@ export function MyAccountPage() {
                     item={item}
                     busy={busy}
                     onCancel={() => void cancelOperation("assignment", item.id)}
+                    onResend={() => void resendOperation("assignment", item.id)}
                   />
                 ))}
                 {account.ticketOperations.outgoingTransfers.map((item) => (
@@ -220,6 +258,7 @@ export function MyAccountPage() {
                     item={item}
                     busy={busy}
                     onCancel={() => void cancelOperation("transfer", item.id)}
+                    onResend={() => void resendOperation("transfer", item.id)}
                   />
                 ))}
                 {account.ticketOperations.incomingAssignments.map((item) => (
@@ -227,6 +266,17 @@ export function MyAccountPage() {
                 ))}
                 {account.ticketOperations.incomingTransfers.map((item) => (
                   <OperationRow key={item.id} label="incoming transfer" item={item} busy={busy} />
+                ))}
+                {account.ticketOperations.returnRequests.map((item) => (
+                  <OperationRow
+                    key={item.id}
+                    label="ticket return"
+                    item={item}
+                    busy={busy}
+                    onCancel={
+                      item.canCancel ? () => void cancelOperation("return", item.id) : undefined
+                    }
+                  />
                 ))}
               </ul>
             </section>
@@ -336,11 +386,13 @@ function OperationRow({
   item,
   busy,
   onCancel,
+  onResend,
 }: {
   label: string;
   item: AttendeeAccount["ticketOperations"]["outgoingAssignments"][number];
   busy: boolean;
   onCancel?: () => void;
+  onResend?: () => void;
 }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -353,14 +405,26 @@ function OperationRow({
         </p>
       </div>
       {onCancel && item.status === "pending" ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onCancel}
-          className="min-h-11 px-2 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
-        >
-          cancel
-        </button>
+        <div className="flex gap-2">
+          {onResend ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onResend}
+              className="min-h-11 px-2 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
+            >
+              resend
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="min-h-11 px-2 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
+          >
+            cancel
+          </button>
+        </div>
       ) : null}
     </li>
   );

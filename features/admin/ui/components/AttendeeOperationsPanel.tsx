@@ -8,9 +8,23 @@ type InboxItem = {
   title: string;
   body: string;
   eventSlug?: string;
+  category: string;
+  severity: "info" | "prompt" | "warning" | "critical";
+  assigneePersonId?: string;
+  assigneeName?: string;
+  privateNote?: { body?: string; actorId?: string; updatedAt?: string };
+  resolutionReason?: string;
   deepLink: string;
   status: "new" | "seen" | "in-progress" | "resolved" | "dismissed";
   createdAt: string;
+};
+type Administrator = { personId: string; name: string };
+type InboxView = {
+  name: string;
+  status: string;
+  severity: string;
+  category: string;
+  event: string;
 };
 type Person = {
   personId: string;
@@ -63,31 +77,59 @@ export function AttendeeOperationsPanel({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Person>();
   const [loading, setLoading] = useState(false);
+  const [administrators, setAdministrators] = useState<Administrator[]>([]);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [eventFilter, setEventFilter] = useState("");
+  const [savedViews, setSavedViews] = useState<InboxView[]>([]);
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await authFetch("/api/admin/operations/inbox");
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      if (severityFilter) params.set("severity", severityFilter);
+      if (categoryFilter.trim()) params.set("category", categoryFilter.trim());
+      if (eventFilter.trim()) params.set("event", eventFilter.trim());
+      const response = await authFetch(
+        `/api/admin/operations/inbox${params.size ? `?${params}` : ""}`,
+      );
       const body = (await response.json()) as {
         unresolved?: number;
         items?: InboxItem[];
+        administrators?: Administrator[];
         error?: string;
       };
       if (!response.ok) throw new Error(body.error ?? "Inbox could not be loaded");
       setItems(body.items ?? []);
       setUnresolved(body.unresolved ?? 0);
+      setAdministrators(body.administrators ?? []);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Inbox could not be loaded");
     } finally {
       setLoading(false);
     }
-  }, [authFetch, onError]);
+  }, [authFetch, categoryFilter, eventFilter, onError, severityFilter, statusFilter]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("attendee-operations-inbox-views");
+      if (stored) setSavedViews(JSON.parse(stored) as InboxView[]);
+    } catch {
+      setSavedViews([]);
+    }
+  }, []);
 
   useEffect(() => {
     if (tab === "inbox") void loadInbox();
   }, [loadInbox, tab]);
 
-  async function updateItem(item: InboxItem, status: InboxItem["status"]) {
+  async function updateItem(
+    item: InboxItem,
+    status: InboxItem["status"],
+    extra: { assigneePersonId?: string; privateNote?: string } = {},
+  ) {
     const reason =
       status === "resolved" || status === "dismissed"
         ? window.prompt("What resolved this item?")?.trim()
@@ -96,7 +138,7 @@ export function AttendeeOperationsPanel({
     const response = await authFetch("/api/admin/operations/inbox", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: item.id, status, reason }),
+      body: JSON.stringify({ id: item.id, status, reason, ...extra }),
     });
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -105,6 +147,24 @@ export function AttendeeOperationsPanel({
     }
     onStatus(status === "resolved" ? "Case resolved." : "Inbox updated.");
     await loadInbox();
+  }
+
+  function saveView() {
+    const name = window.prompt("Name this inbox view")?.trim();
+    if (!name) return;
+    const next = [
+      ...savedViews.filter((view) => view.name !== name),
+      {
+        name,
+        status: statusFilter,
+        severity: severityFilter,
+        category: categoryFilter,
+        event: eventFilter,
+      },
+    ];
+    setSavedViews(next);
+    window.localStorage.setItem("attendee-operations-inbox-views", JSON.stringify(next));
+    onStatus("Inbox view saved on this device.");
   }
 
   async function findPeople(event: FormEvent) {
@@ -160,6 +220,70 @@ export function AttendeeOperationsPanel({
 
       {tab === "inbox" ? (
         <div className="mt-5">
+          <div className="mb-5 grid gap-3 border-y theme-border py-4 sm:grid-cols-2 lg:grid-cols-5">
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              aria-label="filter by status"
+              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
+            >
+              <option value="">all statuses</option>
+              {(["new", "seen", "in-progress", "resolved", "dismissed"] as const).map((status) => (
+                <option key={status}>{status}</option>
+              ))}
+            </select>
+            <select
+              value={severityFilter}
+              onChange={(event) => setSeverityFilter(event.target.value)}
+              aria-label="filter by severity"
+              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
+            >
+              <option value="">all severities</option>
+              {(["critical", "warning", "prompt", "info"] as const).map((severity) => (
+                <option key={severity}>{severity}</option>
+              ))}
+            </select>
+            <input
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+              placeholder="category"
+              aria-label="filter by category"
+              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
+            />
+            <input
+              value={eventFilter}
+              onChange={(event) => setEventFilter(event.target.value)}
+              placeholder="event slug"
+              aria-label="filter by event"
+              className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={saveView}
+              className="min-h-11 border theme-border px-3 font-mono text-xs"
+            >
+              save view
+            </button>
+          </div>
+          {savedViews.length ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {savedViews.map((view) => (
+                <button
+                  key={view.name}
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter(view.status);
+                    setSeverityFilter(view.severity);
+                    setCategoryFilter(view.category);
+                    setEventFilter(view.event);
+                  }}
+                  className="min-h-11 px-2 font-mono text-micro underline"
+                >
+                  {view.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {loading && !items.length ? (
             <p className="font-mono text-xs theme-muted">loading…</p>
           ) : null}
@@ -175,6 +299,7 @@ export function AttendeeOperationsPanel({
                     <div className="max-w-2xl">
                       <p className="font-mono text-micro uppercase tracking-widest theme-muted">
                         {item.status}
+                        {` · ${item.severity} · ${item.category}`}
                         {item.eventSlug ? ` · ${item.eventSlug}` : ""}
                       </p>
                       <h3 className="mt-1 font-serif text-xl">{item.title}</h3>
@@ -198,6 +323,48 @@ export function AttendeeOperationsPanel({
                           mark seen
                         </button>
                       ) : null}
+                      {item.status === "seen" ? (
+                        <button
+                          type="button"
+                          onClick={() => void updateItem(item, "in-progress")}
+                          className="min-h-11 font-mono text-xs underline"
+                        >
+                          start work
+                        </button>
+                      ) : null}
+                      {item.caseId ? (
+                        <select
+                          value={item.assigneePersonId ?? ""}
+                          onChange={(change) =>
+                            void updateItem(item, item.status, {
+                              assigneePersonId: change.target.value || undefined,
+                            })
+                          }
+                          aria-label={`assign ${item.title}`}
+                          className="min-h-11 border theme-border bg-background px-2 font-mono text-xs"
+                        >
+                          <option value="">unassigned</option>
+                          {administrators.map((administrator) => (
+                            <option key={administrator.personId} value={administrator.personId}>
+                              {administrator.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      {item.caseId ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const privateNote = window
+                              .prompt("Private note", item.privateNote?.body ?? "")
+                              ?.trim();
+                            if (privateNote) void updateItem(item, item.status, { privateNote });
+                          }}
+                          className="min-h-11 font-mono text-xs underline"
+                        >
+                          private note
+                        </button>
+                      ) : null}
                       {!(["resolved", "dismissed"] as string[]).includes(item.status) ? (
                         <button
                           type="button"
@@ -209,6 +376,15 @@ export function AttendeeOperationsPanel({
                       ) : null}
                     </div>
                   </div>
+                  {item.assigneeName || item.privateNote?.body || item.resolutionReason ? (
+                    <div className="mt-3 border-t theme-border pt-3 font-mono text-micro theme-muted">
+                      {item.assigneeName ? <p>assigned to {item.assigneeName}</p> : null}
+                      {item.privateNote?.body ? (
+                        <p>private note · {item.privateNote.body}</p>
+                      ) : null}
+                      {item.resolutionReason ? <p>resolution · {item.resolutionReason}</p> : null}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ol>

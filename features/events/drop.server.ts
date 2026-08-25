@@ -11,6 +11,7 @@ import {
 } from "@/features/transfers/store.server";
 import { isValidEventSlug, type EventAlbumView } from "./types";
 import { getEvent } from "./store.server";
+import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 
 type EventDropResult<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
 
@@ -95,6 +96,9 @@ export async function getEventDrop(eventSlug: string): Promise<EventDropStatus |
  */
 export async function getEventAlbumView(eventSlug: string): Promise<EventAlbumView> {
   if (!isValidEventSlug(eventSlug)) return { state: "pending", fileCount: 0 };
+  if (!(await isCapabilityEffective(eventSlug, "guestPhotos"))) {
+    return { state: "closed", fileCount: 0 };
+  }
 
   const row = await queryOne<EventDropRow>(`select * from event_drops where event_slug = $1`, [
     eventSlug,
@@ -209,6 +213,7 @@ export async function resolveDropToken(token: string): Promise<ResolvedDrop | nu
     [token],
   );
   if (!row) return null;
+  if (!(await isCapabilityEffective(row.event_slug, "guestPhotos"))) return null;
 
   const [event, transfer] = await Promise.all([
     getEvent(row.event_slug),

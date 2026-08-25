@@ -33,6 +33,8 @@ import { renderCommunicationMessage } from "@/features/communications/email.serv
  */
 const MAX_EMAILED_QRS = 6;
 
+const publicTicketId = (ticket: TicketRecord): string => ticket.accessReference ?? ticket.id;
+
 type TicketQr = {
   ticketId: string;
   holderName: string;
@@ -45,7 +47,7 @@ async function renderQrAttachment(
   index: number,
 ): Promise<{ attachment: EmailAttachment; qr: TicketQr } | null> {
   try {
-    const dataUrl = await QRCode.toDataURL(buildTicketQrPayload(ticket.id), {
+    const dataUrl = await QRCode.toDataURL(buildTicketQrPayload(publicTicketId(ticket)), {
       margin: 1,
       width: 480,
     });
@@ -61,7 +63,7 @@ async function renderQrAttachment(
         contentId,
       },
       qr: {
-        ticketId: ticket.id,
+        ticketId: publicTicketId(ticket),
         holderName: ticket.holderName,
         contentId,
         managesOrder: !ticket.parentTicketId,
@@ -91,7 +93,7 @@ function renderCalendarAttachment(
       event,
       buildTicketHolderIcsOptions(event, {
         eventUrl: buildEventUrl(origin, event.slug),
-        ticketUrl: buildTicketUrl(origin, ticket.id),
+        ticketUrl: buildTicketUrl(origin, publicTicketId(ticket)),
       }),
     );
     return {
@@ -107,7 +109,7 @@ function renderCalendarAttachment(
 }
 
 function buildText(event: EventRecord, tickets: TicketRecord[], origin: string): string {
-  const calendarUrl = buildTicketIcsUrl(origin, tickets[0].id);
+  const calendarUrl = buildTicketIcsUrl(origin, publicTicketId(tickets[0]));
   const when = formatEventDateTime(event.startsAt, event.timezone);
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const canUpgrade = tickets.some((ticket) => {
@@ -137,7 +139,7 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
     tickets.length === 1 ? "Your ticket:" : `Your ${tickets.length} tickets:`,
     ...tickets.map(
       (ticket) =>
-        `  ${ticket.holderName} — ${buildTicketUrl(origin, ticket.id)}${tickets.length > 1 && !ticket.parentTicketId ? " (manages the full order)" : ""}`,
+        `  ${ticket.holderName} — ${buildTicketUrl(origin, publicTicketId(ticket))}${tickets.length > 1 && !ticket.parentTicketId ? " (manages the full order)" : ""}`,
     ),
     tickets.length > 1 ? "Everyone scans their own code — one per person at the door." : null,
     tickets.length > 1
@@ -174,7 +176,7 @@ function buildHtml(
   qrs: TicketQr[],
 ): string {
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
-  const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, tickets[0].id));
+  const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, publicTicketId(tickets[0])));
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
   const canUpgrade = tickets.some((ticket) => {
     const current = event.ticketTypes.find((type) => type.id === ticket.ticketTypeId);
@@ -208,13 +210,13 @@ function buildHtml(
   // the way into their ticket — a second list of the same names underneath
   // taught nobody anything.
   const covered = new Set(qrs.map((qr) => qr.ticketId));
-  const withoutQr = tickets.filter((ticket) => !covered.has(ticket.id));
+  const withoutQr = tickets.filter((ticket) => !covered.has(publicTicketId(ticket)));
 
   const ticketRows = withoutQr
     .map((ticket) => {
       const label =
         tickets.length > 1 && !ticket.parentTicketId ? "open ticket · manage order" : "open ticket";
-      return `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, ticket.id))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — ${label}</a></p>`;
+      return `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, publicTicketId(ticket)))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — ${label}</a></p>`;
     })
     .join("");
 

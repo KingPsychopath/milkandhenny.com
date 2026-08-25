@@ -34,6 +34,12 @@ export type AdminInboxItem = {
   title: string;
   body: string;
   eventSlug?: string;
+  category: string;
+  severity: DomainEventSeverity;
+  assigneePersonId?: string;
+  assigneeName?: string;
+  privateNote?: { body?: string; actorId?: string; updatedAt?: string };
+  resolutionReason?: string;
   deepLink: string;
   status: "new" | "seen" | "in-progress" | "resolved" | "dismissed";
   createdAt: string;
@@ -521,11 +527,18 @@ export async function sendOperationsDigests(now = new Date()): Promise<{
 export async function listAdminInbox(
   input: {
     status?: AdminInboxItem["status"];
+    category?: string;
+    severity?: DomainEventSeverity;
+    eventSlug?: string;
     limit?: number;
   } = {},
-): Promise<{ unresolved: number; items: AdminInboxItem[] }> {
+): Promise<{
+  unresolved: number;
+  items: AdminInboxItem[];
+  administrators: Array<{ personId: string; name: string }>;
+}> {
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 40)));
-  const [counts, rows] = await Promise.all([
+  const [counts, rows, administrators] = await Promise.all([
     query<{ count: string }>(
       `select count(*)::text as count from admin_notifications
         where status in ('new','seen','in-progress')`,
@@ -533,6 +546,12 @@ export async function listAdminInbox(
     query<{
       id: string;
       case_id: string | null;
+      category: string;
+      severity: DomainEventSeverity;
+      assignee_person_id: string | null;
+      assignee_name: string | null;
+      private_note: unknown;
+      resolution_reason: string | null;
       title: string;
       body: string;
       event_slug: string | null;
@@ -541,11 +560,37 @@ export async function listAdminInbox(
       created_at: Date;
       updated_at: Date;
     }>(
-      `select id,case_id,title,body,event_slug,deep_link,status,created_at,updated_at
-         from admin_notifications
-        where ($1::text is null or status = $1)
-        order by created_at desc limit $2`,
-      [input.status ?? null, limit],
+      `select notification.id,notification.case_id,notification.category,
+              coalesce(attention.severity,domain.severity) as severity,
+              attention.assignee_person_id,person.canonical_name as assignee_name,
+              attention.private_note,attention.resolution_reason,
+              notification.title,notification.body,notification.event_slug,
+              notification.deep_link,notification.status,
+              notification.created_at,notification.updated_at
+         from admin_notifications notification
+         join attendee_domain_events domain on domain.id = notification.source_event_id
+         left join admin_attention_cases attention on attention.id = notification.case_id
+         left join event_people person on person.id = attention.assignee_person_id
+        where ($1::text is null or notification.status = $1)
+          and ($2::text is null or notification.category = $2)
+          and ($3::text is null or coalesce(attention.severity,domain.severity) = $3)
+          and ($4::text is null or notification.event_slug = $4)
+        order by notification.created_at desc limit $5`,
+      [
+        input.status ?? null,
+        input.category ?? null,
+        input.severity ?? null,
+        input.eventSlug ?? null,
+        limit,
+      ],
+    ),
+    query<{ person_id: string; canonical_name: string | null }>(
+      `select distinct admin_grant.person_id,person.canonical_name
+         from global_admin_grants admin_grant
+         join event_people person on person.id = admin_grant.person_id
+        where admin_grant.status = 'active'
+          and (admin_grant.expires_at is null or admin_grant.expires_at > now())
+        order by person.canonical_name nulls last,admin_grant.person_id`,
     ),
   ]);
   return {
@@ -553,6 +598,15 @@ export async function listAdminInbox(
     items: rows.map((row) => ({
       id: row.id,
       caseId: row.case_id ?? undefined,
+      category: row.category,
+      severity: row.severity,
+      assigneePersonId: row.assignee_person_id ?? undefined,
+      assigneeName: row.assignee_name ?? undefined,
+      privateNote:
+        row.private_note && typeof row.private_note === "object" && !Array.isArray(row.private_note)
+          ? (row.private_note as AdminInboxItem["privateNote"])
+          : undefined,
+      resolutionReason: row.resolution_reason ?? undefined,
       title: row.title,
       body: row.body,
       eventSlug: row.event_slug ?? undefined,
@@ -560,6 +614,10 @@ export async function listAdminInbox(
       status: row.status,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
+    })),
+    administrators: administrators.map((administrator) => ({
+      personId: administrator.person_id,
+      name: administrator.canonical_name ?? administrator.person_id,
     })),
   };
 }
@@ -570,6 +628,8 @@ export async function updateAdminNotification(input: {
   actorId: string;
   actorType: "root-owner" | "admin";
   reason?: string;
+  assigneePersonId?: string | null;
+  privateNote?: string;
 }): Promise<boolean> {
   if ((input.status === "resolved" || input.status === "dismissed") && !input.reason?.trim())
     throw new Error("A resolution reason is required");
@@ -590,12 +650,31 @@ export async function updateAdminNotification(input: {
     const row = rows.rows[0];
     if (!row) return false;
     if (row.case_id) {
+      if (input.assigneePersonId) {
+        const administrator = await client.query(
+          `select 1 from global_admin_grants
+            where person_id = $1 and status = 'active'
+              and (expires_at is null or expires_at > now()) limit 1`,
+          [input.assigneePersonId],
+        );
+        if (!administrator.rowCount) throw new Error("Assignee is not an active administrator");
+      }
       await client.query(
         `update admin_attention_cases
             set status = $2, updated_at = now(), resolution_reason = coalesce($3,resolution_reason),
+                assignee_person_id = coalesce($4,assignee_person_id),
+                private_note = case when $5::text is null then private_note else
+                  jsonb_build_object('body',$5::text,'actorId',$6::text,'updatedAt',now()) end,
                 resolved_at = case when $2 in ('resolved','dismissed') then now() else null end
           where id = $1`,
-        [row.case_id, input.status, input.reason?.trim() || null],
+        [
+          row.case_id,
+          input.status,
+          input.reason?.trim() || null,
+          input.assigneePersonId ?? null,
+          input.privateNote?.trim() || null,
+          input.actorId,
+        ],
       );
     }
     await client.query(

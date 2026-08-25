@@ -4,6 +4,7 @@ export type AttendeeAccount = {
   emails: Array<{ masked: string; verifiedAt: string }>;
   tickets: Array<{
     id: string;
+    publicId: string;
     orderId: string;
     eventSlug: string;
     eventTitle: string;
@@ -22,6 +23,7 @@ export type AttendeeAccount = {
     incomingTransfers: AttendeeTicketOperation[];
     outgoingAssignments: AttendeeTicketOperation[];
     outgoingTransfers: AttendeeTicketOperation[];
+    returnRequests: Array<AttendeeTicketOperation & { canCancel: boolean }>;
   };
   access: Array<{
     kind: "global" | "event";

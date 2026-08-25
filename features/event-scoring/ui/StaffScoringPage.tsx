@@ -40,6 +40,8 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setConfirmedRemaining,
     mediaRef,
     setMediaRef,
+    mediaUploading,
+    captureMedia,
     mediaVisibility,
     setMediaVisibility,
     mediaConsent,
@@ -285,6 +287,24 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                   ) : (
                     <p className="font-mono text-xs theme-muted">No event album is available.</p>
                   )}
+                  <label className="block font-mono text-xs">
+                    take or choose a photograph
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={mediaUploading || !data.mediaDrop?.uploadPath}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void captureMedia(file);
+                        event.target.value = "";
+                      }}
+                      className="mt-2 block min-h-11 w-full font-mono text-xs file:mr-3 file:min-h-11 file:border file:theme-border file:bg-background file:px-3"
+                    />
+                    {mediaUploading ? (
+                      <span className="mt-1 block theme-muted">uploading photograph…</span>
+                    ) : null}
+                  </label>
                   <label className="block font-mono text-xs">
                     stored media reference
                     <input

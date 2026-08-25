@@ -2918,6 +2918,35 @@ const MIGRATIONS: Migration[] = [
         where fallback and status in ('active','paused');
     `,
   },
+  {
+    id: "0056_multi_payment_ticket_refunds",
+    sql: `
+      alter table ticket_refund_allocations add column request_id text;
+      update ticket_refund_allocations set request_id = id where request_id is null;
+      alter table ticket_refund_allocations alter column request_id set not null;
+
+      drop index ticket_refund_allocations_active_ticket_idx;
+      create unique index ticket_refund_allocations_active_payment_idx
+        on ticket_refund_allocations (ticket_id, payment_ref)
+        where state in ('processing','pending','succeeded');
+      create index ticket_refund_allocations_request_idx
+        on ticket_refund_allocations (request_id, created_at);
+    `,
+  },
+  {
+    id: "0057_ticket_return_expiry",
+    sql: `
+      alter table ticket_return_requests add column expires_at timestamptz;
+      update ticket_return_requests set expires_at = created_at + interval '72 hours';
+      alter table ticket_return_requests alter column expires_at set not null;
+      alter table ticket_return_requests drop constraint ticket_return_requests_status_check;
+      alter table ticket_return_requests add constraint ticket_return_requests_status_check
+        check (status in (
+          'awaiting-consent','confirmed','declined','under-review','refund-pending',
+          'refunded','failed','cancelled','expired'
+        ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

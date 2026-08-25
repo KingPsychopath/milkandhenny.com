@@ -562,6 +562,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     ),
     query<{
       id: string;
+      access_reference: string | null;
       order_id: string;
       event_slug: string;
       event_title: string;
@@ -576,7 +577,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       manages_order: boolean;
     }>(
       `select distinct on (t.id)
-          t.id, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
+          t.id, t.access_reference, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
           t.holder_name, t.status, p.id as participant_id,
           coalesce(sp.balance, 0)::integer as points,
           coalesce(p.chosen_alias,p.generated_alias) as public_alias,
@@ -647,6 +648,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     })),
     tickets: tickets.map((row) => ({
       id: row.id,
+      publicId: row.access_reference ?? row.id,
       orderId: row.order_id,
       eventSlug: row.event_slug,
       eventTitle: row.event_title,

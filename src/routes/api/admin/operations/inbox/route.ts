@@ -15,8 +15,17 @@ async function handleGET(request: Request) {
     const url = new URL(request.url);
     const status = url.searchParams.get("status") as AdminInboxItem["status"] | null;
     const valid = ["new", "seen", "in-progress", "resolved", "dismissed"].includes(status ?? "");
+    const severity = url.searchParams.get("severity");
+    const validSeverity = ["info", "prompt", "warning", "critical"].includes(severity ?? "");
     return Response.json(
-      await listAdminInbox({ status: valid ? (status ?? undefined) : undefined }),
+      await listAdminInbox({
+        status: valid ? (status ?? undefined) : undefined,
+        severity: validSeverity
+          ? (severity as "info" | "prompt" | "warning" | "critical")
+          : undefined,
+        category: url.searchParams.get("category") || undefined,
+        eventSlug: url.searchParams.get("event") || undefined,
+      }),
     );
   } catch (error) {
     return apiErrorFromRequest(
@@ -36,6 +45,8 @@ async function handlePATCH(request: Request) {
       id?: unknown;
       status?: unknown;
       reason?: unknown;
+      assigneePersonId?: unknown;
+      privateNote?: unknown;
     } | null;
     const statuses = ["new", "seen", "in-progress", "resolved", "dismissed"] as const;
     if (
@@ -54,6 +65,11 @@ async function handlePATCH(request: Request) {
       actorId: auth.actorId ?? "root-owner",
       actorType: auth.actorType === "admin" ? "admin" : "root-owner",
       reason: typeof body.reason === "string" ? body.reason : undefined,
+      assigneePersonId:
+        body.assigneePersonId === null || typeof body.assigneePersonId === "string"
+          ? body.assigneePersonId
+          : undefined,
+      privateNote: typeof body.privateNote === "string" ? body.privateNote : undefined,
     });
     return updated
       ? Response.json({ updated: true })

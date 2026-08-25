@@ -14,10 +14,14 @@ vi.mock("@/lib/platform/stripe.server", () => ({
   refundPayment: stripe.refundPayment,
   retrievePaymentBalance: stripe.retrievePaymentBalance,
   retrieveSession: stripe.retrieveSession,
+  listPaymentRefunds: vi.fn(),
+  expireCheckoutSession: vi.fn(),
   isPaymentsConfigured: () => true,
 }));
 
 vi.mock("@/features/tickets/email.server", () => ({
+  sendRefundEmail: vi.fn().mockResolvedValue({ queued: true }),
+  sendTicketEmail: vi.fn().mockResolvedValue({ queued: true }),
   sendTicketExchangeEmail: vi.fn().mockResolvedValue({ queued: true }),
   sendTicketExchangePaymentEmail: vi.fn().mockResolvedValue({ queued: true }),
 }));
@@ -31,6 +35,7 @@ import {
   getTicketExchangeManagement,
 } from "@/features/tickets/exchange.server";
 import { getTicket } from "@/features/tickets/store.server";
+import { refundTicket } from "@/features/tickets/checkout.server";
 import { getEventTickets, issueTickets } from "@/features/tickets/tickets.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
@@ -428,5 +433,83 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
         errorMessage: "Part of the refund succeeded, but the remainder needs attention",
       }),
     );
+  });
+
+  it("refunds an upgraded ticket across its upgrade and original payments", async () => {
+    const [ticket] = await paidOrder();
+    stripe.createCheckoutSession.mockResolvedValue({
+      id: "cs_exchange_standard_refund_123456",
+      url: "https://checkout.stripe.test/session",
+    });
+    const upgrade = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "vip",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    if (!upgrade.ok) throw new Error(upgrade.error);
+    stripe.retrieveSession.mockResolvedValue({
+      paid: true,
+      paymentIntentId: "pi_upgrade_for_refund",
+      amountMinor: 1000,
+      currency: "gbp",
+      email: "alice@example.com",
+      metadata: { ticketExchangeId: upgrade.value.exchangeId },
+      amountRefundedMinor: 0,
+      disputed: false,
+    });
+    await fulfilTicketExchangeCheckout(
+      "cs_exchange_standard_refund_123456",
+      "https://milkandhenny.com",
+    );
+    stripe.retrievePaymentBalance.mockImplementation(async (paymentIntentId: string) => ({
+      amountMinor: paymentIntentId === "pi_upgrade_for_refund" ? 1000 : 1000,
+      amountRefundedMinor: 0,
+      remainingMinor: 1000,
+    }));
+    stripe.refundPayment.mockImplementation(
+      async (input: { paymentIntentId: string; amountMinor: number }) => ({
+        ok: true,
+        refundId: `re_standard_${input.paymentIntentId}`,
+        status: "succeeded",
+        amountMinor: input.amountMinor,
+      }),
+    );
+
+    const refunded = await refundTicket({ ticketId: ticket.id, reason: "admin" });
+
+    expect(refunded.ok && refunded.value.state).toBe("succeeded");
+    expect(stripe.refundPayment.mock.calls.map(([input]) => input.paymentIntentId)).toEqual([
+      "pi_upgrade_for_refund",
+      "pi_original",
+    ]);
+    expect(stripe.refundPayment.mock.calls.map(([input]) => input.amountMinor)).toEqual([
+      1000, 1000,
+    ]);
+    const allocations = await query<{
+      request_id: string;
+      payment_ref: string;
+      amount_minor: number;
+      state: string;
+    }>(
+      `select request_id,payment_ref,amount_minor,state
+         from ticket_refund_allocations where ticket_id = $1 order by created_at`,
+      [ticket.id],
+    );
+    expect(new Set(allocations.map((allocation) => allocation.request_id)).size).toBe(1);
+    expect(allocations).toEqual([
+      expect.objectContaining({
+        payment_ref: "pi_upgrade_for_refund",
+        amount_minor: 1000,
+        state: "succeeded",
+      }),
+      expect.objectContaining({
+        payment_ref: "pi_original",
+        amount_minor: 1000,
+        state: "succeeded",
+      }),
+    ]);
+    expect((await getTicket(ticket.id))?.status).toBe("refunded");
   });
 });

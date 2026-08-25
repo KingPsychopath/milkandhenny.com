@@ -12,6 +12,7 @@ type SettingsResponse = {
     emergencyPaused: CapabilityMap;
     revision: number;
   };
+  impact: Record<(typeof ATTENDEE_CAPABILITIES)[number], number>;
   events: Array<{
     slug: string;
     title: string;
@@ -22,6 +23,7 @@ type SettingsResponse = {
       transferClosesAt?: string;
       policyVersion: number;
     };
+    effective: CapabilityMap;
   }>;
 };
 
@@ -55,6 +57,7 @@ export function AttendeeSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [transferOpensAt, setTransferOpensAt] = useState("");
   const [transferClosesAt, setTransferClosesAt] = useState("");
+  const [bulkEventSlugs, setBulkEventSlugs] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     const response = await authFetch("/api/admin/operations/settings");
@@ -105,9 +108,14 @@ export function AttendeeSettingsPanel({
     const event = data?.events.find((item) => item.slug === eventSlug);
     if (!event) return;
     setBusy(true);
+    const step = await ensureStepUpToken();
+    if (!step.ok) {
+      setBusy(false);
+      return;
+    }
     const response = await authFetch("/api/admin/operations/settings", {
       method: "PATCH",
-      headers: { "content-type": "application/json" },
+      headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
       body: JSON.stringify({
         scope: "event",
         eventSlug,
@@ -122,6 +130,38 @@ export function AttendeeSettingsPanel({
     else {
       onStatus(`${event.title} settings saved.`);
       setReason("");
+      await load();
+    }
+    setBusy(false);
+  }
+
+  async function saveBulk() {
+    const event = data?.events.find((item) => item.slug === eventSlug);
+    if (!event || bulkEventSlugs.length === 0) return;
+    setBusy(true);
+    const step = await ensureStepUpToken();
+    if (!step.ok) {
+      setBusy(false);
+      return;
+    }
+    const response = await authFetch("/api/admin/operations/settings", {
+      method: "PATCH",
+      headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
+      body: JSON.stringify({
+        scope: "event-bulk",
+        eventSlugs: bulkEventSlugs,
+        capabilities: event.policy.capabilities,
+        transferOpensAt: event.policy.transferOpensAt ?? null,
+        transferClosesAt: event.policy.transferClosesAt ?? null,
+        reason,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) onError(body.error ?? "Event settings could not be applied");
+    else {
+      onStatus(`Settings applied to ${bulkEventSlugs.length} events.`);
+      setReason("");
+      setBulkEventSlugs([]);
       await load();
     }
     setBusy(false);
@@ -158,6 +198,7 @@ export function AttendeeSettingsPanel({
         <CapabilitySection
           title="global availability"
           values={data.global.globalAvailability}
+          impact={data.impact}
           busy={busy}
           onSave={(values) => void saveGlobal("globalAvailability", values)}
         />
@@ -226,9 +267,48 @@ export function AttendeeSettingsPanel({
             <CapabilitySection
               title={selectedEvent.title}
               values={selectedEvent.policy.capabilities}
+              effective={selectedEvent.effective}
               busy={busy}
               onSave={(values) => void saveEvent(values)}
             />
+            <fieldset className="mt-8 border-y theme-border py-5">
+              <legend className="font-serif text-xl">apply saved policy to selected events</legend>
+              <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+                Copies {selectedEvent.title}&apos;s currently saved capabilities and transfer
+                window. Every target records its own audit event.
+              </p>
+              <div className="mt-3 max-h-56 overflow-y-auto">
+                {data.events
+                  .filter((event) => event.slug !== selectedEvent.slug)
+                  .map((event) => (
+                    <label
+                      key={event.slug}
+                      className="flex min-h-11 items-center gap-3 font-mono text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={bulkEventSlugs.includes(event.slug)}
+                        onChange={(change) =>
+                          setBulkEventSlugs((current) =>
+                            change.target.checked
+                              ? [...current, event.slug]
+                              : current.filter((slug) => slug !== event.slug),
+                          )
+                        }
+                      />
+                      {event.title} · {event.status}
+                    </label>
+                  ))}
+              </div>
+              <button
+                type="button"
+                disabled={busy || bulkEventSlugs.length === 0}
+                onClick={() => void saveBulk()}
+                className="mt-4 min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+              >
+                {busy ? "applying…" : `apply to ${bulkEventSlugs.length || "selected"}`}
+              </button>
+            </fieldset>
           </div>
         ) : null}
       </div>
@@ -263,6 +343,8 @@ function CapabilitySection({
   values,
   busy,
   onSave,
+  effective,
+  impact,
   inverted = false,
   busyLabel = "save settings",
 }: {
@@ -270,6 +352,8 @@ function CapabilitySection({
   values: CapabilityMap;
   busy: boolean;
   onSave: (values: CapabilityMap) => void;
+  effective?: CapabilityMap;
+  impact?: Record<(typeof ATTENDEE_CAPABILITIES)[number], number>;
   inverted?: boolean;
   busyLabel?: string;
 }) {
@@ -284,7 +368,17 @@ function CapabilitySection({
             key={capability}
             className="flex min-h-11 items-center justify-between gap-4 font-mono text-xs"
           >
-            <span>{LABELS[capability]}</span>
+            <span>
+              {LABELS[capability]}
+              {effective ? (
+                <span className="ml-2 theme-muted">
+                  · effective {effective[capability] ? "on" : "off"}
+                </span>
+              ) : null}
+              {impact?.[capability] ? (
+                <span className="ml-2 theme-muted">· {impact[capability]} event policies</span>
+              ) : null}
+            </span>
             <input
               type="checkbox"
               checked={draft[capability]}

@@ -17,6 +17,7 @@ import {
 import type { OfflineScoreCommand } from "../offline.server";
 import type { getStaffScoringPage } from "../staff-scoring.server";
 import { convertRulePoints } from "../types";
+import { uploadStaffScorePhoto } from "./staff-photo-upload";
 
 export type PageData = Extract<Awaited<ReturnType<typeof getStaffScoringPage>>, { found: true }>;
 export type Participant = Awaited<ReturnType<typeof searchStaffParticipantsFn>>[number];
@@ -45,6 +46,7 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [confirmedRemaining, setConfirmedRemaining] = useState<number | undefined>();
   const [mediaRef, setMediaRef] = useState("");
+  const [mediaUploading, setMediaUploading] = useState(false);
   const [mediaVisibility, setMediaVisibility] = useState<
     "event-album" | "admin-evidence" | "discard"
   >("event-album");
@@ -70,6 +72,34 @@ export function useStaffScoringController(data: PageData, token: string) {
   const activity = data.activities.find((entry) => entry.id === activityId);
   const pool = data.pools.find((entry) => entry.activityId === activityId) ?? data.pools[0];
   const previewPoints = activity ? convertRulePoints(activity.rule, { placement, rawScore }) : 0;
+
+  async function captureMedia(file: File) {
+    const uploadPath = data.mediaDrop?.uploadPath;
+    if (!uploadPath) {
+      setError("The event photo album is not open for uploads.");
+      return;
+    }
+    if (!navigator.onLine) {
+      setError("Reconnect before attaching a photograph. The score can still be queued alone.");
+      return;
+    }
+    setMediaUploading(true);
+    setError("");
+    try {
+      setMediaRef(
+        await uploadStaffScorePhoto({
+          file,
+          uploadPath,
+          albumPath: data.mediaDrop?.albumPath,
+        }),
+      );
+      setStatus("Photograph ready. It will attach after the points are accepted.");
+    } catch (captureError) {
+      setError(captureError instanceof Error ? captureError.message : "The photograph failed");
+    } finally {
+      setMediaUploading(false);
+    }
+  }
 
   useEffect(() => {
     const key = `mah-offline-score:${data.eventSlug}`;
@@ -412,6 +442,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setConfirmedRemaining,
     mediaRef,
     setMediaRef,
+    mediaUploading,
+    captureMedia,
     mediaVisibility,
     setMediaVisibility,
     mediaConsent,

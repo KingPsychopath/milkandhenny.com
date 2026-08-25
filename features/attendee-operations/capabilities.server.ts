@@ -87,6 +87,10 @@ export async function getEventOperationsPolicy(eventSlug: string): Promise<Event
       `select 1 from score_discoveries where event_slug = $1 limit 1`,
       [eventSlug],
     );
+    const guestPhotos = await client.query(
+      `select 1 from event_drops where event_slug = $1 limit 1`,
+      [eventSlug],
+    );
     const event = await client.query<{ transferable: boolean }>(
       `select transferable from events where slug = $1`,
       [eventSlug],
@@ -101,16 +105,25 @@ export async function getEventOperationsPolicy(eventSlug: string): Promise<Event
         scoring.rows[0].leaderboard_visibility !== "hidden",
       manualStaffAwards: scoring.rows[0]?.state !== undefined && scoring.rows[0].state !== "off",
       discoveries: Boolean(discoveries.rowCount),
+      guestPhotos: Boolean(guestPhotos.rowCount),
       transfers: false,
       onwardTransfers: false,
       complimentaryTransfers: false,
     };
     const inserted = await client.query<EventRow>(
       `insert into event_operation_policies (event_slug,capabilities,updated_by)
-       values ($1,$2::jsonb,'system-snapshot') returning *`,
+       values ($1,$2::jsonb,'system-snapshot')
+       on conflict (event_slug) do nothing returning *`,
       [eventSlug, JSON.stringify(capabilities)],
     );
-    const row = inserted.rows[0];
+    const row =
+      inserted.rows[0] ??
+      (
+        await client.query<EventRow>(
+          `select * from event_operation_policies where event_slug = $1`,
+          [eventSlug],
+        )
+      ).rows[0];
     if (!row) throw new Error("Event policy could not be created");
     return toEvent(row);
   });
@@ -123,12 +136,7 @@ export async function updateGlobalOperationsSettings(input: {
   actorType: "root-owner" | "admin";
   reason?: string;
 }): Promise<GlobalOperationsSettings> {
-  if (
-    (input.section === "globalAvailability" || input.section === "emergencyPaused") &&
-    !input.reason?.trim()
-  ) {
-    throw new Error("Global capability changes require a reason");
-  }
+  if (!input.reason?.trim()) throw new Error("Global capability changes require a reason");
   return transaction(async (client) => {
     const selected = await client.query<GlobalRow>(
       `select * from attendee_operation_settings where id = true for update`,
@@ -183,6 +191,7 @@ export async function updateEventOperationsPolicy(input: {
   actorType: "root-owner" | "admin";
   reason?: string;
 }): Promise<EventOperationsPolicy> {
+  if (!input.reason?.trim()) throw new Error("Event capability changes require a reason");
   await getEventOperationsPolicy(input.eventSlug);
   return transaction(async (client) => {
     const selected = await client.query<EventRow>(

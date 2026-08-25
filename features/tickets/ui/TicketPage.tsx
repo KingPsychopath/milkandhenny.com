@@ -265,7 +265,9 @@ export function TicketPage({
             </p>
           )}
           {/* Readable fallback if the camera or the screen refuses to cooperate. */}
-          <p className="mt-3 font-mono text-sm theme-subtle tracking-[0.2em]">{ticket.id}</p>
+          <p className="mt-3 font-mono text-sm theme-subtle tracking-[0.2em]">
+            {ticket.publicId ?? ticket.id}
+          </p>
           <p className="mt-2 font-mono text-micro theme-muted">this QR is your entry ticket</p>
         </div>
 

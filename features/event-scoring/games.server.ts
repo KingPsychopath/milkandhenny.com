@@ -10,6 +10,7 @@ import type {
   OfficialResultPlayer,
 } from "@/features/game-results/types";
 import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
+import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { activityCanAccept, convertRulePoints, type ActivityStatus, type ScoreRule } from "./types";
 import { recordScoreInTransaction, reverseScoreInTransaction } from "./store.server";
 
@@ -517,6 +518,23 @@ async function processResult(
 export async function processOfficialGameResult(
   resultId: string,
 ): Promise<OfficialResultProcessingOutcome> {
+  const result = await queryOne<{ event_slug: string }>(
+    `select events.slug as event_slug
+       from official_game_results results
+       join event_game_score_bindings bindings on bindings.channel_id = results.channel_id
+       join events on events.event_id = bindings.event_id
+      where results.id = $1`,
+    [resultId],
+  );
+  if (result && !(await isCapabilityEffective(result.event_slug, "scoring"))) {
+    await query(
+      `update official_game_results
+          set status = 'held', held_reason = 'Scoring is paused for this event'
+        where id = $1 and status = 'pending'`,
+      [resultId],
+    );
+    return { state: "held", resultId, reason: "Scoring is paused for this event" };
+  }
   return transaction((client) => processResult(client, resultId));
 }
 
