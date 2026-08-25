@@ -12,10 +12,11 @@ import { getStored, removeStored, setStored } from "./storage";
  */
 export interface BrowserProfile {
   name: string;
+  gameName: string;
   email: string;
 }
 
-const EMPTY_PROFILE: BrowserProfile = { name: "", email: "" };
+const EMPTY_PROFILE: BrowserProfile = { name: "", gameName: "", email: "" };
 const PROFILE_CHANGE_EVENT = "mah:browser-profile-change";
 const MAX_NAME_LENGTH = 120;
 const MAX_EMAIL_LENGTH = 254;
@@ -38,6 +39,7 @@ export function readBrowserProfile(): BrowserProfile {
     if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_PROFILE;
     return {
       name: normaliseName("name" in value ? value.name : undefined),
+      gameName: normaliseName("gameName" in value ? value.gameName : undefined),
       email: normaliseEmail("email" in value ? value.email : undefined),
     };
   } catch {
@@ -52,8 +54,14 @@ export function readBrowserProfile(): BrowserProfile {
 export function rememberBrowserProfile(fields: Partial<BrowserProfile>): BrowserProfile {
   const current = readBrowserProfile();
   const name = fields.name === undefined ? current.name : normaliseName(fields.name);
+  const gameName =
+    fields.gameName === undefined ? current.gameName : normaliseName(fields.gameName);
   const email = fields.email === undefined ? current.email : normaliseEmail(fields.email);
-  const next = { name: name || current.name, email: email || current.email };
+  const next = {
+    name: name || current.name,
+    gameName: gameName || current.gameName,
+    email: email || current.email,
+  };
 
   if (setStored("browserProfile", JSON.stringify(next))) {
     window.dispatchEvent(new Event(PROFILE_CHANGE_EVENT));
@@ -127,4 +135,28 @@ export function useBrowserProfileForm({ maxNameLength = MAX_NAME_LENGTH } = {}) 
   }, []);
 
   return { loaded, name, email, setName, setEmail, remember };
+}
+
+/** A game nickname is a separate editable convenience from the person's preferred full name. */
+export function useBrowserGameNameForm({ maxNameLength = 32 } = {}) {
+  const { loaded, profile, remember: rememberProfile } = useBrowserProfile();
+  const [name, setNameState] = useState("");
+  const edited = useRef(false);
+
+  useEffect(() => {
+    if (!loaded || edited.current) return;
+    const preferred = profile.gameName || profile.name;
+    setNameState(preferred.length <= maxNameLength ? preferred : "");
+  }, [loaded, maxNameLength, profile]);
+
+  const setName = useCallback((value: string) => {
+    edited.current = true;
+    setNameState(value);
+  }, []);
+  const remember = useCallback(
+    (value: string) => rememberProfile({ gameName: value }),
+    [rememberProfile],
+  );
+
+  return { loaded, name, setName, remember };
 }

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { rememberBrowserProfile } from "@/lib/client/browser-profile";
 import type { AttendeeAccount } from "../types";
 
 type AccountResponse = {
@@ -61,6 +62,7 @@ export function MyAccountPage() {
         }
         setAccount(body.account);
         setName(body.account.name ?? "");
+        if (body.account.name) rememberBrowserProfile({ name: body.account.name });
         setEmailStepUpRequired(body.emailStepUpRequired);
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load"))
@@ -77,8 +79,13 @@ export function MyAccountPage() {
       body: JSON.stringify({ name }),
     });
     const body = (await response.json().catch(() => ({}))) as { error?: string; name?: string };
-    setMessage(response.ok ? "Name updated." : (body.error ?? "Name could not be updated"));
-    if (response.ok && body.name && account) setAccount({ ...account, name: body.name });
+    setMessage(
+      response.ok ? "Preferred name updated." : (body.error ?? "Name could not be updated"),
+    );
+    if (response.ok && body.name && account) {
+      setAccount({ ...account, name: body.name });
+      rememberBrowserProfile({ name: body.name });
+    }
     setBusy(false);
   }
 
@@ -292,6 +299,46 @@ export function MyAccountPage() {
             )}
           </section>
 
+          {account.gameHistory.length > 0 ? (
+            <section
+              className="mt-10 border-t theme-border pt-6"
+              aria-labelledby="game-history-heading"
+            >
+              <h2 id="game-history-heading" className="font-serif text-2xl">
+                Game history
+              </h2>
+              <p className="mt-2 max-w-md font-mono text-micro leading-relaxed theme-muted">
+                Signed-in play stays with this account. A game name can differ from your preferred
+                name without changing either one.
+              </p>
+              <ul className="mt-4 divide-y border-y theme-border">
+                {account.gameHistory.map((game) => (
+                  <li key={game.id}>
+                    <Link
+                      to="/things/hot-and-cold"
+                      className="flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70"
+                    >
+                      <div>
+                        <p className="font-mono text-xs">{game.game.replaceAll("-", " ")}</p>
+                        <p className="mt-1 font-mono text-micro theme-muted">
+                          {game.mode === "daily" ? `daily #${game.reference}` : game.mode}
+                          {game.displayName ? ` · as ${game.displayName}` : ""}
+                          {` · ${game.eventCount} ${game.eventCount === 1 ? "action" : "actions"}`}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-right font-mono text-micro theme-muted">
+                        {game.outcome ?? game.status}
+                        {game.score !== undefined ? ` · ${game.score}` : ""}
+                        <br />
+                        {new Date(game.lastPlayedAt).toLocaleDateString()} →
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           {[
             ...account.ticketOperations.incomingAssignments,
             ...account.ticketOperations.incomingTransfers,
@@ -394,7 +441,7 @@ export function MyAccountPage() {
             </summary>
             <form onSubmit={saveName} className="space-y-3 py-3">
               <label htmlFor="account-name" className="block font-mono text-xs">
-                your name
+                preferred name
               </label>
               <input
                 id="account-name"
@@ -405,6 +452,10 @@ export function MyAccountPage() {
                 autoComplete="name"
                 className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
               />
+              <p className="max-w-md font-mono text-micro leading-relaxed theme-muted">
+                Your private full name as you naturally write it. It suggests an editable name in
+                games; it does not replace ticket-holder names, event aliases, or game nicknames.
+              </p>
               <button
                 type="submit"
                 disabled={busy}

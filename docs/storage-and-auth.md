@@ -96,7 +96,8 @@ Notes:
 
 ### Browser profile (site-wide)
 
-- **Client storage**: a name and email address in `localStorage["mah-browser-profile-v1"]`
+- **Client storage**: a preferred name, separate editable game name, and email address in
+  `localStorage["mah-browser-profile-v1"]`
 - **Why**: editable identity fields can be filled on this browser without an account
 - **Write rule**: remember values only after a successful ticket, pitch, recovery, presentation, or
   multiplayer action; typing alone does not persist them
@@ -106,6 +107,9 @@ Notes:
   and write, and introduced only when a real form needs them
 - **Scope**: feature state, payment details, credentials, room tokens, and private links never belong
   in this profile
+- **Name rule**: the signed-in account's private preferred name may seed an empty game-name field.
+  Choosing a game name stores a separate browser-local default; neither value changes ticket-holder
+  names, event aliases, or names already chosen in a live room.
 - **Removal**: `/privacy` can remove the shared profile without clearing unrelated saved work,
   preferences, or sessions
 

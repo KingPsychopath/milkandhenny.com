@@ -18,7 +18,7 @@ export function AttendeeAccessLink() {
       return;
     }
     let cancelled = false;
-    void fetch("/api/attendee/session", { headers: { accept: "application/json" } })
+    void fetch("/api/attendee/session?view=status", { headers: { accept: "application/json" } })
       .then(async (response) => {
         if (!response.ok) throw new Error("Account status unavailable");
         return (await response.json()) as { authenticated?: boolean };

@@ -36,21 +36,28 @@ beforeEach(() => {
 
 describe("browser profile", () => {
   it("normalises saved identity fields", () => {
-    expect(rememberBrowserProfile({ name: "  Alex  ", email: " ALEX@Example.COM " })).toEqual({
-      name: "Alex",
+    expect(
+      rememberBrowserProfile({
+        name: "  Alex Rivera  ",
+        gameName: "  Lex  ",
+        email: " ALEX@Example.COM ",
+      }),
+    ).toEqual({ name: "Alex Rivera", gameName: "Lex", email: "alex@example.com" });
+    expect(readBrowserProfile()).toEqual({
+      name: "Alex Rivera",
+      gameName: "Lex",
       email: "alex@example.com",
     });
-    expect(readBrowserProfile()).toEqual({ name: "Alex", email: "alex@example.com" });
   });
 
   it("ignores malformed stored values", () => {
     localStorage.setItem("mah-browser-profile-v1", JSON.stringify({ name: 42, email: "nope" }));
-    expect(readBrowserProfile()).toEqual({ name: "", email: "" });
+    expect(readBrowserProfile()).toEqual({ name: "", gameName: "", email: "" });
   });
 
   it("can remove only the profile", () => {
     rememberBrowserProfile({ name: "Alex" });
     expect(forgetBrowserProfile()).toBe(true);
-    expect(readBrowserProfile()).toEqual({ name: "", email: "" });
+    expect(readBrowserProfile()).toEqual({ name: "", gameName: "", email: "" });
   });
 });

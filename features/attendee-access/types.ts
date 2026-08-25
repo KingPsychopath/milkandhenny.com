@@ -1,6 +1,9 @@
+import type { PersonGameHistoryItem } from "@/features/person-games/types";
+
 export type AttendeeAccount = {
   personId: string;
   name: string | null;
+  gameHistory: PersonGameHistoryItem[];
   emails: Array<{ id: string; masked: string; verifiedAt: string }>;
   tickets: Array<{
     id: string;

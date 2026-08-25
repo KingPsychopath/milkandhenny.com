@@ -19,6 +19,7 @@ import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
+import { personGameHistory } from "@/features/person-games/history.server";
 import { safeReturnTo, type AttendeeAccount } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -616,31 +617,32 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     [personId],
   );
   if (!person) return null;
-  const [emails, tickets, ticketOperations, globalAccess, eventAccess] = await Promise.all([
-    query<{ id: string; display_hint: string; verified_at: Date }>(
-      `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
+  const [emails, tickets, ticketOperations, globalAccess, eventAccess, gameHistory] =
+    await Promise.all([
+      query<{ id: string; display_hint: string; verified_at: Date }>(
+        `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
          from event_person_identifiers
         where person_id = $1 and kind = 'email' and verified_at is not null
         order by verified_at desc`,
-      [personId],
-    ),
-    query<{
-      id: string;
-      access_reference: string | null;
-      order_id: string;
-      event_slug: string;
-      event_title: string;
-      starts_at: Date;
-      holder_name: string;
-      status: string;
-      points: number;
-      public_alias: string | null;
-      rank: string | null;
-      participant_id: string | null;
-      personally_claimed: boolean;
-      manages_order: boolean;
-    }>(
-      `select distinct on (t.id)
+        [personId],
+      ),
+      query<{
+        id: string;
+        access_reference: string | null;
+        order_id: string;
+        event_slug: string;
+        event_title: string;
+        starts_at: Date;
+        holder_name: string;
+        status: string;
+        points: number;
+        public_alias: string | null;
+        rank: string | null;
+        participant_id: string | null;
+        personally_claimed: boolean;
+        manages_order: boolean;
+      }>(
+        `select distinct on (t.id)
           t.id, t.access_reference, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
           t.holder_name, t.status, p.id as participant_id,
           coalesce(sp.balance, 0)::integer as points,
@@ -663,28 +665,29 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
            on om.order_id = t.order_id and om.person_id = $1 and om.status = 'active'
         where p.person_id = $1 or om.id is not null
         order by t.id, t.issued_at desc`,
-      [personId],
-    ),
-    ticketOperationsForPerson(personId),
-    query<{ role_preset: string; status: string; expires_at: Date | null }>(
-      `select role_preset,status,expires_at from global_admin_grants
+        [personId],
+      ),
+      ticketOperationsForPerson(personId),
+      query<{ role_preset: string; status: string; expires_at: Date | null }>(
+        `select role_preset,status,expires_at from global_admin_grants
         where person_id = $1 and status in ('pending','active','paused')
         order by created_at desc`,
-      [personId],
-    ),
-    query<{
-      event_slug: string;
-      label: string;
-      status: string;
-      invitation_state: string;
-      expires_at: Date | null;
-    }>(
-      `select event_slug,label,status,invitation_state,expires_at from score_staff_assignments
+        [personId],
+      ),
+      query<{
+        event_slug: string;
+        label: string;
+        status: string;
+        invitation_state: string;
+        expires_at: Date | null;
+      }>(
+        `select event_slug,label,status,invitation_state,expires_at from score_staff_assignments
         where person_id = $1 and status in ('active','paused')
         order by created_at desc`,
-      [personId],
-    ),
-  ]);
+        [personId],
+      ),
+      personGameHistory(personId),
+    ]);
   const participantIds = tickets
     .map((ticket) => ticket.participant_id)
     .filter((participantId): participantId is string => Boolean(participantId));
@@ -706,6 +709,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
   return {
     personId,
     name: person.canonical_name,
+    gameHistory,
     emails: emails.map((row) => ({
       id: row.id,
       masked: row.display_hint,
@@ -772,6 +776,14 @@ export async function updateAttendeeName(
   return row
     ? { ok: true, value: { name: row.canonical_name } }
     : { ok: false, status: 404, error: "Person not found" };
+}
+
+export async function attendeePreferredName(personId: string): Promise<string | null> {
+  const person = await queryOne<{ canonical_name: string | null }>(
+    "select canonical_name from event_people where id = $1",
+    [personId],
+  );
+  return person?.canonical_name ?? null;
 }
 
 export async function removeAttendeeEmail(input: {

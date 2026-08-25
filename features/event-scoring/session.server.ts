@@ -3,6 +3,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 
 import { getRedis } from "@/lib/platform/redis.server";
+import { query } from "@/lib/platform/postgres.server";
 import { getCookie as getRequestCookie } from "@/lib/http/cookies";
 import { getEvent } from "@/features/events/store.server";
 import { getTicket } from "@/features/tickets/store.server";
@@ -373,7 +374,17 @@ export async function openAttendeeTicket(input: {
 
 export async function activeParticipantForEvent(eventSlug: string): Promise<string | undefined> {
   const [session, event] = await Promise.all([getAttendeeSession(), getEvent(eventSlug)]);
-  return session && event?.eventId ? session.activeParticipantByEventId[event.eventId] : undefined;
+  if (!session || !event?.eventId) return undefined;
+  const explicitlyActive = session.activeParticipantByEventId[event.eventId];
+  if (explicitlyActive) return explicitlyActive;
+  if (!session.personId) return undefined;
+  const linked = await query<{ id: string }>(
+    `select id from event_participants
+      where event_slug = $1 and person_id = $2 and status = 'active'
+      order by created_at asc limit 2`,
+    [eventSlug, session.personId],
+  );
+  return linked.length === 1 ? linked[0]?.id : undefined;
 }
 
 export async function openedTicketsForEvent(eventSlug: string): Promise<AttendeeTicketAccess[]> {

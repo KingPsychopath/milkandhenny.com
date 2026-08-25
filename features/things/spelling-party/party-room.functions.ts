@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { linkCurrentAttendeeGamePlayer } from "@/features/event-scoring/game-player-identity.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -148,7 +149,16 @@ export const joinPartyRoomFn = createServerFn({ method: "POST" })
         data.presenterToken === undefined ? undefined : credential(data.presenterToken),
     };
   })
-  .handler(({ data }) => joinPartyRoom(data));
+  .handler(async ({ data }) => {
+    const result = await joinPartyRoom(data);
+    if (result.ok)
+      await linkCurrentAttendeeGamePlayer({
+        gameKind: "spelling-party",
+        gameInstanceId: result.roomId,
+        gamePlayerId: result.playerId,
+      });
+    return result;
+  });
 
 export const readPartySnapshotFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

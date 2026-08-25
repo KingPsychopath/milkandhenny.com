@@ -1,6 +1,6 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
-import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { useBrowserGameNameForm } from "@/lib/client/browser-profile";
 
 const SHARED_MAX_NAME_LENGTH = 32;
 
@@ -16,14 +16,40 @@ export function useRememberedPlayerName(maxLength = SHARED_MAX_NAME_LENGTH) {
     name,
     setName,
     remember: rememberProfile,
-  } = useBrowserProfileForm({
+  } = useBrowserGameNameForm({
     maxNameLength: maxLength,
   });
+  const edited = useRef(false);
 
-  const remember = useCallback(
-    (value: string) => rememberProfile({ name: value }),
-    [rememberProfile],
+  useEffect(() => {
+    if (!loaded || name || edited.current) return;
+    let active = true;
+    void fetch("/api/attendee/session?view=name", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const body = (await response.json()) as { preferredName?: string | null };
+        return body.preferredName?.trim() || null;
+      })
+      .then((preferredName) => {
+        if (!active || edited.current || !preferredName || preferredName.length > maxLength) return;
+        setName(preferredName);
+        rememberProfile(preferredName);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [loaded, maxLength, name, rememberProfile, setName]);
+
+  const editName = useCallback(
+    (value: string) => {
+      edited.current = true;
+      setName(value);
+    },
+    [setName],
   );
 
-  return { loaded, name, setName, remember };
+  const remember = useCallback((value: string) => rememberProfile(value), [rememberProfile]);
+
+  return { loaded, name, setName: editName, remember };
 }

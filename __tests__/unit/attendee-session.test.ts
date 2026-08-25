@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   cookies: new Map<string, string>(),
   records: new Map<string, unknown>(),
+  linkedParticipants: [] as string[],
 }));
 
 vi.mock("@tanstack/react-start/server", () => ({
@@ -57,6 +58,10 @@ vi.mock("@/lib/platform/redis.server", () => ({
   }),
 }));
 
+vi.mock("@/lib/platform/postgres.server", () => ({
+  query: async () => state.linkedParticipants.map((id) => ({ id })),
+}));
+
 vi.mock("@/features/events/store.server", () => ({
   getEvent: async (slug: string) =>
     slug === "session-night" ? { slug, eventId: "evt_session" } : null,
@@ -81,6 +86,7 @@ vi.mock("@/features/event-scoring/store.server", () => ({
 
 import {
   attendeeSessionSummaries,
+  activeParticipantForEvent,
   authenticateAttendeeSession,
   getAttendeeSession,
   openAttendeeTicket,
@@ -92,6 +98,7 @@ describe("attendee session authentication", () => {
   beforeEach(() => {
     state.cookies.clear();
     state.records.clear();
+    state.linkedParticipants = [];
   });
 
   it("rotates on verification and sign-out without losing selected tickets", async () => {
@@ -172,6 +179,18 @@ describe("attendee session authentication", () => {
         expect.objectContaining({ ticketId: "01ARZ3NDEKTSV4RT", mode: "scoring" }),
       ]),
     );
+  });
+
+  it("uses a signed-in person's sole claimed event place without asking again", async () => {
+    await authenticateAttendeeSession({
+      personId: "person_session",
+      verifiedEmailHash: "a".repeat(64),
+    });
+    state.linkedParticipants = ["participant_claimed"];
+    expect(await activeParticipantForEvent("session-night")).toBe("participant_claimed");
+
+    state.linkedParticipants = ["participant_claimed", "participant_other"];
+    expect(await activeParticipantForEvent("session-night")).toBeUndefined();
   });
 
   it("summarizes and revokes every authenticated session for one person", async () => {

@@ -3020,6 +3020,42 @@ const MIGRATIONS: Migration[] = [
         on admin_notification_reads (actor_type, actor_id, read_at desc);
     `,
   },
+  {
+    id: "0061_person_game_history",
+    sql: `
+      create table person_game_sessions (
+        id             text primary key,
+        person_id      text not null references event_people (id) on delete cascade,
+        game           text not null check (char_length(game) between 1 and 80),
+        mode           text not null check (mode in ('daily','room','event')),
+        external_ref   text not null check (char_length(external_ref) between 1 and 200),
+        display_name   text check (display_name is null or char_length(display_name) between 1 and 120),
+        status         text not null default 'active'
+                         check (status in ('active','completed','abandoned')),
+        outcome        text check (outcome is null or char_length(outcome) between 1 and 40),
+        score          integer,
+        summary        jsonb not null default '{}'::jsonb,
+        started_at     timestamptz not null default now(),
+        last_played_at timestamptz not null default now(),
+        completed_at   timestamptz,
+        unique (person_id, game, mode, external_ref)
+      );
+      create index person_game_sessions_person_idx
+        on person_game_sessions (person_id, last_played_at desc);
+
+      create table person_game_events (
+        id          text primary key,
+        session_id  text not null references person_game_sessions (id) on delete cascade,
+        event_key   text not null check (char_length(event_key) between 1 and 200),
+        kind        text not null check (char_length(kind) between 1 and 80),
+        payload     jsonb not null default '{}'::jsonb,
+        occurred_at timestamptz not null default now(),
+        unique (session_id, event_key)
+      );
+      create index person_game_events_session_idx
+        on person_game_events (session_id, occurred_at asc);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

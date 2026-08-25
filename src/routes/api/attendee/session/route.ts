@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   attendeeAccount,
   attendeeEmailStepUpRequired,
+  attendeePreferredName,
   updateAttendeeName,
 } from "@/features/attendee-access/access.server";
 import {
@@ -16,6 +17,13 @@ async function handleGET(request: Request): Promise<Response> {
     const session = await getAttendeeSession();
     if (!session?.personId)
       return Response.json({ authenticated: false, emailStepUpRequired: true });
+    const view = new URL(request.url).searchParams.get("view");
+    if (view === "status") return Response.json({ authenticated: true });
+    if (view === "name")
+      return Response.json({
+        authenticated: true,
+        preferredName: await attendeePreferredName(session.personId),
+      });
     const account = await attendeeAccount(session.personId);
     return Response.json({
       authenticated: Boolean(account),
