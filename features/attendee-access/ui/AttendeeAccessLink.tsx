@@ -9,10 +9,30 @@ export function AttendeeAccessLink() {
     pathname === "/my" || pathname === "/access" || pathname.startsWith("/admin");
   const [safeGameScreen, setSafeGameScreen] = useState(false);
   const [nearTop, setNearTop] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const scrollFrame = useRef<number | null>(null);
 
-  useEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    if (hiddenSurface) {
+      setAuthenticated(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/attendee/session", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Account status unavailable");
+        return (await response.json()) as { authenticated?: boolean };
+      })
+      .then((body) => {
+        if (!cancelled) setAuthenticated(body.authenticated === true);
+      })
+      .catch(() => {
+        if (!cancelled) setAuthenticated(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hiddenSurface]);
 
   useEffect(() => {
     if (hiddenSurface) return;
@@ -48,15 +68,18 @@ export function AttendeeAccessLink() {
 
   if (hiddenSurface) return null;
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
-  return (
-    <Link
-      to="/my"
-      style={{
-        opacity: nearTop ? 1 : 0,
-        pointerEvents: hydrated && nearTop ? "auto" : "none",
-      }}
-      className="mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20"
-    >
+  const style = {
+    opacity: nearTop && authenticated !== null ? 1 : 0,
+    pointerEvents: nearTop && authenticated !== null ? ("auto" as const) : ("none" as const),
+  };
+  const className =
+    "mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20";
+  return authenticated ? (
+    <Link to="/my" style={style} className={className}>
+      account
+    </Link>
+  ) : (
+    <Link to="/access" search={{ returnTo: "/my" }} style={style} className={className}>
       account
     </Link>
   );

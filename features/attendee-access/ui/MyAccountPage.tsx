@@ -221,13 +221,21 @@ export function MyAccountPage() {
   }
 
   return (
-    <main id="main" className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14">
+    <main
+      id="main"
+      aria-busy={loading}
+      className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14"
+    >
       <Link to="/" className="font-mono text-micro theme-muted hover:text-foreground">
         ← milk &amp; henny
       </Link>
       <h1 className="mt-10 font-serif text-4xl">account</h1>
       {loading || !account ? (
-        <p className="mt-6 font-mono text-xs theme-muted">{message || "loading…"}</p>
+        message ? (
+          <p role="alert" className="mt-6 font-mono text-xs theme-muted">
+            {message}
+          </p>
+        ) : null
       ) : (
         <>
           <p className="mt-3 font-mono text-xs theme-muted">

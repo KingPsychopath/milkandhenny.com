@@ -6,6 +6,7 @@ test("anonymous account navigation reaches sign in without an error boundary", a
   await expect
     .poll(() => accountLink.evaluate((element) => getComputedStyle(element).pointerEvents))
     .toBe("auto");
+  expect(await accountLink.getAttribute("href")).toBe("/access?returnTo=%2Fmy");
   await page.evaluate(() => {
     (window as Window & { accountNavigationMarker?: string }).accountNavigationMarker =
       "same-document";
@@ -14,6 +15,7 @@ test("anonymous account navigation reaches sign in without an error boundary", a
 
   await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);
   await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "account" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "oops" })).toHaveCount(0);
   await expect
     .poll(() =>
