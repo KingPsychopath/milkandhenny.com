@@ -185,7 +185,9 @@ export type TicketPageResult =
       /** The shared album — the reason to come back to this page afterwards. */
       album: EventAlbumView;
       score?: {
+        participantId: string;
         points: number;
+        revision: number;
         rank: number;
         teamRank?: number;
         synchronizedAt: string;
@@ -287,7 +289,9 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       album,
       score: scoreResult?.ok
         ? {
+            participantId: scoreResult.value.participant.id,
             points: scoreResult.value.participant.balance,
+            revision: scoreResult.value.participant.revision,
             rank: scoreResult.value.rank,
             teamRank: scoreResult.value.teamRank,
             synchronizedAt: new Date().toISOString(),

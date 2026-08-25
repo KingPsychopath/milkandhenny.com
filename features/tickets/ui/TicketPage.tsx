@@ -20,6 +20,7 @@ import { RefundTicketButton } from "./RefundTicketButton";
 import { ShareTicketButton } from "./ShareTicketButton";
 import { AttendeeSessionControls } from "./AttendeeSessionControls";
 import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
+import { ScoreSyncStatus } from "./ScoreSyncStatus";
 
 /**
  * The ticket itself.
@@ -55,7 +56,9 @@ export function TicketPage({
   checkpointNames: string[];
   album: EventAlbumView;
   score?: {
+    participantId: string;
     points: number;
+    revision: number;
     rank: number;
     teamRank?: number;
     synchronizedAt: string;
@@ -414,7 +417,16 @@ export function TicketPage({
               )}
             </div>
             <p className="mt-4 font-mono text-micro theme-muted">
-              last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
+              <ScoreSyncStatus
+                snapshot={{
+                  eventSlug: event.slug,
+                  participantId: score.participantId,
+                  balance: score.points,
+                  revision: score.revision,
+                  synchronizedAt: score.synchronizedAt,
+                }}
+              />{" "}
+              · last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
             </p>
             {score.transactions.length > 0 && (
               <details className="mt-4">
