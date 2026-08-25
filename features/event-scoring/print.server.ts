@@ -2,6 +2,8 @@ import QRCode from "qrcode";
 import jsQR from "jsqr";
 import sharp from "sharp";
 import { deflateSync, inflateSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 
 import { getEvent } from "@/features/events/store.server";
 import { BASE_URL } from "@/lib/shared/config";
@@ -389,6 +391,7 @@ function compilePdf(objects: PdfObject[], rootId: number): Buffer {
 export function inspectRenderedPrintPdf(pdf: Buffer): {
   pageSizes: Array<[number, number]>;
   qrDestinations: string[];
+  embeddedFontCount: number;
 } {
   const latin = pdf.toString("latin1");
   const pageSizes = [
@@ -419,7 +422,37 @@ export function inspectRenderedPrintPdf(pdf: Buffer): {
     qrDestinations.push(decoded.data);
     cursor = streamMarker + 7 + length;
   }
-  return { pageSizes, qrDestinations };
+  return {
+    pageSizes,
+    qrDestinations,
+    embeddedFontCount: [...latin.matchAll(/\/FontFile2\s+\d+\s+0\s+R/g)].length,
+  };
+}
+
+const require = createRequire(import.meta.url);
+
+async function loadPrintFonts() {
+  const resolve = (name: string) =>
+    require.resolve(`pdfjs-dist/standard_fonts/LiberationSans-${name}.ttf`);
+  return Promise.all([readFile(resolve("Regular")), readFile(resolve("Bold"))]);
+}
+
+function embeddedTrueTypeFont(input: {
+  add: (object: PdfObject) => number;
+  bytes: Buffer;
+  name: string;
+  bold: boolean;
+}) {
+  const fileId = input.add(
+    streamObject(`/Filter /FlateDecode /Length1 ${input.bytes.length}`, deflateSync(input.bytes)),
+  );
+  const descriptorId = input.add(
+    `<< /Type /FontDescriptor /FontName /${input.name} /Flags 32 /FontBBox [-543 -303 1301 981] /ItalicAngle 0 /Ascent 905 /Descent -212 /CapHeight 728 /StemV ${input.bold ? 120 : 80} /FontFile2 ${fileId} 0 R >>`,
+  );
+  const widths = Array.from({ length: 95 }, () => 600).join(" ");
+  return input.add(
+    `<< /Type /Font /Subtype /TrueType /BaseFont /${input.name} /FirstChar 32 /LastChar 126 /Widths [${widths}] /Encoding /WinAnsiEncoding /FontDescriptor ${descriptorId} 0 R >>`,
+  );
 }
 
 /** Render a self-contained PDF in the Node runtime. QR source images are validated first. */
@@ -440,9 +473,20 @@ export async function renderDiscoveryPrintPdf(input: {
   const add = (object: PdfObject) => (objects.push(object), objects.length);
   const catalogId = add("");
   const pagesId = add("");
-  const regularFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  const boldFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  const monoFontId = add("<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>");
+  const [regularFont, boldFont] = await loadPrintFonts();
+  const regularFontId = embeddedTrueTypeFont({
+    add,
+    bytes: regularFont,
+    name: "MAHLiberationSans",
+    bold: false,
+  });
+  const boldFontId = embeddedTrueTypeFont({
+    add,
+    bytes: boldFont,
+    name: "MAHLiberationSans-Bold",
+    bold: true,
+  });
+  const monoFontId = regularFontId;
   const pageIds: number[] = [];
 
   for (let offset = 0; offset < input.pack.items.length; offset += pageCapacity) {

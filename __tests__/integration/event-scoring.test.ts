@@ -888,6 +888,7 @@ describeWithDatabase("event scoring postgres", () => {
     expect(inspectRenderedPrintPdf(pdf)).toEqual({
       pageSizes: [[595.28, 841.89]],
       qrDestinations: printPack.pack.items.map((item) => item.destination),
+      embeddedFontCount: 2,
     });
     for (const [paper, dimensions] of Object.entries({
       a4: [595.28, 841.89],
