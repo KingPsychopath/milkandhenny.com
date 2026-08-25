@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ATTENDEE_CAPABILITIES, type CapabilityMap } from "@/features/attendee-operations/types";
+import { AdminAccessSettings } from "./AdminAccessSettings";
+import { AlertSettings } from "./AlertSettings";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type SettingsResponse = {
@@ -230,6 +232,20 @@ export function AttendeeSettingsPanel({
           </div>
         ) : null}
       </div>
+      <AdminAccessSettings
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        ensureStepUpToken={ensureStepUpToken}
+        withStepUpHeaders={withStepUpHeaders}
+      />
+      <AlertSettings
+        authFetch={authFetch}
+        onError={onError}
+        onStatus={onStatus}
+        ensureStepUpToken={ensureStepUpToken}
+        withStepUpHeaders={withStepUpHeaders}
+      />
     </section>
   );
 }

@@ -1,7 +1,12 @@
 import { Effect } from "effect";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import {
+  requireAdminStepUp,
+  requireAuth,
+  requireAuthWithPayload,
+} from "@/features/auth/auth.server";
+import { runEventCancellation } from "@/features/event-operations/cancellation.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
@@ -39,26 +44,43 @@ async function handleGET(request: Request, slug: string) {
 }
 
 async function handlePATCH(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
-  if (authErr) return authErr;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
 
   try {
     const body: unknown = await request.json().catch(() => null);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
+    const record = body as Record<string, unknown>;
+    const cancelling = record.status === "cancelled";
+    if (cancelling) {
+      const stepUp = await requireAdminStepUp(request);
+      if (stepUp) return stepUp;
+      if (typeof record.cancellationReason !== "string" || !record.cancellationReason.trim())
+        return Response.json({ error: "A cancellation reason is required" }, { status: 400 });
+    }
 
     const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
-        return yield* events.update(slug, body as Record<string, unknown>);
+        return yield* events.update(slug, record);
       }),
     );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     if (!result.value.ok) {
       return Response.json({ error: result.value.error }, { status: result.value.status });
     }
-    return Response.json({ event: result.value.value });
+    const cancellation = cancelling
+      ? await runEventCancellation({
+          eventSlug: result.value.value.slug,
+          actorId: auth.actorId ?? "root-owner",
+          actorType: auth.actorType === "admin" ? "admin" : "root-owner",
+          reason: record.cancellationReason as string,
+          origin: new URL(request.url).origin,
+        })
+      : undefined;
+    return Response.json({ event: result.value.value, cancellation });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.update", "Failed to update event", error);
   }

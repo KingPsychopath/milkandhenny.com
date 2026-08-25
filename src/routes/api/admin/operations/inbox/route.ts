@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAuth } from "@/features/auth/auth.server";
+import { requireAuth, requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
   listAdminInbox,
   updateAdminNotification,
@@ -29,8 +29,8 @@ async function handleGET(request: Request) {
 }
 
 async function handlePATCH(request: Request) {
-  const auth = await requireAuth(request, "admin");
-  if (auth) return auth;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
   try {
     const body = (await request.json().catch(() => null)) as {
       id?: unknown;
@@ -51,7 +51,8 @@ async function handlePATCH(request: Request) {
     const updated = await updateAdminNotification({
       id: body.id,
       status: body.status as AdminInboxItem["status"],
-      actorId: "root-owner",
+      actorId: auth.actorId ?? "root-owner",
+      actorType: auth.actorType === "admin" ? "admin" : "root-owner",
       reason: typeof body.reason === "string" ? body.reason : undefined,
     });
     return updated

@@ -45,6 +45,45 @@ export function useAdminAuth() {
       return { ok: true, token: "local-dev-step-up" };
     }
 
+    const requestStepUp = async (password?: string) => {
+      const res = await authFetch("/api/admin/step-up", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(password ? { password } : {}),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        token?: unknown;
+        error?: unknown;
+        code?: unknown;
+        returnTo?: unknown;
+        expiresInSeconds?: unknown;
+      };
+      return { res, data };
+    };
+
+    let { res, data } = await requestStepUp();
+    if (data.code === "FRESH_EMAIL_REQUIRED") {
+      const returnTo = typeof data.returnTo === "string" ? data.returnTo : "/admin";
+      window.location.assign(`/access?returnTo=${encodeURIComponent(returnTo)}`);
+      return { ok: false, cancelled: true };
+    }
+    if (data.code !== "PASSWORD_REQUIRED") {
+      const token = typeof data.token === "string" ? data.token : "";
+      if (!res.ok || !token) {
+        return {
+          ok: false,
+          error: typeof data.error === "string" ? data.error : "Step-up verification failed",
+        };
+      }
+      const expiresInSeconds =
+        typeof data.expiresInSeconds === "number" && data.expiresInSeconds > 0
+          ? data.expiresInSeconds
+          : 300;
+      stepUpTokenRef.current = token;
+      stepUpExpiryMsRef.current = Date.now() + expiresInSeconds * 1000;
+      return { ok: true, token };
+    }
+
     const password = await promptStepUp({
       eyebrow: "security check",
       title: "Confirm it’s you",
@@ -57,17 +96,7 @@ export function useAdminAuth() {
     });
     if (!password) return { ok: false, cancelled: true };
 
-    const res = await authFetch("/api/admin/step-up", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-
-    const data = (await res.json().catch(() => ({}))) as {
-      token?: unknown;
-      error?: unknown;
-      expiresInSeconds?: unknown;
-    };
+    ({ res, data } = await requestStepUp(password));
     const token = typeof data.token === "string" ? data.token : "";
     if (!res.ok || !token) {
       return {

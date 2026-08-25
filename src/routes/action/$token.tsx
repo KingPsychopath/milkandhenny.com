@@ -4,23 +4,46 @@ import { createServerFn } from "@tanstack/react-start";
 
 import {
   acceptTicketAction,
+  acceptRefundConsent,
+  declineRefundConsent,
   declineTicketTransfer,
   inspectTicketAction,
 } from "@/features/attendee-operations/ticket-operations.server";
+import {
+  acceptAccessAction,
+  inspectAccessAction,
+} from "@/features/attendee-operations/access-grants.server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 const readAction = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
-  .handler(({ data }) => inspectTicketAction(data.token));
+  .handler(async ({ data }) => {
+    const ticket = await inspectTicketAction(data.token);
+    if (ticket) return { kind: "ticket" as const, ...ticket };
+    const access = await inspectAccessAction(data.token);
+    return access ? { kind: "access" as const, ...access } : null;
+  });
 
 const acceptAction = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
-  .handler(({ data }) => acceptTicketAction(data.token));
+  .handler(async ({ data }) => {
+    const access = await inspectAccessAction(data.token);
+    if (access) return acceptAccessAction(data.token);
+    const ticket = await inspectTicketAction(data.token);
+    return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
+      ? acceptRefundConsent(data.token)
+      : acceptTicketAction(data.token);
+  });
 
 const declineAction = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
-  .handler(({ data }) => declineTicketTransfer(data.token));
+  .handler(async ({ data }) => {
+    const ticket = await inspectTicketAction(data.token);
+    return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
+      ? declineRefundConsent(data.token)
+      : declineTicketTransfer(data.token);
+  });
 
 export const Route = createFileRoute("/action/$token")({
   loader: ({ params }) => readAction({ data: { token: params.token } }),
@@ -51,12 +74,28 @@ function TicketActionPage() {
       setBusy(null);
       return;
     }
-    setDestination(`/ticket/${result.value.publicTicketId}`);
-    setMessage(
-      result.value.purpose === "ticket-transfer"
-        ? "Transfer accepted. The previous ticket link and QR have been replaced."
-        : "Ticket claimed. It is now saved in You.",
-    );
+    if ("destination" in result.value) {
+      setDestination(result.value.destination);
+      setMessage(
+        result.value.purpose === "admin-invitation"
+          ? "Admin access activated. It is now attached to your verified identity."
+          : "Staff access activated. It is now attached to your verified identity.",
+      );
+    } else if ("publicTicketId" in result.value) {
+      setDestination(`/ticket/${result.value.publicTicketId}`);
+      setMessage(
+        result.value.purpose === "ticket-transfer"
+          ? "Transfer accepted. The previous ticket link and QR have been replaced."
+          : "Ticket claimed. It is now saved in You.",
+      );
+    } else {
+      setDestination("/my");
+      setMessage(
+        result.value.state === "pending"
+          ? "Consent recorded. The refund is processing to the purchaser’s original payment method."
+          : "Consent recorded. The ticket was refunded to the purchaser’s original payment method.",
+      );
+    }
     setBusy(null);
   }
 
@@ -65,14 +104,28 @@ function TicketActionPage() {
     setMessage("");
     const result = await declineAction({ data: { token } });
     setMessage(
-      result.ok ? "Transfer declined. The current holder keeps the ticket." : result.error,
+      result.ok
+        ? isRefundConsent
+          ? "Refund consent declined. The ticket remains with its current holder."
+          : "Transfer declined. The current holder keeps the ticket."
+        : result.error,
     );
     setBusy(null);
   }
 
   const unavailable = !preview || preview.state !== "available";
+  const isAccess = preview?.kind === "access";
+  const isRefundConsent =
+    preview?.kind === "ticket" &&
+    (preview.purpose === "refund-consent" || preview.purpose === "ticket-return");
   const actionLabel =
-    preview?.purpose === "ticket-assignment" ? "use this ticket" : "accept transfer";
+    preview?.purpose === "ticket-assignment"
+      ? "use this ticket"
+      : isAccess
+        ? "accept access"
+        : isRefundConsent
+          ? "consent to refund"
+          : "accept transfer";
 
   return (
     <main id="main" className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14">
@@ -80,10 +133,16 @@ function TicketActionPage() {
         ← milk &amp; henny
       </Link>
       <p className="mt-10 font-mono text-micro uppercase tracking-widest theme-muted">
-        private ticket action
+        private action
       </p>
       <h1 className="mt-2 font-serif text-4xl">
-        {preview?.purpose === "ticket-assignment" ? "Your ticket" : "Ticket transfer"}
+        {isAccess
+          ? preview.title
+          : isRefundConsent
+            ? "Ticket refund consent"
+            : preview?.purpose === "ticket-assignment"
+              ? "Your ticket"
+              : "Ticket transfer"}
       </h1>
 
       {!preview ? (
@@ -105,13 +164,20 @@ function TicketActionPage() {
       ) : (
         <section className="mt-8 border-y theme-border py-6" aria-labelledby="action-summary">
           <h2 id="action-summary" className="font-serif text-2xl">
-            {preview.eventTitle}
+            {isAccess ? preview.label : preview.eventTitle}
           </h2>
           <dl className="mt-4 space-y-3 font-mono text-xs">
-            <div>
-              <dt className="theme-muted">ticket</dt>
-              <dd className="mt-1">{preview.ticketLabel}</dd>
-            </div>
+            {preview.kind === "ticket" ? (
+              <div>
+                <dt className="theme-muted">ticket</dt>
+                <dd className="mt-1">{preview.ticketLabel}</dd>
+              </div>
+            ) : preview.eventSlug ? (
+              <div>
+                <dt className="theme-muted">event</dt>
+                <dd className="mt-1">{preview.eventSlug}</dd>
+              </div>
+            ) : null}
             <div>
               <dt className="theme-muted">invited email</dt>
               <dd className="mt-1">{preview.intendedEmailHint}</dd>
@@ -122,8 +188,11 @@ function TicketActionPage() {
             </div>
           </dl>
           <p className="mt-5 max-w-lg font-mono text-xs leading-relaxed theme-muted">
-            Accepting verifies the invited email and saves the ticket to You. A transfer replaces
-            the previous holder&apos;s link and QR. It does not move payment or refund ownership.
+            {isAccess
+              ? "Accepting verifies the invited mailbox and attaches this authority to that person. If another person is signed in, their identity is not merged or changed."
+              : isRefundConsent
+                ? "The purchaser requested this refund. Consenting cancels this ticket and returns money only to the purchaser’s original payment method."
+                : "Accepting verifies the invited email and saves the ticket to You. A transfer replaces the previous holder’s link and QR. It does not move payment or refund ownership."}
           </p>
           {!destination ? (
             <div className="mt-6 flex flex-wrap gap-3">
@@ -135,14 +204,19 @@ function TicketActionPage() {
               >
                 {busy === "accept" ? "confirming…" : actionLabel}
               </button>
-              {preview.purpose === "ticket-transfer" ? (
+              {preview.kind === "ticket" &&
+              (preview.purpose === "ticket-transfer" || isRefundConsent) ? (
                 <button
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void decline()}
                   className="min-h-11 border theme-border px-4 py-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
                 >
-                  {busy === "decline" ? "declining…" : "decline"}
+                  {busy === "decline"
+                    ? "declining…"
+                    : isRefundConsent
+                      ? "do not consent"
+                      : "decline"}
                 </button>
               ) : null}
             </div>

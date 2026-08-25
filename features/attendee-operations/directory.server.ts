@@ -12,11 +12,27 @@ export type PersonDirectoryEntry = {
     status: string;
     orderId: string;
     participantId?: string;
+    checkedInAt?: string;
+    amountPaidMinor?: number;
+    currency?: string;
+    supportNote?: string;
+    otherOrderTickets: number;
+    scoreBalance: number;
+    transferHistory: Array<{ status: string; recipientEmailHint: string; createdAt: string }>;
+    returnHistory: Array<{
+      status: string;
+      amountMinor?: number;
+      currency?: string;
+      createdAt: string;
+    }>;
+    exchanges: Array<{ status: string; amountDeltaMinor: number; createdAt: string }>;
+    communication: { total: number; failed: number };
   }>;
   globalRoles: Array<{ role: string; status: string; expiresAt?: string }>;
   eventRoles: Array<{ eventSlug: string; label: string; status: string; expiresAt?: string }>;
   pendingInvitations: number;
   staffDevices: number;
+  auditTimeline: Array<{ action: string; actorType: string; reason?: string; createdAt: string }>;
 };
 
 export async function searchPeople(queryText: string, limit = 30): Promise<PersonDirectoryEntry[]> {
@@ -57,9 +73,16 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
       status: string;
       order_id: string;
       participant_id: string;
+      checked_in_at: Date | null;
+      amount_paid_minor: number | null;
+      currency: string | null;
+      notes: string | null;
+      other_order_tickets: string;
     }>(
       `select participant.person_id,ticket.id,ticket.event_slug,event.title as event_title,
-              ticket.holder_name,ticket.status,ticket.order_id,participant.id as participant_id
+              ticket.holder_name,ticket.status,ticket.order_id,participant.id as participant_id,
+              participant.checked_in_at,ticket.amount_paid_minor,ticket.currency,ticket.notes,
+              (select count(*) - 1 from tickets sibling where sibling.order_id = ticket.order_id)::text as other_order_tickets
          from event_participants participant
          join tickets ticket on ticket.id = participant.ticket_id
          join events event on event.slug = ticket.event_slug
@@ -99,6 +122,63 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
       [ids],
     ),
   ]);
+  const ticketIds = tickets.map((ticket) => ticket.id);
+  const participantIds = tickets.map((ticket) => ticket.participant_id);
+  const [transfers, returns, exchanges, scores, communications, audit] = ticketIds.length
+    ? await Promise.all([
+        query<{
+          ticket_id: string;
+          status: string;
+          recipient_email_hint: string;
+          created_at: Date;
+        }>(
+          `select ticket_id,status,recipient_email_hint,created_at from ticket_transfers
+            where ticket_id = any($1::text[]) order by created_at desc`,
+          [ticketIds],
+        ),
+        query<{
+          ticket_id: string;
+          status: string;
+          amount_minor: number | null;
+          currency: string | null;
+          created_at: Date;
+        }>(
+          `select ticket_id,status,amount_minor,currency,created_at from ticket_return_requests
+            where ticket_id = any($1::text[]) order by created_at desc`,
+          [ticketIds],
+        ),
+        query<{ ticket_id: string; status: string; amount_delta_minor: number; created_at: Date }>(
+          `select ticket_id,status,amount_delta_minor,created_at from ticket_exchanges
+            where ticket_id = any($1::text[]) order by created_at desc`,
+          [ticketIds],
+        ),
+        query<{ participant_id: string; balance: number }>(
+          `select participant_id,balance from score_projections where participant_id = any($1::text[])`,
+          [participantIds],
+        ),
+        query<{ ticket_id: string; total: string; failed: string }>(
+          `select context->>'ticketId' as ticket_id,count(*)::text as total,
+                  count(*) filter (where status = 'failed')::text as failed
+             from email_outbox
+            where context->>'ticketId' = any($1::text[])
+            group by context->>'ticketId'`,
+          [ticketIds],
+        ),
+        query<{
+          entity_id: string;
+          action: string;
+          actor_type: string;
+          reason: string | null;
+          created_at: Date;
+        }>(
+          `select entity_id,action,actor_type,reason,created_at from attendee_operations_audit_events
+            where (entity_type = 'person' and entity_id = any($1::text[]))
+               or (entity_type = 'ticket' and entity_id = any($2::text[]))
+            order by created_at desc limit 100`,
+          [ids, ticketIds],
+        ),
+      ])
+    : [[], [], [], [], [], []];
   return people.map((person) => ({
     personId: person.id,
     canonicalName: person.canonical_name ?? undefined,
@@ -115,6 +195,39 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         status: ticket.status,
         orderId: ticket.order_id,
         participantId: ticket.participant_id,
+        checkedInAt: ticket.checked_in_at?.toISOString(),
+        amountPaidMinor: ticket.amount_paid_minor ?? undefined,
+        currency: ticket.currency ?? undefined,
+        supportNote: ticket.notes ?? undefined,
+        otherOrderTickets: Number(ticket.other_order_tickets) || 0,
+        scoreBalance:
+          scores.find((score) => score.participant_id === ticket.participant_id)?.balance ?? 0,
+        transferHistory: transfers
+          .filter((transfer) => transfer.ticket_id === ticket.id)
+          .map((transfer) => ({
+            status: transfer.status,
+            recipientEmailHint: transfer.recipient_email_hint,
+            createdAt: transfer.created_at.toISOString(),
+          })),
+        returnHistory: returns
+          .filter((request) => request.ticket_id === ticket.id)
+          .map((request) => ({
+            status: request.status,
+            amountMinor: request.amount_minor ?? undefined,
+            currency: request.currency ?? undefined,
+            createdAt: request.created_at.toISOString(),
+          })),
+        exchanges: exchanges
+          .filter((exchange) => exchange.ticket_id === ticket.id)
+          .map((exchange) => ({
+            status: exchange.status,
+            amountDeltaMinor: exchange.amount_delta_minor,
+            createdAt: exchange.created_at.toISOString(),
+          })),
+        communication: (() => {
+          const row = communications.find((item) => item.ticket_id === ticket.id);
+          return { total: Number(row?.total) || 0, failed: Number(row?.failed) || 0 };
+        })(),
       })),
     globalRoles: globalRoles
       .filter((grant) => grant.person_id === person.id)
@@ -133,5 +246,17 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
       })),
     pendingInvitations: Number(invitations.find((row) => row.person_id === person.id)?.count) || 0,
     staffDevices: Number(devices.find((row) => row.person_id === person.id)?.count) || 0,
+    auditTimeline: audit
+      .filter(
+        (event) =>
+          event.entity_id === person.id ||
+          tickets.some((ticket) => ticket.person_id === person.id && ticket.id === event.entity_id),
+      )
+      .map((event) => ({
+        action: event.action,
+        actorType: event.actor_type,
+        reason: event.reason ?? undefined,
+        createdAt: event.created_at.toISOString(),
+      })),
   }));
 }

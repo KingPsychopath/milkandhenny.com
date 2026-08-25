@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
-import { requireAuth } from "@/features/auth/auth.server";
+import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { runPitchesResult } from "@/features/things/pitches/pitches-runtime.server";
 import { PitchesService } from "@/features/things/pitches/pitches-service.server";
 import {
@@ -196,6 +196,8 @@ async function handlePATCH(request: Request) {
 async function handleDELETE(request: Request) {
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
+  const stepUpError = await requireAdminStepUp(request);
+  if (stepUpError) return stepUpError;
   try {
     const body = (await request.json()) as Record<string, unknown>;
     if (

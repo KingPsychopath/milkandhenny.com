@@ -120,6 +120,7 @@ export async function updateGlobalOperationsSettings(input: {
   section: "globalAvailability" | "newEventDefaults" | "emergencyPaused";
   values: Partial<CapabilityMap>;
   actorId: string;
+  actorType: "root-owner" | "admin";
   reason?: string;
 }): Promise<GlobalOperationsSettings> {
   if (
@@ -159,8 +160,9 @@ export async function updateGlobalOperationsSettings(input: {
     await client.query(
       `insert into attendee_operations_audit_events
          (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason,correlation_id)
-       values ('settings.global.updated','root-owner',$1,'settings','global',$2::jsonb,$3::jsonb,$4,$5)`,
+       values ('settings.global.updated',$1,$2,'settings','global',$3::jsonb,$4::jsonb,$5,$6)`,
       [
+        input.actorType,
         input.actorId,
         JSON.stringify({ section: input.section, values: base }),
         JSON.stringify({ section: input.section, values: next }),
@@ -178,6 +180,7 @@ export async function updateEventOperationsPolicy(input: {
   transferOpensAt?: string | null;
   transferClosesAt?: string | null;
   actorId: string;
+  actorType: "root-owner" | "admin";
   reason?: string;
 }): Promise<EventOperationsPolicy> {
   await getEventOperationsPolicy(input.eventSlug);
@@ -224,8 +227,9 @@ export async function updateEventOperationsPolicy(input: {
     await client.query(
       `insert into attendee_operations_audit_events
          (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason,correlation_id)
-       values ('settings.event.updated','admin',$1,$2,'event-policy',$2,$3::jsonb,$4::jsonb,$5,$6)`,
+       values ('settings.event.updated',$1,$2,$3,'event-policy',$3,$4::jsonb,$5::jsonb,$6,$7)`,
       [
+        input.actorType,
         input.actorId,
         input.eventSlug,
         JSON.stringify(current),

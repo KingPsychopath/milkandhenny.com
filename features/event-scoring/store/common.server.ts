@@ -105,6 +105,12 @@ export type StaffAssignmentRow = {
   status: string;
   expires_at: Date | null;
   revoked_at: Date | null;
+  role_preset?: string | null;
+  invitation_state?: string;
+  invited_email_hash?: string | null;
+  invitation_link_id?: string | null;
+  activated_at?: Date | null;
+  last_used_at?: Date | null;
 };
 
 export type StoredStaffAssignment = {
@@ -118,6 +124,10 @@ export type StoredStaffAssignment = {
   status: StaffAssignmentStatus;
   expiresAt?: string;
   revokedAt?: string;
+  rolePreset?: string;
+  invitationState: "pending" | "active" | "declined" | "expired" | "revoked";
+  activatedAt?: string;
+  lastUsedAt?: string;
 };
 
 export type StoredStaffDevice = {

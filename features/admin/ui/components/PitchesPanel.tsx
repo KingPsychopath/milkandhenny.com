@@ -111,10 +111,16 @@ export function PitchesPanel({
   authFetch,
   onError,
   onStatus,
+  ensureStepUpToken,
+  withStepUpHeaders,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
+  ensureStepUpToken: () => Promise<
+    { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
+  >;
+  withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
   const [pitches, setPitches] = useState<PitchDeckAdminSummary[]>([]);
   const [detail, setDetail] = useState<PitchDetail>();
@@ -274,9 +280,14 @@ export function PitchesPanel({
     if (!detail || deleteConfirmation !== detail.pitch.title) return;
     setBusy("delete");
     try {
+      const stepUp = await ensureStepUpToken();
+      if (!stepUp.ok) {
+        if (!stepUp.cancelled) onError(stepUp.error ?? "Step-up verification failed");
+        return;
+      }
       const response = await authFetch("/api/admin/pitches", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        headers: withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }),
         body: JSON.stringify({
           deckId: detail.pitch.id,
           confirmation: deleteConfirmation,

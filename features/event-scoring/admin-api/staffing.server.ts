@@ -78,18 +78,19 @@ export const staffingActions: AdminScoringActionHandlers = {
     );
   },
 
-  "create-staff": async ({ eventSlug, actorId, body }) => {
+  "create-staff": async ({ request, eventSlug, actorId, body }) => {
     const label = stringValue(body.label);
     const preset = stringValue(body.preset);
+    const reason = stringValue(body.reason);
     const assignmentType =
       body.assignmentType === "station"
         ? "station"
         : body.assignmentType === "personal"
           ? "personal"
           : null;
-    if (!label || !preset || !assignmentType || !STAFF_PRESETS.has(preset))
+    if (!label || !preset || !assignmentType || !reason || !STAFF_PRESETS.has(preset))
       return Response.json(
-        { error: "Staff label, preset, and assignment type are required" },
+        { error: "Staff label, preset, assignment type, and reason are required" },
         { status: 400 },
       );
 
@@ -99,6 +100,7 @@ export const staffingActions: AdminScoringActionHandlers = {
       assignmentType,
       preset: preset as StaffPreset,
       actorId,
+      reason,
       overrides:
         body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
           ? Object.fromEntries(
@@ -113,15 +115,21 @@ export const staffingActions: AdminScoringActionHandlers = {
           ? (body.scope as Record<string, unknown>)
           : undefined,
       expiresAt: stringValue(body.expiresAt),
+      recipientEmail: stringValue(body.recipientEmail),
+      origin: new URL(request.url).origin,
     });
     return Response.json({ assignment }, { status: 201 });
   },
 
   "revoke-staff": async ({ eventSlug, actorId, body }) => {
     const assignmentId = stringValue(body.assignmentId);
-    if (!assignmentId)
-      return Response.json({ error: "Staff assignment is required" }, { status: 400 });
-    const revoked = await revokeStaffAccess({ eventSlug, assignmentId, actorId });
+    const reason = stringValue(body.reason);
+    if (!assignmentId || !reason)
+      return Response.json(
+        { error: "Staff assignment and revocation reason are required" },
+        { status: 400 },
+      );
+    const revoked = await revokeStaffAccess({ eventSlug, assignmentId, actorId, reason });
     return revoked
       ? Response.json({ revoked: true })
       : Response.json({ error: "Active staff assignment not found" }, { status: 404 });
@@ -130,9 +138,19 @@ export const staffingActions: AdminScoringActionHandlers = {
   "revoke-staff-device": async ({ eventSlug, actorId, body }) => {
     const assignmentId = stringValue(body.assignmentId);
     const deviceId = stringValue(body.deviceId);
-    if (!assignmentId || !deviceId)
-      return Response.json({ error: "Staff assignment and device are required" }, { status: 400 });
-    const revoked = await revokeStaffAccessDevice({ eventSlug, assignmentId, deviceId, actorId });
+    const reason = stringValue(body.reason);
+    if (!assignmentId || !deviceId || !reason)
+      return Response.json(
+        { error: "Staff assignment, device, and revocation reason are required" },
+        { status: 400 },
+      );
+    const revoked = await revokeStaffAccessDevice({
+      eventSlug,
+      assignmentId,
+      deviceId,
+      actorId,
+      reason,
+    });
     return revoked
       ? Response.json({ revoked: true })
       : Response.json({ error: "Active staff device not found" }, { status: 404 });

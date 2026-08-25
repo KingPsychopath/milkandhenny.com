@@ -133,6 +133,10 @@ export function AdminDashboard({
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
   const [operationsAttention, setOperationsAttention] = useState(0);
+  const [operationsRecent, setOperationsRecent] = useState<
+    Array<{ id: string; title: string; status: string; deepLink: string }>
+  >([]);
+  const [attentionOpen, setAttentionOpen] = useState(false);
 
   const {
     authFetch,
@@ -187,9 +191,17 @@ export function AdminDashboard({
   useEffect(() => {
     void authFetch("/api/admin/operations/inbox")
       .then(async (response) =>
-        response.ok ? ((await response.json()) as { unresolved?: number }) : null,
+        response.ok
+          ? ((await response.json()) as {
+              unresolved?: number;
+              items?: Array<{ id: string; title: string; status: string; deepLink: string }>;
+            })
+          : null,
       )
-      .then((inbox) => setOperationsAttention(inbox?.unresolved ?? 0))
+      .then((inbox) => {
+        setOperationsAttention(inbox?.unresolved ?? 0);
+        setOperationsRecent(inbox?.items?.slice(0, 3) ?? []);
+      })
       .catch(() => undefined);
   }, [authFetch, view]);
 
@@ -260,14 +272,55 @@ export function AdminDashboard({
             private workspace
           </p>
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => onViewChange("operations")}
-              aria-label={`${operationsAttention} unresolved attendee operation${operationsAttention === 1 ? "" : "s"}`}
-              className="min-h-11 font-mono text-xs theme-muted hover:opacity-70"
-            >
-              attention{operationsAttention ? ` · ${operationsAttention}` : ""}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAttentionOpen((current) => !current)}
+                aria-expanded={attentionOpen}
+                aria-controls="operations-attention-popover"
+                aria-label={`${operationsAttention} unresolved attendee operation${operationsAttention === 1 ? "" : "s"}`}
+                className="min-h-11 font-mono text-xs theme-muted hover:opacity-70"
+              >
+                attention{operationsAttention ? ` · ${operationsAttention}` : ""}
+              </button>
+              {attentionOpen ? (
+                <section
+                  id="operations-attention-popover"
+                  aria-label="Recent operations needing attention"
+                  className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] border theme-border bg-background p-4 shadow-lg"
+                >
+                  <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                    recent items
+                  </p>
+                  {operationsRecent.length ? (
+                    <ul className="mt-2 divide-y theme-border">
+                      {operationsRecent.map((item) => (
+                        <li key={item.id} className="py-3">
+                          <a href={item.deepLink} className="block hover:opacity-70">
+                            <span className="block font-serif">{item.title}</span>
+                            <span className="mt-1 block font-mono text-micro theme-muted">
+                              {item.status}
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 font-mono text-xs theme-muted">Nothing needs attention.</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttentionOpen(false);
+                      onViewChange("operations");
+                    }}
+                    className="mt-3 min-h-11 font-mono text-xs underline hover:opacity-70"
+                  >
+                    open full inbox
+                  </button>
+                </section>
+              ) : null}
+            </div>
             <AdminCommandPalette onNavigate={onViewChange} />
           </div>
         </div>
@@ -330,6 +383,8 @@ export function AdminDashboard({
               authFetch={authFetch}
               onError={setErrorMessage}
               onStatus={setStatusMessage}
+              ensureStepUpToken={ensureStepUpTokenResult}
+              withStepUpHeaders={withStepUpHeaders}
             />
           </div>
         </section>

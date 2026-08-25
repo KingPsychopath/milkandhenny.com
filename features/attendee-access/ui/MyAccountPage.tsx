@@ -246,7 +246,13 @@ export function MyAccountPage() {
                     key={`${grant.kind}:${grant.eventSlug ?? "global"}:${grant.label}:${index}`}
                     className="py-4"
                   >
-                    <span>{grant.label.replaceAll("-", " ")}</span>
+                    {grant.href ? (
+                      <a href={grant.href} className="min-h-11 py-3 underline hover:opacity-70">
+                        {grant.label.replaceAll("-", " ")}
+                      </a>
+                    ) : (
+                      <span>{grant.label.replaceAll("-", " ")}</span>
+                    )}
                     <span className="ml-2 theme-muted">
                       {grant.eventSlug ? `· ${grant.eventSlug} ` : "· global "}· {grant.status}
                     </span>

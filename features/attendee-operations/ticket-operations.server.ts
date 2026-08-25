@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 
 import { authenticateAttendeeSession } from "@/features/event-scoring/session.server";
 import { generateTicketId } from "@/features/tickets/qr.server";
+import { refundTicket } from "@/features/tickets/checkout.server";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { sendEmail } from "@/lib/platform/email.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
@@ -15,8 +16,8 @@ import {
   inspectActionLink,
   maskActionEmail,
   revokeActionLink,
-  type ActionLinkRecord,
 } from "./action-links.server";
+import { createOrResolveInvitedPerson } from "./invited-person.server";
 import { emitDomainEvent } from "./notifications.server";
 import {
   capabilityMap,
@@ -47,37 +48,6 @@ function operationOrigin(origin?: string): string | null {
   return (
     origin?.trim() || process.env.APP_BASE_URL?.trim() || process.env.VITE_BASE_URL?.trim() || null
   );
-}
-
-async function createOrResolveInvitedPerson(
-  client: PoolClient,
-  link: ActionLinkRecord,
-): Promise<{ personId: string; identifierId: string }> {
-  const existing = await client.query<{ id: string; person_id: string }>(
-    `select id,person_id from event_person_identifiers
-      where kind = 'email' and value_hash = $1 for update`,
-    [link.intendedEmailHash],
-  );
-  const found = existing.rows[0];
-  if (found) {
-    await client.query(
-      `update event_person_identifiers
-          set verified_at = coalesce(verified_at, now()), display_hint = coalesce(display_hint, $2)
-        where id = $1`,
-      [found.id, link.intendedEmailHint],
-    );
-    return { personId: found.person_id, identifierId: found.id };
-  }
-  const personId = id("person");
-  const identifierId = id("identifier");
-  await client.query(`insert into event_people (id) values ($1)`, [personId]);
-  await client.query(
-    `insert into event_person_identifiers
-       (id,person_id,kind,value_hash,verified_at,display_hint)
-     values ($1,$2,'email',$3,now(),$4)`,
-    [identifierId, personId, link.intendedEmailHash, link.intendedEmailHint],
-  );
-  return { personId, identifierId };
 }
 
 function actionEmail(input: {
@@ -496,6 +466,281 @@ export async function requestTicketTransfer(input: {
   }
 }
 
+export async function requestTransferredTicketRefund(input: {
+  ticketId: string;
+  purchaserPersonId: string;
+  origin?: string;
+}): Promise<
+  TicketOperationResult<{ returnRequestId: string; expiresAt: string; emailQueued: boolean }>
+> {
+  const appOrigin = operationOrigin(input.origin);
+  if (!appOrigin) return { ok: false, status: 503, error: "Application URL is not configured" };
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60_000);
+  try {
+    const created = await transaction(async (client) => {
+      const selected = await client.query<{
+        event_slug: string;
+        order_id: string;
+        holder_name: string;
+        amount_paid_minor: number | null;
+        currency: string | null;
+        participant_id: string;
+        holder_person_id: string | null;
+        recipient_email: string | null;
+      }>(
+        `select ticket.event_slug,ticket.order_id,ticket.holder_name,ticket.amount_paid_minor,
+                ticket.currency,participant.id as participant_id,
+                participant.person_id as holder_person_id,
+                accepted.recipient_email
+           from tickets ticket
+           join event_participants participant on participant.ticket_id = ticket.id
+           join event_order_managers manager
+             on manager.order_id = ticket.order_id and manager.person_id = $2 and manager.status = 'active'
+           left join lateral (
+             select recipient_email from ticket_transfers
+              where ticket_id = ticket.id and status = 'accepted'
+              order by accepted_at desc limit 1
+           ) accepted on true
+          where ticket.id = $1 and ticket.status = 'valid' and ticket.redeemed_at is null
+          for update of ticket,participant`,
+        [input.ticketId, input.purchaserPersonId],
+      );
+      const ticket = selected.rows[0];
+      if (!ticket) throw new TicketOperationError(404, "Refundable managed ticket not found");
+      if (!ticket.holder_person_id || ticket.holder_person_id === input.purchaserPersonId)
+        throw new TicketOperationError(409, "This ticket does not need another holder's consent");
+      if (!ticket.recipient_email)
+        throw new TicketOperationError(409, "The current holder email needs admin review");
+      const active = await client.query(
+        `select 1 from ticket_return_requests
+          where ticket_id = $1 and status in ('awaiting-consent','confirmed','under-review','refund-pending')`,
+        [input.ticketId],
+      );
+      if (active.rowCount)
+        throw new TicketOperationError(409, "A return request is already active for this ticket");
+      const pendingTransfers = await client.query<{ action_link_id: string | null }>(
+        `update ticket_transfers
+            set status = 'invalidated',invalidated_at = now(),
+                invalidation_reason = 'refund-consent-requested',updated_at = now()
+          where ticket_id = $1 and status = 'pending' returning action_link_id`,
+        [input.ticketId],
+      );
+      for (const transfer of pendingTransfers.rows) {
+        if (transfer.action_link_id)
+          await revokeActionLink(client, transfer.action_link_id, "refund-consent-requested");
+      }
+      const returnRequestId = id("return");
+      const link = await issueActionLink(client, {
+        purpose: "refund-consent",
+        intendedEmail: ticket.recipient_email,
+        entityType: "ticket-return-request",
+        entityId: returnRequestId,
+        issuedByType: "attendee",
+        issuedById: input.purchaserPersonId,
+        expiresAt,
+      });
+      await client.query(
+        `insert into ticket_return_requests
+           (id,event_slug,ticket_id,purchaser_person_id,holder_person_id,initiated_by_person_id,
+            action_link_id,amount_minor,currency,status)
+         values ($1,$2,$3,$4,$5,$4,$6,$7,$8,'awaiting-consent')`,
+        [
+          returnRequestId,
+          ticket.event_slug,
+          input.ticketId,
+          input.purchaserPersonId,
+          ticket.holder_person_id,
+          link.id,
+          ticket.amount_paid_minor,
+          ticket.currency,
+        ],
+      );
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason,correlation_id)
+         values ('ticket.return.requested','attendee',$1,$2,'ticket-return-request',$3,null,
+                 $4::jsonb,'purchaser-requested-refund',$5)`,
+        [
+          input.purchaserPersonId,
+          ticket.event_slug,
+          returnRequestId,
+          JSON.stringify({ status: "awaiting-consent", ticketId: input.ticketId }),
+          randomUUID(),
+        ],
+      );
+      const eventRows = await client.query<{ title: string }>(
+        `select title from events where slug = $1`,
+        [ticket.event_slug],
+      );
+      return {
+        returnRequestId,
+        token: link.token,
+        recipient: ticket.recipient_email,
+        eventSlug: ticket.event_slug,
+        eventTitle: eventRows.rows[0]?.title ?? ticket.event_slug,
+        ticketLabel: ticket.holder_name,
+      };
+    });
+    const rendered = actionEmail({
+      origin: appOrigin,
+      recipient: created.recipient,
+      eventTitle: created.eventTitle,
+      ticketLabel: created.ticketLabel,
+      action: "return",
+      actionUrl: buildAppUrl(appOrigin, `/action/${created.token}`),
+      expiresAt,
+    });
+    const delivery = await sendEmail(
+      {
+        channel: "tickets",
+        to: created.recipient,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      },
+      {
+        idempotencyKey: `refund-consent:${created.returnRequestId}`,
+        kind: "ticket-return",
+        source: "self-service",
+        context: {
+          eventSlug: created.eventSlug,
+          ticketId: input.ticketId,
+          returnRequestId: created.returnRequestId,
+        },
+      },
+    );
+    if (!delivery.ok) {
+      await emitDomainEvent({
+        kind: "ticket.return_email_failed",
+        deduplicationKey: `ticket-return:${created.returnRequestId}:email-failed`,
+        actorType: "system",
+        eventSlug: created.eventSlug,
+        entityRefs: { ticketId: input.ticketId, returnRequestId: created.returnRequestId },
+        severity: "warning",
+        admin: {
+          title: "Refund consent email failed",
+          body: "The return request remains pending, but the current holder may not have its link.",
+          deepLink: `/admin?view=operations&ticket=${encodeURIComponent(input.ticketId)}`,
+          category: "refund-consent-email-failed",
+          createCase: true,
+        },
+      });
+    }
+    return {
+      ok: true,
+      value: {
+        returnRequestId: created.returnRequestId,
+        expiresAt: expiresAt.toISOString(),
+        emailQueued: delivery.ok,
+      },
+    };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "Refund consent could not be requested" };
+  }
+}
+
+export async function acceptRefundConsent(
+  token: string,
+): Promise<
+  TicketOperationResult<{ state: "succeeded" | "pending"; refunded: number; emailQueued: boolean }>
+> {
+  try {
+    const consumed = await consumeActionLink(token, async (client, link) => {
+      if (link.purpose !== "refund-consent")
+        throw new TicketOperationError(400, "This link is not a refund consent request");
+      const person = await createOrResolveInvitedPerson(client, link);
+      const rows = await client.query<{ id: string; ticket_id: string; event_slug: string }>(
+        `update ticket_return_requests
+            set status = 'confirmed',consented_at = now(),updated_at = now()
+          where id = $1 and holder_person_id = $2 and status = 'awaiting-consent'
+          returning id,ticket_id,event_slug`,
+        [link.entityId, person.personId],
+      );
+      const request = rows.rows[0];
+      if (!request)
+        throw new TicketOperationError(
+          409,
+          "This consent link does not match the ticket's current verified holder",
+        );
+      await client.query(`update attendee_action_links set consumed_by = $2 where id = $1`, [
+        link.id,
+        person.personId,
+      ]);
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason,correlation_id)
+         values ('ticket.return.consented','attendee',$1,$2,'ticket-return-request',$3,
+                 '{"status":"awaiting-consent"}'::jsonb,'{"status":"confirmed"}'::jsonb,
+                 'current-holder-consented',$4)`,
+        [person.personId, request.event_slug, request.id, randomUUID()],
+      );
+      return {
+        requestId: request.id,
+        ticketId: request.ticket_id,
+        personId: person.personId,
+        verifiedEmailHash: link.intendedEmailHash,
+      };
+    });
+    if (!consumed.ok) return consumed;
+    await authenticateAttendeeSession({
+      personId: consumed.value.personId,
+      verifiedEmailHash: consumed.value.verifiedEmailHash,
+    });
+    const refunded = await refundTicket({
+      ticketId: consumed.value.ticketId,
+      reason: "self-serve",
+      actorId: consumed.value.personId,
+      returnRequestId: consumed.value.requestId,
+    });
+    return refunded;
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "Refund consent could not be completed" };
+  }
+}
+
+export async function declineRefundConsent(
+  token: string,
+): Promise<TicketOperationResult<{ declined: true }>> {
+  try {
+    const consumed = await consumeActionLink(token, async (client, link) => {
+      if (link.purpose !== "refund-consent")
+        throw new TicketOperationError(400, "This link is not a refund consent request");
+      const person = await createOrResolveInvitedPerson(client, link);
+      const rows = await client.query<{ event_slug: string; ticket_id: string }>(
+        `update ticket_return_requests
+            set status = 'declined',resolved_at = now(),resolution_reason = 'holder-declined',updated_at = now()
+          where id = $1 and holder_person_id = $2 and status = 'awaiting-consent'
+          returning event_slug,ticket_id`,
+        [link.entityId, person.personId],
+      );
+      const row = rows.rows[0];
+      if (!row) throw new TicketOperationError(409, "This request is no longer available");
+      await client.query(`update attendee_action_links set consumed_by = $2 where id = $1`, [
+        link.id,
+        person.personId,
+      ]);
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason)
+         values ('ticket.return.declined','attendee',$1,$2,'ticket-return-request',$3,
+                 '{"status":"awaiting-consent"}'::jsonb,'{"status":"declined"}'::jsonb,
+                 'current-holder-declined')`,
+        [person.personId, row.event_slug, link.entityId],
+      );
+      return row;
+    });
+    return consumed.ok ? { ok: true, value: { declined: true } } : consumed;
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "Refund consent could not be declined" };
+  }
+}
+
 export async function acceptTicketAction(token: string): Promise<
   TicketOperationResult<{
     purpose: "ticket-assignment" | "ticket-transfer";
@@ -742,6 +987,37 @@ export async function inspectTicketAction(token: string): Promise<{
 } | null> {
   const link = await inspectActionLink(token);
   if (!link) return null;
+  if (link.purpose === "refund-consent" || link.purpose === "ticket-return") {
+    const rows = await query<{
+      status: string;
+      event_title: string;
+      holder_name: string;
+    }>(
+      `select request.status,event.title as event_title,ticket.holder_name
+         from ticket_return_requests request
+         join tickets ticket on ticket.id = request.ticket_id
+         join events event on event.slug = request.event_slug
+        where request.id = $1`,
+      [link.entityId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      purpose: link.purpose,
+      state:
+        link.expiresAt <= new Date().toISOString()
+          ? "expired"
+          : row.status === "awaiting-consent"
+            ? "available"
+            : row.status === "declined" || row.status === "cancelled" || row.status === "failed"
+              ? "cancelled"
+              : "completed",
+      eventTitle: row.event_title,
+      ticketLabel: row.holder_name,
+      intendedEmailHint: link.intendedEmailHint,
+      expiresAt: link.expiresAt,
+    };
+  }
   if (link.purpose !== "ticket-assignment" && link.purpose !== "ticket-transfer") {
     return null;
   }

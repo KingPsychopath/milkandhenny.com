@@ -32,6 +32,8 @@ export type AdminStaffAssignment = {
   label: string;
   assignmentType: "personal" | "station";
   status: string;
+  invitationState?: string;
+  rolePreset?: string;
   expiresAt?: string;
   permissions: Record<string, boolean>;
   scope: Record<string, unknown>;

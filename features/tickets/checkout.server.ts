@@ -954,6 +954,7 @@ export async function refundTicket(input: {
   ticketId: string;
   reason: "self-serve" | "admin";
   actorId?: string;
+  returnRequestId?: string;
 }): Promise<SelfRefundResult> {
   const prepared = await transaction(async (client) => {
     const selected = await client.query<{
@@ -991,12 +992,29 @@ export async function refundTicket(input: {
       `select 1 from ticket_transfers where ticket_id = $1 and status = 'accepted' limit 1`,
       [ticket.id],
     );
-    if (acceptedTransfer.rowCount)
-      return {
-        ok: false as const,
-        status: 409,
-        error: "A transferred ticket needs the current holder's consent before refund",
-      };
+    if (acceptedTransfer.rowCount) {
+      if (!input.returnRequestId)
+        return {
+          ok: false as const,
+          status: 409,
+          error: "A transferred ticket needs the current holder's consent before refund",
+        };
+      const consent = await client.query<{ id: string }>(
+        `select request.id
+           from ticket_return_requests request
+           join event_participants participant on participant.ticket_id = request.ticket_id
+          where request.id = $1 and request.ticket_id = $2 and request.status = 'confirmed'
+            and participant.person_id = request.holder_person_id
+          for update of request`,
+        [input.returnRequestId, ticket.id],
+      );
+      if (!consent.rows[0])
+        return {
+          ok: false as const,
+          status: 409,
+          error: "Current-holder consent is missing or no longer matches this ticket",
+        };
+    }
     const pendingTransfers = await client.query<{ action_link_id: string | null }>(
       `update ticket_transfers
           set status = 'invalidated',invalidated_at = now(),
@@ -1015,6 +1033,14 @@ export async function refundTicket(input: {
       }
     }
     const allocationId = `refund_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
+    if (input.returnRequestId) {
+      await client.query(
+        `update ticket_return_requests
+            set status = 'refund-pending',updated_at = now()
+          where id = $1 and status = 'confirmed'`,
+        [input.returnRequestId],
+      );
+    }
     await client.query(
       `insert into ticket_refund_allocations
          (id,ticket_id,event_slug,payment_ref,amount_minor,currency,initiated_by_type,initiated_by_id)
@@ -1051,7 +1077,13 @@ export async function refundTicket(input: {
         allocationId,
       ],
     );
-    return { ok: true as const, alreadyRefunded: false as const, ticket, allocationId };
+    return {
+      ok: true as const,
+      alreadyRefunded: false as const,
+      ticket,
+      allocationId,
+      returnRequestId: input.returnRequestId,
+    };
   });
   if (!prepared.ok) return prepared;
   if (prepared.alreadyRefunded)
@@ -1084,6 +1116,14 @@ export async function refundTicket(input: {
           where ticket_id = $1 and status = 'void'`,
         [prepared.ticket.id],
       );
+      if (prepared.returnRequestId) {
+        await client.query(
+          `update ticket_return_requests
+              set status = 'failed',resolved_at = now(),resolution_reason = $2,updated_at = now()
+            where id = $1`,
+          [prepared.returnRequestId, refund.ok ? "Provider rejected the refund" : refund.error],
+        );
+      }
     });
     const { emitDomainEvent } = await import("@/features/attendee-operations/notifications.server");
     await emitDomainEvent({
@@ -1130,6 +1170,14 @@ export async function refundTicket(input: {
     return { ok: true, value: { state: "pending", refunded: 1, emailQueued: false } };
   }
   const updated = await markTicketStatus(prepared.ticket.id, "refunded", refund.refundId);
+  if (prepared.returnRequestId) {
+    await query(
+      `update ticket_return_requests
+          set status = 'refunded',resolved_at = now(),resolution_reason = 'refund-succeeded',updated_at = now()
+        where id = $1`,
+      [prepared.returnRequestId],
+    );
+  }
   const event = await getEvent(prepared.ticket.event_slug);
   const delivery =
     updated && event
@@ -1180,6 +1228,12 @@ export async function updateAllocatedTicketRefund(
   const allocation = rows[0];
   if (!allocation) return false;
   if (status === "succeeded") {
+    await query(
+      `update ticket_return_requests
+          set status = 'refunded',resolved_at = now(),resolution_reason = 'refund-succeeded',updated_at = now()
+        where ticket_id = $1 and status = 'refund-pending'`,
+      [allocation.ticket_id],
+    );
     const ticket = await markTicketStatus(allocation.ticket_id, "refunded", refundId);
     const event = await getEvent(allocation.event_slug);
     if (ticket && event) {
@@ -1199,6 +1253,13 @@ export async function updateAllocatedTicketRefund(
       entityRefs: { ticketId: allocation.ticket_id, refundId },
     });
   } else {
+    await query(
+      `update ticket_return_requests
+          set status = 'failed',resolved_at = now(),
+              resolution_reason = 'provider-reported-refund-failure',updated_at = now()
+        where ticket_id = $1 and status = 'refund-pending'`,
+      [allocation.ticket_id],
+    );
     await query(`update tickets set status = 'valid' where id = $1 and status = 'void'`, [
       allocation.ticket_id,
     ]);

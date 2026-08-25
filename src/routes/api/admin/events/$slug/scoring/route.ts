@@ -10,7 +10,7 @@ async function handleGET(request: Request, eventSlug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
-    return await readAdminScoring(request, eventSlug, auth.payload?.jti ?? "admin-local");
+    return await readAdminScoring(request, eventSlug, auth.actorId ?? "root-owner");
   } catch (error) {
     return apiErrorFromRequest(request, "event-scoring.admin.get", "Could not load scoring", error);
   }
@@ -28,7 +28,7 @@ async function handlePOST(request: Request, eventSlug: string) {
     return await runAdminScoringAction(stringValue(body.action), {
       request,
       eventSlug,
-      actorId: auth.payload?.jti ?? "admin-local",
+      actorId: auth.actorId ?? "root-owner",
       body,
     });
   } catch (error) {

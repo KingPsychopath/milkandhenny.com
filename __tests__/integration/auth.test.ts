@@ -300,6 +300,80 @@ describe("auth security flows", () => {
     expect(missing?.status).toBe(428);
   });
 
+  it("maps named-admin mutations to explicit least-privilege permissions", async () => {
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
+    const { __authorizationTesting } =
+      await import("@/features/auth/internal/authorization.server");
+    const permissionFor = (path: string, method = "POST", body?: unknown) =>
+      __authorizationTesting.requiredNamedAdminPermission(
+        new Request(
+          `http://localhost${path}`,
+          body === undefined
+            ? { method }
+            : {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+              },
+        ),
+        "admin",
+      );
+
+    await expect(permissionFor("/api/admin/albums")).resolves.toBe("manageContent");
+    await expect(permissionFor("/api/admin/game-pools")).resolves.toBe("manageScoring");
+    await expect(permissionFor("/api/admin/surveys")).resolves.toBe("manageContent");
+    await expect(permissionFor("/api/admin/pitches", "DELETE")).resolves.toBe("manageContent");
+    await expect(permissionFor("/api/words")).resolves.toBe("manageContent");
+    await expect(permissionFor("/api/best-dressed/voting/open")).resolves.toBe("manageScoring");
+    await expect(permissionFor("/api/admin/operations/inbox", "PATCH")).resolves.toBe(
+      "viewOperations",
+    );
+    await expect(
+      permissionFor("/api/admin/events/summer/tickets", "POST", { action: "refund" }),
+    ).resolves.toBe("executeRefunds");
+    await expect(permissionFor("/api/admin/unmapped-mutation")).resolves.toBe(
+      "manageGlobalSettings",
+    );
+    await expect(permissionFor("/api/admin/step-up")).resolves.toBeNull();
+  });
+
+  it("uses a fresh verified-person session for named-admin step-up", async () => {
+    const redis = createRedisMock();
+    vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
+    vi.doMock("@/lib/platform/postgres.server", () => ({
+      query: async () => [
+        {
+          person_id: "person_named_admin",
+          role_preset: "support",
+          overrides: {},
+        },
+      ],
+    }));
+    vi.doMock("@/features/event-scoring/session.server", () => ({
+      getAttendeeSessionForRequest: async () => ({
+        personId: "person_named_admin",
+        authenticatedAt: new Date().toISOString(),
+      }),
+    }));
+    const { createAdminStepUpToken, requireAuthWithPayload } =
+      await import("@/features/auth/auth.server");
+
+    const authority = await requireAuthWithPayload(
+      new Request("http://localhost/api/admin/step-up", { method: "POST" }),
+      "admin",
+    );
+
+    const response = await createAdminStepUpToken(
+      new Request("http://localhost/api/admin/step-up", { method: "POST" }),
+    );
+    const body = (await response.json()) as { token?: unknown };
+
+    expect(authority.actorType).toBe("admin");
+    expect(authority.actorId).toBe("person_named_admin");
+    expect(response.status).toBe(200);
+    expect(typeof body.token).toBe("string");
+  });
+
   it("step-up token is bound to the admin session (jti)", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));

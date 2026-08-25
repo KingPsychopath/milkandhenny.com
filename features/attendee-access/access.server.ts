@@ -607,8 +607,14 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
         order by created_at desc`,
       [personId],
     ),
-    query<{ event_slug: string; label: string; status: string; expires_at: Date | null }>(
-      `select event_slug,label,status,expires_at from score_staff_assignments
+    query<{
+      event_slug: string;
+      label: string;
+      status: string;
+      invitation_state: string;
+      expires_at: Date | null;
+    }>(
+      `select event_slug,label,status,invitation_state,expires_at from score_staff_assignments
         where person_id = $1 and status in ('active','paused')
         order by created_at desc`,
       [personId],
@@ -667,13 +673,18 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
         label: grant.role_preset,
         status: grant.status,
         expiresAt: grant.expires_at?.toISOString(),
+        href: grant.status === "active" ? "/admin" : undefined,
       })),
       ...eventAccess.map((assignment) => ({
         kind: "event" as const,
         label: assignment.label,
         eventSlug: assignment.event_slug,
-        status: assignment.status,
+        status: assignment.status === "active" ? assignment.invitation_state : assignment.status,
         expiresAt: assignment.expires_at?.toISOString(),
+        href:
+          assignment.status === "active" && assignment.invitation_state === "active"
+            ? `/events/${encodeURIComponent(assignment.event_slug)}/staff/personal`
+            : undefined,
       })),
     ],
   };

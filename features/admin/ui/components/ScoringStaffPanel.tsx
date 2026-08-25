@@ -62,6 +62,7 @@ export function ScoringStaffPanel({
   onAction: ScoringAction;
 }) {
   const [label, setLabel] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [assignmentType, setAssignmentType] = useState<"personal" | "station">("personal");
   const [preset, setPreset] = useState<(typeof PRESETS)[number]>("points-marshal");
   const [activityIds, setActivityIds] = useState<string[]>([]);
@@ -69,6 +70,8 @@ export function ScoringStaffPanel({
   const [poolPoints, setPoolPoints] = useState(50);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [issuedUrl, setIssuedUrl] = useState("");
+  const [issuedMessage, setIssuedMessage] = useState("");
+  const [reason, setReason] = useState("");
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
@@ -87,14 +90,16 @@ export function ScoringStaffPanel({
     const body = await onAction({
       action: "create-staff",
       label,
+      recipientEmail: assignmentType === "personal" ? recipientEmail : undefined,
       assignmentType,
       preset,
+      reason,
       overrides,
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
       scope: { activityIds, largeAwardWarningAt: 25 },
     });
     const assignment = body?.assignment as { id?: string; token?: string } | undefined;
-    if (!assignment?.id || !assignment.token) return;
+    if (!assignment?.id) return;
     if (poolPoints > 0) {
       await onAction({
         action: "issue-pool",
@@ -103,10 +108,18 @@ export function ScoringStaffPanel({
         points: poolPoints,
       });
     }
-    setIssuedUrl(
-      `${window.location.origin}/events/${encodeURIComponent(eventSlug)}/staff/${assignment.token}`,
-    );
+    if (assignment.token) {
+      setIssuedUrl(
+        `${window.location.origin}/events/${encodeURIComponent(eventSlug)}/staff/${assignment.token}`,
+      );
+      setIssuedMessage("Copy this station link now. It is shown once.");
+    } else {
+      setIssuedUrl("");
+      setIssuedMessage("The personal invitation was queued for the verified email.");
+    }
     setLabel("");
+    setRecipientEmail("");
+    setReason("");
   }
 
   return (
@@ -124,6 +137,31 @@ export function ScoringStaffPanel({
             className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
           />
         </label>
+        <label className="font-mono text-xs">
+          reason
+          <input
+            required
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        {assignmentType === "personal" ? (
+          <label className="font-mono text-xs">
+            verified email
+            <input
+              type="email"
+              required
+              autoComplete="email"
+              value={recipientEmail}
+              onChange={(event) => setRecipientEmail(event.target.value)}
+              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+            />
+            <span className="mt-2 block leading-relaxed theme-muted">
+              Access activates only after the one-time invitation reaches this mailbox.
+            </span>
+          </label>
+        ) : null}
         <label className="font-mono text-xs">
           access type
           <select
@@ -230,17 +268,20 @@ export function ScoringStaffPanel({
           create staff link
         </button>
       </form>
-      {issuedUrl && (
+      {issuedMessage ? (
         <div className="mt-5 border-y theme-border py-4" role="status">
-          <p className="font-mono text-xs">Copy this link now. It is shown once.</p>
-          <input
-            readOnly
-            value={issuedUrl}
-            onFocus={(event) => event.currentTarget.select()}
-            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3 font-mono text-xs"
-          />
+          <p className="font-mono text-xs">{issuedMessage}</p>
+          {issuedUrl ? (
+            <input
+              aria-label="New station access link"
+              readOnly
+              value={issuedUrl}
+              onFocus={(event) => event.currentTarget.select()}
+              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3 font-mono text-xs"
+            />
+          ) : null}
         </div>
-      )}
+      ) : null}
       <ul className="mt-5 divide-y theme-border border-y theme-border">
         {staff.map((assignment) => (
           <li key={assignment.id} className="py-4">
@@ -251,14 +292,22 @@ export function ScoringStaffPanel({
                   "-",
                   " ",
                 )}{" "}
-                · {assignment.status}
+                · {assignment.invitationState ?? assignment.status}
                 {assignment.personId ? ` · person ${assignment.personId.slice(-6)}` : ""}
               </span>
               {assignment.status === "active" && (
                 <button
                   type="button"
                   onClick={() =>
-                    void onAction({ action: "revoke-staff", assignmentId: assignment.id })
+                    void (async () => {
+                      const reason = window.prompt("Why are you revoking this access?")?.trim();
+                      if (!reason) return;
+                      await onAction({
+                        action: "revoke-staff",
+                        assignmentId: assignment.id,
+                        reason,
+                      });
+                    })()
                   }
                   className="min-h-11 font-mono text-micro underline hover:opacity-70"
                 >
@@ -278,13 +327,18 @@ export function ScoringStaffPanel({
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      const reason = window
+                        .prompt("Why are you revoking this staff device?")
+                        ?.trim();
+                      if (!reason) return;
                       void onAction({
                         action: "revoke-staff-device",
                         assignmentId: assignment.id,
                         deviceId: device.deviceId,
-                      })
-                    }
+                        reason,
+                      });
+                    }}
                     className="min-h-11 underline hover:opacity-70"
                   >
                     revoke device

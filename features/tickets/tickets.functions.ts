@@ -11,6 +11,7 @@ import {
 } from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
 import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
+import { requestTransferredTicketRefund } from "@/features/attendee-operations/ticket-operations.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
 import { toTicketHolderEvent } from "@/features/events/types";
@@ -402,7 +403,7 @@ export const getCheckoutOutcomeFn = createServerFn({ method: "GET" })
 export type RefundResult =
   | {
       ok: true;
-      state: "succeeded" | "pending";
+      state: "succeeded" | "pending" | "consent-pending";
       refunded: number;
       emailQueued: boolean;
     }
@@ -442,6 +443,21 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
       reason: "self-serve",
       actorId: attendeePersonId,
     });
+    if (!result.ok && result.error.includes("current holder's consent") && attendeePersonId) {
+      const requested = await requestTransferredTicketRefund({
+        ticketId: data.ticketId,
+        purchaserPersonId: attendeePersonId,
+        origin: getBaseUrlForRequest(getRequest()),
+      });
+      return requested.ok
+        ? {
+            ok: true,
+            state: "consent-pending",
+            refunded: 0,
+            emailQueued: requested.value.emailQueued,
+          }
+        : { ok: false, error: requested.error };
+    }
     if (!result.ok) return { ok: false, error: result.error };
     return {
       ok: true,

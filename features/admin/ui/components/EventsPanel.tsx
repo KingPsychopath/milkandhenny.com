@@ -2483,7 +2483,7 @@ export function EventsPanel({
   const [operationsSlug, setOperationsSlug] = useState<string | null>(null);
   const [operations, setOperations] = useState<EventTicketSummary | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
-  const { confirm, dialog } = useActionDialog();
+  const { confirm, prompt, dialog } = useActionDialog();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2550,11 +2550,34 @@ export function EventsPanel({
     try {
       const payload = draftToPayload(draft);
       const isNew = editing === "__new__";
+      const existing = isNew ? undefined : events.find((event) => event.slug === editing);
+      const cancelling =
+        !isNew && existing?.status !== "cancelled" && payload.status === "cancelled";
+      let headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (cancelling) {
+        const cancellationReason = await prompt({
+          eyebrow: "event cancellation",
+          title: `Cancel “${existing?.title ?? "this event"}”?`,
+          description:
+            "Paid orders will be refunded to their original payment methods and current holders will be notified.",
+          label: "Reason shown to attendees",
+          confirmLabel: "cancel and refund",
+          required: true,
+        });
+        if (!cancellationReason) return;
+        const stepUp = await ensureStepUpToken();
+        if (!stepUp.ok) {
+          if (!stepUp.cancelled) onError(stepUp.error ?? "Step-up failed");
+          return;
+        }
+        payload.cancellationReason = cancellationReason;
+        headers = withStepUpHeaders(stepUp.token, headers);
+      }
       const response = await authFetch(
         isNew ? "/api/admin/events" : `/api/admin/events/${editing}`,
         {
           method: isNew ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(payload),
         },
       );

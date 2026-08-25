@@ -29,6 +29,7 @@ export type AttendeeAccount = {
     eventSlug?: string;
     status: string;
     expiresAt?: string;
+    href?: string;
   }>;
 };
 

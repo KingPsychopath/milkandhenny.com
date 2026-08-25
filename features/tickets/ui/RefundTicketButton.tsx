@@ -25,7 +25,7 @@ export function RefundTicketButton({
   disabledReason?: string;
 }) {
   const [state, setState] = useState<
-    "idle" | "confirming" | "working" | "pending" | "done" | "error"
+    "idle" | "confirming" | "working" | "consent-pending" | "pending" | "done" | "error"
   >("idle");
   const [message, setMessage] = useState("");
   const [emailQueued, setEmailQueued] = useState(false);
@@ -59,6 +59,15 @@ export function RefundTicketButton({
     );
   }
 
+  if (state === "consent-pending") {
+    return (
+      <p role="status" className="text-center font-mono text-micro theme-subtle leading-relaxed">
+        The current holder must consent before the refund starts.
+        {emailQueued ? " We emailed their one-time link." : " The email needs admin attention."}
+      </p>
+    );
+  }
+
   const amount =
     amountMinor !== undefined && currency ? formatMoney(amountMinor, currency) : "this ticket";
   const ticketLabel = "this ticket";
@@ -74,6 +83,11 @@ export function RefundTicketButton({
       }
       if (result.state === "pending") {
         setState("pending");
+        return;
+      }
+      if (result.state === "consent-pending") {
+        setEmailQueued(result.emailQueued);
+        setState("consent-pending");
         return;
       }
       setEmailQueued(result.emailQueued);

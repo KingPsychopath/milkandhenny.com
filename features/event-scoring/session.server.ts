@@ -3,6 +3,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 
 import { getRedis } from "@/lib/platform/redis.server";
+import { getCookie as getRequestCookie } from "@/lib/http/cookies";
 import { getEvent } from "@/features/events/store.server";
 import { getTicket } from "@/features/tickets/store.server";
 import { participantForTicket } from "./store.server";
@@ -231,6 +232,15 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
     });
   }
   return refresh(session);
+}
+
+/** Read identity for an explicit HTTP request without relying on Start context. */
+export async function getAttendeeSessionForRequest(
+  request: Request,
+): Promise<AttendeeSession | null> {
+  const id = getRequestCookie(request, COOKIE_NAME);
+  if (!id || !SESSION_ID_PATTERN.test(id)) return null;
+  return readById(id);
 }
 
 export async function openAttendeeTicket(input: {

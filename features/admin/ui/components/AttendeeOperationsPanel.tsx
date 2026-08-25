@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type InboxItem = {
@@ -22,11 +23,28 @@ type Person = {
     holderName: string;
     status: string;
     orderId: string;
+    participantId?: string;
+    checkedInAt?: string;
+    amountPaidMinor?: number;
+    currency?: string;
+    supportNote?: string;
+    otherOrderTickets: number;
+    scoreBalance: number;
+    transferHistory: Array<{ status: string; recipientEmailHint: string; createdAt: string }>;
+    returnHistory: Array<{
+      status: string;
+      amountMinor?: number;
+      currency?: string;
+      createdAt: string;
+    }>;
+    exchanges: Array<{ status: string; amountDeltaMinor: number; createdAt: string }>;
+    communication: { total: number; failed: number };
   }>;
   globalRoles: Array<{ role: string; status: string }>;
   eventRoles: Array<{ eventSlug: string; label: string; status: string }>;
   pendingInvitations: number;
   staffDevices: number;
+  auditTimeline: Array<{ action: string; actorType: string; reason?: string; createdAt: string }>;
 };
 
 export function AttendeeOperationsPanel({
@@ -38,7 +56,7 @@ export function AttendeeOperationsPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [tab, setTab] = useState<"inbox" | "people">("inbox");
+  const [tab, setTab] = useState<"inbox" | "people" | "preview">("inbox");
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unresolved, setUnresolved] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
@@ -70,10 +88,15 @@ export function AttendeeOperationsPanel({
   }, [loadInbox, tab]);
 
   async function updateItem(item: InboxItem, status: InboxItem["status"]) {
+    const reason =
+      status === "resolved" || status === "dismissed"
+        ? window.prompt("What resolved this item?")?.trim()
+        : undefined;
+    if ((status === "resolved" || status === "dismissed") && !reason) return;
     const response = await authFetch("/api/admin/operations/inbox", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: item.id, status }),
+      body: JSON.stringify({ id: item.id, status, reason }),
     });
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -116,7 +139,7 @@ export function AttendeeOperationsPanel({
         <p className="font-mono text-xs theme-muted">{unresolved} unresolved</p>
       </div>
       <div className="mt-4 flex gap-5 border-b theme-border">
-        {(["inbox", "people"] as const).map((name) => (
+        {(["inbox", "people", "preview"] as const).map((name) => (
           <button
             key={name}
             type="button"
@@ -128,7 +151,9 @@ export function AttendeeOperationsPanel({
           >
             {name === "inbox"
               ? `needs attention${unresolved ? ` · ${unresolved}` : ""}`
-              : "people and access"}
+              : name === "people"
+                ? "people and access"
+                : "attendee preview"}
           </button>
         ))}
       </div>
@@ -189,7 +214,7 @@ export function AttendeeOperationsPanel({
             </ol>
           )}
         </div>
-      ) : (
+      ) : tab === "people" ? (
         <div className="mt-5">
           <form onSubmit={findPeople} className="flex flex-col gap-2 sm:flex-row">
             <label htmlFor="people-search" className="sr-only">
@@ -239,6 +264,10 @@ export function AttendeeOperationsPanel({
             )}
           </div>
         </div>
+      ) : (
+        <div className="mt-5">
+          <AttendeePreviewMatrix />
+        </div>
       )}
     </section>
   );
@@ -286,9 +315,83 @@ function PersonDrawer({ person }: { person: Person }) {
             <p className="mt-1 font-mono text-micro theme-muted">
               {ticket.status} · order {ticket.orderId}
             </p>
+            <dl className="mt-3 grid gap-2 font-mono text-micro sm:grid-cols-2">
+              <div>
+                <dt className="theme-muted">admission</dt>
+                <dd>
+                  {ticket.checkedInAt
+                    ? `checked in ${new Date(ticket.checkedInAt).toLocaleString()}`
+                    : "not checked in"}
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-muted">payment / refund</dt>
+                <dd>
+                  {ticket.amountPaidMinor === undefined
+                    ? "complimentary"
+                    : `${ticket.currency ?? "GBP"} ${(ticket.amountPaidMinor / 100).toFixed(2)}`}
+                  {ticket.returnHistory[0] ? ` · ${ticket.returnHistory[0].status}` : ""}
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-muted">order context</dt>
+                <dd>
+                  {ticket.otherOrderTickets} other ticket{ticket.otherOrderTickets === 1 ? "" : "s"}
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-muted">score / activity</dt>
+                <dd>{ticket.scoreBalance} points</dd>
+              </div>
+              <div>
+                <dt className="theme-muted">transfer history</dt>
+                <dd>
+                  {ticket.transferHistory
+                    .map((item) => `${item.status} · ${item.recipientEmailHint}`)
+                    .join(", ") || "none"}
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-muted">exchange state</dt>
+                <dd>{ticket.exchanges.map((item) => item.status).join(", ") || "none"}</dd>
+              </div>
+              <div>
+                <dt className="theme-muted">communication delivery</dt>
+                <dd>
+                  {ticket.communication.total} sent · {ticket.communication.failed} failed
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-muted">support note</dt>
+                <dd>{ticket.supportNote ?? "none"}</dd>
+              </div>
+            </dl>
           </li>
         ))}
       </ul>
+      <h4 className="mt-6 font-mono text-xs font-bold">audit timeline</h4>
+      <ol className="mt-2 divide-y border-y theme-border">
+        {person.auditTimeline.length ? (
+          person.auditTimeline.map((event, index) => (
+            <li
+              key={`${event.createdAt}:${event.action}:${index}`}
+              className="py-3 font-mono text-micro"
+            >
+              <p>
+                {event.action} · {event.actorType}
+              </p>
+              <p className="mt-1 theme-muted">
+                {new Date(event.createdAt).toLocaleString()}
+                {event.reason ? ` · ${event.reason}` : ""}
+              </p>
+            </li>
+          ))
+        ) : (
+          <li className="py-3 font-mono text-micro theme-muted">
+            No attendee operations recorded.
+          </li>
+        )}
+      </ol>
     </aside>
   );
 }

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
   getEventOperationsPolicy,
   getGlobalOperationsSettings,
@@ -11,8 +11,8 @@ import { listEvents } from "@/features/events/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
-  const auth = await requireAuth(request, "admin");
-  if (auth) return auth;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
   try {
     const events = await listEvents({ includeHidden: true });
     const [global, policies] = await Promise.all([
@@ -39,8 +39,10 @@ async function handleGET(request: Request) {
 }
 
 async function handlePATCH(request: Request) {
-  const auth = await requireAuth(request, "admin");
-  if (auth) return auth;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
+  const actorId = auth.actorId ?? "root-owner";
+  const actorType = auth.actorType === "admin" ? "admin" : "root-owner";
   try {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return Response.json({ error: "Invalid request" }, { status: 400 });
@@ -60,7 +62,8 @@ async function handlePATCH(request: Request) {
           body.values && typeof body.values === "object" && !Array.isArray(body.values)
             ? body.values
             : {},
-        actorId: "root-owner",
+        actorId,
+        actorType,
         reason: typeof body.reason === "string" ? body.reason : undefined,
       });
       return Response.json({ global });
@@ -82,7 +85,8 @@ async function handlePATCH(request: Request) {
           body.transferClosesAt === null || typeof body.transferClosesAt === "string"
             ? body.transferClosesAt
             : undefined,
-        actorId: "root-owner",
+        actorId,
+        actorType,
         reason: typeof body.reason === "string" ? body.reason : undefined,
       });
       return Response.json({ policy });

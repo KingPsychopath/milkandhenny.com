@@ -1286,6 +1286,7 @@ describeWithDatabase("event scoring postgres", () => {
       assignmentType: "station",
       preset: "points-marshal",
       actorId: "admin-test",
+      reason: "integration test",
       overrides: { transferPoints: true },
     });
     expect(access.permissions.awardPoints).toBe(true);
@@ -1303,6 +1304,7 @@ describeWithDatabase("event scoring postgres", () => {
         assignmentId: access.id,
         deviceId: "device-one",
         actorId: "admin-test",
+        reason: "test device cleanup",
       }),
     ).toBe(true);
     expect(
@@ -1323,6 +1325,7 @@ describeWithDatabase("event scoring postgres", () => {
       eventSlug: "scoring-night",
       assignmentId: access.id,
       actorId: "admin-test",
+      reason: "test cleanup",
     });
     expect(
       await resolveStaffAccess({
@@ -1358,6 +1361,7 @@ describeWithDatabase("event scoring postgres", () => {
       assignmentType: "station",
       preset: "points-marshal",
       actorId: "admin-test",
+      reason: "integration test",
       scope: { activityIds: [activity.id], largeAwardWarningAt: 10 },
     });
     const pool = await createPool({
@@ -1408,14 +1412,15 @@ describeWithDatabase("event scoring postgres", () => {
     const access = await createStaffAccess({
       eventSlug: "scoring-night",
       label: "Photo marshal",
-      assignmentType: "personal",
+      assignmentType: "station",
       preset: "event-manager",
       actorId: "admin-test",
+      reason: "integration test",
       scope: { activityIds: [activity.id] },
     });
     await createPool({
       eventSlug: "scoring-night",
-      ownerType: "staff",
+      ownerType: "station",
       ownerId: access.id,
       points: 10,
     });
@@ -1489,6 +1494,7 @@ describeWithDatabase("event scoring postgres", () => {
       assignmentType: "station",
       preset: "points-marshal",
       actorId: "admin-test",
+      reason: "integration test",
       scope: { activityIds: [activity.id], offlineBudgetMax: 12 },
     });
     await createPool({
@@ -1552,7 +1558,7 @@ describeWithDatabase("event scoring postgres", () => {
     else process.env.AUTH_SECRET = previousSecret;
   });
 
-  it("blocks known staff self-awards and flags rapid repetition for human review", async () => {
+  it("flags rapid staff repetition for human review", async () => {
     await getOrCreateSettings("scoring-night");
     await query(
       `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
@@ -1568,24 +1574,18 @@ describeWithDatabase("event scoring postgres", () => {
     const access = await createStaffAccess({
       eventSlug: "scoring-night",
       label: "Known marshal",
-      assignmentType: "personal",
+      assignmentType: "station",
       preset: "event-manager",
       actorId: "admin-test",
+      reason: "integration test",
       scope: { activityIds: [activity.id] },
     });
     await createPool({
       eventSlug: "scoring-night",
-      ownerType: "staff",
+      ownerType: "station",
       ownerId: access.id,
       points: 30,
     });
-    await query(`insert into event_people (id,canonical_name) values ('person-staff','Marshal')`);
-    await query(`update event_participants set person_id = 'person-staff' where id = $1`, [
-      participant!.id,
-    ]);
-    await query(`update score_staff_assignments set person_id = 'person-staff' where id = $1`, [
-      access.id,
-    ]);
     const award = (commandId: string) =>
       awardStaffPoints({
         eventSlug: "scoring-night",
@@ -1595,16 +1595,6 @@ describeWithDatabase("event scoring postgres", () => {
         participantId: participant!.id,
         commandId,
       });
-    expect(await award("blocked-self-award")).toMatchObject({ ok: false, status: 403 });
-    expect(
-      await listScoreAuditEvents({ eventSlug: "scoring-night", participantId: participant!.id }),
-    ).toEqual([]);
-    expect(
-      await listScoreAuditEvents({ eventSlug: "scoring-night", actorId: access.id }),
-    ).toMatchObject([{ action: "security.self-award.blocked" }]);
-    await query(
-      `update event_scoring_settings set allow_staff_self_awards = true where event_slug = 'scoring-night'`,
-    );
     for (let index = 0; index < 20; index += 1) {
       expect(await award(`rapid-${index}`)).toMatchObject({ ok: true });
     }

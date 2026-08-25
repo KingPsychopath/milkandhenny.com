@@ -14,11 +14,10 @@ async function handlePOST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (typeof body.password !== "string" || !body.password.trim()) {
-    return Response.json({ error: "password is required" }, { status: 400 });
-  }
-
-  return createAdminStepUpToken(request, body.password);
+  return createAdminStepUpToken(
+    request,
+    typeof body.password === "string" ? body.password : undefined,
+  );
 }
 
 export const Route = createFileRoute("/api/admin/step-up")({

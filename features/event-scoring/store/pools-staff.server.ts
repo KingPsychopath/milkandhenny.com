@@ -1,3 +1,5 @@
+import type { PoolClient } from "pg";
+
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import type { StaffAssignmentStatus, StaffAssignmentType, StaffPermissionSet } from "../types";
 import {
@@ -145,38 +147,63 @@ export async function createStaffAssignment(input: {
   label: string;
   assignmentType: StaffAssignmentType;
   personId?: string;
-  token: string;
+  token?: string;
   permissions: StaffPermissionSet;
   scope?: Record<string, unknown>;
   expiresAt?: string;
+  rolePreset?: string;
+  invitationState?: "pending" | "active";
+  invitedEmailHash?: string;
+  invitationLinkId?: string;
 }): Promise<StoredStaffAssignment> {
-  const row = await transaction(async (client) => {
-    const personId = input.assignmentType === "personal" ? (input.personId ?? id("person")) : null;
-    if (input.assignmentType === "personal" && !input.personId) {
-      await client.query(`insert into event_people (id, canonical_name) values ($1,$2)`, [
-        personId,
-        input.label.trim(),
-      ]);
-    }
-    const result = await client.query<StaffAssignmentRow>(
-      `insert into score_staff_assignments
-         (id, event_slug, person_id, label, assignment_type, token_hash, permissions, scope, expires_at)
-       values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9)
+  return transaction((client) => createStaffAssignmentInTransaction(client, input));
+}
+
+export async function createStaffAssignmentInTransaction(
+  client: PoolClient,
+  input: {
+    eventSlug: string;
+    label: string;
+    assignmentType: StaffAssignmentType;
+    personId?: string;
+    token?: string;
+    permissions: StaffPermissionSet;
+    scope?: Record<string, unknown>;
+    expiresAt?: string;
+    rolePreset?: string;
+    invitationState?: "pending" | "active";
+    invitedEmailHash?: string;
+    invitationLinkId?: string;
+  },
+): Promise<StoredStaffAssignment> {
+  if (input.assignmentType === "personal" && !input.personId)
+    throw new Error("Personal staff access requires a person identity");
+  if (input.assignmentType === "station" && !input.token)
+    throw new Error("Station staff access requires a bearer credential");
+  const result = await client.query<StaffAssignmentRow>(
+    `insert into score_staff_assignments
+         (id,event_slug,person_id,label,assignment_type,token_hash,permissions,scope,expires_at,
+          role_preset,invitation_state,invited_email_hash,invitation_link_id,activated_at)
+       values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,
+               case when $11 = 'active' then now() else null end)
        returning *`,
-      [
-        id("staff"),
-        input.eventSlug,
-        personId,
-        input.label.trim(),
-        input.assignmentType,
-        hashStaffToken(input.token),
-        JSON.stringify(input.permissions),
-        JSON.stringify(input.scope ?? {}),
-        input.expiresAt ?? null,
-      ],
-    );
-    return result.rows[0] ?? null;
-  });
+    [
+      id("staff"),
+      input.eventSlug,
+      input.assignmentType === "personal" ? input.personId : null,
+      input.label.trim(),
+      input.assignmentType,
+      input.token ? hashStaffToken(input.token) : null,
+      JSON.stringify(input.permissions),
+      JSON.stringify(input.scope ?? {}),
+      input.expiresAt ?? null,
+      input.rolePreset ?? null,
+      input.invitationState ?? "active",
+      input.invitedEmailHash ?? null,
+      input.invitationLinkId ?? null,
+    ],
+  );
+  const row = result.rows[0] ?? null;
   if (!row) throw new Error("Staff assignment could not be created");
   return toStaffAssignment(row);
 }
@@ -202,6 +229,16 @@ function toStaffAssignment(row: StaffAssignmentRow): StoredStaffAssignment {
     status: row.status as StaffAssignmentStatus,
     expiresAt: iso(row.expires_at),
     revokedAt: iso(row.revoked_at),
+    rolePreset: row.role_preset ?? undefined,
+    invitationState:
+      row.invitation_state === "pending" ||
+      row.invitation_state === "declined" ||
+      row.invitation_state === "expired" ||
+      row.invitation_state === "revoked"
+        ? row.invitation_state
+        : "active",
+    activatedAt: iso(row.activated_at ?? null),
+    lastUsedAt: iso(row.last_used_at ?? null),
   };
 }
 
@@ -212,9 +249,31 @@ export async function resolveStaffAssignment(
   const row = await queryOne<StaffAssignmentRow>(
     `update score_staff_assignments
         set status = case when expires_at is not null and expires_at <= now() then 'expired' else status end
-      where event_slug = $1 and token_hash = $2
+      where event_slug = $1 and assignment_type = 'station' and token_hash = $2
+        and invitation_state = 'active'
       returning *`,
     [eventSlug, hashStaffToken(token)],
+  );
+  if (!row || row.status !== "active" || (row.expires_at && row.expires_at <= new Date()))
+    return null;
+  return toStaffAssignment(row);
+}
+
+export async function resolvePersonalStaffAssignment(
+  eventSlug: string,
+  personId: string,
+): Promise<StoredStaffAssignment | null> {
+  const row = await queryOne<StaffAssignmentRow>(
+    `update score_staff_assignments
+        set status = case when expires_at is not null and expires_at <= now() then 'expired' else status end,
+            invitation_state = case
+              when expires_at is not null and expires_at <= now() then 'expired'
+              else invitation_state end,
+            last_used_at = now()
+      where event_slug = $1 and person_id = $2 and assignment_type = 'personal'
+        and invitation_state = 'active'
+      returning *`,
+    [eventSlug, personId],
   );
   if (!row || row.status !== "active" || (row.expires_at && row.expires_at <= new Date()))
     return null;
@@ -226,7 +285,10 @@ export async function revokeStaffAssignment(
   assignmentId: string,
 ): Promise<boolean> {
   const rows = await query(
-    `update score_staff_assignments set status = 'revoked', revoked_at = now()
+    `update score_staff_assignments
+        set status = 'revoked',
+            invitation_state = case when assignment_type = 'personal' then 'revoked' else invitation_state end,
+            revoked_at = now()
       where id = $1 and event_slug = $2 and revoked_at is null
       returning id`,
     [assignmentId, eventSlug],

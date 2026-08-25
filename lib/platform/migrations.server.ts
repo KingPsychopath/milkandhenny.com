@@ -2792,6 +2792,7 @@ const MIGRATIONS: Migration[] = [
         id                  text primary key,
         source_event_id     text not null references attendee_domain_events (id) on delete cascade,
         case_id             text references admin_attention_cases (id) on delete set null,
+        category            text not null,
         title               text not null check (char_length(title) <= 200),
         body                text not null check (char_length(body) <= 1000),
         event_slug          text references events (slug) on update cascade on delete set null,
@@ -2873,6 +2874,48 @@ const MIGRATIONS: Migration[] = [
         'communication-stage','communication-test','pitch-welcome','pitch-published',
         'pitch-recovery','pitch-reminder'
       ));
+    `,
+  },
+  {
+    id: "0055_attendee_operations_authority",
+    sql: `
+      -- Personal staff bearer links are intentionally removed. No product has
+      -- launched, so retaining ambiguous pre-identity grants would be riskier
+      -- than asking an organiser to issue a verified invitation again.
+      delete from score_staff_assignments where assignment_type = 'personal' and token_hash is not null;
+
+      -- Alert recipients are not live data. Recreate them through verified
+      -- setup so the durable delivery address and identity evidence agree.
+      delete from admin_alert_recipients;
+      alter table admin_alert_recipients
+        add column email_address text not null check (email_address ~* '^[^@[:space:]]+@[^@[:space:]]+$');
+
+      alter table admin_notifications
+        add column if not exists category text not null default 'operations';
+
+      alter table score_staff_assignments
+        add constraint score_staff_assignments_authority_check check (
+          (
+            assignment_type = 'station'
+            and token_hash is not null
+            and person_id is null
+            and invitation_state = 'active'
+          )
+          or
+          (
+            assignment_type = 'personal'
+            and token_hash is null
+            and person_id is not null
+            and invited_email_hash is not null
+          )
+        );
+
+      create unique index admin_alert_recipients_email_idx
+        on admin_alert_recipients (email_hash)
+        where status in ('active','paused');
+      create unique index admin_alert_recipients_fallback_idx
+        on admin_alert_recipients ((fallback))
+        where fallback and status in ('active','paused');
     `,
   },
 ];

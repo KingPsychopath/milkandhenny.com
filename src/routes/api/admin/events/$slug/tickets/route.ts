@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEvent } from "@/features/events/store.server";
@@ -44,8 +44,8 @@ function asString(value: unknown): string | undefined {
 }
 
 async function handlePOST(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
-  if (authErr) return authErr;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
 
   let body: ActionBody;
   try {
@@ -151,7 +151,7 @@ async function handlePOST(request: Request, slug: string) {
         const result = await refundTicket({
           ticketId,
           reason: "admin",
-          actorId: "root-owner",
+          actorId: auth.actorId ?? "root-owner",
         });
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({

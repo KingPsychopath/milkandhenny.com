@@ -91,6 +91,7 @@ import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/
 import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
 import { Route as ApiCronProcessOfficialGameResultsRouteRouteImport } from './routes/api/cron/process-official-game-results/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
+import { Route as ApiCronSendOperationsDigestsRouteRouteImport } from './routes/api/cron/send-operations-digests/route'
 import { Route as ApiCronSendPitchRemindersRouteRouteImport } from './routes/api/cron/send-pitch-reminders/route'
 import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/download/presign/route'
 import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
@@ -128,6 +129,8 @@ import { Route as ApiAdminCliAuthRequestRouteRouteImport } from './routes/api/ad
 import { Route as ApiAdminCommunicationsIdRouteRouteImport } from './routes/api/admin/communications/$id/route'
 import { Route as ApiAdminEventsSlugRouteRouteImport } from './routes/api/admin/events/$slug/route'
 import { Route as ApiAdminGamePoolsIdRouteRouteImport } from './routes/api/admin/game-pools/$id/route'
+import { Route as ApiAdminOperationsAccessRouteRouteImport } from './routes/api/admin/operations/access/route'
+import { Route as ApiAdminOperationsAlertsRouteRouteImport } from './routes/api/admin/operations/alerts/route'
 import { Route as ApiAdminOperationsInboxRouteRouteImport } from './routes/api/admin/operations/inbox/route'
 import { Route as ApiAdminOperationsPeopleRouteRouteImport } from './routes/api/admin/operations/people/route'
 import { Route as ApiAdminOperationsSettingsRouteRouteImport } from './routes/api/admin/operations/settings/route'
@@ -623,6 +626,12 @@ const ApiCronProcessTransferMediaRouteRoute =
     path: '/api/cron/process-transfer-media',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCronSendOperationsDigestsRouteRoute =
+  ApiCronSendOperationsDigestsRouteRouteImport.update({
+    id: '/api/cron/send-operations-digests',
+    path: '/api/cron/send-operations-digests',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCronSendPitchRemindersRouteRoute =
   ApiCronSendPitchRemindersRouteRouteImport.update({
     id: '/api/cron/send-pitch-reminders',
@@ -814,6 +823,18 @@ const ApiAdminGamePoolsIdRouteRoute =
     id: '/$id',
     path: '/$id',
     getParentRoute: () => ApiAdminGamePoolsRouteRoute,
+  } as any)
+const ApiAdminOperationsAccessRouteRoute =
+  ApiAdminOperationsAccessRouteRouteImport.update({
+    id: '/api/admin/operations/access',
+    path: '/api/admin/operations/access',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiAdminOperationsAlertsRouteRoute =
+  ApiAdminOperationsAlertsRouteRouteImport.update({
+    id: '/api/admin/operations/alerts',
+    path: '/api/admin/operations/alerts',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const ApiAdminOperationsInboxRouteRoute =
   ApiAdminOperationsInboxRouteRouteImport.update({
@@ -1293,6 +1314,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -1330,6 +1352,8 @@ export interface FileRoutesByFullPath {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/access': typeof ApiAdminOperationsAccessRouteRoute
+  '/api/admin/operations/alerts': typeof ApiAdminOperationsAlertsRouteRoute
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
@@ -1481,6 +1505,7 @@ export interface FileRoutesByTo {
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -1518,6 +1543,8 @@ export interface FileRoutesByTo {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/access': typeof ApiAdminOperationsAccessRouteRoute
+  '/api/admin/operations/alerts': typeof ApiAdminOperationsAlertsRouteRoute
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
@@ -1670,6 +1697,7 @@ export interface FileRoutesById {
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
+  '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
   '/api/cron/send-pitch-reminders': typeof ApiCronSendPitchRemindersRouteRoute
   '/api/download/presign': typeof ApiDownloadPresignRouteRoute
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
@@ -1707,6 +1735,8 @@ export interface FileRoutesById {
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
+  '/api/admin/operations/access': typeof ApiAdminOperationsAccessRouteRoute
+  '/api/admin/operations/alerts': typeof ApiAdminOperationsAlertsRouteRoute
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
@@ -1860,6 +1890,7 @@ export interface FileRouteTypes {
     | '/api/cron/deliver-email'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-operations-digests'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -1897,6 +1928,8 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/access'
+    | '/api/admin/operations/alerts'
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
@@ -2048,6 +2081,7 @@ export interface FileRouteTypes {
     | '/api/cron/deliver-email'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-operations-digests'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -2085,6 +2119,8 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/access'
+    | '/api/admin/operations/alerts'
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
@@ -2236,6 +2272,7 @@ export interface FileRouteTypes {
     | '/api/cron/deliver-email'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
+    | '/api/cron/send-operations-digests'
     | '/api/cron/send-pitch-reminders'
     | '/api/download/presign'
     | '/api/drop/finalize'
@@ -2273,6 +2310,8 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/operations/access'
+    | '/api/admin/operations/alerts'
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
@@ -2414,6 +2453,7 @@ export interface RootRouteChildren {
   ApiCronDeliverEmailRouteRoute: typeof ApiCronDeliverEmailRouteRoute
   ApiCronProcessOfficialGameResultsRouteRoute: typeof ApiCronProcessOfficialGameResultsRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
+  ApiCronSendOperationsDigestsRouteRoute: typeof ApiCronSendOperationsDigestsRouteRoute
   ApiCronSendPitchRemindersRouteRoute: typeof ApiCronSendPitchRemindersRouteRoute
   ApiDownloadPresignRouteRoute: typeof ApiDownloadPresignRouteRoute
   ApiDropFinalizeRouteRoute: typeof ApiDropFinalizeRouteRoute
@@ -2427,6 +2467,8 @@ export interface RootRouteChildren {
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminCliAuthExchangeRouteRoute: typeof ApiAdminCliAuthExchangeRouteRoute
   ApiAdminCliAuthRequestRouteRoute: typeof ApiAdminCliAuthRequestRouteRoute
+  ApiAdminOperationsAccessRouteRoute: typeof ApiAdminOperationsAccessRouteRoute
+  ApiAdminOperationsAlertsRouteRoute: typeof ApiAdminOperationsAlertsRouteRoute
   ApiAdminOperationsInboxRouteRoute: typeof ApiAdminOperationsInboxRouteRoute
   ApiAdminOperationsPeopleRouteRoute: typeof ApiAdminOperationsPeopleRouteRoute
   ApiAdminOperationsSettingsRouteRoute: typeof ApiAdminOperationsSettingsRouteRoute
@@ -3029,6 +3071,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronProcessTransferMediaRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/send-operations-digests': {
+      id: '/api/cron/send-operations-digests'
+      path: '/api/cron/send-operations-digests'
+      fullPath: '/api/cron/send-operations-digests'
+      preLoaderRoute: typeof ApiCronSendOperationsDigestsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/send-pitch-reminders': {
       id: '/api/cron/send-pitch-reminders'
       path: '/api/cron/send-pitch-reminders'
@@ -3287,6 +3336,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/admin/game-pools/$id'
       preLoaderRoute: typeof ApiAdminGamePoolsIdRouteRouteImport
       parentRoute: typeof ApiAdminGamePoolsRouteRoute
+    }
+    '/api/admin/operations/access': {
+      id: '/api/admin/operations/access'
+      path: '/api/admin/operations/access'
+      fullPath: '/api/admin/operations/access'
+      preLoaderRoute: typeof ApiAdminOperationsAccessRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/operations/alerts': {
+      id: '/api/admin/operations/alerts'
+      path: '/api/admin/operations/alerts'
+      fullPath: '/api/admin/operations/alerts'
+      preLoaderRoute: typeof ApiAdminOperationsAlertsRouteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/admin/operations/inbox': {
       id: '/api/admin/operations/inbox'
@@ -4246,6 +4309,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronProcessOfficialGameResultsRouteRoute:
     ApiCronProcessOfficialGameResultsRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
+  ApiCronSendOperationsDigestsRouteRoute:
+    ApiCronSendOperationsDigestsRouteRoute,
   ApiCronSendPitchRemindersRouteRoute: ApiCronSendPitchRemindersRouteRoute,
   ApiDownloadPresignRouteRoute: ApiDownloadPresignRouteRoute,
   ApiDropFinalizeRouteRoute: ApiDropFinalizeRouteRoute,
@@ -4259,6 +4324,8 @@ const rootRouteChildren: RootRouteChildren = {
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
   ApiAdminCliAuthExchangeRouteRoute: ApiAdminCliAuthExchangeRouteRoute,
   ApiAdminCliAuthRequestRouteRoute: ApiAdminCliAuthRequestRouteRoute,
+  ApiAdminOperationsAccessRouteRoute: ApiAdminOperationsAccessRouteRoute,
+  ApiAdminOperationsAlertsRouteRoute: ApiAdminOperationsAlertsRouteRoute,
   ApiAdminOperationsInboxRouteRoute: ApiAdminOperationsInboxRouteRoute,
   ApiAdminOperationsPeopleRouteRoute: ApiAdminOperationsPeopleRouteRoute,
   ApiAdminOperationsSettingsRouteRoute: ApiAdminOperationsSettingsRouteRoute,

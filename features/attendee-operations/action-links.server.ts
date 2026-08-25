@@ -2,7 +2,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
+import { getRedis } from "@/lib/platform/redis.server";
 import { normaliseEmail } from "@/features/tickets/types";
+
+const REDEMPTION_WINDOW_SECONDS = 15 * 60;
+const MAX_REDEMPTION_ATTEMPTS = 12;
+const memoryRedemptionLimits = new Map<string, { attempts: number; resetAt: number }>();
 
 export type ActionLinkPurpose =
   | "ticket-assignment"
@@ -85,6 +90,18 @@ export async function issueActionLink(
 ): Promise<{ id: string; token: string; record: ActionLinkRecord }> {
   const token = `mah_${randomBytes(32).toString("base64url")}`;
   const linkId = id();
+  const emailHash = actionEmailHash(input.intendedEmail);
+  await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [emailHash]);
+  const issuance = await client.query<{ email_count: string; actor_count: string }>(
+    `select
+       count(*) filter (where intended_email_hash = $1)::text as email_count,
+       count(*) filter (where issued_by_type = $2 and issued_by_id is not distinct from $3)::text as actor_count
+       from attendee_action_links where created_at > now() - interval '1 hour'`,
+    [emailHash, input.issuedByType, input.issuedById ?? null],
+  );
+  const counts = issuance.rows[0];
+  if (Number(counts?.email_count) >= 6 || Number(counts?.actor_count) >= 30)
+    throw new Error("Too many action links were issued recently. Try again later.");
   const result = await client.query<ActionLinkRow>(
     `insert into attendee_action_links
        (id,token_hash,purpose,intended_email_hash,intended_email_hint,entity_type,entity_id,
@@ -95,7 +112,7 @@ export async function issueActionLink(
       linkId,
       actionTokenHash(token),
       input.purpose,
-      actionEmailHash(input.intendedEmail),
+      emailHash,
       maskActionEmail(input.intendedEmail),
       input.entityType,
       input.entityId,
@@ -108,6 +125,30 @@ export async function issueActionLink(
   const row = result.rows[0];
   if (!row) throw new Error("Action link could not be created");
   return { id: linkId, token, record: toRecord(row) };
+}
+
+async function reserveRedemptionAttempt(tokenHash: string): Promise<boolean> {
+  const key = `attendee-action:redeem:${tokenHash}`;
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const attempts = await redis.incr(key);
+      if (attempts === 1) await redis.expire(key, REDEMPTION_WINDOW_SECONDS);
+      return attempts <= MAX_REDEMPTION_ATTEMPTS;
+    } catch {
+      return false;
+    }
+  }
+  if (process.env.NODE_ENV === "production") return false;
+  const now = Date.now();
+  const existing = memoryRedemptionLimits.get(key);
+  const entry =
+    !existing || existing.resetAt <= now
+      ? { attempts: 0, resetAt: now + REDEMPTION_WINDOW_SECONDS * 1000 }
+      : existing;
+  entry.attempts += 1;
+  memoryRedemptionLimits.set(key, entry);
+  return entry.attempts <= MAX_REDEMPTION_ATTEMPTS;
 }
 
 export async function inspectActionLink(token: string): Promise<ActionLinkRecord | null> {
@@ -124,11 +165,14 @@ export async function consumeActionLink<T>(
   token: string,
   use: (client: PoolClient, link: ActionLinkRecord) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false; status: number; error: string }> {
+  const tokenHash = actionTokenHash(token);
+  if (!(await reserveRedemptionAttempt(tokenHash)))
+    return { ok: false, status: 429, error: "Too many attempts. Try again later." };
   return transaction(async (client) => {
     const selected = await client.query<ActionLinkRow>(
       `select id,purpose,intended_email_hash,intended_email_hint,entity_type,entity_id,payload,expires_at
          from attendee_action_links where token_hash = $1 for update`,
-      [actionTokenHash(token)],
+      [tokenHash],
     );
     const row = selected.rows[0];
     if (!row) return { ok: false, status: 404, error: "This action link is not recognised" };

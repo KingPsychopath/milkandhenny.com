@@ -4,6 +4,8 @@ import { sendEmail } from "@/lib/platform/email.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
+import { actionEmailHash, maskActionEmail } from "./action-links.server";
+import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 
 export type DomainEventSeverity = "info" | "prompt" | "warning" | "critical";
 
@@ -94,12 +96,13 @@ export async function emitDomainEvent(
     if (input.admin) {
       await client.query(
         `insert into admin_notifications
-           (id,source_event_id,case_id,title,body,event_slug,deep_link)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
+           (id,source_event_id,case_id,category,title,body,event_slug,deep_link)
+         values ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           id("notice"),
           eventId,
           caseId,
+          input.admin.category ?? input.kind,
           input.admin.title,
           input.admin.body,
           input.eventSlug ?? null,
@@ -133,10 +136,16 @@ async function deliverImmediateAlerts(input: {
   deepLink: string;
   eventSlug?: string;
 }): Promise<void> {
-  const recipients = await query<{ id: string; email_hint: string }>(
-    `select id,email_hint from admin_alert_recipients
+  const recipients = await query<{
+    id: string;
+    email_address: string;
+    quiet_hours: { start?: number; end?: number } | null;
+    critical_override: boolean;
+  }>(
+    `select id,email_address,quiet_hours,critical_override from admin_alert_recipients
       where status = 'active' and cadence = 'immediate'
-        and ($1 = any(categories) or 'all' = any(categories) or ($2 = 'critical' and critical_override))
+        and (fallback or $1 = any(categories) or 'all' = any(categories)
+             or ($2 = 'critical' and critical_override))
         and (cardinality(event_slugs) = 0 or $3 = any(event_slugs))`,
     [input.category, input.severity, input.eventSlug ?? ""],
   );
@@ -144,23 +153,15 @@ async function deliverImmediateAlerts(input: {
   if (!origin) return;
   const actionUrl = buildAppUrl(origin, input.deepLink);
   for (const recipient of recipients) {
-    // A verified recipient's raw address is deliberately not retained in the
-    // settings projection. It is resolved from their verified person identity.
-    const emailRows = await query<{ email: string }>(
-      `select c.email
-         from admin_alert_recipients r
-         join event_person_identifiers i on i.person_id = r.person_id and i.kind = 'email'
-         join event_person_login_challenges c on c.email_hash = i.value_hash
-        where r.id = $1 and i.verified_at is not null
-        order by c.created_at desc limit 1`,
-      [recipient.id],
-    );
-    const email = emailRows[0]?.email;
-    if (!email) continue;
+    if (
+      isQuietHour(recipient.quiet_hours, new Date().getUTCHours()) &&
+      !(input.severity === "critical" && recipient.critical_override)
+    )
+      continue;
     await sendEmail(
       {
         channel: "operations",
-        to: email,
+        to: recipient.email_address,
         subject: `${input.severity === "critical" ? "Critical" : "Needs attention"}: ${input.title}`,
         text: `${input.title}\n\n${input.body}\n\nOpen the authorised record: ${actionUrl}`,
         html: renderBrandedEmail({
@@ -180,6 +181,341 @@ async function deliverImmediateAlerts(input: {
       },
     );
   }
+}
+
+function isQuietHour(quietHours: { start?: number; end?: number } | null, hour: number): boolean {
+  const start = quietHours?.start;
+  const end = quietHours?.end;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start === end) return false;
+  if (start! < end!) return hour >= start! && hour < end!;
+  return hour >= start! || hour < end!;
+}
+
+export type AlertRecipient = {
+  id: string;
+  personId: string;
+  emailHint: string;
+  categories: string[];
+  eventSlugs: string[];
+  cadence: "immediate" | "digest";
+  digestHour?: number;
+  quietHours: { start?: number; end?: number };
+  criticalOverride: boolean;
+  fallback: boolean;
+  status: "active" | "paused" | "revoked";
+  updatedAt: string;
+};
+
+export type AlertDelivery = {
+  id: string;
+  recipientHint: string;
+  subjectHint: string;
+  kind: "operations-alert" | "operations-digest";
+  status: string;
+  attempts: number;
+  lastError?: string;
+  createdAt: string;
+};
+
+export async function listAlertRecipients(): Promise<AlertRecipient[]> {
+  const rows = await query<{
+    id: string;
+    person_id: string;
+    email_hint: string;
+    categories: string[];
+    event_slugs: string[];
+    cadence: "immediate" | "digest";
+    digest_hour: number | null;
+    quiet_hours: { start?: number; end?: number };
+    critical_override: boolean;
+    fallback: boolean;
+    status: "active" | "paused" | "revoked";
+    updated_at: Date;
+  }>(`select * from admin_alert_recipients order by status,created_at desc`);
+  return rows.map((row) => ({
+    id: row.id,
+    personId: row.person_id,
+    emailHint: row.email_hint,
+    categories: row.categories,
+    eventSlugs: row.event_slugs,
+    cadence: row.cadence,
+    digestHour: row.digest_hour ?? undefined,
+    quietHours: row.quiet_hours ?? {},
+    criticalOverride: row.critical_override,
+    fallback: row.fallback,
+    status: row.status,
+    updatedAt: row.updated_at.toISOString(),
+  }));
+}
+
+export async function listAlertDeliveries(limit = 30): Promise<AlertDelivery[]> {
+  const rows = await query<{
+    id: string;
+    recipient_hint: string;
+    subject_hint: string;
+    kind: AlertDelivery["kind"];
+    status: string;
+    attempts: number;
+    last_error: string | null;
+    created_at: Date;
+  }>(
+    `select id,recipient_hint,subject_hint,kind,status,attempts,last_error,created_at
+       from email_outbox
+      where kind in ('operations-alert','operations-digest')
+      order by created_at desc limit $1`,
+    [Math.min(100, Math.max(1, Math.trunc(limit)))],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    recipientHint: row.recipient_hint,
+    subjectHint: row.subject_hint,
+    kind: row.kind,
+    status: row.status,
+    attempts: row.attempts,
+    lastError: row.last_error ?? undefined,
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+
+export async function sendTestAlert(input: {
+  recipientId: string;
+  actorId: string;
+}): Promise<{ queued: boolean }> {
+  const rows = await query<{ email_address: string }>(
+    `select email_address from admin_alert_recipients where id = $1 and status = 'active'`,
+    [input.recipientId],
+  );
+  const email = rows[0]?.email_address;
+  if (!email) throw new Error("Active alert recipient not found");
+  const appOrigin = process.env.APP_BASE_URL?.trim() || process.env.VITE_BASE_URL?.trim();
+  if (!appOrigin) throw new Error("Application URL is not configured");
+  const delivery = await sendEmail(
+    {
+      channel: "operations",
+      to: email,
+      subject: "Milk & Henny operations test alert",
+      text: `Your operations alerts are configured.\n\nOpen admin: ${buildAppUrl(appOrigin, "/admin?view=operations")}`,
+      html: renderBrandedEmail({
+        origin: appOrigin,
+        label: "operations alert test",
+        title: "Your alerts are configured",
+        contentHtml: "<p>This test confirms the durable operations email route is available.</p>",
+        action: {
+          label: "open operations inbox",
+          url: buildAppUrl(appOrigin, "/admin?view=operations"),
+        },
+      }),
+    },
+    {
+      idempotencyKey: `operations-alert-test:${input.recipientId}:${Date.now()}`,
+      kind: "operations-alert",
+      source: "admin",
+      context: { caseId: `test-by:${input.actorId}` },
+    },
+  );
+  return { queued: delivery.ok };
+}
+
+export async function saveAlertRecipient(input: {
+  email: string;
+  categories: string[];
+  eventSlugs?: string[];
+  cadence: "immediate" | "digest";
+  digestHour?: number;
+  quietHours?: { start?: number; end?: number };
+  criticalOverride: boolean;
+  fallback: boolean;
+  actorId: string;
+  actorType: "root-owner" | "admin";
+  reason: string;
+}): Promise<{ id: string }> {
+  if (!isValidEmail(input.email)) throw new Error("Enter a valid verified email");
+  if (!input.categories.length) throw new Error("Choose at least one alert category");
+  if (!input.reason.trim()) throw new Error("An alert-recipient change requires a reason");
+  const digestHour = input.cadence === "digest" ? Math.trunc(input.digestHour ?? -1) : null;
+  if (input.cadence === "digest" && (digestHour === null || digestHour < 0 || digestHour > 23))
+    throw new Error("Choose a digest hour from 0 to 23 UTC");
+  const email = normaliseEmail(input.email);
+  const emailHash = actionEmailHash(email);
+  const quietHours = input.quietHours ?? {};
+  for (const value of [quietHours.start, quietHours.end]) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 0 || value > 23))
+      throw new Error("Quiet hours must use UTC hours from 0 to 23");
+  }
+  return transaction(async (client) => {
+    const identifier = await client.query<{ person_id: string }>(
+      `select person_id from event_person_identifiers
+        where kind = 'email' and value_hash = $1 and verified_at is not null`,
+      [emailHash],
+    );
+    const personId = identifier.rows[0]?.person_id;
+    if (!personId)
+      throw new Error("That mailbox must verify attendee access before it can receive alerts");
+    const existing = await client.query<{
+      id: string;
+      categories: string[];
+      event_slugs: string[];
+      cadence: string;
+      digest_hour: number | null;
+      status: string;
+    }>(
+      `select id,categories,event_slugs,cadence,digest_hour,status
+         from admin_alert_recipients
+        where email_hash = $1 and status in ('active','paused') for update`,
+      [emailHash],
+    );
+    const before = existing.rows[0];
+    const recipientId = before?.id ?? id("alert_recipient");
+    await client.query(
+      `insert into admin_alert_recipients
+         (id,person_id,email_hash,email_hint,email_address,categories,event_slugs,cadence,digest_hour,
+          quiet_hours,critical_override,fallback,status,verified_at)
+       values ($1,$2,$3,$4,$5,$6::text[],$7::text[],$8,$9,$10::jsonb,$11,$12,'active',now())
+       on conflict (email_hash) where status in ('active','paused') do update
+         set person_id = excluded.person_id,email_hint = excluded.email_hint,
+             email_address = excluded.email_address,
+             categories = excluded.categories,event_slugs = excluded.event_slugs,
+             cadence = excluded.cadence,digest_hour = excluded.digest_hour,
+             quiet_hours = excluded.quiet_hours,
+             critical_override = excluded.critical_override,fallback = excluded.fallback,
+             status = 'active',updated_at = now()`,
+      [
+        recipientId,
+        personId,
+        emailHash,
+        maskActionEmail(email),
+        email,
+        input.categories,
+        input.eventSlugs ?? [],
+        input.cadence,
+        digestHour,
+        JSON.stringify(quietHours),
+        input.criticalOverride,
+        input.fallback,
+      ],
+    );
+    await client.query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason,correlation_id)
+       values ('alerts.recipient.saved',$1,$2,'alert-recipient',$3,$4::jsonb,$5::jsonb,$6,$7)`,
+      [
+        input.actorType,
+        input.actorId,
+        recipientId,
+        JSON.stringify(before ?? null),
+        JSON.stringify({
+          personId,
+          categories: input.categories,
+          eventSlugs: input.eventSlugs ?? [],
+          cadence: input.cadence,
+          digestHour,
+          quietHours,
+          status: "active",
+        }),
+        input.reason.trim(),
+        randomUUID(),
+      ],
+    );
+    return { id: recipientId };
+  });
+}
+
+export async function revokeAlertRecipient(input: {
+  id: string;
+  actorId: string;
+  actorType: "root-owner" | "admin";
+  reason: string;
+}): Promise<boolean> {
+  if (!input.reason.trim()) throw new Error("A revocation reason is required");
+  return transaction(async (client) => {
+    const rows = await client.query<{ status: string; email_hint: string }>(
+      `update admin_alert_recipients set status = 'revoked',updated_at = now()
+        where id = $1 and status <> 'revoked' returning status,email_hint`,
+      [input.id],
+    );
+    const before = rows.rows[0];
+    if (!before) return false;
+    await client.query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason)
+       values ('alerts.recipient.revoked',$1,$2,'alert-recipient',$3,$4::jsonb,
+               '{"status":"revoked"}'::jsonb,$5)`,
+      [input.actorType, input.actorId, input.id, JSON.stringify(before), input.reason.trim()],
+    );
+    return true;
+  });
+}
+
+export async function sendOperationsDigests(now = new Date()): Promise<{
+  recipients: number;
+  queued: number;
+  skipped: number;
+}> {
+  const recipients = await query<{
+    id: string;
+    email_address: string;
+    digest_hour: number | null;
+  }>(
+    `select id,email_address,digest_hour from admin_alert_recipients
+      where status = 'active' and cadence = 'digest'`,
+  );
+  let queued = 0;
+  let skipped = 0;
+  const hour = now.getUTCHours();
+  const windowStart = new Date(now.getTime() - 24 * 60 * 60_000);
+  const origin = process.env.APP_BASE_URL?.trim() || process.env.VITE_BASE_URL?.trim();
+  for (const recipient of recipients) {
+    if (recipient.digest_hour !== hour || !origin) {
+      skipped += 1;
+      continue;
+    }
+    const items = await query<{ title: string; body: string; deep_link: string }>(
+      `select notification.title,notification.body,notification.deep_link
+         from admin_notifications notification
+         join admin_alert_recipients recipient on recipient.id = $1
+        where notification.created_at >= $2
+          and notification.status in ('new','seen','in-progress')
+          and (cardinality(recipient.event_slugs) = 0 or notification.event_slug = any(recipient.event_slugs))
+          and (recipient.fallback or 'all' = any(recipient.categories)
+               or notification.category = any(recipient.categories))
+        order by notification.created_at desc limit 50`,
+      [recipient.id, windowStart],
+    );
+    if (!items.length) {
+      skipped += 1;
+      continue;
+    }
+    const inboxUrl = buildAppUrl(origin, "/admin?view=operations");
+    const text = [
+      "Operations digest",
+      "",
+      ...items.flatMap((item) => [`• ${item.title}`, item.body, ""]),
+      `Open the inbox: ${inboxUrl}`,
+    ].join("\n");
+    const delivery = await sendEmail(
+      {
+        channel: "operations",
+        to: recipient.email_address,
+        subject: `${items.length} operations item${items.length === 1 ? "" : "s"} to review`,
+        text,
+        html: renderBrandedEmail({
+          origin,
+          label: "operations digest",
+          title: `${items.length} item${items.length === 1 ? "" : "s"} to review`,
+          contentHtml: `<ul>${items.map((item) => `<li><strong>${escapeEmailHtml(item.title)}</strong><br>${escapeEmailHtml(item.body)}</li>`).join("")}</ul>`,
+          action: { label: "open operations inbox", url: inboxUrl },
+        }),
+      },
+      {
+        idempotencyKey: `operations-digest:${recipient.id}:${now.toISOString().slice(0, 13)}`,
+        kind: "operations-digest",
+        source: "scheduled",
+      },
+    );
+    if (delivery.ok) queued += 1;
+    else skipped += 1;
+  }
+  return { recipients: recipients.length, queued, skipped };
 }
 
 export async function listAdminInbox(
@@ -232,9 +568,18 @@ export async function updateAdminNotification(input: {
   id: string;
   status: AdminInboxItem["status"];
   actorId: string;
+  actorType: "root-owner" | "admin";
   reason?: string;
 }): Promise<boolean> {
+  if ((input.status === "resolved" || input.status === "dismissed") && !input.reason?.trim())
+    throw new Error("A resolution reason is required");
   return transaction(async (client) => {
+    const selected = await client.query<{ case_id: string | null; status: string }>(
+      `select case_id,status from admin_notifications where id = $1 for update`,
+      [input.id],
+    );
+    const before = selected.rows[0];
+    if (!before) return false;
     const rows = await client.query<{ case_id: string | null }>(
       `update admin_notifications
           set status = $2, updated_at = now(),
@@ -255,13 +600,15 @@ export async function updateAdminNotification(input: {
     }
     await client.query(
       `insert into attendee_operations_audit_events
-         (action,actor_type,actor_id,entity_type,entity_id,after_state,reason)
-       values ('notification.status.updated','admin',$1,'notification',$2,$3::jsonb,$4)`,
+         (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason)
+       values ('notification.status.updated',$1,$2,'notification',$3,$4::jsonb,$5::jsonb,$6)`,
       [
+        input.actorType,
         input.actorId,
         input.id,
+        JSON.stringify({ status: before.status }),
         JSON.stringify({ status: input.status }),
-        input.reason?.trim() || null,
+        input.reason?.trim() || "status updated",
       ],
     );
     return true;
