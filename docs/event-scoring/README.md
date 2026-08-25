@@ -262,27 +262,27 @@ Confirm each decision before the affected implementation begins.
 
 - [ ] Existing `scanner` and `manager` concepts map cleanly into staff assignments.
 - [ ] Existing `requestGuests`, `addGuests`, and `approveRequests` permissions remain available.
-- [ ] Presets include door scanner, door manager, game moderator, points marshal, activity manager,
+- [x] Presets include door scanner, door manager, game moderator, points marshal, activity manager,
       event manager, and admin.
-- [ ] Permissions, not role labels, are the source of authority.
+- [x] Permissions, not role labels, are the source of authority.
 - [ ] Admins can adjust preset permissions.
-- [ ] Assignments support personal staff links and shared station devices.
-- [ ] Every assignment has event, label, scope, expiry, status, and permitted devices.
+- [x] Assignments support personal staff links and shared station devices.
+- [x] Every assignment has event, label, scope, expiry, status, and permitted devices.
 - [ ] A future logged-in staff person can claim an existing assignment.
-- [ ] Access links are revocable and expire as configured.
-- [ ] A leaked or photographed staff link can be revoked without affecting other staff.
-- [ ] Lost devices can be revoked individually.
-- [ ] Shared stations record the station and device even when the human actor is unknown.
+- [x] Access links are revocable and expire as configured.
+- [x] A leaked or photographed staff link can be revoked without affecting other staff.
+- [x] Lost devices can be revoked individually.
+- [x] Shared stations record the station and device even when the human actor is unknown.
 - [ ] Personal links produce a stronger human audit trail.
-- [ ] Basic staff cannot change their own permissions, scope, or budget.
+- [x] Basic staff cannot change their own permissions, scope, or budget.
 - [ ] High-risk permissions require clear admin warnings.
 
 Required permission boundaries:
 
 - [ ] Admit tickets and view recent admissions.
 - [ ] Request, add, and approve guests.
-- [ ] View participant points.
-- [ ] Award points.
+- [x] View participant points.
+- [x] Award points.
 - [ ] Run assigned activities.
 - [ ] Transfer points.
 - [ ] Reverse permitted awards.
@@ -296,15 +296,15 @@ Required permission boundaries:
 
 ## 10. Staff point authority and budgets
 
-- [ ] Admins can assign a fixed point pool to staff or a station.
+- [x] Admins can assign a fixed point pool to staff or a station.
 - [ ] Admins can add to or reclaim unused allocation.
 - [ ] Staff always see their confirmed remaining pool.
-- [ ] Two concurrent devices cannot overspend one pool.
-- [ ] Activities can have independent point pools.
-- [ ] Automatic game results use system rules and do not spend a moderator's pool.
-- [ ] Activity-controlled staff select an outcome rather than type a point amount.
-- [ ] Unmetered authority is explicit, restricted, and online-only.
-- [ ] Large or unusual awards show a preview and warning.
+- [x] Two concurrent devices cannot overspend one pool.
+- [x] Activities can have independent point pools.
+- [x] Automatic game results use system rules and do not spend a moderator's pool.
+- [x] Activity-controlled staff select an outcome rather than type a point amount.
+- [x] Unmetered authority is explicit, restricted, and online-only.
+- [x] Large or unusual awards show a preview and warning.
 - [ ] Overrides, penalties, reversals, and free-form awards require a note.
 - [ ] Unused reservations return to the correct parent pool when an activity closes.
 - [ ] The admin dashboard distinguishes issued, reserved, spent, held, and available points.
@@ -319,14 +319,14 @@ Required permission boundaries:
 - [ ] A scan cannot accidentally perform both an admission and an unrelated award.
 - [ ] Quick awards can be pinned as large buttons.
 - [ ] A physical-game award needs only the winner unless the activity requires more participants.
-- [ ] Staff can scan the winner's ticket or use event search.
+- [x] Staff can scan the winner's ticket or use event search.
 - [ ] Search supports permitted names, aliases, ticket suffixes, recent scans, and recent recipients.
 - [ ] Email appears only to authorized managers.
-- [ ] The award preview shows participant, source, amount, limits, and remaining pool.
-- [ ] Repeated-award warnings use plain language.
+- [x] The award preview shows participant, source, amount, limits, and remaining pool.
+- [x] Repeated-award warnings use plain language.
 - [ ] Permitted staff can undo their own recent mistake through an immutable reversal.
 - [ ] The UI handles camera denial, unreadable QR, dead ticket, duplicate scan, and lost network.
-- [ ] Normal moderators never see raw tokens, IDs, or permission names.
+- [x] Normal moderators never see raw tokens, IDs, or permission names.
 
 ## 12. Manual and physical activities
 
@@ -336,9 +336,9 @@ Required permission boundaries:
 - [ ] A winner-only activity does not require opponent or match entry.
 - [ ] Activities support fixed awards, limits, time windows, repeat rules, staff scope, and pools.
 - [ ] Managers can create a safe quick activity during an event.
-- [ ] Basic moderators cannot invent point values unless explicitly permitted.
-- [ ] Every award has a structured reason.
-- [ ] A free-text note is optional for a normal configured outcome.
+- [x] Basic moderators cannot invent point values unless explicitly permitted.
+- [x] Every award has a structured reason.
+- [x] A free-text note is optional for a normal configured outcome.
 - [ ] A free-text note is required for overrides, debits, reversals, and `Other`.
 - [ ] An activity can be paused without deleting its history or print material.
 - [ ] Rematches and repeat winner awards use distinct source IDs.
@@ -706,7 +706,7 @@ Database integration verification:
 
 - [ ] Concurrent duplicate game result.
 - [ ] Concurrent final discovery claim.
-- [ ] Concurrent staff-pool awards.
+- [x] Concurrent staff-pool awards.
 - [ ] Atomic transfer and exact reversal.
 - [ ] Rule revision preservation.
 - [ ] Offline redemption and check-in award exactly once.

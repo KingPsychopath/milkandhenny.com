@@ -614,6 +614,59 @@ export async function listLeaderboardParticipants(
   return rows.map(toParticipant);
 }
 
+export async function searchEventParticipants(
+  eventSlug: string,
+  term: string,
+  limit = 20,
+): Promise<
+  Array<{
+    id: string;
+    publicAlias: string;
+    displayName?: string;
+    ticketSuffix?: string;
+    balance: number;
+    checkedIn: boolean;
+  }>
+> {
+  const normalized = term.trim();
+  if (normalized.length < 2) return [];
+  const rows = await query<{
+    id: string;
+    public_alias: string;
+    display_name: string | null;
+    ticket_id: string | null;
+    balance: number;
+    checked_in_at: Date | null;
+  }>(
+    `select participants.id, participants.public_alias, participants.display_name,
+            participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
+            participants.checked_in_at
+       from event_participants participants
+       left join score_projections projections on projections.participant_id = participants.id
+      where participants.event_slug = $1
+        and participants.status = 'active'
+        and (
+          participants.public_alias ilike '%' || $2 || '%'
+          or coalesce(participants.display_name, '') ilike '%' || $2 || '%'
+          or right(coalesce(participants.ticket_id, ''), 8) ilike '%' || $2 || '%'
+        )
+      order by
+        case when lower(coalesce(participants.display_name, participants.public_alias)) = lower($2)
+          then 0 else 1 end,
+        coalesce(participants.display_name, participants.public_alias), participants.id
+      limit $3`,
+    [eventSlug, normalized, Math.min(Math.max(limit, 1), 30)],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    publicAlias: row.public_alias,
+    displayName: row.display_name ?? undefined,
+    ticketSuffix: row.ticket_id?.slice(-8),
+    balance: row.balance,
+    checkedIn: row.checked_in_at !== null,
+  }));
+}
+
 export async function listTransactionsForParticipant(
   participantId: string,
   limit = 100,

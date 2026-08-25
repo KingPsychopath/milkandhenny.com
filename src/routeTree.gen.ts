@@ -147,6 +147,7 @@ import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upl
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
 import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug/discoveries/$discoveryId'
+import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug/staff/$token'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
 import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
@@ -912,6 +913,11 @@ const EventsSlugDiscoveriesDiscoveryIdRoute =
     path: '/discoveries/$discoveryId',
     getParentRoute: () => EventsSlugRoute,
   } as any)
+const EventsSlugStaffTokenRoute = EventsSlugStaffTokenRouteImport.update({
+  id: '/staff/$token',
+  path: '/staff/$token',
+  getParentRoute: () => EventsSlugRoute,
+} as any)
 const ThingsLiarsRoomIdPresentRoute =
   ThingsLiarsRoomIdPresentRouteImport.update({
     id: '/liars_/$roomId_/present',
@@ -1237,6 +1243,7 @@ export interface FileRoutesByFullPath {
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1408,6 +1415,7 @@ export interface FileRoutesByTo {
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1580,6 +1588,7 @@ export interface FileRoutesById {
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1753,6 +1762,7 @@ export interface FileRouteTypes {
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
+    | '/events/$slug/staff/$token'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -1924,6 +1934,7 @@ export interface FileRouteTypes {
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
+    | '/events/$slug/staff/$token'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -2095,6 +2106,7 @@ export interface FileRouteTypes {
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
+    | '/events/$slug/staff/$token'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
@@ -3193,6 +3205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsSlugDiscoveriesDiscoveryIdRouteImport
       parentRoute: typeof EventsSlugRoute
     }
+    '/events/$slug/staff/$token': {
+      id: '/events/$slug/staff/$token'
+      path: '/staff/$token'
+      fullPath: '/events/$slug/staff/$token'
+      preLoaderRoute: typeof EventsSlugStaffTokenRouteImport
+      parentRoute: typeof EventsSlugRoute
+    }
     '/things/liars_/$roomId_/present': {
       id: '/things/liars_/$roomId_/present'
       path: '/liars/$roomId/present'
@@ -3551,11 +3570,13 @@ const ApiWordsRouteRouteWithChildren = ApiWordsRouteRoute._addFileChildren(
 interface EventsSlugRouteChildren {
   EventsSlugScoreRoute: typeof EventsSlugScoreRoute
   EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  EventsSlugStaffTokenRoute: typeof EventsSlugStaffTokenRoute
 }
 
 const EventsSlugRouteChildren: EventsSlugRouteChildren = {
   EventsSlugScoreRoute: EventsSlugScoreRoute,
   EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
+  EventsSlugStaffTokenRoute: EventsSlugStaffTokenRoute,
 }
 
 const EventsSlugRouteWithChildren = EventsSlugRoute._addFileChildren(

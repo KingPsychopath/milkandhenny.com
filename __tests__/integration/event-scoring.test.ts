@@ -40,6 +40,10 @@ import {
   revokeStaffAccess,
   revokeStaffAccessDevice,
 } from "@/features/event-scoring/staff.server";
+import {
+  awardStaffPoints,
+  getStaffScoringPage,
+} from "@/features/event-scoring/staff-scoring.server";
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
@@ -817,5 +821,64 @@ describeWithDatabase("event scoring postgres", () => {
         deviceId: "device-two",
       }),
     ).toBeNull();
+  });
+
+  it("enforces staff activity scope and a shared pool during concurrent awards", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Quick winner",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 4, repeat: "repeat", requiresCheckIn: false },
+    });
+    const other = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Other table",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 1, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Winner table",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      scope: { activityIds: [activity.id], largeAwardWarningAt: 10 },
+    });
+    const pool = await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "station",
+      ownerId: access.id,
+      points: 5,
+    });
+    expect(pool.ok).toBe(true);
+    const page = await getStaffScoringPage({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "station-device",
+    });
+    expect(page).toMatchObject({ found: true, activities: [{ id: activity.id }] });
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const base = {
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "station-device",
+      activityId: activity.id,
+      participantId: participant!.id,
+    };
+    const outcomes = await Promise.all([
+      awardStaffPoints({ ...base, commandId: "staff-command-one" }),
+      awardStaffPoints({ ...base, commandId: "staff-command-two" }),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(4);
+    expect(
+      await awardStaffPoints({ ...base, activityId: other.id, commandId: "staff-other" }),
+    ).toMatchObject({ ok: false, status: 403 });
   });
 });
