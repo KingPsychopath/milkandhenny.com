@@ -10,7 +10,7 @@ APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
 
 The runner drains the transactional-email outbox, then calls transfer cleanup, Pitch Night cleanup,
 expired word-share cleanup, orphaned word-media cleanup, and media reconciliation. The web process
-also drains email every five seconds; maintenance is its independent backstop. Each job emits one
+also drains email immediately when a message is queued, with a one-minute retry backstop; maintenance is its independent backstop. Each job emits one
 structured result, and the runner exits non-zero if any job fails.
 
 ## Capability checks

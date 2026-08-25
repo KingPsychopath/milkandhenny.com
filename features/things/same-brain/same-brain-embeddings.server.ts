@@ -23,6 +23,7 @@ const MODEL = "Xenova/all-MiniLM-L6-v2";
 const DTYPE = "q8";
 const VECTOR_TTL_SECONDS = 30 * 24 * 60 * 60;
 const EMBED_TIMEOUT_MS = 4_000;
+const MAX_LOCAL_VECTORS = 4_096;
 
 type Extractor = (
   text: string | string[],
@@ -32,6 +33,16 @@ type Extractor = (
 let extractorPromise: Promise<Extractor | null> | null = null;
 /** Process-local, in front of Redis. A round asks about the same handful of words repeatedly. */
 const localVectors = new Map<string, Float32Array>();
+
+function cacheLocalVector(word: string, vector: Float32Array): void {
+  localVectors.delete(word);
+  localVectors.set(word, vector);
+  while (localVectors.size > MAX_LOCAL_VECTORS) {
+    const oldest = localVectors.keys().next().value;
+    if (oldest === undefined) break;
+    localVectors.delete(oldest);
+  }
+}
 
 /**
  * Off switch for operations, independent of any room's house rules.
@@ -110,14 +121,17 @@ function toVector(output: Awaited<ReturnType<Extractor>>): Float32Array | null {
 
 async function readCachedVector(word: string) {
   const local = localVectors.get(word);
-  if (local) return local;
+  if (local) {
+    cacheLocalVector(word, local);
+    return local;
+  }
   const redis = getRedis();
   if (!redis) return null;
   try {
     const stored = await redis.get<number[]>(sameBrainVectorKey(MODEL, word));
     if (!Array.isArray(stored) || stored.length === 0) return null;
     const vector = Float32Array.from(stored);
-    localVectors.set(word, vector);
+    cacheLocalVector(word, vector);
     return vector;
   } catch {
     return null;
@@ -125,7 +139,7 @@ async function readCachedVector(word: string) {
 }
 
 async function writeCachedVector(word: string, vector: Float32Array) {
-  localVectors.set(word, vector);
+  cacheLocalVector(word, vector);
   const redis = getRedis();
   if (!redis) return;
   try {

@@ -4,6 +4,7 @@ import { log } from "@/lib/platform/logger.server";
 const MODEL = "Xenova/all-MiniLM-L6-v2";
 const DTYPE = "q8";
 const EMBED_TIMEOUT_MS = 4_000;
+const MAX_LOCAL_VECTORS = 4_096;
 
 type Extractor = (
   text: string,
@@ -12,6 +13,16 @@ type Extractor = (
 
 let extractorPromise: Promise<Extractor | null> | null = null;
 const vectors = new Map<string, Float32Array>();
+
+function cacheVector(word: string, vector: Float32Array): void {
+  vectors.delete(word);
+  vectors.set(word, vector);
+  while (vectors.size > MAX_LOCAL_VECTORS) {
+    const oldest = vectors.keys().next().value;
+    if (oldest === undefined) break;
+    vectors.delete(oldest);
+  }
+}
 
 function loadExtractor() {
   extractorPromise ??= (async () => {
@@ -41,7 +52,10 @@ function outputVector(output: Awaited<ReturnType<Extractor>>) {
 
 async function vectorFor(word: string) {
   const cached = vectors.get(word);
-  if (cached) return cached;
+  if (cached) {
+    cacheVector(word, cached);
+    return cached;
+  }
   const extractor = await loadExtractor();
   if (!extractor) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -53,7 +67,7 @@ async function vectorFor(word: string) {
       }),
     ]);
     const vector = outputVector(output);
-    if (vector) vectors.set(word, vector);
+    if (vector) cacheVector(word, vector);
     return vector;
   } finally {
     if (timer) clearTimeout(timer);

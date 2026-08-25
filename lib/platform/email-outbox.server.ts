@@ -12,7 +12,7 @@ import { isDatabaseConfigured, query, transaction } from "./postgres.server";
 
 const CLAIM_LIMIT = 8;
 const LOCK_SECONDS = 45;
-const WORKER_INTERVAL_MS = 5_000;
+const WORKER_BACKSTOP_INTERVAL_MS = 60_000;
 
 interface OutboxRow {
   id: string;
@@ -298,17 +298,29 @@ function triggerEmailOutboxDrain(): void {
   });
 }
 
-let workerTimer: ReturnType<typeof setInterval> | null = null;
+let workerTimer: ReturnType<typeof setTimeout> | null = null;
+let workerStarted = false;
 
-export function startEmailOutboxWorker(): void {
-  if (workerTimer || !isDatabaseConfigured()) return;
-  triggerEmailOutboxDrain();
-  workerTimer = setInterval(triggerEmailOutboxDrain, WORKER_INTERVAL_MS);
+function scheduleEmailOutboxBackstop(): void {
+  if (!workerStarted || workerTimer) return;
+  workerTimer = setTimeout(() => {
+    workerTimer = null;
+    triggerEmailOutboxDrain();
+    scheduleEmailOutboxBackstop();
+  }, WORKER_BACKSTOP_INTERVAL_MS);
   workerTimer.unref();
 }
 
+export function startEmailOutboxWorker(): void {
+  if (workerStarted || !isDatabaseConfigured()) return;
+  workerStarted = true;
+  triggerEmailOutboxDrain();
+  scheduleEmailOutboxBackstop();
+}
+
 export async function stopEmailOutboxWorker(): Promise<void> {
-  if (workerTimer) clearInterval(workerTimer);
+  workerStarted = false;
+  if (workerTimer) clearTimeout(workerTimer);
   workerTimer = null;
   await draining?.catch((error) => {
     log.error("email.outbox", "Email delivery drain failed during shutdown", {}, error);

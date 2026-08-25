@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
   clientQuery: vi.fn(),
+  clearAssignmentReceipts: vi.fn(),
   createPoolRoomAndJoin: vi.fn(),
+  expireStaleGamePoolAssignments: vi.fn(async () => ({
+    staleAssignments: 0,
+    closedRooms: 0,
+    receipts: [],
+  })),
   joinPoolRoom: vi.fn(),
   postgresQuery: vi.fn(),
   publishWake: vi.fn(),
@@ -25,6 +31,8 @@ vi.mock("@/features/things/pool/game-adapters.server", () => ({
   joinPoolRoom: fakes.joinPoolRoom,
 }));
 vi.mock("@/features/things/pool/membership.server", () => ({
+  clearAssignmentReceipts: fakes.clearAssignmentReceipts,
+  expireStaleGamePoolAssignments: fakes.expireStaleGamePoolAssignments,
   findGamePoolRunForClient: vi.fn(),
 }));
 vi.mock("@/features/things/pool/operations.server", () => ({

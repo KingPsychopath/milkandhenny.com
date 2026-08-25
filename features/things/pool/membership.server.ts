@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 import { getRedis } from "@/lib/platform/redis.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { gamePoolAssignmentReceiptKey } from "./pool-keys";
@@ -7,12 +8,80 @@ function moderationId() {
   return `gpm_${randomBytes(16).toString("base64url")}`;
 }
 
-async function clearAssignmentReceipts(receipts: Array<{ runId: string; clientId: string }>) {
+export async function clearAssignmentReceipts(
+  receipts: Array<{ runId: string; clientId: string }>,
+) {
   const redis = getRedis();
   if (redis && receipts.length > 0)
     await redis.del(
       ...receipts.map(({ runId, clientId }) => gamePoolAssignmentReceiptKey(runId, clientId)),
     );
+}
+
+export async function expireStaleGamePoolAssignments(
+  client: PoolClient,
+  runId?: string,
+): Promise<{
+  staleAssignments: number;
+  closedRooms: number;
+  receipts: Array<{ runId: string; clientId: string }>;
+}> {
+  const sweepAt = new Date();
+  const runFilter = runId ? "and assignment.run_id = $2" : "";
+  const staleAssignments = await client.query<{
+    run_id: string;
+    room_id: string;
+    client_id: string;
+  }>(
+    `update game_pool_assignments assignment
+     set status = 'session_ended', ended_at = $1, display_name = 'session_ended'
+     where assignment.status = 'active'
+       and assignment.last_seen_at < now() - interval '90 seconds'
+       ${runFilter}
+     returning run_id, room_id, client_id`,
+    runId ? [sweepAt, runId] : [sweepAt],
+  );
+
+  const closedRooms = await client.query(
+    `update game_pool_rooms room
+     set player_count = case when live.active_count > 0 then live.active_count else 0 end,
+         status = case when live.active_count > 0 then room.status else 'closed' end,
+         updated_at = now()
+     from (
+       select room_id, run_id, count(*)::int as active_count
+       from game_pool_assignments
+       where status = 'active'
+       group by run_id, room_id
+     ) live
+     where room.status <> 'closed'
+       and room.run_id = live.run_id
+       and room.room_id = live.room_id
+       and room.player_count <> live.active_count
+       ${runId ? "and room.run_id = $1" : ""}`,
+    runId ? [runId] : [],
+  );
+
+  const emptyRooms = await client.query(
+    `update game_pool_rooms room
+     set status = 'closed', player_count = 0, updated_at = now()
+     where room.status <> 'closed'
+       and not exists (
+         select 1 from game_pool_assignments assignment
+         where assignment.run_id = room.run_id and assignment.room_id = room.room_id
+           and assignment.status = 'active'
+       )
+       ${runId ? "and room.run_id = $1" : ""}`,
+    runId ? [runId] : [],
+  );
+
+  return {
+    staleAssignments: staleAssignments.rowCount ?? staleAssignments.rows.length,
+    closedRooms: (closedRooms.rowCount ?? 0) + (emptyRooms.rowCount ?? 0),
+    receipts: staleAssignments.rows.map(({ run_id, client_id }) => ({
+      runId: run_id,
+      clientId: client_id,
+    })),
+  };
 }
 
 export async function markGamePoolPlayerLeft(input: { roomId: string; playerId: string }) {

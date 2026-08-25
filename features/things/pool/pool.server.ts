@@ -24,7 +24,11 @@ import type {
   GamePoolPublicView,
   GamePoolRoomSummary,
 } from "./types";
-import { findGamePoolRunForClient } from "./membership.server";
+import {
+  clearAssignmentReceipts,
+  expireStaleGamePoolAssignments,
+  findGamePoolRunForClient,
+} from "./membership.server";
 import { recordGamePoolAllocation } from "./operations.server";
 import { poolGameSettings } from "./presets";
 
@@ -80,11 +84,14 @@ export async function getGamePoolPublicView(token: string): Promise<GamePoolPubl
   const assignments = await query<ActiveAssignmentRow>(
     `select id, room_id, display_name from game_pool_assignments
      where run_id = $1 and status = 'active'
+       and last_seen_at >= now() - interval '90 seconds'
      order by created_at`,
     [run.id],
   );
   const occupantsByRoom = new Map<string, Array<{ id: string; label: string }>>();
+  const playerCountByRoom = new Map<string, number>();
   for (const assignment of assignments) {
+    playerCountByRoom.set(assignment.room_id, (playerCountByRoom.get(assignment.room_id) ?? 0) + 1);
     const label = publicName(assignment.display_name, run.nameVisibility);
     if (!label) continue;
     const occupants = occupantsByRoom.get(assignment.room_id) ?? [];
@@ -92,12 +99,12 @@ export async function getGamePoolPublicView(token: string): Promise<GamePoolPubl
     occupantsByRoom.set(assignment.room_id, occupants);
   }
   const rooms: GamePoolRoomSummary[] = roomRows
-    .filter((room) => room.status !== "closed")
+    .filter((room) => room.status !== "closed" && (playerCountByRoom.get(room.room_id) ?? 0) > 0)
     .map((room, index) => ({
       roomId: room.room_id,
       label: `room ${index + 1}`,
       status: room.status === "open" ? "open" : "started",
-      playerCount: room.player_count,
+      playerCount: playerCountByRoom.get(room.room_id) ?? 0,
       capacity: Math.min(room.capacity, run.targetSize),
       occupants: occupantsByRoom.get(room.room_id) ?? [],
       createdAt: room.created_at.toISOString(),
@@ -157,7 +164,8 @@ async function readReceipt(runId: string, clientId: string) {
   const rows = await query<{ active: boolean }>(
     `select true as active from game_pool_assignments
      where run_id = $1 and client_id = $2 and room_id = $3 and player_id = $4
-       and status = 'active'`,
+       and status = 'active'
+       and last_seen_at >= now() - interval '90 seconds'`,
     [runId, clientId, receipt.assignment.roomId, receipt.assignment.playerId],
   );
   if (rows[0]?.active) return receipt;
@@ -228,6 +236,7 @@ export async function assignGamePoolRoom(input: {
     const receipt = input.moveExisting ? null : await readReceipt(run.id, clientId);
     if (receipt) return receipt.assignment;
 
+    let staleReceipts: Array<{ runId: string; clientId: string }> = [];
     const assignment = await withGamePoolAllocation(run.id, async (client) => {
       const lockedRun = await client.query<{
         status: string;
@@ -246,6 +255,9 @@ export async function assignGamePoolRoom(input: {
         (current.closes_at && current.closes_at.getTime() <= Date.now())
       )
         throw new Error("This game is not accepting players right now.");
+
+      const expired = await expireStaleGamePoolAssignments(client, run.id);
+      staleReceipts = expired.receipts;
 
       const existing = await client.query<{ room_id: string }>(
         `select room_id from game_pool_assignments
@@ -388,6 +400,7 @@ export async function assignGamePoolRoom(input: {
       }
       throw new Error("That room is no longer available.");
     });
+    await clearAssignmentReceipts(staleReceipts);
     await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
     failed = false;
     return assignment;
