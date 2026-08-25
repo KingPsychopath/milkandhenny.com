@@ -351,17 +351,29 @@ export async function updateTicketHolder(
 
   const setEmail = changes.email !== undefined;
   const email = changes.email ? normaliseEmail(changes.email) : null;
-  const rows = await query<TicketRow>(
-    `update tickets
-        set holder_name = coalesce($2, holder_name),
-            email = case when $3 then $4 else email end,
-            email_hash = case when $3 then $5 else email_hash end
-      where id = $1
-      returning *`,
-    [id, changes.holderName ?? null, setEmail, email, email ? hashEmail(email) : null],
-  );
-  if (rows[0]) log.info("tickets.update", "Holder details changed", { id });
-  return rows[0] ? toTicket(rows[0]) : null;
+  const row = await transaction(async (client) => {
+    const result = await client.query<TicketRow>(
+      `update tickets
+          set holder_name = coalesce($2, holder_name),
+              email = case when $3 then $4 else email end,
+              email_hash = case when $3 then $5 else email_hash end
+        where id = $1
+        returning *`,
+      [id, changes.holderName ?? null, setEmail, email, email ? hashEmail(email) : null],
+    );
+    const updated = result.rows[0];
+    if (updated && changes.holderName !== undefined) {
+      await client.query(
+        `update event_participants
+            set display_name = $2, updated_at = now()
+          where ticket_id = $1`,
+        [id, updated.holder_name],
+      );
+    }
+    return updated ?? null;
+  });
+  if (row) log.info("tickets.update", "Holder details changed", { id });
+  return row ? toTicket(row) : null;
 }
 
 /** Staff correction: someone scanned the wrong phone. */

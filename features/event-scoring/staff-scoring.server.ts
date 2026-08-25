@@ -332,7 +332,8 @@ async function listOwnRecentAwards(eventSlug: string, assignmentId: string) {
     reversed: boolean;
   }>(
     `select transactions.id,
-            coalesce(participants.display_name, participants.public_alias) as participant_label,
+            coalesce(participants.display_name, participants.chosen_alias,
+                     participants.generated_alias) as participant_label,
             activities.name as activity_name,
             postings.points,
             transactions.created_at,
@@ -411,7 +412,8 @@ async function listRecentStaffParticipants(
 ) {
   const rows = await query<{
     id: string;
-    public_alias: string;
+    generated_alias: string;
+    chosen_alias: string | null;
     display_name: string | null;
     ticket_id: string | null;
     balance: number;
@@ -436,7 +438,8 @@ async function listRecentStaffParticipants(
        select distinct on (id) id, recent_reason, happened_at
          from recent order by id, happened_at desc
      )
-     select participants.id, participants.public_alias, participants.display_name,
+     select participants.id, participants.generated_alias, participants.chosen_alias,
+            participants.display_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
             participants.checked_in_at, tickets.email, ranked.recent_reason, ranked.happened_at
        from ranked
@@ -448,7 +451,7 @@ async function listRecentStaffParticipants(
   );
   return rows.map((row) => ({
     id: row.id,
-    publicAlias: row.public_alias,
+    publicAlias: row.chosen_alias ?? row.generated_alias,
     displayName: row.display_name ?? undefined,
     ticketSuffix: row.ticket_id?.slice(-8),
     balance: row.balance,

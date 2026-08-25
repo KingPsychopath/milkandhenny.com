@@ -7,6 +7,7 @@ import {
   discoveryClaimPoints,
   hasUnresolvedTie,
   identityEvidenceStrength,
+  leaderboardNameFor,
   normalizeDiscoveryCode,
   poolAvailable,
   rankScores,
@@ -95,6 +96,20 @@ describe("event scoring rules", () => {
   it("keeps weak identity signals out of automatic resolution", () => {
     expect(identityEvidenceStrength("name")).toBe("weak");
     expect(identityEvidenceStrength("verified-email")).toBe("strong");
+  });
+
+  it("selects generated, chosen, and verified canonical leaderboard names explicitly", () => {
+    const participant = {
+      generatedAlias: "guest-1234",
+      chosenAlias: "Night Owl",
+      canonicalName: "Alice Smith",
+    };
+    expect(leaderboardNameFor("generated", participant)).toBe("guest-1234");
+    expect(leaderboardNameFor("choice", participant)).toBe("Night Owl");
+    expect(leaderboardNameFor("canonical", participant)).toBe("Alice Smith");
+    expect(leaderboardNameFor("canonical", { ...participant, canonicalName: undefined })).toBe(
+      "guest-1234",
+    );
   });
 
   it("reconciles by command id and never replaces a newer snapshot with an older one", () => {

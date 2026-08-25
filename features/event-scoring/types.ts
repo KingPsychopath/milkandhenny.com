@@ -143,6 +143,10 @@ export type ScoreParticipant = {
   eventSlug: string;
   personId?: string;
   ticketId?: string;
+  generatedAlias: string;
+  chosenAlias?: string;
+  canonicalName?: string;
+  /** Effective private-facing alias: chosen alias when present, otherwise generated. */
   publicAlias: string;
   displayMode: "alias" | "anonymous" | "hidden";
   displayName?: string;
@@ -150,6 +154,15 @@ export type ScoreParticipant = {
   status: "active" | "refunded" | "void" | "disqualified" | "merged";
   checkedInAt?: string;
 };
+
+export function leaderboardNameFor(
+  policy: ScoringSettings["publicNames"],
+  participant: Pick<ScoreParticipant, "generatedAlias" | "chosenAlias" | "canonicalName">,
+): string {
+  if (policy === "choice") return participant.chosenAlias ?? participant.generatedAlias;
+  if (policy === "canonical") return participant.canonicalName ?? participant.generatedAlias;
+  return participant.generatedAlias;
+}
 
 export type ScorePosting = {
   participantId: string;

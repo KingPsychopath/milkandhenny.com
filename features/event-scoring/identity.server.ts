@@ -138,7 +138,8 @@ export async function pseudonymizeEventPerson(input: {
         .slice(0, 10)}`;
       await client.query(
         `update event_participants
-            set display_name = null, public_alias = $2, display_mode = 'anonymous', updated_at = now()
+            set display_name = null, generated_alias = $2, chosen_alias = null,
+                display_mode = 'anonymous', updated_at = now()
           where id = $1`,
         [participant.id, alias],
       );

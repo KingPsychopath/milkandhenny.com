@@ -293,7 +293,7 @@ async function ensureGamePlayerLinks(
     const participantId = opaqueId("ep");
     const publicAlias = `player-${randomBytes(5).toString("hex")}`;
     await client.query(
-      `insert into event_participants (id, event_slug, public_alias)
+      `insert into event_participants (id, event_slug, generated_alias)
        values ($1,$2,$3)`,
       [participantId, row.event_slug, publicAlias],
     );

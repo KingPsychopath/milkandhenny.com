@@ -36,7 +36,9 @@ import {
   markOrderRefunded,
   restoreDisputedTickets,
   insertTicketsWithCapacity,
+  updateTicketHolder,
 } from "@/features/tickets/store.server";
+import { participantForTicket } from "@/features/event-scoring/store.server";
 import { buildTicketQrPayload, hashTicketId, signTicketId } from "@/features/tickets/qr.server";
 import { refundOrder } from "@/features/tickets/checkout.server";
 import type { EventRecord } from "@/features/events/types";
@@ -124,6 +126,15 @@ describeWithDatabase("tickets (postgres)", () => {
       expect(first.parentTicketId).toBeUndefined();
       for (const ticket of rest) expect(ticket.parentTicketId).toBe(first.id);
       expect(new Set(result.value.tickets.map((t) => t.orderId)).size).toBe(1);
+    });
+
+    it("keeps a corrected ticket label and its private participant name in sync", async () => {
+      await seedEvent();
+      const ticket = await issueOne("Alyce");
+
+      await updateTicketHolder(ticket.id, { holderName: "Alice Smith" });
+
+      expect((await participantForTicket(ticket.id))?.displayName).toBe("Alice Smith");
     });
 
     it("does not let a shared child ticket refund the purchaser's order", async () => {

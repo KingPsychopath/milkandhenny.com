@@ -18,7 +18,10 @@ async function handlePOST(request: Request, ticketId: string) {
       eventSlug: access.eventSlug,
       participantId: access.participantId,
       displayMode,
-      publicAlias: typeof body?.publicAlias === "string" ? body.publicAlias : undefined,
+      publicAlias:
+        typeof body?.publicAlias === "string" || body?.publicAlias === null
+          ? body.publicAlias
+          : undefined,
     });
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json(result.value);

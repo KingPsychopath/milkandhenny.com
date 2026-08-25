@@ -63,7 +63,9 @@ type ParticipantRow = {
   event_slug: string;
   person_id: string | null;
   ticket_id: string | null;
-  public_alias: string;
+  generated_alias: string;
+  chosen_alias: string | null;
+  canonical_name?: string | null;
   display_mode: "alias" | "anonymous" | "hidden";
   display_name: string | null;
   status: string;
@@ -221,7 +223,10 @@ function toParticipant(
     eventSlug: row.event_slug,
     personId: row.person_id ?? undefined,
     ticketId: row.ticket_id ?? undefined,
-    publicAlias: row.public_alias,
+    generatedAlias: row.generated_alias,
+    chosenAlias: row.chosen_alias ?? undefined,
+    canonicalName: row.canonical_name ?? undefined,
+    publicAlias: row.chosen_alias ?? row.generated_alias,
     displayMode: row.display_mode,
     displayName: row.display_name ?? undefined,
     status: row.status as ScoreParticipant["status"],
@@ -548,11 +553,12 @@ export async function participantForTicket(
   ticketId: string,
 ): Promise<(ScoreParticipant & ScoreProjection & { teamId?: string }) | null> {
   const row = await queryOne<ParticipantRow>(
-    `select p.*, coalesce(sp.balance, 0)::integer as balance,
+    `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
             tm.team_id
        from event_participants p
+       left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
          select m.team_id, t.name as team_name
@@ -573,11 +579,12 @@ export async function getParticipant(
   participantId: string,
 ): Promise<(ScoreParticipant & ScoreProjection & { teamId?: string }) | null> {
   const row = await queryOne<ParticipantRow>(
-    `select p.*, coalesce(sp.balance, 0)::integer as balance,
+    `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
             tm.team_id
        from event_participants p
+       left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
          select m.team_id, t.name as team_name
@@ -598,11 +605,12 @@ export async function listLeaderboardParticipants(
   eventSlug: string,
 ): Promise<(ScoreParticipant & ScoreProjection & { teamId?: string })[]> {
   const rows = await query<ParticipantRow>(
-    `select p.*, coalesce(sp.balance, 0)::integer as balance,
+    `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
             tm.team_id
        from event_participants p
+       left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
          select m.team_id, t.name as team_name
@@ -616,7 +624,7 @@ export async function listLeaderboardParticipants(
       where p.event_slug = $1
         and p.status not in ('void', 'merged')
         and p.display_mode <> 'hidden'
-      order by balance desc, p.public_alias, p.id`,
+      order by balance desc, coalesce(p.chosen_alias, p.generated_alias), p.id`,
     [eventSlug],
   );
   return rows.map(toParticipant);
@@ -626,7 +634,8 @@ export async function updateParticipantPublicIdentity(input: {
   eventSlug: string;
   participantId: string;
   displayMode: ScoreParticipant["displayMode"];
-  publicAlias?: string;
+  /** `undefined` preserves the choice; `null` returns to the generated alias. */
+  publicAlias?: string | null;
 }): Promise<
   ScoreStoreResult<{ publicAlias: string; displayMode: ScoreParticipant["displayMode"] }>
 > {
@@ -636,25 +645,38 @@ export async function updateParticipantPublicIdentity(input: {
       return { ok: false, status: 400, error: "An alias must use 2 to 40 characters" };
     if (/[@<>\p{Cc}]/u.test(alias))
       return { ok: false, status: 400, error: "That alias contains unsupported characters" };
+    if (/^(guest|player|removed)-[0-9a-f]+$/iu.test(alias))
+      return { ok: false, status: 400, error: "That alias is reserved" };
   }
   try {
     const row = await queryOne<{
-      public_alias: string;
+      generated_alias: string;
+      chosen_alias: string | null;
       display_mode: ScoreParticipant["displayMode"];
     }>(
       `update event_participants
-          set public_alias = coalesce($4, public_alias), display_mode = $3, updated_at = now()
+          set chosen_alias = case when $4 then $5 else chosen_alias end,
+              display_mode = $3, updated_at = now()
         where id = $1 and event_slug = $2 and status = 'active'
-        returning public_alias, display_mode`,
-      [input.participantId, input.eventSlug, input.displayMode, alias ?? null],
+        returning generated_alias, chosen_alias, display_mode`,
+      [
+        input.participantId,
+        input.eventSlug,
+        input.displayMode,
+        input.publicAlias !== undefined,
+        alias ?? null,
+      ],
     );
     if (!row) return { ok: false, status: 404, error: "Participant not found" };
     return {
       ok: true,
-      value: { publicAlias: row.public_alias, displayMode: row.display_mode },
+      value: {
+        publicAlias: row.chosen_alias ?? row.generated_alias,
+        displayMode: row.display_mode,
+      },
     };
   } catch (error) {
-    if (error instanceof Error && error.message.includes("event_participants_public_alias_idx"))
+    if (error instanceof Error && error.message.includes("event_participants_chosen_alias_idx"))
       return { ok: false, status: 409, error: "That public alias is already in use" };
     throw error;
   }
@@ -680,14 +702,16 @@ export async function searchEventParticipants(
   if (normalized.length < 2) return [];
   const rows = await query<{
     id: string;
-    public_alias: string;
+    generated_alias: string;
+    chosen_alias: string | null;
     display_name: string | null;
     ticket_id: string | null;
     balance: number;
     checked_in_at: Date | null;
     email: string | null;
   }>(
-    `select participants.id, participants.public_alias, participants.display_name,
+    `select participants.id, participants.generated_alias, participants.chosen_alias,
+            participants.display_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
             participants.checked_in_at, tickets.email
        from event_participants participants
@@ -696,20 +720,23 @@ export async function searchEventParticipants(
       where participants.event_slug = $1
         and participants.status = 'active'
         and (
-          participants.public_alias ilike '%' || $2 || '%'
+          participants.generated_alias ilike '%' || $2 || '%'
+          or coalesce(participants.chosen_alias, '') ilike '%' || $2 || '%'
           or coalesce(participants.display_name, '') ilike '%' || $2 || '%'
           or right(coalesce(participants.ticket_id, ''), 8) ilike '%' || $2 || '%'
         )
       order by
-        case when lower(coalesce(participants.display_name, participants.public_alias)) = lower($2)
+        case when lower(coalesce(participants.display_name, participants.chosen_alias,
+                                 participants.generated_alias)) = lower($2)
           then 0 else 1 end,
-        coalesce(participants.display_name, participants.public_alias), participants.id
+        coalesce(participants.display_name, participants.chosen_alias,
+                 participants.generated_alias), participants.id
       limit $3`,
     [eventSlug, normalized, Math.min(Math.max(limit, 1), 30)],
   );
   return rows.map((row) => ({
     id: row.id,
-    publicAlias: row.public_alias,
+    publicAlias: row.chosen_alias ?? row.generated_alias,
     displayName: row.display_name ?? undefined,
     ticketSuffix: row.ticket_id?.slice(-8),
     balance: row.balance,

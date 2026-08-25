@@ -9,6 +9,7 @@ import {
   convertRulePoints,
   hasUnresolvedTie,
   rankScores,
+  leaderboardNameFor,
   type ActivityStatus,
   type ActivityTemplate,
   type LeaderboardVisibility,
@@ -641,7 +642,12 @@ export async function publicLeaderboard(input: {
         ? participant.status !== "refunded"
         : participant.status !== "disqualified",
   );
-  const ranked = rankScores(participants);
+  const ranked = rankScores(
+    participants.map((participant) => ({
+      ...participant,
+      publicAlias: leaderboardNameFor(settings.publicNames, participant),
+    })),
+  );
   return {
     ok: true,
     value: {

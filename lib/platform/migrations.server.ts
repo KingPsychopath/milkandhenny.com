@@ -2100,6 +2100,45 @@ const MIGRATIONS: Migration[] = [
         ));
     `,
   },
+  {
+    id: "0046_event_participant_public_names",
+    sql: `
+      alter table event_participants
+        rename column public_alias to generated_alias;
+      alter table event_participants
+        add column chosen_alias text
+          check (
+            chosen_alias is null or (
+              char_length(chosen_alias) between 2 and 40
+              and chosen_alias !~* '^(guest|player|removed)-[0-9a-f]+$'
+            )
+          );
+
+      drop index if exists event_participants_public_alias_idx;
+      create unique index event_participants_generated_alias_idx
+        on event_participants (event_slug, lower(generated_alias));
+      create unique index event_participants_chosen_alias_idx
+        on event_participants (event_slug, lower(chosen_alias))
+        where chosen_alias is not null;
+
+      create or replace function event_scoring_ticket_participant() returns trigger
+      language plpgsql as $$
+      begin
+        insert into event_participants
+          (id, event_slug, ticket_id, generated_alias, display_name)
+        values (
+          'ep_' || substr(md5(new.id || clock_timestamp()::text), 1, 24),
+          new.event_slug,
+          new.id,
+          'guest-' || substr(md5(new.id), 1, 8),
+          new.holder_name
+        )
+        on conflict (ticket_id) do nothing;
+        return new;
+      end;
+      $$;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

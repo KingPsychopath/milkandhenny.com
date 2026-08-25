@@ -91,6 +91,7 @@ import {
   mergeParticipants,
   listPersonalActivityTemplates,
   processScheduledScoringTransitions,
+  publicLeaderboard,
   reverseParticipantMerge,
   savePersonalActivityTemplate,
 } from "@/features/event-scoring/scoring.server";
@@ -312,6 +313,62 @@ describeWithDatabase("event scoring postgres", () => {
         displayMode: "hidden",
       }),
     ).toMatchObject({ ok: true, value: { publicAlias: "Night Owl", displayMode: "hidden" } });
+    expect(
+      await updateParticipantPublicIdentity({
+        eventSlug: "scoring-night",
+        participantId: participant!.id,
+        displayMode: "alias",
+        publicAlias: null,
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { publicAlias: participant!.generatedAlias, displayMode: "alias" },
+    });
+    expect(
+      await updateParticipantPublicIdentity({
+        eventSlug: "scoring-night",
+        participantId: participant!.id,
+        displayMode: "alias",
+        publicAlias: "guest-deadbeef",
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.id).toBe(participant!.id);
+  });
+
+  it("applies the configured public-name policy without changing participant identity", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    expect(participant).toBeTruthy();
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings
+          set state = 'live', leaderboard_visibility = 'public-live'
+        where event_slug = 'scoring-night'`,
+    );
+    await updateParticipantPublicIdentity({
+      eventSlug: "scoring-night",
+      participantId: participant!.id,
+      displayMode: "alias",
+      publicAlias: "Night Owl",
+    });
+    await query(
+      `insert into event_people (id, canonical_name) values ('person-alice','Alice Smith')`,
+    );
+    await query(`update event_participants set person_id = 'person-alice' where id = $1`, [
+      participant!.id,
+    ]);
+
+    const generated = await publicLeaderboard({ eventSlug: "scoring-night" });
+    expect(generated.ok && generated.value.rows[0]?.publicAlias).toBe(participant!.generatedAlias);
+    await query(
+      `update event_scoring_settings set public_names = 'choice' where event_slug = 'scoring-night'`,
+    );
+    const chosen = await publicLeaderboard({ eventSlug: "scoring-night" });
+    expect(chosen.ok && chosen.value.rows[0]?.publicAlias).toBe("Night Owl");
+    await query(
+      `update event_scoring_settings set public_names = 'canonical' where event_slug = 'scoring-night'`,
+    );
+    const canonical = await publicLeaderboard({ eventSlug: "scoring-night" });
+    expect(canonical.ok && canonical.value.rows[0]?.publicAlias).toBe("Alice Smith");
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.id).toBe(participant!.id);
   });
 

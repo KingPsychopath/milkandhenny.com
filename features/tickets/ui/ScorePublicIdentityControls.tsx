@@ -14,16 +14,20 @@ export function ScorePublicIdentityControls({
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function save() {
+  async function save(publicAlias: string | null = alias) {
     setBusy(true);
     setStatus("");
     const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/score/profile`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ displayMode: mode, publicAlias: alias }),
+      body: JSON.stringify({ displayMode: mode, publicAlias }),
     });
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+      publicAlias?: string;
+    } | null;
     setBusy(false);
+    if (response.ok && body?.publicAlias) setAlias(body.publicAlias);
     setStatus(
       response.ok
         ? "Public score display saved."
@@ -68,6 +72,16 @@ export function ScorePublicIdentityControls({
         >
           save public display
         </button>
+        {mode === "alias" && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save(null)}
+            className="min-h-11 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
+          >
+            use my generated alias
+          </button>
+        )}
         {status && (
           <p role="status" className="font-mono text-xs">
             {status}
