@@ -22,6 +22,7 @@ import {
 } from "@/features/event-scoring/client-sync";
 import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
 import { simulateScoreClaim, TEST_SCENARIOS } from "@/features/event-scoring/test-mode";
+import { formatDiscoveryCooldown } from "@/features/event-scoring/ui/useDiscoveryCooldown";
 
 describe("event scoring rules", () => {
   it("keeps scoring off until an explicit live state", () => {
@@ -75,6 +76,7 @@ describe("event scoring rules", () => {
         {
           pointMode: "diminishing",
           tiers: [10, 5],
+          claimFrequency: "once",
           requiresCheckIn: false,
           remainderAward: "discard",
         },
@@ -82,6 +84,7 @@ describe("event scoring rules", () => {
         false,
       ),
     ).toBe(5);
+    expect(formatDiscoveryCooldown(272)).toBe("04:32");
   });
 
   it("keeps printed discovery credentials stable per replacement revision", () => {

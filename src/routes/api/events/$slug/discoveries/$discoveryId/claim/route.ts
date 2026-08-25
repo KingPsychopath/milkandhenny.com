@@ -30,7 +30,24 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
       presented,
       commandId,
     });
-    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      return Response.json(
+        {
+          error: result.error,
+          retryAt: result.retryAt,
+          retryAfterSeconds: result.retryAfterSeconds,
+        },
+        {
+          status: result.status,
+          headers: {
+            "Cache-Control": "no-store",
+            ...(result.retryAfterSeconds
+              ? { "Retry-After": String(result.retryAfterSeconds) }
+              : {}),
+          },
+        },
+      );
+    }
     return Response.json(result.value, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiErrorFromRequest(

@@ -253,6 +253,7 @@ export async function recordScoreInTransaction(
   }
 
   const activityAward = ["manual", "game", "discovery", "check-in"].includes(input.sourceType);
+  const activityRepeatRuleApplies = activityAward && input.sourceType !== "discovery";
   if (
     activityAward &&
     activityRule?.requiresCheckIn &&
@@ -260,7 +261,7 @@ export async function recordScoreInTransaction(
   ) {
     return { ok: false, status: 409, error: "Check in before receiving this activity score" };
   }
-  if (activityAward && input.activityId && activityRule?.repeat === "once") {
+  if (activityRepeatRuleApplies && input.activityId && activityRule?.repeat === "once") {
     const prior = await client.query<{ participant_id: string }>(
       `select distinct postings.participant_id
          from score_transactions transactions
@@ -275,7 +276,7 @@ export async function recordScoreInTransaction(
       return { ok: false, status: 409, error: "This activity can award each participant once" };
     }
   }
-  if (activityAward && input.activityId && activityRule?.repeat === "once-per-source") {
+  if (activityRepeatRuleApplies && input.activityId && activityRule?.repeat === "once-per-source") {
     const prior = await client.query<{ id: string }>(
       `select id from score_transactions
         where event_slug = $1 and activity_id = $2 and source_id = $3

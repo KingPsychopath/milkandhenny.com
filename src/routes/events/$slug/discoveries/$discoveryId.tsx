@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { getPublicDiscoveryFn } from "@/features/event-scoring/public.functions";
+import {
+  formatDiscoveryCooldown,
+  useDiscoveryCooldown,
+} from "@/features/event-scoring/ui/useDiscoveryCooldown";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -40,6 +44,7 @@ function DiscoveryRoute() {
   const [isError, setIsError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const { coolingDown, remainingSeconds, startCooldown } = useDiscoveryCooldown();
 
   useEffect(() => {
     const clue = new URLSearchParams(window.location.hash.slice(1)).get("clue");
@@ -73,8 +78,17 @@ function DiscoveryRoute() {
         state?: string;
         points?: number;
         progress?: { claimed: number; total: number; complete: boolean };
+        retryAfterSeconds?: number;
       };
-      if (!response.ok) throw new Error(body.error ?? "The clue could not be claimed");
+      startCooldown(body.retryAfterSeconds);
+      if (!response.ok) {
+        if (response.status === 429 && body.retryAfterSeconds) {
+          setIsError(false);
+          setMessage("You’ve already claimed this discovery.");
+          return;
+        }
+        throw new Error(body.error ?? "The clue could not be claimed");
+      }
       setMessage(
         body.state === "held"
           ? "Saved for review while scoring is frozen."
@@ -143,7 +157,7 @@ function DiscoveryRoute() {
               {cameraOpen && (
                 <div className="max-w-sm">
                   <CameraFeed
-                    paused={busy}
+                    paused={busy || coolingDown}
                     onCode={(raw) => {
                       setPresented(clueCredential(raw));
                       setCameraOpen(false);
@@ -155,14 +169,19 @@ function DiscoveryRoute() {
           )}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || coolingDown}
             className="min-h-11 border theme-border px-4 font-mono text-xs uppercase tracking-wide hover:opacity-70 disabled:opacity-50"
           >
-            {busy ? "Checking..." : "Claim clue"}
+            {busy
+              ? "Checking..."
+              : coolingDown
+                ? `Try again in ${formatDiscoveryCooldown(remainingSeconds)}`
+                : "Claim clue"}
           </button>
           {message && (
             <p role={isError ? "alert" : "status"} className="font-mono text-xs theme-subtle">
               {message}
+              {coolingDown && ` Try again in ${formatDiscoveryCooldown(remainingSeconds)}.`}
             </p>
           )}
         </form>

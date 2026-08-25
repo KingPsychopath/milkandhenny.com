@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { getDiscoveryClaimPageFn } from "@/features/event-scoring/public.functions";
+import {
+  formatDiscoveryCooldown,
+  useDiscoveryCooldown,
+} from "@/features/event-scoring/ui/useDiscoveryCooldown";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -35,6 +39,8 @@ function DiscoveriesRoute() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [cooldownDiscovery, setCooldownDiscovery] = useState("");
+  const { clearCooldown, coolingDown, remainingSeconds, startCooldown } = useDiscoveryCooldown();
 
   useEffect(() => {
     if (!activeParticipant) {
@@ -47,6 +53,8 @@ function DiscoveriesRoute() {
     setBusy(true);
     setMessage("");
     setIsError(false);
+    clearCooldown();
+    setCooldownDiscovery("");
     try {
       const response = await fetch(`/api/events/${encodeURIComponent(slug)}/discoveries/claim`, {
         method: "POST",
@@ -59,8 +67,19 @@ function DiscoveriesRoute() {
         state?: string;
         discovery?: { name: string };
         progress?: { claimed: number; total: number; complete: boolean };
+        retryAfterSeconds?: number;
       };
-      if (!response.ok) throw new Error(body.error ?? "The clue could not be claimed");
+      if (body.retryAfterSeconds) {
+        startCooldown(body.retryAfterSeconds);
+        setCooldownDiscovery(body.discovery?.name ?? "This clue");
+      }
+      if (!response.ok) {
+        if (response.status === 429 && body.retryAfterSeconds) {
+          setMessage(`${body.discovery?.name ?? "This clue"} was already claimed.`);
+          return;
+        }
+        throw new Error(body.error ?? "The clue could not be claimed");
+      }
       setMessage(
         `${body.discovery?.name ?? "Clue"} claimed. ${body.points ?? 0} points.${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} found.` : ""}`,
       );
@@ -137,6 +156,8 @@ function DiscoveriesRoute() {
           {message && (
             <p role={isError ? "alert" : "status"} className="font-mono text-xs theme-muted">
               {message}
+              {coolingDown &&
+                ` ${cooldownDiscovery} can be claimed again in ${formatDiscoveryCooldown(remainingSeconds)}.`}
             </p>
           )}
         </section>

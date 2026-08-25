@@ -32,7 +32,10 @@ export function ScoringDiscoveriesPanel({
   const [points, setPoints] = useState(3);
   const [completionBonus, setCompletionBonus] = useState(10);
   const [poolPoints, setPoolPoints] = useState(50);
-  const [claimantLimit, setClaimantLimit] = useState(10);
+  const [claimantLimit, setClaimantLimit] = useState("");
+  const [claimFrequency, setClaimFrequency] = useState<"once" | "cooldown">("once");
+  const [cooldownMinutes, setCooldownMinutes] = useState(5);
+  const [maximumClaimsPerParticipant, setMaximumClaimsPerParticipant] = useState("");
   const [tiers, setTiers] = useState("10, 7, 5");
   const [clues, setClues] = useState("one|First clue\ntwo|Second clue");
   const [issued, setIssued] = useState<string[]>([]);
@@ -52,13 +55,29 @@ export function ScoringDiscoveriesPanel({
         pointsPerClue: points,
         completionBonus,
         poolPoints,
-        claimantLimit,
+        ...(claimantLimit.trim()
+          ? { claimantLimit: Math.max(1, Math.trunc(Number(claimantLimit))) }
+          : {}),
         tiers: tiers
           .split(",")
           .map((value) => Number(value.trim()))
           .filter(Number.isFinite),
         requiresCheckIn: true,
         remainderAward: "discard",
+        ...(method !== "collected-clues" && claimFrequency === "cooldown"
+          ? {
+              claimFrequency: "cooldown" as const,
+              cooldownSeconds: Math.max(1, Math.round(cooldownMinutes * 60)),
+              ...(maximumClaimsPerParticipant.trim()
+                ? {
+                    maximumClaimsPerParticipant: Math.max(
+                      1,
+                      Math.trunc(Number(maximumClaimsPerParticipant)),
+                    ),
+                  }
+                : {}),
+            }
+          : { claimFrequency: "once" as const }),
       },
       clues:
         method === "collected-clues"
@@ -231,15 +250,62 @@ export function ScoringDiscoveriesPanel({
             />
           </label>
           <label className="font-mono text-xs">
-            claimant limit
+            total claims — optional
             <input
               type="number"
               min={1}
               value={claimantLimit}
-              onChange={(event) => setClaimantLimit(Number(event.target.value))}
+              onChange={(event) => setClaimantLimit(event.target.value)}
+              placeholder="unlimited"
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
+          {method !== "collected-clues" && (
+            <label className="font-mono text-xs">
+              claims per person
+              <select
+                value={claimFrequency}
+                onChange={(event) => setClaimFrequency(event.target.value as typeof claimFrequency)}
+                className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+              >
+                <option value="once">once only</option>
+                <option value="cooldown">repeat after cooldown</option>
+              </select>
+            </label>
+          )}
+          {method !== "collected-clues" && claimFrequency === "cooldown" && (
+            <>
+              <label className="font-mono text-xs">
+                cooldown in minutes
+                <input
+                  type="number"
+                  min={1 / 60}
+                  max={10_080}
+                  step={1}
+                  required
+                  value={cooldownMinutes}
+                  onChange={(event) => setCooldownMinutes(Number(event.target.value))}
+                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                />
+              </label>
+              <label className="font-mono text-xs">
+                maximum claims per person — optional
+                <input
+                  type="number"
+                  min={1}
+                  max={10_000}
+                  value={maximumClaimsPerParticipant}
+                  onChange={(event) => setMaximumClaimsPerParticipant(event.target.value)}
+                  placeholder="unlimited"
+                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                />
+              </label>
+              <p className="font-mono text-xs theme-muted sm:col-span-2">
+                Each successful repeat creates a new score transaction. Fixed-pool discoveries stop
+                when their pool is empty.
+              </p>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setAdvanced((value) => !value)}
@@ -295,6 +361,10 @@ export function ScoringDiscoveriesPanel({
             <span className="min-w-0 flex-1 font-serif">{discovery.name}</span>
             <span className="font-mono text-micro theme-muted">
               {discovery.method} · {discovery.status}
+              {discovery.rule.claimFrequency === "cooldown" &&
+              typeof discovery.rule.cooldownSeconds === "number"
+                ? ` · repeats every ${Math.ceil(discovery.rule.cooldownSeconds / 60)} min`
+                : ""}
             </span>
             {discovery.method !== "collected-clues" && (
               <button

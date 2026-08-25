@@ -49,10 +49,24 @@ export type DiscoverySetup = Discovery & {
 
 export type DiscoveryClaimProgress = { claimed: number; total: number; complete: boolean };
 export type DiscoveryClue = Omit<DiscoveryClueSetup, "claimToken">;
+export type DiscoveryClaimValue = {
+  state: DiscoveryClaimState;
+  points: number;
+  transaction?: string;
+  progress?: DiscoveryClaimProgress;
+  nextEligibleAt?: string;
+  retryAfterSeconds?: number;
+};
 
 export type DiscoveryResult<T> =
   | { ok: true; value: T }
-  | { ok: false; status: number; error: string };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      retryAt?: string;
+      retryAfterSeconds?: number;
+    };
 
 function id(prefix: string): string {
   return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
@@ -60,6 +74,27 @@ function id(prefix: string): string {
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function discoveryRuleError(rule: DiscoveryRule, method: Discovery["method"]): string | null {
+  if (rule.claimFrequency === "once") return null;
+  if (method === "collected-clues") return "Collected hunts can only be claimed once per clue";
+  if (
+    !Number.isInteger(rule.cooldownSeconds) ||
+    rule.cooldownSeconds < 1 ||
+    rule.cooldownSeconds > 7 * 24 * 60 * 60
+  ) {
+    return "Cooldown must be between 1 second and 7 days";
+  }
+  if (
+    rule.maximumClaimsPerParticipant !== undefined &&
+    (!Number.isInteger(rule.maximumClaimsPerParticipant) ||
+      rule.maximumClaimsPerParticipant < 1 ||
+      rule.maximumClaimsPerParticipant > 10_000)
+  ) {
+    return "Maximum claims per person must be between 1 and 10,000";
+  }
+  return null;
 }
 
 function credentialKey(): string {
@@ -119,6 +154,8 @@ export async function createDiscovery(input: {
   if (!activity || activity.eventSlug !== input.eventSlug)
     return { ok: false, status: 404, error: "Activity not found" };
   if (!input.name.trim()) return { ok: false, status: 400, error: "Name the discovery" };
+  const ruleError = discoveryRuleError(input.rule, input.method);
+  if (ruleError) return { ok: false, status: 400, error: ruleError };
   const clues = (input.clues ?? []).map((clue) => ({
     key: normalizeDiscoveryCode(clue.key).replaceAll(" ", "-").toLocaleLowerCase("en-GB"),
     label: clue.label.trim(),
@@ -294,6 +331,10 @@ export async function updateDiscovery(input: {
   }
   if ((current.status === "ended" || current.status === "cancelled") && input.rule) {
     return { ok: false, status: 409, error: "Closed discovery rules cannot be changed" };
+  }
+  if (input.rule) {
+    const ruleError = discoveryRuleError(input.rule, current.method);
+    if (ruleError) return { ok: false, status: 400, error: ruleError };
   }
   const row = await queryOne<DiscoveryRow>(
     `update score_discoveries set
@@ -515,14 +556,7 @@ export async function claimDiscovery(input: {
   participantId: string;
   presented: string;
   commandId: string;
-}): Promise<
-  DiscoveryResult<{
-    state: DiscoveryClaimState;
-    points: number;
-    transaction?: string;
-    progress?: DiscoveryClaimProgress;
-  }>
-> {
+}): Promise<DiscoveryResult<DiscoveryClaimValue>> {
   const discovery = await getDiscovery(input.discoveryId);
   if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
   const [participant, event] = await Promise.all([
@@ -561,22 +595,88 @@ export async function claimDiscovery(input: {
     return { ok: false, status: 409, error: "Scoring is not accepting discovery claims" };
   }
   const claimId = id("claim");
-  const claim = await transaction(async (client) => {
+  type ExistingClaim = {
+    id: string;
+    state: DiscoveryClaimState;
+    points: number;
+    transaction_id: string | null;
+    created_at: Date;
+  };
+  type ClaimReservation =
+    | { kind: "duplicate"; claim: ExistingClaim }
+    | { kind: "cooldown"; retryAt: Date; retryAfterSeconds: number }
+    | { kind: "participant-limit" }
+    | { kind: "pool-limit" }
+    | { kind: "processing" }
+    | {
+        kind: "reserved";
+        claimId: string;
+        points: number;
+        progress?: DiscoveryClaimProgress;
+        createdAt: Date;
+      };
+  const claim: ClaimReservation = await transaction(async (client) => {
     // Claim numbers must be allocated under one lock. Without this, two final
-    // claims can both receive the same diminishing tier or exhaust a pool.
+    // claims can both receive the same diminishing tier, bypass a cooldown, or exhaust a pool.
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [input.discoveryId]);
-    const existing = await client.query<{
-      id: string;
-      state: DiscoveryClaimState;
-      points: number;
-      transaction_id: string | null;
-    }>(
-      `select id, state, points, transaction_id
+    const commandClaim = await client.query<ExistingClaim>(
+      `select id, state, points, transaction_id, created_at
          from score_discovery_claims
-        where discovery_id = $1 and participant_id = $2 and clue_key is not distinct from $3`,
-      [input.discoveryId, input.participantId, clueKey],
+        where discovery_id = $1 and command_id = $2`,
+      [input.discoveryId, input.commandId],
     );
-    if (existing.rows[0]) return { duplicate: existing.rows[0] };
+    if (commandClaim.rows[0]) return { kind: "duplicate", claim: commandClaim.rows[0] };
+
+    if (discovery.rule.claimFrequency === "once") {
+      const priorClaim = await client.query<ExistingClaim>(
+        `select id, state, points, transaction_id, created_at
+           from score_discovery_claims
+          where discovery_id = $1 and participant_id = $2
+            and clue_key is not distinct from $3 and state in ('accepted', 'held')
+          order by created_at desc, id desc
+          limit 1`,
+        [input.discoveryId, input.participantId, clueKey],
+      );
+      if (priorClaim.rows[0]) return { kind: "duplicate", claim: priorClaim.rows[0] };
+    } else {
+      const participantClaims = await client.query<{ count: string }>(
+        `select count(*)::text as count
+           from score_discovery_claims
+          where discovery_id = $1 and participant_id = $2
+            and state in ('accepted', 'held')`,
+        [input.discoveryId, input.participantId],
+      );
+      const participantClaimCount = Number(participantClaims.rows[0]?.count ?? 0);
+      if (
+        discovery.rule.maximumClaimsPerParticipant !== undefined &&
+        participantClaimCount >= discovery.rule.maximumClaimsPerParticipant
+      ) {
+        return { kind: "participant-limit" };
+      }
+      const latestClaim = await client.query<{
+        retry_at: Date;
+        retry_after_seconds: number;
+      }>(
+        `select created_at + ($3::integer * interval '1 second') as retry_at,
+                greatest(0, ceil(extract(epoch from
+                  (created_at + ($3::integer * interval '1 second') - clock_timestamp())
+                )))::integer as retry_after_seconds
+           from score_discovery_claims
+          where discovery_id = $1 and participant_id = $2
+            and state in ('accepted', 'held')
+          order by created_at desc, id desc
+          limit 1`,
+        [input.discoveryId, input.participantId, discovery.rule.cooldownSeconds],
+      );
+      const latest = latestClaim.rows[0];
+      if (latest && latest.retry_after_seconds > 0) {
+        return {
+          kind: "cooldown",
+          retryAt: latest.retry_at,
+          retryAfterSeconds: latest.retry_after_seconds,
+        };
+      }
+    }
     const clueTotals =
       discovery.method === "collected-clues"
         ? await client.query<{ total: string; claimed: string }>(
@@ -610,7 +710,7 @@ export async function claimDiscovery(input: {
         claimNumber > Math.max(0, Math.trunc(discovery.rule.claimantLimit))) ||
       (discovery.rule.pointMode === "one-winner" && claimNumber > 1)
     ) {
-      return { limitReached: true };
+      return { kind: "pool-limit" };
     }
     const claimedPoints = await client.query<{ total: string }>(
       `select coalesce(sum(points), 0)::text as total
@@ -625,19 +725,19 @@ export async function claimDiscovery(input: {
         Math.trunc(discovery.rule.poolPoints) - Number(claimedPoints.rows[0]?.total ?? 0),
       );
       if (remaining < points) {
-        if (discovery.rule.remainderAward === "discard") return { limitReached: true };
+        if (discovery.rule.remainderAward === "discard") return { kind: "pool-limit" };
         points = remaining;
       }
     }
     if (points <= 0 && discovery.rule.pointMode === "fixed-pool") {
-      return { limitReached: true };
+      return { kind: "pool-limit" };
     }
-    const inserted = await client.query<{ id: string }>(
+    const inserted = await client.query<{ id: string; created_at: Date }>(
       `insert into score_discovery_claims
          (id, discovery_id, event_slug, participant_id, command_id, state, points, clue_key)
        values ($1,$2,$3,$4,$5,'held',$6,$7)
        on conflict do nothing
-       returning id`,
+       returning id, created_at`,
       [
         claimId,
         input.discoveryId,
@@ -649,53 +749,97 @@ export async function claimDiscovery(input: {
       ],
     );
     if (!inserted.rows[0]) {
-      const duplicate = await client.query<{
-        id: string;
-        state: DiscoveryClaimState;
-        points: number;
-        transaction_id: string | null;
-      }>(
-        `select id, state, points, transaction_id
+      const duplicate = await client.query<ExistingClaim>(
+        `select id, state, points, transaction_id, created_at
            from score_discovery_claims
-          where discovery_id = $1 and participant_id = $2 and clue_key is not distinct from $3`,
-        [input.discoveryId, input.participantId, clueKey],
+          where discovery_id = $1
+            and (command_id = $2 or
+              (participant_id = $3 and clue_key is not distinct from $4))
+          order by (command_id = $2) desc, created_at desc
+          limit 1`,
+        [input.discoveryId, input.commandId, input.participantId, clueKey],
       );
-      return duplicate.rows[0] ? { duplicate: duplicate.rows[0] } : { duplicate: null };
+      return duplicate.rows[0]
+        ? { kind: "duplicate", claim: duplicate.rows[0] }
+        : { kind: "processing" };
     }
-    return { duplicate: null, claimId, points, progress };
+    return {
+      kind: "reserved",
+      claimId,
+      points,
+      progress,
+      createdAt: inserted.rows[0].created_at,
+    };
   });
-  if ("limitReached" in claim && claim.limitReached) {
+  if (claim.kind === "pool-limit") {
     return { ok: false, status: 409, error: "This discovery has no claimant points left" };
   }
-  if (claim.duplicate) {
-    if (claim.duplicate.state === "held" && !claim.duplicate.transaction_id) {
+  if (claim.kind === "participant-limit") {
+    return { ok: false, status: 409, error: "You have reached this discovery's claim limit" };
+  }
+  if (claim.kind === "cooldown") {
+    return {
+      ok: false,
+      status: 429,
+      error: "This discovery is cooling down",
+      retryAt: claim.retryAt.toISOString(),
+      retryAfterSeconds: claim.retryAfterSeconds,
+    };
+  }
+  if (claim.kind === "duplicate") {
+    const cooldown = cooldownResult(discovery.rule, claim.claim.created_at);
+    if (claim.claim.state === "held" && !claim.claim.transaction_id) {
       if (settings.state !== "live") {
-        return { ok: true, value: { state: "held", points: claim.duplicate.points } };
+        return { ok: true, value: { state: "held", points: claim.claim.points, ...cooldown } };
       }
       return settleDiscoveryClaim(
         discovery,
         input.participantId,
-        claim.duplicate.id,
-        claim.duplicate.points,
+        claim.claim.id,
+        claim.claim.points,
+        undefined,
+        cooldown,
       );
     }
     return {
       ok: true,
       value: {
-        state: claim.duplicate.state,
-        points: claim.duplicate.points,
-        transaction: claim.duplicate.transaction_id ?? undefined,
+        state: claim.claim.state,
+        points: claim.claim.points,
+        transaction: claim.claim.transaction_id ?? undefined,
+        ...cooldown,
       },
     };
   }
-  if (!claim.claimId)
+  if (claim.kind === "processing") {
     return { ok: false, status: 409, error: "This claim is already being processed" };
+  }
+  const cooldown = cooldownResult(discovery.rule, claim.createdAt);
   const points = claim.points;
   if (settings.state !== "live") {
     await query(`update score_discovery_claims set state = 'held' where id = $1`, [claimId]);
-    return { ok: true, value: { state: "held", points } };
+    return { ok: true, value: { state: "held", points, ...cooldown } };
   }
-  return settleDiscoveryClaim(discovery, input.participantId, claimId, points, claim.progress);
+  return settleDiscoveryClaim(
+    discovery,
+    input.participantId,
+    claimId,
+    points,
+    claim.progress,
+    cooldown,
+  );
+}
+
+function cooldownResult(
+  rule: DiscoveryRule,
+  createdAt: Date,
+): Pick<DiscoveryClaimValue, "nextEligibleAt" | "retryAfterSeconds"> {
+  if (rule.claimFrequency !== "cooldown") return {};
+  const nextEligibleAt = createdAt.getTime() + rule.cooldownSeconds * 1000;
+  return {
+    nextEligibleAt: new Date(nextEligibleAt).toISOString(),
+    retryAfterSeconds: Math.max(0, Math.ceil((nextEligibleAt - Date.now()) / 1000)),
+  };
 }
 
 async function settleDiscoveryClaim(
@@ -704,17 +848,11 @@ async function settleDiscoveryClaim(
   claimId: string,
   points: number,
   progress?: DiscoveryClaimProgress,
-): Promise<
-  DiscoveryResult<{
-    state: DiscoveryClaimState;
-    points: number;
-    transaction?: string;
-    progress?: DiscoveryClaimProgress;
-  }>
-> {
+  cooldown: Pick<DiscoveryClaimValue, "nextEligibleAt" | "retryAfterSeconds"> = {},
+): Promise<DiscoveryResult<DiscoveryClaimValue>> {
   if (points === 0) {
     await query(`update score_discovery_claims set state = 'accepted' where id = $1`, [claimId]);
-    return { ok: true, value: { state: "accepted", points: 0, progress } };
+    return { ok: true, value: { state: "accepted", points: 0, progress, ...cooldown } };
   }
   const scored = await recordScore({
     eventSlug: discovery.eventSlug,
@@ -737,5 +875,8 @@ async function settleDiscoveryClaim(
     state,
     scored.value.id,
   ]);
-  return { ok: true, value: { state, points, transaction: scored.value.id, progress } };
+  return {
+    ok: true,
+    value: { state, points, transaction: scored.value.id, progress, ...cooldown },
+  };
 }

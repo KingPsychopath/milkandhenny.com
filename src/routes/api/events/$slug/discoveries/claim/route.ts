@@ -41,7 +41,25 @@ async function handlePOST(request: Request, slug: string) {
       presented,
       commandId,
     });
-    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      return Response.json(
+        {
+          error: result.error,
+          retryAt: result.retryAt,
+          retryAfterSeconds: result.retryAfterSeconds,
+          discovery: { id: discovery.id, name: discovery.name },
+        },
+        {
+          status: result.status,
+          headers: {
+            "Cache-Control": "no-store",
+            ...(result.retryAfterSeconds
+              ? { "Retry-After": String(result.retryAfterSeconds) }
+              : {}),
+          },
+        },
+      );
+    }
     return Response.json(
       { ...result.value, discovery: { id: discovery.id, name: discovery.name } },
       { headers: { "Cache-Control": "no-store" } },

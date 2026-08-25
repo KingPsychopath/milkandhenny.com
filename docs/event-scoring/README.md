@@ -411,6 +411,10 @@ Extended integrations:
 - [x] Generated words avoid offensive, easily confused, and unsuitable combinations.
 - [x] Incorrect attempts are rate-limited without locking out valid users unfairly.
 - [x] One participant cannot claim one discovery twice unless the rule explicitly permits it.
+- [x] Repeatable QR and code stations support a server-enforced per-participant cooldown, optional
+      per-person maximum, unlimited total claims, and a visible retry countdown.
+- [x] Repeat claims reserve fixed-pool points atomically and simultaneous devices cannot bypass the
+      cooldown.
 - [x] Collected-clue progress is durable and event-scoped.
 - [x] Completion bonuses issue exactly once.
 - [x] Discovery eligibility can require check-in, team, ticket type, or time window.

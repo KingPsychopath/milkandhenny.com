@@ -2194,6 +2194,20 @@ const MIGRATIONS: Migration[] = [
         on ticket_exchange_refunds (payment_ref, status);
     `,
   },
+  {
+    id: "0048_repeatable_discovery_cooldowns",
+    sql: `
+      update score_discoveries
+         set rule = rule || '{"claimFrequency":"once"}'::jsonb
+       where not (rule ? 'claimFrequency');
+
+      drop index if exists score_discovery_claims_once_idx;
+
+      create index if not exists score_discovery_claims_participant_recent_idx
+        on score_discovery_claims (discovery_id, participant_id, created_at desc)
+        where state in ('accepted', 'held');
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

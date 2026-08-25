@@ -964,6 +964,7 @@ describeWithDatabase("event scoring postgres", () => {
         pointMode: "per-clue-plus-completion",
         pointsPerClue: 2,
         completionBonus: 5,
+        claimFrequency: "once",
         requiresCheckIn: false,
         remainderAward: "discard",
       },
@@ -1078,6 +1079,124 @@ describeWithDatabase("event scoring postgres", () => {
         )
       )[0]?.count,
     ).toBe("2");
+  });
+
+  it("enforces repeatable discovery cooldowns, idempotency, limits, and fixed pools", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Repeatable station",
+      template: "discovery",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 3, repeat: "once", requiresCheckIn: false },
+    });
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const created = await createDiscovery({
+      eventSlug: "scoring-night",
+      activityId: activity.id,
+      name: "Three-shot station",
+      method: "qr",
+      status: "live",
+      rule: {
+        pointMode: "fixed-pool",
+        pointsPerClue: 3,
+        poolPoints: 9,
+        claimFrequency: "cooldown",
+        cooldownSeconds: 60,
+        maximumClaimsPerParticipant: 3,
+        requiresCheckIn: false,
+        remainderAward: "discard",
+      },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !participant) return;
+    const presented = created.value.claimToken ?? "missing";
+    const first = await claimDiscovery({
+      discoveryId: created.value.id,
+      participantId: participant.id,
+      presented,
+      commandId: "repeatable-discovery-one",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      value: { state: "accepted", points: 3, retryAfterSeconds: 60 },
+    });
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-one",
+      }),
+    ).toEqual(first);
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-too-soon",
+      }),
+    ).toMatchObject({ ok: false, status: 429, retryAfterSeconds: expect.any(Number) });
+
+    await query(
+      `update score_discovery_claims
+          set created_at = now() - interval '61 seconds'
+        where discovery_id = $1`,
+      [created.value.id],
+    );
+    const concurrent = await Promise.all([
+      claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-two-a",
+      }),
+      claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-two-b",
+      }),
+    ]);
+    expect(concurrent.filter((result) => result.ok)).toHaveLength(1);
+    expect(concurrent.filter((result) => !result.ok && result.status === 429)).toHaveLength(1);
+
+    await query(
+      `update score_discovery_claims
+          set created_at = now() - interval '61 seconds'
+        where discovery_id = $1`,
+      [created.value.id],
+    );
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-three",
+      }),
+    ).toMatchObject({ ok: true, value: { points: 3 } });
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant.id,
+        presented,
+        commandId: "repeatable-discovery-four",
+      }),
+    ).toMatchObject({ ok: false, status: 409, error: expect.stringContaining("claim limit") });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(9);
+    expect(
+      (
+        await query<{ count: string; points: string }>(
+          `select count(*)::text as count, sum(points)::text as points
+             from score_discovery_claims
+            where discovery_id = $1 and state = 'accepted'`,
+          [created.value.id],
+        )
+      )[0],
+    ).toEqual({ count: "3", points: "9" });
   });
 
   it("enforces activity check-in and repeat rules inside the score transaction", async () => {
@@ -1512,6 +1631,7 @@ describeWithDatabase("event scoring postgres", () => {
       rule: {
         pointMode: "once",
         pointsPerClue: 2,
+        claimFrequency: "once",
         requiresCheckIn: false,
         remainderAward: "discard",
       },

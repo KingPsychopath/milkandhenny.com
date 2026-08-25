@@ -281,7 +281,7 @@ export type DiscoveryPointMode =
 
 export type DiscoveryClaimState = "accepted" | "held" | "rejected";
 
-export type DiscoveryRule = {
+type DiscoveryRuleBase = {
   pointMode: DiscoveryPointMode;
   pointsPerClue?: number;
   completionBonus?: number;
@@ -295,6 +295,18 @@ export type DiscoveryRule = {
   endsAt?: string;
   remainderAward: "discard" | "award";
 };
+
+export type DiscoveryRule = DiscoveryRuleBase &
+  (
+    | {
+        claimFrequency: "once";
+      }
+    | {
+        claimFrequency: "cooldown";
+        cooldownSeconds: number;
+        maximumClaimsPerParticipant?: number;
+      }
+  );
 
 export function isScoringState(value: unknown): value is ScoringState {
   return typeof value === "string" && SCORING_STATES.includes(value as ScoringState);
