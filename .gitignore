@@ -16,6 +16,9 @@ build/
 dist/
 public/excalidraw/
 
+# Generated exports (print PDFs, media renders) — never committed
+output/
+
 # TypeScript incremental build cache
 *.tsbuildinfo
 

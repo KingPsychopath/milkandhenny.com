@@ -15,8 +15,12 @@ export default defineConfig({
     // __tests__/helpers/postgres.ts); unit suites remain parallel while database files take
     // turns resetting the shared schema.
     fileParallelism: true,
-    // The waiting database file must not time out while another suite holds the lock.
-    hookTimeout: 120_000,
+    // The waiting database file must not time out while another suite holds the
+    // lock. Files with several database suites re-acquire it between suites, so
+    // the worst case is waiting out another file's slowest full suite — 120s
+    // was intermittently too tight for checkpoints-scanner-links under a full
+    // parallel run.
+    hookTimeout: 300_000,
     include: ["__tests__/unit/**/*.test.ts", "__tests__/integration/**/*.test.ts"],
     coverage: {
       include: ["lib/**/*.ts", "features/**/*.ts"],

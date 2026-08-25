@@ -10,6 +10,11 @@ const CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
+  // 'unsafe-inline' stays because TanStack Start streams per-request $_TSR
+  // hydration payloads as executable inline scripts, which rules out static
+  // hashes, and the framework offers no way to thread a per-request nonce
+  // into them. script-src-attr 'none' below still blocks inline handlers,
+  // which is where injected markup would otherwise land.
   "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
   "script-src-attr 'none'",
   "style-src 'self' 'unsafe-inline'",
