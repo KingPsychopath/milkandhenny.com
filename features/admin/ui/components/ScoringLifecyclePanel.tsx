@@ -90,6 +90,40 @@ export function ScoringLifecyclePanel({
           </ul>
         </div>
       )}
+      {data.heldOfficialResults.length > 0 && (
+        <div className="mt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-mono text-xs">Held game results</p>
+            <button
+              type="button"
+              onClick={() => void onAction({ action: "retry-official-results" })}
+              className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70"
+            >
+              retry all
+            </button>
+          </div>
+          <ul className="mt-2 divide-y theme-border border-y theme-border">
+            {data.heldOfficialResults.map((result) => (
+              <li key={result.id} className="flex items-center justify-between gap-3 py-2">
+                <span className="min-w-0 font-mono text-micro theme-muted">
+                  {result.gameKind} · {result.resultId} r{result.revision} ·{" "}
+                  {new Date(result.ingestedAt).toLocaleString()}
+                  {result.heldReason ? ` — ${result.heldReason}` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void onAction({ action: "retry-official-results", resultId: result.id })
+                  }
+                  className="min-h-11 shrink-0 font-mono text-xs underline hover:opacity-70"
+                >
+                  retry
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();

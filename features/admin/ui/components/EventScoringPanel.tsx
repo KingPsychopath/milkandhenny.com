@@ -223,9 +223,9 @@ export function EventScoringPanel({
               {data.pools.reduce((sum, pool) => sum + pool.available, 0)}
             </p>
             <p className="border theme-border p-3">
-              <span className="theme-muted">held results</span>
+              <span className="theme-muted">held items</span>
               <br />
-              {data.held.length}
+              {data.held.length + data.heldOfficialResults.length}
             </p>
           </div>
           <ScoringActivitiesPanel activities={data.activities} onAction={performAction} />

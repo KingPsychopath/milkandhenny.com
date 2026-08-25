@@ -60,6 +60,11 @@ import {
   buildEventPrintPack,
   renderDiscoveryPrintPdf,
 } from "@/features/event-scoring/print.server";
+import {
+  listHeldOfficialGameResults,
+  retryHeldOfficialGameResult,
+  retryHeldOfficialGameResultsForEvent,
+} from "@/features/event-scoring/games.server";
 import { printLayout } from "@/features/event-scoring/print";
 import { PRINT_PACK_KINDS } from "@/features/event-scoring/print";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -96,6 +101,7 @@ async function handleGET(request: Request, slug: string) {
       discoveries,
       teams,
       held,
+      heldOfficialResults,
       staff,
       media,
       drop,
@@ -108,6 +114,7 @@ async function handleGET(request: Request, slug: string) {
       listDiscoveries(slug),
       listTeams(slug),
       listHeldScoreTransactions(slug),
+      listHeldOfficialGameResults(slug),
       listStaffAssignments(slug),
       listScoreMediaLinks(slug),
       getEventDrop(slug),
@@ -141,6 +148,7 @@ async function handleGET(request: Request, slug: string) {
       ),
       teams,
       held,
+      heldOfficialResults,
       staff: await Promise.all(
         staff.map(async (assignment) => ({
           ...assignment,
@@ -542,6 +550,20 @@ async function handlePOST(request: Request, slug: string) {
       const result = await acceptHeldScore(slug, transactionId, { actorType: "admin", actorId });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ transaction: result.value });
+    }
+
+    if (action === "retry-official-results") {
+      const resultId = stringValue(body.resultId);
+      if (resultId) {
+        const held = await listHeldOfficialGameResults(slug);
+        if (!held.some((result) => result.id === resultId))
+          return Response.json(
+            { error: "Held official result not found for this event" },
+            { status: 404 },
+          );
+        return Response.json({ retry: await retryHeldOfficialGameResult(resultId) });
+      }
+      return Response.json({ retry: await retryHeldOfficialGameResultsForEvent(slug) });
     }
 
     if (action === "finalize") {

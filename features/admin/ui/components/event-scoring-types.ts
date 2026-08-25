@@ -42,6 +42,15 @@ export type ScoringData = {
   activities: AdminScoringActivity[];
   pools: AdminScoringPool[];
   held: { id: string; sourceType: string; createdAt: string }[];
+  heldOfficialResults: Array<{
+    id: string;
+    gameKind: string;
+    gameInstanceId: string;
+    resultId: string;
+    revision: number;
+    heldReason: string | null;
+    ingestedAt: string;
+  }>;
   discoveries: Array<{
     id: string;
     activityId: string;

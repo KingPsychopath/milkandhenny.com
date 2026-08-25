@@ -597,6 +597,50 @@ export async function retryHeldOfficialGameResult(
   return processOfficialGameResultSafely(resultId);
 }
 
+export type HeldOfficialGameResult = {
+  id: string;
+  gameKind: OfficialGameKind;
+  gameInstanceId: string;
+  resultId: string;
+  revision: number;
+  heldReason: string | null;
+  ingestedAt: string;
+};
+
+export async function listHeldOfficialGameResults(
+  eventSlug: string,
+  limit = 100,
+): Promise<HeldOfficialGameResult[]> {
+  const rows = await query<{
+    id: string;
+    game_kind: OfficialGameKind;
+    game_instance_id: string;
+    result_id: string;
+    revision: number;
+    held_reason: string | null;
+    ingested_at: Date;
+  }>(
+    `select results.id, results.game_kind, results.game_instance_id, results.result_id,
+            results.revision, results.held_reason, results.ingested_at
+       from official_game_results results
+       join event_game_score_bindings bindings on bindings.channel_id = results.channel_id
+       join events on events.event_id = bindings.event_id
+      where events.slug = $1 and results.status = 'held'
+      order by results.ingested_at, results.id
+      limit $2`,
+    [eventSlug, Math.max(1, Math.min(500, Math.trunc(limit)))],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    gameKind: row.game_kind,
+    gameInstanceId: row.game_instance_id,
+    resultId: row.result_id,
+    revision: row.revision,
+    heldReason: row.held_reason,
+    ingestedAt: row.ingested_at.toISOString(),
+  }));
+}
+
 export async function retryHeldOfficialGameResultsForEvent(
   eventSlug: string,
   limit = 200,
