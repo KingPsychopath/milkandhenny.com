@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef, memo } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import {
   getTransferThumbUrl,
@@ -114,6 +114,15 @@ const FILE_LIST_RENDER_INCREMENT = 120;
 const PAGE_SIZE = 120;
 const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
+
+const TransferPdfReader = lazy(async () => {
+  const module = await import("@/features/transfers/ui/transfer/TransferPdfReader");
+  return { default: module.TransferPdfReader };
+});
+
+function isTransferPdf(file: TransferFileData): boolean {
+  return file.mimeType.toLowerCase() === "application/pdf" || /\.pdf$/i.test(file.filename);
+}
 
 function formatTotalBytes(total: ZipPlanTotalBytes): string | null {
   return total.known ? formatBytes(total.bytes) : null;
@@ -1696,6 +1705,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
     setSelectedIds(new Set());
   }, []);
   const [activeLightboxFile, setActiveLightboxFile] = useState<TransferFileData | null>(null);
+  const [pdfPreviewFile, setPdfPreviewFile] = useState<TransferFileData | null>(null);
 
   const handleDeleteFile = useCallback(
     async (file: TransferFileData) => {
@@ -1871,6 +1881,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                   isSelected={selectedIds.has(file.id)}
                   onToggleSelect={() => toggleSelection(file.id)}
                   onDownload={() => downloadSingle(file)}
+                  onPreview={isTransferPdf(file) ? () => setPdfPreviewFile(file) : undefined}
                   onDelete={deleteToken ? () => handleDeleteFile(file) : undefined}
                   deleting={deletingFileId === file.id}
                 />
@@ -2250,6 +2261,28 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         />
       ) : null}
 
+      {pdfPreviewFile ? (
+        <Suspense
+          fallback={
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Opening PDF reader"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-background font-mono text-micro theme-muted"
+            >
+              opening PDF reader...
+            </div>
+          }
+        >
+          <TransferPdfReader
+            filename={pdfPreviewFile.originalFilename ?? pdfPreviewFile.filename}
+            sourceUrl={getTransferPrimaryUrl(transferId, pdfPreviewFile.id)}
+            downloadUrl={getDownloadUrl(transferId, pdfPreviewFile, true)}
+            onClose={() => setPdfPreviewFile(null)}
+          />
+        </Suspense>
+      ) : null}
+
       {browseMode === "pages" && canPaginate && (
         <div className="mt-8">
           <PageControls page={page} totalPages={totalPages} onPageChange={handlePageChange} />
@@ -2494,6 +2527,7 @@ function FileCard({
   isSelected,
   onToggleSelect,
   onDownload,
+  onPreview,
   onDelete,
   deleting,
 }: {
@@ -2502,6 +2536,7 @@ function FileCard({
   isSelected: boolean;
   onToggleSelect: () => void;
   onDownload: () => void;
+  onPreview?: () => void;
   onDelete?: () => void;
   deleting?: boolean;
 }) {
@@ -2564,6 +2599,15 @@ function FileCard({
         </p>
       </div>
       <div className="flex items-center gap-3 shrink-0">
+        {onPreview && (
+          <button
+            type="button"
+            onClick={onPreview}
+            className="min-h-11 font-mono text-micro theme-subtle transition-opacity hover:opacity-60"
+          >
+            [ read ]
+          </button>
+        )}
         {onDelete && (
           <button
             type="button"

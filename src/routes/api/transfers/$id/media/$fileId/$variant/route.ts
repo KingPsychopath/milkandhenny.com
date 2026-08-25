@@ -35,7 +35,8 @@ async function handleMedia(request: Request, context: RouteContext) {
   }
 
   const download = new URL(request.url).searchParams.get("download") === "1";
-  const canRenderInline = /^(image|audio|video)\//.test(target.contentType);
+  const canRenderInline =
+    /^(image|audio|video)\//.test(target.contentType) || target.contentType === "application/pdf";
 
   try {
     const url = await presignGetUrl(target.key, {
@@ -43,7 +44,9 @@ async function handleMedia(request: Request, context: RouteContext) {
       responseContentDisposition:
         download || !canRenderInline
           ? buildAttachmentContentDisposition(target.filename)
-          : undefined,
+          : target.contentType === "application/pdf"
+            ? "inline"
+            : undefined,
       responseContentType: target.contentType,
       responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
       scope: "private",
