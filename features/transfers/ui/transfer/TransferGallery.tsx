@@ -655,6 +655,163 @@ function MultiVisualContent({
   );
 }
 
+function TransferLightbox({
+  item,
+  index,
+  total,
+  transferId,
+  setContainer,
+  error,
+  setError,
+  activeFile,
+  setActiveFile,
+  saving,
+  deleteToken,
+  deletingFileId,
+  deleteError,
+  onClose,
+  onPrevious,
+  onNext,
+  onDownload,
+  onDelete,
+}: {
+  item: VisualGalleryItem;
+  index: number;
+  total: number;
+  transferId: string;
+  setContainer: (node: HTMLDivElement | null) => void;
+  error: boolean;
+  setError: (value: boolean) => void;
+  activeFile: TransferFileData | null;
+  setActiveFile: (file: TransferFileData) => void;
+  saving: boolean;
+  deleteToken?: string;
+  deletingFileId: string | null;
+  deleteError: string;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onDownload: (item: VisualGalleryItem) => void;
+  onDelete: (file: TransferFileData) => void;
+}) {
+  return (
+    // react-doctor-disable-next-line prefer-html-dialog -- focus trapping and keyboard handling provide modal behavior
+    <div
+      ref={setContainer}
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
+      onClick={onClose}
+      onKeyDown={(event) => event.key === "Escape" && onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Media preview"
+      tabIndex={-1}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 font-mono text-sm text-white/60 hover:text-white transition-colors"
+        aria-label="Close"
+      >
+        ✕
+      </button>
+      <div className="flex max-h-[80vh] max-w-[80vw] items-center justify-center px-4">
+        {error ? (
+          <div
+            className="flex flex-col items-center justify-center gap-4 py-20"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="font-mono text-sm text-white/40 tracking-wide">
+              could not load {getVisualItemLabel(item)}
+            </p>
+            <p className="max-w-sm text-center font-mono text-xs text-white/30 leading-relaxed">
+              {getVisualLoadFailureMessage(getVisualItemPrimaryFile(item))}
+            </p>
+            <button
+              type="button"
+              onClick={() => onDownload(item)}
+              disabled={saving}
+              className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
+            >
+              [ try downloading instead ]
+            </button>
+          </div>
+        ) : (
+          <LightboxContent
+            key={item.id}
+            item={item}
+            transferId={transferId}
+            onError={() => setError(true)}
+            onActiveFileChange={setActiveFile}
+          />
+        )}
+      </div>
+      <div
+        className="mt-5 flex w-full max-w-md flex-col gap-3 px-4 sm:mt-4 sm:flex-row sm:items-center sm:justify-between"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50">
+          <button
+            type="button"
+            onClick={onPrevious}
+            disabled={index === 0}
+            className="hover:text-white transition-colors disabled:text-white/20"
+          >
+            ← prev
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={index >= total - 1}
+            className="hover:text-white transition-colors disabled:text-white/20"
+          >
+            next →
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="font-mono text-micro text-white/30">
+            {index + 1} / {total}
+          </span>
+          {deleteToken && activeFile ? (
+            <button
+              type="button"
+              onClick={() => onDelete(activeFile)}
+              disabled={deletingFileId === activeFile.id}
+              className="font-mono text-xs text-red-400/80 hover:text-red-300 disabled:opacity-50"
+            >
+              {deletingFileId === activeFile.id ? "deleting..." : "delete file"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onDownload(item)}
+            disabled={saving}
+            className="font-mono text-xs text-white/50 hover:text-white disabled:opacity-50"
+          >
+            {saving ? "saving..." : item.type === "single" ? "download ↓" : "download pair ↓"}
+          </button>
+        </div>
+      </div>
+      {shouldShowRawPreviewNotice(item) ? (
+        <p
+          className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-white/45"
+          onClick={(event) => event.stopPropagation()}
+        >
+          RAW previews may differ slightly from the original. Download the source file for
+          full-quality editing and accurate color.
+        </p>
+      ) : null}
+      {deleteError ? (
+        <p
+          className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-red-300/80"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {deleteError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /* ─── Main Gallery ─── */
 
 /**
@@ -2070,159 +2227,28 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         </>
       )}
 
-      {/* Lightbox (images, GIFs, videos) */}
-      {currentVisual && lightboxIndex !== null && (
-        /* react-doctor-disable-next-line prefer-html-dialog -- useFocusTrap and the keyboard effect provide modal behavior */
-        <div
-          ref={setLightboxRef}
-          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center touch-pan-y"
-          onClick={closeLightbox}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") closeLightbox();
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Media preview"
-          tabIndex={-1}
-        >
-          <button
-            type="button"
-            onClick={closeLightbox}
-            className="absolute top-4 right-4 z-10 font-mono text-sm text-white/60 hover:text-white transition-colors"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-
-          {/* Media content with loading state */}
-          <div
-            className="flex items-center justify-center px-4"
-            style={{ maxWidth: "80vw", maxHeight: "80vh" }}
-          >
-            {lightboxError ? (
-              <div
-                className="flex flex-col items-center justify-center gap-4 py-20"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  className="text-white/20"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <polyline points="21 15 16 10 5 21" />
-                </svg>
-                <p className="font-mono text-sm text-white/40 tracking-wide">
-                  could not load {getVisualItemLabel(currentVisual)}
-                </p>
-                <p className="max-w-sm text-center font-mono text-xs text-white/30 leading-relaxed">
-                  {getVisualLoadFailureMessage(getVisualItemPrimaryFile(currentVisual))}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => downloadVisualItem(currentVisual)}
-                  disabled={savingSingle}
-                  className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
-                >
-                  [ try downloading instead ]
-                </button>
-              </div>
-            ) : (
-              <LightboxContent
-                key={currentVisual.id}
-                item={currentVisual}
-                transferId={transferId}
-                onError={() => setLightboxError(true)}
-                onActiveFileChange={setActiveLightboxFile}
-              />
-            )}
-          </div>
-
-          {/* Controls — stop propagation so clicking nav/download doesn't close */}
-          <div
-            className="mt-5 flex w-full max-w-md flex-col gap-3 px-4 sm:mt-4 sm:flex-row sm:items-center sm:justify-between"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50 sm:justify-start">
-              {lightboxIndex > 0 ? (
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  className="hover:text-white transition-colors"
-                  aria-label="Previous file"
-                >
-                  ← prev
-                </button>
-              ) : (
-                <span className="text-white/20">← prev</span>
-              )}
-              {lightboxIndex < lightboxVisualFiles.length - 1 ? (
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="hover:text-white transition-colors"
-                  aria-label="Next file"
-                >
-                  next →
-                </button>
-              ) : (
-                <span className="text-white/20">next →</span>
-              )}
-            </div>
-            <div className="flex items-center justify-between gap-4 sm:justify-end">
-              <span className="font-mono text-micro text-white/30">
-                {lightboxIndex + 1} / {lightboxVisualFiles.length}
-              </span>
-              {deleteToken && activeLightboxFile && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteFile(activeLightboxFile)}
-                  disabled={deletingFileId === activeLightboxFile.id}
-                  className="font-mono text-xs text-red-400/80 hover:text-red-300 transition-colors disabled:opacity-50"
-                >
-                  {deletingFileId === activeLightboxFile.id ? "deleting..." : "delete file"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => downloadVisualItem(currentVisual)}
-                disabled={savingSingle}
-                className="font-mono text-xs text-white/50 hover:text-white transition-colors disabled:opacity-50"
-              >
-                {savingSingle
-                  ? "saving..."
-                  : currentVisual.type === "single"
-                    ? "download ↓"
-                    : "download pair ↓"}
-              </button>
-            </div>
-          </div>
-          {shouldShowRawPreviewNotice(currentVisual) ? (
-            <p
-              className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-white/45"
-              onClick={(e) => e.stopPropagation()}
-            >
-              RAW previews may differ slightly from the original. Download the source file for
-              full-quality editing and accurate color.
-            </p>
-          ) : null}
-          {deleteError ? (
-            <p
-              className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-red-300/80"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {deleteError}
-            </p>
-          ) : null}
-        </div>
-      )}
+      {currentVisual && lightboxIndex !== null ? (
+        <TransferLightbox
+          item={currentVisual}
+          index={lightboxIndex}
+          total={lightboxVisualFiles.length}
+          transferId={transferId}
+          setContainer={setLightboxRef}
+          error={lightboxError}
+          setError={setLightboxError}
+          activeFile={activeLightboxFile}
+          setActiveFile={setActiveLightboxFile}
+          saving={savingSingle}
+          deleteToken={deleteToken}
+          deletingFileId={deletingFileId}
+          deleteError={deleteError}
+          onClose={closeLightbox}
+          onPrevious={goPrev}
+          onNext={goNext}
+          onDownload={downloadVisualItem}
+          onDelete={handleDeleteFile}
+        />
+      ) : null}
 
       {browseMode === "pages" && canPaginate && (
         <div className="mt-8">
