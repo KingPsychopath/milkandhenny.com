@@ -26,6 +26,32 @@ test("anonymous account navigation reaches sign in without an error boundary", a
     .toBe("same-document");
 });
 
+test("an emailed access link signs in automatically without reloading the document", async ({
+  page,
+}) => {
+  let verificationRequests = 0;
+  let documentRequests = 0;
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") documentRequests += 1;
+  });
+  await page.route("**/api/attendee/access", async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    verificationRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ authenticated: true, returnTo: "/" }),
+    });
+  });
+
+  await page.goto("/access?returnTo=%2Fmy#challenge=challenge-id&token=access-token");
+
+  await expect(page).toHaveURL(/\/$/);
+  expect(verificationRequests).toBe(1);
+  expect(documentRequests).toBe(1);
+  await expect(page.getByRole("button", { name: "sign in", exact: true })).toHaveCount(0);
+});
+
 test("missing pages offer back and home recovery", async ({ page }) => {
   await page.goto("/");
   await page.goto("/this-page-does-not-exist");
