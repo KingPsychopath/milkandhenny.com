@@ -140,8 +140,27 @@ We prefer "confidence through restraint":
 
 - **Hover** should usually be `opacity` changes, not sudden color flips.
 - **Focus** uses a consistent theme-aware outline for keyboard navigation.
+- **Press** uses the shared one-pixel/scale response. Feature-local buttons do
+  not invent their own timing.
 - **Embeds** (like album cards) should not rely on inline styles for hover behavior.
   Keep hover effects in CSS so the cascade is predictable.
+
+### Action hierarchy
+
+Use the `mh-action` primitive so the same hierarchy reads consistently across
+public, attendee, staff, and admin surfaces:
+
+- `mh-action--primary`: the one clearest next step; filled ink on paper.
+- `mh-action--secondary`: a visible alternative; transparent with a hairline.
+- `mh-action--quiet`: low-emphasis utility action; a restrained underline.
+- `mh-action--danger`: destructive or difficult-to-reverse; amber outline and text.
+- `mh-action--icon`: a 44px square supplement for an icon-only control. It still
+  requires an accessible name.
+
+The base class owns target size, mono typography, spacing, and reaction timing.
+All ordinary buttons also inherit the site-wide hover/press transition, so
+older feature-local controls do not snap while they are migrated to a named
+variant.
 
 ### Navigation is contextual
 

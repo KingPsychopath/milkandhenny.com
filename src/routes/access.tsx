@@ -11,8 +11,8 @@ export const Route = createFileRoute("/access")({
   }),
   head: () =>
     buildSeoHead({
-      title: `Your access — ${SITE_NAME}`,
-      description: "Private passwordless access to your Milk & Henny tickets and scores.",
+      title: `Sign in — ${SITE_NAME}`,
+      description: "Sign in to Milk & Henny with a private one-time link or code.",
       path: "/access",
       robots: "noindex, nofollow",
       referrer: "no-referrer",
