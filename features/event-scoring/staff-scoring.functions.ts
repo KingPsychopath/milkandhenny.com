@@ -55,6 +55,11 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
       commandId: string;
       note?: string;
       confirmLarge?: boolean;
+      media?: {
+        storageRef: string;
+        visibility: "event-album" | "admin-evidence" | "discard";
+        consentState: "not-requested" | "requested" | "obtained" | "declined";
+      };
     }) => data,
   )
   .handler(async ({ data }) => {

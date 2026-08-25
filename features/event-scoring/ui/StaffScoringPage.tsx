@@ -30,6 +30,13 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
   const [reviewReady, setReviewReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [confirmedRemaining, setConfirmedRemaining] = useState<number | undefined>();
+  const [mediaRef, setMediaRef] = useState("");
+  const [mediaVisibility, setMediaVisibility] = useState<
+    "event-album" | "admin-evidence" | "discard"
+  >("event-album");
+  const [mediaConsent, setMediaConsent] = useState<
+    "not-requested" | "requested" | "obtained" | "declined"
+  >(data.photoConsentPolicy === "required" ? "obtained" : "requested");
   const [operation, setOperation] = useState<"admit" | "run" | "award">(
     data.canAdmit ? "admit" : data.canRun ? "run" : "award",
   );
@@ -77,6 +84,13 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         commandId: commandId.current,
         note: note.trim() || undefined,
         confirmLarge,
+        media: mediaRef.trim()
+          ? {
+              storageRef: mediaRef.trim(),
+              visibility: mediaVisibility,
+              consentState: mediaConsent,
+            }
+          : undefined,
       },
     });
     setBusy(false);
@@ -94,6 +108,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setQuery("");
     setResults([]);
     setNote("");
+    setMediaRef("");
     commandId.current = crypto.randomUUID();
   }
 
@@ -341,6 +356,83 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                   ))}
                 </select>
               </label>
+
+              {data.canUploadMedia && (
+                <fieldset className="space-y-3 border-t theme-border pt-5">
+                  <legend className="font-serif text-lg">Optional photograph</legend>
+                  <p className="font-mono text-xs theme-muted">
+                    Consent policy: {data.photoConsentPolicy.replaceAll("-", " ")}. The score saves
+                    first. A media problem cannot repeat or remove it.
+                  </p>
+                  {data.mediaDrop ? (
+                    <p className="font-mono text-xs">
+                      Album expires {new Date(data.mediaDrop.expiresAt).toLocaleString()}.
+                      {data.mediaDrop.uploadPath && (
+                        <>
+                          {" "}
+                          <a
+                            href={data.mediaDrop.uploadPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline"
+                          >
+                            upload a new file
+                          </a>
+                        </>
+                      )}{" "}
+                      <a
+                        href={data.mediaDrop.albumPath}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline"
+                      >
+                        choose an existing file
+                      </a>
+                    </p>
+                  ) : (
+                    <p className="font-mono text-xs theme-muted">No event album is available.</p>
+                  )}
+                  <label className="block font-mono text-xs">
+                    stored media reference
+                    <input
+                      value={mediaRef}
+                      onChange={(event) => setMediaRef(event.target.value)}
+                      className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="font-mono text-xs">
+                      visibility
+                      <select
+                        value={mediaVisibility}
+                        onChange={(event) =>
+                          setMediaVisibility(event.target.value as typeof mediaVisibility)
+                        }
+                        className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+                      >
+                        <option value="event-album">event album</option>
+                        <option value="admin-evidence">admin evidence</option>
+                        <option value="discard">discard</option>
+                      </select>
+                    </label>
+                    <label className="font-mono text-xs">
+                      consent
+                      <select
+                        value={mediaConsent}
+                        onChange={(event) =>
+                          setMediaConsent(event.target.value as typeof mediaConsent)
+                        }
+                        className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+                      >
+                        <option value="not-requested">not requested</option>
+                        <option value="requested">requested</option>
+                        <option value="obtained">obtained</option>
+                        <option value="declined">declined</option>
+                      </select>
+                    </label>
+                  </div>
+                </fieldset>
+              )}
 
               {(activity?.rule.mode === "placement" || activity?.rule.mode === "diminishing") && (
                 <label className="block font-mono text-xs">

@@ -4,17 +4,20 @@ import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types"
 import { verifyTicketSignature } from "@/features/tickets/qr.server";
 import { redeemTicket } from "@/features/tickets/tickets.server";
 import { getEvent } from "@/features/events/store.server";
+import { getEventDrop } from "@/features/events/drop.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import {
   awardPoints,
   checkInForScoring,
   listScoringActivities,
   reversePoints,
+  getScoring,
   type ScoringOperationResult,
 } from "./scoring.server";
 import { hasStaffPermission, resolveStaffAccess } from "./staff.server";
 import {
   getScoreTransaction,
+  createScoreMediaLink,
   getParticipant,
   listPools,
   participantForTicket,
@@ -77,6 +80,9 @@ export async function getStaffScoringPage(input: {
       canTransfer: boolean;
       canReverse: boolean;
       canReviewHeld: boolean;
+      canUploadMedia: boolean;
+      photoConsentPolicy: "ask" | "required" | "not-required";
+      mediaDrop?: { uploadPath?: string; albumPath: string; expiresAt: string };
       canRun: boolean;
       pinnedActivityIds: string[];
       recentAwards: Array<{
@@ -94,11 +100,13 @@ export async function getStaffScoringPage(input: {
   const context = await resolveStaffScoringContext(input);
   if (!context) return { found: false };
   const { assignment } = context;
-  const [event, activities, pools, recentAwards] = await Promise.all([
+  const [event, activities, pools, recentAwards, settings, drop] = await Promise.all([
     getEvent(input.eventSlug),
     listScoringActivities(input.eventSlug),
     listPools(input.eventSlug),
     listOwnRecentAwards(input.eventSlug, assignment.id),
+    getScoring(input.eventSlug),
+    getEventDrop(input.eventSlug),
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
@@ -113,6 +121,15 @@ export async function getStaffScoringPage(input: {
     canTransfer: hasStaffPermission(assignment, "transferPoints"),
     canReverse: hasStaffPermission(assignment, "reverseAwards"),
     canReviewHeld: hasStaffPermission(assignment, "reviewHeldActions"),
+    canUploadMedia: hasStaffPermission(assignment, "uploadActivityPhotos"),
+    photoConsentPolicy: settings.photoConsentPolicy,
+    mediaDrop: drop
+      ? {
+          uploadPath: drop.live ? `/drop/${drop.token}` : undefined,
+          albumPath: `/t/${drop.transferId}`,
+          expiresAt: drop.expiresAt,
+        }
+      : undefined,
     canRun: hasStaffPermission(assignment, "runActivities"),
     pinnedActivityIds: Array.isArray(assignment.scope.pinnedActivityIds)
       ? assignment.scope.pinnedActivityIds.filter(
@@ -263,6 +280,11 @@ export async function awardStaffPoints(input: {
   commandId: string;
   note?: string;
   confirmLarge?: boolean;
+  media?: {
+    storageRef: string;
+    visibility: "event-album" | "admin-evidence" | "discard";
+    consentState: "not-requested" | "requested" | "obtained" | "declined";
+  };
 }): Promise<ScoringOperationResult<ScoreTransaction>> {
   const context = await resolveStaffScoringContext(input);
   if (!context || !hasStaffPermission(context.assignment, "awardPoints")) {
@@ -301,7 +323,7 @@ export async function awardStaffPoints(input: {
   if (!pool && !scopeBoolean(context.assignment, "unmetered")) {
     return { ok: false, status: 409, error: "This staff assignment has no points pool" };
   }
-  return awardPoints({
+  const awarded = await awardPoints({
     eventSlug: input.eventSlug,
     activityId: activity.id,
     participantIds: [participant.id],
@@ -319,6 +341,27 @@ export async function awardStaffPoints(input: {
     poolId: pool?.id,
     allowOverride: input.points !== undefined,
   });
+  if (!awarded.ok || !input.media) return awarded;
+  if (!hasStaffPermission(context.assignment, "uploadActivityPhotos")) {
+    return awarded;
+  }
+  const settings = await getScoring(input.eventSlug);
+  if (settings.photoConsentPolicy === "required" && input.media.consentState !== "obtained") {
+    return awarded;
+  }
+  const drop = await getEventDrop(input.eventSlug);
+  await createScoreMediaLink({
+    eventSlug: input.eventSlug,
+    activityId: activity.id,
+    transactionId: awarded.value.id,
+    participantId: participant.id,
+    staffActorId: context.assignment.id,
+    storageRef: input.media.storageRef,
+    visibility: input.media.visibility,
+    consentState: input.media.consentState,
+    expiresAt: drop?.expiresAt,
+  });
+  return awarded;
 }
 
 export async function reverseStaffAward(input: {

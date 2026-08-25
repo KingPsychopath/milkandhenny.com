@@ -9,6 +9,7 @@ import {
   findSettings,
   getOrCreateSettings,
   listScoreNotifications,
+  listScoreMediaLinks,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -955,6 +956,73 @@ describeWithDatabase("event scoring postgres", () => {
     expect(
       await awardStaffPoints({ ...base, activityId: other.id, commandId: "staff-other" }),
     ).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it("commits a staff award independently from its optional media attachment", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Photo winner",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 3, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Photo marshal",
+      assignmentType: "personal",
+      preset: "event-manager",
+      actorId: "admin-test",
+      scope: { activityIds: [activity.id] },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "staff",
+      ownerId: access.id,
+      points: 10,
+    });
+    const base = {
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "photo-device",
+      activityId: activity.id,
+      participantId: participant!.id,
+    };
+    expect(
+      await awardStaffPoints({
+        ...base,
+        commandId: "photo-award-valid",
+        media: {
+          storageRef: "transfer:event-photo-1",
+          visibility: "event-album",
+          consentState: "obtained",
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(await listScoreMediaLinks("scoring-night")).toMatchObject([
+      {
+        activityId: activity.id,
+        participantId: participant!.id,
+        staffActorId: access.id,
+        storageRef: "transfer:event-photo-1",
+      },
+    ]);
+    expect(
+      await awardStaffPoints({
+        ...base,
+        commandId: "photo-award-bad-media",
+        media: {
+          storageRef: " ",
+          visibility: "event-album",
+          consentState: "obtained",
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(6);
   });
 
   it("adds to and reclaims only unused staff pool points", async () => {
