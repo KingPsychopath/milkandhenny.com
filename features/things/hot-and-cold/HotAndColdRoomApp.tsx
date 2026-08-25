@@ -329,14 +329,24 @@ export function HotAndColdRoomApp({
     : null;
   return (
     <div className="hot-and-cold min-h-svh">
-      <header className="mx-auto flex max-w-2xl items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
+      <header className="mx-auto grid max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={() => void leave()}>
           ← leave
         </button>
         <span>
-          round {snapshot.round?.number}/{snapshot.round?.total}
+          round {snapshot.round?.number}/{snapshot.round?.total} · {live.connectionState}
         </span>
-        <span>{live.connectionState}</span>
+        {snapshot.phase === "playing" && !me?.gaveUp ? (
+          <GiveUpControl
+            tone="dark"
+            title="Leave this round?"
+            description="Your turns will stop. You can watch the shared ledger until the next word."
+            onGiveUp={() => send({ type: "round.giveUp", roundId: snapshot.round?.id ?? "" })}
+            className="min-h-11 justify-self-end font-mono text-micro theme-faint"
+          />
+        ) : (
+          <span />
+        )}
       </header>
       <main id="main" className="mx-auto max-w-2xl px-5">
         <div className="heat-source">
@@ -394,25 +404,19 @@ export function HotAndColdRoomApp({
             onGuess={(word) =>
               send({ type: "guess.submit", word, roundId: snapshot.round?.id ?? "" })
             }
+            actions={
+              myTurn ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void send({ type: "turn.pass", roundId: snapshot.round?.id ?? "" })
+                  }
+                >
+                  pass
+                </button>
+              ) : null
+            }
           />
-          {myTurn ? (
-            <button
-              type="button"
-              onClick={() => void send({ type: "turn.pass", roundId: snapshot.round?.id ?? "" })}
-              className="fixed bottom-24 left-5 z-30 min-h-11 font-mono text-micro theme-faint"
-            >
-              pass
-            </button>
-          ) : null}
-          {!me?.gaveUp ? (
-            <GiveUpControl
-              tone="dark"
-              title="Leave this round?"
-              description="Your turns will stop. You can watch the shared ledger until the next word."
-              onGiveUp={() => send({ type: "round.giveUp", roundId: snapshot.round?.id ?? "" })}
-              className="fixed bottom-24 right-5 z-30 min-h-11 font-mono text-micro theme-faint"
-            />
-          ) : null}
         </>
       ) : null}
     </div>

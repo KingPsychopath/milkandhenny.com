@@ -219,6 +219,19 @@
   font: 500 0.64rem/1 var(--font-mono);
   color: var(--stone-500);
 }
+.heat-composer-actions {
+  display: flex;
+  align-items: start;
+  gap: 1.25rem;
+}
+.heat-composer-actions button {
+  min-height: 2.75rem;
+}
+@media (hover: hover) and (pointer: fine) {
+  .heat-keyboard-toggle {
+    display: none;
+  }
+}
 @keyframes heat-arrive {
   from {
     opacity: 0;

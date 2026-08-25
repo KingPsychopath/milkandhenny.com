@@ -91,11 +91,22 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   );
   return (
     <div className="hot-and-cold min-h-svh">
-      <header className="mx-auto flex w-full max-w-2xl items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
+      <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={onExit}>
           ← hot and cold
         </button>
         <span>daily #{puzzle}</span>
+        {!done ? (
+          <GiveUpControl
+            tone="dark"
+            title="Reveal today’s word?"
+            description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
+            onGiveUp={giveUp}
+            className="min-h-11 justify-self-end font-mono text-micro theme-faint"
+          />
+        ) : (
+          <span />
+        )}
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
@@ -128,18 +139,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           </section>
         ) : null}
       </main>
-      {!done ? (
-        <>
-          <GuessComposer message={message} onGuess={guess} />
-          <GiveUpControl
-            tone="dark"
-            title="Reveal today’s word?"
-            description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
-            onGiveUp={giveUp}
-            className="fixed bottom-24 left-1/2 z-30 min-h-11 -translate-x-1/2 font-mono text-micro theme-faint"
-          />
-        </>
-      ) : null}
+      {!done ? <GuessComposer message={message} onGuess={guess} /> : null}
     </div>
   );
 }
