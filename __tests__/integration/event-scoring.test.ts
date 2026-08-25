@@ -952,6 +952,16 @@ describeWithDatabase("event scoring postgres", () => {
       qrDestinations: printPack.pack.items.map((item) => item.destination),
       embeddedFontCount: 3,
     });
+    for (const item of printPack.pack.items) {
+      expect(pdf.toString("latin1")).toContain(`(${item.fallbackCode})`);
+    }
+    const smallCardPdf = await renderDiscoveryPrintPdf({
+      ...printPack,
+      pack: { ...printPack.pack, layout: "twelve-small" },
+    });
+    for (const item of printPack.pack.items) {
+      expect(smallCardPdf.toString("latin1")).toContain(`(${item.fallbackCode})`);
+    }
     for (const [paper, dimensions] of Object.entries({
       a4: [595.28, 841.89],
       letter: [612, 792],

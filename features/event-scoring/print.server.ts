@@ -549,6 +549,19 @@ function fitText(value: string, size: number, maxWidth: number, widths: number[]
   return `${fitted.trimEnd()}...`;
 }
 
+function fitTextSize(
+  value: string,
+  preferredSize: number,
+  minimumSize: number,
+  maxWidth: number,
+  widths: number[],
+): number {
+  const preferredWidth = textWidth(value, preferredSize, widths);
+  return preferredWidth <= maxWidth
+    ? preferredSize
+    : Math.max(minimumSize, preferredSize * (maxWidth / preferredWidth));
+}
+
 function pdfTextCommand(input: {
   font: "FB" | "FR" | "FS";
   fontMetrics: EmbeddedFont;
@@ -659,6 +672,14 @@ export async function renderDiscoveryPrintPdf(input: {
       const qrY =
         y + footerHeight + Math.max(0, (cellHeight - headerHeight - footerHeight - qrSize) / 2);
       const titleSize = Math.min(compact ? 13 : 18, Math.max(compact ? 9 : 10, cellWidth * 0.055));
+      const fallbackWidth = cellWidth - inset * 2;
+      const fallbackSize = fitTextSize(
+        item.fallbackCode,
+        compact ? 8 : 10,
+        compact ? 4.5 : 6,
+        fallbackWidth,
+        boldFont.widths,
+      );
       if (input.pack.includeCutGuides !== false)
         commands.push(`${x} ${y} ${cellWidth} ${cellHeight} re S`);
       commands.push(
@@ -685,11 +706,11 @@ export async function renderDiscoveryPrintPdf(input: {
         pdfTextCommand({
           font: "FB",
           fontMetrics: boldFont,
-          size: compact ? 8 : 10,
+          size: fallbackSize,
           text: item.fallbackCode,
           x: x + cellWidth / 2,
           y: y + (compact ? 17 : 43),
-          maxWidth: cellWidth - inset * 2,
+          maxWidth: fallbackWidth,
           align: "center",
         }),
       );
