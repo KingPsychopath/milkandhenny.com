@@ -27,6 +27,17 @@ function normaliseName(value: unknown): string {
   return name.length > 0 && name.length <= MAX_NAME_LENGTH ? name : "";
 }
 
+export function gameNameDefault(value: string, maxLength: number): string {
+  const name = normaliseName(value);
+  if (!name || maxLength < 2) return "";
+  const characters = [...name];
+  if (characters.length <= maxLength) return name;
+  return `${characters
+    .slice(0, maxLength - 1)
+    .join("")
+    .trimEnd()}…`;
+}
+
 function normaliseEmail(value: unknown): string {
   if (typeof value !== "string") return "";
   const email = value.trim().toLowerCase();
@@ -146,7 +157,7 @@ export function useBrowserGameNameForm({ maxNameLength = 32 } = {}) {
   useEffect(() => {
     if (!loaded || edited.current) return;
     const preferred = profile.gameName || profile.name;
-    setNameState(preferred.length <= maxNameLength ? preferred : "");
+    setNameState(gameNameDefault(preferred, maxNameLength));
   }, [loaded, maxNameLength, profile]);
 
   const setName = useCallback((value: string) => {

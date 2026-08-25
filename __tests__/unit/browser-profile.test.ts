@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   forgetBrowserProfile,
+  gameNameDefault,
   readBrowserProfile,
   rememberBrowserProfile,
 } from "@/lib/client/browser-profile";
@@ -59,5 +60,10 @@ describe("browser profile", () => {
     rememberBrowserProfile({ name: "Alex" });
     expect(forgetBrowserProfile()).toBe(true);
     expect(readBrowserProfile()).toEqual({ name: "", gameName: "", email: "" });
+  });
+
+  it("creates an editable code-point-safe game default from a longer preferred name", () => {
+    expect(gameNameDefault("Alexandria Verylongname", 12)).toBe("Alexandria…");
+    expect(gameNameDefault("🧡🧡🧡", 2)).toBe("🧡…");
   });
 });

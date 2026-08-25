@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { useBrowserGameNameForm } from "@/lib/client/browser-profile";
+import { gameNameDefault, useBrowserGameNameForm } from "@/lib/client/browser-profile";
 
 const SHARED_MAX_NAME_LENGTH = 32;
 
@@ -31,15 +31,14 @@ export function useRememberedPlayerName(maxLength = SHARED_MAX_NAME_LENGTH) {
         return body.preferredName?.trim() || null;
       })
       .then((preferredName) => {
-        if (!active || edited.current || !preferredName || preferredName.length > maxLength) return;
-        setName(preferredName);
-        rememberProfile(preferredName);
+        if (!active || edited.current || !preferredName) return;
+        setName(gameNameDefault(preferredName, maxLength));
       })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [loaded, maxLength, name, rememberProfile, setName]);
+  }, [loaded, maxLength, name, setName]);
 
   const editName = useCallback(
     (value: string) => {
