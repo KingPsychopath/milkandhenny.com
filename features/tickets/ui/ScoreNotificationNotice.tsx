@@ -26,6 +26,7 @@ export function ScoreNotificationNotice({ ticketId }: { ticketId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ notificationIds: next.map((notice) => notice.id) }),
       });
+      window.dispatchEvent(new Event("mah-score-wake"));
     }
     void load();
     return () => {

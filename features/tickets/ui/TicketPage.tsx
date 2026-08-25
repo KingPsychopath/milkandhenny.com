@@ -71,6 +71,7 @@ export function TicketPage({
     }>;
   };
 }) {
+  const [confirmedScore, setConfirmedScore] = useState(score?.points);
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
   const invalid = ticket.status !== "valid";
@@ -380,7 +381,9 @@ export function TicketPage({
                 leaderboard
               </a>
             </div>
-            <p className="mt-2 font-serif text-2xl text-foreground">{score.points} points</p>
+            <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
+              {confirmedScore ?? score.points} points
+            </p>
             <ScoreNotificationNotice ticketId={ticket.id} />
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
             {score.teamRank !== undefined && (
@@ -418,6 +421,7 @@ export function TicketPage({
             </div>
             <p className="mt-4 font-mono text-micro theme-muted">
               <ScoreSyncStatus
+                ticketId={ticket.id}
                 snapshot={{
                   eventSlug: event.slug,
                   participantId: score.participantId,
@@ -425,6 +429,7 @@ export function TicketPage({
                   revision: score.revision,
                   synchronizedAt: score.synchronizedAt,
                 }}
+                onSnapshot={(next) => setConfirmedScore(next.balance)}
               />{" "}
               · last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
             </p>

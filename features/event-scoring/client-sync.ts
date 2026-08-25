@@ -75,3 +75,41 @@ export class MinimumFetchGap {
     this.lastFetchAt = now;
   }
 }
+
+export type ScoreSyncResponse = {
+  participant: {
+    id: string;
+    balance: number;
+    revision: number;
+    lastTransactionAt?: string;
+  };
+};
+
+export function scoreSnapshotFromResponse(
+  eventSlug: string,
+  response: ScoreSyncResponse,
+  synchronizedAt = new Date().toISOString(),
+): ScoreSnapshot {
+  return {
+    eventSlug,
+    participantId: response.participant.id,
+    balance: response.participant.balance,
+    revision: response.participant.revision,
+    synchronizedAt,
+  };
+}
+
+export function isScoreSyncResponse(value: unknown): value is ScoreSyncResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const participant = (value as { participant?: unknown }).participant;
+  if (!participant || typeof participant !== "object" || Array.isArray(participant)) return false;
+  const record = participant as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.balance === "number" &&
+    Number.isInteger(record.balance) &&
+    typeof record.revision === "number" &&
+    Number.isInteger(record.revision) &&
+    record.revision >= 0
+  );
+}
