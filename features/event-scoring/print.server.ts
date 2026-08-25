@@ -342,12 +342,11 @@ const PAPER_POINTS: Record<PrintPack["paper"], [number, number]> = {
 };
 
 function pdfText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[^\x20-\x7e]/g, "-")
-    .replaceAll("\\", "\\\\")
-    .replaceAll("(", "\\(")
-    .replaceAll(")", "\\)");
+  return asciiPdfText(value).replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+}
+
+function asciiPdfText(value: string): string {
+  return value.normalize("NFKD").replace(/[^\x20-\x7e]/g, "-");
 }
 
 function streamObject(dictionary: string, data: Buffer | string): Buffer {
@@ -437,22 +436,124 @@ async function loadPrintFonts() {
   return Promise.all([readFile(resolve("Regular")), readFile(resolve("Bold"))]);
 }
 
+function trueTypeTable(bytes: Buffer, name: string): number {
+  const count = bytes.readUInt16BE(4);
+  for (let index = 0; index < count; index += 1) {
+    const record = 12 + index * 16;
+    if (bytes.toString("ascii", record, record + 4) === name) return bytes.readUInt32BE(record + 8);
+  }
+  throw new Error(`Embedded font has no ${name} table`);
+}
+
+function trueTypeGlyph(bytes: Buffer, code: number): number {
+  const cmap = trueTypeTable(bytes, "cmap");
+  const count = bytes.readUInt16BE(cmap + 2);
+  let format4 = 0;
+  for (let index = 0; index < count; index += 1) {
+    const record = cmap + 4 + index * 8;
+    const platform = bytes.readUInt16BE(record);
+    const encoding = bytes.readUInt16BE(record + 2);
+    const candidate = cmap + bytes.readUInt32BE(record + 4);
+    if (
+      bytes.readUInt16BE(candidate) === 4 &&
+      platform === 3 &&
+      (encoding === 1 || encoding === 10)
+    ) {
+      format4 = candidate;
+      break;
+    }
+  }
+  if (!format4) throw new Error("Embedded font has no Windows Unicode cmap");
+  const segmentCount = bytes.readUInt16BE(format4 + 6) / 2;
+  const endCodes = format4 + 14;
+  const startCodes = endCodes + segmentCount * 2 + 2;
+  const deltas = startCodes + segmentCount * 2;
+  const rangeOffsets = deltas + segmentCount * 2;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const end = bytes.readUInt16BE(endCodes + index * 2);
+    const start = bytes.readUInt16BE(startCodes + index * 2);
+    if (code < start || code > end) continue;
+    const delta = bytes.readInt16BE(deltas + index * 2);
+    const rangeOffsetAddress = rangeOffsets + index * 2;
+    const rangeOffset = bytes.readUInt16BE(rangeOffsetAddress);
+    if (rangeOffset === 0) return (code + delta) & 0xffff;
+    const glyphAddress = rangeOffsetAddress + rangeOffset + (code - start) * 2;
+    const glyph = bytes.readUInt16BE(glyphAddress);
+    return glyph === 0 ? 0 : (glyph + delta) & 0xffff;
+  }
+  return 0;
+}
+
+function trueTypeAsciiWidths(bytes: Buffer): number[] {
+  const unitsPerEm = bytes.readUInt16BE(trueTypeTable(bytes, "head") + 18);
+  const metricCount = bytes.readUInt16BE(trueTypeTable(bytes, "hhea") + 34);
+  const metrics = trueTypeTable(bytes, "hmtx");
+  return Array.from({ length: 95 }, (_, index) => {
+    const glyph = trueTypeGlyph(bytes, index + 32);
+    const metric = Math.min(glyph, metricCount - 1);
+    return Math.round((bytes.readUInt16BE(metrics + metric * 4) * 1000) / unitsPerEm);
+  });
+}
+
+type EmbeddedFont = { id: number; widths: number[] };
+
 function embeddedTrueTypeFont(input: {
   add: (object: PdfObject) => number;
   bytes: Buffer;
   name: string;
   bold: boolean;
-}) {
+}): EmbeddedFont {
   const fileId = input.add(
     streamObject(`/Filter /FlateDecode /Length1 ${input.bytes.length}`, deflateSync(input.bytes)),
   );
   const descriptorId = input.add(
     `<< /Type /FontDescriptor /FontName /${input.name} /Flags 32 /FontBBox [-543 -303 1301 981] /ItalicAngle 0 /Ascent 905 /Descent -212 /CapHeight 728 /StemV ${input.bold ? 120 : 80} /FontFile2 ${fileId} 0 R >>`,
   );
-  const widths = Array.from({ length: 95 }, () => 600).join(" ");
-  return input.add(
-    `<< /Type /Font /Subtype /TrueType /BaseFont /${input.name} /FirstChar 32 /LastChar 126 /Widths [${widths}] /Encoding /WinAnsiEncoding /FontDescriptor ${descriptorId} 0 R >>`,
+  const widths = trueTypeAsciiWidths(input.bytes);
+  const id = input.add(
+    `<< /Type /Font /Subtype /TrueType /BaseFont /${input.name} /FirstChar 32 /LastChar 126 /Widths [${widths.join(" ")}] /Encoding /WinAnsiEncoding /FontDescriptor ${descriptorId} 0 R >>`,
   );
+  return { id, widths };
+}
+
+function textWidth(value: string, size: number, widths: number[]): number {
+  return (
+    [...asciiPdfText(value)].reduce(
+      (total, character) => total + (widths[character.charCodeAt(0) - 32] ?? 600),
+      0,
+    ) *
+    (size / 1000)
+  );
+}
+
+function fitText(value: string, size: number, maxWidth: number, widths: number[]): string {
+  const text = asciiPdfText(value);
+  if (textWidth(text, size, widths) <= maxWidth) return text;
+  let fitted = text;
+  while (fitted.length > 1 && textWidth(`${fitted}...`, size, widths) > maxWidth)
+    fitted = fitted.slice(0, -1);
+  return `${fitted.trimEnd()}...`;
+}
+
+function pdfTextCommand(input: {
+  font: "FB" | "FR";
+  fontMetrics: EmbeddedFont;
+  size: number;
+  text: string;
+  x: number;
+  y: number;
+  maxWidth: number;
+  align?: "left" | "center" | "right";
+}): string {
+  const text = fitText(input.text, input.size, input.maxWidth, input.fontMetrics.widths);
+  const width = textWidth(text, input.size, input.fontMetrics.widths);
+  const x =
+    input.align === "center"
+      ? input.x - width / 2
+      : input.align === "right"
+        ? input.x - width
+        : input.x;
+  return `BT /${input.font} ${input.size} Tf ${x} ${input.y} Td (${pdfText(text)}) Tj ET`;
 }
 
 /** Render a self-contained PDF in the Node runtime. QR source images are validated first. */
@@ -473,20 +574,19 @@ export async function renderDiscoveryPrintPdf(input: {
   const add = (object: PdfObject) => (objects.push(object), objects.length);
   const catalogId = add("");
   const pagesId = add("");
-  const [regularFont, boldFont] = await loadPrintFonts();
-  const regularFontId = embeddedTrueTypeFont({
+  const [regularFontBytes, boldFontBytes] = await loadPrintFonts();
+  const regularFont = embeddedTrueTypeFont({
     add,
-    bytes: regularFont,
+    bytes: regularFontBytes,
     name: "MAHLiberationSans",
     bold: false,
   });
-  const boldFontId = embeddedTrueTypeFont({
+  const boldFont = embeddedTrueTypeFont({
     add,
-    bytes: boldFont,
+    bytes: boldFontBytes,
     name: "MAHLiberationSans-Bold",
     bold: true,
   });
-  const monoFontId = regularFontId;
   const pageIds: number[] = [];
 
   for (let offset = 0; offset < input.pack.items.length; offset += pageCapacity) {
@@ -512,7 +612,15 @@ export async function renderDiscoveryPrintPdf(input: {
 
     const commands: string[] = [
       "0 G 0 g 0.7 w",
-      `BT /FM 8 Tf ${margin} ${pageHeight - 16} Td (MILK & HENNY) Tj ET`,
+      pdfTextCommand({
+        font: "FB",
+        fontMetrics: boldFont,
+        size: 8,
+        text: "MILK & HENNY",
+        x: margin,
+        y: pageHeight - 16,
+        maxWidth: pageWidth - margin * 2,
+      }),
     ];
     for (const [index, item] of pageItems.entries()) {
       const column = index % layout.columns;
@@ -520,42 +628,134 @@ export async function renderDiscoveryPrintPdf(input: {
       const x = margin + column * (cellWidth + gap);
       const y = pageHeight - margin - (row + 1) * cellHeight - row * gap;
       const inset = Math.min(18, cellWidth * 0.08);
-      const qrSize = Math.min(cellWidth * 0.58, cellHeight * 0.6);
+      const compact = cellHeight < 250;
+      const headerHeight = compact ? (item.subtitle ? 42 : 28) : item.subtitle ? 62 : 42;
+      const footerHeight = compact ? 50 : 92;
+      const qrSize = Math.min(
+        cellWidth * (compact ? 0.42 : 0.58),
+        cellHeight - headerHeight - footerHeight,
+      );
       const qrX = x + (cellWidth - qrSize) / 2;
-      const qrY = y + cellHeight * 0.21;
+      const qrY =
+        y + footerHeight + Math.max(0, (cellHeight - headerHeight - footerHeight - qrSize) / 2);
+      const titleSize = Math.min(compact ? 13 : 18, Math.max(compact ? 9 : 10, cellWidth * 0.055));
       if (input.pack.includeCutGuides !== false)
         commands.push(`${x} ${y} ${cellWidth} ${cellHeight} re S`);
       commands.push(
-        `BT /FB ${Math.min(18, Math.max(10, cellWidth * 0.055))} Tf ${x + inset} ${y + cellHeight - inset - 16} Td (${pdfText(item.title)}) Tj ET`,
+        pdfTextCommand({
+          font: "FB",
+          fontMetrics: boldFont,
+          size: titleSize,
+          text: item.title,
+          x: x + inset,
+          y: y + cellHeight - inset - titleSize,
+          maxWidth: cellWidth - inset * 2,
+        }),
         `q ${qrSize} 0 0 ${qrSize} ${qrX} ${qrY} cm /Q${index} Do Q`,
-        `BT /FR ${Math.min(10, Math.max(7, cellWidth * 0.032))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.15} Td (${pdfText("Scan to open the clue")}) Tj ET`,
-        `BT /FM ${Math.min(11, Math.max(8, cellWidth * 0.035))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.09} Td (${pdfText(item.fallbackCode)}) Tj ET`,
-        `BT /FR ${Math.min(7, Math.max(5, cellWidth * 0.022))} Tf ${x + cellWidth / 2} ${y + cellHeight * 0.035} Td (${pdfText(`Revision ${item.revision}`)}) Tj ET`,
+        pdfTextCommand({
+          font: "FR",
+          fontMetrics: regularFont,
+          size: compact ? 6.5 : 9,
+          text: "Scan to open the clue",
+          x: x + cellWidth / 2,
+          y: y + (compact ? 29 : 62),
+          maxWidth: cellWidth - inset * 2,
+          align: "center",
+        }),
+        pdfTextCommand({
+          font: "FB",
+          fontMetrics: boldFont,
+          size: compact ? 8 : 10,
+          text: item.fallbackCode,
+          x: x + cellWidth / 2,
+          y: y + (compact ? 17 : 43),
+          maxWidth: cellWidth - inset * 2,
+          align: "center",
+        }),
       );
       if (item.subtitle) {
-        const text = item.subtitle.length > 88 ? `${item.subtitle.slice(0, 85)}...` : item.subtitle;
         commands.push(
-          `BT /FR ${Math.min(8, Math.max(6, cellWidth * 0.026))} Tf ${x + inset} ${y + cellHeight * 0.18} Td (${pdfText(text)}) Tj ET`,
+          pdfTextCommand({
+            font: "FR",
+            fontMetrics: regularFont,
+            size: compact ? 6 : Math.min(8, Math.max(6, cellWidth * 0.026)),
+            text: item.subtitle,
+            x: x + inset,
+            y: y + cellHeight - inset - titleSize - (compact ? 11 : 16),
+            maxWidth: cellWidth - inset * 2,
+          }),
         );
       }
       if (input.pack.includePoints && item.points !== undefined) {
-        commands.push(`BT /FB 9 Tf ${x + inset} ${y + inset} Td (${item.points} points) Tj ET`);
+        commands.push(
+          pdfTextCommand({
+            font: "FB",
+            fontMetrics: boldFont,
+            size: compact ? 6.5 : 8,
+            text: `${item.points} points`,
+            x: x + inset,
+            y: y + (compact ? 6 : 13),
+            maxWidth: cellWidth * 0.35,
+          }),
+        );
       }
       if (input.pack.includePlacementNotes && item.placementNote) {
         commands.push(
-          `BT /FR 7 Tf ${x + inset} ${y + inset + 12} Td (${pdfText(item.placementNote)}) Tj ET`,
+          pdfTextCommand({
+            font: "FR",
+            fontMetrics: regularFont,
+            size: compact ? 5.5 : 7,
+            text: item.placementNote,
+            x: x + cellWidth / 2,
+            y: y + (compact ? 40 : 27),
+            maxWidth: cellWidth - inset * 2,
+            align: "center",
+          }),
         );
       }
+      commands.push(
+        pdfTextCommand({
+          font: "FR",
+          fontMetrics: regularFont,
+          size: compact ? 5.5 : 7,
+          text: `Revision ${item.revision}`,
+          x: x + cellWidth - inset,
+          y: y + (compact ? 6 : 13),
+          maxWidth: cellWidth * 0.35,
+          align: "right",
+        }),
+      );
     }
     const pageNumber = Math.floor(offset / pageCapacity) + 1;
-    commands.push(`BT /FR 7 Tf ${margin} 12 Td (${pdfText(input.pack.title)}) Tj ET`);
+    commands.push(
+      pdfTextCommand({
+        font: "FR",
+        fontMetrics: regularFont,
+        size: 7,
+        text: input.pack.title,
+        x: margin,
+        y: 12,
+        maxWidth: pageWidth * 0.7,
+      }),
+    );
     if (input.pack.includePageNumbers !== false)
-      commands.push(`BT /FR 7 Tf ${pageWidth - margin - 38} 12 Td (Page ${pageNumber}) Tj ET`);
+      commands.push(
+        pdfTextCommand({
+          font: "FR",
+          fontMetrics: regularFont,
+          size: 7,
+          text: `Page ${pageNumber}`,
+          x: pageWidth - margin,
+          y: 12,
+          maxWidth: 60,
+          align: "right",
+        }),
+      );
     const contentId = add(streamObject("", commands.join("\n")));
     const xObjects = imageIds.map((id, index) => `/Q${index} ${id} 0 R`).join(" ");
     pageIds.push(
       add(
-        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFontId} 0 R /FB ${boldFontId} 0 R /FM ${monoFontId} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFont.id} 0 R /FB ${boldFont.id} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
       ),
     );
   }
