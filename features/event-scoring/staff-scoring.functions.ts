@@ -57,13 +57,21 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const result = await awardStaffPoints({ ...data, deviceId: ensureDeviceId() });
+    const deviceId = ensureDeviceId();
+    const result = await awardStaffPoints({ ...data, deviceId });
+    const page = result.ok
+      ? await getStaffScoringPage({ eventSlug: data.eventSlug, token: data.token, deviceId })
+      : null;
+    const pool = page?.found
+      ? (page.pools.find((entry) => entry.activityId === data.activityId) ?? page.pools[0])
+      : undefined;
     return result.ok
       ? {
           ok: true as const,
           value: {
             id: result.value.id,
             points: result.value.postings.reduce((sum, posting) => sum + posting.points, 0),
+            remainingPool: pool?.available,
           },
         }
       : result;

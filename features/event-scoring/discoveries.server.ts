@@ -230,6 +230,121 @@ export async function listDiscoveryClues(discoveryId: string): Promise<Discovery
   }));
 }
 
+const DISCOVERY_TRANSITIONS: Record<string, readonly string[]> = {
+  draft: ["scheduled", "live", "cancelled"],
+  scheduled: ["live", "paused", "cancelled"],
+  live: ["paused", "exhausted", "ended", "cancelled"],
+  paused: ["live", "ended", "cancelled"],
+  exhausted: ["ended"],
+  ended: [],
+  cancelled: [],
+};
+
+export async function updateDiscovery(input: {
+  eventSlug: string;
+  discoveryId: string;
+  actorId: string;
+  name?: string;
+  status?: Discovery["status"];
+  rule?: DiscoveryRule;
+  reopen?: boolean;
+  reason?: string;
+}): Promise<DiscoveryResult<Discovery>> {
+  const current = await getDiscovery(input.discoveryId);
+  if (!current || current.eventSlug !== input.eventSlug) {
+    return { ok: false, status: 404, error: "Discovery not found" };
+  }
+  if (input.name !== undefined && !input.name.trim()) {
+    return { ok: false, status: 400, error: "Name the discovery" };
+  }
+  if (input.status && input.status !== current.status) {
+    const reopening =
+      input.reopen === true &&
+      (current.status === "ended" || current.status === "cancelled") &&
+      input.status === "draft";
+    if (reopening && !input.reason?.trim()) {
+      return { ok: false, status: 400, error: "Reopening a discovery needs a reason" };
+    }
+    if (!reopening && !(DISCOVERY_TRANSITIONS[current.status] ?? []).includes(input.status)) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Cannot move a discovery from ${current.status} to ${input.status}`,
+      };
+    }
+  }
+  if ((current.status === "ended" || current.status === "cancelled") && input.rule) {
+    return { ok: false, status: 409, error: "Closed discovery rules cannot be changed" };
+  }
+  const row = await queryOne<DiscoveryRow>(
+    `update score_discoveries set
+       name = coalesce($3, name), status = coalesce($4, status),
+       rule = coalesce($5::jsonb, rule), updated_at = now()
+     where id = $1 and event_slug = $2
+     returning id, event_slug, activity_id, name, method, status, rule, replacement_revision`,
+    [
+      input.discoveryId,
+      input.eventSlug,
+      input.name?.trim() ?? null,
+      input.status ?? null,
+      input.rule ? JSON.stringify(input.rule) : null,
+    ],
+  );
+  if (!row) return { ok: false, status: 404, error: "Discovery not found" };
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'discovery.updated','admin',$2,'discovery',$3,$4::jsonb)`,
+    [
+      input.eventSlug,
+      input.actorId,
+      input.discoveryId,
+      JSON.stringify({
+        fromStatus: current.status,
+        toStatus: row.status,
+        reason: input.reason ?? null,
+      }),
+    ],
+  );
+  return { ok: true, value: toDiscovery(row) };
+}
+
+export async function copyDiscovery(input: {
+  eventSlug: string;
+  discoveryId: string;
+  actorId: string;
+  name?: string;
+}): Promise<DiscoveryResult<DiscoverySetup>> {
+  const current = await getDiscovery(input.discoveryId);
+  if (!current || current.eventSlug !== input.eventSlug) {
+    return { ok: false, status: 404, error: "Discovery not found" };
+  }
+  const created = await createDiscovery({
+    eventSlug: input.eventSlug,
+    activityId: current.activityId,
+    name: input.name?.trim() || `${current.name} copy`,
+    method: current.method,
+    status: "draft",
+    rule: current.rule,
+    clues:
+      current.method === "collected-clues"
+        ? (await listDiscoveryClues(current.id)).map((clue) => ({
+            key: clue.key,
+            label: clue.label,
+          }))
+        : undefined,
+    includeSecret: true,
+  });
+  if (!created.ok) return created;
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'discovery.copied','admin',$2,'discovery',$3,$4::jsonb)`,
+    [input.eventSlug, input.actorId, created.value.id, JSON.stringify({ sourceId: current.id })],
+  );
+  return created;
+}
+
 export async function replaceDiscoveryClueSecret(input: {
   eventSlug: string;
   discoveryId: string;
@@ -349,6 +464,31 @@ async function resolveDiscovery(
     [discovery.id, digest(normalizeDiscoveryCode(value))],
   );
   return { matched: Boolean(row), clueKey: null };
+}
+
+export async function findDiscoveryForPresented(
+  eventSlug: string,
+  presented: string,
+): Promise<Discovery | null> {
+  const rawHash = digest(presented);
+  const normalizedHash = digest(normalizeDiscoveryCode(presented));
+  const row = await queryOne<{ id: string }>(
+    `select discoveries.id
+       from score_discoveries discoveries
+      where discoveries.event_slug = $1
+        and discoveries.status = 'live'
+        and (discoveries.token_hash = $2 or discoveries.code_hash = $3)
+      union all
+     select discoveries.id
+       from score_discovery_clues clues
+       join score_discoveries discoveries on discoveries.id = clues.discovery_id
+      where discoveries.event_slug = $1
+        and discoveries.status = 'live'
+        and clues.token_hash = $2
+      limit 1`,
+    [eventSlug, rawHash, normalizedHash],
+  );
+  return row ? getDiscovery(row.id) : null;
 }
 
 export async function claimDiscovery(input: {

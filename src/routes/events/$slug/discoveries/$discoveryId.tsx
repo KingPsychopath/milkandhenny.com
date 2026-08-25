@@ -2,7 +2,18 @@ import { useEffect, useState } from "react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 
 import { getPublicDiscoveryFn } from "@/features/event-scoring/public.functions";
+import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import { buildSeoHead } from "@/lib/shared/seo";
+
+function clueCredential(raw: string): string {
+  try {
+    return new URL(raw, window.location.origin).hash
+      ? (new URLSearchParams(new URL(raw, window.location.origin).hash.slice(1)).get("clue") ?? raw)
+      : raw;
+  } catch {
+    return raw;
+  }
+}
 
 export const Route = createFileRoute("/events/$slug/discoveries/$discoveryId")({
   loader: async ({ params }) => {
@@ -26,16 +37,28 @@ function DiscoveryRoute() {
   const { discovery, activeParticipantId } = Route.useLoaderData();
   const [presented, setPresented] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   useEffect(() => {
     const clue = new URLSearchParams(window.location.hash.slice(1)).get("clue");
     if (clue) setPresented(clue);
-  }, []);
+    if (!activeParticipantId) {
+      sessionStorage.setItem("mah-pending-discovery", window.location.href);
+    }
+  }, [activeParticipantId]);
 
   async function claim() {
     setBusy(true);
     setMessage(null);
+    setIsError(false);
+    if (!navigator.onLine) {
+      setBusy(false);
+      setIsError(true);
+      setMessage("No connection. Keep this page open and try again when the network returns.");
+      return;
+    }
     try {
       const response = await fetch(
         `/api/events/${encodeURIComponent(discovery.eventSlug)}/discoveries/${encodeURIComponent(discovery.id)}/claim`,
@@ -45,14 +68,21 @@ function DiscoveryRoute() {
           body: JSON.stringify({ presented, commandId: crypto.randomUUID() }),
         },
       );
-      const body = (await response.json()) as { error?: string; state?: string; points?: number };
+      const body = (await response.json()) as {
+        error?: string;
+        state?: string;
+        points?: number;
+        progress?: { claimed: number; total: number; complete: boolean };
+      };
       if (!response.ok) throw new Error(body.error ?? "The clue could not be claimed");
       setMessage(
         body.state === "held"
           ? "Saved for review while scoring is frozen."
-          : `Claimed. ${body.points ?? 0} points added.`,
+          : `Claimed. ${body.points ?? 0} points added.${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} clues found${body.progress.complete ? ". Collection complete." : "."}` : ""}`,
       );
+      setCameraOpen(false);
     } catch (error) {
+      setIsError(true);
       setMessage(error instanceof Error ? error.message : "The clue could not be claimed");
     } finally {
       setBusy(false);
@@ -71,7 +101,9 @@ function DiscoveryRoute() {
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">discovery</p>
         <h1 className="mt-2 font-serif text-4xl text-foreground">{discovery.name}</h1>
         <p className="mt-3 font-mono text-xs theme-subtle">
-          Enter the code or phrase shown at the clue.
+          {discovery.method === "qr" || discovery.method === "collected-clues"
+            ? "Review this clue, then claim it with your event ticket."
+            : "Enter the code or phrase shown at the clue."}
         </p>
       </header>
       {!activeParticipantId ? (
@@ -87,7 +119,9 @@ function DiscoveryRoute() {
           }}
         >
           <label className="block font-mono text-xs text-foreground" htmlFor="discovery-code">
-            Code or phrase
+            {discovery.method === "qr" || discovery.method === "collected-clues"
+              ? "Clue credential"
+              : "Code or phrase"}
           </label>
           <input
             id="discovery-code"
@@ -97,15 +131,37 @@ function DiscoveryRoute() {
             autoComplete="off"
             required
           />
+          {(discovery.method === "qr" || discovery.method === "collected-clues") && (
+            <>
+              <button
+                type="button"
+                onClick={() => setCameraOpen((current) => !current)}
+                className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+              >
+                {cameraOpen ? "Close camera" : "Scan clue"}
+              </button>
+              {cameraOpen && (
+                <div className="max-w-sm">
+                  <CameraFeed
+                    paused={busy}
+                    onCode={(raw) => {
+                      setPresented(clueCredential(raw));
+                      setCameraOpen(false);
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          )}
           <button
             type="submit"
             disabled={busy}
             className="min-h-11 border theme-border px-4 font-mono text-xs uppercase tracking-wide hover:opacity-70 disabled:opacity-50"
           >
-            {busy ? "Checking..." : "Claim discovery"}
+            {busy ? "Checking..." : "Claim clue"}
           </button>
           {message && (
-            <p role="status" className="font-mono text-xs theme-subtle">
+            <p role={isError ? "alert" : "status"} className="font-mono text-xs theme-subtle">
               {message}
             </p>
           )}

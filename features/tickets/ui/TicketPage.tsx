@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppImage } from "@/components/AppImage";
@@ -70,6 +71,12 @@ export function TicketPage({
   // Whoever holds this id gets every sibling QR and the refund button, so it is
   // the one ticket in the order that must not have a "share" next to it.
   const isManagerTicket = ticket.id === managerTicketId;
+  const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pending = sessionStorage.getItem("mah-pending-discovery");
+    if (pending) setPendingDiscovery(pending);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -350,7 +357,7 @@ export function TicketPage({
                 event score
               </h2>
               <a
-                href={`/api/events/${encodeURIComponent(event.slug)}/score`}
+                href={`/events/${encodeURIComponent(event.slug)}/score`}
                 className="font-mono text-micro underline hover:opacity-70 transition-opacity"
               >
                 leaderboard
@@ -358,6 +365,29 @@ export function TicketPage({
             </div>
             <p className="mt-2 font-serif text-2xl text-foreground">{score.points} points</p>
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
+            <div className="mt-4 flex flex-wrap gap-4">
+              <a
+                href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
+                className="font-mono text-xs underline hover:opacity-70"
+              >
+                scan a clue
+              </a>
+              <a
+                href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
+                className="font-mono text-xs underline hover:opacity-70"
+              >
+                enter a code
+              </a>
+              {pendingDiscovery && (
+                <a
+                  href={pendingDiscovery}
+                  onClick={() => sessionStorage.removeItem("mah-pending-discovery")}
+                  className="font-mono text-xs underline hover:opacity-70"
+                >
+                  return to pending clue
+                </a>
+              )}
+            </div>
           </section>
         )}
 

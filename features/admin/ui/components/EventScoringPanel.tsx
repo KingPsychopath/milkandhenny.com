@@ -1,17 +1,16 @@
 import { useState } from "react";
 
+import { ScoringActivitiesPanel } from "./ScoringActivitiesPanel";
+import { ScoringDiscoveriesPanel } from "./ScoringDiscoveriesPanel";
+import { ScoringPoolsPanel } from "./ScoringPoolsPanel";
+import { ScoringStaffPanel } from "./ScoringStaffPanel";
+import type { ScoringData } from "./event-scoring-types";
+
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type StepUp = () => Promise<
   { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
 >;
 type StepUpHeaders = (token: string, extra?: Record<string, string>) => Record<string, string>;
-
-type ScoringData = {
-  settings: { state: string; leaderboardVisibility: string; revision: number };
-  activities: { id: string; name: string; status: string }[];
-  pools: { id: string; available: number; spent: number; held: number }[];
-  held: { id: string; sourceType: string; createdAt: string }[];
-};
 
 export function EventScoringPanel({
   authFetch,
@@ -30,12 +29,12 @@ export function EventScoringPanel({
   const [data, setData] = useState<ScoringData | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  async function load(showBusy = true) {
     if (!eventSlug.trim()) {
       onError("Enter an event slug first.");
       return;
     }
-    setBusy(true);
+    if (showBusy) setBusy(true);
     onError("");
     try {
       const response = await authFetch(
@@ -46,38 +45,43 @@ export function EventScoringPanel({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load scoring settings");
     } finally {
-      setBusy(false);
+      if (showBusy) setBusy(false);
     }
   }
 
-  async function changeState(state: string) {
+  async function performAction(body: Record<string, unknown>) {
     const stepUp = await ensureStepUpToken();
     if (!stepUp.ok) {
       if (stepUp.error) onError(stepUp.error);
-      return;
+      return null;
     }
     setBusy(true);
+    onError("");
     try {
       const response = await authFetch(
         `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring`,
         {
           method: "POST",
           headers: withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }),
-          body: JSON.stringify({ action: "state", state }),
+          body: JSON.stringify(body),
         },
       );
-      const body = (await response.json()) as {
-        error?: string;
-        settings?: ScoringData["settings"];
-      };
-      if (!response.ok) throw new Error(body.error ?? "Could not change scoring state");
-      if (body.settings && data) setData({ ...data, settings: body.settings });
-      onStatus(`Scoring is now ${state}.`);
+      const result = (await response.json()) as Record<string, unknown> & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Scoring action failed");
+      await load(false);
+      onStatus("Scoring changes saved.");
+      return result;
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not change scoring state");
+      onError(error instanceof Error ? error.message : "Scoring action failed");
+      return null;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function changeState(state: string) {
+    const result = await performAction({ action: "state", state });
+    if (result) onStatus(`Scoring is now ${state}.`);
   }
 
   return (
@@ -156,6 +160,19 @@ export function EventScoringPanel({
               {data.held.length}
             </p>
           </div>
+          <ScoringActivitiesPanel activities={data.activities} onAction={performAction} />
+          <ScoringDiscoveriesPanel
+            activities={data.activities}
+            discoveries={data.discoveries}
+            onAction={performAction}
+          />
+          <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
+          <ScoringStaffPanel
+            eventSlug={eventSlug.trim()}
+            activities={data.activities}
+            staff={data.staff}
+            onAction={performAction}
+          />
         </div>
       )}
     </section>

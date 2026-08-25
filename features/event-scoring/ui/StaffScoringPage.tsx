@@ -27,6 +27,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [reviewReady, setReviewReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [confirmedRemaining, setConfirmedRemaining] = useState<number | undefined>();
   const commandId = useRef(crypto.randomUUID());
 
   const activity = data.activities.find((entry) => entry.id === activityId);
@@ -79,6 +80,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
       return;
     }
     setStatus(`${result.value.points} points awarded.`);
+    setConfirmedRemaining(result.value.remainingPool);
     setNeedsConfirmation(false);
     setReviewReady(false);
     setParticipant(null);
@@ -141,6 +143,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                   setActivityId(event.target.value);
                   setReviewReady(false);
                   setNeedsConfirmation(false);
+                  setConfirmedRemaining(undefined);
                 }}
                 className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
               >
@@ -287,7 +290,9 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                 </p>
                 <p className="mt-1 font-mono text-xs theme-muted">
                   {activity?.name} · {previewPoints} points · {participant.balance} current points
-                  {pool ? ` · ${pool.available} pool points left` : ""}
+                  {pool
+                    ? ` · ${confirmedRemaining ?? pool.available} confirmed pool points left`
+                    : ""}
                 </p>
               </div>
             )}

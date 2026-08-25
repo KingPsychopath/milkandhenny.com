@@ -5,6 +5,7 @@ import { query } from "@/lib/platform/postgres.server";
 import {
   createStaffAssignment,
   createPool,
+  adjustPool,
   recordStaffDevice,
   resolveStaffAssignment,
   revokeStaffAssignment,
@@ -137,8 +138,39 @@ export async function issueStaffPool(input: {
   ownerId?: string;
   activityId?: string;
   points: number;
+  actorId: string;
 }) {
-  return createPool(input);
+  const result = await createPool(input);
+  if (!result.ok) return result;
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'pool.created','admin',$2,'score_pool',$3,$4::jsonb)`,
+    [
+      input.eventSlug,
+      input.actorId,
+      result.value.id,
+      JSON.stringify({ ownerType: input.ownerType, ownerId: input.ownerId, points: input.points }),
+    ],
+  );
+  return result;
+}
+
+export async function adjustStaffPool(input: {
+  eventSlug: string;
+  poolId: string;
+  delta: number;
+  actorId: string;
+}) {
+  const result = await adjustPool(input.poolId, input.delta, input.eventSlug);
+  if (!result.ok) return result;
+  await query(
+    `insert into score_audit_events
+       (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+     values ($1,'pool.adjusted','admin',$2,'score_pool',$3,$4::jsonb)`,
+    [input.eventSlug, input.actorId, input.poolId, JSON.stringify({ delta: input.delta })],
+  );
+  return result;
 }
 
 export async function revokeStaffAccess(input: {

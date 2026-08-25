@@ -40,3 +40,12 @@ export const getPublicDiscoveryFn = createServerFn({ method: "GET" })
       activeParticipantId: await activeParticipantForEvent(data.eventSlug),
     };
   });
+
+export const getDiscoveryClaimPageFn = createServerFn({ method: "GET" })
+  .validator((value: unknown) => {
+    const input = value as { eventSlug?: unknown } | null;
+    return { eventSlug: identifier(input?.eventSlug, "Event") };
+  })
+  .handler(async ({ data }) => ({
+    activeParticipant: Boolean(await activeParticipantForEvent(data.eventSlug)),
+  }));

@@ -1537,6 +1537,7 @@ export async function createPool(input: {
 export async function adjustPool(
   poolId: string,
   delta: number,
+  eventSlug: string,
 ): Promise<ScoreStoreResult<{ issued: number; available: number }>> {
   const amount = Math.trunc(delta);
   if (!Number.isInteger(amount) || amount === 0)
@@ -1550,9 +1551,10 @@ export async function adjustPool(
     `update score_pools
         set issued_points = issued_points + $2, updated_at = now()
       where id = $1
+        and event_slug = $3
         and issued_points + $2 >= reserved_points + spent_points + held_points
       returning issued_points, reserved_points, spent_points, held_points`,
-    [poolId, amount],
+    [poolId, amount, eventSlug],
   );
   if (!row)
     return {

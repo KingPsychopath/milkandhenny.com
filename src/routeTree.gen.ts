@@ -146,6 +146,7 @@ import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upl
 import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
+import { Route as EventsSlugDiscoveriesIndexRouteImport } from './routes/events/$slug/discoveries/index'
 import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug/discoveries/$discoveryId'
 import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug/staff/$token'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
@@ -165,6 +166,7 @@ import { Route as ApiAdminEventsSlugScoringRouteRouteImport } from './routes/api
 import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
 import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
 import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/route'
+import { Route as ApiEventsSlugDiscoveriesClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/claim/route'
 import { Route as ApiEventsSlugGameResultsClaimRouteRouteImport } from './routes/api/events/$slug/game-results/claim/route'
 import { Route as ApiTicketsIdScoreNotificationsRouteRouteImport } from './routes/api/tickets/$id/score/notifications/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
@@ -907,6 +909,12 @@ const ApiWordsShareVerifyRouteRoute =
     path: '/share/verify',
     getParentRoute: () => ApiWordsRouteRoute,
   } as any)
+const EventsSlugDiscoveriesIndexRoute =
+  EventsSlugDiscoveriesIndexRouteImport.update({
+    id: '/discoveries/',
+    path: '/discoveries/',
+    getParentRoute: () => EventsSlugRoute,
+  } as any)
 const EventsSlugDiscoveriesDiscoveryIdRoute =
   EventsSlugDiscoveriesDiscoveryIdRouteImport.update({
     id: '/discoveries/$discoveryId',
@@ -1017,6 +1025,12 @@ const ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute =
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport.update({
     id: '/api/events/$slug/discoveries/$discoveryId',
     path: '/api/events/$slug/discoveries/$discoveryId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiEventsSlugDiscoveriesClaimRouteRoute =
+  ApiEventsSlugDiscoveriesClaimRouteRouteImport.update({
+    id: '/api/events/$slug/discoveries/claim',
+    path: '/api/events/$slug/discoveries/claim',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiEventsSlugGameResultsClaimRouteRoute =
@@ -1249,6 +1263,7 @@ export interface FileRoutesByFullPath {
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
+  '/events/$slug/discoveries/': typeof EventsSlugDiscoveriesIndexRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
@@ -1261,6 +1276,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1421,6 +1437,7 @@ export interface FileRoutesByTo {
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party/$roomId/present': typeof ThingsSpellingPartyRoomIdPresentRoute
+  '/events/$slug/discoveries': typeof EventsSlugDiscoveriesIndexRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
@@ -1433,6 +1450,7 @@ export interface FileRoutesByTo {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1594,6 +1612,7 @@ export interface FileRoutesById {
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
+  '/events/$slug/discoveries/': typeof EventsSlugDiscoveriesIndexRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
@@ -1606,6 +1625,7 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1768,6 +1788,7 @@ export interface FileRouteTypes {
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
+    | '/events/$slug/discoveries/'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/albums/$slug/order'
     | '/api/admin/albums/$slug/photos'
@@ -1780,6 +1801,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
@@ -1940,6 +1962,7 @@ export interface FileRouteTypes {
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
     | '/things/spelling-party/$roomId/present'
+    | '/events/$slug/discoveries'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/albums/$slug/order'
     | '/api/admin/albums/$slug/photos'
@@ -1952,6 +1975,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
@@ -2112,6 +2136,7 @@ export interface FileRouteTypes {
     | '/things/pitches_/present_/$roomId'
     | '/things/pitches_/remote_/$roomId'
     | '/things/spelling-party_/$roomId_/present'
+    | '/events/$slug/discoveries/'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/albums/$slug/order'
     | '/api/admin/albums/$slug/photos'
@@ -2124,6 +2149,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
+    | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
     | '/api/tickets/$id/score/notifications'
     | '/api/transfers/$id/files/$fileId'
@@ -2231,6 +2257,7 @@ export interface RootRouteChildren {
   ApiUploadWordsPresignRouteRoute: typeof ApiUploadWordsPresignRouteRoute
   ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
+  ApiEventsSlugDiscoveriesClaimRouteRoute: typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   ApiEventsSlugGameResultsClaimRouteRoute: typeof ApiEventsSlugGameResultsClaimRouteRoute
   ApiUploadTransferAppendFinalizeRouteRoute: typeof ApiUploadTransferAppendFinalizeRouteRoute
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
@@ -3198,6 +3225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWordsShareVerifyRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
     }
+    '/events/$slug/discoveries/': {
+      id: '/events/$slug/discoveries/'
+      path: '/discoveries'
+      fullPath: '/events/$slug/discoveries/'
+      preLoaderRoute: typeof EventsSlugDiscoveriesIndexRouteImport
+      parentRoute: typeof EventsSlugRoute
+    }
     '/events/$slug/discoveries/$discoveryId': {
       id: '/events/$slug/discoveries/$discoveryId'
       path: '/discoveries/$discoveryId'
@@ -3329,6 +3363,13 @@ declare module '@tanstack/react-router' {
       path: '/api/events/$slug/discoveries/$discoveryId'
       fullPath: '/api/events/$slug/discoveries/$discoveryId'
       preLoaderRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/events/$slug/discoveries/claim': {
+      id: '/api/events/$slug/discoveries/claim'
+      path: '/api/events/$slug/discoveries/claim'
+      fullPath: '/api/events/$slug/discoveries/claim'
+      preLoaderRoute: typeof ApiEventsSlugDiscoveriesClaimRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/events/$slug/game-results/claim': {
@@ -3571,12 +3612,14 @@ interface EventsSlugRouteChildren {
   EventsSlugScoreRoute: typeof EventsSlugScoreRoute
   EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
   EventsSlugStaffTokenRoute: typeof EventsSlugStaffTokenRoute
+  EventsSlugDiscoveriesIndexRoute: typeof EventsSlugDiscoveriesIndexRoute
 }
 
 const EventsSlugRouteChildren: EventsSlugRouteChildren = {
   EventsSlugScoreRoute: EventsSlugScoreRoute,
   EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
   EventsSlugStaffTokenRoute: EventsSlugStaffTokenRoute,
+  EventsSlugDiscoveriesIndexRoute: EventsSlugDiscoveriesIndexRoute,
 }
 
 const EventsSlugRouteWithChildren = EventsSlugRoute._addFileChildren(
@@ -3935,6 +3978,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUploadWordsTargetsRouteRoute: ApiUploadWordsTargetsRouteRoute,
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute:
     ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren,
+  ApiEventsSlugDiscoveriesClaimRouteRoute:
+    ApiEventsSlugDiscoveriesClaimRouteRoute,
   ApiEventsSlugGameResultsClaimRouteRoute:
     ApiEventsSlugGameResultsClaimRouteRoute,
   ApiUploadTransferAppendFinalizeRouteRoute:

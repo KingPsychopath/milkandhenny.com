@@ -30,12 +30,17 @@ import {
 } from "@/features/event-scoring/game-claims.server";
 import {
   claimDiscovery,
+  copyDiscovery,
   createDiscovery,
+  findDiscoveryForPresented,
   replaceDiscoveryClueSecret,
+  updateDiscovery,
 } from "@/features/event-scoring/discoveries.server";
 import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
 import {
+  adjustStaffPool,
   createStaffAccess,
+  issueStaffPool,
   resolveStaffAccess,
   revokeStaffAccess,
   revokeStaffAccessDevice,
@@ -670,6 +675,9 @@ describeWithDatabase("event scoring postgres", () => {
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const firstToken = created.value.clues?.[0]?.claimToken ?? "missing";
+    expect(await findDiscoveryForPresented("scoring-night", firstToken)).toMatchObject({
+      id: created.value.id,
+    });
     const originalSecondToken = created.value.clues?.[1]?.claimToken ?? "missing";
     const replacement = await replaceDiscoveryClueSecret({
       eventSlug: "scoring-night",
@@ -880,5 +888,101 @@ describeWithDatabase("event scoring postgres", () => {
     expect(
       await awardStaffPoints({ ...base, activityId: other.id, commandId: "staff-other" }),
     ).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it("adds to and reclaims only unused staff pool points", async () => {
+    const issued = await issueStaffPool({
+      eventSlug: "scoring-night",
+      ownerType: "staff",
+      ownerId: "staff-budget",
+      points: 20,
+      actorId: "admin-test",
+    });
+    expect(issued.ok).toBe(true);
+    if (!issued.ok) return;
+    expect(
+      await adjustStaffPool({
+        eventSlug: "scoring-night",
+        poolId: issued.value.id,
+        delta: -5,
+        actorId: "admin-test",
+      }),
+    ).toMatchObject({ ok: true, value: { issued: 15, available: 15 } });
+    expect(
+      await adjustStaffPool({
+        eventSlug: "another-event",
+        poolId: issued.value.id,
+        delta: 1,
+        actorId: "admin-test",
+      }),
+    ).toMatchObject({ ok: false, status: 409 });
+    const audits = await query<{ action: string }>(
+      `select action from score_audit_events where entity_id = $1 order by id`,
+      [issued.value.id],
+    );
+    expect(audits.map((audit) => audit.action)).toEqual(["pool.created", "pool.adjusted"]);
+  });
+
+  it("uses audited discovery lifecycle transitions and fresh copy credentials", async () => {
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Hidden QR",
+      template: "discovery",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 2, repeat: "once", requiresCheckIn: false },
+    });
+    const created = await createDiscovery({
+      eventSlug: "scoring-night",
+      activityId: activity.id,
+      name: "Hidden QR",
+      method: "qr",
+      rule: {
+        pointMode: "once",
+        pointsPerClue: 2,
+        requiresCheckIn: false,
+        remainderAward: "discard",
+      },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    for (const status of ["live", "paused", "ended"] as const) {
+      expect(
+        await updateDiscovery({
+          eventSlug: "scoring-night",
+          discoveryId: created.value.id,
+          actorId: "admin-test",
+          status,
+        }),
+      ).toMatchObject({ ok: true, value: { status } });
+    }
+    expect(
+      await updateDiscovery({
+        eventSlug: "scoring-night",
+        discoveryId: created.value.id,
+        actorId: "admin-test",
+        status: "live",
+      }),
+    ).toMatchObject({ ok: false, status: 409 });
+    expect(
+      await updateDiscovery({
+        eventSlug: "scoring-night",
+        discoveryId: created.value.id,
+        actorId: "admin-test",
+        status: "draft",
+        reopen: true,
+        reason: "The printed clue is back in service",
+      }),
+    ).toMatchObject({ ok: true, value: { status: "draft" } });
+    const copied = await copyDiscovery({
+      eventSlug: "scoring-night",
+      discoveryId: created.value.id,
+      actorId: "admin-test",
+    });
+    expect(copied.ok).toBe(true);
+    if (copied.ok) {
+      expect(copied.value.id).not.toBe(created.value.id);
+      expect(copied.value.claimToken).not.toBe(created.value.claimToken);
+      expect(copied.value.status).toBe("draft");
+    }
   });
 });

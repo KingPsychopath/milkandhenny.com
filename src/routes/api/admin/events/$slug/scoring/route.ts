@@ -2,14 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
+  copyDiscovery,
   createDiscovery,
   listDiscoveries,
+  listDiscoveryClues,
   replaceDiscoveryClueSecret,
   replaceDiscoverySecret,
+  updateDiscovery,
 } from "@/features/event-scoring/discoveries.server";
 import {
   acceptHeldScore,
-  createPool,
   createTeam,
   listHeldScoreTransactions,
   listPools,
@@ -32,7 +34,9 @@ import {
   updateScoringActivity,
 } from "@/features/event-scoring/scoring.server";
 import {
+  adjustStaffPool,
   createStaffAccess,
+  issueStaffPool,
   revokeStaffAccess,
   revokeStaffAccessDevice,
   type StaffPreset,
@@ -74,7 +78,13 @@ async function handleGET(request: Request, slug: string) {
       settings,
       activities,
       pools,
-      discoveries,
+      discoveries: await Promise.all(
+        discoveries.map(async (discovery) => ({
+          ...discovery,
+          clues:
+            discovery.method === "collected-clues" ? await listDiscoveryClues(discovery.id) : [],
+        })),
+      ),
       teams,
       held,
       staff: await Promise.all(
@@ -322,6 +332,39 @@ async function handlePOST(request: Request, slug: string) {
       return Response.json(result.value, { headers: { "Cache-Control": "no-store" } });
     }
 
+    if (action === "update-discovery") {
+      const discoveryId = stringValue(body.discoveryId);
+      if (!discoveryId) return Response.json({ error: "Discovery is required" }, { status: 400 });
+      const result = await updateDiscovery({
+        eventSlug: slug,
+        discoveryId,
+        actorId,
+        name: stringValue(body.name),
+        status: stringValue(body.status),
+        rule:
+          body.rule && typeof body.rule === "object" && !Array.isArray(body.rule)
+            ? (body.rule as Parameters<typeof updateDiscovery>[0]["rule"])
+            : undefined,
+        reopen: body.reopen === true,
+        reason: stringValue(body.reason),
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ discovery: result.value });
+    }
+
+    if (action === "copy-discovery") {
+      const discoveryId = stringValue(body.discoveryId);
+      if (!discoveryId) return Response.json({ error: "Discovery is required" }, { status: 400 });
+      const result = await copyDiscovery({
+        eventSlug: slug,
+        discoveryId,
+        actorId,
+        name: stringValue(body.name),
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ discovery: result.value }, { status: 201 });
+    }
+
     if (action === "replace-discovery-clue") {
       const discoveryId = stringValue(body.discoveryId);
       const clueKey = stringValue(body.clueKey);
@@ -403,15 +446,31 @@ async function handlePOST(request: Request, slug: string) {
           { status: 400 },
         );
       }
-      const result = await createPool({
+      const result = await issueStaffPool({
         eventSlug: slug,
         points,
         ownerType,
         ownerId: stringValue(body.ownerId),
         activityId: stringValue(body.activityId),
+        actorId,
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ pool: result.value }, { status: 201 });
+    }
+
+    if (action === "adjust-pool") {
+      const poolId = stringValue(body.poolId);
+      if (!poolId || typeof body.delta !== "number") {
+        return Response.json({ error: "Pool and adjustment are required" }, { status: 400 });
+      }
+      const result = await adjustStaffPool({
+        eventSlug: slug,
+        poolId,
+        delta: body.delta,
+        actorId,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ pool: result.value });
     }
 
     if (action === "create-staff") {

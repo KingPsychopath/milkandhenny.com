@@ -265,7 +265,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Presets include door scanner, door manager, game moderator, points marshal, activity manager,
       event manager, and admin.
 - [x] Permissions, not role labels, are the source of authority.
-- [ ] Admins can adjust preset permissions.
+- [x] Admins can adjust preset permissions.
 - [x] Assignments support personal staff links and shared station devices.
 - [x] Every assignment has event, label, scope, expiry, status, and permitted devices.
 - [ ] A future logged-in staff person can claim an existing assignment.
@@ -275,7 +275,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Shared stations record the station and device even when the human actor is unknown.
 - [ ] Personal links produce a stronger human audit trail.
 - [x] Basic staff cannot change their own permissions, scope, or budget.
-- [ ] High-risk permissions require clear admin warnings.
+- [x] High-risk permissions require clear admin warnings.
 
 Required permission boundaries:
 
@@ -297,8 +297,8 @@ Required permission boundaries:
 ## 10. Staff point authority and budgets
 
 - [x] Admins can assign a fixed point pool to staff or a station.
-- [ ] Admins can add to or reclaim unused allocation.
-- [ ] Staff always see their confirmed remaining pool.
+- [x] Admins can add to or reclaim unused allocation.
+- [x] Staff always see their confirmed remaining pool.
 - [x] Two concurrent devices cannot overspend one pool.
 - [x] Activities can have independent point pools.
 - [x] Automatic game results use system rules and do not spend a moderator's pool.
@@ -307,7 +307,7 @@ Required permission boundaries:
 - [x] Large or unusual awards show a preview and warning.
 - [ ] Overrides, penalties, reversals, and free-form awards require a note.
 - [ ] Unused reservations return to the correct parent pool when an activity closes.
-- [ ] The admin dashboard distinguishes issued, reserved, spent, held, and available points.
+- [x] The admin dashboard distinguishes issued, reserved, spent, held, and available points.
 
 ## 11. Scanner and moderator experience
 
@@ -330,10 +330,10 @@ Required permission boundaries:
 
 ## 12. Manual and physical activities
 
-- [ ] Admins can create a physical activity without game-specific code.
-- [ ] Templates support winner, placement, participation, completion, team result, audience vote,
+- [x] Admins can create a physical activity without game-specific code.
+- [x] Templates support winner, placement, participation, completion, team result, audience vote,
       scan-to-award, and free-form staff award.
-- [ ] A winner-only activity does not require opponent or match entry.
+- [x] A winner-only activity does not require opponent or match entry.
 - [ ] Activities support fixed awards, limits, time windows, repeat rules, staff scope, and pools.
 - [ ] Managers can create a safe quick activity during an event.
 - [x] Basic moderators cannot invent point values unless explicitly permitted.
@@ -381,10 +381,10 @@ Extended integrations:
 - [x] Admins can create a single discovery or a named discovery set.
 - [x] Claim methods include QR, code, word, three-word phrase, and collected clues.
 - [x] A normal phone camera can open a discovery URL.
-- [ ] The ticket or score page includes `Scan a clue` and `Enter a code`.
+- [x] The ticket or score page includes `Scan a clue` and `Enter a code`.
 - [x] A page load or link preview never consumes a claim.
 - [x] Claiming requires an explicit server-side POST from an identified attendee session.
-- [ ] An unidentified browser can open a ticket and return to the pending discovery.
+- [x] An unidentified browser can open a ticket and return to the pending discovery.
 - [x] Claim tokens and phrases are random, unguessable for their value, and stored as hashes.
 - [x] Codes normalize case and whitespace without creating ambiguous matches.
 - [ ] Generated words avoid offensive, easily confused, and unsuitable combinations.
@@ -393,8 +393,8 @@ Extended integrations:
 - [x] Collected-clue progress is durable and event-scoped.
 - [x] Completion bonuses issue exactly once.
 - [x] Discovery eligibility can require check-in, team, ticket type, or time window.
-- [ ] Status supports draft, scheduled, live, paused, exhausted, ended, and cancelled.
-- [ ] Static-code sharing risk is stated in the setup UI.
+- [x] Status supports draft, scheduled, live, paused, exhausted, ended, and cancelled.
+- [x] Static-code sharing risk is stated in the setup UI.
 - [ ] Higher-value claims can use rotating QRs, short windows, or staff confirmation.
 - [x] A leaked clue can be replaced without replacing the whole hunt.
 - [x] Physical loss or damage of a clue has a replacement workflow.
