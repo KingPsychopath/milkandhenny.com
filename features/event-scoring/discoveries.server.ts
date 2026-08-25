@@ -230,6 +230,25 @@ export async function listDiscoveryClues(discoveryId: string): Promise<Discovery
   }));
 }
 
+export async function testDiscoveryCredential(input: {
+  discoveryId: string;
+  presented: string;
+}): Promise<
+  DiscoveryResult<{ matched: boolean; clueKey?: string; liveState: Discovery["status"] }>
+> {
+  const discovery = await getDiscovery(input.discoveryId);
+  if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
+  const resolved = await resolveDiscovery(discovery, input.presented);
+  return {
+    ok: true,
+    value: {
+      matched: resolved.matched,
+      clueKey: resolved.clueKey ?? undefined,
+      liveState: discovery.status,
+    },
+  };
+}
+
 const DISCOVERY_TRANSITIONS: Record<string, readonly string[]> = {
   draft: ["scheduled", "live", "cancelled"],
   scheduled: ["live", "paused", "cancelled"],

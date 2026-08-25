@@ -234,6 +234,25 @@ export async function listScoringActivities(eventSlug: string): Promise<ScoreAct
   return listActivities(eventSlug);
 }
 
+export async function copyScoringActivity(input: {
+  activityId: string;
+  targetEventSlug?: string;
+  actorId: string;
+}): Promise<ScoringOperationResult<ScoreActivity>> {
+  const source = await getActivity(input.activityId);
+  if (!source) return { ok: false, status: 404, error: "Activity not found" };
+  return createScoringActivity({
+    eventSlug: input.targetEventSlug ?? source.eventSlug,
+    name: `${source.name} copy`,
+    template: source.template,
+    rule: structuredClone(source.rule),
+    status: "draft",
+    startsAt: source.startsAt,
+    endsAt: source.endsAt,
+    actorId: input.actorId,
+  });
+}
+
 export type AwardPointsInput = {
   eventSlug: string;
   activityId: string;

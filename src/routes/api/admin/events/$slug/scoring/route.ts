@@ -8,6 +8,7 @@ import {
   listDiscoveryClues,
   replaceDiscoveryClueSecret,
   replaceDiscoverySecret,
+  testDiscoveryCredential,
   updateDiscovery,
 } from "@/features/event-scoring/discoveries.server";
 import {
@@ -27,6 +28,7 @@ import {
   applyPenalty,
   changeScoringState,
   configureScoring,
+  copyScoringActivity,
   correctPointsAfterClose,
   createScoringActivity,
   finalizeLeaderboard,
@@ -217,6 +219,18 @@ async function handlePOST(request: Request, slug: string) {
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ activity: result.value });
+    }
+
+    if (action === "copy-activity") {
+      const activityId = stringValue(body.activityId);
+      if (!activityId) return Response.json({ error: "Activity is required" }, { status: 400 });
+      const result = await copyScoringActivity({
+        activityId,
+        targetEventSlug: stringValue(body.targetEventSlug) ?? slug,
+        actorId,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ activity: result.value }, { status: 201 });
     }
 
     if (action === "award") {
@@ -452,6 +466,16 @@ async function handlePOST(request: Request, slug: string) {
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json(result.value, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "test-discovery") {
+      const discoveryId = stringValue(body.discoveryId);
+      const presented = stringValue(body.presented);
+      if (!discoveryId || !presented)
+        return Response.json({ error: "Discovery and credential are required" }, { status: 400 });
+      const result = await testDiscoveryCredential({ discoveryId, presented });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ test: result.value });
     }
 
     if (action === "rebuild-projections") {

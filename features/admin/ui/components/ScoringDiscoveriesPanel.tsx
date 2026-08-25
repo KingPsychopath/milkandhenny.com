@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { EVENT_SCORING_TEMPLATES } from "@/features/event-scoring/templates";
 import type { AdminScoringActivity, ScoringAction, ScoringData } from "./event-scoring-types";
 
 const METHODS = ["qr", "code", "word", "phrase", "collected-clues"] as const;
@@ -35,6 +36,9 @@ export function ScoringDiscoveriesPanel({
   const [tiers, setTiers] = useState("10, 7, 5");
   const [clues, setClues] = useState("one|First clue\ntwo|Second clue");
   const [issued, setIssued] = useState<string[]>([]);
+  const [advanced, setAdvanced] = useState(false);
+  const [testCredential, setTestCredential] = useState("");
+  const [testResult, setTestResult] = useState("");
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
@@ -116,6 +120,29 @@ export function ScoringDiscoveriesPanel({
         <p className="mt-3 font-mono text-xs theme-muted">Create a discovery activity first.</p>
       ) : (
         <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="font-mono text-xs sm:col-span-2">
+            start from a template
+            <select
+              defaultValue=""
+              onChange={(event) => {
+                const selected = EVENT_SCORING_TEMPLATES.find(
+                  (item) => item.id === event.target.value,
+                );
+                if (!selected || selected.kind !== "discovery" || !selected.method) return;
+                setName(selected.label);
+                setMethod(selected.method);
+                setPoints(selected.rule.fixedPoints ?? 5);
+              }}
+              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+            >
+              <option value="">Blank discovery</option>
+              {EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "discovery").map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="font-mono text-xs">
             activity
             <select
@@ -213,14 +240,24 @@ export function ScoringDiscoveriesPanel({
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
-          <label className="font-mono text-xs sm:col-span-2">
-            diminishing tiers
-            <input
-              value={tiers}
-              onChange={(event) => setTiers(event.target.value)}
-              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-            />
-          </label>
+          <button
+            type="button"
+            onClick={() => setAdvanced((value) => !value)}
+            aria-expanded={advanced}
+            className="min-h-11 text-left font-mono text-xs underline hover:opacity-70 sm:col-span-2"
+          >
+            {advanced ? "hide advanced settings" : "show advanced settings"}
+          </button>
+          {advanced && (
+            <label className="font-mono text-xs sm:col-span-2">
+              diminishing tiers
+              <input
+                value={tiers}
+                onChange={(event) => setTiers(event.target.value)}
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+              />
+            </label>
+          )}
           {method === "collected-clues" && (
             <label className="font-mono text-xs sm:col-span-2">
               clues — one key|label per line
@@ -363,6 +400,44 @@ export function ScoringDiscoveriesPanel({
           </li>
         ))}
       </ul>
+      {discoveries.length > 0 && (
+        <form
+          className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onAction({
+              action: "test-discovery",
+              discoveryId: discoveries[0]?.id,
+              presented: testCredential,
+            }).then((result) => {
+              const test = result?.test as { matched?: boolean; liveState?: string } | undefined;
+              setTestResult(
+                test?.matched
+                  ? `Credential is valid. Live state: ${test.liveState}. No points were issued.`
+                  : "Credential did not match. No points were issued.",
+              );
+            });
+          }}
+        >
+          <label className="font-mono text-xs">
+            test credential without issuing points
+            <input
+              required
+              value={testCredential}
+              onChange={(event) => setTestCredential(event.target.value)}
+              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+            />
+          </label>
+          <button className="min-h-11 self-end border theme-border px-4 font-mono text-xs hover:opacity-70">
+            run test
+          </button>
+          {testResult && (
+            <p className="font-mono text-xs theme-muted sm:col-span-2" role="status">
+              {testResult}
+            </p>
+          )}
+        </form>
+      )}
     </section>
   );
 }
