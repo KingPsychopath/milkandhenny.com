@@ -27,6 +27,7 @@ export default defineConfig({
     nitro({
       serverDir: "server",
       serverAssets: [
+        { baseName: "event-scoring", dir: "./assets/event-scoring" },
         { baseName: "hot-and-cold", dir: "./assets/hot-and-cold" },
         { baseName: "party-audio", dir: "./assets/party-spelling-audio" },
       ],

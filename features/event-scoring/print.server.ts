@@ -1,9 +1,11 @@
 import QRCode from "qrcode";
 import jsQR from "jsqr";
+import { useStorage as getStorage } from "nitro/storage";
 import sharp from "sharp";
 import { deflateSync, inflateSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { resolve as resolvePath } from "node:path";
 
 import { getEvent } from "@/features/events/store.server";
 import { BASE_URL } from "@/lib/shared/config";
@@ -433,7 +435,19 @@ const require = createRequire(import.meta.url);
 async function loadPrintFonts() {
   const resolve = (name: string) =>
     require.resolve(`pdfjs-dist/standard_fonts/LiberationSans-${name}.ttf`);
-  return Promise.all([readFile(resolve("Regular")), readFile(resolve("Bold"))]);
+  const brandAsset =
+    await getStorage("assets:event-scoring").getItemRaw<Uint8Array>("lora-latin-v37-700.ttf");
+  const brandFont = brandAsset
+    ? Buffer.from(brandAsset)
+    : process.env.NODE_ENV !== "production"
+      ? await readFile(resolvePath(process.cwd(), "assets/event-scoring/lora-latin-v37-700.ttf"))
+      : null;
+  if (!brandFont) throw new Error("The embedded Lora print font is unavailable");
+  return Promise.all([
+    readFile(resolve("Regular")),
+    readFile(resolve("Bold")),
+    Promise.resolve(brandFont),
+  ]);
 }
 
 function trueTypeTable(bytes: Buffer, name: string): number {
@@ -574,7 +588,7 @@ export async function renderDiscoveryPrintPdf(input: {
   const add = (object: PdfObject) => (objects.push(object), objects.length);
   const catalogId = add("");
   const pagesId = add("");
-  const [regularFontBytes, boldFontBytes] = await loadPrintFonts();
+  const [regularFontBytes, boldFontBytes, brandFontBytes] = await loadPrintFonts();
   const regularFont = embeddedTrueTypeFont({
     add,
     bytes: regularFontBytes,
@@ -587,9 +601,12 @@ export async function renderDiscoveryPrintPdf(input: {
     name: "MAHLiberationSans-Bold",
     bold: true,
   });
-  const brandFontId = add(
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>",
-  );
+  const brandFont = embeddedTrueTypeFont({
+    add,
+    bytes: brandFontBytes,
+    name: "MAHLora-Bold",
+    bold: true,
+  });
   const pageIds: number[] = [];
 
   for (let offset = 0; offset < input.pack.items.length; offset += pageCapacity) {
@@ -706,8 +723,8 @@ export async function renderDiscoveryPrintPdf(input: {
         commands.push(
           pdfTextCommand({
             font: "FS",
-            fontMetrics: regularFont,
-            size: 6.5,
+            fontMetrics: brandFont,
+            size: 7.5,
             text: "milk & henny",
             x: x + cellWidth / 2,
             y: y + 6,
@@ -752,9 +769,23 @@ export async function renderDiscoveryPrintPdf(input: {
         text: input.pack.title,
         x: margin,
         y: 12,
-        maxWidth: pageWidth * 0.7,
+        maxWidth: pageWidth * 0.32,
       }),
     );
+    if (input.pack.subtitle) {
+      commands.push(
+        pdfTextCommand({
+          font: "FR",
+          fontMetrics: regularFont,
+          size: 7,
+          text: input.pack.subtitle,
+          x: pageWidth / 2,
+          y: 12,
+          maxWidth: pageWidth * 0.4,
+          align: "center",
+        }),
+      );
+    }
     if (input.pack.includePageNumbers !== false)
       commands.push(
         pdfTextCommand({
@@ -772,7 +803,7 @@ export async function renderDiscoveryPrintPdf(input: {
     const xObjects = imageIds.map((id, index) => `/Q${index} ${id} 0 R`).join(" ");
     pageIds.push(
       add(
-        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFont.id} 0 R /FB ${boldFont.id} 0 R /FS ${brandFontId} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /FR ${regularFont.id} 0 R /FB ${boldFont.id} 0 R /FS ${brandFont.id} 0 R >> /XObject << ${xObjects} >> >> /Contents ${contentId} 0 R >>`,
       ),
     );
   }
