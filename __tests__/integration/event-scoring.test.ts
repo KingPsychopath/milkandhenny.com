@@ -8,6 +8,7 @@ import {
   createTeam,
   findSettings,
   getOrCreateSettings,
+  listScoreNotifications,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -52,9 +53,13 @@ import {
 import { officialResultPayloadHash } from "@/features/things/shared/official-game-results.server";
 import type { OfficialGameResultEnvelope } from "@/features/things/shared/official-game-results";
 import {
+  applyPenalty,
   awardPoints,
   changeScoringState,
+  correctPointsAfterClose,
+  finalizeLeaderboard,
   mergeParticipants,
+  processScheduledScoringTransitions,
   reverseParticipantMerge,
 } from "@/features/event-scoring/scoring.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
@@ -516,7 +521,6 @@ describeWithDatabase("event scoring postgres", () => {
       ).state,
     ).toBe("held");
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
-
     const correction = await ingestOfficialGameResult(
       centreEnvelope({ channelId, revision: 3, placement: 2 }),
     );
@@ -775,6 +779,23 @@ describeWithDatabase("event scoring postgres", () => {
     expect(await award("checked-award-one")).toEqual(accepted);
     expect(await award("checked-award-two")).toMatchObject({ ok: false, status: 409 });
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(4);
+    const cancelledActivity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Cancelled event award",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 1, repeat: "repeat", requiresCheckIn: false },
+    });
+    await query(`update events set status = 'cancelled' where slug = 'scoring-night'`);
+    expect(
+      await awardPoints({
+        eventSlug: "scoring-night",
+        activityId: cancelledActivity.id,
+        participantIds: [participant!.id],
+        idempotencyKey: "cancelled-event-award",
+        actorType: "admin",
+      }),
+    ).toMatchObject({ ok: false, status: 409 });
   });
 
   it("revokes one staff device without revoking the assignment", async () => {
@@ -984,5 +1005,108 @@ describeWithDatabase("event scoring postgres", () => {
       expect(copied.value.claimToken).not.toBe(created.value.claimToken);
       expect(copied.value.status).toBe("draft");
     }
+  });
+
+  it("applies noted penalties and makes a closed correction provisional", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Score review",
+      template: "winner",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 10, repeat: "repeat", requiresCheckIn: false },
+    });
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    expect(
+      await awardPoints({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        participantIds: [participant!.id],
+        idempotencyKey: "penalty-base-award",
+        actorType: "admin",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await applyPenalty({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        participantId: participant!.id,
+        points: 3,
+        idempotencyKey: "penalty-one",
+        actorType: "admin",
+        note: "Rule violation confirmed",
+      }),
+    ).toMatchObject({ ok: true });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
+    expect(
+      (await listScoreNotifications(participant!.id)).find(
+        (notification) => notification.kind === "negative",
+      ),
+    ).toMatchObject({ points: -3, reasonCode: "penalty" });
+    await query(
+      `update event_scoring_settings set state = 'closed' where event_slug = 'scoring-night'`,
+    );
+    expect(
+      await finalizeLeaderboard({
+        eventSlug: "scoring-night",
+        actorId: "admin-test",
+        prizeSlots: 1,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      await correctPointsAfterClose({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        participantId: participant!.id,
+        delta: 2,
+        idempotencyKey: "closed-correction-one",
+        actorId: "admin-test",
+        note: "Verified missing result",
+        confirmed: true,
+      }),
+    ).toMatchObject({ ok: true });
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(9);
+    expect(
+      (
+        await query<{ status: string }>(
+          `select status from score_prize_finalizations where event_slug = 'scoring-night'`,
+        )
+      )[0]?.status,
+    ).toBe("provisional");
+    expect(
+      await finalizeLeaderboard({
+        eventSlug: "scoring-night",
+        actorId: "admin-test",
+        prizeSlots: 1,
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it("applies scheduled scoring boundaries from offset-aware instants", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings
+          set state = 'ready', scheduled_start = $2, scheduled_end = $3
+        where event_slug = $1`,
+      [
+        "scoring-night",
+        new Date("2026-10-25T01:30:00+01:00"),
+        new Date("2026-10-25T01:30:00+00:00"),
+      ],
+    );
+    expect(await processScheduledScoringTransitions(new Date("2026-10-25T00:45:00Z"))).toBe(1);
+    expect((await findSettings("scoring-night"))?.state).toBe("live");
+    expect(await processScheduledScoringTransitions(new Date("2026-10-25T01:45:00Z"))).toBe(1);
+    expect((await findSettings("scoring-night"))?.state).toBe("closed");
+    expect(
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from score_audit_events where action = 'scoring.state.scheduled'`,
+        )
+      )[0]?.count,
+    ).toBe("2");
   });
 });

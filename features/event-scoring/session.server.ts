@@ -10,6 +10,7 @@ import { participantForTicket } from "./store.server";
 const COOKIE_NAME = "mah-attendee-session";
 const SESSION_PREFIX = "event-scoring:attendee-session:";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
+const SESSION_ROTATION_MS = 1000 * 60 * 60 * 24 * 7;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
 
 export type AttendeeTicketAccess = {
@@ -120,6 +121,19 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
   const session = await readById(id);
   if (!session) return null;
   const touched = { ...session, lastSeenAt: new Date().toISOString() };
+  if (Date.now() - Date.parse(session.createdAt) >= SESSION_ROTATION_MS) {
+    const rotated = {
+      ...touched,
+      id: sessionId(),
+      createdAt: new Date().toISOString(),
+    };
+    await write(rotated);
+    const redis = getRedis();
+    if (redis) await redis.del(`${SESSION_PREFIX}${id}`);
+    else if (allowMemoryFallback()) developmentSessions.delete(id);
+    setSessionCookie(rotated.id);
+    return rotated;
+  }
   await write(touched);
   setSessionCookie(touched.id);
   return touched;

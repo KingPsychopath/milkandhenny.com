@@ -24,9 +24,22 @@ async function handlePOST(request: Request, ticketId: string) {
         : "view-only";
     const result = await openAttendeeTicket({ ticketId, eventSlug: ticket.eventSlug, mode });
     if (!result) return Response.json({ error: "That ticket is not available" }, { status: 409 });
+    const selected =
+      mode === "view-only"
+        ? result.session
+        : await setActiveParticipant({
+            eventSlug: ticket.eventSlug,
+            participantId: result.ticket.participantId,
+          });
     return Response.json({
-      session: result.session,
-      activeParticipantId: result.session.activeParticipantByEventId[result.ticket.eventId],
+      tickets: (selected ?? result.session).tickets.map((entry) => ({
+        ticketId: entry.ticketId,
+        eventSlug: entry.eventSlug,
+        mode: entry.mode,
+      })),
+      active:
+        (selected ?? result.session).activeParticipantByEventId[result.ticket.eventId] ===
+        result.ticket.participantId,
     });
   } catch (error) {
     return apiErrorFromRequest(
@@ -50,7 +63,7 @@ async function handlePATCH(request: Request, ticketId: string) {
       participantId: entry.participantId,
     });
     return result
-      ? Response.json({ session: result })
+      ? Response.json({ active: true })
       : Response.json({ error: "Ticket is not available" }, { status: 409 });
   } catch (error) {
     return apiErrorFromRequest(

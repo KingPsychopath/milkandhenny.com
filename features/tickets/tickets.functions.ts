@@ -32,7 +32,7 @@ import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-coo
 import { resolveTicketOrderAccess } from "./order-access";
 import { openAttendeeTicket } from "@/features/event-scoring/session.server";
 import { personalScore } from "@/features/event-scoring/scoring.server";
-import { findSettings } from "@/features/event-scoring/store.server";
+import { findSettings, privateOrderScore } from "@/features/event-scoring/store.server";
 import { listCheckpoints } from "./checkpoints.server";
 import { resolveScannerLink } from "./scanner-links.server";
 import { isValidScannerToken } from "./checkpoint-types";
@@ -184,7 +184,19 @@ export type TicketPageResult =
       checkpointNames: string[];
       /** The shared album — the reason to come back to this page afterwards. */
       album: EventAlbumView;
-      score?: { points: number; rank: number };
+      score?: {
+        points: number;
+        rank: number;
+        teamRank?: number;
+        synchronizedAt: string;
+        orderPoints?: number;
+        transactions: Array<{
+          status: string;
+          reasonCode: string;
+          points: number;
+          createdAt: string;
+        }>;
+      };
     };
 
 export const getTicketPageFn = createServerFn({ method: "GET" })
@@ -229,8 +241,12 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
         ? await personalScore({
             eventSlug: event.slug,
             ticketId: ticket.id,
-            includeHistory: false,
+            includeHistory: true,
           })
+        : null;
+    const orderScore =
+      scoreResult?.ok && access.canManageOrder
+        ? await privateOrderScore({ eventSlug: event.slug, orderId: ticket.orderId })
         : null;
     if (scoreResult) {
       try {
@@ -270,7 +286,14 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
       score: scoreResult?.ok
-        ? { points: scoreResult.value.participant.balance, rank: scoreResult.value.rank }
+        ? {
+            points: scoreResult.value.participant.balance,
+            rank: scoreResult.value.rank,
+            teamRank: scoreResult.value.teamRank,
+            synchronizedAt: new Date().toISOString(),
+            transactions: scoreResult.value.transactions,
+            orderPoints: orderScore?.ok ? orderScore.value.points : undefined,
+          }
         : undefined,
     };
   });

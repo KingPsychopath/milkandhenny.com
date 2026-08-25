@@ -298,8 +298,11 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
             )}
 
             <label className="block font-mono text-xs">
-              note (optional for configured outcomes)
+              {activity?.template === "free-form"
+                ? "note (required for a free-form award)"
+                : "note (optional for configured outcomes)"}
               <input
+                required={activity?.template === "free-form"}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"

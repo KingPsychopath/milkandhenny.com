@@ -219,6 +219,7 @@ export type ScoreNotification = {
   transactionId: string;
   kind: "positive" | "negative" | "held" | "reversal";
   points: number;
+  reasonCode: ScoreReasonCode;
   deliveredAt?: string;
   createdAt: string;
 };

@@ -745,14 +745,18 @@ export async function listScoreNotifications(
     transaction_id: string;
     kind: string;
     points: number;
+    reason_code: string;
     delivered_at: Date | null;
     created_at: Date;
   }>(
-    `select id, participant_id, transaction_id, kind, points, delivered_at, created_at
-       from score_notifications
-      where participant_id = $1
-        and ($2 = false or delivered_at is null)
-      order by created_at, id
+    `select notifications.id, notifications.participant_id, notifications.transaction_id,
+            notifications.kind, notifications.points, transactions.reason_code,
+            notifications.delivered_at, notifications.created_at
+       from score_notifications notifications
+       join score_transactions transactions on transactions.id = notifications.transaction_id
+      where notifications.participant_id = $1
+        and ($2 = false or notifications.delivered_at is null)
+      order by notifications.created_at, notifications.id
       limit $3`,
     [
       participantId,
@@ -766,6 +770,7 @@ export async function listScoreNotifications(
     transactionId: row.transaction_id,
     kind: row.kind as ScoreNotification["kind"],
     points: row.points,
+    reasonCode: row.reason_code as ScoreNotification["reasonCode"],
     deliveredAt: row.delivered_at?.toISOString(),
     createdAt: row.created_at.toISOString(),
   }));
@@ -1072,15 +1077,34 @@ export async function recordScoreInTransaction(
   if (settings.state === "frozen" && requestedStatus === "accepted") {
     requestedStatus = "held";
   }
+  const allowedClosedCorrection =
+    settings.state === "closed" &&
+    requestedStatus === "accepted" &&
+    input.sourceType === "correction" &&
+    input.metadata?.closedCorrectionConfirmed === true &&
+    Boolean(input.note?.trim());
   if (settings.state === "closed" && requestedStatus === "accepted") {
-    return {
-      ok: false,
-      status: 409,
-      error: "Scoring is closed; this action needs admin review",
-    };
+    if (!allowedClosedCorrection) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Scoring is closed; this correction needs a reason and confirmation",
+      };
+    }
   }
-  if (settings.state !== "live" && requestedStatus === "accepted") {
+  if (settings.state !== "live" && requestedStatus === "accepted" && !allowedClosedCorrection) {
     return { ok: false, status: 409, error: "Scoring is not live" };
+  }
+  const event = await client.query<{ status: string }>(
+    `select status from events where slug = $1 for share`,
+    [input.eventSlug],
+  );
+  if (
+    (event.rows[0]?.status === "cancelled" || event.rows[0]?.status === "archived") &&
+    input.sourceType !== "reversal" &&
+    input.sourceType !== "correction"
+  ) {
+    return { ok: false, status: 409, error: "This event is not accepting score actions" };
   }
 
   const participantIds = [...new Set(input.postings.map((posting) => posting.participantId))];
@@ -1162,7 +1186,21 @@ export async function recordScoreInTransaction(
     }
   }
 
-  return insertTransaction(client, input, requestedStatus, requestedStatus === "accepted");
+  const inserted = await insertTransaction(
+    client,
+    input,
+    requestedStatus,
+    requestedStatus === "accepted",
+  );
+  if (inserted.ok && settings.state === "closed" && input.sourceType === "correction") {
+    await client.query(
+      `update score_prize_finalizations
+          set status = 'provisional', updated_at = now()
+        where event_slug = $1 and status = 'final'`,
+      [input.eventSlug],
+    );
+  }
+  return inserted;
 }
 
 function scoreConstraintError(error: unknown): never | ScoreStoreResult<ScoreTransaction> {

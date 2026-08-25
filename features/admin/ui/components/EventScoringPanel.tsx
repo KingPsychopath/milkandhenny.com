@@ -2,7 +2,9 @@ import { useState } from "react";
 
 import { ScoringActivitiesPanel } from "./ScoringActivitiesPanel";
 import { ScoringDiscoveriesPanel } from "./ScoringDiscoveriesPanel";
+import { ScoringCorrectionsPanel } from "./ScoringCorrectionsPanel";
 import { ScoringPoolsPanel } from "./ScoringPoolsPanel";
+import { ScoringLifecyclePanel } from "./ScoringLifecyclePanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import type { ScoringData } from "./event-scoring-types";
 
@@ -161,12 +163,20 @@ export function EventScoringPanel({
             </p>
           </div>
           <ScoringActivitiesPanel activities={data.activities} onAction={performAction} />
+          <ScoringLifecyclePanel data={data} onAction={performAction} />
           <ScoringDiscoveriesPanel
             activities={data.activities}
             discoveries={data.discoveries}
             onAction={performAction}
           />
           <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
+          <ScoringCorrectionsPanel
+            eventSlug={eventSlug.trim()}
+            state={data.settings.state}
+            activities={data.activities}
+            authFetch={authFetch}
+            onAction={performAction}
+          />
           <ScoringStaffPanel
             eventSlug={eventSlug.trim()}
             activities={data.activities}

@@ -32,9 +32,7 @@ function ScoreRoute() {
       <header className="mt-10">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">event score</p>
         <h1 className="mt-2 font-serif text-4xl text-foreground">Leaderboard</h1>
-        <p className="mt-3 font-mono text-xs theme-subtle">
-          {formatState(data.state, data.visibility)}
-        </p>
+        <p className="mt-3 font-mono text-xs theme-subtle">{formatState(data.boardStatus)}</p>
       </header>
       {data.rows.length === 0 ? (
         <p className="mt-12 border-y theme-border py-6 font-serif text-lg theme-subtle">
@@ -64,9 +62,10 @@ function ScoreRoute() {
   );
 }
 
-function formatState(state: string, visibility: string): string {
-  if (visibility === "public-final") return "final board";
-  if (state === "frozen") return "frozen while results are checked";
-  if (state === "closed") return "closed";
+function formatState(status: string): string {
+  if (status === "final") return "final board";
+  if (status === "corrected-provisional") return "corrected; prize results need final review";
+  if (status === "frozen") return "frozen while results are checked";
+  if (status === "closed") return "closed; results are not final";
   return "live board";
 }

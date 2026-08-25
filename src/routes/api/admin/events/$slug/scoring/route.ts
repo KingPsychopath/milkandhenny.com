@@ -19,12 +19,15 @@ import {
   listStaffDevices,
   listTeams,
   rebuildEventProjections,
+  searchEventParticipants,
   setTeamMembership,
 } from "@/features/event-scoring/store.server";
 import {
   awardPoints,
+  applyPenalty,
   changeScoringState,
   configureScoring,
+  correctPointsAfterClose,
   createScoringActivity,
   finalizeLeaderboard,
   getScoring,
@@ -65,6 +68,10 @@ async function handleGET(request: Request, slug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
+    const search = new URL(request.url).searchParams.get("participant");
+    if (search) {
+      return Response.json({ participants: await searchEventParticipants(slug, search) });
+    }
     const [settings, activities, pools, discoveries, teams, held, staff] = await Promise.all([
       getScoring(slug),
       listScoringActivities(slug),
@@ -255,6 +262,70 @@ async function handlePOST(request: Request, slug: string) {
       });
       if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
       return Response.json({ transaction: result.value });
+    }
+
+    if (action === "penalty") {
+      const activityId = stringValue(body.activityId);
+      const participantId = stringValue(body.participantId);
+      const idempotencyKey = stringValue(body.idempotencyKey);
+      const note = stringValue(body.note);
+      if (
+        !activityId ||
+        !participantId ||
+        !idempotencyKey ||
+        !note ||
+        typeof body.points !== "number"
+      ) {
+        return Response.json(
+          { error: "Penalty activity, participant, points, command id, and note are required" },
+          { status: 400 },
+        );
+      }
+      const result = await applyPenalty({
+        eventSlug: slug,
+        activityId,
+        participantId,
+        points: body.points,
+        idempotencyKey,
+        note,
+        actorType: "admin",
+        actorId,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ transaction: result.value });
+    }
+
+    if (action === "closed-correction") {
+      const activityId = stringValue(body.activityId);
+      const participantId = stringValue(body.participantId);
+      const idempotencyKey = stringValue(body.idempotencyKey);
+      const note = stringValue(body.note);
+      if (
+        !activityId ||
+        !participantId ||
+        !idempotencyKey ||
+        !note ||
+        typeof body.delta !== "number"
+      ) {
+        return Response.json(
+          {
+            error: "Correction activity, participant, amount, command id, and reason are required",
+          },
+          { status: 400 },
+        );
+      }
+      const result = await correctPointsAfterClose({
+        eventSlug: slug,
+        activityId,
+        participantId,
+        delta: body.delta,
+        idempotencyKey,
+        note,
+        actorId,
+        confirmed: body.confirmed === true,
+      });
+      if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+      return Response.json({ transaction: result.value, leaderboard: "provisional" });
     }
 
     if (action === "transfer") {

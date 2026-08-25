@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
-import { query, transaction } from "@/lib/platform/postgres.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getEvent } from "@/features/events/store.server";
 import {
   activityCanAccept,
@@ -60,6 +60,54 @@ function isValidTransition(from: ScoringState, to: ScoringState): boolean {
 
 export async function getScoring(eventSlug: string): Promise<ScoringSettings> {
   return getOrCreateSettings(eventSlug);
+}
+
+export async function processScheduledScoringTransitions(now = new Date()): Promise<number> {
+  return transaction(async (client) => {
+    const changed = await client.query<{
+      event_slug: string;
+      from_state: ScoringState;
+      to_state: ScoringState;
+    }>(
+      `with due as (
+         select event_slug, state as from_state,
+                case
+                  when scheduled_end is not null and scheduled_end <= $1
+                    and state in ('ready', 'live', 'frozen') then 'closed'
+                  when scheduled_start is not null and scheduled_start <= $1
+                    and state = 'ready' then 'live'
+                  else state
+                end as to_state
+           from event_scoring_settings
+          where (scheduled_start is not null and scheduled_start <= $1 and state = 'ready')
+             or (scheduled_end is not null and scheduled_end <= $1
+                 and state in ('ready', 'live', 'frozen'))
+          for update
+       )
+       update event_scoring_settings settings
+          set state = due.to_state, revision = settings.revision + 1, updated_at = now()
+         from due
+        where settings.event_slug = due.event_slug and due.from_state <> due.to_state
+       returning settings.event_slug, due.from_state, due.to_state`,
+      [now],
+    );
+    for (const row of changed.rows) {
+      await client.query(
+        `insert into score_audit_events
+           (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
+         values ($1,'scoring.state.scheduled','system','scoring-scheduler','scoring_settings',$1,$2::jsonb)`,
+        [
+          row.event_slug,
+          JSON.stringify({
+            from: row.from_state,
+            to: row.to_state,
+            evaluatedAt: now.toISOString(),
+          }),
+        ],
+      );
+    }
+    return changed.rows.length;
+  });
 }
 
 export async function changeScoringState(input: {
@@ -234,6 +282,9 @@ export async function awardPoints(
   if (input.allowOverride && !input.note?.trim()) {
     return { ok: false, status: 400, error: "An override needs a note" };
   }
+  if (activity.template === "free-form" && !input.note?.trim()) {
+    return { ok: false, status: 400, error: "A free-form award needs a note" };
+  }
   const postings: ScorePosting[] = input.participantIds.map((participantId) => ({
     participantId,
     points,
@@ -292,6 +343,86 @@ export async function transferPoints(input: {
   });
 }
 
+export async function applyPenalty(input: {
+  eventSlug: string;
+  activityId: string;
+  participantId: string;
+  points: number;
+  idempotencyKey: string;
+  actorType: "admin" | "staff";
+  actorId?: string;
+  assignmentId?: string;
+  stationId?: string;
+  deviceId?: string;
+  note: string;
+}): Promise<ScoringOperationResult<ScoreTransaction>> {
+  if (!Number.isInteger(input.points) || input.points <= 0) {
+    return { ok: false, status: 400, error: "Choose positive whole penalty points" };
+  }
+  if (!input.note.trim()) return { ok: false, status: 400, error: "A penalty needs a note" };
+  const activity = await getActivity(input.activityId);
+  if (!activity || activity.eventSlug !== input.eventSlug) {
+    return { ok: false, status: 404, error: "Activity not found" };
+  }
+  return recordScore({
+    eventSlug: input.eventSlug,
+    activityId: input.activityId,
+    sourceType: "correction",
+    sourceId: input.idempotencyKey,
+    idempotencyKey: input.idempotencyKey,
+    reasonCode: "penalty",
+    note: input.note,
+    ruleRevision: activity.ruleRevision,
+    actorType: input.actorType,
+    actorId: input.actorId,
+    assignmentId: input.assignmentId,
+    stationId: input.stationId,
+    deviceId: input.deviceId,
+    postings: [{ participantId: input.participantId, points: -input.points }],
+  });
+}
+
+export async function correctPointsAfterClose(input: {
+  eventSlug: string;
+  activityId: string;
+  participantId: string;
+  delta: number;
+  idempotencyKey: string;
+  actorId: string;
+  note: string;
+  confirmed: boolean;
+}): Promise<ScoringOperationResult<ScoreTransaction>> {
+  if (!Number.isInteger(input.delta) || input.delta === 0) {
+    return { ok: false, status: 400, error: "Choose a non-zero whole-point correction" };
+  }
+  if (!input.note.trim()) return { ok: false, status: 400, error: "A correction needs a reason" };
+  if (!input.confirmed) {
+    return { ok: false, status: 409, error: "Confirm the closed-event correction" };
+  }
+  const settings = await getOrCreateSettings(input.eventSlug);
+  if (settings.state !== "closed") {
+    return { ok: false, status: 409, error: "This workflow is only for closed scoring" };
+  }
+  const activity = await getActivity(input.activityId);
+  if (!activity || activity.eventSlug !== input.eventSlug) {
+    return { ok: false, status: 404, error: "Activity not found" };
+  }
+  return recordScore({
+    eventSlug: input.eventSlug,
+    activityId: input.activityId,
+    sourceType: "correction",
+    sourceId: input.idempotencyKey,
+    idempotencyKey: input.idempotencyKey,
+    reasonCode: "correction",
+    note: input.note,
+    ruleRevision: activity.ruleRevision,
+    actorType: "admin",
+    actorId: input.actorId,
+    metadata: { closedCorrectionConfirmed: true, requiresRefinalization: true },
+    postings: [{ participantId: input.participantId, points: input.delta }],
+  });
+}
+
 export async function reversePoints(input: {
   eventSlug: string;
   transactionId: string;
@@ -326,19 +457,39 @@ export async function publicLeaderboard(input: {
   ScoringOperationResult<{
     state: ScoringState;
     visibility: LeaderboardVisibility;
+    boardStatus: "live" | "frozen" | "closed" | "corrected-provisional" | "final";
     rows: PublicLeaderboardRow[];
   }>
 > {
   if (!(await getEvent(input.eventSlug)))
     return { ok: false, status: 404, error: "Event not found" };
   const settings = await getOrCreateSettings(input.eventSlug);
+  const finalization = await queryOne<{ status: "provisional" | "final" }>(
+    `select status from score_prize_finalizations where event_slug = $1`,
+    [input.eventSlug],
+  );
+  const boardStatus =
+    finalization?.status === "final"
+      ? "final"
+      : finalization?.status === "provisional"
+        ? "corrected-provisional"
+        : settings.state === "frozen"
+          ? "frozen"
+          : settings.state === "closed"
+            ? "closed"
+            : "live";
   const isVisible =
     settings.leaderboardVisibility === "public-live" ||
     settings.leaderboardVisibility === "public-final";
   if (!isVisible && !(input.includePreview && settings.leaderboardVisibility === "preview")) {
     return {
       ok: true,
-      value: { state: settings.state, visibility: settings.leaderboardVisibility, rows: [] },
+      value: {
+        state: settings.state,
+        visibility: settings.leaderboardVisibility,
+        boardStatus,
+        rows: [],
+      },
     };
   }
   const participants = (await listLeaderboardParticipants(input.eventSlug)).filter((participant) =>
@@ -354,6 +505,7 @@ export async function publicLeaderboard(input: {
     value: {
       state: settings.state,
       visibility: settings.leaderboardVisibility,
+      boardStatus,
       rows: ranked.map((score) => ({
         rank: score.rank,
         publicAlias: score.publicAlias,

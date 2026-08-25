@@ -18,6 +18,8 @@ import {
 import { describeCheckpoints, type OrderTicketView, type TicketPageTicket } from "../types";
 import { RefundTicketButton } from "./RefundTicketButton";
 import { ShareTicketButton } from "./ShareTicketButton";
+import { AttendeeSessionControls } from "./AttendeeSessionControls";
+import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 
 /**
  * The ticket itself.
@@ -52,7 +54,19 @@ export function TicketPage({
   managerTicketId?: string;
   checkpointNames: string[];
   album: EventAlbumView;
-  score?: { points: number; rank: number };
+  score?: {
+    points: number;
+    rank: number;
+    teamRank?: number;
+    synchronizedAt: string;
+    orderPoints?: number;
+    transactions: Array<{
+      status: string;
+      reasonCode: string;
+      points: number;
+      createdAt: string;
+    }>;
+  };
 }) {
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
@@ -364,7 +378,18 @@ export function TicketPage({
               </a>
             </div>
             <p className="mt-2 font-serif text-2xl text-foreground">{score.points} points</p>
+            <ScoreNotificationNotice ticketId={ticket.id} />
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
+            {score.teamRank !== undefined && (
+              <p className="mt-1 font-mono text-micro theme-subtle">
+                rank {score.teamRank} within your team
+              </p>
+            )}
+            {score.orderPoints !== undefined && orderSize > 1 && (
+              <p className="mt-2 font-mono text-xs theme-subtle">
+                managed order total: {score.orderPoints} points
+              </p>
+            )}
             <div className="mt-4 flex flex-wrap gap-4">
               <a
                 href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
@@ -388,8 +413,38 @@ export function TicketPage({
                 </a>
               )}
             </div>
+            <p className="mt-4 font-mono text-micro theme-muted">
+              last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
+            </p>
+            {score.transactions.length > 0 && (
+              <details className="mt-4">
+                <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
+                  score history
+                </summary>
+                <ol className="divide-y theme-border border-y theme-border">
+                  {score.transactions.map((transaction, index) => (
+                    <li
+                      key={`${transaction.createdAt}-${index}`}
+                      className="flex items-baseline justify-between gap-4 py-3"
+                    >
+                      <span className="font-mono text-xs">
+                        {transaction.reasonCode.replaceAll("-", " ")}
+                        {transaction.status === "held" ? " · pending review" : ""}
+                        {transaction.status === "reversed" ? " · reversed" : ""}
+                      </span>
+                      <span className="font-mono text-xs">
+                        {transaction.points > 0 ? "+" : ""}
+                        {transaction.points}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
           </section>
         )}
+
+        {score && <AttendeeSessionControls ticketId={ticket.id} />}
 
         {/* A way to reach a human, on the page they will actually have open.
             Step-free access, a name that needs changing, a QR the door cannot

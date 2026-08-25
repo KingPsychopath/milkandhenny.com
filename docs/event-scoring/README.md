@@ -107,92 +107,92 @@ Confirm each decision before the affected implementation begins.
 
 ## 1. Architecture and ownership
 
-- [ ] Postgres is authoritative for people, participants, ticket links, activities, rules,
+- [x] Postgres is authoritative for people, participants, ticket links, activities, rules,
       transactions, postings, teams, discoveries, and projections.
-- [ ] Redis is limited to sessions, rate limits, wake signals, room state, and short-lived
+- [x] Redis is limited to sessions, rate limits, wake signals, room state, and short-lived
       coordination.
 - [ ] IndexedDB stores structured browser snapshots and permitted pending commands.
-- [ ] Local storage contains convenience data only.
-- [ ] A browser total is never accepted as the official score.
-- [ ] Routes own transport validation, response shape, and coarse authorization only.
-- [ ] Feature server workflows own scoring, eligibility, permission, and reconciliation rules.
-- [ ] Effect wraps service boundaries only; scoring engines remain plain async functions.
-- [ ] No whole leaderboard or participant collection is stored in one Redis key.
-- [ ] Redis uses one key per record.
-- [ ] Scoring lives in a coherent feature module instead of event routes or the large admin
+- [x] Local storage contains convenience data only.
+- [x] A browser total is never accepted as the official score.
+- [x] Routes own transport validation, response shape, and coarse authorization only.
+- [x] Feature server workflows own scoring, eligibility, permission, and reconciliation rules.
+- [x] Effect wraps service boundaries only; scoring engines remain plain async functions.
+- [x] No whole leaderboard or participant collection is stored in one Redis key.
+- [x] Redis uses one key per record.
+- [x] Scoring lives in a coherent feature module instead of event routes or the large admin
       dashboard.
-- [ ] Admin UI uses focused components under the existing admin component structure.
+- [x] Admin UI uses focused components under the existing admin component structure.
 - [ ] UI and CLI operations call the same server workflows.
 - [x] Durable game results use an idempotent source receipt or transactional outbox.
-- [ ] Event rename or slug change cannot orphan participants, activities, media, or scores.
-- [ ] Event linkage uses an immutable identity or one atomic, complete slug-move operation.
-- [ ] Event deletion is blocked once durable scoring history exists; cancellation archives it.
+- [x] Event rename or slug change cannot orphan participants, activities, media, or scores.
+- [x] Event linkage uses an immutable identity or one atomic, complete slug-move operation.
+- [x] Event deletion is blocked once durable scoring history exists; cancellation archives it.
 - [x] No legacy schema, compatibility alias, or transitional scoring API remains.
 
 ## 2. Person and participant identity
 
-- [ ] Every durable human can have an opaque `personId`.
-- [ ] Every attendee place in an event has an opaque `eventParticipantId`.
-- [ ] Scores target the event participant.
-- [ ] Names, aliases, emails, order IDs, browsers, devices, and IP addresses are not identity keys.
-- [ ] A person can hold several verified identifiers.
-- [ ] Email changes preserve the person and score history.
+- [x] Every durable human can have an opaque `personId`.
+- [x] Every attendee place in an event has an opaque `eventParticipantId`.
+- [x] Scores target the event participant.
+- [x] Names, aliases, emails, order IDs, browsers, devices, and IP addresses are not identity keys.
+- [x] A person can hold several verified identifiers.
+- [x] Email changes preserve the person and score history.
 - [ ] Old verified email is retained only as permitted historical evidence.
-- [ ] Game nicknames can change without changing identity.
-- [ ] The public alias is separate from canonical and ticket-holder names.
+- [x] Game nicknames can change without changing identity.
+- [x] The public alias is separate from canonical and ticket-holder names.
 - [x] An unknown game player can hold an unclaimed participant result.
 - [x] A signed claim token can connect that result later.
-- [ ] A future passwordless login or passkey links to `personId` without moving ledger entries.
+- [x] A future passwordless login or passkey links to `personId` without moving ledger entries.
 
 ## 3. Tickets, orders, and simultaneous access
 
-- [ ] Every issued normal ticket gets a separate participant placeholder.
-- [ ] A multi-ticket order never treats the purchaser as every attendee.
-- [ ] Every child ticket can be claimed, scored, transferred, and displayed separately.
-- [ ] The primary order holder can see an authorized private order aggregate.
-- [ ] A child ticket cannot manage the order without authority.
-- [ ] One phone can manage and switch between several tickets.
-- [ ] One ticket can be open on several phones at the same time.
-- [ ] Concurrent ticket viewers receive the same admission and score state.
-- [ ] A ticket redemption remains one-use even when several devices hold the ticket.
-- [ ] A second device cannot create a second participant from the same ticket.
-- [ ] A repeated ticket claim is idempotent.
-- [ ] One person may legitimately claim more than one ticket.
-- [ ] Claiming several tickets does not silently merge their participants or points.
+- [x] Every issued normal ticket gets a separate participant placeholder.
+- [x] A multi-ticket order never treats the purchaser as every attendee.
+- [x] Every child ticket can be claimed, scored, transferred, and displayed separately.
+- [x] The primary order holder can see an authorized private order aggregate.
+- [x] A child ticket cannot manage the order without authority.
+- [x] One phone can manage and switch between several tickets.
+- [x] One ticket can be open on several phones at the same time.
+- [x] Concurrent ticket viewers receive the same admission and score state.
+- [x] A ticket redemption remains one-use even when several devices hold the ticket.
+- [x] A second device cannot create a second participant from the same ticket.
+- [x] A repeated ticket claim is idempotent.
+- [x] One person may legitimately claim more than one ticket.
+- [x] Claiming several tickets does not silently merge their participants or points.
 - [ ] A future group pass creates separate child entitlements and participants.
-- [ ] A ticket screenshot has the same bearer risk as the original link and is handled as such.
+- [x] A ticket screenshot has the same bearer risk as the original link and is handled as such.
 - [ ] Refund, void, transfer, and order cancellation behavior is defined after check-in and after
       points exist.
 
 ## 4. Anonymous attendee session
 
-- [ ] Opening a valid ticket on the attendee's device creates or extends an attendee session.
-- [ ] The session uses an opaque, secure, HTTP-only, first-party cookie.
-- [ ] The cookie uses appropriate `Secure`, `SameSite`, expiry, and rotation settings.
-- [ ] The server session can reference several separately claimed or managed tickets.
-- [ ] The session stores one active participant choice per event.
-- [ ] `This is my ticket` selects a personal participant without creating permanent ownership.
-- [ ] `I am managing this ticket` gives access without treating all managed tickets as one person.
-- [ ] `Switch ticket` changes the active view without moving points or identity.
-- [ ] `Remove from this device` removes browser access without deleting server data.
-- [ ] `This is not me` clears the selection without damaging history.
-- [ ] Opening a new ticket offers add, switch, view-only, and managed choices in plain language.
-- [ ] Private browsing warns that access may not persist.
-- [ ] Likely in-app browsers offer `Open in Safari or Chrome` and `Copy link` actions.
-- [ ] Losing cookies does not lose ticket, participant, or score data.
-- [ ] Recovery works through the ticket link, ticket email resend, verified email, or admin support.
-- [ ] A staff scan never creates attendee identity on the staff device.
-- [ ] A staff scan cannot remotely set a cookie on an attendee phone.
-- [ ] A printed ticket or wallet scan does not pretend to initialize the attendee's browser.
+- [x] Opening a valid ticket on the attendee's device creates or extends an attendee session.
+- [x] The session uses an opaque, secure, HTTP-only, first-party cookie.
+- [x] The cookie uses appropriate `Secure`, `SameSite`, expiry, and rotation settings.
+- [x] The server session can reference several separately claimed or managed tickets.
+- [x] The session stores one active participant choice per event.
+- [x] `This is my ticket` selects a personal participant without creating permanent ownership.
+- [x] `I am managing this ticket` gives access without treating all managed tickets as one person.
+- [x] `Switch ticket` changes the active view without moving points or identity.
+- [x] `Remove from this device` removes browser access without deleting server data.
+- [x] `This is not me` clears the selection without damaging history.
+- [x] Opening a new ticket offers add, switch, view-only, and managed choices in plain language.
+- [x] Private browsing warns that access may not persist.
+- [x] Likely in-app browsers offer `Open in Safari or Chrome` and `Copy link` actions.
+- [x] Losing cookies does not lose ticket, participant, or score data.
+- [x] Recovery works through the ticket link, ticket email resend, verified email, or admin support.
+- [x] A staff scan never creates attendee identity on the staff device.
+- [x] A staff scan cannot remotely set a cookie on an attendee phone.
+- [x] A printed ticket or wallet scan does not pretend to initialize the attendee's browser.
 - [ ] Session behavior is verified on current mobile Safari and Chrome.
 - [ ] Multiple tabs and rapid ticket switches do not corrupt the active participant.
 
 ## 5. Identity evidence and reconciliation
 
-- [ ] Valid ticket possession, verified email, authenticated account, and signed claim tokens are
+- [x] Valid ticket possession, verified email, authenticated account, and signed claim tokens are
       classified as strong evidence.
-- [ ] Names, unverified email, browser, device, IP address, order, and nickname are weak signals.
-- [ ] Weak signals never cause an automatic merge.
+- [x] Names, unverified email, browser, device, IP address, order, and nickname are weak signals.
+- [x] Weak signals never cause an automatic merge.
 - [ ] Admins can review possible duplicate people and participants.
 - [x] A merge records actor, evidence, reason, time, and original participants.
 - [x] A merge changes projections without rewriting original postings.
@@ -204,59 +204,59 @@ Confirm each decision before the affected implementation begins.
 
 ## 6. Score ledger and projection
 
-- [ ] Score changes use immutable transaction headers and signed postings.
-- [ ] No workflow writes a participant total directly.
-- [ ] Awards create positive postings.
-- [ ] Penalties create negative postings.
-- [ ] Transfers create an atomic debit and credit.
+- [x] Score changes use immutable transaction headers and signed postings.
+- [x] No workflow writes a participant total directly.
+- [x] Awards create positive postings.
+- [x] Penalties create negative postings.
+- [x] Transfers create an atomic debit and credit.
 - [x] Reversals create exact opposite postings and reference the original transaction.
 - [ ] Every transaction records event, activity, source, actor, reason, rule revision, and time.
-- [ ] Every external command has an idempotency key.
-- [ ] A repeated command returns the original outcome without another posting.
-- [ ] A unique constraint prevents duplicate source awards.
-- [ ] Staff pool consumption and award postings commit in one database transaction.
-- [ ] Normal transfers cannot exceed the available confirmed balance.
-- [ ] Rule edits never alter previous transactions.
-- [ ] A rebuildable projection stores current balance, rank input, and revision.
-- [ ] Every accepted posting advances the affected projection revision.
-- [ ] Projection rebuild produces the same result as live updates.
-- [ ] Corrupt or missing projections can be rebuilt without editing the ledger.
-- [ ] Transaction times use the server clock and event displays use the configured event timezone.
-- [ ] Device clock skew cannot change eligibility or ordering.
+- [x] Every external command has an idempotency key.
+- [x] A repeated command returns the original outcome without another posting.
+- [x] A unique constraint prevents duplicate source awards.
+- [x] Staff pool consumption and award postings commit in one database transaction.
+- [x] Normal transfers cannot exceed the available confirmed balance.
+- [x] Rule edits never alter previous transactions.
+- [x] A rebuildable projection stores current balance, rank input, and revision.
+- [x] Every accepted posting advances the affected projection revision.
+- [x] Projection rebuild produces the same result as live updates.
+- [x] Corrupt or missing projections can be rebuilt without editing the ledger.
+- [x] Transaction times use the server clock and event displays use the configured event timezone.
+- [x] Device clock skew cannot change eligibility or ordering.
 
 ## 7. Event lifecycle and late actions
 
-- [ ] Scoring defaults to `off`.
-- [ ] Supported states are `off`, `ready`, `live`, `frozen`, and `closed`.
-- [ ] Scoring state is independent from ticket sales and event publication.
-- [ ] Scheduled start and end use the event timezone and handle daylight-saving changes.
-- [ ] Admins can start, freeze, resume, and close scoring manually.
-- [ ] Freeze keeps public totals fixed.
+- [x] Scoring defaults to `off`.
+- [x] Supported states are `off`, `ready`, `live`, `frozen`, and `closed`.
+- [x] Scoring state is independent from ticket sales and event publication.
+- [x] Scheduled start and end use the event timezone and handle daylight-saving changes.
+- [x] Admins can start, freeze, resume, and close scoring manually.
+- [x] Freeze keeps public totals fixed.
 - [x] Valid results received while frozen are stored as held source receipts.
 - [x] Resume can process eligible held results once.
 - [x] Close blocks normal awards and claims.
 - [x] A late automatic game result after close enters review instead of disappearing.
-- [ ] Admin correction after close requires reason, confirmation, and re-finalization.
+- [x] Admin correction after close requires reason, confirmation, and re-finalization.
 - [ ] Cancelling an activity defines whether pending results are rejected, held, or honoured.
-- [ ] Cancelling an event prevents new claims while preserving audit and attendee history.
+- [x] Cancelling an event prevents new claims while preserving audit and attendee history.
 - [ ] Event reopening behavior is explicit and audited.
-- [ ] Leaderboard visibility has hidden, preview, public-live, and public-final states.
+- [x] Leaderboard visibility has hidden, preview, public-live, and public-final states.
 
 ## 8. Orders, teams, ranks, and prizes
 
-- [ ] Individual balance and rank are available.
-- [ ] The authorized order view can calculate a private aggregate.
-- [ ] An order aggregate is not a team balance.
-- [ ] Explicit event teams can be created and managed.
-- [ ] Team membership has effective times.
-- [ ] A posting captures team attribution at award time.
-- [ ] A team move affects future attribution by default.
+- [x] Individual balance and rank are available.
+- [x] The authorized order view can calculate a private aggregate.
+- [x] An order aggregate is not a team balance.
+- [x] Explicit event teams can be created and managed.
+- [x] Team membership has effective times.
+- [x] A posting captures team attribution at award time.
+- [x] A team move affects future attribution by default.
 - [ ] Reattributing old team points requires an audited correction.
-- [ ] Ties share standard competition rank, such as `1, 2, 2, 4`.
-- [ ] A deterministic secondary sort does not pretend to break the tie.
-- [ ] Prize finalization detects unresolved ties.
-- [ ] A frozen or provisional board cannot be mistaken for final prize results.
-- [ ] Refund, disqualification, and identity correction effects on final ranking are explicit.
+- [x] Ties share standard competition rank, such as `1, 2, 2, 4`.
+- [x] A deterministic secondary sort does not pretend to break the tie.
+- [x] Prize finalization detects unresolved ties.
+- [x] A frozen or provisional board cannot be mistaken for final prize results.
+- [x] Refund, disqualification, and identity correction effects on final ranking are explicit.
 
 ## 9. Staff assignments, roles, and permissions
 
@@ -305,7 +305,7 @@ Required permission boundaries:
 - [x] Activity-controlled staff select an outcome rather than type a point amount.
 - [x] Unmetered authority is explicit, restricted, and online-only.
 - [x] Large or unusual awards show a preview and warning.
-- [ ] Overrides, penalties, reversals, and free-form awards require a note.
+- [x] Overrides, penalties, reversals, and free-form awards require a note.
 - [ ] Unused reservations return to the correct parent pool when an activity closes.
 - [x] The admin dashboard distinguishes issued, reserved, spent, held, and available points.
 
@@ -334,15 +334,15 @@ Required permission boundaries:
 - [x] Templates support winner, placement, participation, completion, team result, audience vote,
       scan-to-award, and free-form staff award.
 - [x] A winner-only activity does not require opponent or match entry.
-- [ ] Activities support fixed awards, limits, time windows, repeat rules, staff scope, and pools.
+- [x] Activities support fixed awards, limits, time windows, repeat rules, staff scope, and pools.
 - [ ] Managers can create a safe quick activity during an event.
 - [x] Basic moderators cannot invent point values unless explicitly permitted.
 - [x] Every award has a structured reason.
 - [x] A free-text note is optional for a normal configured outcome.
-- [ ] A free-text note is required for overrides, debits, reversals, and `Other`.
-- [ ] An activity can be paused without deleting its history or print material.
-- [ ] Rematches and repeat winner awards use distinct source IDs.
-- [ ] A cancelled or abandoned physical result cannot issue automatic points.
+- [x] A free-text note is required for overrides, debits, reversals, and `Other`.
+- [x] An activity can be paused without deleting its history or print material.
+- [x] Rematches and repeat winner awards use distinct source IDs.
+- [x] A cancelled or abandoned physical result cannot issue automatic points.
 
 ## 13. Automatic game scoring
 
@@ -530,42 +530,42 @@ Required packs:
 
 Public leaderboard:
 
-- [ ] A stable event URL works without login.
-- [ ] It is read-only and shows rank, public alias, team, points, and event state.
-- [ ] It can highlight the current attendee without exposing their identity to others.
-- [ ] It never exposes email, ticket ID, order data, private notes, device data, or fraud signals.
+- [x] A stable event URL works without login.
+- [x] It is read-only and shows rank, public alias, team, points, and event state.
+- [x] It can highlight the current attendee without exposing their identity to others.
+- [x] It never exposes email, ticket ID, order data, private notes, device data, or fraud signals.
 - [ ] Generated aliases, custom aliases, anonymous display, and opt-out follow event policy.
-- [ ] It uses `noindex` by default.
-- [ ] Pagination or indexed queries handle the expected event size without polling spikes.
-- [ ] Frozen, provisional, corrected, and final states are visually distinct.
+- [x] It uses `noindex` by default.
+- [x] Pagination or indexed queries handle the expected event size without polling spikes.
+- [x] Frozen, provisional, corrected, and final states are visually distinct.
 
 Personal ticket and score:
 
-- [ ] The ticket page shows points, individual rank, and team rank where enabled.
-- [ ] Authorized order management shows the private order aggregate.
-- [ ] The full page shows source history, pending actions, held actions, and reversals.
-- [ ] Every positive or negative change has a safe reason.
-- [ ] The page shows last successful synchronization.
-- [ ] Discovery progress, camera scan, and code entry are available.
-- [ ] A simple ticket switcher supports personal and managed tickets.
+- [x] The ticket page shows points, individual rank, and team rank where enabled.
+- [x] Authorized order management shows the private order aggregate.
+- [x] The full page shows source history, pending actions, held actions, and reversals.
+- [x] Every positive or negative change has a safe reason.
+- [x] The page shows last successful synchronization.
+- [x] Discovery progress, camera scan, and code entry are available.
+- [x] A simple ticket switcher supports personal and managed tickets.
 - [ ] `My events` remains understandable when several events are claimed.
 
 ## 20. Navigation and notifications
 
 - [ ] Normal site pages show a small ticket or score link for a claimed attendee.
-- [ ] Event and ticket pages show a fuller score summary.
+- [x] Event and ticket pages show a fuller score summary.
 - [ ] Game setup, lobby, and result screens can show contextual score access.
 - [ ] Active timed, camera, presenter, controller, and full-screen game views hide it.
 - [ ] Opening score details from a safe game screen preserves live room state.
-- [ ] Positive awards produce a subtle notification.
-- [ ] Negative changes produce a clear notification with a reason.
-- [ ] Notifications update the visible score chip.
-- [ ] Notifications use a polite live region and never move focus.
-- [ ] Active gameplay queues notifications until a safe screen.
-- [ ] Reconnect does not replay old notifications as new ones.
-- [ ] Out-of-order network messages display in confirmed server order.
-- [ ] The full history remains available when a toast is missed.
-- [ ] Per-point email is not sent; a later digest remains possible.
+- [x] Positive awards produce a subtle notification.
+- [x] Negative changes produce a clear notification with a reason.
+- [x] Notifications update the visible score chip.
+- [x] Notifications use a polite live region and never move focus.
+- [x] Active gameplay queues notifications until a safe screen.
+- [x] Reconnect does not replay old notifications as new ones.
+- [x] Out-of-order network messages display in confirmed server order.
+- [x] The full history remains available when a toast is missed.
+- [x] Per-point email is not sent; a later digest remains possible.
 
 ## 21. Client synchronization and offline admission
 
