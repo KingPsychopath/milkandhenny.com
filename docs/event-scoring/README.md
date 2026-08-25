@@ -39,39 +39,39 @@ The recommended defaults below close policy gaps that would otherwise produce in
 Confirm each decision before the affected implementation begins.
 
 - [x] Event points are event-local. They do not carry into another event or become money.
-- [ ] One normal ticket represents one attendee, one admission entitlement, and one event
+- [x] One normal ticket represents one attendee, one admission entitlement, and one event
       participant.
-- [ ] Several devices may hold the same bearer ticket, but they all see the same participant,
+- [x] Several devices may hold the same bearer ticket, but they all see the same participant,
       admission state, score, and history.
-- [ ] A second device does not create a second attendee or another admission from the same ticket.
-- [ ] A group purchase creates one ticket and participant per attendee.
-- [ ] A future family or table pass contains several individual admission entitlements and
+- [x] A second device does not create a second attendee or another admission from the same ticket.
+- [x] A group purchase creates one ticket and participant per attendee.
+- [x] A future family or table pass contains several individual admission entitlements and
       participants; it does not use one shared scoring identity.
-- [ ] Anonymous ticket claims are non-exclusive device conveniences. Verified identity is needed
+- [x] Anonymous ticket claims are non-exclusive device conveniences. Verified identity is needed
       for durable ownership and device revocation.
-- [ ] A ticket transfer before points exist can relink its participant. A transfer after points
+- [x] A ticket transfer before points exist can relink its participant. A transfer after points
       exist requires reviewed identity resolution; earned points do not move automatically.
-- [ ] A refund or void preserves ledger history. It makes the participant ineligible for new
+- [x] A refund or void preserves ledger history. It makes the participant ineligible for new
       awards and applies the event's public-ranking policy without deleting audit evidence.
-- [ ] Physical event claims require accepted check-in by default. An event can explicitly allow
+- [x] Physical event claims require accepted check-in by default. An event can explicitly allow
       pre-check-in online game points.
-- [ ] Public leaderboard names use generated aliases by default. Private names require explicit
+- [x] Public leaderboard names use generated aliases by default. Private names require explicit
       attendee choice or event policy.
 - [x] Public leaderboards use `noindex` by default.
-- [ ] Normal transfers and debits cannot create a negative balance. Exceptional corrections need
+- [x] Normal transfers and debits cannot create a negative balance. Exceptional corrections need
       admin authority, a warning, and a note.
-- [ ] Team attribution is captured when points are earned. A later team move affects future points
+- [x] Team attribution is captured when points are earned. A later team move affects future points
       only unless an admin performs an explicit correction.
-- [ ] Ties share rank. Prizes that require one winner need a separate tie-break or admin finalization.
-- [ ] Closed events allow only explicit admin correction and re-finalization.
-- [ ] Static QR codes are convenience credentials, not proof of physical proximity.
+- [x] Ties share rank. Prizes that require one winner need a separate tie-break or admin finalization.
+- [x] Closed events allow only explicit admin correction and re-finalization.
+- [x] Static QR codes are convenience credentials, not proof of physical proximity.
 - [x] Unmetered staff scoring is online-only.
 - [x] Arbitrary offline staff scoring is deferred until bounded per-device budgets exist.
-- [ ] Event photographs follow an explicit event consent policy and are not made public by default.
-- [ ] The temporary event album expiry remains visible. Permanent photos must be promoted to
+- [x] Event photographs follow an explicit event consent policy and are not made public by default.
+- [x] The temporary event album expiry remains visible. Permanent photos must be promoted to
       `/pics` or another durable collection.
 - [x] Points have no cash value unless separate competition terms explicitly say otherwise.
-- [ ] Prize rules, tie handling, eligibility, and correction deadlines are written before a
+- [x] Prize rules, tie handling, eligibility, and correction deadlines are written before a
       points-based prize is announced.
 
 ## Release gates
@@ -91,19 +91,19 @@ Confirm each decision before the affected implementation begins.
 
 ### Gate 3: discoveries and print
 
-- [ ] QR and code discoveries, hunt sets, point pools, test mode, and branded print packs pass.
+- [x] QR and code discoveries, hunt sets, point pools, test mode, and branded print packs pass.
 - [ ] Every exported QR is machine-validated and physically test-scanned.
 
 ### Gate 4: activity media
 
-- [ ] Optional winner photos use the existing event media pipeline.
-- [ ] Award success does not depend on media-upload success.
-- [ ] Consent, expiry, retry, and deletion behavior pass.
+- [x] Optional winner photos use the existing event media pipeline.
+- [x] Award success does not depend on media-upload success.
+- [x] Consent, expiry, retry, and deletion behavior pass.
 
 ### Gate 5: extended operation
 
-- [ ] Remaining game integrations and any bounded offline scoring pass.
-- [ ] Future login can claim existing people and participants without a score migration.
+- [x] Remaining game integrations and any bounded offline scoring pass.
+- [x] Future login can claim existing people and participants without a score migration.
 
 ## 1. Architecture and ownership
 
@@ -137,7 +137,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Names, aliases, emails, order IDs, browsers, devices, and IP addresses are not identity keys.
 - [x] A person can hold several verified identifiers.
 - [x] Email changes preserve the person and score history.
-- [ ] Old verified email is retained only as permitted historical evidence.
+- [x] Old verified email is retained only as permitted historical evidence.
 - [x] Game nicknames can change without changing identity.
 - [x] The public alias is separate from canonical and ticket-holder names.
 - [x] An unknown game player can hold an unclaimed participant result.
@@ -159,9 +159,9 @@ Confirm each decision before the affected implementation begins.
 - [x] A repeated ticket claim is idempotent.
 - [x] One person may legitimately claim more than one ticket.
 - [x] Claiming several tickets does not silently merge their participants or points.
-- [ ] A future group pass creates separate child entitlements and participants.
+- [x] A future group pass creates separate child entitlements and participants.
 - [x] A ticket screenshot has the same bearer risk as the original link and is handled as such.
-- [ ] Refund, void, transfer, and order cancellation behavior is defined after check-in and after
+- [x] Refund, void, transfer, and order cancellation behavior is defined after check-in and after
       points exist.
 
 ## 4. Anonymous attendee session
@@ -184,8 +184,8 @@ Confirm each decision before the affected implementation begins.
 - [x] A staff scan never creates attendee identity on the staff device.
 - [x] A staff scan cannot remotely set a cookie on an attendee phone.
 - [x] A printed ticket or wallet scan does not pretend to initialize the attendee's browser.
-- [ ] Session behavior is verified on current mobile Safari and Chrome.
-- [ ] Multiple tabs and rapid ticket switches do not corrupt the active participant.
+- [x] Session behavior is verified on current mobile Safari and Chrome.
+- [x] Multiple tabs and rapid ticket switches do not corrupt the active participant.
 
 ## 5. Identity evidence and reconciliation
 
@@ -198,9 +198,9 @@ Confirm each decision before the affected implementation begins.
 - [x] A merge changes projections without rewriting original postings.
 - [x] A mistaken merge can be reversed.
 - [x] A split restores the correct source attribution.
-- [ ] Simultaneous claims from different devices do not silently transfer ownership.
-- [ ] A verified owner can later inspect and revoke device access.
-- [ ] Staff can resolve a lost-ticket case without seeing more personal data than required.
+- [x] Simultaneous claims from different devices do not silently transfer ownership.
+- [x] A verified owner can later inspect and revoke device access.
+- [x] Staff can resolve a lost-ticket case without seeing more personal data than required.
 
 ## 6. Score ledger and projection
 
@@ -210,7 +210,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Penalties create negative postings.
 - [x] Transfers create an atomic debit and credit.
 - [x] Reversals create exact opposite postings and reference the original transaction.
-- [ ] Every transaction records event, activity, source, actor, reason, rule revision, and time.
+- [x] Every transaction records event, activity, source, actor, reason, rule revision, and time.
 - [x] Every external command has an idempotency key.
 - [x] A repeated command returns the original outcome without another posting.
 - [x] A unique constraint prevents duplicate source awards.
@@ -251,7 +251,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Team membership has effective times.
 - [x] A posting captures team attribution at award time.
 - [x] A team move affects future attribution by default.
-- [ ] Reattributing old team points requires an audited correction.
+- [x] Reattributing old team points requires an audited correction.
 - [x] Ties share standard competition rank, such as `1, 2, 2, 4`.
 - [x] A deterministic secondary sort does not pretend to break the tie.
 - [x] Prize finalization detects unresolved ties.
@@ -268,7 +268,7 @@ Confirm each decision before the affected implementation begins.
 - [x] Admins can adjust preset permissions.
 - [x] Assignments support personal staff links and shared station devices.
 - [x] Every assignment has event, label, scope, expiry, status, and permitted devices.
-- [ ] A future logged-in staff person can claim an existing assignment.
+- [x] A future logged-in staff person can claim an existing assignment.
 - [x] Access links are revocable and expire as configured.
 - [x] A leaked or photographed staff link can be revoked without affecting other staff.
 - [x] Lost devices can be revoked individually.
@@ -280,19 +280,19 @@ Confirm each decision before the affected implementation begins.
 Required permission boundaries:
 
 - [x] Admit tickets and view recent admissions.
-- [ ] Request, add, and approve guests.
+- [x] Request, add, and approve guests.
 - [x] View participant points.
 - [x] Award points.
 - [x] Run assigned activities.
-- [ ] Transfer points.
-- [ ] Reverse permitted awards.
-- [ ] Review held score actions.
-- [ ] Create and manage activities.
-- [ ] Create and manage discoveries.
-- [ ] Upload activity photographs.
-- [ ] Manage staff and point pools.
-- [ ] Resolve participant identity.
-- [ ] Finalize the leaderboard and prizes.
+- [x] Transfer points.
+- [x] Reverse permitted awards.
+- [x] Review held score actions.
+- [x] Create and manage activities.
+- [x] Create and manage discoveries.
+- [x] Upload activity photographs.
+- [x] Manage staff and point pools.
+- [x] Resolve participant identity.
+- [x] Finalize the leaderboard and prizes.
 
 ## 10. Staff point authority and budgets
 
@@ -306,7 +306,7 @@ Required permission boundaries:
 - [x] Unmetered authority is explicit, restricted, and online-only.
 - [x] Large or unusual awards show a preview and warning.
 - [x] Overrides, penalties, reversals, and free-form awards require a note.
-- [ ] Unused reservations return to the correct parent pool when an activity closes.
+- [x] Unused reservations return to the correct parent pool when an activity closes.
 - [x] The admin dashboard distinguishes issued, reserved, spent, held, and available points.
 
 ## 11. Scanner and moderator experience
@@ -314,18 +314,18 @@ Required permission boundaries:
 - [x] Existing admission scan and offline-manifest behavior remains intact.
 - [x] Door-only staff land on one clear `Scan and admit` action.
 - [x] Door-only staff do not see scoring controls.
-- [ ] Combined staff see `Admit guests`, `Run an activity`, and `Award points` as separate actions.
+- [x] Combined staff see `Admit guests`, `Run an activity`, and `Award points` as separate actions.
 - [x] Staff choose the operation before scanning a ticket.
 - [x] A scan cannot accidentally perform both an admission and an unrelated award.
-- [ ] Quick awards can be pinned as large buttons.
+- [x] Quick awards can be pinned as large buttons.
 - [x] A physical-game award needs only the winner unless the activity requires more participants.
 - [x] Staff can scan the winner's ticket or use event search.
-- [ ] Search supports permitted names, aliases, ticket suffixes, recent scans, and recent recipients.
-- [ ] Email appears only to authorized managers.
+- [x] Search supports permitted names, aliases, ticket suffixes, recent scans, and recent recipients.
+- [x] Email appears only to authorized managers.
 - [x] The award preview shows participant, source, amount, limits, and remaining pool.
 - [x] Repeated-award warnings use plain language.
-- [ ] Permitted staff can undo their own recent mistake through an immutable reversal.
-- [ ] The UI handles camera denial, unreadable QR, dead ticket, duplicate scan, and lost network.
+- [x] Permitted staff can undo their own recent mistake through an immutable reversal.
+- [x] The UI handles camera denial, unreadable QR, dead ticket, duplicate scan, and lost network.
 - [x] Normal moderators never see raw tokens, IDs, or permission names.
 
 ## 12. Manual and physical activities
@@ -370,11 +370,11 @@ Initial integrations:
 
 Extended integrations:
 
-- [ ] Liars after outcome rules are defined.
-- [ ] Pitches after vote integrity is defined.
-- [ ] Server-confirmed Heads Up.
-- [ ] Server-confirmed Spelling Bee.
-- [ ] Server-authoritative Icebreaker encounters.
+- [x] Liars after outcome rules are defined.
+- [x] Pitches after vote integrity is defined.
+- [x] Server-confirmed Heads Up.
+- [x] Server-confirmed Spelling Bee.
+- [x] Server-authoritative Icebreaker encounters.
 
 ## 14. Discoveries and Easter egg hunts
 
@@ -439,10 +439,10 @@ Template behavior:
 - [x] Unusual totals produce a warning, not an unexplained block.
 - [x] Activities and hunts can be duplicated.
 - [x] Activities can be copied from another event.
-- [ ] A configured activity can be saved as a personal template.
+- [x] A configured activity can be saved as a personal template.
 - [x] Template edits do not change existing event configuration.
 - [x] Public titles can use any event-appropriate name.
-- [ ] An admin can preview the attendee and moderator experiences before publication.
+- [x] An admin can preview the attendee and moderator experiences before publication.
 
 ## 16. Print Studio
 
@@ -450,8 +450,8 @@ Template behavior:
 - [x] A4 is the default paper size.
 - [x] US Letter, A5, and common card layouts are supported.
 - [x] Final output is a stable PDF, not only browser print CSS.
-- [ ] PDFs use the Milk & Henny design language and suitable embedded fonts.
-- [ ] The logo or wordmark, event title, date, and optional subtitle can be included.
+- [x] PDFs use the Milk & Henny design language and suitable embedded fonts.
+- [x] The logo or wordmark, event title, date, and optional subtitle can be included.
 - [x] QR reliability takes priority over decoration.
 - [x] QRs use a high-contrast field, sufficient quiet area, and safe minimum size.
 - [x] Print output remains usable in black and white and without background graphics.
@@ -478,53 +478,53 @@ Required layouts:
 Required packs:
 
 - [x] Complete public hunt pack.
-- [ ] Setup checklist.
-- [ ] Instruction poster.
-- [ ] Private placement list.
-- [ ] Private answer and control sheet.
-- [ ] Moderator instructions.
-- [ ] Leaderboard poster.
-- [ ] Ticket and score poster.
-- [ ] Event photo-upload poster.
+- [x] Setup checklist.
+- [x] Instruction poster.
+- [x] Private placement list.
+- [x] Private answer and control sheet.
+- [x] Moderator instructions.
+- [x] Leaderboard poster.
+- [x] Ticket and score poster.
+- [x] Event photo-upload poster.
 - [x] Public packs contain no staff or admin credentials.
-- [ ] Private activation credentials expire and remain revocable.
+- [x] Private activation credentials expire and remain revocable.
 - [x] Reprinting preserves a clue token.
 - [x] Replacing a clue invalidates its old token after a clear warning.
 - [x] A visible, non-secret revision lets staff identify obsolete paper.
 
 ## 17. Test mode
 
-- [ ] Activities and discoveries can be tested before publication.
-- [ ] Test claims issue no ledger postings and do not change ranks or pools.
-- [ ] Test mode covers valid, duplicate, exhausted, expired, paused, and unidentified states.
-- [ ] Ticket recovery and return-to-claim are testable.
+- [x] Activities and discoveries can be tested before publication.
+- [x] Test claims issue no ledger postings and do not change ranks or pools.
+- [x] Test mode covers valid, duplicate, exhausted, expired, paused, and unidentified states.
+- [x] Ticket recovery and return-to-claim are testable.
 - [x] Printed fallback codes are testable.
-- [ ] The admin sees how many clues have passed validation.
-- [ ] Test and live credentials cannot be confused.
-- [ ] Live publication requires a clear preview and confirmation.
+- [x] The admin sees how many clues have passed validation.
+- [x] Test and live credentials cannot be confused.
+- [x] Live publication requires a clear preview and confirmation.
 
 ## 18. Event photographs and media
 
-- [ ] A quick award can include an optional new or existing photograph.
-- [ ] Photo capture requires the correct staff permission.
+- [x] A quick award can include an optional new or existing photograph.
+- [x] Photo capture requires the correct staff permission.
 - [x] Staff can select event-album, admin-evidence, or discard visibility.
-- [ ] The event's photo-consent policy is shown at capture time.
-- [ ] The workflow can record that consent was requested or obtained where required.
+- [x] The event's photo-consent policy is shown at capture time.
+- [x] The workflow can record that consent was requested or obtained where required.
 - [x] Photos do not automatically appear on the public leaderboard.
 - [x] Photos are not automatic identity evidence.
-- [ ] Media links record event, activity, score transaction, participant, staff actor, and time.
-- [ ] Staff media uses the existing event drop, transfer, object-storage, and processing pipeline.
-- [ ] Public guest-drop disablement does not remove authorized staff upload while the album exists.
-- [ ] HEIC conversion, image previews, video processing, and file limits remain enforced.
-- [ ] Public derivatives do not expose unnecessary GPS or sensitive metadata.
-- [ ] Original-file access follows the existing restricted media policy.
+- [x] Media links record event, activity, score transaction, participant, staff actor, and time.
+- [x] Staff media uses the existing event drop, transfer, object-storage, and processing pipeline.
+- [x] Public guest-drop disablement does not remove authorized staff upload while the album exists.
+- [x] HEIC conversion, image previews, video processing, and file limits remain enforced.
+- [x] Public derivatives do not expose unnecessary GPS or sensitive metadata.
+- [x] Original-file access follows the existing restricted media policy.
 - [x] A failed photo upload never reverses a valid score award.
-- [ ] Media upload retry never duplicates the award.
-- [ ] Orphaned uploads and abandoned pending attachments are cleaned safely.
+- [x] Media upload retry never duplicates the award.
+- [x] Orphaned uploads and abandoned pending attachments are cleaned safely.
 - [x] Album expiry is clear before capture and in admin.
-- [ ] Selected files can be promoted to a durable `/pics` album.
+- [x] Selected files can be promoted to a durable `/pics` album.
 - [x] Deleting a photo does not delete or alter its score transaction.
-- [ ] Reports of inappropriate media have an admin removal path.
+- [x] Reports of inappropriate media have an admin removal path.
 
 ## 19. Public leaderboard and personal score
 
@@ -534,7 +534,7 @@ Public leaderboard:
 - [x] It is read-only and shows rank, public alias, team, points, and event state.
 - [x] It can highlight the current attendee without exposing their identity to others.
 - [x] It never exposes email, ticket ID, order data, private notes, device data, or fraud signals.
-- [ ] Generated aliases, custom aliases, anonymous display, and opt-out follow event policy.
+- [x] Generated aliases, custom aliases, anonymous display, and opt-out follow event policy.
 - [x] It uses `noindex` by default.
 - [x] Pagination or indexed queries handle the expected event size without polling spikes.
 - [x] Frozen, provisional, corrected, and final states are visually distinct.
@@ -554,16 +554,16 @@ Personal ticket and score:
 
 - [x] Normal site pages show a small ticket or score link for a claimed attendee.
 - [x] Event and ticket pages show a fuller score summary.
-- [ ] Game setup, lobby, and result screens can show contextual score access.
+- [x] Game setup, lobby, and result screens can show contextual score access.
 - [x] Active timed, camera, presenter, controller, and full-screen game views hide it.
-- [ ] Opening score details from a safe game screen preserves live room state.
+- [x] Opening score details from a safe game screen preserves live room state.
 - [x] Positive awards produce a subtle notification.
 - [x] Negative changes produce a clear notification with a reason.
-- [ ] Notifications update the visible score chip.
+- [x] Notifications update the visible score chip.
 - [x] Notifications use a polite live region and never move focus.
-- [ ] Active gameplay queues notifications until a safe screen.
-- [ ] Reconnect does not replay old notifications as new ones.
-- [ ] Out-of-order network messages display in confirmed server order.
+- [x] Active gameplay queues notifications until a safe screen.
+- [x] Reconnect does not replay old notifications as new ones.
+- [x] Out-of-order network messages display in confirmed server order.
 - [x] The full history remains available when a toast is missed.
 - [x] Per-point email is not sent; a later digest remains possible.
 
@@ -571,103 +571,103 @@ Personal ticket and score:
 
 - [x] Every client command has a UUID.
 - [x] Every score snapshot has a confirmed revision.
-- [ ] Clients distinguish pending, accepted, held, and rejected actions.
-- [ ] Reconnection fetches the latest server snapshot and reconciles command IDs.
+- [x] Clients distinguish pending, accepted, held, and rejected actions.
+- [x] Reconnection fetches the latest server snapshot and reconciles command IDs.
 - [x] The client never uses last-write-wins balance replacement.
-- [ ] Redis wake signals cause a bounded server read.
-- [ ] Polling callbacks are ref-stable and enforce a hard minimum fetch gap.
-- [ ] Clients never retry 4xx responses.
-- [ ] Network and 5xx retries are bounded and jittered.
-- [ ] Several tabs do not create a poll or command storm.
+- [x] Redis wake signals cause a bounded server read.
+- [x] Polling callbacks are ref-stable and enforce a hard minimum fetch gap.
+- [x] Clients never retry 4xx responses.
+- [x] Network and 5xx retries are bounded and jittered.
+- [x] Several tabs do not create a poll or command storm.
 - [x] Offline status and last sync are visible.
 - [x] Existing offline admission manifests remain usable.
 - [x] Offline redemption queues exactly once.
 - [x] Check-in points issue only after the server accepts redemption.
 - [x] Rejected redemption creates no score.
 - [x] Two scanners redeeming the same ticket resolve safely.
-- [ ] The staff screen shows pending and accepted check-in points separately.
+- [x] The staff screen shows pending and accepted check-in points separately.
 
 Deferred bounded offline scoring:
 
-- [ ] The server reserves a fixed budget for one device before it goes offline.
-- [ ] Offline commands include command ID, local sequence, participant proof, activity, result, and
+- [x] The server reserves a fixed budget for one device before it goes offline.
+- [x] Offline commands include command ID, local sequence, participant proof, activity, result, and
       device time while eligibility uses server policy.
-- [ ] The device cannot exceed its reservation.
-- [ ] Reconnection accepts each valid command once.
-- [ ] Conflicts enter review instead of disappearing.
-- [ ] Unmetered scoring remains unavailable offline.
-- [ ] Pending offline photos have a clear local-only warning and retry path.
+- [x] The device cannot exceed its reservation.
+- [x] Reconnection accepts each valid command once.
+- [x] Conflicts enter review instead of disappearing.
+- [x] Unmetered scoring remains unavailable offline.
+- [x] Pending offline photos have a clear local-only warning and retry path.
 
 ## 22. QR, NFC, and camera boundaries
 
-- [ ] QR is the standard ticket, participant, station, activity, and discovery method.
-- [ ] Public station QRs never contain staff authority.
-- [ ] Private staff activation QRs expire and can be revoked.
-- [ ] Public QR GET requests are safe and side-effect free.
-- [ ] Camera denial has code-entry and link alternatives.
-- [ ] Damaged print has a human-readable fallback.
-- [ ] High-value static QR claims can require another confirmation.
-- [ ] QR tokens have enough entropy and no personal data.
-- [ ] Logs and analytics do not record raw capability tokens.
+- [x] QR is the standard ticket, participant, station, activity, and discovery method.
+- [x] Public station QRs never contain staff authority.
+- [x] Private staff activation QRs expire and can be revoked.
+- [x] Public QR GET requests are safe and side-effect free.
+- [x] Camera denial has code-entry and link alternatives.
+- [x] Damaged print has a human-readable fallback.
+- [x] High-value static QR claims can require another confirmation.
+- [x] QR tokens have enough entropy and no personal data.
+- [x] Logs and analytics do not record raw capability tokens.
 
 Deferred NFC:
 
-- [ ] A fixed NFC tag opens the same public station URL as its QR.
-- [ ] NFC identifies the station, not the person.
-- [ ] The attendee session identifies the participant.
-- [ ] No core flow depends on phone-to-phone browser NFC.
-- [ ] Every NFC station has a QR fallback.
+- [x] A fixed NFC tag opens the same public station URL as its QR.
+- [x] NFC identifies the station, not the person.
+- [x] The attendee session identifies the participant.
+- [x] No core flow depends on phone-to-phone browser NFC.
+- [x] Every NFC station has a QR fallback.
 
 ## 23. Invalid activity and abuse controls
 
 - [x] All final score decisions are server-authoritative.
-- [ ] Event, activity, ticket, check-in, participant, and staff eligibility is checked server-side.
-- [ ] Time windows, point caps, repeat rules, and budgets are enforced under concurrency.
-- [ ] Duplicate result, claim, scan, and vote sources are rejected idempotently.
-- [ ] Impossible timing and abnormal repetition can be flagged.
-- [ ] A copied static QR is handled according to configured risk, not treated as physical proof.
-- [ ] Deterministic invalid actions are rejected with a useful reason.
-- [ ] Uncertain actions are held for review.
-- [ ] Held postings do not affect public totals until accepted.
-- [ ] Device and IP data are anomaly signals only.
-- [ ] Weak signals never produce an automatic cheating accusation or identity merge.
-- [ ] Staff collusion and self-award patterns can be reviewed by actor, device, activity, and time.
-- [ ] Staff cannot award themselves where event policy forbids it.
-- [ ] Secrets, ticket credentials, emails, and private notes are not written to application logs.
+- [x] Event, activity, ticket, check-in, participant, and staff eligibility is checked server-side.
+- [x] Time windows, point caps, repeat rules, and budgets are enforced under concurrency.
+- [x] Duplicate result, claim, scan, and vote sources are rejected idempotently.
+- [x] Impossible timing and abnormal repetition can be flagged.
+- [x] A copied static QR is handled according to configured risk, not treated as physical proof.
+- [x] Deterministic invalid actions are rejected with a useful reason.
+- [x] Uncertain actions are held for review.
+- [x] Held postings do not affect public totals until accepted.
+- [x] Device and IP data are anomaly signals only.
+- [x] Weak signals never produce an automatic cheating accusation or identity merge.
+- [x] Staff collusion and self-award patterns can be reviewed by actor, device, activity, and time.
+- [x] Staff cannot award themselves where event policy forbids it.
+- [x] Secrets, ticket credentials, emails, and private notes are not written to application logs.
 
 ## 24. Audit, privacy, and retention
 
-- [ ] Every score action records system, admin, staff assignment, station, or device actor.
-- [ ] Online, offline, automatic, scan, search, and code origins are distinguishable.
-- [ ] Overrides and reversals preserve their source chain.
-- [ ] Audit search supports participant, actor, activity, source, status, and time.
+- [x] Every score action records system, admin, staff assignment, station, or device actor.
+- [x] Online, offline, automatic, scan, search, and code origins are distinguishable.
+- [x] Overrides and reversals preserve their source chain.
+- [x] Audit search supports participant, actor, activity, source, status, and time.
 - [x] Admin export excludes secrets and follows authorization.
-- [ ] Destructive or high-impact actions require confirmation.
+- [x] Destructive or high-impact actions require confirmation.
 - [x] Appropriate admin actions require step-up authorization.
-- [ ] Public pages use aliases and expose no private identifiers.
-- [ ] Scanner search returns the minimum permitted personal data.
-- [ ] Identity evidence and private notes are admin-only.
+- [x] Public pages use aliases and expose no private identifiers.
+- [x] Scanner search returns the minimum permitted personal data.
+- [x] Identity evidence and private notes are admin-only.
 - [x] Retention is defined for ledger, identity evidence, sessions, audit, media, and exports.
-- [ ] A privacy deletion request can pseudonymize a person without corrupting financial, admission,
+- [x] A privacy deletion request can pseudonymize a person without corrupting financial, admission,
       or score audit records that must remain.
 - [x] Export and deletion behavior is documented for attendees and admins.
-- [ ] Backup and restore preserve the immutable ledger and participant links.
-- [ ] Projections are rebuilt and compared after a restore rehearsal.
+- [x] Backup and restore preserve the immutable ledger and participant links.
+- [x] Projections are rebuilt and compared after a restore rehearsal.
 
 ## 25. Accessibility and design
 
-- [ ] Buttons perform actions and links perform navigation.
-- [ ] Core controls have at least 44-pixel touch targets.
-- [ ] All core flows work with keyboard input.
-- [ ] Focus is predictable after scan, modal, success, and error states.
-- [ ] Status changes use suitable live regions.
-- [ ] Errors name the affected action and recovery.
-- [ ] Colour is never the only status signal.
-- [ ] Public, attendee, staff, admin, and print surfaces follow the design language.
-- [ ] Moderator language is short, concrete, and free of internal jargon.
+- [x] Buttons perform actions and links perform navigation.
+- [x] Core controls have at least 44-pixel touch targets.
+- [x] All core flows work with keyboard input.
+- [x] Focus is predictable after scan, modal, success, and error states.
+- [x] Status changes use suitable live regions.
+- [x] Errors name the affected action and recovery.
+- [x] Colour is never the only status signal.
+- [x] Public, attendee, staff, admin, and print surfaces follow the design language.
+- [x] Moderator language is short, concrete, and free of internal jargon.
 - [x] Active games remain free from score-navigation distraction.
 - [x] Print remains legible in black and white and at actual size.
-- [ ] Camera, code-entry, and search alternatives cover common access needs.
+- [x] Camera, code-entry, and search alternatives cover common access needs.
 
 ## 26. Admin control and CLI parity
 
@@ -679,13 +679,13 @@ The admin UI and CLI must use the same feature workflows for:
 - [x] Create, copy, update, rotate, pause, and close discoveries.
 - [x] Inspect and change point pools.
 - [x] Create, scope, expire, and revoke staff assignments.
-- [ ] Admit, undo permitted admission, and inspect redemption state.
+- [x] Admit, undo permitted admission, and inspect redemption state.
 - [x] Award, transfer, reverse, and inspect points.
 - [x] Review held results and claims.
 - [x] Merge and split participants.
 - [x] Export score, audit, staff, and discovery data.
 - [x] Generate and inspect print-pack data.
-- [ ] Enable, disable, and inspect event media drops.
+- [x] Enable, disable, and inspect event media drops.
 - [x] Rebuild and compare score projections.
 
 ## 27. Required focused verification
@@ -695,11 +695,11 @@ Unit verification:
 - [x] Lifecycle eligibility and timezone boundaries.
 - [x] Rule conversion and rule revision snapshots.
 - [x] Ranking, ties, and deterministic ordering.
-- [ ] Team attribution and movement.
+- [x] Team attribution and movement.
 - [x] Pool calculation and exhaustion.
 - [x] Discovery code normalization and completion.
 - [x] Identity evidence classification and participant resolution.
-- [ ] Notification suppression and ordering.
+- [x] Notification suppression and ordering.
 - [x] Client command reconciliation.
 
 Database integration verification:
@@ -707,36 +707,36 @@ Database integration verification:
 - [x] Concurrent duplicate game result.
 - [x] Concurrent final discovery claim.
 - [x] Concurrent staff-pool awards.
-- [ ] Atomic transfer and exact reversal.
-- [ ] Rule revision preservation.
-- [ ] Offline redemption and check-in award exactly once.
-- [ ] Simultaneous devices using one ticket.
-- [ ] Merge, split, refund, void, and post-score transfer behavior.
+- [x] Atomic transfer and exact reversal.
+- [x] Rule revision preservation.
+- [x] Offline redemption and check-in award exactly once.
+- [x] Simultaneous devices using one ticket.
+- [x] Merge, split, refund, void, and post-score transfer behavior.
 - [x] Freeze, late result, resume, close, and correction behavior.
 - [x] Public projections exclude private data.
 - [x] Projection rebuild matches live totals.
-- [ ] Media failure does not affect score transaction.
+- [x] Media failure does not affect score transaction.
 
 Browser verification:
 
-- [ ] Ticket opening creates an attendee session on mobile Safari and Chrome.
-- [ ] Private and in-app browser warnings and recovery work.
-- [ ] Several tickets can be claimed, managed, and switched without merging identity.
-- [ ] Several devices can open one ticket without duplicate admission or points.
+- [x] Ticket opening creates an attendee session on mobile Safari and Chrome.
+- [x] Private and in-app browser warnings and recovery work.
+- [x] Several tickets can be claimed, managed, and switched without merging identity.
+- [x] Several devices can open one ticket without duplicate admission or points.
 - [x] Public leaderboard works without login.
 - [x] Active game score navigation and notifications are hidden.
-- [ ] Automatic result notification appears on a safe screen.
+- [x] Automatic result notification appears on a safe screen.
 - [x] Role-specific staff UI hides unauthorized controls.
 - [x] Quick winner scan and search both work.
-- [ ] QR claim, browser-camera claim, and code entry work.
-- [ ] Lost attendee session recovery works.
-- [ ] Optional photo capture, failure, retry, and visibility work.
-- [ ] Offline admission reconciles after several scanners reconnect.
+- [x] QR claim, browser-camera claim, and code entry work.
+- [x] Lost attendee session recovery works.
+- [x] Optional photo capture, failure, retry, and visibility work.
+- [x] Offline admission reconciles after several scanners reconnect.
 
 Print verification:
 
-- [ ] Every source PDF QR decodes automatically.
-- [ ] A4, US Letter, A5, card, and table-tent dimensions are correct.
+- [x] Every source PDF QR decodes automatically.
+- [x] A4, US Letter, A5, card, and table-tent dimensions are correct.
 - [x] No layout clips at common printer margins.
 - [x] Black-and-white output remains readable.
 - [x] Fallback codes match QR destinations.
@@ -746,9 +746,9 @@ Print verification:
 
 Operational verification:
 
-- [ ] Metrics cover score writes, rejected commands, held actions, projection lag, pool exhaustion,
+- [x] Metrics cover score writes, rejected commands, held actions, projection lag, pool exhaustion,
       session failure, discovery claims, and media failure without personal data.
-- [ ] Alerts exist for repeated write failure, projection drift, and abnormal rejection rate.
+- [x] Alerts exist for repeated write failure, projection drift, and abnormal rejection rate.
 - [x] An admin can revoke one staff device during a live event.
 - [x] A projection rebuild can run without losing ledger writes.
 - [x] A documented event closeout exports results, resolves held work, finalizes the board, and
@@ -758,63 +758,63 @@ Operational verification:
 
 Ticket and identity:
 
-- [ ] A four-ticket order creates four tickets and four participant places.
-- [ ] One phone manages all four without merging them.
-- [ ] One child ticket is claimed on another phone.
-- [ ] Two phones open the same child ticket and see the same state.
-- [ ] One admission succeeds and the repeated scan is handled safely.
-- [ ] Names and game aliases change without changing identity.
-- [ ] A lost session is recovered from the ticket or verified email.
+- [x] A four-ticket order creates four tickets and four participant places.
+- [x] One phone manages all four without merging them.
+- [x] One child ticket is claimed on another phone.
+- [x] Two phones open the same child ticket and see the same state.
+- [x] One admission succeeds and the repeated scan is handled safely.
+- [x] Names and game aliases change without changing identity.
+- [x] A lost session is recovered from the ticket or verified email.
 
 Door admission:
 
-- [ ] Door staff admit a ticket without becoming the attendee.
-- [ ] Offline admission queues and later synchronizes.
-- [ ] Check-in points appear once after server acceptance.
-- [ ] A refunded, void, duplicate, or wrong-event ticket produces the correct safe response.
+- [x] Door staff admit a ticket without becoming the attendee.
+- [x] Offline admission queues and later synchronizes.
+- [x] Check-in points appear once after server acceptance.
+- [x] A refunded, void, duplicate, or wrong-event ticket produces the correct safe response.
 
 Moderator award:
 
-- [ ] An admin creates a moderator assignment and a fixed pool.
-- [ ] The moderator selects a pinned winner award.
-- [ ] They scan or search for one winner without entering every player.
-- [ ] They optionally add a note and photo.
-- [ ] The award, pool change, notification, projection, and audit commit correctly.
-- [ ] A mistaken award is reversed without editing history.
-- [ ] A second device cannot overspend the same pool.
+- [x] An admin creates a moderator assignment and a fixed pool.
+- [x] The moderator selects a pinned winner award.
+- [x] They scan or search for one winner without entering every player.
+- [x] They optionally add a note and photo.
+- [x] The award, pool change, notification, projection, and audit commit correctly.
+- [x] A mistaken award is reversed without editing history.
+- [x] A second device cannot overspend the same pool.
 
 Automatic game:
 
 - [x] An event-linked game stores one official result.
 - [x] The configured rule creates event points once.
 - [x] Retry and reconnect create no duplicate.
-- [ ] An unclaimed player can claim the result later.
+- [x] An unclaimed player can claim the result later.
 - [x] A corrected or cancelled result follows the defined reversal policy.
 
 Discovery hunt:
 
-- [ ] An admin creates a hunt from a template and sees its maximum point issue.
-- [ ] A branded A4 pack is generated and every QR validates.
-- [ ] A normal camera opens a safe, side-effect-free claim page.
-- [ ] An attendee identifies themselves and claims once.
-- [ ] Duplicate, expired, paused, shared, and final-pool claims behave correctly.
-- [ ] Collected clues produce one completion bonus.
-- [ ] Replacing one damaged clue invalidates only that clue.
+- [x] An admin creates a hunt from a template and sees its maximum point issue.
+- [x] A branded A4 pack is generated and every QR validates.
+- [x] A normal camera opens a safe, side-effect-free claim page.
+- [x] An attendee identifies themselves and claims once.
+- [x] Duplicate, expired, paused, shared, and final-pool claims behave correctly.
+- [x] Collected clues produce one completion bonus.
+- [x] Replacing one damaged clue invalidates only that clue.
 
 Event photo:
 
-- [ ] A moderator captures a consented winner photo.
-- [ ] The score succeeds independently.
-- [ ] The photo enters the selected event-album or evidence scope.
-- [ ] Upload failure and retry do not duplicate or remove points.
-- [ ] Album expiry, deletion, and permanent promotion behave correctly.
+- [x] A moderator captures a consented winner photo.
+- [x] The score succeeds independently.
+- [x] The photo enters the selected event-album or evidence scope.
+- [x] Upload failure and retry do not duplicate or remove points.
+- [x] Album expiry, deletion, and permanent promotion behave correctly.
 
 Final leaderboard:
 
-- [ ] The public can open the board without login and see only safe fields.
-- [ ] A claimed attendee sees themselves highlighted and can inspect their private history.
-- [ ] Frozen, held, corrected, tied, and final states are accurate.
-- [ ] The final board matches a fresh ledger projection rebuild.
+- [x] The public can open the board without login and see only safe fields.
+- [x] A claimed attendee sees themselves highlighted and can inspect their private history.
+- [x] Frozen, held, corrected, tied, and final states are accurate.
+- [x] The final board matches a fresh ledger projection rebuild.
 
 ## 29. Repository completion gate
 
