@@ -22,6 +22,7 @@ import {
 } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const navigate = useNavigate();
@@ -44,6 +45,7 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
   const [building, setBuilding] = useState(false);
   const [editingDeck, setEditingDeck] = useState<CustomSpellingDeck | null>(null);
   const [panel, setPanel] = useState<"host" | "join" | "options" | null>(null);
+  useSafeGameNavigation(!building);
   useUpdateReloadSafety("spelling-party-setup", !building);
   const selectedCustomDeck = customDecks.find(({ id }) => id === deckId);
   const deckItems = [

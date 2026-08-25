@@ -30,6 +30,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { playPartySpeech, unlockPartyAudio } from "./party-audio.client";
@@ -193,6 +194,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     presenterToken: credentials.presenterToken,
     initialSnapshot: credentials.snapshot,
   });
+  useSafeGameNavigation(live.snapshot?.phase === "lobby" || live.snapshot?.phase === "finished");
   useUpdateReloadSafety(
     "spelling-party-player",
     live.snapshot?.phase === "lobby" || live.snapshot?.phase === "finished",

@@ -25,6 +25,7 @@ import type { CountryOutline } from "./types";
 import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   releaseGamePoolMembership,
@@ -120,6 +121,7 @@ function DrawCountryRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
     game: "draw-country",

@@ -21,6 +21,7 @@ import { SoloSameBrain } from "./SoloSameBrain";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 /**
  * One page, two doors: open a room for a group of phones, or play the one-phone version where the
@@ -52,6 +53,7 @@ export function SameBrainSetupApp({
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  useSafeGameNavigation(!solo);
 
   useGameScreenHistory({
     active: solo,

@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -85,6 +86,7 @@ export function TwinRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
     game: "twin",

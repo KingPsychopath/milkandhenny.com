@@ -29,6 +29,7 @@ import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 type Decision = "correct" | "pass";
@@ -79,6 +80,7 @@ function HeadsUpExperience({
       }
     : null;
   const [phase, setPhase] = useState<Phase>("setup");
+  useSafeGameNavigation(phase === "setup" || phase === "builder" || phase === "results");
   useUpdateReloadSafety("heads-up-round", phase === "setup" || phase === "results");
   // The phone spends a whole round on someone's forehead without a single touch.
   useWakeLock(phase === "playing" || phase === "countdown");

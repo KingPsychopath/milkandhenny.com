@@ -10,6 +10,7 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { JoinSameBrainRoom } from "./JoinSameBrainRoom";
 import { sameBrainBrowserKeys } from "./same-brain-keys";
 import {
@@ -95,6 +96,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = room.snapshot;
+  useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "ending");
   const roomExpiry = snapshot?.expiresAt;
   useEffect(() => {
     if (!roomExpiry) return;

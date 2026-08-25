@@ -38,6 +38,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 type Phase = "setup" | "builder" | "countdown" | "playing" | "results";
 const ROUND_STORAGE_KEY = "spelling-bee:active-round:v1";
@@ -78,6 +79,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       }
     : null;
   const [phase, setPhase] = useState<Phase>("setup");
+  useSafeGameNavigation(phase === "setup" || phase === "builder" || phase === "results");
   useUpdateReloadSafety("spelling-bee-round", phase === "setup" || phase === "results");
   useWakeLock(phase === "playing" || phase === "countdown");
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? SPELLING_DECKS[0].id);
