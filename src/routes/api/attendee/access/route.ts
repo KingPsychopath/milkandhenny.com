@@ -31,6 +31,7 @@ async function handlePOST(request: Request): Promise<Response> {
       returnTo: typeof body.returnTo === "string" ? body.returnTo : undefined,
       purpose,
       authenticatedPersonId: purpose === "add-email" ? session?.personId : undefined,
+      authenticatedAt: purpose === "add-email" ? session?.authenticatedAt : undefined,
     });
     return result.ok
       ? Response.json(

@@ -25,6 +25,7 @@ const RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
 const EMAIL_RATE_LIMIT = 5;
 const IP_RATE_LIMIT = 20;
 const MAX_CODE_ATTEMPTS = 6;
+const EMAIL_IDENTITY_STEP_UP_MS = 10 * 60 * 1_000;
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const LOGIN_RATE_PREFIX = "attendee-access:rate:v1:";
 
@@ -152,6 +153,7 @@ export async function requestAttendeeAccess(input: {
   returnTo?: string;
   purpose?: "sign-in" | "add-email";
   authenticatedPersonId?: string;
+  authenticatedAt?: string;
 }): Promise<AccessResult<{ sent: true }>> {
   if (!isValidEmail(input.email))
     return { ok: false, status: 400, error: "That email address doesn’t look right" };
@@ -169,6 +171,13 @@ export async function requestAttendeeAccess(input: {
   const purpose = input.purpose ?? "sign-in";
   if (purpose === "add-email" && !input.authenticatedPersonId)
     return { ok: false, status: 401, error: "Sign in before adding an email" };
+  if (purpose === "add-email" && attendeeEmailStepUpRequired(input.authenticatedAt)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Sign in again with an existing email before adding another",
+    };
+  }
 
   const challengeId = id("access");
   const token = randomBytes(32).toString("base64url");
@@ -230,6 +239,16 @@ export async function requestAttendeeAccess(input: {
     return { ok: false, status: 503, error: "The access email could not be queued" };
   }
   return { ok: true, value: { sent: true } };
+}
+
+export function attendeeEmailStepUpRequired(
+  authenticatedAt: string | undefined,
+  now = Date.now(),
+): boolean {
+  if (!authenticatedAt) return true;
+  const authenticatedTime = Date.parse(authenticatedAt);
+  const age = now - authenticatedTime;
+  return !Number.isFinite(authenticatedTime) || age < 0 || age > EMAIL_IDENTITY_STEP_UP_MS;
 }
 
 async function resolvePerson(

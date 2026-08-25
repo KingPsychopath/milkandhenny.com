@@ -3,7 +3,11 @@ import { Link } from "@tanstack/react-router";
 
 import type { AttendeeAccount } from "../types";
 
-type AccountResponse = { authenticated: boolean; account: AttendeeAccount | null };
+type AccountResponse = {
+  authenticated: boolean;
+  account: AttendeeAccount | null;
+  emailStepUpRequired: boolean;
+};
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   const groups = new Map<
@@ -36,8 +40,10 @@ export function MyAccountPage() {
   const [account, setAccount] = useState<AttendeeAccount | null>(null);
   const [name, setName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [emailStepUpRequired, setEmailStepUpRequired] = useState(true);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     void fetch("/api/attendee/session", { headers: { accept: "application/json" } })
@@ -48,6 +54,7 @@ export function MyAccountPage() {
       .then((body) => {
         setAccount(body.account);
         setName(body.account?.name ?? "");
+        setEmailStepUpRequired(body.emailStepUpRequired);
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : "Could not load"))
       .finally(() => setLoading(false));
@@ -78,9 +85,10 @@ export function MyAccountPage() {
       body: JSON.stringify({ email: newEmail, purpose: "add-email", returnTo: "/my" }),
     });
     const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (response.status === 403) setEmailStepUpRequired(true);
     setMessage(
       response.ok
-        ? "Check the new address and verify it. Your person and points will stay the same."
+        ? "Check the new address and verify it within 15 minutes."
         : (body.error ?? "That email could not be added"),
     );
     setBusy(false);
@@ -88,8 +96,20 @@ export function MyAccountPage() {
 
   async function signOut() {
     setBusy(true);
-    await fetch("/api/attendee/session", { method: "DELETE" });
-    window.location.assign("/");
+    setSigningOut(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/attendee/session", { method: "DELETE" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Could not sign out");
+      }
+      window.location.assign("/access?returnTo=/my");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not sign out");
+      setBusy(false);
+      setSigningOut(false);
+    }
   }
 
   async function cancelOperation(kind: "assignment" | "transfer" | "return", operationId: string) {
@@ -184,6 +204,15 @@ export function MyAccountPage() {
           <p className="mt-3 font-mono text-xs theme-muted">
             {account.name ? `Signed in as ${account.name}` : "Signed in"}
           </p>
+          <button
+            type="button"
+            disabled={busy}
+            aria-busy={signingOut}
+            onClick={() => void signOut()}
+            className="mh-action mh-action--secondary mt-5 disabled:opacity-45"
+          >
+            {signingOut ? "signing out…" : "sign out"}
+          </button>
           <section className="mt-8" aria-labelledby="my-tickets-heading">
             <h2 id="my-tickets-heading" className="font-serif text-2xl">
               Your events
@@ -338,37 +367,53 @@ export function MyAccountPage() {
               </button>
             </form>
             <form onSubmit={addEmail} className="space-y-3 border-t theme-border py-5">
-              <p className="font-mono text-micro theme-muted">
-                verified {account.emails.map((item) => item.masked).join(", ")}
-              </p>
-              <label htmlFor="new-email" className="block font-mono text-xs">
-                add or change email
-              </label>
-              <input
-                id="new-email"
-                type="email"
-                value={newEmail}
-                onChange={(event) => setNewEmail(event.target.value)}
-                required
-                autoComplete="email"
-                className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
-              />
-              <button
-                type="submit"
-                disabled={busy}
-                className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
-              >
-                verify this email
-              </button>
+              <div>
+                <h3 className="font-mono text-xs">sign-in emails</h3>
+                <p className="mt-1 font-mono text-micro theme-muted">
+                  {account.emails.map((item) => item.masked).join(", ")}
+                </p>
+                <p className="mt-2 max-w-md font-mono text-micro leading-relaxed theme-muted">
+                  Add another only if tickets reach more than one address. Existing emails stay
+                  connected.
+                </p>
+              </div>
+              {emailStepUpRequired ? (
+                <div className="border-y theme-border py-4">
+                  <p className="max-w-md font-mono text-xs leading-relaxed">
+                    Sign in again with an existing email before adding another.
+                  </p>
+                  <Link
+                    to="/access"
+                    search={{ returnTo: "/my" }}
+                    className="mh-action mh-action--quiet mt-3"
+                  >
+                    verify existing email →
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <label htmlFor="new-email" className="block font-mono text-xs">
+                    another sign-in email
+                  </label>
+                  <input
+                    id="new-email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(event) => setNewEmail(event.target.value)}
+                    required
+                    autoComplete="email"
+                    className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="mh-action mh-action--secondary disabled:opacity-45"
+                  >
+                    verify new email
+                  </button>
+                </>
+              )}
             </form>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void signOut()}
-              className="min-h-11 font-mono text-xs underline hover:opacity-70 disabled:opacity-50"
-            >
-              forget me on this device
-            </button>
           </details>
         </>
       )}

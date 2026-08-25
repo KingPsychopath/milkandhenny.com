@@ -1,6 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { attendeeAccount, updateAttendeeName } from "@/features/attendee-access/access.server";
+import {
+  attendeeAccount,
+  attendeeEmailStepUpRequired,
+  updateAttendeeName,
+} from "@/features/attendee-access/access.server";
 import {
   getAttendeeSession,
   signOutAttendeeSession,
@@ -10,9 +14,14 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 async function handleGET(request: Request): Promise<Response> {
   try {
     const session = await getAttendeeSession();
-    if (!session?.personId) return Response.json({ authenticated: false });
+    if (!session?.personId)
+      return Response.json({ authenticated: false, emailStepUpRequired: true });
     const account = await attendeeAccount(session.personId);
-    return Response.json({ authenticated: Boolean(account), account });
+    return Response.json({
+      authenticated: Boolean(account),
+      account,
+      emailStepUpRequired: attendeeEmailStepUpRequired(session.authenticatedAt),
+    });
   } catch (error) {
     return apiErrorFromRequest(
       request,
