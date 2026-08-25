@@ -5,7 +5,10 @@ import {
   claimDiscovery,
   findDiscoveryForPresented,
 } from "@/features/event-scoring/discoveries.server";
-import { activeParticipantForEvent } from "@/features/event-scoring/session.server";
+import {
+  activeParticipantForEvent,
+  openedParticipantForEvent,
+} from "@/features/event-scoring/session.server";
 import { rateLimitClaim } from "@/features/tickets/tickets.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -13,10 +16,6 @@ async function handlePOST(request: Request, slug: string) {
   try {
     if (!(await rateLimitClaim(getRequestIP() || "unknown"))) {
       return Response.json({ error: "Too many attempts. Try again shortly." }, { status: 429 });
-    }
-    const participantId = await activeParticipantForEvent(slug);
-    if (!participantId) {
-      return Response.json({ error: "Open your ticket before claiming a clue" }, { status: 401 });
     }
     const body: unknown = await request.json().catch(() => null);
     const record =
@@ -33,6 +32,22 @@ async function handlePOST(request: Request, slug: string) {
       return Response.json(
         { error: "That clue does not match an active discovery" },
         { status: 400 },
+      );
+    }
+    const ticketId = typeof record.ticketId === "string" ? record.ticketId : undefined;
+    const participantId =
+      discovery.rule.pointMode === "none"
+        ? await openedParticipantForEvent(slug, ticketId)
+        : await activeParticipantForEvent(slug);
+    if (!participantId) {
+      return Response.json(
+        {
+          error:
+            discovery.rule.pointMode === "none"
+              ? "Choose the ticket playing this hunt"
+              : "Choose a ticket for event points before claiming this clue",
+        },
+        { status: 401 },
       );
     }
     const result = await claimDiscovery({

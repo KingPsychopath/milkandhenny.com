@@ -13,22 +13,15 @@ export const discoveryActions: AdminScoringActionHandlers = {
     const activityId = stringValue(body.activityId);
     const name = stringValue(body.name);
     const method = stringValue(body.method);
-    if (
-      !activityId ||
-      !name ||
-      !method ||
-      !body.rule ||
-      typeof body.rule !== "object" ||
-      Array.isArray(body.rule)
-    )
+    if (!name || !method || !body.rule || typeof body.rule !== "object" || Array.isArray(body.rule))
       return Response.json(
-        { error: "Discovery name, activity, method, and rule are required" },
+        { error: "Discovery name, method, and rule are required" },
         { status: 400 },
       );
     return resultResponse(
       await createDiscovery({
         eventSlug,
-        activityId,
+        activityId: activityId || undefined,
         name,
         method: method as Parameters<typeof createDiscovery>[0]["method"],
         rule: body.rule as Parameters<typeof createDiscovery>[0]["rule"],

@@ -11,7 +11,9 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 async function participantForTicket(ticketId: string) {
   const ticket = await getTicket(ticketId);
   const session = await getAttendeeSession();
-  const access = session?.tickets.find((entry) => entry.ticketId === ticketId);
+  const access = session?.tickets.find(
+    (entry) => entry.ticketId === ticketId && entry.mode === "scoring",
+  );
   if (!ticket || !session || !access) return null;
   return access.participantId;
 }

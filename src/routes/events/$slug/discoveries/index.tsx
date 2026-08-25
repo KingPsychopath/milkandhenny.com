@@ -32,8 +32,9 @@ export const Route = createFileRoute("/events/$slug/discoveries/")({
 });
 
 function DiscoveriesRoute() {
-  const { activeParticipant } = Route.useLoaderData();
+  const { activeParticipantId, tickets } = Route.useLoaderData();
   const { slug } = Route.useParams();
+  const [ticketId, setTicketId] = useState(tickets.length === 1 ? tickets[0]!.ticketId : "");
   const [presented, setPresented] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,10 +44,10 @@ function DiscoveriesRoute() {
   const { clearCooldown, coolingDown, remainingSeconds, startCooldown } = useDiscoveryCooldown();
 
   useEffect(() => {
-    if (!activeParticipant) {
+    if (!activeParticipantId && tickets.length === 0) {
       sessionStorage.setItem("mah-pending-discovery", window.location.href);
     }
-  }, [activeParticipant]);
+  }, [activeParticipantId, tickets.length]);
 
   async function claim() {
     if (!presented.trim()) return;
@@ -59,7 +60,11 @@ function DiscoveriesRoute() {
       const response = await fetch(`/api/events/${encodeURIComponent(slug)}/discoveries/claim`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ presented: credential(presented), commandId: crypto.randomUUID() }),
+        body: JSON.stringify({
+          presented: credential(presented),
+          commandId: crypto.randomUUID(),
+          ticketId: ticketId || undefined,
+        }),
       });
       const body = (await response.json()) as {
         error?: string;
@@ -81,7 +86,9 @@ function DiscoveriesRoute() {
         throw new Error(body.error ?? "The clue could not be claimed");
       }
       setMessage(
-        `${body.discovery?.name ?? "Clue"} claimed. ${body.points ?? 0} points.${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} found.` : ""}`,
+        `${body.discovery?.name ?? "Clue"} claimed.${
+          (body.points ?? 0) > 0 ? ` ${body.points} points.` : ""
+        }${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} found.` : ""}`,
       );
       setPresented("");
       setCameraOpen(false);
@@ -99,10 +106,10 @@ function DiscoveriesRoute() {
         <p className="font-mono text-micro uppercase tracking-widest theme-muted">
           event discovery
         </p>
-        <h1 className="mt-2 font-serif text-4xl">Claim a clue</h1>
+        <h1 className="mt-2 font-serif text-4xl">Find a clue</h1>
         <p className="mt-3 font-mono text-xs theme-muted">Scan a printed clue or enter its code.</p>
       </header>
-      {!activeParticipant ? (
+      {!activeParticipantId && tickets.length === 0 ? (
         <p className="mt-10 border-y theme-border py-6 font-serif text-lg">
           Open your event ticket on this device, then return here.
         </p>
@@ -111,24 +118,6 @@ function DiscoveriesRoute() {
           className="mt-10 space-y-5 border-y theme-border py-6"
           aria-label="Claim a discovery"
         >
-          <button
-            type="button"
-            onClick={() => setCameraOpen((current) => !current)}
-            className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
-          >
-            {cameraOpen ? "close camera" : "scan a clue"}
-          </button>
-          {cameraOpen && (
-            <div className="max-w-sm">
-              <CameraFeed
-                paused={busy}
-                onCode={(raw) => {
-                  setPresented(credential(raw));
-                  setCameraOpen(false);
-                }}
-              />
-            </div>
-          )}
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -136,21 +125,62 @@ function DiscoveriesRoute() {
             }}
             className="space-y-4"
           >
+            {!activeParticipantId && tickets.length > 1 && (
+              <label className="block font-mono text-xs">
+                ticket playing this hunt
+                <select
+                  required
+                  value={ticketId}
+                  onChange={(event) => setTicketId(event.target.value)}
+                  className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+                >
+                  <option value="">choose a ticket</option>
+                  {tickets.map((ticket) => (
+                    <option key={ticket.ticketId} value={ticket.ticketId}>
+                      {ticket.holderName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label htmlFor="discovery-entry" className="block font-mono text-xs">
-              enter a code
+              clue code
             </label>
-            <input
-              id="discovery-entry"
-              required
-              value={presented}
-              onChange={(event) => setPresented(event.target.value)}
-              className="min-h-11 w-full border theme-border bg-transparent px-3 font-mono text-base"
-            />
+            <div className="flex border theme-border focus-within:border-foreground">
+              <input
+                id="discovery-entry"
+                required
+                value={presented}
+                onChange={(event) => setPresented(event.target.value)}
+                placeholder="type or scan"
+                autoComplete="off"
+                className="min-h-11 min-w-0 flex-1 bg-transparent px-3 font-mono text-base outline-none"
+              />
+              <button
+                type="button"
+                aria-expanded={cameraOpen}
+                onClick={() => setCameraOpen((current) => !current)}
+                className="min-h-11 shrink-0 border-l theme-border px-3 font-mono text-xs hover:opacity-70"
+              >
+                {cameraOpen ? "close" : "camera"}
+              </button>
+            </div>
+            {cameraOpen && (
+              <div className="max-w-sm">
+                <CameraFeed
+                  paused={busy}
+                  onCode={(raw) => {
+                    setPresented(credential(raw));
+                    setCameraOpen(false);
+                  }}
+                />
+              </div>
+            )}
             <button
               disabled={busy}
               className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
             >
-              {busy ? "checking…" : "claim clue"}
+              {busy ? "checking…" : "claim"}
             </button>
           </form>
           {message && (

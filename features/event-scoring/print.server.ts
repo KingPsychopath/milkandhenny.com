@@ -676,8 +676,8 @@ export async function renderDiscoveryPrintPdf(input: {
       const fallbackSize = fitTextSize(
         item.fallbackCode,
         compact ? 8 : 10,
-        compact ? 4.5 : 6,
-        fallbackWidth,
+        1,
+        fallbackWidth - 1,
         boldFont.widths,
       );
       if (input.pack.includeCutGuides !== false)

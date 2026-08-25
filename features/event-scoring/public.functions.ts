@@ -2,7 +2,22 @@ import { createServerFn } from "@tanstack/react-start";
 
 import { getDiscovery } from "./discoveries.server";
 import { publicLeaderboard } from "./scoring.server";
-import { activeParticipantForEvent, getAttendeeSession } from "./session.server";
+import {
+  activeParticipantForEvent,
+  getAttendeeSession,
+  openedTicketsForEvent,
+} from "./session.server";
+import { getTicket } from "@/features/tickets/store.server";
+
+async function openedTicketChoices(eventSlug: string) {
+  const opened = await openedTicketsForEvent(eventSlug);
+  return Promise.all(
+    opened.map(async (access) => ({
+      ticketId: access.ticketId,
+      holderName: (await getTicket(access.ticketId))?.holderName ?? "Event ticket",
+    })),
+  );
+}
 
 export const getClaimedScoreLinksFn = createServerFn({ method: "GET" }).handler(async () => {
   const session = await getAttendeeSession();
@@ -49,6 +64,7 @@ export const getPublicDiscoveryFn = createServerFn({ method: "GET" })
     return {
       discovery,
       activeParticipantId: await activeParticipantForEvent(data.eventSlug),
+      tickets: await openedTicketChoices(data.eventSlug),
     };
   });
 
@@ -58,5 +74,6 @@ export const getDiscoveryClaimPageFn = createServerFn({ method: "GET" })
     return { eventSlug: identifier(input?.eventSlug, "Event") };
   })
   .handler(async ({ data }) => ({
-    activeParticipant: Boolean(await activeParticipantForEvent(data.eventSlug)),
+    activeParticipantId: await activeParticipantForEvent(data.eventSlug),
+    tickets: await openedTicketChoices(data.eventSlug),
   }));

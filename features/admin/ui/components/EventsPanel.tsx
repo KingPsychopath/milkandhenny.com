@@ -2212,12 +2212,12 @@ function EventOperations({
                     )}
                   </div>
                   <a
-                    href={`/ticket/${ticket.id}`}
+                    href={`/ticket/${ticket.id}?preview=1`}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
                   >
-                    ticket ↗
+                    attendee preview ↗
                   </a>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">

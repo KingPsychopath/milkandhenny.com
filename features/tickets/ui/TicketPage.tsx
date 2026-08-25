@@ -19,10 +19,11 @@ import { describeCheckpoints, type OrderTicketView, type TicketPageTicket } from
 import { RefundTicketButton } from "./RefundTicketButton";
 import { ManageTickets } from "./ManageTickets";
 import { ShareTicketButton } from "./ShareTicketButton";
-import { AttendeeSessionControls } from "./AttendeeSessionControls";
+import { TicketScoringControl, type TicketMode } from "./TicketScoringControl";
 import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScoreSyncStatus } from "./ScoreSyncStatus";
 import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
+import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
 
 /**
  * The ticket itself.
@@ -45,7 +46,9 @@ export function TicketPage({
   managerTicketId,
   checkpointNames,
   album,
+  hasDiscoveries,
   score,
+  preview = false,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -57,6 +60,8 @@ export function TicketPage({
   managerTicketId?: string;
   checkpointNames: string[];
   album: EventAlbumView;
+  hasDiscoveries: boolean;
+  preview?: boolean;
   score?: {
     participantId: string;
     publicAlias: string;
@@ -76,6 +81,7 @@ export function TicketPage({
   };
 }) {
   const [confirmedScore, setConfirmedScore] = useState(score?.points);
+  const [ticketMode, setTicketMode] = useState<TicketMode | null>(null);
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
   const invalid = ticket.status !== "valid";
@@ -103,6 +109,15 @@ export function TicketPage({
   return (
     <div className="min-h-screen bg-background">
       <main id="main" className="max-w-md mx-auto px-6 pt-10 pb-16">
+        {preview && (
+          <aside className="mb-6 border-y theme-border py-3 font-mono text-micro leading-relaxed">
+            <strong className="block text-foreground">admin · attendee preview</strong>
+            <span className="theme-muted">
+              Read-only. Opening this view does not remember, claim, refund, share, or change the
+              ticket. Its preview QR cannot admit anyone.
+            </span>
+          </aside>
+        )}
         <Link
           to="/events/$slug"
           params={{ slug: event.slug }}
@@ -140,6 +155,7 @@ export function TicketPage({
                     <Link
                       to="/ticket/$id"
                       params={{ id: entry.id }}
+                      search={preview ? { preview: true } : {}}
                       aria-current={current ? "page" : undefined}
                       className={`flex min-w-0 items-baseline gap-2 rounded-lg border px-3 py-2 font-mono text-micro transition-opacity hover:opacity-70 ${
                         current
@@ -157,7 +173,7 @@ export function TicketPage({
                     <span className="text-right">
                       {entry.id === managerTicketId ? (
                         <span className="font-mono text-micro theme-faint">yours</span>
-                      ) : entry.status === "valid" ? (
+                      ) : entry.status === "valid" && !preview ? (
                         <ShareTicketButton
                           ticketId={entry.id}
                           holderName={entry.holderName}
@@ -177,7 +193,7 @@ export function TicketPage({
           </nav>
         )}
 
-        {ticket.kind === "paid" && canManageOrder && managerTicketId && (
+        {!preview && ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-4">
             <ManageTickets
               managerTicketId={managerTicketId}
@@ -325,7 +341,7 @@ export function TicketPage({
                       : "Nothing in it yet"}
                   </span>
                   <span className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                    {album.uploadPath && (
+                    {album.uploadPath && !preview && (
                       <a href={album.uploadPath} className={LINK_CLASS}>
                         add yours
                       </a>
@@ -368,7 +384,7 @@ export function TicketPage({
           >
             add to calendar
           </a>
-          {!isManagerTicket && (
+          {!preview && !isManagerTicket && (
             <ShareTicketButton
               ticketId={ticket.id}
               holderName={ticket.holderName}
@@ -401,13 +417,18 @@ export function TicketPage({
             <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
               {confirmedScore ?? score.points} points
             </p>
-            <ScoreNotificationNotice ticketId={ticket.id} />
+            {!preview && <TicketScoringControl ticketId={ticket.id} onModeChange={setTicketMode} />}
+            {!preview && ticketMode === "scoring" && (
+              <ScoreNotificationNotice ticketId={ticket.id} />
+            )}
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
-            <ScorePublicIdentityControls
-              ticketId={ticket.id}
-              initialAlias={score.publicAlias}
-              initialMode={score.displayMode}
-            />
+            {!preview && ticketMode === "scoring" && (
+              <ScorePublicIdentityControls
+                ticketId={ticket.id}
+                initialAlias={score.publicAlias}
+                initialMode={score.displayMode}
+              />
+            )}
             {score.teamRank !== undefined && (
               <p className="mt-1 font-mono text-micro theme-subtle">
                 rank {score.teamRank} within your team
@@ -418,41 +439,22 @@ export function TicketPage({
                 managed order total: {score.orderPoints} points
               </p>
             )}
-            <div className="mt-4 flex flex-wrap gap-4">
-              <a
-                href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
-                className="font-mono text-xs underline hover:opacity-70"
-              >
-                scan a clue
-              </a>
-              <a
-                href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
-                className="font-mono text-xs underline hover:opacity-70"
-              >
-                enter a code
-              </a>
-              {pendingDiscovery && (
-                <a
-                  href={pendingDiscovery}
-                  onClick={() => sessionStorage.removeItem("mah-pending-discovery")}
-                  className="font-mono text-xs underline hover:opacity-70"
-                >
-                  return to pending clue
-                </a>
-              )}
-            </div>
             <p className="mt-4 font-mono text-micro theme-muted">
-              <ScoreSyncStatus
-                ticketId={ticket.id}
-                snapshot={{
-                  eventSlug: event.slug,
-                  participantId: score.participantId,
-                  balance: score.points,
-                  revision: score.revision,
-                  synchronizedAt: score.synchronizedAt,
-                }}
-                onSnapshot={(next) => setConfirmedScore(next.balance)}
-              />{" "}
+              {preview ? (
+                "preview"
+              ) : (
+                <ScoreSyncStatus
+                  ticketId={ticket.id}
+                  snapshot={{
+                    eventSlug: event.slug,
+                    participantId: score.participantId,
+                    balance: score.points,
+                    revision: score.revision,
+                    synchronizedAt: score.synchronizedAt,
+                  }}
+                  onSnapshot={(next) => setConfirmedScore(next.balance)}
+                />
+              )}{" "}
               · last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
             </p>
             {score.transactions.length > 0 && (
@@ -483,7 +485,44 @@ export function TicketPage({
           </section>
         )}
 
-        {score && <AttendeeSessionControls ticketId={ticket.id} />}
+        {hasDiscoveries && (
+          <section
+            aria-labelledby="ticket-clues-heading"
+            className="mt-8 border-y theme-border py-4"
+          >
+            <h2
+              id="ticket-clues-heading"
+              className="font-mono text-micro uppercase tracking-widest theme-muted"
+            >
+              event clues
+            </h2>
+            <p className="mt-2 font-serif text-lg">Scan a clue or enter its code.</p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              Hunts keep their own progress. Some can also award event points.
+            </p>
+            {!preview && (
+              <div className="mt-3 flex flex-wrap gap-4">
+                <a
+                  href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
+                  className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
+                >
+                  open clue entry
+                </a>
+                {pendingDiscovery && (
+                  <a
+                    href={pendingDiscovery}
+                    onClick={() => sessionStorage.removeItem("mah-pending-discovery")}
+                    className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
+                  >
+                    return to pending clue
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {!preview && <TicketIdentityControls ticketId={ticket.id} />}
 
         {/* A way to reach a human, on the page they will actually have open.
             Step-free access, a name that needs changing, a QR the door cannot
@@ -503,7 +542,7 @@ export function TicketPage({
           </a>
         </p>
 
-        {ticket.kind === "paid" && canManageOrder && managerTicketId && (
+        {!preview && ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-8 border-t theme-border pt-6">
             <RefundTicketButton
               ticketId={managerTicketId}

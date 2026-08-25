@@ -6,8 +6,11 @@ import { getTicketPageFn } from "@/features/event-operations/ticket-page.functio
 import { TicketPage } from "@/features/tickets/ui/TicketPage";
 
 export const Route = createFileRoute("/ticket/$id")({
-  loader: async ({ params }) => {
-    const result = await getTicketPageFn({ data: { id: params.id } });
+  validateSearch: (search: Record<string, unknown>): { preview?: boolean } =>
+    search.preview === true || search.preview === "1" ? { preview: true } : {},
+  loaderDeps: ({ search }) => ({ preview: search.preview }),
+  loader: async ({ params, deps }) => {
+    const result = await getTicketPageFn({ data: { id: params.id, preview: deps.preview } });
     if (!result.found) throw notFound();
     return result;
   },
@@ -36,7 +39,9 @@ function TicketRoute() {
       managerTicketId={data.managerTicketId}
       checkpointNames={data.checkpointNames}
       album={data.album}
+      hasDiscoveries={data.hasDiscoveries}
       score={data.score}
+      preview={data.preview}
     />
   );
 }

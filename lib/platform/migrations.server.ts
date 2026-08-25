@@ -2324,6 +2324,114 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
+    id: "0051_attendee_person_access",
+    sql: `
+      -- Passwordless access upgrades the existing anonymous attendee session.
+      -- Challenges are short-lived and one-use; only hashes of credentials are
+      -- retained. The destination is constrained to a local path in the app.
+      alter table event_person_identifiers
+        add column display_hint text check (display_hint is null or char_length(display_hint) <= 254);
+
+      create table event_person_login_challenges (
+        id                    text primary key,
+        email                 text not null check (char_length(email) between 3 and 254),
+        email_hash            text not null check (char_length(email_hash) = 64),
+        token_hash            text not null unique check (char_length(token_hash) = 64),
+        code_hash             text not null check (char_length(code_hash) = 64),
+        purpose               text not null default 'sign-in'
+                              check (purpose in ('sign-in', 'add-email')),
+        person_id_hint        text references event_people (id) on delete cascade,
+        return_to             text not null default '/my'
+                              check (return_to like '/%' and return_to not like '//%'),
+        attempts              integer not null default 0 check (attempts between 0 and 6),
+        expires_at            timestamptz not null,
+        consumed_at           timestamptz,
+        consumed_person_id    text references event_people (id) on delete set null,
+        consumed_session_hash text check (
+                                consumed_session_hash is null
+                                or char_length(consumed_session_hash) = 64
+                              ),
+        created_at            timestamptz not null default now(),
+        check (
+          (purpose = 'sign-in' and person_id_hint is null)
+          or (purpose = 'add-email' and person_id_hint is not null)
+        )
+      );
+
+      create index event_person_login_challenges_email_idx
+        on event_person_login_challenges (email_hash, created_at desc);
+      create index event_person_login_challenges_expiry_idx
+        on event_person_login_challenges (expires_at)
+        where consumed_at is null;
+
+      -- The participant remains the scoring identity. This table records why
+      -- its optional person link exists and preserves release/dispute history.
+      create table event_ticket_identity_claims (
+        id              text primary key,
+        event_slug      text not null references events (slug)
+                        on update cascade on delete restrict,
+        ticket_id       text not null references tickets (id) on delete restrict,
+        participant_id  text not null references event_participants (id) on delete restrict,
+        person_id       text not null references event_people (id) on delete restrict,
+        identifier_id   text references event_person_identifiers (id) on delete set null,
+        status          text not null default 'active'
+                        check (status in ('active', 'released', 'disputed')),
+        source          text not null check (source in ('ticket-and-email', 'admin-review')),
+        claimed_at      timestamptz not null default now(),
+        released_at     timestamptz,
+        release_reason  text,
+        check (
+          (status = 'active' and released_at is null)
+          or (status <> 'active' and released_at is not null)
+        )
+      );
+
+      create unique index event_ticket_identity_claims_active_ticket_idx
+        on event_ticket_identity_claims (ticket_id) where status = 'active';
+      create unique index event_ticket_identity_claims_active_participant_idx
+        on event_ticket_identity_claims (participant_id) where status = 'active';
+      create index event_ticket_identity_claims_person_idx
+        on event_ticket_identity_claims (person_id, claimed_at desc);
+
+      -- Purchaser recovery is separate from attendee ownership. Verifying an
+      -- order email may grant management, but never claims any child ticket.
+      create table event_order_managers (
+        id              text primary key,
+        event_slug      text not null references events (slug)
+                        on update cascade on delete restrict,
+        order_id        text not null,
+        person_id       text not null references event_people (id) on delete cascade,
+        identifier_id   text references event_person_identifiers (id) on delete set null,
+        role            text not null default 'owner' check (role in ('owner', 'manager')),
+        source          text not null check (source in ('verified-purchaser-email', 'admin')),
+        status          text not null default 'active' check (status in ('active', 'revoked')),
+        created_at      timestamptz not null default now(),
+        revoked_at      timestamptz,
+        check (
+          (status = 'active' and revoked_at is null)
+          or (status = 'revoked' and revoked_at is not null)
+        )
+      );
+
+      create unique index event_order_managers_active_idx
+        on event_order_managers (order_id, person_id) where status = 'active';
+      create index event_order_managers_person_idx
+        on event_order_managers (person_id, event_slug, created_at desc);
+    `,
+  },
+  {
+    id: "0052_event_discovery_independence",
+    sql: `
+      alter table score_discoveries
+        drop constraint score_discoveries_activity_id_fkey,
+        alter column activity_id drop not null;
+
+      alter table score_discoveries
+        add constraint score_discoveries_activity_id_fkey
+          foreign key (activity_id) references score_activities (id) on delete set null;
+    `,
+  },
+  {
     id: "0053_email_operations_ledger",
     sql: `
       alter table email_outbox

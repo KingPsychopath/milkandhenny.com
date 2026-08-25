@@ -8,7 +8,6 @@ export function ClaimedScoreLinks() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [links, setLinks] = useState<Array<{ eventSlug: string; ticketId: string }>>([]);
   const [safeGameScreen, setSafeGameScreen] = useState(false);
-  const [points, setPoints] = useState<Record<string, number>>({});
   const [notices, setNotices] = useState<
     Array<{ id: string; ticketId: string; points: number; kind: string; createdAt: string }>
   >([]);
@@ -38,15 +37,9 @@ export function ClaimedScoreLinks() {
       const batches = await Promise.all(
         links.map(async (link) => {
           const ticketId = encodeURIComponent(link.ticketId);
-          const [scoreResponse, noticeResponse] = await Promise.all([
-            fetch(`/api/tickets/${ticketId}/score`, { headers: { accept: "application/json" } }),
-            fetch(`/api/tickets/${ticketId}/score/notifications`, {
-              headers: { accept: "application/json" },
-            }),
-          ]);
-          const score = scoreResponse.ok
-            ? ((await scoreResponse.json()) as { participant?: { balance?: number } })
-            : undefined;
+          const noticeResponse = await fetch(`/api/tickets/${ticketId}/score/notifications`, {
+            headers: { accept: "application/json" },
+          });
           const body = noticeResponse.ok
             ? ((await noticeResponse.json()) as {
                 notifications?: Array<{
@@ -59,19 +52,11 @@ export function ClaimedScoreLinks() {
             : undefined;
           return {
             link,
-            balance: score?.participant?.balance,
             notifications: body?.notifications ?? [],
           };
         }),
       );
       if (!active) return;
-      setPoints(
-        Object.fromEntries(
-          batches.flatMap((batch) =>
-            typeof batch.balance === "number" ? [[batch.link.ticketId, batch.balance]] : [],
-          ),
-        ),
-      );
       const ordered = batches
         .flatMap((batch) =>
           batch.notifications.map((notice) => ({ ...notice, ticketId: batch.link.ticketId })),
@@ -111,57 +96,20 @@ export function ClaimedScoreLinks() {
       window.removeEventListener("mah-score-wake", reconnect);
     };
   }, [links, onGame, safeGameScreen]);
-  if (links.length === 0 || (onGame && !safeGameScreen)) return null;
+  if (notices.length === 0 || (onGame && !safeGameScreen)) return null;
   return (
-    <nav
-      aria-label="Claimed event scores"
+    <aside
+      aria-label="Score updates"
+      aria-live="polite"
       className="fixed bottom-4 left-4 z-30 border theme-border bg-background px-3 py-2 shadow-sm"
     >
-      {links.length === 1 ? (
-        <a
-          href={`/ticket/${encodeURIComponent(links[0]!.ticketId)}`}
-          target={onGame ? "_blank" : undefined}
-          rel={onGame ? "noreferrer" : undefined}
-          className="font-mono text-micro underline hover:opacity-70"
-        >
-          ticket and score
-          {points[links[0]!.ticketId] !== undefined
-            ? ` · ${points[links[0]!.ticketId]} points`
-            : ""}
-        </a>
-      ) : (
-        <details>
-          <summary className="min-h-11 cursor-pointer py-3 font-mono text-micro underline">
-            my events
-          </summary>
-          <ul className="space-y-2 pb-2">
-            {links.map((link) => (
-              <li key={link.eventSlug}>
-                <a
-                  href={`/ticket/${encodeURIComponent(link.ticketId)}`}
-                  target={onGame ? "_blank" : undefined}
-                  rel={onGame ? "noreferrer" : undefined}
-                  className="font-mono text-micro underline hover:opacity-70"
-                >
-                  {link.eventSlug.replaceAll("-", " ")}
-                  {points[link.ticketId] !== undefined ? ` · ${points[link.ticketId]} points` : ""}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {notices.length > 0 && (
-        <div aria-live="polite" className="mt-2 border-t theme-border pt-2">
-          {notices.map((notice) => (
-            <p key={notice.id} className="font-mono text-micro">
-              {notice.kind === "held"
-                ? `${Math.abs(notice.points)} points pending review`
-                : `${notice.points > 0 ? "+" : ""}${notice.points} confirmed points`}
-            </p>
-          ))}
-        </div>
-      )}
-    </nav>
+      {notices.map((notice) => (
+        <p key={notice.id} className="font-mono text-micro">
+          {notice.kind === "held"
+            ? `${Math.abs(notice.points)} points pending review`
+            : `${notice.points > 0 ? "+" : ""}${notice.points} confirmed points`}
+        </p>
+      ))}
+    </aside>
   );
 }

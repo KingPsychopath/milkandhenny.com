@@ -1,13 +1,29 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import {
-  getAttendeeSession,
-  openAttendeeTicket,
-  removeTicketFromDevice,
-  setActiveParticipant,
-} from "@/features/event-scoring/session.server";
+import { getAttendeeSession, openAttendeeTicket } from "@/features/event-scoring/session.server";
 import { getTicket } from "@/features/tickets/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+
+async function handleGET(request: Request, ticketId: string) {
+  try {
+    const session = await getAttendeeSession();
+    const entry = session?.tickets.find((candidate) => candidate.ticketId === ticketId);
+    return Response.json({
+      mode: entry?.mode ?? "view-only",
+      active: Boolean(
+        entry && session?.activeParticipantByEventId[entry.eventId] === entry.participantId,
+      ),
+      eventHasActive: Boolean(entry && session?.activeParticipantByEventId[entry.eventId]),
+    });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "event-scoring.session.read",
+      "Could not read this device’s ticket choice",
+      error,
+    );
+  }
+}
 
 async function handlePOST(request: Request, ticketId: string) {
   try {
@@ -18,27 +34,17 @@ async function handlePOST(request: Request, ticketId: string) {
       body && typeof body === "object" && !Array.isArray(body)
         ? (body as Record<string, unknown>)
         : {};
-    const mode =
-      record.mode === "personal" || record.mode === "managed" || record.mode === "view-only"
-        ? record.mode
-        : "view-only";
+    const mode = record.mode === "scoring" ? "scoring" : "view-only";
     const result = await openAttendeeTicket({ ticketId, eventSlug: ticket.eventSlug, mode });
     if (!result) return Response.json({ error: "That ticket is not available" }, { status: 409 });
-    const selected =
-      mode === "view-only"
-        ? result.session
-        : await setActiveParticipant({
-            eventSlug: ticket.eventSlug,
-            participantId: result.ticket.participantId,
-          });
     return Response.json({
-      tickets: (selected ?? result.session).tickets.map((entry) => ({
+      tickets: result.session.tickets.map((entry) => ({
         ticketId: entry.ticketId,
         eventSlug: entry.eventSlug,
         mode: entry.mode,
       })),
       active:
-        (selected ?? result.session).activeParticipantByEventId[result.ticket.eventId] ===
+        result.session.activeParticipantByEventId[result.ticket.eventId] ===
         result.ticket.participantId,
     });
   } catch (error) {
@@ -51,49 +57,11 @@ async function handlePOST(request: Request, ticketId: string) {
   }
 }
 
-async function handlePATCH(request: Request, ticketId: string) {
-  try {
-    const ticket = await getTicket(ticketId);
-    const session = await getAttendeeSession();
-    const entry = session?.tickets.find((candidate) => candidate.ticketId === ticketId);
-    if (!ticket || !session || !entry)
-      return Response.json({ error: "Ticket is not open on this device" }, { status: 404 });
-    const result = await setActiveParticipant({
-      eventSlug: ticket.eventSlug,
-      participantId: entry.participantId,
-    });
-    return result
-      ? Response.json({ active: true })
-      : Response.json({ error: "Ticket is not available" }, { status: 409 });
-  } catch (error) {
-    return apiErrorFromRequest(
-      request,
-      "event-scoring.session.select",
-      "Could not select the ticket",
-      error,
-    );
-  }
-}
-
-async function handleDELETE(request: Request, ticketId: string) {
-  try {
-    return Response.json({ removed: await removeTicketFromDevice(ticketId) });
-  } catch (error) {
-    return apiErrorFromRequest(
-      request,
-      "event-scoring.session.remove",
-      "Could not remove the ticket from this device",
-      error,
-    );
-  }
-}
-
 export const Route = createFileRoute("/api/tickets/$id/session")({
   server: {
     handlers: {
+      GET: ({ request, params }) => handleGET(request, params.id),
       POST: ({ request, params }) => handlePOST(request, params.id),
-      PATCH: ({ request, params }) => handlePATCH(request, params.id),
-      DELETE: ({ request, params }) => handleDELETE(request, params.id),
     },
   },
 });

@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getRequestIP } from "@tanstack/react-start/server";
 
-import { claimDiscovery } from "@/features/event-scoring/discoveries.server";
-import { activeParticipantForEvent } from "@/features/event-scoring/session.server";
+import { claimDiscovery, getDiscovery } from "@/features/event-scoring/discoveries.server";
+import {
+  activeParticipantForEvent,
+  openedParticipantForEvent,
+} from "@/features/event-scoring/session.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { rateLimitClaim } from "@/features/tickets/tickets.server";
 
@@ -11,9 +14,6 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
     if (!(await rateLimitClaim(getRequestIP() || "unknown"))) {
       return Response.json({ error: "Too many attempts. Try again shortly." }, { status: 429 });
     }
-    const participantId = await activeParticipantForEvent(slug);
-    if (!participantId)
-      return Response.json({ error: "Choose your ticket before claiming a clue" }, { status: 401 });
     const body: unknown = await request.json().catch(() => null);
     const record =
       body && typeof body === "object" && !Array.isArray(body)
@@ -24,6 +24,24 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
     if (!presented || !/^[A-Za-z0-9_-]{16,100}$/.test(commandId)) {
       return Response.json({ error: "Enter the clue and try again" }, { status: 400 });
     }
+    const discovery = await getDiscovery(discoveryId);
+    if (!discovery || discovery.eventSlug !== slug)
+      return Response.json({ error: "Discovery not found" }, { status: 404 });
+    const ticketId = typeof record.ticketId === "string" ? record.ticketId : undefined;
+    const participantId =
+      discovery.rule.pointMode === "none"
+        ? await openedParticipantForEvent(slug, ticketId)
+        : await activeParticipantForEvent(slug);
+    if (!participantId)
+      return Response.json(
+        {
+          error:
+            discovery.rule.pointMode === "none"
+              ? "Choose the ticket playing this hunt"
+              : "Choose a ticket for event points before claiming this clue",
+        },
+        { status: 401 },
+      );
     const result = await claimDiscovery({
       discoveryId,
       participantId,

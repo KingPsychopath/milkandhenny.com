@@ -15,7 +15,7 @@ import { getActivity, getOrCreateSettings, getParticipant, recordScore } from ".
 type DiscoveryRow = {
   id: string;
   event_slug: string;
-  activity_id: string;
+  activity_id: string | null;
   name: string;
   method: string;
   status: string;
@@ -26,7 +26,7 @@ type DiscoveryRow = {
 export type Discovery = {
   id: string;
   eventSlug: string;
-  activityId: string;
+  activityId?: string;
   name: string;
   method: "qr" | "code" | "word" | "phrase" | "collected-clues";
   status: DiscoveryRow["status"];
@@ -129,7 +129,7 @@ function toDiscovery(row: DiscoveryRow): Discovery {
   return {
     id: row.id,
     eventSlug: row.event_slug,
-    activityId: row.activity_id,
+    activityId: row.activity_id ?? undefined,
     name: row.name,
     method: row.method as Discovery["method"],
     status: row.status,
@@ -140,7 +140,7 @@ function toDiscovery(row: DiscoveryRow): Discovery {
 
 export async function createDiscovery(input: {
   eventSlug: string;
-  activityId: string;
+  activityId?: string;
   name: string;
   method: Discovery["method"];
   status?: DiscoveryRow["status"];
@@ -150,9 +150,11 @@ export async function createDiscovery(input: {
 }): Promise<DiscoveryResult<DiscoverySetup>> {
   const event = await getEvent(input.eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
-  const activity = await getActivity(input.activityId);
-  if (!activity || activity.eventSlug !== input.eventSlug)
-    return { ok: false, status: 404, error: "Activity not found" };
+  if (input.activityId) {
+    const activity = await getActivity(input.activityId);
+    if (!activity || activity.eventSlug !== input.eventSlug)
+      return { ok: false, status: 404, error: "Activity not found" };
+  }
   if (!input.name.trim()) return { ok: false, status: 400, error: "Name the discovery" };
   const ruleError = discoveryRuleError(input.rule, input.method);
   if (ruleError) return { ok: false, status: 400, error: ruleError };
@@ -590,8 +592,9 @@ export async function claimDiscovery(input: {
     }
   }
 
-  const settings = await getOrCreateSettings(discovery.eventSlug);
-  if (settings.state !== "live" && settings.state !== "frozen") {
+  const settings =
+    discovery.rule.pointMode === "none" ? null : await getOrCreateSettings(discovery.eventSlug);
+  if (settings && settings.state !== "live" && settings.state !== "frozen") {
     return { ok: false, status: 409, error: "Scoring is not accepting discovery claims" };
   }
   const claimId = id("claim");
@@ -789,7 +792,7 @@ export async function claimDiscovery(input: {
   if (claim.kind === "duplicate") {
     const cooldown = cooldownResult(discovery.rule, claim.claim.created_at);
     if (claim.claim.state === "held" && !claim.claim.transaction_id) {
-      if (settings.state !== "live") {
+      if (settings && settings.state !== "live") {
         return { ok: true, value: { state: "held", points: claim.claim.points, ...cooldown } };
       }
       return settleDiscoveryClaim(
@@ -816,7 +819,7 @@ export async function claimDiscovery(input: {
   }
   const cooldown = cooldownResult(discovery.rule, claim.createdAt);
   const points = claim.points;
-  if (settings.state !== "live") {
+  if (settings && settings.state !== "live") {
     await query(`update score_discovery_claims set state = 'held' where id = $1`, [claimId]);
     return { ok: true, value: { state: "held", points, ...cooldown } };
   }

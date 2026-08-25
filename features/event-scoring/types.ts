@@ -270,6 +270,7 @@ export type ScoreMediaLink = {
 };
 
 export type DiscoveryPointMode =
+  | "none"
   | "once"
   | "fixed-pool"
   | "first-claimants"
@@ -440,6 +441,9 @@ export function discoveryClaimPoints(
 ): number {
   let points = 0;
   switch (rule.pointMode) {
+    case "none":
+      points = 0;
+      break;
     case "once":
       points = rule.pointsPerClue ?? 0;
       break;

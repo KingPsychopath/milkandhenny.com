@@ -1083,6 +1083,35 @@ describeWithDatabase("event scoring postgres", () => {
     ).toBe("2");
   });
 
+  it("runs a points-free hunt without scoring settings or a score activity", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const created = await createDiscovery({
+      eventSlug: "scoring-night",
+      name: "Find the amber door",
+      method: "code",
+      status: "live",
+      rule: {
+        pointMode: "none",
+        claimFrequency: "once",
+        requiresCheckIn: false,
+        remainderAward: "discard",
+      },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.value.activityId).toBeUndefined();
+    expect(await findSettings("scoring-night")).toBeNull();
+    expect(
+      await claimDiscovery({
+        discoveryId: created.value.id,
+        participantId: participant!.id,
+        presented: created.value.code ?? "missing",
+        commandId: "points-free-discovery-claim",
+      }),
+    ).toMatchObject({ ok: true, value: { state: "accepted", points: 0 } });
+    expect(await findSettings("scoring-night")).toBeNull();
+  });
+
   it("enforces repeatable discovery cooldowns, idempotency, limits, and fixed pools", async () => {
     const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
     const activity = await createActivity({

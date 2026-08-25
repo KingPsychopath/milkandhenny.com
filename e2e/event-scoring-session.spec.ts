@@ -47,15 +47,31 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     const context = await browser.newContext({ ...device });
     const page = await context.newPage();
     await page.goto(`/ticket/${firstTicket}`);
-    await clickSessionAction(page, "this is my ticket", "selected for event scoring");
+    await expect(page.getByRole("button", { name: "use this ticket for points" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "I manage this ticket" })).toHaveCount(0);
+    await clickSessionAction(
+      page,
+      "use this ticket for points",
+      "Event points now go to this ticket",
+    );
 
     const secondTab = await context.newPage();
     await secondTab.goto(`/ticket/${secondTicket}`);
-    await clickSessionAction(secondTab, "I manage this ticket", "managing this ticket");
-    await clickSessionAction(secondTab, "switch to this ticket", "selected for event scoring");
+    await clickSessionAction(
+      secondTab,
+      "use this ticket for points",
+      "Event points now go to this ticket",
+    );
 
     await page.reload();
     await expect(page.getByRole("link", { name: "← Browser scoring" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "use this ticket for points" })).toBeVisible();
+    await expect(
+      page.getByText("This switches event points from your other ticket."),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "you", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "You" })).toBeVisible();
+    await expect(page.getByText("Ticket links work without signing in.")).toBeVisible();
     await context.close();
     await browser.close();
   }
@@ -65,6 +81,23 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     [eventSlug],
   );
   expect(participants.rows[0]?.count).toBe("2");
+
+  const desktopBrowser = await chromium.launch();
+  const desktopContext = await desktopBrowser.newContext({
+    viewport: { width: 1365, height: 768 },
+  });
+  const desktopPage = await desktopContext.newPage();
+  await desktopPage.goto(`/ticket/${firstTicket}`);
+  const youBox = await desktopPage.getByRole("link", { name: "you", exact: true }).boundingBox();
+  const lampBox = await desktopPage
+    .getByRole("button", { name: /Switch to .* mode/ })
+    .boundingBox();
+  expect(youBox).not.toBeNull();
+  expect(lampBox).not.toBeNull();
+  expect(boxesOverlap(youBox!, lampBox!)).toBe(false);
+  await desktopContext.close();
+  await desktopBrowser.close();
+
   const browser = await chromium.launch();
   const inAppContext = await browser.newContext({
     ...devices["Pixel 7"],
@@ -72,13 +105,25 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
   });
   const inAppPage = await inAppContext.newPage();
   await inAppPage.goto(`/ticket/${firstTicket}`);
-  await expect(inAppPage.getByText(/Open the link in Safari or Chrome/)).toBeVisible();
-  await expect(inAppPage.getByRole("link", { name: "open in browser" })).toBeVisible();
-  await expect(inAppPage.getByRole("button", { name: "copy ticket link" })).toBeVisible();
+  await expect(inAppPage.getByText("using an in-app browser?")).toBeVisible();
+  await expect(inAppPage.getByRole("link", { name: "open in Safari or Chrome" })).toBeVisible();
+  await expect(inAppPage.getByRole("button", { name: "copy ticket link" })).toHaveCount(0);
   await inAppContext.close();
   await browser.close();
   await pool.end();
 });
+
+function boxesOverlap(
+  left: { x: number; y: number; width: number; height: number },
+  right: { x: number; y: number; width: number; height: number },
+) {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
+  );
+}
 
 async function clickSessionAction(
   page: import("@playwright/test").Page,

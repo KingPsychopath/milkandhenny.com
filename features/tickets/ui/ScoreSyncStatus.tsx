@@ -44,7 +44,6 @@ export function ScoreSyncStatus({
   onSnapshot?: (snapshot: ScoreSnapshot) => void;
 }) {
   const [online, setOnline] = useState(true);
-  const [lastSynchronizedAt, setLastSynchronizedAt] = useState(snapshot.synchronizedAt);
   const onSnapshotRef = useRef(onSnapshot);
   const snapshotRef = useRef(snapshot);
   onSnapshotRef.current = onSnapshot;
@@ -87,7 +86,6 @@ export function ScoreSyncStatus({
         current = reconcileSnapshot(current, incoming);
         attempts = 0;
         setOnline(true);
-        setLastSynchronizedAt(current.synchronizedAt);
         await store.saveSnapshot(current);
         onSnapshotRef.current?.(current);
         schedule();
@@ -129,11 +127,5 @@ export function ScoreSyncStatus({
       store.close();
     };
   }, [eventSlug, participantId, ticketId]);
-  return (
-    <span>
-      {online
-        ? `synchronized ${new Date(lastSynchronizedAt).toLocaleTimeString()}`
-        : "offline - showing last confirmed score"}
-    </span>
-  );
+  return <span>{online ? "synchronized" : "offline - showing last confirmed score"}</span>;
 }

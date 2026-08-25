@@ -5,6 +5,7 @@ import type { AdminScoringActivity, ScoringAction, ScoringData } from "./event-s
 
 const METHODS = ["qr", "code", "word", "phrase", "collected-clues"] as const;
 const POINT_MODES = [
+  "none",
   "once",
   "fixed-pool",
   "first-claimants",
@@ -28,7 +29,7 @@ export function ScoringDiscoveriesPanel({
   const [activityId, setActivityId] = useState(discoveryActivities[0]?.id ?? "");
   const [name, setName] = useState("");
   const [method, setMethod] = useState<(typeof METHODS)[number]>("qr");
-  const [pointMode, setPointMode] = useState<(typeof POINT_MODES)[number]>("once");
+  const [pointMode, setPointMode] = useState<(typeof POINT_MODES)[number]>("none");
   const [points, setPoints] = useState(3);
   const [completionBonus, setCompletionBonus] = useState(10);
   const [poolPoints, setPoolPoints] = useState(50);
@@ -47,7 +48,7 @@ export function ScoringDiscoveriesPanel({
     event.preventDefault();
     const result = await onAction({
       action: "create-discovery",
-      activityId,
+      activityId: activityId || undefined,
       name,
       method,
       rule: {
@@ -135,90 +136,92 @@ export function ScoringDiscoveriesPanel({
       <h4 id="scoring-discoveries-heading" className="font-serif text-xl">
         Discoveries
       </h4>
-      {discoveryActivities.length === 0 ? (
-        <p className="mt-3 font-mono text-xs theme-muted">Create a discovery activity first.</p>
-      ) : (
-        <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="font-mono text-xs sm:col-span-2">
-            start from a template
-            <select
-              defaultValue=""
-              onChange={(event) => {
-                const selected = EVENT_SCORING_TEMPLATES.find(
-                  (item) => item.id === event.target.value,
-                );
-                if (!selected || selected.kind !== "discovery" || !selected.method) return;
-                setName(selected.label);
-                setMethod(selected.method);
-                setPoints(selected.rule.fixedPoints ?? 5);
-              }}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              <option value="">Blank discovery</option>
-              {EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "discovery").map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="font-mono text-xs">
-            activity
-            <select
-              value={activityId}
-              onChange={(event) => setActivityId(event.target.value)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              {discoveryActivities.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {activity.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="font-mono text-xs">
-            name
-            <input
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-            />
-          </label>
-          <label className="font-mono text-xs">
-            claim method
-            <select
-              value={method}
-              onChange={(event) => setMethod(event.target.value as typeof method)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              {METHODS.map((value) => (
-                <option key={value} value={value}>
-                  {value.replaceAll("-", " ")}
-                </option>
-              ))}
-            </select>
-            {(method === "code" || method === "word" || method === "phrase") && (
-              <span className="mt-2 block theme-muted">
-                Static codes can be photographed or shared. Use a claimant limit, short window, or
-                QR replacement for valuable awards.
-              </span>
-            )}
-          </label>
-          <label className="font-mono text-xs">
-            point mode
-            <select
-              value={pointMode}
-              onChange={(event) => setPointMode(event.target.value as typeof pointMode)}
-              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-            >
-              {POINT_MODES.map((value) => (
-                <option key={value} value={value}>
-                  {value.replaceAll("-", " ")}
-                </option>
-              ))}
-            </select>
-          </label>
+      <p className="mt-2 font-mono text-xs theme-muted">
+        Hunts work on their own. Choose a point mode only when a claim should affect scoring.
+      </p>
+      <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="font-mono text-xs sm:col-span-2">
+          start from a template
+          <select
+            defaultValue=""
+            onChange={(event) => {
+              const selected = EVENT_SCORING_TEMPLATES.find(
+                (item) => item.id === event.target.value,
+              );
+              if (!selected || selected.kind !== "discovery" || !selected.method) return;
+              setName(selected.label);
+              setMethod(selected.method);
+              setPoints(selected.rule.fixedPoints ?? 5);
+            }}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            <option value="">Blank discovery</option>
+            {EVENT_SCORING_TEMPLATES.filter((item) => item.kind === "discovery").map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="font-mono text-xs">
+          activity
+          <select
+            value={activityId}
+            onChange={(event) => setActivityId(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            <option value="">No score activity</option>
+            {discoveryActivities.map((activity) => (
+              <option key={activity.id} value={activity.id}>
+                {activity.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="font-mono text-xs">
+          name
+          <input
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        <label className="font-mono text-xs">
+          claim method
+          <select
+            value={method}
+            onChange={(event) => setMethod(event.target.value as typeof method)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            {METHODS.map((value) => (
+              <option key={value} value={value}>
+                {value.replaceAll("-", " ")}
+              </option>
+            ))}
+          </select>
+          {(method === "code" || method === "word" || method === "phrase") && (
+            <span className="mt-2 block theme-muted">
+              Static codes can be photographed or shared. Use a claimant limit, short window, or QR
+              replacement for valuable awards.
+            </span>
+          )}
+        </label>
+        <label className="font-mono text-xs">
+          point mode
+          <select
+            value={pointMode}
+            onChange={(event) => setPointMode(event.target.value as typeof pointMode)}
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+          >
+            {POINT_MODES.map((value) => (
+              <option key={value} value={value}>
+                {value.replaceAll("-", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        {pointMode !== "none" && (
           <label className="font-mono text-xs">
             points per clue
             <input
@@ -229,6 +232,8 @@ export function ScoringDiscoveriesPanel({
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
+        )}
+        {pointMode !== "none" && (
           <label className="font-mono text-xs">
             completion bonus
             <input
@@ -239,6 +244,8 @@ export function ScoringDiscoveriesPanel({
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
+        )}
+        {pointMode !== "none" && (
           <label className="font-mono text-xs">
             total pool
             <input
@@ -249,98 +256,98 @@ export function ScoringDiscoveriesPanel({
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
+        )}
+        <label className="font-mono text-xs">
+          total claims — optional
+          <input
+            type="number"
+            min={1}
+            value={claimantLimit}
+            onChange={(event) => setClaimantLimit(event.target.value)}
+            placeholder="unlimited"
+            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+          />
+        </label>
+        {method !== "collected-clues" && (
           <label className="font-mono text-xs">
-            total claims — optional
-            <input
-              type="number"
-              min={1}
-              value={claimantLimit}
-              onChange={(event) => setClaimantLimit(event.target.value)}
-              placeholder="unlimited"
-              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-            />
+            claims per person
+            <select
+              value={claimFrequency}
+              onChange={(event) => setClaimFrequency(event.target.value as typeof claimFrequency)}
+              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+            >
+              <option value="once">once only</option>
+              <option value="cooldown">repeat after cooldown</option>
+            </select>
           </label>
-          {method !== "collected-clues" && (
+        )}
+        {method !== "collected-clues" && claimFrequency === "cooldown" && (
+          <>
             <label className="font-mono text-xs">
-              claims per person
-              <select
-                value={claimFrequency}
-                onChange={(event) => setClaimFrequency(event.target.value as typeof claimFrequency)}
-                className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-              >
-                <option value="once">once only</option>
-                <option value="cooldown">repeat after cooldown</option>
-              </select>
-            </label>
-          )}
-          {method !== "collected-clues" && claimFrequency === "cooldown" && (
-            <>
-              <label className="font-mono text-xs">
-                cooldown in minutes
-                <input
-                  type="number"
-                  min={1 / 60}
-                  max={10_080}
-                  step={1}
-                  required
-                  value={cooldownMinutes}
-                  onChange={(event) => setCooldownMinutes(Number(event.target.value))}
-                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                />
-              </label>
-              <label className="font-mono text-xs">
-                maximum claims per person — optional
-                <input
-                  type="number"
-                  min={1}
-                  max={10_000}
-                  value={maximumClaimsPerParticipant}
-                  onChange={(event) => setMaximumClaimsPerParticipant(event.target.value)}
-                  placeholder="unlimited"
-                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                />
-              </label>
-              <p className="font-mono text-xs theme-muted sm:col-span-2">
-                Each successful repeat creates a new score transaction. Fixed-pool discoveries stop
-                when their pool is empty.
-              </p>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setAdvanced((value) => !value)}
-            aria-expanded={advanced}
-            className="min-h-11 text-left font-mono text-xs underline hover:opacity-70 sm:col-span-2"
-          >
-            {advanced ? "hide advanced settings" : "show advanced settings"}
-          </button>
-          {advanced && (
-            <label className="font-mono text-xs sm:col-span-2">
-              diminishing tiers
+              cooldown in minutes
               <input
-                value={tiers}
-                onChange={(event) => setTiers(event.target.value)}
+                type="number"
+                min={1 / 60}
+                max={10_080}
+                step={1}
+                required
+                value={cooldownMinutes}
+                onChange={(event) => setCooldownMinutes(Number(event.target.value))}
                 className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
               />
             </label>
-          )}
-          {method === "collected-clues" && (
-            <label className="font-mono text-xs sm:col-span-2">
-              clues — one key|label per line
-              <textarea
-                required
-                rows={4}
-                value={clues}
-                onChange={(event) => setClues(event.target.value)}
-                className="mt-2 w-full border theme-border bg-transparent p-3"
+            <label className="font-mono text-xs">
+              maximum claims per person — optional
+              <input
+                type="number"
+                min={1}
+                max={10_000}
+                value={maximumClaimsPerParticipant}
+                onChange={(event) => setMaximumClaimsPerParticipant(event.target.value)}
+                placeholder="unlimited"
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
               />
             </label>
-          )}
-          <button className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70">
-            create draft discovery
-          </button>
-        </form>
-      )}
+            <p className="font-mono text-xs theme-muted sm:col-span-2">
+              Each successful repeat creates a new score transaction. Fixed-pool discoveries stop
+              when their pool is empty.
+            </p>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => setAdvanced((value) => !value)}
+          aria-expanded={advanced}
+          className="min-h-11 text-left font-mono text-xs underline hover:opacity-70 sm:col-span-2"
+        >
+          {advanced ? "hide advanced settings" : "show advanced settings"}
+        </button>
+        {advanced && (
+          <label className="font-mono text-xs sm:col-span-2">
+            diminishing tiers
+            <input
+              value={tiers}
+              onChange={(event) => setTiers(event.target.value)}
+              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+            />
+          </label>
+        )}
+        {method === "collected-clues" && (
+          <label className="font-mono text-xs sm:col-span-2">
+            clues — one key|label per line
+            <textarea
+              required
+              rows={4}
+              value={clues}
+              onChange={(event) => setClues(event.target.value)}
+              className="mt-2 w-full border theme-border bg-transparent p-3"
+            />
+          </label>
+        )}
+        <button className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70">
+          create draft discovery
+        </button>
+      </form>
       {issued.length > 0 && (
         <div className="mt-5 border-y theme-border py-4" role="status">
           <p className="font-mono text-xs">Copy these credentials now.</p>

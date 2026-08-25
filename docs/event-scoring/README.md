@@ -25,7 +25,7 @@ also complete.
 | Event participant | One human or unclaimed attendee place in one event. Scores belong here.        |
 | Ticket            | One admission credential linked to one event participant.                      |
 | Order             | A purchase that can contain several separate tickets and participants.         |
-| Attendee session  | Anonymous browser access to one or more claimed or managed tickets.            |
+| Attendee session  | Anonymous browser access to opened tickets and one scoring choice per event.   |
 | Staff assignment  | Event-scoped authority for a person, link, station, or device.                 |
 | Activity          | A game, physical challenge, check-in award, discovery, or manual award source. |
 | Discovery         | A QR, code, phrase, clue, or collection that an attendee can claim.            |
@@ -163,7 +163,13 @@ Confirm each decision before the affected implementation begins.
 - [x] The public alias is separate from canonical and ticket-holder names.
 - [x] An unknown game player can hold an unclaimed participant result.
 - [x] A signed claim token can connect that result later.
-- [x] A future passwordless login or passkey links to `personId` without moving ledger entries.
+- [x] Passwordless email links and codes link to `personId` without moving ledger entries; a future
+      passkey can attach as another verified identifier.
+- [x] Access links are short-lived, one-use, stored only as hashes, and put credentials in the URL
+      fragment so link previews cannot consume them.
+- [x] Verifying a purchaser email restores order management without claiming every ticket in it.
+- [x] A shared-ticket guest can use the link immediately and explicitly connect only their ticket
+      after email verification.
 
 ## 3. Tickets, orders, and simultaneous access
 
@@ -190,16 +196,21 @@ Confirm each decision before the affected implementation begins.
 - [x] Opening a valid ticket on the attendee's device creates or extends an attendee session.
 - [x] The session uses an opaque, secure, HTTP-only, first-party cookie.
 - [x] The cookie uses appropriate `Secure`, `SameSite`, expiry, and rotation settings.
-- [x] The server session can reference several separately claimed or managed tickets.
+- [x] The server session can reference several separately opened tickets.
 - [x] The session stores one active participant choice per event.
-- [x] `This is my ticket` selects a personal participant without creating permanent ownership.
-- [x] `I am managing this ticket` gives access without treating all managed tickets as one person.
-- [x] `Switch ticket` changes the active view without moving points or identity.
-- [x] `Remove from this device` removes browser access without deleting server data.
-- [x] `This is not me` clears the selection without damaging history.
-- [x] Opening a new ticket offers add, switch, view-only, and managed choices in plain language.
-- [x] Private browsing warns that access may not persist.
-- [x] Likely in-app browsers offer `Open in Safari or Chrome` and `Copy link` actions.
+- [x] Order management comes from the purchaser ticket link or verified purchaser email, not from
+      an attendee session mode.
+- [x] `Use this ticket for points` selects one event participant without creating permanent
+      ownership.
+- [x] Selecting another ticket for points changes the active scoring participant without moving
+      points or identity.
+- [x] The normal ticket surface does not ask for a device role or show destructive session controls.
+- [x] `Forget me on this device` removes verified identity while ticket and score data remain durable.
+- [x] Opening a ticket requires no device-role question; scoring has one separate “use this ticket
+      for points” action.
+- [x] `You` explains that ticket links remain the recovery path when private browsing forgets a
+      session.
+- [x] Likely in-app browsers offer one subtle `Open in Safari or Chrome` action.
 - [x] Losing cookies does not lose ticket, participant, or score data.
 - [x] Recovery works through the ticket link, ticket email resend, verified email, or admin support.
 - [x] A staff scan never creates attendee identity on the staff device.
@@ -402,7 +413,11 @@ Extended integrations:
 - [x] Admins can create a single discovery or a named discovery set.
 - [x] Claim methods include QR, code, word, three-word phrase, and collected clues.
 - [x] A normal phone camera can open a discovery URL.
-- [x] The ticket or score page includes `Scan a clue` and `Enter a code`.
+- [x] The ticket page has one separate clue entry link; the entry surface combines a code field and
+      camera button.
+- [x] Discovery lifecycle and progress do not require scoring settings or a score activity.
+- [x] A discovery can award no points, or optionally post its configured award through the score
+      ledger.
 - [x] A page load or link preview never consumes a claim.
 - [x] Claiming requires an explicit server-side POST from an identified attendee session.
 - [x] An unidentified browser can open a ticket and return to the pending discovery.
@@ -426,6 +441,7 @@ Extended integrations:
 
 Supported point modes:
 
+- [x] No-points hunt or collection.
 - [x] Once per participant with no global pool.
 - [x] Fixed global point pool.
 - [x] First configured number of claimants.
@@ -524,6 +540,12 @@ Required packs:
 - [x] Test claims issue no ledger postings and do not change ranks or pools.
 - [x] Test mode covers valid, duplicate, exhausted, expired, paused, and unidentified states.
 - [x] Ticket recovery and return-to-claim are testable.
+- [x] Every real ticket in the admin event list opens in authenticated read-only attendee preview;
+      preview does not create a session, claim identity, change a score, send email, share, refund,
+      or mutate ticket state.
+- [x] Existing ticket filters let admins choose real single/group, checked-in, refunded, void,
+      scoring-on, and scoring-off examples where those states exist, without manufacturing test
+      attendees.
 - [x] Printed fallback codes are testable.
 - [x] The admin sees how many clues have passed validation.
 - [x] Test and live credentials cannot be confused.
@@ -573,7 +595,7 @@ Personal ticket and score:
 - [x] Every positive or negative change has a safe reason.
 - [x] The page shows last successful synchronization.
 - [x] Discovery progress, camera scan, and code entry are available.
-- [x] A simple ticket switcher supports personal and managed tickets.
+- [x] The order switcher manages ticket links; each event has one separate active scoring ticket.
 - [x] `My events` remains understandable when several events are claimed.
 
 ## 20. Navigation and notifications
