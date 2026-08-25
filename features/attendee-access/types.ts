@@ -1,7 +1,7 @@
 export type AttendeeAccount = {
   personId: string;
   name: string | null;
-  emails: Array<{ masked: string; verifiedAt: string }>;
+  emails: Array<{ id: string; masked: string; verifiedAt: string }>;
   tickets: Array<{
     id: string;
     publicId: string;

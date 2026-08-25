@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import {
+  removeAttendeeEmail,
   requestAttendeeAccess,
   requestFingerprint,
   verifyAttendeeAccess,
@@ -80,13 +81,37 @@ async function handlePATCH(request: Request): Promise<Response> {
   }
 }
 
+async function handleDELETE(request: Request): Promise<Response> {
+  try {
+    const session = await getAttendeeSession();
+    if (!session?.personId) return Response.json({ error: "Sign in first" }, { status: 401 });
+    const body = record(await request.json().catch(() => null));
+    const result = await removeAttendeeEmail({
+      personId: session.personId,
+      identifierId: typeof body.identifierId === "string" ? body.identifierId : "",
+      authenticatedAt: session.authenticatedAt,
+    });
+    return result.ok
+      ? Response.json(result.value)
+      : Response.json({ error: result.error }, { status: result.status });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "attendee-access.email.remove",
+      "The sign-in email could not be removed",
+      error,
+    );
+  }
+}
+
 export const Route = createFileRoute("/api/attendee/access")({
   server: {
     handlers: {
       POST: ({ request }) => handlePOST(request),
       PATCH: ({ request }) => handlePATCH(request),
+      DELETE: ({ request }) => handleDELETE(request),
     },
   },
 });
 
-export { handlePATCH as PATCH, handlePOST as POST };
+export { handleDELETE as DELETE, handlePATCH as PATCH, handlePOST as POST };

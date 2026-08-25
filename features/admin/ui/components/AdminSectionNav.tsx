@@ -16,8 +16,8 @@ export const ADMIN_SECTIONS = [
   },
   {
     id: "operations",
-    label: "operations",
-    description: "Needs attention, attendees, tickets, and access",
+    label: "people & access",
+    description: "Identity manager, sessions, restrictions, tickets, and support cases",
   },
   {
     id: "communications",
@@ -54,6 +54,13 @@ export const ADMIN_SECTIONS = [
 const PRIMARY_ADMIN_SECTIONS = ADMIN_SECTIONS.filter((section) => section.id !== "best-dressed");
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]["id"];
+
+export const OPERATIONS_TABS = ["inbox", "people", "preview"] as const;
+export type OperationsTab = (typeof OPERATIONS_TABS)[number];
+
+export function isOperationsTab(value: unknown): value is OperationsTab {
+  return OPERATIONS_TABS.some((tab) => tab === value);
+}
 
 export const COMMUNICATION_TABS = [
   "event-plan",

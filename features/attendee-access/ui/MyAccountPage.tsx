@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { useActionDialog } from "@/hooks/useActionDialog";
 import type { AttendeeAccount } from "../types";
 
 type AccountResponse = {
@@ -36,6 +37,7 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
 }
 
 export function MyAccountPage() {
+  const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(true);
   const [account, setAccount] = useState<AttendeeAccount | null>(null);
   const [name, setName] = useState("");
@@ -109,6 +111,43 @@ export function MyAccountPage() {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
       setSigningOut(false);
+    }
+  }
+
+  async function removeEmail(email: AttendeeAccount["emails"][number]) {
+    if (emailStepUpRequired) {
+      setMessage("Sign in again with an existing email before removing one.");
+      return;
+    }
+    if (
+      !(await confirmAction({
+        eyebrow: "sign-in security",
+        title: `Remove ${email.masked}?`,
+        description:
+          "This address will stop working for sign-in. Your tickets, points, orders, and permissions stay with your account. You will be signed out on every device.",
+        confirmLabel: "remove email",
+        intent: "danger",
+      }))
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/attendee/access", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifierId: email.id }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        if (response.status === 403) setEmailStepUpRequired(true);
+        throw new Error(body.error ?? "The sign-in email could not be removed");
+      }
+      window.location.assign("/access?returnTo=/my");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
+      setBusy(false);
     }
   }
 
@@ -369,9 +408,28 @@ export function MyAccountPage() {
             <form onSubmit={addEmail} className="space-y-3 border-t theme-border py-5">
               <div>
                 <h3 className="font-mono text-xs">sign-in emails</h3>
-                <p className="mt-1 font-mono text-micro theme-muted">
-                  {account.emails.map((item) => item.masked).join(", ")}
-                </p>
+                <ul className="mt-2 divide-y border-y theme-border">
+                  {account.emails.map((email) => (
+                    <li
+                      key={email.id}
+                      className="flex min-h-12 items-center justify-between gap-4 py-2"
+                    >
+                      <span className="font-mono text-xs">{email.masked}</span>
+                      {account.emails.length > 1 ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void removeEmail(email)}
+                          className="mh-action mh-action--danger disabled:opacity-45"
+                        >
+                          remove
+                        </button>
+                      ) : (
+                        <span className="font-mono text-micro theme-muted">only sign-in email</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
                 <p className="mt-2 max-w-md font-mono text-micro leading-relaxed theme-muted">
                   Add another only if tickets reach more than one address. Existing emails stay
                   connected.
@@ -422,6 +480,7 @@ export function MyAccountPage() {
           {message}
         </p>
       )}
+      {actionDialog}
     </main>
   );
 }

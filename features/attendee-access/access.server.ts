@@ -18,6 +18,7 @@ import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
+import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
 import { safeReturnTo, type AttendeeAccount } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -255,8 +256,12 @@ async function resolvePerson(
   client: PoolClient,
   challenge: ChallengeRow,
 ): Promise<AccessResult<{ personId: string; identifierId: string }>> {
-  const existing = await client.query<{ id: string; person_id: string }>(
-    `select id, person_id from event_person_identifiers
+  const existing = await client.query<{
+    id: string;
+    person_id: string;
+    historical_until: Date | null;
+  }>(
+    `select id, person_id, historical_until from event_person_identifiers
       where kind = 'email' and value_hash = $1 for update`,
     [challenge.email_hash],
   );
@@ -269,9 +274,17 @@ async function resolvePerson(
         error: "That email is already connected to another person",
       };
     }
+    if (identifier.historical_until && !challenge.person_id_hint) {
+      return {
+        ok: false,
+        status: 403,
+        error: "That email is no longer connected to an account",
+      };
+    }
     await client.query(
       `update event_person_identifiers
-          set verified_at = coalesce(verified_at, now()), display_hint = $2
+          set verified_at = coalesce(verified_at, now()), historical_until = null,
+              display_hint = $2
         where id = $1`,
       [identifier.id, maskedEmail(challenge.email)],
     );
@@ -294,8 +307,12 @@ async function resolvePerson(
     if (!challenge.person_id_hint) {
       await client.query(`delete from event_people where id = $1`, [personId]);
     }
-    const raced = await client.query<{ id: string; person_id: string }>(
-      `select id, person_id from event_person_identifiers
+    const raced = await client.query<{
+      id: string;
+      person_id: string;
+      historical_until: Date | null;
+    }>(
+      `select id, person_id, historical_until from event_person_identifiers
         where kind = 'email' and value_hash = $1`,
       [challenge.email_hash],
     );
@@ -306,6 +323,21 @@ async function resolvePerson(
         status: 409,
         error: "That email is already connected to another person",
       };
+    }
+    if (row.historical_until && !challenge.person_id_hint) {
+      return {
+        ok: false,
+        status: 403,
+        error: "That email is no longer connected to an account",
+      };
+    }
+    if (row.historical_until) {
+      await client.query(
+        `update event_person_identifiers
+            set verified_at = now(), historical_until = null, display_hint = $2
+          where id = $1`,
+        [row.id, maskedEmail(challenge.email)],
+      );
     }
     return { ok: true, value: { personId: row.person_id, identifierId: row.id } };
   }
@@ -581,8 +613,8 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
   );
   if (!person) return null;
   const [emails, tickets, ticketOperations, globalAccess, eventAccess] = await Promise.all([
-    query<{ display_hint: string; verified_at: Date }>(
-      `select coalesce(display_hint, 'verified email') as display_hint, verified_at
+    query<{ id: string; display_hint: string; verified_at: Date }>(
+      `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
          from event_person_identifiers
         where person_id = $1 and kind = 'email' and verified_at is not null
         order by verified_at desc`,
@@ -671,6 +703,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     personId,
     name: person.canonical_name,
     emails: emails.map((row) => ({
+      id: row.id,
       masked: row.display_hint,
       verifiedAt: row.verified_at.toISOString(),
     })),
@@ -735,6 +768,28 @@ export async function updateAttendeeName(
   return row
     ? { ok: true, value: { name: row.canonical_name } }
     : { ok: false, status: 404, error: "Person not found" };
+}
+
+export async function removeAttendeeEmail(input: {
+  personId: string;
+  identifierId: string;
+  authenticatedAt?: string;
+}): Promise<AccessResult<{ removed: true; revokedSessions: number }>> {
+  if (attendeeEmailStepUpRequired(input.authenticatedAt)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Sign in again with an existing email before removing one",
+    };
+  }
+
+  return removePersonEmail({
+    personId: input.personId,
+    identifierId: input.identifierId,
+    actorId: input.personId,
+    actorType: "attendee",
+    reason: "self-service email removal",
+  });
 }
 
 export async function currentAttendeeAccount(): Promise<AttendeeAccount | null> {

@@ -5,6 +5,14 @@ export type PersonDirectoryEntry = {
   personId: string;
   canonicalName?: string;
   verifiedEmails: string[];
+  identities: Array<{
+    id: string;
+    kind: "email";
+    masked: string;
+    status: "verified" | "pending" | "removed";
+    verifiedAt?: string;
+    removedAt?: string;
+  }>;
   access: {
     acquisitionStatus: "active" | "restricted";
     restrictedAt?: string;
@@ -77,11 +85,18 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
   const ids = people.map((person) => person.id);
   const [emails, tickets, globalRoles, eventRoles, invitations, devices, sessions] =
     await Promise.all([
-      query<{ person_id: string; display_hint: string }>(
-        `select person_id,coalesce(display_hint,'verified email') as display_hint
+      query<{
+        id: string;
+        person_id: string;
+        display_hint: string;
+        verified_at: Date | null;
+        historical_until: Date | null;
+      }>(
+        `select id,person_id,coalesce(display_hint,'email identity') as display_hint,
+                verified_at,historical_until
          from event_person_identifiers
-        where person_id = any($1::text[]) and kind = 'email' and verified_at is not null
-        order by verified_at desc`,
+        where person_id = any($1::text[]) and kind = 'email'
+        order by verified_at desc nulls last,created_at desc`,
         [ids],
       ),
       query<{
@@ -204,8 +219,22 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
     personId: person.id,
     canonicalName: person.canonical_name ?? undefined,
     verifiedEmails: emails
-      .filter((email) => email.person_id === person.id)
+      .filter((email) => email.person_id === person.id && email.verified_at)
       .map((email) => email.display_hint),
+    identities: emails
+      .filter((email) => email.person_id === person.id)
+      .map((email) => ({
+        id: email.id,
+        kind: "email" as const,
+        masked: email.display_hint,
+        status: email.verified_at
+          ? ("verified" as const)
+          : email.historical_until
+            ? ("removed" as const)
+            : ("pending" as const),
+        verifiedAt: email.verified_at?.toISOString(),
+        removedAt: email.historical_until?.toISOString(),
+      })),
     access: {
       acquisitionStatus: person.acquisition_status,
       restrictedAt: person.acquisition_restricted_at?.toISOString(),

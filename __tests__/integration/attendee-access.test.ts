@@ -10,6 +10,7 @@ import {
   releaseOwnTicketClaim,
   verifyAttendeeAccess,
 } from "@/features/attendee-access/access.server";
+import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
 import { participantForTicket } from "@/features/event-scoring/store.server";
 import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
 import { hashEmail } from "@/features/tickets/qr.server";
@@ -137,6 +138,76 @@ describeWithDatabase("attendee person access", () => {
     expect(retryOnSameSession).toEqual(first);
     const replayElsewhere = await verify("access_buyer", "buyer-token", "session-b");
     expect(replayElsewhere).toMatchObject({ ok: false, status: 409 });
+  });
+
+  it("removes a sign-in email without losing ownership and allows deliberate relinking", async () => {
+    await insertChallenge({ id: "access_remove_owner", email: BUYER_EMAIL, token: "owner-token" });
+    const signedIn = await verify("access_remove_owner", "owner-token", "owner-session");
+    expect(signedIn.ok).toBe(true);
+    if (!signedIn.ok) return;
+    const account = await attendeeAccount(signedIn.value.personId);
+    const buyerIdentity = account?.emails[0];
+    expect(buyerIdentity).toBeDefined();
+    await query(
+      `insert into event_person_identifiers
+         (id,person_id,kind,value_hash,verified_at,display_hint)
+       values ('identifier_backup',$1,'email',$2,now(),'b•••@example.com')`,
+      [signedIn.value.personId, __attendeeAccessTesting.sha256("backup@example.com")],
+    );
+
+    expect(
+      await removePersonEmail({
+        personId: signedIn.value.personId,
+        identifierId: buyerIdentity!.id,
+        actorId: signedIn.value.personId,
+        actorType: "attendee",
+        reason: "self-service email removal",
+      }),
+    ).toMatchObject({ ok: true, value: { removed: true } });
+    expect(await managedOrderIdsForPerson(signedIn.value.personId)).toEqual(["ord_identitytest1"]);
+    expect((await attendeeAccount(signedIn.value.personId))?.emails).toEqual([
+      expect.objectContaining({ id: "identifier_backup" }),
+    ]);
+
+    await insertChallenge({ id: "access_removed", email: BUYER_EMAIL, token: "removed-token" });
+    expect(await verify("access_removed", "removed-token", "removed-session")).toMatchObject({
+      ok: false,
+      status: 403,
+    });
+
+    await insertChallenge({
+      id: "access_relink",
+      email: BUYER_EMAIL,
+      token: "relink-token",
+      personHint: signedIn.value.personId,
+    });
+    expect(await verify("access_relink", "relink-token", "relink-session")).toMatchObject({
+      ok: true,
+      value: { personId: signedIn.value.personId },
+    });
+    expect((await attendeeAccount(signedIn.value.personId))?.emails).toHaveLength(2);
+    expect(
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from attendee_operations_audit_events
+            where action = 'identity.email.removed' and entity_id = $1`,
+          [signedIn.value.personId],
+        )
+      )[0]?.count,
+    ).toBe("1");
+  });
+
+  it("does not remove the only verified sign-in email", async () => {
+    const person = await createVerifiedPerson("person_single_email", "single@example.com");
+    expect(
+      await removePersonEmail({
+        personId: person.personId,
+        identifierId: `identifier_${person.personId}`,
+        actorId: person.personId,
+        actorType: "attendee",
+        reason: "self-service email removal",
+      }),
+    ).toMatchObject({ ok: false, status: 409 });
   });
 
   it("lets a shared-ticket recipient claim only that participant and rejects a racing owner", async () => {

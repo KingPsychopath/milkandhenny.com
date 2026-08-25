@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import type { OperationsTab } from "./AdminSectionNav";
 import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -34,6 +35,14 @@ type Person = {
   personId: string;
   canonicalName?: string;
   verifiedEmails: string[];
+  identities: Array<{
+    id: string;
+    kind: "email";
+    masked: string;
+    status: "verified" | "pending" | "removed";
+    verifiedAt?: string;
+    removedAt?: string;
+  }>;
   access: {
     acquisitionStatus: "active" | "restricted";
     restrictedAt?: string;
@@ -80,14 +89,17 @@ export function AttendeeOperationsPanel({
   onStatus,
   ensureStepUpToken,
   withStepUpHeaders,
+  tab,
+  onTabChange,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   ensureStepUpToken: StepUp;
   withStepUpHeaders: StepUpHeaders;
+  tab: OperationsTab;
+  onTabChange: (tab: OperationsTab) => void;
 }) {
-  const [tab, setTab] = useState<"inbox" | "people" | "preview">("inbox");
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unresolved, setUnresolved] = useState(0);
   const [people, setPeople] = useState<Person[]>([]);
@@ -212,13 +224,19 @@ export function AttendeeOperationsPanel({
     await loadPeople();
   }
 
-  async function manageIdentity(person: Person, action: "sign-out" | "restrict" | "restore") {
+  async function manageIdentity(
+    person: Person,
+    action: "sign-out" | "restrict" | "restore" | "remove-email",
+    identifierId?: string,
+  ) {
     const label =
       action === "sign-out"
         ? "sign this person out on every device"
-        : action === "restrict"
-          ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
-          : "allow this person to acquire new tickets and permissions again";
+        : action === "remove-email"
+          ? "remove this email as a sign-in identity and sign this person out everywhere"
+          : action === "restrict"
+            ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
+            : "allow this person to acquire new tickets and permissions again";
     if (!window.confirm(`Are you sure you want to ${label}?`)) return;
     const reason = window.prompt("Reason for the audit log")?.trim();
     if (!reason) return;
@@ -229,7 +247,7 @@ export function AttendeeOperationsPanel({
       const response = await authFetch("/api/admin/operations/people", {
         method: "PATCH",
         headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
-        body: JSON.stringify({ personId: person.personId, action, reason }),
+        body: JSON.stringify({ personId: person.personId, action, reason, identifierId }),
       });
       const body = (await response.json().catch(() => ({}))) as {
         error?: string;
@@ -241,9 +259,11 @@ export function AttendeeOperationsPanel({
       onStatus(
         action === "restore"
           ? "New ticket and permission acquisition restored."
-          : action === "restrict"
-            ? `New acquisition restricted; ${body.revokedPendingPermissions ?? 0} pending permission invitation${body.revokedPendingPermissions === 1 ? "" : "s"} revoked.`
-            : `${revoked} session${revoked === 1 ? "" : "s"} revoked.`,
+          : action === "remove-email"
+            ? `Email removed and ${revoked} active session${revoked === 1 ? "" : "s"} revoked.`
+            : action === "restrict"
+              ? `New acquisition restricted; ${body.revokedPendingPermissions ?? 0} pending permission invitation${body.revokedPendingPermissions === 1 ? "" : "s"} revoked.`
+              : `${revoked} session${revoked === 1 ? "" : "s"} revoked.`,
       );
       await loadPeople(person.personId);
     } catch (error) {
@@ -261,17 +281,23 @@ export function AttendeeOperationsPanel({
             attendee operations
           </p>
           <h2 id="attendee-operations-heading" className="mt-2 font-serif text-3xl">
-            People who need an answer
+            {tab === "people"
+              ? "Identity manager"
+              : tab === "preview"
+                ? "Attendee experience"
+                : "People who need an answer"}
           </h2>
         </div>
-        <p className="font-mono text-xs theme-muted">{unresolved} unresolved</p>
+        {tab === "inbox" ? (
+          <p className="font-mono text-xs theme-muted">{unresolved} unresolved</p>
+        ) : null}
       </div>
       <div className="mt-4 flex gap-5 border-b theme-border">
         {(["inbox", "people", "preview"] as const).map((name) => (
           <button
             key={name}
             type="button"
-            onClick={() => setTab(name)}
+            onClick={() => onTabChange(name)}
             aria-current={tab === name ? "page" : undefined}
             className={`min-h-11 border-b-2 px-1 font-mono text-xs ${
               tab === name ? "border-foreground" : "border-transparent theme-muted"
@@ -280,7 +306,7 @@ export function AttendeeOperationsPanel({
             {name === "inbox"
               ? `needs attention${unresolved ? ` · ${unresolved}` : ""}`
               : name === "people"
-                ? "people and access"
+                ? "identity manager"
                 : "attendee preview"}
           </button>
         ))}
@@ -476,7 +502,7 @@ export function AttendeeOperationsPanel({
             <button
               type="submit"
               disabled={loading}
-              className="min-h-11 border theme-border px-4 font-mono text-xs disabled:opacity-50"
+              className="mh-action mh-action--secondary disabled:opacity-50"
             >
               search
             </button>
@@ -505,7 +531,7 @@ export function AttendeeOperationsPanel({
               <PersonDrawer person={selected} busy={identityBusy} onManage={manageIdentity} />
             ) : (
               <p className="font-mono text-xs theme-muted">
-                Choose a person for the read-only attendee view.
+                Choose a person to inspect identities, sessions, tickets, and access.
               </p>
             )}
           </div>
@@ -526,22 +552,55 @@ function PersonDrawer({
 }: {
   person: Person;
   busy: boolean;
-  onManage: (person: Person, action: "sign-out" | "restrict" | "restore") => Promise<void>;
+  onManage: (
+    person: Person,
+    action: "sign-out" | "restrict" | "restore" | "remove-email",
+    identifierId?: string,
+  ) => Promise<void>;
 }) {
   const recentlyActive =
     person.access.lastSeenAt !== undefined &&
     Date.now() - Date.parse(person.access.lastSeenAt) < 5 * 60 * 1_000;
+  const verifiedIdentityCount = person.identities.filter(
+    (identity) => identity.status === "verified",
+  ).length;
   return (
     <aside className="border-y theme-border py-5" aria-label="Attendee detail">
-      <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-        read-only attendee view
-      </p>
+      <p className="font-mono text-micro uppercase tracking-widest theme-muted">identity manager</p>
       <h3 className="mt-2 font-serif text-2xl">{person.canonicalName ?? "Unnamed person"}</h3>
       <p className="mt-1 font-mono text-micro theme-muted">{person.personId}</p>
       <dl className="mt-5 space-y-4 font-mono text-xs">
         <div>
-          <dt className="theme-muted">verified email</dt>
-          <dd className="mt-1">{person.verifiedEmails.join(", ") || "none"}</dd>
+          <dt className="theme-muted">email identities</dt>
+          <dd className="mt-1">
+            {person.identities.length ? (
+              <ul className="divide-y border-y theme-border">
+                {person.identities.map((identity) => (
+                  <li key={identity.id} className="py-2">
+                    <span>{identity.masked}</span>
+                    <span className="ml-2 theme-muted">· {identity.status}</span>
+                    {identity.removedAt ? (
+                      <span className="mt-1 block theme-muted">
+                        removed {new Date(identity.removedAt).toLocaleString()}
+                      </span>
+                    ) : null}
+                    {identity.status === "verified" && verifiedIdentityCount > 1 ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onManage(person, "remove-email", identity.id)}
+                        className="mh-action mh-action--danger mt-2 disabled:opacity-40"
+                      >
+                        remove sign-in
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              "none"
+            )}
+          </dd>
         </div>
         <div>
           <dt className="theme-muted">access</dt>
@@ -590,7 +649,7 @@ function PersonDrawer({
           type="button"
           disabled={busy || person.access.activeSessions === 0}
           onClick={() => void onManage(person, "sign-out")}
-          className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+          className="mh-action mh-action--secondary disabled:opacity-40"
         >
           sign out everywhere
         </button>
@@ -599,7 +658,7 @@ function PersonDrawer({
             type="button"
             disabled={busy}
             onClick={() => void onManage(person, "restrict")}
-            className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+            className="mh-action mh-action--danger disabled:opacity-40"
           >
             restrict new access
           </button>
@@ -608,7 +667,7 @@ function PersonDrawer({
             type="button"
             disabled={busy}
             onClick={() => void onManage(person, "restore")}
-            className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-70 disabled:opacity-40"
+            className="mh-action mh-action--secondary disabled:opacity-40"
           >
             restore new access
           </button>

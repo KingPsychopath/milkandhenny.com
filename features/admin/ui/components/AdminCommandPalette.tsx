@@ -1,13 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AdminSection } from "./AdminSectionNav";
+import type { AdminSection, OperationsTab } from "./AdminSectionNav";
 
-const COMMANDS: Array<{ label: string; detail: string; section: AdminSection }> = [
+const COMMANDS: Array<{
+  label: string;
+  detail: string;
+  section: AdminSection;
+  operationsTab?: OperationsTab;
+}> = [
   {
     label: "needs attention",
     detail: "refunds, conflicts, delivery failures",
     section: "operations",
+    operationsTab: "inbox",
   },
-  { label: "find attendee", detail: "people, tickets, orders, access", section: "operations" },
+  {
+    label: "identity manager",
+    detail: "people, email identities, sessions, tickets, restrictions",
+    section: "operations",
+    operationsTab: "people",
+  },
   { label: "events and tickets", detail: "event setup, scanners, scoring", section: "events" },
   { label: "email delivery", detail: "outbox, failures, suppressions", section: "communications" },
   { label: "attendee settings", detail: "capability gates and defaults", section: "settings" },
@@ -17,7 +28,7 @@ const COMMANDS: Array<{ label: string; detail: string; section: AdminSection }> 
 export function AdminCommandPalette({
   onNavigate,
 }: {
-  onNavigate: (section: AdminSection) => void;
+  onNavigate: (section: AdminSection, operationsTab?: OperationsTab) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -82,7 +93,7 @@ export function AdminCommandPalette({
               <button
                 type="button"
                 onClick={() => {
-                  onNavigate(command.section);
+                  onNavigate(command.section, command.operationsTab);
                   setOpen(false);
                   setQuery("");
                 }}

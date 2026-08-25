@@ -24,6 +24,7 @@ import {
   AdminSectionNav,
   type AdminSection,
   type CommunicationsTab,
+  type OperationsTab,
 } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -114,16 +115,20 @@ export function AdminDashboard({
   view,
   communicationTab,
   communicationEvent,
+  operationsTab,
   onViewChange,
   onCommunicationTabChange,
   onCommunicationEventChange,
+  onOperationsTabChange,
 }: {
   view: AdminSection;
   communicationTab: CommunicationsTab;
   communicationEvent?: string;
+  operationsTab: OperationsTab;
   onViewChange: (section: AdminSection) => void;
   onCommunicationTabChange: (tab: CommunicationsTab) => void;
   onCommunicationEventChange: (eventSlug: string) => void;
+  onOperationsTabChange: (tab: OperationsTab) => void;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [loading, setLoading] = useState(false);
@@ -321,7 +326,13 @@ export function AdminDashboard({
                 </section>
               ) : null}
             </div>
-            <AdminCommandPalette onNavigate={onViewChange} />
+            <AdminCommandPalette
+              onNavigate={(section, targetOperationsTab) =>
+                targetOperationsTab
+                  ? onOperationsTabChange(targetOperationsTab)
+                  : onViewChange(section)
+              }
+            />
           </div>
         </div>
         <h1 className="mt-2 font-serif text-4xl font-semibold tracking-tight">
@@ -452,6 +463,8 @@ export function AdminDashboard({
           onStatus={setStatusMessage}
           ensureStepUpToken={ensureStepUpTokenResult}
           withStepUpHeaders={withStepUpHeaders}
+          tab={operationsTab}
+          onTabChange={onOperationsTabChange}
         />
       ) : null}
 

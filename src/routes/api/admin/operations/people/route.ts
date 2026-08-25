@@ -4,6 +4,7 @@ import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth
 import { searchPeople } from "@/features/attendee-operations/directory.server";
 import {
   forceSignOutPerson,
+  removePersonEmail,
   restorePersonAcquisition,
   restrictPersonAcquisition,
 } from "@/features/attendee-operations/identity-manager.server";
@@ -36,12 +37,30 @@ async function handlePATCH(request: Request) {
       !body ||
       typeof body.personId !== "string" ||
       typeof body.reason !== "string" ||
-      (body.action !== "sign-out" && body.action !== "restrict" && body.action !== "restore")
+      (body.action !== "sign-out" &&
+        body.action !== "restrict" &&
+        body.action !== "restore" &&
+        body.action !== "remove-email")
     ) {
       return Response.json({ error: "Person, action, and reason are required" }, { status: 400 });
     }
     const actorId = auth.actorId ?? "root-owner";
     const actorType = auth.actorType === "admin" ? "admin" : "root-owner";
+    if (body.action === "remove-email") {
+      if (typeof body.identifierId !== "string") {
+        return Response.json({ error: "Email identity is required" }, { status: 400 });
+      }
+      const result = await removePersonEmail({
+        personId: body.personId,
+        identifierId: body.identifierId,
+        actorId,
+        actorType,
+        reason: body.reason,
+      });
+      return result.ok
+        ? Response.json({ action: body.action, ...result.value })
+        : Response.json({ error: result.error }, { status: result.status });
+    }
     const result =
       body.action === "sign-out"
         ? await forceSignOutPerson({

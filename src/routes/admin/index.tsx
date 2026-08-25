@@ -6,8 +6,10 @@ import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
 import {
   isAdminSection,
   isCommunicationsTab,
+  isOperationsTab,
   type AdminSection,
   type CommunicationsTab,
+  type OperationsTab,
 } from "@/features/admin/ui/components/AdminSectionNav";
 import { authenticateRequest, isLocalDevelopment } from "@/features/auth/auth.server";
 import { signInAdmin, signInAdminDevelopment } from "@/features/auth/auth.functions";
@@ -25,6 +27,7 @@ export const Route = createFileRoute("/admin/")({
     view: AdminSection;
     communicationTab?: CommunicationsTab;
     communicationEvent?: string;
+    operationsTab?: OperationsTab;
   } => ({
     view: isAdminSection(search.view) ? search.view : "overview",
     ...(isCommunicationsTab(search.communicationTab)
@@ -33,6 +36,7 @@ export const Route = createFileRoute("/admin/")({
     ...(typeof search.communicationEvent === "string" && search.communicationEvent.trim()
       ? { communicationEvent: search.communicationEvent }
       : {}),
+    ...(isOperationsTab(search.operationsTab) ? { operationsTab: search.operationsTab } : {}),
   }),
   component: AdminPage,
   loader: () => getAdminAccess(),
@@ -48,7 +52,7 @@ export const Route = createFileRoute("/admin/")({
 
 function AdminPage() {
   const { auth, localDevBypassAvailable } = Route.useLoaderData();
-  const { view, communicationTab, communicationEvent } = Route.useSearch();
+  const { view, communicationTab, communicationEvent, operationsTab } = Route.useSearch();
   const navigate = Route.useNavigate();
   const isAuthed = auth.ok;
 
@@ -110,6 +114,7 @@ function AdminPage() {
         view={view}
         communicationTab={communicationTab ?? "event-plan"}
         communicationEvent={communicationEvent}
+        operationsTab={operationsTab ?? "inbox"}
         onViewChange={(nextView) =>
           void navigate({ search: { view: nextView }, resetScroll: true })
         }
@@ -130,6 +135,12 @@ function AdminPage() {
               view: "communications",
               communicationEvent: nextEvent,
             }),
+            resetScroll: true,
+          })
+        }
+        onOperationsTabChange={(nextTab) =>
+          void navigate({
+            search: { view: "operations", operationsTab: nextTab },
             resetScroll: true,
           })
         }
