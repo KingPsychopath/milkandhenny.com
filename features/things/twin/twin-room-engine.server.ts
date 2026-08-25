@@ -3,7 +3,8 @@ import { log } from "@/lib/platform/logger.server";
 import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
-  multiplayerPresenceLeaseExpiresAt,
+  multiplayerRoomExpiry,
+  type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -18,7 +19,6 @@ import {
   hashMultiplayerCredential,
   multiplayerCredentialsMatch,
   multiplayerActionSeen,
-  multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   registerMemoryRoomSweeper,
@@ -167,15 +167,26 @@ registerMemoryRoomSweeper("twin", (now) => {
   }
 });
 
+function phaseKind(room: RoomState): MultiplayerRoomPhaseKind {
+  if (room.phase === "lobby") return "lobby";
+  if (room.phase === "finished") return "results";
+  if (room.phase === "closed") return "closed";
+  return "active";
+}
+
+function applyRoomExpiry(room: RoomState, now = Date.now()) {
+  room.expiresAt = multiplayerRoomExpiry({
+    kind: phaseKind(room),
+    presentCount: activePlayers(room).length,
+    expiresAt: room.expiresAt,
+    now,
+  });
+}
+
 function changed(room: RoomState) {
   room.revision += 1;
   room.sequence += 1;
-  const now = Date.now();
-  if (room.phase === "lobby" && room.expiresAt > now)
-    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayers(room).length);
-  else if (room.phase === "closed") room.expiresAt = now;
-  else if (room.phase !== "finished")
-    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+  applyRoomExpiry(room);
 }
 
 function activePlayers(room: RoomState) {
@@ -207,9 +218,8 @@ async function loadRoom(roomId: string) {
 
 async function saveRoom(room: RoomState) {
   const redis = getRedis();
-  if (room.phase !== "lobby" && room.phase !== "finished" && room.phase !== "closed")
-    room.expiresAt =
-      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
+  // Presence touches reach here without a revision bump, so the lease renews on save.
+  applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
     if (redis) await redis.del(twinRoomRedisKeys(room.roomId).state);
     else memoryRooms.delete(room.roomId);
@@ -501,8 +511,6 @@ function resetForRematch(room: RoomState, now: number) {
     player.bestElapsedMs = null;
     player.place = null;
   }
-  // A room that reached the end has been alive a while; a rematch needs its own runway.
-  room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
   return true;
 }
 

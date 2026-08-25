@@ -9,7 +9,6 @@ import {
   hashMultiplayerCredential,
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
-  multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   registerMemoryRoomSweeper,
@@ -26,6 +25,8 @@ import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
   multiplayerPresenceLeaseExpiresAt,
+  multiplayerRoomExpiry,
+  type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -169,23 +170,31 @@ const token = createMultiplayerCredential;
 const hash = hashMultiplayerCredential;
 const safeEqual = multiplayerCredentialsMatch;
 
+function phaseKind(room: SameBrainRoomState): MultiplayerRoomPhaseKind {
+  if (room.phase === "lobby") return "lobby";
+  if (room.phase === "ending") return "results";
+  return "active";
+}
+
+function applyRoomExpiry(room: SameBrainRoomState, now = Date.now()) {
+  room.expiresAt = multiplayerRoomExpiry({
+    kind: phaseKind(room),
+    // Eliminated players keep watching the reveal, so anyone who has not explicitly left
+    // keeps the room alive.
+    presentCount: presentPlayerCount(room),
+    expiresAt: room.expiresAt,
+    now,
+  });
+}
+
 function changed(room: SameBrainRoomState) {
   room.revision += 1;
   room.sequence += 1;
-  const now = Date.now();
-  if (room.phase === "lobby" && room.expiresAt > now)
-    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayerCount(room));
-  else if (room.phase !== "ending")
-    room.expiresAt = activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+  applyRoomExpiry(room);
 }
 
-function activePlayerCount(room: SameBrainRoomState) {
-  return room.players.filter(({ out, leftAt }) => !out && leftAt === undefined).length;
-}
-
-function storageExpiry(room: SameBrainRoomState, now = Date.now()) {
-  if (room.phase === "lobby" || room.phase === "ending") return room.expiresAt;
-  return activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+function presentPlayerCount(room: SameBrainRoomState) {
+  return room.players.filter(({ leftAt }) => leftAt === undefined).length;
 }
 
 function failure(errorCode: SameBrainRejectionCode, error: string): SameBrainActionResult {
@@ -245,7 +254,8 @@ async function saveRoom(
   envelopes: OfficialGameResultEnvelope[] = [],
 ) {
   const redis = getRedis();
-  room.expiresAt = storageExpiry(room);
+  // Presence touches reach here without a revision bump, so the lease renews on save.
+  applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deleteRoom(room, keys);
     return [];
@@ -1227,7 +1237,7 @@ export async function importSameBrainRoom(captured: SameBrainRoomExport) {
   room.roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );
-  room.expiresAt = multiplayerRoomExpiresAt(now);
+  room.expiresAt = multiplayerPresenceLeaseExpiresAt(now);
   room.phaseStartedAt += shift;
   if (room.phaseEndsAt !== 0) room.phaseEndsAt += shift;
   room.lastActiveAt = now;

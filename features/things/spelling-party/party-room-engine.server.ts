@@ -9,7 +9,6 @@ import {
   hashMultiplayerCredential,
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
-  multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   registerMemoryRoomSweeper,
@@ -22,7 +21,8 @@ import type { MultiplayerLockAttempt } from "../shared/room-primitives.server";
 import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
-  multiplayerPresenceLeaseExpiresAt,
+  multiplayerRoomExpiry,
+  type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -186,14 +186,27 @@ const token = createMultiplayerCredential;
 const capability = () => createMultiplayerCredential(18);
 const hash = hashMultiplayerCredential;
 const safeEqual = multiplayerCredentialsMatch;
+function phaseKind(room: PartyRoomState): MultiplayerRoomPhaseKind {
+  if (room.phase === "lobby") return "lobby";
+  if (room.phase === "finished") return "results";
+  return "active";
+}
+
+function applyRoomExpiry(room: PartyRoomState, now = Date.now()) {
+  room.expiresAt = multiplayerRoomExpiry({
+    kind: phaseKind(room),
+    // The presenter is not a player, so a presenter-only room still counts one occupant and
+    // is never released mid-show just because every phone dropped off.
+    presentCount: Math.max(1, activePlayers(room).length),
+    expiresAt: room.expiresAt,
+    now,
+  });
+}
+
 function changed(room: PartyRoomState) {
   room.revision += 1;
   room.sequence += 1;
-  const now = Date.now();
-  if (room.phase === "lobby" && room.expiresAt > now)
-    room.expiresAt = multiplayerLobbyExpiresAt(now, Math.max(1, activePlayers(room).length));
-  else if (room.phase !== "finished")
-    room.expiresAt = activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+  applyRoomExpiry(room);
 }
 function activePlayers(room: PartyRoomState) {
   return room.players.filter(({ leftAt }) => leftAt === undefined);
@@ -257,9 +270,8 @@ async function saveRoom(
   envelopes: OfficialGameResultEnvelope[] = [],
 ) {
   const redis = getRedis();
-  if (room.phase !== "lobby" && room.phase !== "finished")
-    room.expiresAt =
-      activePlayers(room).length > 0 ? multiplayerPresenceLeaseExpiresAt() : Date.now();
+  // Presence touches reach here without a revision bump, so the lease renews on save.
+  applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deletePartyRoom(room, keys);
     return [];
@@ -589,7 +601,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
  * the roster, the room code and the presenter token. The deck reshuffles and starts over once it
  * runs out, so a long night on one room code never dead-ends.
  */
-function resetPartyForRematch(room: PartyRoomState, now = Date.now()) {
+function resetPartyForRematch(room: PartyRoomState) {
   const cursor = (room.wordCursor ?? 0) + room.roundTotal;
   if (cursor + room.roundTotal > room.wordIds.length) {
     for (let index = room.wordIds.length - 1; index > 0; index -= 1) {
@@ -613,8 +625,6 @@ function resetPartyForRematch(room: PartyRoomState, now = Date.now()) {
   room.round = null;
   room.recentClues = [];
   room.sentenceCluesRemaining = 3;
-  // Finishing a game clamps the room to a short grace window; a rematch needs its runway back.
-  room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
 }
 
 export async function createPartyRoom(input: {

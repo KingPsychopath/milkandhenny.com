@@ -9,7 +9,6 @@ import {
   hashMultiplayerCredential,
   multiplayerActionSeen,
   multiplayerCredentialsMatch,
-  multiplayerRoomExpiresAt,
   multiplayerRoomStateChanged,
   multiplayerSnapshotDigest,
   registerMemoryRoomSweeper,
@@ -26,6 +25,8 @@ import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
   multiplayerPresenceLeaseExpiresAt,
+  multiplayerRoomExpiry,
+  type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
   multiplayerPlayerReady,
@@ -230,23 +231,31 @@ const token = createMultiplayerCredential;
 const hash = hashMultiplayerCredential;
 const safeEqual = multiplayerCredentialsMatch;
 
+function phaseKind(room: LiarsRoomState): MultiplayerRoomPhaseKind {
+  if (room.phase === "lobby") return "lobby";
+  if (room.phase === "ending") return "results";
+  return "active";
+}
+
+function applyRoomExpiry(room: LiarsRoomState, now = Date.now()) {
+  room.expiresAt = multiplayerRoomExpiry({
+    kind: phaseKind(room),
+    // Dead players spectate and the presenter narrates from the same room, so anyone who has
+    // not explicitly left keeps it alive.
+    presentCount: presentPlayerCount(room),
+    expiresAt: room.expiresAt,
+    now,
+  });
+}
+
 function changed(room: LiarsRoomState) {
   room.revision += 1;
   room.sequence += 1;
-  const now = Date.now();
-  if (room.phase === "lobby" && room.expiresAt > now)
-    room.expiresAt = multiplayerLobbyExpiresAt(now, activePlayerCount(room));
-  else if (room.phase !== "ending")
-    room.expiresAt = activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+  applyRoomExpiry(room);
 }
 
-function activePlayerCount(room: LiarsRoomState) {
-  return room.players.filter(({ alive, leftAt }) => alive && leftAt === undefined).length;
-}
-
-function storageExpiry(room: LiarsRoomState, now = Date.now()) {
-  if (room.phase === "lobby" || room.phase === "ending") return room.expiresAt;
-  return activePlayerCount(room) > 0 ? multiplayerPresenceLeaseExpiresAt(now) : now;
+function presentPlayerCount(room: LiarsRoomState) {
+  return room.players.filter(({ leftAt }) => leftAt === undefined).length;
 }
 
 function failure(errorCode: LiarsRoomErrorCode, error: string): LiarsActionResult {
@@ -301,7 +310,8 @@ async function loadRoom(
 
 async function saveRoom(room: LiarsRoomState, keys = liarsRoomRedisKeys(room.roomId)) {
   const redis = getRedis();
-  room.expiresAt = storageExpiry(room);
+  // Presence touches reach here without a revision bump, so the lease renews on save.
+  applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
     await deleteRoom(room, keys);
     return;
@@ -1708,7 +1718,6 @@ export async function applyLiarsHostAction(input: {
       room.dawn = null;
       room.winner = null;
       room.recentNarrationIds = [];
-      room.expiresAt = Math.max(room.expiresAt, multiplayerRoomExpiresAt(now));
       room.lineup = room.toggles.firstGame
         ? liarsFirstGameLineup(room.mode, room.players.length)
         : liarsDefaultLineup(room.mode, room.players.length);
@@ -2055,7 +2064,7 @@ export async function importLiarsRoom(snapshot: LiarsRoomExport): Promise<{
   room.roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );
-  room.expiresAt = multiplayerRoomExpiresAt(now);
+  room.expiresAt = multiplayerPresenceLeaseExpiresAt(now);
   room.phaseStartedAt += shift;
   room.phaseEndsAt += shift;
   room.lastActiveAt = now;
