@@ -478,14 +478,14 @@ Required layouts:
 Required packs:
 
 - [x] Complete public hunt pack.
-- [x] Setup checklist.
-- [x] Instruction poster.
-- [x] Private placement list.
-- [x] Private answer and control sheet.
-- [x] Moderator instructions.
-- [x] Leaderboard poster.
-- [x] Ticket and score poster.
-- [x] Event photo-upload poster.
+- [ ] Setup checklist.
+- [ ] Instruction poster.
+- [ ] Private placement list.
+- [ ] Private answer and control sheet.
+- [ ] Moderator instructions.
+- [ ] Leaderboard poster.
+- [ ] Ticket and score poster.
+- [ ] Event photo-upload poster.
 - [x] Public packs contain no staff or admin credentials.
 - [ ] Private activation credentials expire and remain revocable.
 - [x] Reprinting preserves a clue token.
@@ -494,8 +494,8 @@ Required packs:
 
 ## 17. Test mode
 
-- [x] Activities and discoveries can be tested before publication.
-- [x] Test claims issue no ledger postings and do not change ranks or pools.
+- [ ] Activities and discoveries can be tested before publication.
+- [ ] Test claims issue no ledger postings and do not change ranks or pools.
 - [ ] Test mode covers valid, duplicate, exhausted, expired, paused, and unidentified states.
 - [ ] Ticket recovery and return-to-claim are testable.
 - [x] Printed fallback codes are testable.
@@ -519,7 +519,7 @@ Required packs:
 - [ ] Public derivatives do not expose unnecessary GPS or sensitive metadata.
 - [ ] Original-file access follows the existing restricted media policy.
 - [x] A failed photo upload never reverses a valid score award.
-- [x] Media upload retry never duplicates the award.
+- [ ] Media upload retry never duplicates the award.
 - [ ] Orphaned uploads and abandoned pending attachments are cleaned safely.
 - [x] Album expiry is clear before capture and in admin.
 - [ ] Selected files can be promoted to a durable `/pics` album.
@@ -559,11 +559,11 @@ Personal ticket and score:
 - [ ] Opening score details from a safe game screen preserves live room state.
 - [x] Positive awards produce a subtle notification.
 - [x] Negative changes produce a clear notification with a reason.
-- [x] Notifications update the visible score chip.
+- [ ] Notifications update the visible score chip.
 - [x] Notifications use a polite live region and never move focus.
-- [x] Active gameplay queues notifications until a safe screen.
-- [x] Reconnect does not replay old notifications as new ones.
-- [x] Out-of-order network messages display in confirmed server order.
+- [ ] Active gameplay queues notifications until a safe screen.
+- [ ] Reconnect does not replay old notifications as new ones.
+- [ ] Out-of-order network messages display in confirmed server order.
 - [x] The full history remains available when a toast is missed.
 - [x] Per-point email is not sent; a later digest remains possible.
 
@@ -571,14 +571,14 @@ Personal ticket and score:
 
 - [x] Every client command has a UUID.
 - [x] Every score snapshot has a confirmed revision.
-- [x] Clients distinguish pending, accepted, held, and rejected actions.
-- [x] Reconnection fetches the latest server snapshot and reconciles command IDs.
+- [ ] Clients distinguish pending, accepted, held, and rejected actions.
+- [ ] Reconnection fetches the latest server snapshot and reconciles command IDs.
 - [x] The client never uses last-write-wins balance replacement.
 - [ ] Redis wake signals cause a bounded server read.
-- [x] Polling callbacks are ref-stable and enforce a hard minimum fetch gap.
-- [x] Clients never retry 4xx responses.
-- [x] Network and 5xx retries are bounded and jittered.
-- [x] Several tabs do not create a poll or command storm.
+- [ ] Polling callbacks are ref-stable and enforce a hard minimum fetch gap.
+- [ ] Clients never retry 4xx responses.
+- [ ] Network and 5xx retries are bounded and jittered.
+- [ ] Several tabs do not create a poll or command storm.
 - [x] Offline status and last sync are visible.
 - [x] Existing offline admission manifests remain usable.
 - [x] Offline redemption queues exactly once.
@@ -735,8 +735,8 @@ Browser verification:
 
 Print verification:
 
-- [x] Every source PDF QR decodes automatically.
-- [x] A4, US Letter, A5, card, and table-tent dimensions are correct.
+- [ ] Every source PDF QR decodes automatically.
+- [ ] A4, US Letter, A5, card, and table-tent dimensions are correct.
 - [x] No layout clips at common printer margins.
 - [x] Black-and-white output remains readable.
 - [x] Fallback codes match QR destinations.

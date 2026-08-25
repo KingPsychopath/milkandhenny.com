@@ -7,10 +7,12 @@ export function ClaimedScoreLinks() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [links, setLinks] = useState<Array<{ eventSlug: string; ticketId: string }>>([]);
   useEffect(() => {
+    if (pathname.startsWith("/things/") || localStorage.getItem("mah-has-score-session") !== "1")
+      return;
     void getClaimedScoreLinksFn()
       .then(setLinks)
       .catch(() => undefined);
-  }, []);
+  }, [pathname]);
   if (links.length === 0 || pathname.startsWith("/things/")) return null;
   return (
     <nav

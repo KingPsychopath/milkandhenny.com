@@ -16,6 +16,7 @@ export function ScoreSyncStatus({
   const [online, setOnline] = useState(true);
   const { eventSlug, participantId, balance, revision, synchronizedAt } = snapshot;
   useEffect(() => {
+    localStorage.setItem("mah-has-score-session", "1");
     setOnline(navigator.onLine);
     const store = new EventScoringClientStore();
     void store.saveSnapshot({ eventSlug, participantId, balance, revision, synchronizedAt });

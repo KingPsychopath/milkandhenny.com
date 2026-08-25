@@ -70,19 +70,18 @@ export async function persistRoomWithOfficialResults(input: {
 }
 
 async function deliver(key: string, envelope: OfficialGameResultEnvelope) {
-  const { ingestOfficialGameResult, processOfficialGameResult } =
-    await import("@/features/event-scoring/games.server");
-  const ingested = await ingestOfficialGameResult(envelope);
-  if (!ingested.ok) {
-    if (ingested.status === 409) {
-      await getRedis()?.del(key);
-      return true;
-    }
-    return false;
-  }
-  await getRedis()?.del(key);
-  if (!ingested.value.duplicate) await processOfficialGameResult(ingested.value.id);
-  return true;
+  if (!officialResultConsumer) return false;
+  const consumed = await officialResultConsumer(envelope);
+  if (consumed) await getRedis()?.del(key);
+  return consumed;
+}
+
+type OfficialResultConsumer = (envelope: OfficialGameResultEnvelope) => Promise<boolean>;
+let officialResultConsumer: OfficialResultConsumer | undefined;
+
+/** The optional event layer registers a consumer. Games remain unaware of scoring. */
+export function registerOfficialGameResultConsumer(consumer?: OfficialResultConsumer): void {
+  officialResultConsumer = consumer;
 }
 
 export function deliverOfficialResultsAfterCommit(
