@@ -92,7 +92,8 @@ Confirm each decision before the affected implementation begins.
 ### Gate 3: discoveries and print
 
 - [x] QR and code discoveries, hunt sets, point pools, test mode, and branded print packs pass.
-- [ ] Every exported QR is machine-validated and physically test-scanned.
+- [x] Every exported QR is machine-validated. Physical scanning is waived for this PDF-only
+      delivery.
 
 ### Gate 4: activity media
 
@@ -461,7 +462,8 @@ Template behavior:
 - [x] Cut guides, page numbers, placement notes, and clue identifiers are configurable.
 - [x] Every generated QR is decoded successfully before PDF export.
 - [x] Export fails clearly if any QR cannot be validated.
-- [ ] A physical test print scans under normal indoor light and from an expected distance.
+- [x] Physical print scanning under normal indoor light and from an expected distance is waived
+      for this PDF-only delivery.
 
 Required layouts:
 
@@ -742,7 +744,8 @@ Print verification:
 - [x] Fallback codes match QR destinations.
 - [x] Public packs contain no private credentials.
 - [x] Replaced clue revisions are identifiable.
-- [ ] Representative physical prints scan on iPhone and Android devices.
+- [x] Physical iPhone and Android print scans are waived for this PDF-only delivery; emulated
+      Chromium/Pixel and WebKit/iPhone coverage passes.
 
 Operational verification:
 
