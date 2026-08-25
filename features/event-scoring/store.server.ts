@@ -664,6 +664,7 @@ export async function searchEventParticipants(
   eventSlug: string,
   term: string,
   limit = 20,
+  includeEmail = false,
 ): Promise<
   Array<{
     id: string;
@@ -672,6 +673,7 @@ export async function searchEventParticipants(
     ticketSuffix?: string;
     balance: number;
     checkedIn: boolean;
+    email?: string;
   }>
 > {
   const normalized = term.trim();
@@ -683,12 +685,14 @@ export async function searchEventParticipants(
     ticket_id: string | null;
     balance: number;
     checked_in_at: Date | null;
+    email: string | null;
   }>(
     `select participants.id, participants.public_alias, participants.display_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
-            participants.checked_in_at
+            participants.checked_in_at, tickets.email
        from event_participants participants
        left join score_projections projections on projections.participant_id = participants.id
+       left join tickets on tickets.id = participants.ticket_id
       where participants.event_slug = $1
         and participants.status = 'active'
         and (
@@ -710,6 +714,7 @@ export async function searchEventParticipants(
     ticketSuffix: row.ticket_id?.slice(-8),
     balance: row.balance,
     checkedIn: row.checked_in_at !== null,
+    email: includeEmail ? (row.email ?? undefined) : undefined,
   }));
 }
 

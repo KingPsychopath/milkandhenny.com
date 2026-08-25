@@ -6,10 +6,14 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 import {
   awardStaffPoints,
   admitStaffTicket,
+  acceptStaffHeldAction,
+  decideStaffGuestRequest,
   getStaffScoringPage,
   reverseStaffAward,
   resolveStaffScannedParticipant,
   searchStaffParticipants,
+  submitStaffGuest,
+  transferStaffPoints,
 } from "./staff-scoring.server";
 import {
   closeOfflineScoreReservation,
@@ -105,6 +109,42 @@ export const reverseStaffAwardFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const result = await reverseStaffAward({ ...data, deviceId: ensureDeviceId() });
+    return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
+  });
+
+export const submitStaffGuestFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; token: string; name: string; note?: string }) => data)
+  .handler(({ data }) => submitStaffGuest({ ...data, deviceId: ensureDeviceId() }));
+
+export const decideStaffGuestRequestFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { eventSlug: string; token: string; requestId: number; approve: boolean }) => data,
+  )
+  .handler(({ data }) => decideStaffGuestRequest({ ...data, deviceId: ensureDeviceId() }));
+
+export const transferStaffPointsFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      eventSlug: string;
+      token: string;
+      fromParticipantId: string;
+      toParticipantId: string;
+      points: number;
+      commandId: string;
+      note: string;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const result = await transferStaffPoints({ ...data, deviceId: ensureDeviceId() });
+    return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
+  });
+
+export const acceptStaffHeldActionFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { eventSlug: string; token: string; transactionId: string; note: string }) => data,
+  )
+  .handler(async ({ data }) => {
+    const result = await acceptStaffHeldAction({ ...data, deviceId: ensureDeviceId() });
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
 

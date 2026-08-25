@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from "react";
 
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import {
+  acceptStaffHeldActionFn,
   awardStaffPointsFn,
   admitStaffTicketFn,
   closeOfflineScoreReservationFn,
+  decideStaffGuestRequestFn,
   reconcileOfflineScoreCommandsFn,
   reserveOfflineScoreBudgetFn,
   reverseStaffAwardFn,
   resolveStaffScannedParticipantFn,
   searchStaffParticipantsFn,
+  submitStaffGuestFn,
+  transferStaffPointsFn,
 } from "../staff-scoring.functions";
 import type { OfflineScoreCommand } from "../offline.server";
 import type { getStaffScoringPage } from "../staff-scoring.server";
@@ -54,6 +58,14 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();
   const [offlineCommands, setOfflineCommands] = useState<OfflineScoreCommand[]>([]);
+  const [guestName, setGuestName] = useState("");
+  const [guestNote, setGuestNote] = useState("");
+  const [guestRequests, setGuestRequests] = useState(data.guestRequests);
+  const [heldActions, setHeldActions] = useState(data.heldActions);
+  const [transferFrom, setTransferFrom] = useState<Participant | null>(null);
+  const [transferTo, setTransferTo] = useState<Participant | null>(null);
+  const [transferPointsValue, setTransferPointsValue] = useState(1);
+  const [transferNote, setTransferNote] = useState("");
   const commandId = useRef(crypto.randomUUID());
 
   const activity = data.activities.find((entry) => entry.id === activityId);
@@ -297,6 +309,75 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
       ),
     );
     setStatus("The award was reversed. Its history remains in the audit log.");
+  }
+
+  async function submitGuest(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const result = await submitStaffGuestFn({
+      data: {
+        eventSlug: data.eventSlug,
+        token,
+        name: guestName,
+        note: guestNote || undefined,
+      },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setStatus(result.value.mode === "added" ? "Guest added." : "Guest request sent.");
+    setGuestName("");
+    setGuestNote("");
+  }
+
+  async function decideGuest(requestId: number, approve: boolean) {
+    setBusy(true);
+    setError("");
+    const result = await decideStaffGuestRequestFn({
+      data: { eventSlug: data.eventSlug, token, requestId, approve },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setGuestRequests((items) => items.filter((item) => item.id !== requestId));
+    setStatus(approve ? "Guest approved and ticket issued." : "Guest request declined.");
+  }
+
+  async function transfer(event: React.FormEvent) {
+    event.preventDefault();
+    if (!transferFrom || !transferTo) return setError("Choose both participants.");
+    setBusy(true);
+    setError("");
+    const result = await transferStaffPointsFn({
+      data: {
+        eventSlug: data.eventSlug,
+        token,
+        fromParticipantId: transferFrom.id,
+        toParticipantId: transferTo.id,
+        points: transferPointsValue,
+        commandId: crypto.randomUUID(),
+        note: transferNote,
+      },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setTransferFrom(null);
+    setTransferTo(null);
+    setTransferNote("");
+    setStatus("Points transferred. Both postings share one transaction.");
+  }
+
+  async function acceptHeld(transactionId: string) {
+    const note = window.prompt("Why should this held action be accepted?");
+    if (!note?.trim()) return;
+    setBusy(true);
+    setError("");
+    const result = await acceptStaffHeldActionFn({
+      data: { eventSlug: data.eventSlug, token, transactionId, note: note.trim() },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    setHeldActions((items) => items.filter((item) => item.id !== transactionId));
+    setStatus("Held action accepted and recorded in the audit trail.");
   }
 
   return (
@@ -582,6 +663,32 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
 
               <div>
                 <p className="font-mono text-xs">find participant</p>
+                {data.recentParticipants.length > 0 && (
+                  <div
+                    className="mt-2 flex gap-2 overflow-x-auto pb-1"
+                    aria-label="Recent participants"
+                  >
+                    {data.recentParticipants.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => {
+                          setParticipant(entry);
+                          setResults([]);
+                          setReviewReady(false);
+                        }}
+                        className="min-h-11 shrink-0 border theme-border px-3 text-left hover:opacity-70"
+                      >
+                        <span className="block font-serif">
+                          {entry.displayName ?? entry.publicAlias}
+                        </span>
+                        <span className="font-mono text-micro theme-muted">
+                          recent {entry.recentReason}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <form
                   className="mt-2 flex gap-2"
                   onSubmit={(event) => {
@@ -626,6 +733,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                           </span>
                           <span className="font-mono text-micro theme-muted">
                             {entry.balance} points
+                            {entry.email ? ` · ${entry.email}` : ""}
                           </span>
                         </button>
                       </li>
@@ -794,6 +902,211 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
           </ol>
         </section>
       )}
+
+      {(data.canRequestGuests || data.canAddGuests || data.canApproveGuests) && (
+        <section
+          aria-labelledby="guest-actions-heading"
+          className="mt-10 border-t theme-border pt-7"
+        >
+          <h2 id="guest-actions-heading" className="font-serif text-2xl">
+            Guest requests
+          </h2>
+          {(data.canRequestGuests || data.canAddGuests) && (
+            <form onSubmit={(event) => void submitGuest(event)} className="mt-4 grid gap-3">
+              <label className="font-mono text-xs">
+                guest name
+                <input
+                  required
+                  value={guestName}
+                  onChange={(event) => setGuestName(event.target.value)}
+                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                />
+              </label>
+              <label className="font-mono text-xs">
+                note (optional)
+                <input
+                  value={guestNote}
+                  onChange={(event) => setGuestNote(event.target.value)}
+                  className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                />
+              </label>
+              <button
+                disabled={busy}
+                className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+              >
+                {data.canAddGuests ? "add guest" : "request guest"}
+              </button>
+            </form>
+          )}
+          {data.canApproveGuests && guestRequests.length > 0 && (
+            <ul className="mt-5 divide-y theme-border border-y theme-border">
+              {guestRequests.map((request) => (
+                <li key={request.id} className="flex min-h-11 items-center gap-3 py-3">
+                  <span className="min-w-0 flex-1 font-serif">{request.name}</span>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void decideGuest(request.id, true)}
+                    className="min-h-11 px-2 font-mono text-xs underline"
+                  >
+                    approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void decideGuest(request.id, false)}
+                    className="min-h-11 px-2 font-mono text-xs underline"
+                  >
+                    decline
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {data.canTransfer && (
+        <section
+          aria-labelledby="transfer-points-heading"
+          className="mt-10 border-t theme-border pt-7"
+        >
+          <h2 id="transfer-points-heading" className="font-serif text-2xl">
+            Transfer points
+          </h2>
+          <form onSubmit={(event) => void transfer(event)} className="mt-4 grid gap-4">
+            <StaffParticipantPicker
+              label="from participant"
+              eventSlug={data.eventSlug}
+              token={token}
+              value={transferFrom}
+              onChange={setTransferFrom}
+            />
+            <StaffParticipantPicker
+              label="to participant"
+              eventSlug={data.eventSlug}
+              token={token}
+              value={transferTo}
+              onChange={setTransferTo}
+            />
+            <label className="font-mono text-xs">
+              points
+              <input
+                type="number"
+                min={1}
+                required
+                value={transferPointsValue}
+                onChange={(event) => setTransferPointsValue(Number(event.target.value))}
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+              />
+            </label>
+            <label className="font-mono text-xs">
+              reason
+              <input
+                required
+                value={transferNote}
+                onChange={(event) => setTransferNote(event.target.value)}
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+              />
+            </label>
+            <button
+              disabled={busy}
+              className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+            >
+              transfer points
+            </button>
+          </form>
+        </section>
+      )}
+
+      {data.canReviewHeld && heldActions.length > 0 && (
+        <section
+          aria-labelledby="held-actions-heading"
+          className="mt-10 border-t theme-border pt-7"
+        >
+          <h2 id="held-actions-heading" className="font-serif text-2xl">
+            Held score actions
+          </h2>
+          <ul className="mt-4 divide-y theme-border border-y theme-border">
+            {heldActions.map((action) => (
+              <li key={action.id} className="flex min-h-11 items-center gap-3 py-3">
+                <span className="min-w-0 flex-1 font-mono text-xs">
+                  {action.reasonCode} · {action.createdAt}
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void acceptHeld(action.id)}
+                  className="min-h-11 px-3 font-mono text-xs underline"
+                >
+                  accept
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
+  );
+}
+
+function StaffParticipantPicker({
+  label,
+  eventSlug,
+  token,
+  value,
+  onChange,
+}: {
+  label: string;
+  eventSlug: string;
+  token: string;
+  value: Participant | null;
+  onChange: (participant: Participant | null) => void;
+}) {
+  const [term, setTerm] = useState("");
+  const [items, setItems] = useState<Participant[]>([]);
+  async function search(event: React.FormEvent) {
+    event.preventDefault();
+    if (term.trim().length < 2) return;
+    setItems(await searchStaffParticipantsFn({ data: { eventSlug, token, term } }));
+  }
+  return (
+    <div>
+      <p className="font-mono text-xs">{label}</p>
+      {value ? (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="mt-2 min-h-11 w-full border theme-border px-3 text-left font-serif hover:opacity-70"
+        >
+          {value.displayName ?? value.publicAlias} · change
+        </button>
+      ) : (
+        <>
+          <form onSubmit={(event) => void search(event)} className="mt-2 flex gap-2">
+            <input
+              aria-label={`Search ${label}`}
+              value={term}
+              onChange={(event) => setTerm(event.target.value)}
+              className="min-h-11 min-w-0 flex-1 border theme-border bg-transparent px-3"
+            />
+            <button className="min-h-11 border theme-border px-4 font-mono text-xs">search</button>
+          </form>
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onChange(item);
+                setItems([]);
+              }}
+              className="min-h-11 w-full border-b theme-border text-left font-serif"
+            >
+              {item.displayName ?? item.publicAlias} · {item.balance} points
+            </button>
+          ))}
+        </>
+      )}
+    </div>
   );
 }
