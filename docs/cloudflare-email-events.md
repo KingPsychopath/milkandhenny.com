@@ -24,4 +24,8 @@ The Worker forwards each Queue message separately. It acknowledges successful an
 
 The app also signs first-party links for communications. The redirect contains no recipient address and records only aggregate clicks by message, stage, and link key. A database outage does not break the destination because the signed URL carries the verified destination; the click count is best effort.
 
-After deployment, send one message to a Cloudflare hard-bounce test address or another controlled invalid address. Confirm that the event reaches the app and that a second send to the same address is rejected by the outbox.
+After deployment, send one message to a controlled address and confirm a `delivered` event appears
+under **communications → delivery** (or `pnpm cli email status`). Then send to a Cloudflare
+hard-bounce test address or another controlled invalid address. Confirm that the event reaches the
+app, creates a masked delivery block, and that a second send to the same address is rejected by the
+outbox. A configured secret alone is not proof that the Queue subscription and relay are working.

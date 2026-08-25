@@ -88,6 +88,8 @@ async function handlePOST(request: Request, slug: string) {
             tickets: issued.value.tickets,
             origin: getBaseUrlForRequest(request),
             idempotencyKey: `tickets:issued:${issued.value.orderId}`,
+            kind: "ticket-issued",
+            source: "admin",
           });
           emailQueued = delivery.queued;
         }
@@ -122,6 +124,8 @@ async function handlePOST(request: Request, slug: string) {
           tickets: live,
           origin: getBaseUrlForRequest(request),
           idempotencyKey: `tickets:admin-resend:${ticket.orderId}:${Math.floor(Date.now() / 60_000)}`,
+          kind: "ticket-resend",
+          source: "admin",
         });
         if (!delivery.queued) {
           return Response.json(
@@ -150,6 +154,7 @@ async function handlePOST(request: Request, slug: string) {
           ok: true,
           state: result.value.state,
           refunded: result.value.refunded,
+          emailQueued: result.value.emailQueued,
         });
       }
 

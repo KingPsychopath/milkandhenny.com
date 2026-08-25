@@ -15,7 +15,7 @@ vi.mock("@/lib/platform/email.server", async (importOriginal) => ({
   sendEmail,
 }));
 
-import { sendTicketEmail } from "@/features/tickets/email.server";
+import { sendRefundEmail, sendTicketEmail } from "@/features/tickets/email.server";
 import type { EventRecord } from "@/features/events/types";
 import type { TicketRecord } from "@/features/tickets/types";
 
@@ -64,6 +64,7 @@ async function send(count: number) {
     tickets: order(count),
     origin: "https://milkandhenny.com",
     idempotencyKey: "tickets:issued:ord_1",
+    kind: "ticket-issued",
   });
   expect(result.queued).toBe(true);
   return sendEmail.mock.calls[0][0] as {
@@ -93,6 +94,24 @@ describe("ticket email", () => {
       expect(message.html).toContain(name);
     }
     expect(message.text).toContain("Everyone scans their own code");
+  });
+
+  it("records the exact ticket group needed to regenerate a refund confirmation", async () => {
+    sendEmail.mockResolvedValue({ ok: true, id: "msg_refund" });
+    const tickets = order(3).map((ticket) => ({ ...ticket, status: "refunded" as const }));
+
+    await expect(
+      sendRefundEmail({ event: EVENT, tickets, source: "admin" }),
+    ).resolves.toMatchObject({ queued: true });
+    expect(sendEmail.mock.calls[0]?.[1]).toMatchObject({
+      kind: "ticket-refund",
+      source: "admin",
+      context: {
+        orderId: "ord_1",
+        ticketId: "TKT0000000000000",
+        ticketIds: ["TKT0000000000000", "TKT0000000000001", "TKT0000000000002"],
+      },
+    });
   });
 
   it("names each guest once, under their own code, as the way into it", async () => {

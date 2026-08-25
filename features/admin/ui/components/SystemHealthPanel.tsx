@@ -9,7 +9,11 @@ type SystemHealthSnapshot = SystemCapabilities & {
     processing: number;
     accepted: number;
     failed: number;
+    cancelled: number;
+    delivered: number;
+    awaitingProviderFeedback: number;
     oldestPendingAt: string | null;
+    latestDeliveryEventAt: string | null;
   };
   mediaQueue: {
     available: boolean;
@@ -114,9 +118,17 @@ export function SystemHealthPanel({
             <p className="mt-1 text-micro theme-faint">
               {snapshot?.emailOutbox.pending ?? "—"} pending ·{" "}
               {snapshot?.emailOutbox.processing ?? "—"} sending ·{" "}
-              {snapshot?.emailOutbox.accepted ?? "—"} accepted ·{" "}
+              {snapshot?.emailOutbox.accepted ?? "—"} provider accepted ·{" "}
+              {snapshot?.emailOutbox.delivered ?? "—"} delivered ·{" "}
               {snapshot?.emailOutbox.failed ?? "—"} failed
             </p>
+            {(snapshot?.emailOutbox.awaitingProviderFeedback ?? 0) > 0 ? (
+              <p className="mt-2 text-micro text-[var(--prose-hashtag)]">
+                {snapshot?.emailOutbox.awaitingProviderFeedback} accepted message
+                {snapshot?.emailOutbox.awaitingProviderFeedback === 1 ? " has" : "s have"} no
+                provider delivery event after 15 minutes.
+              </p>
+            ) : null}
           </article>
           <article className="rounded-md border theme-border p-3 font-mono">
             <div className="flex items-start justify-between gap-3">

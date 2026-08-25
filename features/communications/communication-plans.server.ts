@@ -859,6 +859,9 @@ export async function sendCommunicationPlanTest(
       },
       {
         idempotencyKey: `communication-test:${plan.id}:${stage.id}:${randomUUID()}`,
+        kind: "communication-test",
+        source: "test",
+        context: { eventSlug: event.slug, communicationId: stage.id },
         communicationId: plan.id,
       },
     );
@@ -1130,6 +1133,9 @@ async function fanOutClaimedStages(
         },
         {
           idempotencyKey: `communication-stage:${stage.id}:${recipient.emailHash}`,
+          kind: "communication-stage",
+          source: "scheduled",
+          context: { eventSlug: event.slug, communicationId: stage.id },
           communicationId: stage.id,
         },
       );

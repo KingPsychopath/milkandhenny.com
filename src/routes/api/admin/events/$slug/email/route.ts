@@ -102,6 +102,9 @@ async function handlePOST(request: Request, slug: string) {
     await enqueueEmails(
       recipients.map((recipient, index) => ({
         idempotencyKey: `events:broadcast:${slug}:${requestId}:${index}`,
+        kind: "event-broadcast" as const,
+        source: "admin" as const,
+        context: { eventSlug: slug },
         message: {
           channel: "tickets" as const,
           to: recipient.email,

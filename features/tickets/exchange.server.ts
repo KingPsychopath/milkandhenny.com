@@ -419,6 +419,7 @@ async function sendConfirmation(exchange: ExchangeRow, origin: string): Promise<
     amountDeltaMinor: exchange.amount_delta_minor,
     managerUrl: buildTicketUrl(origin, manager.id),
     exchangeId: exchange.id,
+    source: exchange.actor_type === "admin" ? "admin" : "self-service",
   });
   return result.queued;
 }
@@ -656,6 +657,7 @@ export async function beginTicketExchange(input: {
     await sendTicketExchangePaymentEmail({
       event,
       ticket: {
+        id: ticket.id,
         holderName: ticket.holder_name,
         email: ticket.email ?? undefined,
       },
@@ -663,6 +665,7 @@ export async function beginTicketExchange(input: {
       amountMinor: exchange.amount_delta_minor,
       checkoutUrl: session.url,
       exchangeId: exchange.id,
+      source: exchange.actor_type === "admin" ? "admin" : "self-service",
     });
   }
   return { ok: true, value: { state: "checkout", exchangeId: exchange.id, url: session.url } };

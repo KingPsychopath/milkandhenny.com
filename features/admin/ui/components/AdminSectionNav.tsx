@@ -48,6 +48,7 @@ export type AdminSection = (typeof ADMIN_SECTIONS)[number]["id"];
 export const COMMUNICATION_TABS = [
   "event-plan",
   "compose",
+  "delivery",
   "templates",
   "feedback",
   "people",

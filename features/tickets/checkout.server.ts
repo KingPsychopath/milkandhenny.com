@@ -679,6 +679,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
             tickets,
             origin,
             idempotencyKey: `tickets:issued:${tickets[0].orderId}`,
+            kind: "ticket-issued",
           });
       }
       return { outcome: "already-issued" };
@@ -815,6 +816,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
         tickets: recoveredTickets,
         origin,
         idempotencyKey: `tickets:issued:${orderId}`,
+        kind: "ticket-issued",
       });
     log.info("checkout.fulfil", "Recovered tickets after interrupted fulfilment", {
       sessionId,
@@ -918,6 +920,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
     tickets: issued.value.tickets,
     origin,
     idempotencyKey: `tickets:issued:${issued.value.orderId}`,
+    kind: "ticket-issued",
   });
 
   log.info("checkout.fulfil", "Paid tickets issued", {
@@ -977,7 +980,13 @@ export async function refundOrder(input: {
   }
   if (tickets.every((ticket) => ticket.status === "refunded")) {
     const event = await getEvent(anchor.event_slug);
-    const delivery = event ? await sendRefundEmail({ event, tickets }) : null;
+    const delivery = event
+      ? await sendRefundEmail({
+          event,
+          tickets,
+          source: input.reason === "admin" ? "admin" : "self-service",
+        })
+      : null;
     return {
       ok: true,
       value: { state: "succeeded", refunded: 0, emailQueued: delivery?.queued ?? false },
@@ -1032,7 +1041,11 @@ export async function refundOrder(input: {
   if (updated.length > 0) {
     const event = await getEvent(anchor.event_slug);
     if (event) {
-      const delivery = await sendRefundEmail({ event, tickets: updated });
+      const delivery = await sendRefundEmail({
+        event,
+        tickets: updated,
+        source: input.reason === "admin" ? "admin" : "self-service",
+      });
       emailQueued = delivery.queued;
     }
   }

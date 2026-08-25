@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 
 import { sendEmail, type EmailAttachment } from "@/lib/platform/email.server";
+import type { EmailSource } from "@/lib/shared/email-operations";
 import { log } from "@/lib/platform/logger.server";
 import { buildEventUrl, buildTicketIcsUrl, buildTicketUrl } from "@/features/events/routes";
 import { buildEventIcs, buildTicketHolderIcsOptions } from "@/features/events/ics";
@@ -283,6 +284,9 @@ export async function sendTicketEmail(input: {
   tickets: TicketRecord[];
   origin: string;
   idempotencyKey: string;
+  kind: "ticket-issued" | "ticket-resend";
+  source?: EmailSource;
+  replayedFrom?: string;
 }): Promise<TicketEmailResult> {
   const { event, tickets, origin } = input;
   const recipient = tickets.find((ticket) => ticket.email)?.email;
@@ -310,7 +314,18 @@ export async function sendTicketEmail(input: {
       html: buildHtml(event, tickets, origin, qrs),
       attachments: attachments.length > 0 ? attachments : undefined,
     },
-    { idempotencyKey: input.idempotencyKey },
+    {
+      idempotencyKey: input.idempotencyKey,
+      kind: input.kind,
+      source: input.source,
+      context: {
+        eventSlug: event.slug,
+        orderId: tickets[0]?.orderId,
+        ticketId: tickets[0]?.id,
+        ticketIds: tickets.map((ticket) => ticket.id),
+        replayedFrom: input.replayedFrom,
+      },
+    },
   );
 
   if (!result.ok) {
@@ -338,6 +353,7 @@ export async function sendTicketExchangeEmail(input: {
   amountDeltaMinor: number;
   managerUrl: string;
   exchangeId: string;
+  source?: EmailSource;
 }): Promise<TicketEmailResult> {
   const recipient = input.tickets.find((ticket) => ticket.email)?.email;
   if (!recipient) return { queued: false, error: "No email address on this order" };
@@ -386,7 +402,17 @@ export async function sendTicketExchangeEmail(input: {
       text,
       html,
     },
-    { idempotencyKey: `tickets:exchange:${input.exchangeId}` },
+    {
+      idempotencyKey: `tickets:exchange:${input.exchangeId}`,
+      kind: "ticket-exchange",
+      source: input.source ?? "self-service",
+      context: {
+        eventSlug: input.event.slug,
+        orderId: input.changedTicket.orderId,
+        ticketId: input.changedTicket.id,
+        exchangeId: input.exchangeId,
+      },
+    },
   );
   if (!result.ok) {
     log.error("tickets.email", "Exchange email failed", {
@@ -402,11 +428,12 @@ export async function sendTicketExchangeEmail(input: {
 /** Recovery link for an upgrade that still needs its Stripe difference paid. */
 export async function sendTicketExchangePaymentEmail(input: {
   event: EventRecord;
-  ticket: Pick<TicketRecord, "holderName" | "email">;
+  ticket: Pick<TicketRecord, "id" | "holderName" | "email">;
   targetType: TicketType;
   amountMinor: number;
   checkoutUrl: string;
   exchangeId: string;
+  source?: EmailSource;
 }): Promise<TicketEmailResult> {
   if (!input.ticket.email) return { queued: false, error: "No email address on this ticket" };
   const amount = formatMoney(input.amountMinor, input.targetType.currency);
@@ -441,7 +468,16 @@ export async function sendTicketExchangePaymentEmail(input: {
       text,
       html,
     },
-    { idempotencyKey: `tickets:exchange-payment:${input.exchangeId}` },
+    {
+      idempotencyKey: `tickets:exchange-payment:${input.exchangeId}`,
+      kind: "ticket-exchange-payment",
+      source: input.source ?? "self-service",
+      context: {
+        eventSlug: input.event.slug,
+        ticketId: input.ticket.id,
+        exchangeId: input.exchangeId,
+      },
+    },
   );
   if (!result.ok) return { queued: false, error: result.error };
   return { queued: true };
@@ -480,6 +516,9 @@ function refundAmount(tickets: TicketRecord[]): string | null {
 export async function sendRefundEmail(input: {
   event: EventRecord;
   tickets: TicketRecord[];
+  idempotencyKey?: string;
+  source?: EmailSource;
+  replayedFrom?: string;
 }): Promise<TicketEmailResult> {
   const { event, tickets } = input;
   const recipient = tickets.find((ticket) => ticket.email)?.email;
@@ -530,7 +569,18 @@ export async function sendRefundEmail(input: {
       text,
       html,
     },
-    { idempotencyKey: `tickets:refund:${tickets[0].orderId}:${refundKey}` },
+    {
+      idempotencyKey: input.idempotencyKey ?? `tickets:refund:${tickets[0].orderId}:${refundKey}`,
+      kind: "ticket-refund",
+      source: input.source,
+      context: {
+        eventSlug: event.slug,
+        orderId: tickets[0]?.orderId,
+        ticketId: tickets[0]?.id,
+        ticketIds: tickets.map((ticket) => ticket.id),
+        replayedFrom: input.replayedFrom,
+      },
+    },
   );
 
   if (!result.ok) {

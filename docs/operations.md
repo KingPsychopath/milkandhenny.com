@@ -8,10 +8,11 @@ Run once per day:
 APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
 ```
 
-The runner drains the transactional-email outbox, then calls transfer cleanup, Pitch Night cleanup,
-expired word-share cleanup, orphaned word-media cleanup, and media reconciliation. The web process
-also drains email immediately when a message is queued, with a one-minute retry backstop; maintenance is its independent backstop. Each job emits one
-structured result, and the runner exits non-zero if any job fails.
+The runner drains the transactional-email outbox, applies email retention, then calls transfer
+cleanup, Pitch Night cleanup, expired word-share cleanup, orphaned word-media cleanup, and media
+reconciliation. The web process also drains email immediately when a message is queued, with a
+one-minute retry backstop; maintenance is its independent backstop. Each job emits one structured
+result, and the runner exits non-zero if any job fails.
 
 ## Capability checks
 
@@ -28,6 +29,24 @@ Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archiv
 ## Email delivery events
 
 Follow [cloudflare-email-events.md](./cloudflare-email-events.md). Cloudflare Queue events are the authoritative path for bounce and complaint suppression. The initial REST response proves only that Cloudflare accepted the message.
+
+The admin **communications → delivery** view and `pnpm cli email …` expose the same authenticated
+ledger and controls. “Provider accepted” never means “delivered”: inbox delivery is shown only after
+a provider event. The admin warns when accepted messages have no provider event after 15 minutes.
+
+Email is deliberately transient:
+
+- the outbox's message body and recipient-address copy are removed immediately after provider
+  acceptance or a terminal failure;
+- retryable content is removed after 7 days or 10 attempts;
+- normalized provider delivery events are kept for 30 days;
+- masked operational ledger metadata is kept for 120 days;
+- bounce and complaint suppressions keep only a recipient hash and masked hint until an operator
+  reviews them, because forgetting them would cause repeat delivery to a bad or objecting address.
+
+Payment, refund, ticket and consent records have their own retention rules and are not deleted by
+email cleanup. Run `pnpm cli email status` to inspect the policy, `pnpm cli email drain` to process
+the queue, and `pnpm cli email cleanup --step-up` to apply retention immediately.
 
 ## Runtime limits
 

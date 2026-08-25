@@ -140,6 +140,8 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
       tickets,
       origin,
       idempotencyKey: `tickets:issued:${tickets[0].orderId}`,
+      kind: "ticket-issued",
+      source: "self-service",
     });
 
     rememberTicketHolder(event.slug);
@@ -191,6 +193,8 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
         tickets,
         origin,
         idempotencyKey: `tickets:resend:${orders}:${resendWindow}`,
+        kind: "ticket-resend",
+        source: "self-service",
       });
     }
 

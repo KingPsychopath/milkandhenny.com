@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { log } from "./logger.server";
 import { isDatabaseConfigured, transaction } from "./postgres.server";
+import { maskEmailRecipient } from "./email-outbox.server";
 
 export type EmailDeliveryStatus =
   | "delivered"
@@ -52,10 +53,12 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
       if (suppressesFutureDelivery(event.type)) {
         await client.query(
           `insert into email_suppressions (
-             recipient_hash, reason, provider_message_id, first_occurred_at, last_occurred_at
-           ) values ($1,$2,$3,$4,$4)
+             recipient_hash, recipient_hint, reason, provider_message_id,
+             first_occurred_at, last_occurred_at
+           ) values ($1,$2,$3,$4,$5,$5)
            on conflict (recipient_hash) do update
-             set reason = excluded.reason,
+             set recipient_hint = excluded.recipient_hint,
+                 reason = excluded.reason,
                  provider_message_id = excluded.provider_message_id,
                  last_occurred_at = greatest(
                    email_suppressions.last_occurred_at,
@@ -64,6 +67,7 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
                  updated_at = now()`,
           [
             recipientHash,
+            maskEmailRecipient(recipient),
             event.type === "complained" ? "complained" : "bounced",
             event.providerMessageId,
             event.occurredAt,

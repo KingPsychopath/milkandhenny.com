@@ -5,6 +5,7 @@ import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { AdminFormAction } from "./AdminFormAction";
 import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
+import { EmailOperationsPanel } from "./EmailOperationsPanel";
 import {
   CommunicationMessageEditor,
   type CommunicationMediaDraft,
@@ -419,6 +420,8 @@ export function CommunicationsPanel({
   communicationEvent,
   onCommunicationTabChange,
   onCommunicationEventChange,
+  ensureStepUpToken,
+  withStepUpHeaders,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -427,6 +430,10 @@ export function CommunicationsPanel({
   communicationEvent?: string;
   onCommunicationTabChange: (tab: CommunicationsTab) => void;
   onCommunicationEventChange: (eventSlug: string) => void;
+  ensureStepUpToken: () => Promise<
+    { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
+  >;
+  withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
 }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1129,6 +1136,15 @@ export function CommunicationsPanel({
           busy={busy}
           messages={messages}
           previewValues={previewValuesForEvent(events.find((event) => event.slug === composeEvent))}
+        />
+      ) : null}
+      {tab === "delivery" ? (
+        <EmailOperationsPanel
+          authFetch={authFetch}
+          onError={onError}
+          onStatus={onStatus}
+          ensureStepUpToken={ensureStepUpToken}
+          withStepUpHeaders={withStepUpHeaders}
         />
       ) : null}
       {tab === "templates" ? (

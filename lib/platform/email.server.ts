@@ -1,4 +1,5 @@
 import { log } from "./logger.server";
+import type { EmailContext, EmailKind, EmailSource } from "../shared/email-operations";
 
 /**
  * Provider-neutral transactional email.
@@ -366,6 +367,9 @@ export async function sendEmail(
   message: EmailMessage,
   options: {
     idempotencyKey: string;
+    kind: EmailKind;
+    source?: EmailSource;
+    context?: EmailContext;
     deliverNow?: boolean;
     notBefore?: Date;
     communicationId?: string;
@@ -374,6 +378,11 @@ export async function sendEmail(
   const { enqueueEmail } = await import("./email-outbox.server");
   return enqueueEmail(message, {
     idempotencyKey: options.idempotencyKey,
+    kind: options.kind,
+    source: options.source,
+    context: options.context,
     deliverNow: options.deliverNow,
+    notBefore: options.notBefore,
+    communicationId: options.communicationId,
   });
 }

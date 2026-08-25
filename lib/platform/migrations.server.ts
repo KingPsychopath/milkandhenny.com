@@ -2323,6 +2323,111 @@ const MIGRATIONS: Migration[] = [
           references ticket_types(event_slug, id) on update cascade on delete restrict;
     `,
   },
+  {
+    id: "0053_email_operations_ledger",
+    sql: `
+      alter table email_outbox
+        add column kind text,
+        add column source text not null default 'system',
+        add column context jsonb not null default '{}'::jsonb,
+        add column recipient_hint text,
+        add column subject_hint text,
+        add column content_expires_at timestamptz not null default (now() + interval '7 days'),
+        add column retain_until timestamptz not null default (now() + interval '120 days');
+
+      update email_outbox
+         set kind = case
+           when idempotency_key like 'tickets:issued:%' then 'ticket-issued'
+           when idempotency_key like 'tickets:admin-resend:%' then 'ticket-resend'
+           when idempotency_key like 'tickets:resend:%' then 'ticket-resend'
+           when idempotency_key like 'tickets:refund:%' then 'ticket-refund'
+           when idempotency_key like 'tickets:exchange-payment:%' then 'ticket-exchange-payment'
+           when idempotency_key like 'tickets:exchange:%' then 'ticket-exchange'
+           when idempotency_key like 'attendee-access:%' then 'attendee-access'
+           when idempotency_key like 'events:broadcast:%' then 'event-broadcast'
+           when idempotency_key like 'communication-stage:%' then 'communication-stage'
+           when idempotency_key like 'communication-test:%' then 'communication-test'
+           when idempotency_key like 'communications:%' then 'communication'
+           when idempotency_key like 'pitches:welcome:%' then 'pitch-welcome'
+           when idempotency_key like 'pitches:published:%' then 'pitch-published'
+           when idempotency_key like 'pitches:recovery:%' then 'pitch-recovery'
+           when idempotency_key like 'pitches:%' then 'pitch-reminder'
+           else case channel
+             when 'tickets' then 'event-broadcast'
+             when 'studio' then 'pitch-reminder'
+             else 'communication'
+           end
+         end,
+             subject_hint = left(message->>'subject', 200),
+             recipient_hint = case
+               when position('@' in coalesce(message->>'to', '')) > 1 then
+                 left(message->>'to', 1) || '…@' || split_part(message->>'to', '@', 2)
+               else null
+             end;
+
+      update email_outbox
+         set subject_hint = coalesce(subject_hint, case kind
+               when 'ticket-issued' then 'Ticket confirmation'
+               when 'ticket-resend' then 'Ticket confirmation'
+               when 'ticket-refund' then 'Refund confirmation'
+               when 'ticket-exchange' then 'Ticket changed'
+               when 'ticket-exchange-payment' then 'Complete ticket change'
+               when 'attendee-access' then 'Access link'
+               when 'event-broadcast' then 'Event message'
+               when 'communication' then 'Communication'
+               when 'communication-stage' then 'Scheduled communication'
+               when 'communication-test' then 'Communication test'
+               when 'pitch-welcome' then 'Pitch welcome'
+               when 'pitch-published' then 'Pitch published'
+               when 'pitch-recovery' then 'Pitch recovery'
+               when 'pitch-reminder' then 'Pitch reminder'
+             end),
+             context = case
+               when kind in ('ticket-issued', 'ticket-resend', 'ticket-refund')
+                 then jsonb_build_object('orderId', split_part(idempotency_key, ':', 3))
+               when kind in ('ticket-exchange', 'ticket-exchange-payment')
+                 then jsonb_build_object('exchangeId', split_part(idempotency_key, ':', 3))
+               when kind = 'event-broadcast'
+                 then jsonb_build_object('eventSlug', split_part(idempotency_key, ':', 3))
+               when kind in ('pitch-welcome', 'pitch-published')
+                 then jsonb_build_object('deckId', split_part(idempotency_key, ':', 3))
+               else context
+             end;
+
+      alter table email_outbox alter column kind set not null;
+      alter table email_outbox
+        add constraint email_outbox_kind_check check (kind in (
+          'ticket-issued', 'ticket-resend', 'ticket-refund', 'ticket-exchange',
+          'ticket-exchange-payment', 'attendee-access', 'event-broadcast',
+          'communication', 'communication-stage', 'communication-test',
+          'pitch-welcome', 'pitch-published', 'pitch-recovery', 'pitch-reminder'
+        )),
+        add constraint email_outbox_source_check
+          check (source in ('system', 'admin', 'self-service', 'scheduled', 'test')),
+        add constraint email_outbox_context_size_check
+          check (octet_length(context::text) <= 4096),
+        add constraint email_outbox_recipient_hint_check
+          check (recipient_hint is null or char_length(recipient_hint) <= 254),
+        add constraint email_outbox_subject_hint_check
+          check (subject_hint is null or char_length(subject_hint) <= 200),
+        add constraint email_outbox_retention_check
+          check (retain_until >= created_at);
+
+      create index email_outbox_ledger_idx on email_outbox (created_at desc, id desc);
+      create index email_outbox_recipient_idx on email_outbox (recipient_hash, created_at desc);
+      create index email_outbox_kind_idx on email_outbox (kind, created_at desc);
+      create index email_outbox_retention_idx
+        on email_outbox (retain_until) where status in ('accepted', 'failed', 'cancelled');
+
+      alter table email_suppressions
+        add column recipient_hint text
+        check (recipient_hint is null or char_length(recipient_hint) <= 254);
+
+      alter table communication_stage_deliveries
+        add constraint communication_stage_deliveries_outbox_fk
+        foreign key (outbox_id) references email_outbox (id) on delete set null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

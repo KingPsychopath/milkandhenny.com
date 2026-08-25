@@ -9,6 +9,14 @@ import {
 } from "./email.server";
 import { log } from "./logger.server";
 import { isDatabaseConfigured, query, transaction } from "./postgres.server";
+import {
+  EMAIL_LEDGER_RETENTION_DAYS,
+  EMAIL_MAX_DELIVERY_ATTEMPTS,
+  EMAIL_QUEUE_CONTENT_DAYS,
+  type EmailContext,
+  type EmailKind,
+  type EmailSource,
+} from "../shared/email-operations";
 
 const CLAIM_LIMIT = 8;
 const LOCK_SECONDS = 45;
@@ -23,6 +31,9 @@ interface OutboxRow {
 
 export interface QueueEmailOptions {
   idempotencyKey: string;
+  kind: EmailKind;
+  source?: EmailSource;
+  context?: EmailContext;
   deliverNow?: boolean;
   notBefore?: Date;
   communicationId?: string;
@@ -31,12 +42,22 @@ export interface QueueEmailOptions {
 export interface QueuedEmail {
   message: EmailMessage;
   idempotencyKey: string;
+  kind: EmailKind;
+  source?: EmailSource;
+  context?: EmailContext;
   notBefore?: Date;
   communicationId?: string;
 }
 
-function hash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+export function hashEmailRecipient(value: string): string {
+  return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
+
+export function maskEmailRecipient(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0 || at === normalized.length - 1) return "hidden recipient";
+  return `${normalized.slice(0, 1)}…@${normalized.slice(at + 1)}`;
 }
 
 function isAttachment(value: unknown): value is EmailAttachment {
@@ -90,9 +111,10 @@ async function insertEmail(
   client: PoolClient,
   message: EmailMessage,
   idempotencyKey: string,
-  options: Pick<QueuedEmail, "notBefore" | "communicationId"> = {},
+  options: Pick<QueuedEmail, "kind" | "source" | "context" | "notBefore" | "communicationId">,
 ): Promise<{ id: string; status: string }> {
-  const recipientHash = hash(message.to.trim().toLowerCase());
+  const normalizedRecipient = message.to.trim().toLowerCase();
+  const recipientHash = hashEmailRecipient(normalizedRecipient);
   const suppression = await client.query(
     `select 1 from email_suppressions where recipient_hash = $1 limit 1`,
     [recipientHash],
@@ -104,8 +126,14 @@ async function insertEmail(
   const id = randomUUID();
   const result = await client.query<{ id: string; status: string }>(
     `insert into email_outbox (
-       id, idempotency_key, channel, recipient_hash, message, next_attempt_at, communication_id
-     ) values ($1,$2,$3,$4,$5::jsonb,coalesce($6, now()),$7)
+       id, idempotency_key, channel, recipient_hash, recipient_hint, subject_hint,
+       kind, source, context, message, next_attempt_at, content_expires_at,
+       retain_until, communication_id
+     ) values (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, now()),
+       greatest(coalesce($11, now()), now()) + ($13 * interval '1 day'),
+       greatest(coalesce($11, now()), now()) + ($14 * interval '1 day'), $12
+     )
      on conflict (idempotency_key) do update
        set idempotency_key = excluded.idempotency_key
      returning id, status`,
@@ -114,9 +142,16 @@ async function insertEmail(
       idempotencyKey,
       message.channel,
       recipientHash,
+      maskEmailRecipient(normalizedRecipient),
+      message.subject.slice(0, 200),
+      options.kind,
+      options.source ?? "system",
+      JSON.stringify(options.context ?? {}),
       JSON.stringify(message),
       options.notBefore ?? null,
       options.communicationId ?? null,
+      EMAIL_QUEUE_CONTENT_DAYS,
+      EMAIL_LEDGER_RETENTION_DAYS,
     ],
   );
   const row = result.rows[0];
@@ -209,6 +244,32 @@ async function claimBatch(): Promise<OutboxRow[]> {
   });
 }
 
+async function expireUndeliverableMessages(): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `update email_outbox
+        set status = 'failed', message = null, locked_until = null,
+            provider_status = 408,
+            last_error = case
+              when attempts >= $1 then 'Delivery stopped after the retry limit'
+              else 'Delivery window expired before the provider accepted the message'
+            end,
+            failed_at = now(), updated_at = now()
+      where (status = 'pending' or (status = 'processing' and locked_until < now()))
+        and (attempts >= $1 or content_expires_at <= now())
+      returning id`,
+    [EMAIL_MAX_DELIVERY_ATTEMPTS],
+  );
+  if (rows.length > 0) {
+    await query(
+      `update communication_stage_deliveries
+          set status = 'failed', updated_at = now()
+        where outbox_id = any($1::uuid[]) and status in ('queued', 'accepted')`,
+      [rows.map((row) => row.id)],
+    );
+  }
+  return rows.length;
+}
+
 async function finishAttempt(row: OutboxRow): Promise<void> {
   const message = parseMessage(row.message);
   if (!message) {
@@ -248,7 +309,8 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
     return;
   }
 
-  const permanent = isPermanentFailure(result);
+  const exhausted = row.attempts >= EMAIL_MAX_DELIVERY_ATTEMPTS;
+  const permanent = isPermanentFailure(result) || exhausted;
   const safeError = result.error.replaceAll(message.to, "[recipient]").slice(0, 500);
   await query(
     permanent
@@ -261,7 +323,11 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
                 next_attempt_at = now() + ($4 * interval '1 second'), updated_at = now()
           where id = $1 and status = 'processing'`,
     permanent
-      ? [row.id, result.status, safeError]
+      ? [
+          row.id,
+          result.status,
+          exhausted ? `${safeError} (retry limit reached)`.slice(0, 500) : safeError,
+        ]
       : [row.id, result.status, safeError, retryDelaySeconds(row.attempts)],
   );
   if (permanent) {
@@ -278,7 +344,7 @@ let draining: Promise<number> | null = null;
 
 export function drainEmailOutbox(): Promise<number> {
   draining ??= (async () => {
-    let handled = 0;
+    let handled = await expireUndeliverableMessages();
     for (;;) {
       const rows = await claimBatch();
       if (rows.length === 0) return handled;
@@ -333,7 +399,11 @@ export async function describeEmailOutbox(): Promise<{
   processing: number;
   accepted: number;
   failed: number;
+  cancelled: number;
+  delivered: number;
+  awaitingProviderFeedback: number;
   oldestPendingAt: string | null;
+  latestDeliveryEventAt: string | null;
 }> {
   if (!isDatabaseConfigured()) {
     return {
@@ -342,34 +412,53 @@ export async function describeEmailOutbox(): Promise<{
       processing: 0,
       accepted: 0,
       failed: 0,
+      cancelled: 0,
+      delivered: 0,
+      awaitingProviderFeedback: 0,
       oldestPendingAt: null,
+      latestDeliveryEventAt: null,
     };
   }
   try {
     const rows = await query<{
-      status: string;
-      count: string;
+      pending: string;
+      processing: string;
+      accepted: string;
+      failed: string;
+      cancelled: string;
+      delivered: string;
+      awaiting_feedback: string;
       oldest_pending_at: Date | null;
+      latest_delivery_event_at: Date | null;
     }>(
-      `select status, count(*)::text as count,
-              min(created_at) filter (where status in ('pending', 'processing')) as oldest_pending_at
-         from email_outbox
-        group by status`,
+      `select
+         count(*) filter (where status = 'pending')::text as pending,
+         count(*) filter (where status = 'processing')::text as processing,
+         count(*) filter (where status = 'accepted')::text as accepted,
+         count(*) filter (where status = 'failed')::text as failed,
+         count(*) filter (where status = 'cancelled')::text as cancelled,
+         count(*) filter (where provider_delivery_status = 'delivered')::text as delivered,
+         count(*) filter (
+           where status = 'accepted' and provider_delivery_status is null
+             and accepted_at < now() - interval '15 minutes'
+         )::text as awaiting_feedback,
+         min(created_at) filter (where status in ('pending', 'processing')) as oldest_pending_at,
+         (select max(received_at) from email_delivery_events) as latest_delivery_event_at
+       from email_outbox`,
     );
-    const counts = { pending: 0, processing: 0, accepted: 0, failed: 0 };
-    let oldestPendingAt: string | null = null;
-    for (const row of rows) {
-      const count = Number.parseInt(row.count, 10) || 0;
-      if (row.status === "pending") counts.pending = count;
-      if (row.status === "processing") counts.processing = count;
-      if (row.status === "accepted") counts.accepted = count;
-      if (row.status === "failed") counts.failed = count;
-      if (row.oldest_pending_at) {
-        const value = row.oldest_pending_at.toISOString();
-        if (!oldestPendingAt || value < oldestPendingAt) oldestPendingAt = value;
-      }
-    }
-    return { available: true, ...counts, oldestPendingAt };
+    const row = rows[0];
+    return {
+      available: true,
+      pending: Number(row?.pending ?? 0),
+      processing: Number(row?.processing ?? 0),
+      accepted: Number(row?.accepted ?? 0),
+      failed: Number(row?.failed ?? 0),
+      cancelled: Number(row?.cancelled ?? 0),
+      delivered: Number(row?.delivered ?? 0),
+      awaitingProviderFeedback: Number(row?.awaiting_feedback ?? 0),
+      oldestPendingAt: row?.oldest_pending_at?.toISOString() ?? null,
+      latestDeliveryEventAt: row?.latest_delivery_event_at?.toISOString() ?? null,
+    };
   } catch (error) {
     log.error("email.outbox", "Could not read outbox status", {}, error);
     return {
@@ -378,7 +467,11 @@ export async function describeEmailOutbox(): Promise<{
       processing: 0,
       accepted: 0,
       failed: 0,
+      cancelled: 0,
+      delivered: 0,
+      awaitingProviderFeedback: 0,
       oldestPendingAt: null,
+      latestDeliveryEventAt: null,
     };
   }
 }

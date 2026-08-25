@@ -41,7 +41,11 @@ const system: System = {
     processing: 0,
     accepted: 2,
     failed: 0,
+    cancelled: 0,
+    delivered: 2,
+    awaitingProviderFeedback: 0,
     oldestPendingAt: null,
+    latestDeliveryEventAt: "2026-08-24T00:00:00.000Z",
   },
   mediaQueue: {
     available: true,

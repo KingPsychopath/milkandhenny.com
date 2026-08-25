@@ -63,6 +63,7 @@ import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admi
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
+import { Route as ApiAdminEmailRouteRouteImport } from './routes/api/admin/email/route'
 import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
@@ -79,6 +80,7 @@ import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cro
 import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
+import { Route as ApiCronCleanupEmailRouteRouteImport } from './routes/api/cron/cleanup-email/route'
 import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
 import { Route as ApiCronProcessOfficialGameResultsRouteRouteImport } from './routes/api/cron/process-official-game-results/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
@@ -462,6 +464,11 @@ const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
+const ApiAdminEmailRouteRoute = ApiAdminEmailRouteRouteImport.update({
+  id: '/api/admin/email',
+  path: '/api/admin/email',
+  getParentRoute: () => rootRouteImport,
+} as any)
   id: '/api/admin/reports',
   path: '/api/admin/reports',
   getParentRoute: () => rootRouteImport,
@@ -546,6 +553,12 @@ const ApiCronCleanupWordSharesRouteRoute =
   } as any)
 const ApiCronDeliverEmailRouteRoute =
   ApiCronDeliverEmailRouteRouteImport.update({
+const ApiCronCleanupEmailRouteRoute =
+  ApiCronCleanupEmailRouteRouteImport.update({
+    id: '/api/cron/cleanup-email',
+    path: '/api/cron/cleanup-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
     id: '/api/cron/deliver-email',
     path: '/api/cron/deliver-email',
     getParentRoute: () => rootRouteImport,
@@ -1218,6 +1231,7 @@ export interface FileRoutesByFullPath {
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
+  '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/things/liars/phone': typeof ThingsLiarsPhoneRoute
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
@@ -1234,6 +1248,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/cli-auth/exchange': typeof ApiAdminCliAuthExchangeRouteRoute
   '/api/admin/cli-auth/request': typeof ApiAdminCliAuthRequestRouteRoute
   '/api/admin/communications/$id': typeof ApiAdminCommunicationsIdRouteRoute
+  '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/admin/events/$slug': typeof ApiAdminEventsSlugRouteRouteWithChildren
   '/api/admin/game-pools/$id': typeof ApiAdminGamePoolsIdRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
@@ -1399,6 +1414,7 @@ export interface FileRoutesByTo {
   '/things/pitches/new': typeof ThingsPitchesNewRoute
   '/things/pitches/present': typeof ThingsPitchesPresentRoute
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
+  '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
@@ -1415,6 +1431,7 @@ export interface FileRoutesByTo {
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
   '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
+  '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/admin/transfers/cleanup': typeof ApiAdminTransfersCleanupRouteRoute
   '/api/admin/transfers/nuke': typeof ApiAdminTransfersNukeRouteRoute
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
@@ -1581,6 +1598,7 @@ export interface FileRoutesById {
   '/things/twin_/$roomId': typeof ThingsTwinRoomIdRoute
   '/things/twin_/dev': typeof ThingsTwinDevRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
+  '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/cli-auth/exchange': typeof ApiAdminCliAuthExchangeRouteRoute
   '/api/admin/cli-auth/request': typeof ApiAdminCliAuthRequestRouteRoute
@@ -1597,6 +1615,7 @@ export interface FileRoutesById {
   '/api/admin/word-media/orphans': typeof ApiAdminWordMediaOrphansRouteRoute
   '/api/admin/word-shares/cleanup': typeof ApiAdminWordSharesCleanupRouteRoute
   '/api/best-dressed/codes/mint-batch': typeof ApiBestDressedCodesMintBatchRouteRoute
+  '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/best-dressed/codes/revoke-all': typeof ApiBestDressedCodesRevokeAllRouteRoute
   '/api/best-dressed/voting/open': typeof ApiBestDressedVotingOpenRouteRoute
   '/api/email/events/cloudflare': typeof ApiEmailEventsCloudflareRouteRoute
@@ -1764,6 +1783,7 @@ export interface FileRouteTypes {
     | '/api/admin/communications/$id'
     | '/api/admin/events/$slug'
     | '/api/admin/game-pools/$id'
+    | '/api/admin/email'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -1780,6 +1800,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/ics'
     | '/api/events/$slug/score'
     | '/api/marketing/unsubscribe/$token'
+    | '/api/cron/cleanup-email'
     | '/api/tickets/$id/ics'
     | '/api/tickets/$id/score'
     | '/api/tickets/$id/session'
@@ -1945,6 +1966,7 @@ export interface FileRouteTypes {
     | '/api/admin/transfers/$id'
     | '/api/admin/transfers/cleanup'
     | '/api/admin/transfers/nuke'
+    | '/api/admin/email'
     | '/api/admin/transfers/process-media'
     | '/api/admin/word-media/orphans'
     | '/api/admin/word-shares/cleanup'
@@ -1961,6 +1983,7 @@ export interface FileRouteTypes {
     | '/api/transfers/$id/events'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
+    | '/api/cron/cleanup-email'
     | '/api/upload/words/finalize'
     | '/api/upload/words/presign'
     | '/api/upload/words/targets'
@@ -2126,6 +2149,7 @@ export interface FileRouteTypes {
     | '/api/best-dressed/codes/mint-batch'
     | '/api/best-dressed/codes/revoke-all'
     | '/api/best-dressed/voting/open'
+    | '/api/admin/email'
     | '/api/email/events/cloudflare'
     | '/api/events/$slug/ics'
     | '/api/events/$slug/score'
@@ -2142,6 +2166,7 @@ export interface FileRouteTypes {
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
+    | '/api/cron/cleanup-email'
     | '/events/$slug/staff/$token'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
@@ -2297,6 +2322,7 @@ declare module '@tanstack/react-router' {
       id: '/contact'
       path: '/contact'
       fullPath: '/contact'
+  ApiAdminEmailRouteRoute: typeof ApiAdminEmailRouteRoute
       preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
@@ -2313,6 +2339,7 @@ declare module '@tanstack/react-router' {
       fullPath: '/feed.xml'
       preLoaderRoute: typeof FeedDotxmlRouteImport
       parentRoute: typeof rootRouteImport
+  ApiCronCleanupEmailRouteRoute: typeof ApiCronCleanupEmailRouteRoute
     }
     '/font-test': {
       id: '/font-test'
@@ -2737,6 +2764,13 @@ declare module '@tanstack/react-router' {
     '/api/cron/cleanup-game-pools': {
       id: '/api/cron/cleanup-game-pools'
       path: '/api/cron/cleanup-game-pools'
+    '/api/admin/email': {
+      id: '/api/admin/email'
+      path: '/api/admin/email'
+      fullPath: '/api/admin/email'
+      preLoaderRoute: typeof ApiAdminEmailRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
       fullPath: '/api/cron/cleanup-game-pools'
       preLoaderRoute: typeof ApiCronCleanupGamePoolsRouteRouteImport
       parentRoute: typeof rootRouteImport
@@ -2849,6 +2883,13 @@ declare module '@tanstack/react-router' {
     '/api/words/$slug': {
       id: '/api/words/$slug'
       path: '/$slug'
+    '/api/cron/cleanup-email': {
+      id: '/api/cron/cleanup-email'
+      path: '/api/cron/cleanup-email'
+      fullPath: '/api/cron/cleanup-email'
+      preLoaderRoute: typeof ApiCronCleanupEmailRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
       fullPath: '/api/words/$slug'
       preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
@@ -4024,3 +4065,5 @@ declare module '@tanstack/react-start' {
     config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }
+  ApiAdminEmailRouteRoute: ApiAdminEmailRouteRoute,
+  ApiCronCleanupEmailRouteRoute: ApiCronCleanupEmailRouteRoute,

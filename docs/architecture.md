@@ -143,8 +143,11 @@ The production app fails closed when required persistence is unavailable. In-mem
 
 Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
 process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary
-provider failures retry with backoff. Accepted and permanently failed rows keep delivery metadata
-but remove the message body and recipient address.
+provider failures retry with backoff for at most 7 days or 10 attempts. Accepted and terminal rows
+remove the outbox's message body and recipient-address copy, while a provider-neutral operations ledger keeps
+masked purpose, source, entity references and delivery state for 120 days. Raw delivery events are
+folded into that state and removed after 30 days. Bounce and complaint suppressions retain only the
+recipient hash and a masked hint until reviewed.
 
 ## Media
 

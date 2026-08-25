@@ -67,6 +67,8 @@ Never log passwords, PINs, tokens, cookies, presigned URLs, or direct personal i
 - Track Redis command usage and R2 storage/operation usage at their providers.
 - Alert on sustained multiplayer operation failures, lock failures, or realtime backplane failures.
 - If the media worker is enabled, alert on stale heartbeat, growing queue depth, or repeated retry exhaustion.
-- Alert when the email outbox has failed rows or its oldest pending message is more than 15 minutes old.
+- Alert when the email outbox has failed rows, its oldest pending message is more than 15 minutes
+  old, or provider-accepted messages have no delivery event after 15 minutes while delivery events
+  are configured.
 
 Every alert needs a target owner and a link to [`deployment.md`](./deployment.md) for rollback.

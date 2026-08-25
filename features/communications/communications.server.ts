@@ -452,6 +452,12 @@ export async function saveCommunication(input: {
         });
         return {
           idempotencyKey: `communications:${id}:${recipient.emailHash}`,
+          kind: "communication" as const,
+          source: scheduledAt ? ("scheduled" as const) : ("admin" as const),
+          context: {
+            eventSlug: input.eventSlug ?? undefined,
+            communicationId: id,
+          },
           message: {
             channel: "communications" as const,
             to: recipient.email,

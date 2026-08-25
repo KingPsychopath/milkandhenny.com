@@ -1277,6 +1277,36 @@ async function cmdAdminRequest(methodRaw: string, requestPath: string) {
   printAdminJson(result);
 }
 
+function emailListPath(overrides: { query?: string; limit?: string } = {}): string {
+  const params = new URLSearchParams();
+  const values = {
+    q: overrides.query ?? getArg("q"),
+    channel: getArg("channel"),
+    status: getArg("status"),
+    deliveryStatus: getArg("delivery-status"),
+    kind: getArg("kind"),
+    source: getArg("source"),
+    eventSlug: getArg("event"),
+    sort: getArg("sort"),
+    page: getArg("page"),
+    limit: overrides.limit ?? getArg("limit"),
+  };
+  for (const [key, value] of Object.entries(values)) {
+    if (value?.trim()) params.set(key, value.trim());
+  }
+  const query = params.toString();
+  return query ? `/api/admin/email?${query}` : "/api/admin/email";
+}
+
+async function cmdEmailList(overrides: { query?: string; limit?: string } = {}) {
+  printAdminJson(await resolvedAdminRequest({ method: "GET", path: emailListPath(overrides) }));
+}
+
+async function cmdEmailAction(body: Record<string, unknown>) {
+  if (!(await confirmAdminMutation("POST", "/api/admin/email", body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "POST", path: "/api/admin/email", body }));
+}
+
 function adminEventPath(slug: string): string {
   return `/api/admin/events/${encodeURIComponent(slug)}`;
 }
@@ -2809,6 +2839,24 @@ function showHelp() {
       --yes                                          Skip the mutation confirmation prompt
     ${dim("Supports every /api/admin/* route, system diagnostics, and best-dressed admin controls without SQL.")}
 
+  ${bold("Email operations")} ${dim("(authenticated, short-retention ledger)")}
+    email status                                Queue, delivery-signal, retention, and suppression summary
+    email list ${dim("[filters]")}                        Search and page through the ledger
+      --q ${dim("<email|order|ticket|subject>")}          Exact addresses are matched by private hash
+      --channel ${dim("<tickets|studio|communications>")}
+      --status ${dim("<pending|processing|accepted|failed|cancelled>")}
+      --delivery-status ${dim("<delivered|deferred|bounced|failed|rejected|complained>")}
+      --kind ${dim("<purpose>")} --source ${dim("<source>")} --event ${dim("<slug>")}
+      --sort ${dim("<newest|oldest|next-attempt>")} --page ${dim("<n>")} --limit ${dim("<1-100>")}
+    email show ${dim("<ledger-id>")}                     Inspect one ledger entry
+    email retry ${dim("<ledger-id>")}                    Attempt retained queued content now
+    email resend ${dim("<ledger-id>")}                   Regenerate a supported ticket/refund email
+    email cancel ${dim("<ledger-id>")}                   Cancel an email that has not started sending
+    email drain                                  Check and drain the queue now
+    email cleanup --step-up                      Apply the 7/30/120-day retention policy
+    email unsuppress ${dim("<recipient-hash>")} --step-up Allow a reviewed bounced/complaining address again
+    ${dim("Mutations ask for confirmation unless --yes or --dry-run is supplied.")}
+
   ${bold("Events and tickets")}
     events list                                  List events from the deployed app
     events create --json ${dim("<object>")}                  Create an event
@@ -4208,6 +4256,44 @@ async function direct() {
           }
           return cmdAdminRequest(method, requestPath);
         }
+        case "email":
+          switch (subcommand) {
+            case "status":
+              return cmdEmailList({ limit: "1" });
+            case "list":
+              return cmdEmailList();
+            case "show": {
+              const id = args[2];
+              if (!id) throw new Error("Usage: pnpm cli email show <ledger-id>");
+              return cmdEmailList({ query: id, limit: "1" });
+            }
+            case "retry":
+            case "resend":
+            case "cancel": {
+              const id = args[2];
+              if (!id) throw new Error(`Usage: pnpm cli email ${subcommand} <ledger-id>`);
+              return cmdEmailAction({ action: subcommand, id });
+            }
+            case "drain":
+              return cmdEmailAction({ action: "drain" });
+            case "cleanup":
+              if (!hasFlag("step-up") && !getArg("step-up-token")) {
+                throw new Error("Email cleanup requires --step-up or --step-up-token.");
+              }
+              return cmdEmailAction({ action: "cleanup" });
+            case "unsuppress": {
+              const recipientHash = args[2];
+              if (!recipientHash) {
+                throw new Error("Usage: pnpm cli email unsuppress <recipient-hash> --step-up");
+              }
+              if (!hasFlag("step-up") && !getArg("step-up-token")) {
+                throw new Error("Removing a suppression requires --step-up or --step-up-token.");
+              }
+              return cmdEmailAction({ action: "unsuppress", recipientHash });
+            }
+            default:
+              throw new Error(`Unknown: email ${subcommand ?? ""}. Run 'pnpm cli help'.`);
+          }
         case "events":
           switch (subcommand) {
             case "list":

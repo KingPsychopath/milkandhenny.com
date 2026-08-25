@@ -39,7 +39,12 @@ export async function sendPitchWelcomeEmail(input: {
         note: "Keep this link private. If you lose it, use “find my pitches” to request a new one.",
       }),
     },
-    { idempotencyKey: `pitches:welcome:${input.deck.id}` },
+    {
+      idempotencyKey: `pitches:welcome:${input.deck.id}`,
+      kind: "pitch-welcome",
+      source: "self-service",
+      context: { deckId: input.deck.id },
+    },
   );
 }
 
@@ -77,6 +82,9 @@ export async function sendPitchPublishedEmail(input: {
     },
     {
       idempotencyKey: `pitches:published:${input.deck.id}:${input.deck.publishedVersion ?? "current"}`,
+      kind: "pitch-published",
+      source: "self-service",
+      context: { deckId: input.deck.id },
     },
   );
 }
@@ -127,7 +135,12 @@ export async function sendPitchRecoveryEmail(input: {
         note: "Keep these links private. Published editions stay public; only these links can edit the working copies.",
       }),
     },
-    { idempotencyKey: `pitches:recovery:${recoveryKey}` },
+    {
+      idempotencyKey: `pitches:recovery:${recoveryKey}`,
+      kind: "pitch-recovery",
+      source: "self-service",
+      context: { deckId: input.decks[0]?.id },
+    },
   );
 }
 
@@ -204,6 +217,11 @@ export async function sendPitchReminderEmail(input: {
         note: "These private links are for you. Keep them private.",
       }),
     },
-    { idempotencyKey: input.idempotencyKey },
+    {
+      idempotencyKey: input.idempotencyKey,
+      kind: "pitch-reminder",
+      source: "scheduled",
+      context: { deckId: input.decks[0]?.id },
+    },
   );
 }

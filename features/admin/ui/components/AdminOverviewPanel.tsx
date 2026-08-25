@@ -29,7 +29,11 @@ type OperationsSnapshot = SystemCapabilities & {
     processing: number;
     accepted: number;
     failed: number;
+    cancelled: number;
+    delivered: number;
+    awaitingProviderFeedback: number;
     oldestPendingAt: string | null;
+    latestDeliveryEventAt: string | null;
   };
   mediaQueue: {
     available: boolean;
@@ -82,6 +86,15 @@ export function getAdminAttentionItems(
       id: "email:failed",
       title: `${system?.emailOutbox.failed} failed email ${system?.emailOutbox.failed === 1 ? "delivery" : "deliveries"}`,
       detail: "Ticket or studio email did not reach the provider.",
+      destination: "system",
+    });
+  }
+
+  if ((system?.emailOutbox.awaitingProviderFeedback ?? 0) > 0) {
+    items.push({
+      id: "email:delivery-events",
+      title: "Email delivery signals are missing",
+      detail: `${system?.emailOutbox.awaitingProviderFeedback} provider-accepted message${system?.emailOutbox.awaitingProviderFeedback === 1 ? " has" : "s have"} no delivery event after 15 minutes.`,
       destination: "system",
     });
   }

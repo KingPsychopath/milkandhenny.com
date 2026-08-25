@@ -67,7 +67,11 @@ type DebugResponse = SystemCapabilities & {
     processing: number;
     accepted: number;
     failed: number;
+    cancelled: number;
+    delivered: number;
+    awaitingProviderFeedback: number;
     oldestPendingAt: string | null;
+    latestDeliveryEventAt: string | null;
   };
   mediaQueue: {
     available: boolean;
@@ -330,6 +334,8 @@ export function AdminDashboard({
             communicationEvent={communicationEvent}
             onCommunicationTabChange={onCommunicationTabChange}
             onCommunicationEventChange={onCommunicationEventChange}
+            ensureStepUpToken={ensureStepUpTokenResult}
+            withStepUpHeaders={withStepUpHeaders}
           />
         </section>
       ) : null}
