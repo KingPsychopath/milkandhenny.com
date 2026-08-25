@@ -62,6 +62,7 @@ export function printPackPages(pack: Pick<PrintPack, "layout" | "items">): numbe
 
 export function validatePrintPack(pack: PrintPack): string[] {
   const errors: string[] = [];
+  if (!printLayout(pack.layout)) errors.push("Unknown print layout");
   if (!pack.eventSlug.trim()) errors.push("Event slug is required");
   if (!pack.title.trim()) errors.push("Event title is required");
   if (pack.items.length === 0) errors.push("At least one print item is required");

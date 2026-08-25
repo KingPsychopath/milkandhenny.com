@@ -44,7 +44,12 @@ import {
   replaceDiscoveryClueSecret,
   updateDiscovery,
 } from "@/features/event-scoring/discoveries.server";
-import { buildDiscoveryPrintPack } from "@/features/event-scoring/print.server";
+import {
+  buildDiscoveryPrintPack,
+  buildEventPrintPack,
+  inspectRenderedPrintPdf,
+  renderDiscoveryPrintPdf,
+} from "@/features/event-scoring/print.server";
 import {
   adjustStaffPool,
   createStaffAccess,
@@ -821,6 +826,30 @@ describeWithDatabase("event scoring postgres", () => {
     });
     expect(printPack.ok && printPack.pack.items).toHaveLength(2);
     expect(printPack.ok && Object.keys(printPack.qrDataUrls)).toHaveLength(2);
+    if (!printPack.ok) return;
+    const pdf = await renderDiscoveryPrintPdf(printPack);
+    expect(inspectRenderedPrintPdf(pdf)).toEqual({
+      pageSizes: [[595.28, 841.89]],
+      qrDestinations: printPack.pack.items.map((item) => item.destination),
+    });
+    for (const [paper, dimensions] of Object.entries({
+      a4: [595.28, 841.89],
+      letter: [612, 792],
+      a5: [419.53, 595.28],
+      card: [288, 432],
+    }) as Array<["a4" | "letter" | "a5" | "card", [number, number]]>) {
+      const pack = await buildEventPrintPack({
+        eventSlug: "scoring-night",
+        kind: "leaderboard",
+        layout: "full-page",
+        paper,
+      });
+      expect(pack.ok).toBe(true);
+      if (!pack.ok) continue;
+      expect(inspectRenderedPrintPdf(await renderDiscoveryPrintPdf(pack)).pageSizes).toEqual([
+        dimensions,
+      ]);
+    }
     expect(
       await claimDiscovery({
         discoveryId: created.value.id,

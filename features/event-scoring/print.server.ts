@@ -1,7 +1,7 @@
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import sharp from "sharp";
-import { deflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 
 import { getEvent } from "@/features/events/store.server";
 import { BASE_URL } from "@/lib/shared/config";
@@ -386,6 +386,42 @@ function compilePdf(objects: PdfObject[], rootId: number): Buffer {
   return Buffer.concat(chunks);
 }
 
+export function inspectRenderedPrintPdf(pdf: Buffer): {
+  pageSizes: Array<[number, number]>;
+  qrDestinations: string[];
+} {
+  const latin = pdf.toString("latin1");
+  const pageSizes = [
+    ...latin.matchAll(/\/Type \/Page(?!s)[\s\S]*?\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g),
+  ].map((match) => [Number(match[1]), Number(match[2])] as [number, number]);
+  const qrDestinations: string[] = [];
+  let cursor = 0;
+  while ((cursor = latin.indexOf("/Subtype /Image", cursor)) >= 0) {
+    const streamMarker = latin.indexOf("stream\n", cursor);
+    if (streamMarker < 0) throw new Error("Embedded PDF image stream is incomplete");
+    const dictionary = latin.slice(cursor, streamMarker);
+    const width = Number(/\/Width (\d+)/.exec(dictionary)?.[1]);
+    const height = Number(/\/Height (\d+)/.exec(dictionary)?.[1]);
+    const length = Number(/\/Length (\d+)/.exec(dictionary)?.[1]);
+    if (!width || !height || !length) throw new Error("Embedded PDF image metadata is invalid");
+    const start = Buffer.byteLength(latin.slice(0, streamMarker + 7), "latin1");
+    const rgb = inflateSync(pdf.subarray(start, start + length));
+    if (rgb.length !== width * height * 3) throw new Error("Embedded PDF QR has invalid pixels");
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    for (let source = 0, target = 0; source < rgb.length; source += 3, target += 4) {
+      rgba[target] = rgb[source]!;
+      rgba[target + 1] = rgb[source + 1]!;
+      rgba[target + 2] = rgb[source + 2]!;
+      rgba[target + 3] = 255;
+    }
+    const decoded = jsQR(rgba, width, height);
+    if (!decoded) throw new Error("An embedded PDF QR could not be decoded");
+    qrDestinations.push(decoded.data);
+    cursor = streamMarker + 7 + length;
+  }
+  return { pageSizes, qrDestinations };
+}
+
 /** Render a self-contained PDF in the Node runtime. QR source images are validated first. */
 export async function renderDiscoveryPrintPdf(input: {
   pack: PrintPack;
@@ -482,5 +518,14 @@ export async function renderDiscoveryPrintPdf(input: {
   objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
   objects[pagesId - 1] =
     `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`;
-  return compilePdf(objects, catalogId);
+  const pdf = compilePdf(objects, catalogId);
+  const inspected = inspectRenderedPrintPdf(pdf);
+  const expected = input.pack.items.map((item) => item.destination);
+  if (
+    inspected.qrDestinations.length !== expected.length ||
+    inspected.qrDestinations.some((destination, index) => destination !== expected[index])
+  ) {
+    throw new Error("Finished PDF QR validation failed");
+  }
+  return pdf;
 }
