@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { log } from "@/lib/platform/logger.server";
 import type {
   OfficialGameKind,
   OfficialGameResultEnvelope,
@@ -75,16 +76,26 @@ export async function activateGameScoreBinding(input: {
   channelId: string;
   gameInstanceId: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const row = await queryOne<{ channel_id: string }>(
-    `update event_game_score_bindings
-        set game_instance_id = $2, status = 'active', updated_at = now()
-      where channel_id = $1 and status = 'provisioning' and game_instance_id is null
-      returning channel_id`,
-    [input.channelId, input.gameInstanceId],
-  );
-  return row
-    ? { ok: true }
-    : { ok: false, status: 409, error: "Game score binding cannot be activated" };
+  try {
+    const row = await queryOne<{ channel_id: string }>(
+      `update event_game_score_bindings
+          set game_instance_id = $2, status = 'active', updated_at = now()
+        where channel_id = $1 and status = 'provisioning' and game_instance_id is null
+        returning channel_id`,
+      [input.channelId, input.gameInstanceId],
+    );
+    return row
+      ? { ok: true }
+      : { ok: false, status: 409, error: "Game score binding cannot be activated" };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("event_game_score_bindings_game_kind_game_instance_id_key")
+    ) {
+      return { ok: false, status: 409, error: "This game instance already has a score binding" };
+    }
+    throw error;
+  }
 }
 
 export async function linkGamePlayer(input: {
@@ -92,37 +103,62 @@ export async function linkGamePlayer(input: {
   gamePlayerId: string;
   participantId: string;
 }): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const row = await queryOne<{ channel_id: string }>(
-    `insert into event_game_player_links (channel_id, game_player_id, participant_id)
-     select bindings.channel_id, $2, participants.id
-       from event_game_score_bindings bindings
-       join events on events.event_id = bindings.event_id
-       join event_participants participants on participants.event_slug = events.slug
-      where bindings.channel_id = $1
-        and participants.id = $3
-        and participants.status = 'active'
-     on conflict (channel_id, game_player_id) do update set
-       participant_id = excluded.participant_id
-     returning channel_id`,
-    [input.channelId, input.gamePlayerId, input.participantId],
-  );
-  return row
-    ? { ok: true }
-    : { ok: false, status: 404, error: "Game player or event participant not found" };
+  try {
+    const row = await queryOne<{ channel_id: string }>(
+      `insert into event_game_player_links (channel_id, game_player_id, participant_id)
+       select bindings.channel_id, $2, participants.id
+         from event_game_score_bindings bindings
+         join events on events.event_id = bindings.event_id
+         join event_participants participants on participants.event_slug = events.slug
+        where bindings.channel_id = $1
+          and participants.id = $3
+          and participants.status = 'active'
+       on conflict (channel_id, game_player_id) do update set
+         participant_id = excluded.participant_id
+       returning channel_id`,
+      [input.channelId, input.gamePlayerId, input.participantId],
+    );
+    return row
+      ? { ok: true }
+      : { ok: false, status: 404, error: "Game player or event participant not found" };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("event_game_player_links_channel_id_participant_id_key")
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: "This event participant is already linked to another game player",
+      };
+    }
+    throw error;
+  }
 }
+
+export type OfficialResultIngestFailure = {
+  ok: false;
+  status: number;
+  error: string;
+  /** Whether the same envelope could still succeed later, so an outbox should keep it. */
+  retryable: boolean;
+};
 
 export async function ingestOfficialGameResult(
   envelope: OfficialGameResultEnvelope,
-): Promise<
-  | { ok: true; value: { id: string; duplicate: boolean } }
-  | { ok: false; status: number; error: string }
-> {
+): Promise<{ ok: true; value: { id: string; duplicate: boolean } } | OfficialResultIngestFailure> {
   if (
     envelope.schemaVersion !== 1 ||
     envelope.revision < 1 ||
+    !Number.isFinite(Date.parse(envelope.committedAt)) ||
     envelope.payloadHash !== officialResultPayloadHash(envelope)
   ) {
-    return { ok: false, status: 400, error: "Official game result envelope is invalid" };
+    return {
+      ok: false,
+      status: 400,
+      error: "Official game result envelope is invalid",
+      retryable: false,
+    };
   }
   return transaction(async (client) => {
     const binding = await client.query<{ channel_id: string }>(
@@ -132,7 +168,13 @@ export async function ingestOfficialGameResult(
       [envelope.channelId, envelope.gameKind, envelope.gameInstanceId],
     );
     if (!binding.rows[0]) {
-      return { ok: false, status: 404, error: "Active game score binding not found" };
+      // The binding may still be provisioning, so the envelope stays deliverable.
+      return {
+        ok: false,
+        status: 404,
+        error: "Active game score binding not found",
+        retryable: true,
+      };
     }
     const existing = await client.query<{ id: string; payload_hash: string }>(
       `select id, payload_hash from official_game_results
@@ -144,10 +186,15 @@ export async function ingestOfficialGameResult(
         await client.query(
           `update official_game_results
               set status = 'held', held_reason = 'Conflicting payload for one result revision'
-            where id = $1`,
+            where id = $1 and status = 'pending'`,
           [existing.rows[0].id],
         );
-        return { ok: false, status: 409, error: "Official result revision conflicts" };
+        return {
+          ok: false,
+          status: 409,
+          error: "Official result revision conflicts",
+          retryable: false,
+        };
       }
       return { ok: true, value: { id: existing.rows[0].id, duplicate: true } };
     }
@@ -159,10 +206,12 @@ export async function ingestOfficialGameResult(
     );
     const expectedRevision = (latest.rows[0]?.revision ?? 0) + 1;
     if (envelope.revision !== expectedRevision) {
+      // An earlier revision may simply still be in flight; keep later ones deliverable.
       return {
         ok: false,
         status: 409,
         error: `Official result revision must be ${expectedRevision}`,
+        retryable: envelope.revision > expectedRevision,
       };
     }
     const id = opaqueId("ogr");
@@ -303,6 +352,24 @@ async function processResult(
   );
   const row = selected.rows[0];
   if (!row) return { state: "ignored", resultId };
+  const superseded = await client.query(
+    `select 1 from official_game_results
+      where channel_id = $1 and result_id = $2 and revision > $3 and status = 'processed'
+      limit 1`,
+    [row.channel_id, row.result_id, row.revision],
+  );
+  if (superseded.rows[0]) {
+    // A later revision already settled this result; replaying an old one would fight its
+    // reversal chain, so a stale revision is retired instead of processed.
+    await client.query(
+      `update official_game_results
+          set status = 'ignored', held_reason = 'Superseded by a later processed revision',
+              processed_at = now()
+        where id = $1`,
+      [row.id],
+    );
+    return { state: "ignored", resultId: row.id };
+  }
   if (
     row.binding_status !== "active" ||
     row.binding_game_kind !== row.game_kind ||
@@ -453,6 +520,34 @@ export async function processOfficialGameResult(
   return transaction((client) => processResult(client, resultId));
 }
 
+/**
+ * Process one result without letting its failure escape. A throwing result is parked as held
+ * with the failure recorded, because a rethrow from a batch would leave a poison row at the
+ * front of the queue and stall every result behind it.
+ */
+export async function processOfficialGameResultSafely(
+  resultId: string,
+): Promise<OfficialResultProcessingOutcome> {
+  try {
+    return await processOfficialGameResult(resultId);
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message.slice(0, 500) : "Official result processing failed";
+    log.error(
+      "event-scoring.official-results",
+      "Official game result processing failed",
+      { resultId },
+      error,
+    );
+    await query(
+      `update official_game_results set status = 'held', held_reason = $2
+        where id = $1 and status = 'pending'`,
+      [resultId, reason],
+    );
+    return { state: "held", resultId, reason };
+  }
+}
+
 export async function processPendingOfficialGameResults(limit = 50): Promise<{
   selected: number;
   processed: number;
@@ -467,7 +562,7 @@ export async function processPendingOfficialGameResults(limit = 50): Promise<{
     [Math.max(1, Math.min(200, Math.trunc(limit)))],
   );
   const outcomes: OfficialResultProcessingOutcome[] = [];
-  for (const row of ids) outcomes.push(await processOfficialGameResult(row.id));
+  for (const row of ids) outcomes.push(await processOfficialGameResultSafely(row.id));
   return {
     selected: ids.length,
     processed: outcomes.filter((outcome) =>
@@ -485,7 +580,7 @@ export async function retryHeldOfficialGameResult(
     `update official_game_results set status = 'pending', held_reason = null where id = $1 and status = 'held'`,
     [resultId],
   );
-  return processOfficialGameResult(resultId);
+  return processOfficialGameResultSafely(resultId);
 }
 
 export async function retryHeldOfficialGameResultsForEvent(

@@ -24,6 +24,7 @@ import {
   ingestOfficialGameResult,
   linkGamePlayer,
   processOfficialGameResult,
+  retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
 import {
   claimGamePlayerResult,
@@ -562,6 +563,29 @@ describeWithDatabase("event scoring postgres", () => {
       { revision: 3, status: "corrected", points: "3", has_reversal: true },
       { revision: 4, status: "cancelled", points: "0", has_reversal: true },
     ]);
+
+    const conflicting = await ingestOfficialGameResult(
+      centreEnvelope({ channelId, revision: 1, placement: 2 }),
+    );
+    expect(conflicting).toMatchObject({ ok: false, status: 409, retryable: false });
+    expect(
+      (
+        await query<{ status: string }>(
+          `select status from official_game_results
+            where channel_id = $1 and result_id = 'final' and revision = 1`,
+          [channelId],
+        )
+      )[0]?.status,
+    ).toBe("processed");
+
+    const early = await ingestOfficialGameResult(centreEnvelope({ channelId, revision: 9 }));
+    expect(early).toMatchObject({ ok: false, status: 409, retryable: true });
+
+    const stale = await retryHeldOfficialGameResult(
+      invalidCorrection.ok ? invalidCorrection.value.id : "missing",
+    );
+    expect(stale.state).toBe("ignored");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
   });
 
   it("creates event-local placeholders for unclaimed official game players", async () => {

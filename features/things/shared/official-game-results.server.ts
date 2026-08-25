@@ -8,6 +8,8 @@ import type { OfficialGameResultDraft, OfficialGameResultEnvelope } from "./offi
 const OUTBOX_PREFIX = "things:official-result-outbox";
 
 function payloadWithoutHash(input: Omit<OfficialGameResultEnvelope, "payloadHash">) {
+  // Every field is serialized in one fixed order, so the hash survives any transport or store
+  // that re-serializes the envelope with different object key order.
   return JSON.stringify({
     schemaVersion: input.schemaVersion,
     channelId: input.channelId,
@@ -17,7 +19,14 @@ function payloadWithoutHash(input: Omit<OfficialGameResultEnvelope, "payloadHash
     revision: input.revision,
     operation: input.operation,
     scope: input.scope,
-    players: input.players,
+    players: input.players.map((player) => ({
+      playerId: player.playerId,
+      outcome: player.outcome,
+      rawScore: player.rawScore,
+      placement: player.placement,
+      durationMs: player.durationMs,
+      won: player.won,
+    })),
     committedAt: input.committedAt,
   });
 }
@@ -124,7 +133,17 @@ export async function drainOfficialGameResultOutbox(limit = 50): Promise<{
   for (const key of keys) {
     const envelope = await redis.get<OfficialGameResultEnvelope>(key);
     if (!envelope) continue;
-    if (await deliver(key, envelope)) delivered += 1;
+    try {
+      if (await deliver(key, envelope)) delivered += 1;
+    } catch (error) {
+      // One undeliverable envelope must not stall the rest of the outbox.
+      log.error(
+        "things.official-game-results",
+        "Official game result delivery failed",
+        { key },
+        error,
+      );
+    }
   }
   return { selected: keys.length, delivered };
 }
