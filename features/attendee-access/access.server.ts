@@ -12,7 +12,7 @@ import type { PoolClient } from "pg";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
-import { sendEmail } from "@/lib/platform/email.server";
+import { describeEmailCapability, sendEmail } from "@/lib/platform/email.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
@@ -160,6 +160,9 @@ export async function requestAttendeeAccess(input: {
     return { ok: false, status: 400, error: "That email address doesn’t look right" };
   const secret = credentialSecret();
   if (!secret) return { ok: false, status: 503, error: "Email access is not configured" };
+  if (!describeEmailCapability().senders.access) {
+    return { ok: false, status: 503, error: "Email access is temporarily unavailable" };
+  }
   const email = normaliseEmail(input.email);
   const emailHash = sha256(email);
   const [emailAllowed, ipAllowed] = await Promise.all([
@@ -231,6 +234,7 @@ export async function requestAttendeeAccess(input: {
       idempotencyKey: `attendee-access:${challengeId}`,
       kind: "attendee-access",
       source: "self-service",
+      contentExpiresAt: expiresAt,
     },
   );
   if (!sent.ok) {

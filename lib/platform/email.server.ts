@@ -394,6 +394,7 @@ export async function sendEmail(
     context?: EmailContext;
     deliverNow?: boolean;
     notBefore?: Date;
+    contentExpiresAt?: Date;
     communicationId?: string;
   },
 ): Promise<SendEmailResult> {
@@ -405,6 +406,7 @@ export async function sendEmail(
     context: options.context,
     deliverNow: options.deliverNow,
     notBefore: options.notBefore,
+    contentExpiresAt: options.contentExpiresAt,
     communicationId: options.communicationId,
   });
 }

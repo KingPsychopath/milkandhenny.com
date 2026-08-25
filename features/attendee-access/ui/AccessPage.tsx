@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 
 type AccessPageProps = { returnTo: string };
 
@@ -10,7 +11,7 @@ async function responseBody(response: Response): Promise<{ error?: string; retur
 export function AccessPage({ returnTo }: AccessPageProps) {
   const hash = useRouterState({ select: (state) => state.location.hash });
   const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
+  const { email, setEmail, remember } = useBrowserProfileForm();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -35,6 +36,7 @@ export function AccessPage({ returnTo }: AccessPageProps) {
       });
       const body = await responseBody(response);
       if (!response.ok) throw new Error(body.error ?? "The email could not be sent");
+      remember({ email });
       setMessage("Email sent. Use the link or code within 15 minutes.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The email could not be sent");
@@ -129,6 +131,10 @@ export function AccessPage({ returnTo }: AccessPageProps) {
               →
             </span>
           </button>
+          <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
+            Links work once and expire after 15 minutes. You can request five per email and 20 per
+            network in a 15-minute window; a new request replaces earlier unused links.
+          </p>
         </form>
 
         <details className="mt-6 border-t theme-border pt-1">
@@ -166,6 +172,9 @@ export function AccessPage({ returnTo }: AccessPageProps) {
             >
               {busy ? "signing in…" : "sign in with code"}
             </button>
+            <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
+              A code stops after six incorrect attempts. Request a new email if it expires.
+            </p>
           </form>
         </details>
 

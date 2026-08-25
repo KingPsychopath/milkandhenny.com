@@ -36,6 +36,7 @@ export interface QueueEmailOptions {
   context?: EmailContext;
   deliverNow?: boolean;
   notBefore?: Date;
+  contentExpiresAt?: Date;
   communicationId?: string;
 }
 
@@ -46,6 +47,7 @@ export interface QueuedEmail {
   source?: EmailSource;
   context?: EmailContext;
   notBefore?: Date;
+  contentExpiresAt?: Date;
   communicationId?: string;
 }
 
@@ -113,7 +115,10 @@ async function insertEmail(
   client: PoolClient,
   message: EmailMessage,
   idempotencyKey: string,
-  options: Pick<QueuedEmail, "kind" | "source" | "context" | "notBefore" | "communicationId">,
+  options: Pick<
+    QueuedEmail,
+    "kind" | "source" | "context" | "notBefore" | "contentExpiresAt" | "communicationId"
+  >,
 ): Promise<{ id: string; status: string }> {
   const normalizedRecipient = message.to.trim().toLowerCase();
   const recipientHash = hashEmailRecipient(normalizedRecipient);
@@ -133,7 +138,7 @@ async function insertEmail(
        retain_until, communication_id
      ) values (
        $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,coalesce($11, now()),
-       greatest(coalesce($11, now()), now()) + ($13 * interval '1 day'),
+       coalesce($15, greatest(coalesce($11, now()), now()) + ($13 * interval '1 day')),
        greatest(coalesce($11, now()), now()) + ($14 * interval '1 day'), $12
      )
      on conflict (idempotency_key) do update
@@ -154,6 +159,7 @@ async function insertEmail(
       options.communicationId ?? null,
       EMAIL_QUEUE_CONTENT_DAYS,
       EMAIL_LEDGER_RETENTION_DAYS,
+      options.contentExpiresAt ?? null,
     ],
   );
   const row = result.rows[0];

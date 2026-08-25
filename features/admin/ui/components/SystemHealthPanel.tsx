@@ -62,7 +62,8 @@ export function SystemHealthPanel({
             {snapshot ? snapshot.status : "Not checked"}
           </p>
           <p className="mt-1 font-mono text-micro theme-faint">
-            checked {checkedAt(snapshot?.timestamp)}
+            Core status · checked {checkedAt(snapshot?.timestamp)}. Optional capability limits are
+            listed below without downgrading the core runtime.
           </p>
         </div>
         <button

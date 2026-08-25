@@ -225,7 +225,7 @@ function getOverallStatus(capabilities: Capability[]): SystemCapabilities["statu
   ) {
     return "unhealthy";
   }
-  if (capabilities.some((capability) => capability.status === "degraded")) {
+  if (capabilities.some((capability) => capability.required && capability.status === "degraded")) {
     return "degraded";
   }
   return "healthy";
