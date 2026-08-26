@@ -1,4 +1,6 @@
 import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/react-start";
+import { ATTENDEE_SESSION_COOKIE_NAME } from "@/features/event-scoring/session-cookie";
+import { getCookie } from "@/lib/http/cookies";
 import { BASE_URL } from "@/lib/shared/config";
 import { STATIC_IMAGE_CACHE_CONTROL, STATIC_ROOT_IMAGE_PATHS } from "@/lib/shared/media-cache";
 
@@ -115,7 +117,7 @@ const corsBoundaryMiddleware = createMiddleware().server(async ({ next, pathname
   return next();
 });
 
-function applyCachePolicy(pathname: string, response: Response) {
+function applyCachePolicy(pathname: string, request: Request, response: Response) {
   if (pathname === "/sw.js") {
     response.headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
     response.headers.set("Service-Worker-Allowed", "/");
@@ -156,6 +158,7 @@ function applyCachePolicy(pathname: string, response: Response) {
     pathname === "/best-dressed" ||
     pathname === "/health" ||
     pathname.endsWith("/bought") ||
+    Boolean(getCookie(request, ATTENDEE_SESSION_COOKIE_NAME)) ||
     response.headers.has("set-cookie")
   ) {
     response.headers.set("Cache-Control", "private, no-store");
@@ -190,7 +193,7 @@ const responseHeadersMiddleware = createMiddleware().server(async ({ next, pathn
   if (process.env.NODE_ENV === "production") {
     response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
-  applyCachePolicy(pathname, response);
+  applyCachePolicy(pathname, request, response);
 
   return { ...result, response };
 });

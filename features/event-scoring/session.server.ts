@@ -8,8 +8,8 @@ import { getCookie as getRequestCookie } from "@/lib/http/cookies";
 import { getEvent } from "@/features/events/store.server";
 import { getTicket } from "@/features/tickets/store.server";
 import { participantForTicket } from "./store.server";
+import { ATTENDEE_SESSION_COOKIE_NAME } from "./session-cookie";
 
-const COOKIE_NAME = "mah-attendee-session";
 const SESSION_PREFIX = "event-scoring:attendee-session:";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const SESSION_ROTATION_MS = 1000 * 60 * 60 * 24 * 7;
@@ -58,12 +58,12 @@ function sessionId(): string {
 }
 
 function readSessionId(): string | null {
-  const value = getCookie(COOKIE_NAME);
+  const value = getCookie(ATTENDEE_SESSION_COOKIE_NAME);
   return typeof value === "string" && SESSION_ID_PATTERN.test(value) ? value : null;
 }
 
 function setSessionCookie(id: string): void {
-  setCookie(COOKIE_NAME, id, {
+  setCookie(ATTENDEE_SESSION_COOKIE_NAME, id, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -315,7 +315,7 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
 export async function getAttendeeSessionForRequest(
   request: Request,
 ): Promise<AttendeeSession | null> {
-  const id = getRequestCookie(request, COOKIE_NAME);
+  const id = getRequestCookie(request, ATTENDEE_SESSION_COOKIE_NAME);
   if (!id || !SESSION_ID_PATTERN.test(id)) return null;
   return readById(id);
 }
@@ -425,7 +425,7 @@ export async function clearAttendeeSession(): Promise<void> {
   const redis = getRedis();
   if (redis) await redis.del(`${SESSION_PREFIX}${id}`);
   else if (allowMemoryFallback()) developmentSessions.delete(id);
-  setCookie(COOKIE_NAME, "", {
+  setCookie(ATTENDEE_SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
