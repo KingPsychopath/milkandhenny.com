@@ -13,7 +13,13 @@ export const Route = createFileRoute("/play/$token")({
         ? search.room.toUpperCase()
         : undefined,
   }),
-  loader: ({ params }) => getGamePoolPublicViewFn({ data: { token: params.token } }),
+  loader: {
+    handler: ({ params }) => getGamePoolPublicViewFn({ data: { token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: GamePoolEntranceRoute,
   head: ({ params }) =>
     buildSeoHead({

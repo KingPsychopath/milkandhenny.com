@@ -9,7 +9,13 @@ import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/action/$token")({
-  loader: ({ params }) => readAttendeeActionFn({ data: { token: params.token } }),
+  loader: {
+    handler: ({ params }) => readAttendeeActionFn({ data: { token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: TicketActionPage,
   head: () =>
     buildSeoHead({

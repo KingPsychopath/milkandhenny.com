@@ -8,7 +8,13 @@ export const Route = createFileRoute("/admin/editor")({
   validateSearch: (search: Record<string, unknown>) => ({
     slug: typeof search.slug === "string" ? search.slug : undefined,
   }),
-  loader: () => getAdminEditorAccessFn(),
+  loader: {
+    handler: () => getAdminEditorAccessFn(),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: AdminEditorPage,
   head: () =>
     buildSeoHead({

@@ -12,7 +12,13 @@ import { DropPage } from "@/features/events/ui/DropPage";
  * time from the event's manage panel.
  */
 export const Route = createFileRoute("/drop/$token")({
-  loader: ({ params }) => getDropPageFn({ data: { token: params.token } }),
+  loader: {
+    handler: ({ params }) => getDropPageFn({ data: { token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: DropRoute,
   head: ({ params }) =>
     buildSeoHead({

@@ -16,7 +16,13 @@ import { CheckpointScanner } from "@/features/tickets/ui/CheckpointScanner";
  * scan. Revoking the link in admin kills it on the next scan.
  */
 export const Route = createFileRoute("/scan/$token")({
-  loader: ({ params }) => getScannerPageFn({ data: { token: params.token } }),
+  loader: {
+    handler: ({ params }) => getScannerPageFn({ data: { token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: ScanRoute,
   head: ({ params }) =>
     buildSeoHead({

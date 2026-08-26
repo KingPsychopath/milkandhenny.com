@@ -7,8 +7,14 @@ import { StaffScoringPage } from "@/features/event-scoring/ui/StaffScoringPage";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/$slug/staff/$token")({
-  loader: ({ params }) =>
-    getStaffScoringPageFn({ data: { eventSlug: params.slug, token: params.token } }),
+  loader: {
+    handler: ({ params }) =>
+      getStaffScoringPageFn({ data: { eventSlug: params.slug, token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: StaffScoringRoute,
   head: ({ params }) =>
     buildSeoHead({

@@ -6,7 +6,13 @@ import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/pitches_/present")({
-  loader: () => getPresentationAccessFn(),
+  loader: {
+    handler: () => getPresentationAccessFn(),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: PresentationSetupRoute,
   head: () =>
     buildSeoHead({

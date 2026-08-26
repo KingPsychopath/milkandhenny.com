@@ -137,18 +137,18 @@ function applyCachePolicy(pathname: string, response: Response) {
     response.headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
     return;
   }
-  if (pathname.startsWith("/things/")) {
-    response.headers.set("Cache-Control", "no-cache");
-    return;
-  }
   if (
     pathname.startsWith("/api/") ||
+    pathname.startsWith("/action/") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/drop/") ||
+    (pathname.startsWith("/events/") && pathname.includes("/staff/")) ||
     pathname.startsWith("/organize/") ||
     pathname.startsWith("/play/") ||
     pathname.startsWith("/scan") ||
     pathname.startsWith("/ticket/") ||
+    pathname.startsWith("/things/pitches/present") ||
+    /^\/things\/pitches\/[^/]+\/edit$/.test(pathname) ||
     pathname.startsWith("/upload") ||
     pathname.startsWith("/vault/") ||
     pathname.startsWith("/t/") ||
@@ -160,6 +160,10 @@ function applyCachePolicy(pathname: string, response: Response) {
   ) {
     response.headers.set("Cache-Control", "private, no-store");
     response.headers.set("CDN-Cache-Control", "no-store");
+    return;
+  }
+  if (pathname.startsWith("/things/")) {
+    response.headers.set("Cache-Control", "no-cache");
   }
 }
 

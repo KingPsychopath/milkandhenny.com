@@ -56,7 +56,13 @@ export const Route = createFileRoute("/admin/")({
       : {}),
   }),
   component: AdminPage,
-  loader: () => getAdminAccessFn(),
+  loader: {
+    handler: () => getAdminAccessFn(),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   head: () =>
     buildSeoHead({
       title: `Admin — ${SITE_NAME}`,

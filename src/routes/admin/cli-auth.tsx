@@ -15,7 +15,13 @@ export const Route = createFileRoute("/admin/cli-auth")({
     auth: typeof search.auth === "string" ? search.auth : undefined,
   }),
   loaderDeps: ({ search }) => ({ requestId: search.request }),
-  loader: ({ deps }) => getCliAuthPage({ data: { requestId: deps.requestId } }),
+  loader: {
+    handler: ({ deps }) => getCliAuthPage({ data: { requestId: deps.requestId } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: CliAuthPage,
   head: () =>
     buildSeoHead({

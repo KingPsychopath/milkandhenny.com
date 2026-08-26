@@ -19,7 +19,14 @@ export const Route = createFileRoute("/t/$id")({
     token: typeof search.token === "string" ? search.token : undefined,
   }),
   loaderDeps: ({ search }) => ({ token: search.token }),
-  loader: ({ params, deps }) => getTransferPageFn({ data: { id: params.id, token: deps.token } }),
+  loader: {
+    handler: ({ params, deps }) =>
+      getTransferPageFn({ data: { id: params.id, token: deps.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   head: ({ loaderData }) => {
     const transfer = loaderData?.transfer;
     if (!transfer) {

@@ -8,7 +8,13 @@ export const Route = createFileRoute("/upload")({
   validateSearch: (search: Record<string, unknown>) => ({
     auth: search.auth === "failed" ? ("failed" as const) : undefined,
   }),
-  loader: () => getUploadAccessFn(),
+  loader: {
+    handler: () => getUploadAccessFn(),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: UploadPage,
   head: () =>
     buildSeoHead({

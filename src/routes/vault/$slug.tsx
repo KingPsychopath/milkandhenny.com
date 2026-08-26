@@ -15,7 +15,13 @@ export const Route = createFileRoute("/vault/$slug")({
   validateSearch: (search: Record<string, unknown>) => ({
     share: typeof search.share === "string" ? search.share : undefined,
   }),
-  loader: ({ params }) => getPrivateWordPageFn({ data: params }),
+  loader: {
+    handler: ({ params }) => getPrivateWordPageFn({ data: params }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: WordPrivatePage,
   head: ({ loaderData, params }) =>
     buildSeoHead({

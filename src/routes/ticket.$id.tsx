@@ -9,11 +9,17 @@ export const Route = createFileRoute("/ticket/$id")({
   validateSearch: (search: Record<string, unknown>): { preview?: boolean } =>
     search.preview === true || search.preview === "1" ? { preview: true } : {},
   loaderDeps: ({ search }) => ({ preview: search.preview }),
-  loader: async ({ params, deps }) => {
-    const result = await getTicketPageFn({ data: { id: params.id, preview: deps.preview } });
-    if (!result.found) throw notFound();
-    return result;
+  loader: {
+    handler: async ({ params, deps }) => {
+      const result = await getTicketPageFn({ data: { id: params.id, preview: deps.preview } });
+      if (!result.found) throw notFound();
+      return result;
+    },
+    staleReloadMode: "blocking",
   },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: TicketRoute,
   head: ({ loaderData, params }) =>
     buildSeoHead({

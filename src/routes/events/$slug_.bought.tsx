@@ -15,10 +15,16 @@ export const Route = createFileRoute("/events/$slug_/bought")({
     session: typeof search.session === "string" ? search.session : "",
   }),
   loaderDeps: ({ search }) => ({ session: search.session }),
-  loader: async ({ deps }) => {
-    if (!deps.session) return { outcome: { state: "unknown" as const } };
-    return { outcome: await getCheckoutOutcomeFn({ data: { sessionId: deps.session } }) };
+  loader: {
+    handler: async ({ deps }) => {
+      if (!deps.session) return { outcome: { state: "unknown" as const } };
+      return { outcome: await getCheckoutOutcomeFn({ data: { sessionId: deps.session } }) };
+    },
+    staleReloadMode: "blocking",
   },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: PurchaseCompleteRoute,
   head: ({ params }) =>
     buildSeoHead({

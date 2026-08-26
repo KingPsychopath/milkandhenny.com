@@ -5,7 +5,13 @@ import { getGamePoolOperatorViewFn } from "@/features/things/pool/operator.funct
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/organize/$token")({
-  loader: ({ params }) => getGamePoolOperatorViewFn({ data: { token: params.token } }),
+  loader: {
+    handler: ({ params }) => getGamePoolOperatorViewFn({ data: { token: params.token } }),
+    staleReloadMode: "blocking",
+  },
+  staleTime: 0,
+  gcTime: 0,
+  preload: false,
   component: OperatorRoute,
   head: ({ params }) =>
     buildSeoHead({
