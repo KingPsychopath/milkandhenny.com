@@ -1,73 +1,21 @@
-import { Link, createFileRoute, notFound, redirect } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { WordBody } from "@/features/words/components/ui/WordBody";
 import { UnlockWordClient } from "@/features/words/components/ui/UnlockWordClient";
-import { getWordRenderData } from "@/features/words/components/ui/wordRenderData.server";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { AppImage } from "@/components/AppImage";
-import { resolveWordContentRef } from "@/features/media/storage";
 import { imagePlaceholderStyle } from "@/features/media/image";
-import { extractMarkdownImageRefs } from "@/features/words/image";
-import { loadWordImageData } from "@/features/words/image.server";
-import { canReadWordInServerContext, isWordsEnabled } from "@/features/words/reader.server";
-import { getWord, getWordMeta } from "@/features/words/store.server";
+import { getPrivateWordPageFn } from "@/features/words/reader.functions";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
-
-const getPrivateWord = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
-  .handler(async ({ data }) => {
-    const { slug } = data;
-    if (!isWordsEnabled()) throw notFound();
-    const meta = await getWordMeta(slug);
-    if (!meta) throw notFound();
-    if (meta.visibility !== "private") {
-      throw redirect({ to: "/words/$slug", params: { slug } });
-    }
-
-    const canRead = await canReadWordInServerContext(meta);
-    const note = canRead ? await getWord(slug) : null;
-    if (canRead && !note) throw notFound();
-
-    const published = meta.publishedAt ?? meta.updatedAt;
-    const readingTime = note ? note.meta.readingTime : 0;
-    const renderData = note
-      ? await getWordRenderData(slug, note.meta.updatedAt, note.markdown)
-      : null;
-    const headings = renderData?.headings ?? [];
-    const albums = renderData?.albums ?? {};
-    const imageRefs = note
-      ? [...extractMarkdownImageRefs(note.markdown), ...(meta.image ? [meta.image] : [])]
-      : [];
-    const images = note
-      ? await loadWordImageData({ refs: imageRefs, wordSlug: slug, privacy: "private" })
-      : {};
-    const heroImageData = meta.image ? images[meta.image] : undefined;
-    const heroImage =
-      heroImageData?.src ??
-      (note && meta.image ? resolveWordContentRef(meta.image, slug, { privacy: "private" }) : "");
-
-    return {
-      meta,
-      note,
-      published,
-      readingTime,
-      headings,
-      albums,
-      heroImage,
-      heroImageData,
-      images,
-    };
-  });
 
 export const Route = createFileRoute("/vault/$slug")({
   validateSearch: (search: Record<string, unknown>) => ({
     share: typeof search.share === "string" ? search.share : undefined,
   }),
-  loader: ({ params }) => getPrivateWord({ data: params }),
+  loader: ({ params }) => getPrivateWordPageFn({ data: params }),
   component: WordPrivatePage,
   head: ({ loaderData, params }) =>
     buildSeoHead({

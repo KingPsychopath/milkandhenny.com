@@ -1,8 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import type { Album } from "@/features/media/albums";
-import { getAllAlbums } from "@/features/media/albums.server";
+import { getAlbumsPageFn } from "@/features/media/albums.functions";
 import { getAlbumImageData } from "@/features/media/storage";
 import { imagePlaceholderStyle } from "@/features/media/image";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
@@ -13,7 +12,7 @@ import { AppImage } from "@/components/AppImage";
 
 export const Route = createFileRoute("/pics/")({
   component: PicsPage,
-  loader: () => getAlbums(),
+  loader: () => getAlbumsPageFn(),
   head: () =>
     buildSeoHead({
       title: `Pics — ${SITE_NAME}`,
@@ -149,5 +148,3 @@ function PicsPage() {
     </div>
   );
 }
-
-const getAlbums = createServerFn({ method: "GET" }).handler(() => getAllAlbums());

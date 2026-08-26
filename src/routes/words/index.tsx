@@ -1,20 +1,14 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
-import { isWordsEnabled } from "@/features/words/reader.server";
-import { listWords } from "@/features/words/store.server";
-import type { WordType } from "@/features/words/types";
-import {
-  SearchableWordList,
-  type WordListSummary,
-} from "@/features/words/components/ui/SearchableWordList";
+import { SearchableWordList } from "@/features/words/components/ui/SearchableWordList";
+import { getWordsPageFn } from "@/features/words/reader.functions";
 
 export const Route = createFileRoute("/words/")({
   component: WordsPage,
-  loader: () => getWords(),
+  loader: () => getWordsPageFn(),
   head: () =>
     buildSeoHead({
       title: `Words — ${SITE_NAME}`,
@@ -23,40 +17,6 @@ export const Route = createFileRoute("/words/")({
       image: OG_IMAGES.words,
       imageAlt: "Words — essays, recipes, reviews, and notes from Milk & Henny",
     }),
-});
-
-function formatDate(isoOrDate: string): string {
-  const withTime = /^\d{4}-\d{2}-\d{2}$/.test(isoOrDate) ? `${isoOrDate}T00:00:00` : isoOrDate;
-  const date = new Date(withTime);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-const getWords = createServerFn({ method: "GET" }).handler(async () => {
-  const noteItems = isWordsEnabled()
-    ? (await listWords({ includeNonPublic: false, limit: 1000 })).words
-    : [];
-
-  const allItems: WordListSummary[] = noteItems.map((note) => ({
-    slug: note.slug,
-    title: note.title,
-    subtitle: note.subtitle,
-    type: note.type as WordType,
-    tags: note.tags,
-    dateLabel: formatDate(note.publishedAt ?? note.updatedAt),
-    date: note.publishedAt ?? note.updatedAt,
-    readingTime: note.readingTime,
-    featured: note.featured,
-    searchText: `${note.slug} ${note.title} ${note.subtitle ?? ""} ${note.type} ${note.tags.join(" ")} ${note.featured ? "featured" : ""}`,
-  }));
-  allItems.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  return allItems;
 });
 
 function WordsPage() {

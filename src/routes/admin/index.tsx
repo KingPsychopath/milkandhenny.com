@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
 import {
@@ -12,14 +10,12 @@ import {
   type CommunicationsTab,
   type OperationsTab,
 } from "@/features/admin/ui/components/AdminSectionNav";
-import { authenticateRequest, isLocalDevelopment } from "@/features/auth/auth.server";
-import { signInAdmin, signInAdminDevelopment } from "@/features/auth/auth.functions";
+import {
+  getAdminAccessFn,
+  signInAdmin,
+  signInAdminDevelopment,
+} from "@/features/auth/auth.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
-
-const getAdminAccess = createServerFn({ method: "GET" }).handler(async () => ({
-  auth: await authenticateRequest(getRequest(), "admin"),
-  localDevBypassAvailable: isLocalDevelopment(),
-}));
 
 export const Route = createFileRoute("/admin/")({
   validateSearch: (
@@ -60,7 +56,7 @@ export const Route = createFileRoute("/admin/")({
       : {}),
   }),
   component: AdminPage,
-  loader: () => getAdminAccess(),
+  loader: () => getAdminAccessFn(),
   head: () =>
     buildSeoHead({
       title: `Admin — ${SITE_NAME}`,

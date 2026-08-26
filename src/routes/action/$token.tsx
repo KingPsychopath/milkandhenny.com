@@ -1,52 +1,15 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-
 import {
-  acceptTicketAction,
-  acceptRefundConsent,
-  declineRefundConsent,
-  declineTicketTransfer,
-  inspectTicketAction,
-} from "@/features/attendee-operations/ticket-operations.server";
-import {
-  acceptAccessAction,
-  inspectAccessAction,
-} from "@/features/attendee-operations/access-grants.server";
+  acceptAttendeeActionFn,
+  declineAttendeeActionFn,
+  readAttendeeActionFn,
+} from "@/features/attendee-operations/action.functions";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
-const readAction = createServerFn({ method: "GET" })
-  .validator((data: { token: string }) => data)
-  .handler(async ({ data }) => {
-    const ticket = await inspectTicketAction(data.token);
-    if (ticket) return { kind: "ticket" as const, ...ticket };
-    const access = await inspectAccessAction(data.token);
-    return access ? { kind: "access" as const, ...access } : null;
-  });
-
-const acceptAction = createServerFn({ method: "POST" })
-  .validator((data: { token: string }) => data)
-  .handler(async ({ data }) => {
-    const access = await inspectAccessAction(data.token);
-    if (access) return acceptAccessAction(data.token);
-    const ticket = await inspectTicketAction(data.token);
-    return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
-      ? acceptRefundConsent(data.token)
-      : acceptTicketAction(data.token);
-  });
-
-const declineAction = createServerFn({ method: "POST" })
-  .validator((data: { token: string }) => data)
-  .handler(async ({ data }) => {
-    const ticket = await inspectTicketAction(data.token);
-    return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
-      ? declineRefundConsent(data.token)
-      : declineTicketTransfer(data.token);
-  });
-
 export const Route = createFileRoute("/action/$token")({
-  loader: ({ params }) => readAction({ data: { token: params.token } }),
+  loader: ({ params }) => readAttendeeActionFn({ data: { token: params.token } }),
   component: TicketActionPage,
   head: () =>
     buildSeoHead({
@@ -68,7 +31,7 @@ function TicketActionPage() {
   async function accept() {
     setBusy("accept");
     setMessage("");
-    const result = await acceptAction({ data: { token } });
+    const result = await acceptAttendeeActionFn({ data: { token } });
     if (!result.ok) {
       setMessage(result.error);
       setBusy(null);
@@ -102,7 +65,7 @@ function TicketActionPage() {
   async function decline() {
     setBusy("decline");
     setMessage("");
-    const result = await declineAction({ data: { token } });
+    const result = await declineAttendeeActionFn({ data: { token } });
     setMessage(
       result.ok
         ? isRefundConsent

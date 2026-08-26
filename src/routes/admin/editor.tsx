@@ -1,20 +1,14 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-import { getRequest } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
-import { authenticateRequest } from "@/features/auth/auth.server";
+import { getAdminEditorAccessFn } from "@/features/auth/auth.functions";
 import { EditorAdminClient } from "@/features/admin/ui/editor/EditorAdminClient";
 import { buildSeoHead } from "@/lib/shared/seo";
-
-const getEditorAccess = createServerFn({ method: "GET" }).handler(() =>
-  authenticateRequest(getRequest(), "admin"),
-);
 
 export const Route = createFileRoute("/admin/editor")({
   validateSearch: (search: Record<string, unknown>) => ({
     slug: typeof search.slug === "string" ? search.slug : undefined,
   }),
-  loader: () => getEditorAccess(),
+  loader: () => getAdminEditorAccessFn(),
   component: AdminEditorPage,
   head: () =>
     buildSeoHead({

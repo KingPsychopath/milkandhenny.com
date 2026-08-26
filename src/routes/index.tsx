@@ -1,50 +1,13 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { PostListItem } from "@/features/words/components/PostListItem";
-import { isWordsEnabled } from "@/features/words/reader.server";
-import { listWords } from "@/features/words/store.server";
-import { getFooterPartyPath } from "@/features/site/site-settings.server";
-
-const RECENT_LIMIT = 5;
-
-const getHomeData = createServerFn({ method: "GET" }).handler(async () => {
-  const [noteBlogs, footerPartyPath] = await Promise.all([
-    isWordsEnabled()
-      ? listWords({
-          includeNonPublic: false,
-          visibility: "public",
-          type: "blog",
-          limit: 1000,
-        }).then((result) => result.words)
-      : Promise.resolve([]),
-    getFooterPartyPath(),
-  ]);
-
-  const allPosts = noteBlogs
-    .map((note) => ({
-      slug: note.slug,
-      title: note.title,
-      subtitle: note.subtitle,
-      date: note.publishedAt ?? note.updatedAt,
-      readingTime: note.readingTime,
-      featured: note.featured ?? false,
-    }))
-    .sort((a, b) => {
-      if (!!a.featured !== !!b.featured) return a.featured ? -1 : 1;
-      return new Date(b.date).getTime() - new Date(a.date).getTime();
-    });
-  const posts = allPosts.slice(0, RECENT_LIMIT);
-  const hasMore = allPosts.length > RECENT_LIMIT;
-
-  return { posts, hasMore, footerPartyPath };
-});
+import { getHomePageFn } from "@/features/site/home.functions";
 
 export const Route = createFileRoute("/")({
   component: Home,
-  loader: () => getHomeData(),
+  loader: () => getHomePageFn(),
   head: () =>
     buildSeoHead({
       title: SITE_NAME,

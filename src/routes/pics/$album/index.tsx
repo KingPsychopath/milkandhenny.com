@@ -1,32 +1,15 @@
-import { Link, createFileRoute, notFound } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { JourneyRail } from "@/components/SiteFooter";
-import { getAlbumBySlug, getAllAlbums } from "@/features/media/albums.server";
+import { getAlbumPageFn } from "@/features/media/albums.functions";
 import { getOgUrl } from "@/features/media/storage";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { AlbumGallery } from "@/features/media/components/AlbumGallery";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 
-const getAlbum = createServerFn({ method: "GET" })
-  .validator((data: { album: string }) => data)
-  .handler(async ({ data }) => {
-    const album = await getAlbumBySlug(data.album);
-    if (!album) throw notFound();
-    const albums = await getAllAlbums();
-    const currentIndex = albums.findIndex((item) => item.slug === album.slug);
-    const olderAlbum = albums[currentIndex + 1];
-    const newerAlbum = currentIndex > 0 ? albums[currentIndex - 1] : undefined;
-    return {
-      album,
-      olderAlbum: olderAlbum ? { slug: olderAlbum.slug, title: olderAlbum.title } : null,
-      newerAlbum: newerAlbum ? { slug: newerAlbum.slug, title: newerAlbum.title } : null,
-    };
-  });
-
 export const Route = createFileRoute("/pics/$album/")({
   component: AlbumPage,
-  loader: ({ params }) => getAlbum({ data: params }),
+  loader: ({ params }) => getAlbumPageFn({ data: params }),
   head: ({ loaderData }) => {
     const album = loaderData?.album;
     if (!album) {

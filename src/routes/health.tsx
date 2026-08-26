@@ -1,12 +1,9 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
-import { getSystemCapabilities } from "@/features/system/capabilities.server";
+import { getSystemCapabilitiesFn } from "@/features/system/capabilities.functions";
 import type { CapabilityStatus } from "@/features/system/capabilities";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
-
-const getCapabilities = createServerFn({ method: "GET" }).handler(() => getSystemCapabilities());
 
 const STATUS_MARK: Record<CapabilityStatus, string> = {
   available: "●",
@@ -27,7 +24,7 @@ function formatHealthTimestamp(timestamp: string): string {
 
 export const Route = createFileRoute("/health")({
   component: HealthPage,
-  loader: () => getCapabilities(),
+  loader: () => getSystemCapabilitiesFn(),
   head: () =>
     buildSeoHead({
       title: `System health · ${SITE_BRAND}`,

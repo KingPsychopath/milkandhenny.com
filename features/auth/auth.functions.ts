@@ -2,11 +2,17 @@ import { redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest, setCookie } from "@tanstack/react-start/server";
 import {
+  authenticateRequest,
   getLocalDevAdminCookieValue,
   handleVerifyRequest,
   isLocalDevelopment,
   revokeCurrentSession,
 } from "./auth.server";
+import {
+  getUploadAccessWindow,
+  toUploadAccessCookieOptions,
+  UPLOAD_ACCESS_COOKIE,
+} from "./upload-access.server";
 import {
   getAuthCookieMaxAgeSeconds,
   getAuthCookieName,
@@ -18,6 +24,36 @@ import type { AuthCookieRole } from "./cookies";
 interface Credentials {
   value: string;
 }
+
+export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async () => ({
+  auth: await authenticateRequest(getRequest(), "admin"),
+  localDevBypassAvailable: isLocalDevelopment(),
+}));
+
+export const getAdminEditorAccessFn = createServerFn({ method: "GET" }).handler(() =>
+  authenticateRequest(getRequest(), "admin"),
+);
+
+export const getUploadAccessFn = createServerFn({ method: "GET" }).handler(async () => {
+  const request = getRequest();
+  const openWindow = await getUploadAccessWindow();
+  setCookie(
+    UPLOAD_ACCESS_COOKIE,
+    openWindow?.token ?? "",
+    toUploadAccessCookieOptions(
+      openWindow ? Math.ceil((Date.parse(openWindow.expiresAt) - Date.now()) / 1000) : 0,
+    ),
+  );
+  const [auth, adminAuth] = await Promise.all([
+    authenticateRequest(request, "upload"),
+    authenticateRequest(request, "admin"),
+  ]);
+  return {
+    isAuthed: auth.ok || Boolean(openWindow),
+    isAdmin: adminAuth.ok,
+    uploadAccessExpiresAt: openWindow?.expiresAt ?? null,
+  };
+});
 
 function readCredential(field: "pin" | "password") {
   return (input: unknown): Credentials => {

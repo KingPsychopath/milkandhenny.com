@@ -1,8 +1,6 @@
-import { Link, createFileRoute, notFound } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { WordBody } from "@/features/words/components/ui/WordBody";
 import { WordSplitRedirectClient } from "@/features/words/components/ui/WordSplitRedirectClient";
-import { getWordRenderData } from "@/features/words/components/ui/wordRenderData.server";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JourneyRail } from "@/components/SiteFooter";
@@ -10,67 +8,15 @@ import { JumpRail } from "@/components/JumpRail";
 import { ReadingProgress } from "@/components/ReadingProgress";
 import { Share } from "@/components/Share";
 import { AppImage } from "@/components/AppImage";
-import { resolveWordContentRef } from "@/features/media/storage";
 import { imagePlaceholderStyle } from "@/features/media/image";
-import { extractMarkdownImageRefs } from "@/features/words/image";
-import { loadWordImageData } from "@/features/words/image.server";
-import { isWordsEnabled } from "@/features/words/reader.server";
-import { getWord, getWordMeta, listWords } from "@/features/words/store.server";
+import { getWordPageFn } from "@/features/words/reader.functions";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
 
-const getWordPage = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
-  .handler(async ({ data }) => {
-    const { slug } = data;
-    if (!isWordsEnabled()) throw notFound();
-    const meta = await getWordMeta(slug);
-    if (!meta) throw notFound();
-    if (meta.visibility === "private") {
-      return { kind: "private" as const, meta };
-    }
-
-    const note = await getWord(slug);
-    if (!note) throw notFound();
-
-    const publishedWords = (await listWords({ includeNonPublic: false, limit: 1000 })).words
-      .map((word) => ({
-        slug: word.slug,
-        title: word.title,
-        date: word.publishedAt ?? word.updatedAt,
-      }))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const currentIndex = publishedWords.findIndex((word) => word.slug === slug);
-
-    const published = meta.publishedAt ?? meta.updatedAt;
-    const { headings, albums } = await getWordRenderData(slug, note.meta.updatedAt, note.markdown);
-    const imageRefs = [
-      ...extractMarkdownImageRefs(note.markdown),
-      ...(meta.image ? [meta.image] : []),
-    ];
-    const images = await loadWordImageData({ refs: imageRefs, wordSlug: slug, privacy: "public" });
-    const heroImageData = meta.image ? images[meta.image] : undefined;
-    const heroImage =
-      heroImageData?.src ?? (meta.image ? resolveWordContentRef(meta.image, slug) : "");
-    return {
-      kind: "word" as const,
-      meta,
-      note,
-      published,
-      headings,
-      albums,
-      heroImage,
-      heroImageData,
-      images,
-      olderWord: currentIndex >= 0 ? (publishedWords[currentIndex + 1] ?? null) : null,
-      newerWord: currentIndex > 0 ? (publishedWords[currentIndex - 1] ?? null) : null,
-    };
-  });
-
 export const Route = createFileRoute("/words/$slug")({
   component: WordSlugPage,
-  loader: ({ params }) => getWordPage({ data: params }),
+  loader: ({ params }) => getWordPageFn({ data: params }),
   head: ({ loaderData }) => {
     if (!loaderData) {
       return buildSeoHead({

@@ -1,13 +1,11 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import {
   describeTransferFiles,
   inferTransferTitle,
   totalTransferBytes,
 } from "@/features/transfers/presentation";
-import { getTransfer, validateDeleteToken } from "@/features/transfers/store.server";
-import { toPublicTransfer } from "@/features/transfers/public";
+import { getTransferPageFn } from "@/features/transfers/transfer.functions";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { formatBytes } from "@/lib/shared/format";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -15,28 +13,13 @@ import { TransferGallery } from "@/features/transfers/ui/transfer/TransferGaller
 import { CountdownTimer } from "@/features/transfers/ui/transfer/CountdownTimer";
 import { TakedownButton } from "@/features/transfers/ui/transfer/TakedownButton";
 
-const getTransferPage = createServerFn({ method: "GET" })
-  .validator((data: { id: string; token?: string }) => data)
-  .handler(async ({ data }) => {
-    const transfer = await getTransfer(data.id);
-    const remainingSeconds = transfer
-      ? Math.floor((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000)
-      : 0;
-    const canDelete = data.token ? await validateDeleteToken(data.id, data.token) : false;
-    return {
-      transfer: transfer ? toPublicTransfer(transfer) : null,
-      remainingSeconds,
-      canDelete,
-    };
-  });
-
 export const Route = createFileRoute("/t/$id")({
   component: TransferPage,
   validateSearch: (search: Record<string, unknown>) => ({
     token: typeof search.token === "string" ? search.token : undefined,
   }),
   loaderDeps: ({ search }) => ({ token: search.token }),
-  loader: ({ params, deps }) => getTransferPage({ data: { id: params.id, token: deps.token } }),
+  loader: ({ params, deps }) => getTransferPageFn({ data: { id: params.id, token: deps.token } }),
   head: ({ loaderData }) => {
     const transfer = loaderData?.transfer;
     if (!transfer) {

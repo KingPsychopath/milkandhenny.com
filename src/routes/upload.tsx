@@ -1,46 +1,14 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
-import { getRequest, setCookie } from "@tanstack/react-start/server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { UploadDashboard } from "@/features/transfers/ui/upload/UploadDashboard";
-import { authenticateRequest } from "@/features/auth/auth.server";
-import { signInUpload } from "@/features/auth/auth.functions";
-import {
-  getUploadAccessWindow,
-  toUploadAccessCookieOptions,
-  UPLOAD_ACCESS_COOKIE,
-} from "@/features/auth/upload-access.server";
-
-const getUploadAccess = createServerFn({ method: "GET" }).handler(async () => {
-  const request = getRequest();
-  const openWindow = await getUploadAccessWindow();
-  if (openWindow) {
-    const remainingSeconds = Math.ceil((Date.parse(openWindow.expiresAt) - Date.now()) / 1000);
-    setCookie(
-      UPLOAD_ACCESS_COOKIE,
-      openWindow.token,
-      toUploadAccessCookieOptions(remainingSeconds),
-    );
-  } else {
-    setCookie(UPLOAD_ACCESS_COOKIE, "", toUploadAccessCookieOptions(0));
-  }
-  const [auth, adminAuth] = await Promise.all([
-    authenticateRequest(request, "upload"),
-    authenticateRequest(request, "admin"),
-  ]);
-  return {
-    isAuthed: auth.ok || Boolean(openWindow),
-    isAdmin: adminAuth.ok,
-    uploadAccessExpiresAt: openWindow?.expiresAt ?? null,
-  };
-});
+import { getUploadAccessFn, signInUpload } from "@/features/auth/auth.functions";
 
 export const Route = createFileRoute("/upload")({
   validateSearch: (search: Record<string, unknown>) => ({
     auth: search.auth === "failed" ? ("failed" as const) : undefined,
   }),
-  loader: () => getUploadAccess(),
+  loader: () => getUploadAccessFn(),
   component: UploadPage,
   head: () =>
     buildSeoHead({

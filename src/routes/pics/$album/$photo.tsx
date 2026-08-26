@@ -1,7 +1,6 @@
-import { Link, createFileRoute, notFound } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { JourneyRail } from "@/components/SiteFooter";
-import { getAlbumBySlug } from "@/features/media/albums.server";
+import { getPhotoPageFn } from "@/features/media/albums.functions";
 import {
   getAlbumImageData,
   getOgUrl,
@@ -15,19 +14,9 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Share } from "@/components/Share";
 import { BrandedImage } from "@/features/media/components/BrandedImage";
 
-const getPhoto = createServerFn({ method: "GET" })
-  .validator((data: { album: string; photo: string }) => data)
-  .handler(async ({ data }) => {
-    const album = await getAlbumBySlug(data.album);
-    if (!album) throw notFound();
-    const photoIndex = album.photos.findIndex((photo) => photo.id === data.photo);
-    if (photoIndex === -1) throw notFound();
-    return { album, photoIndex };
-  });
-
 export const Route = createFileRoute("/pics/$album/$photo")({
   component: PhotoPage,
-  loader: ({ params }) => getPhoto({ data: params }),
+  loader: ({ params }) => getPhotoPageFn({ data: params }),
   head: ({ loaderData }) => {
     if (!loaderData) {
       return buildSeoHead({
