@@ -196,23 +196,30 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
         puzzle: hotAndColdPuzzleNumber(),
         ...(await scoreHotAndColdGuess(dailyHotAndColdTarget(), data.word)),
       };
-      const personId = await currentPersonId();
-      if (personId)
-        await recordPersonGame({
-          personId,
-          game: "hot-and-cold",
-          mode: "daily",
-          externalRef: String(result.puzzle),
-          status: result.rank === 0 ? "completed" : "active",
-          outcome: result.rank === 0 ? "found" : undefined,
-          score: result.rank === 0 ? 0 : undefined,
-          summary: { latestRank: result.rank },
-          event: {
-            key: `guess:${result.word}`,
-            kind: "guess",
-            payload: { word: result.word, rank: result.rank, band: result.band },
-          },
+      try {
+        const personId = await currentPersonId();
+        if (personId)
+          await recordPersonGame({
+            personId,
+            game: "hot-and-cold",
+            mode: "daily",
+            externalRef: String(result.puzzle),
+            status: result.rank === 0 ? "completed" : "active",
+            outcome: result.rank === 0 ? "found" : undefined,
+            score: result.rank === 0 ? 0 : undefined,
+            summary: { latestRank: result.rank },
+            event: {
+              key: `guess:${result.word}`,
+              kind: "guess",
+              payload: { word: result.word, rank: result.rank, band: result.band },
+            },
+          });
+      } catch (error) {
+        log.warn("things.hot-and-cold", "Could not record the daily guess", {
+          puzzle: result.puzzle,
+          error: error instanceof Error ? error.message : String(error),
         });
+      }
       return result;
     } catch (error) {
       if (error instanceof HotAndColdInvalidGuessError)
