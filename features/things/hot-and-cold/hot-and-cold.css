@@ -167,6 +167,26 @@
 .heat-word--found[data-newest] .heat-word-effect {
   animation: heat-flare 1.15s ease-out;
 }
+.heat-ledger-update {
+  position: fixed;
+  z-index: 19;
+  bottom: calc(8.5rem + env(safe-area-inset-bottom));
+  left: 50%;
+  max-width: calc(100vw - 2rem);
+  margin: 0;
+  padding: 0.65rem 0.9rem;
+  overflow: hidden;
+  border: 1px solid var(--stone-300);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 94%, transparent);
+  box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--foreground) 10%, transparent);
+  font: 600 0.65rem/1 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--stone-500);
+  pointer-events: none;
+  animation: heat-update 2.8s ease both;
+}
 .heat-ledger-empty {
   min-height: 17rem;
   display: grid;
@@ -383,6 +403,21 @@
     transform: scale(1.15);
   }
 }
+@keyframes heat-update {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0.45rem);
+  }
+  12%,
+  82% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -0.2rem);
+  }
+}
 @keyframes heat-breathe {
   50% {
     transform: translateY(-0.12rem) scale(1.06);
@@ -392,7 +427,11 @@
   .heat-source-flame,
   .heat-word[data-newest],
   .heat-word[data-newest] .heat-word-text,
-  .heat-word[data-newest] .heat-word-effect {
+  .heat-word[data-newest] .heat-word-effect,
+  .heat-ledger-update {
     animation: none;
+  }
+  .heat-ledger-update {
+    transform: translateX(-50%);
   }
 }
