@@ -1,5 +1,6 @@
 .hot-and-cold {
   --heat-ember: var(--things-amber);
+  --heat-red: var(--things-heat-red);
   --heat-frost: var(--things-frost);
   background:
     radial-gradient(
@@ -29,8 +30,13 @@ main:has(.heat-result-share) .heat-source {
 .heat-source-flame {
   --heat-color: color-mix(
     in oklab,
-    var(--heat-frost) calc(100% - var(--heat-mix)),
-    var(--heat-ember) var(--heat-mix)
+    color-mix(
+        in oklab,
+        var(--heat-frost) calc(100% - var(--heat-amber-mix)),
+        var(--heat-ember) var(--heat-amber-mix)
+      )
+      calc(100% - var(--heat-red-mix)),
+    var(--heat-red) var(--heat-red-mix)
   );
   position: relative;
   display: grid;
@@ -48,8 +54,8 @@ main:has(.heat-result-share) .heat-source {
   animation: heat-breathe 2.6s ease-in-out infinite;
 }
 .heat-source-flame[data-band="found"] {
-  --heat-color: var(--heat-ember);
-  box-shadow: 0 0 3.4rem color-mix(in srgb, var(--heat-ember) 42%, transparent);
+  --heat-color: var(--heat-red);
+  box-shadow: 0 0 3.4rem color-mix(in srgb, var(--heat-red) 42%, transparent);
 }
 .heat-source-flame > svg {
   position: absolute;
@@ -157,15 +163,15 @@ main:has(.heat-result-share) .heat-ledger {
   --heat-band-level: 58%;
 }
 .heat-band--hot {
-  --heat-color: color-mix(in srgb, var(--heat-ember) 78%, var(--foreground));
+  --heat-color: color-mix(in oklab, var(--heat-ember) 58%, var(--heat-red));
   --heat-band-level: 78%;
 }
 .heat-band--burning {
-  --heat-color: var(--heat-ember);
+  --heat-color: var(--heat-red);
   --heat-band-level: 92%;
 }
 .heat-band--found {
-  --heat-color: var(--heat-ember);
+  --heat-color: var(--heat-red);
   --heat-band-level: 100%;
 }
 .heat-band-thermometer {
@@ -250,16 +256,19 @@ main:has(.heat-result-share) .heat-ledger {
   pointer-events: none;
 }
 .heat-word--burning .heat-word-text,
-.heat-word--hot .heat-word-text,
 .heat-word--found .heat-word-text {
-  color: var(--heat-ember);
-  text-shadow: 0 0 1.8rem color-mix(in srgb, var(--heat-ember) 38%, transparent);
+  color: var(--heat-red);
+  text-shadow: 0 0 1.8rem color-mix(in srgb, var(--heat-red) 38%, transparent);
+}
+.heat-word--hot .heat-word-text {
+  color: color-mix(in oklab, var(--heat-ember) 58%, var(--heat-red));
+  text-shadow: 0 0 1.8rem color-mix(in srgb, var(--heat-red) 24%, transparent);
 }
 .heat-word--burning .heat-word-effect,
 .heat-word--found .heat-word-effect {
   background: radial-gradient(
     ellipse at 60% 100%,
-    color-mix(in srgb, var(--heat-ember) 24%, transparent),
+    color-mix(in srgb, var(--heat-red) 24%, transparent),
     transparent 65%
   );
 }
@@ -386,8 +395,8 @@ main:has(.heat-result-share) .heat-ledger {
   display: grid;
   grid-template-columns: 5.2rem 1fr;
   padding: 1.25rem 0.2rem;
-  color: var(--heat-ember);
-  border-top: 1px solid color-mix(in srgb, var(--heat-ember) 55%, transparent);
+  color: var(--heat-red);
+  border-top: 1px solid color-mix(in srgb, var(--heat-red) 55%, transparent);
 }
 .heat-target span,
 .heat-target small {
@@ -494,8 +503,8 @@ main:has(.heat-result-share) .heat-ledger {
   background: color-mix(in srgb, var(--heat-ember) 35%, transparent);
 }
 .heat-share-trail li[data-zone="hot"] span {
-  background: var(--heat-ember);
-  box-shadow: 0 0 1.4rem color-mix(in srgb, var(--heat-ember) 55%, transparent);
+  background: var(--heat-red);
+  box-shadow: 0 0 1.4rem color-mix(in srgb, var(--heat-red) 55%, transparent);
 }
 .heat-share-trail-empty {
   grid-column: 1 / -1;
@@ -592,32 +601,19 @@ main:has(.heat-result-share) .heat-ledger {
 }
 .heat-share-dock-bar i {
   width: 100%;
-  min-height: 18%;
+  height: calc(var(--heat-share-intensity) * 100%);
   border-radius: inherit;
   background: var(--heat-frost);
 }
-.heat-share-dock-bar[data-band="cold"] i {
-  min-height: 31%;
+.heat-share-dock-bar[data-zone="cool"] i {
+  background: color-mix(in srgb, var(--heat-frost) 60%, var(--foreground));
 }
-.heat-share-dock-bar[data-band="cool"] i {
-  min-height: 43%;
+.heat-share-dock-bar[data-zone="warm"] i {
+  background: color-mix(in srgb, var(--heat-ember) 35%, transparent);
 }
-.heat-share-dock-bar[data-band="warm"] i {
-  min-height: 58%;
-  background: color-mix(in srgb, var(--heat-ember) 46%, var(--foreground));
-}
-.heat-share-dock-bar[data-band="hot"] i {
-  min-height: 74%;
-  background: color-mix(in srgb, var(--heat-ember) 72%, var(--foreground));
-}
-.heat-share-dock-bar[data-band="burning"] i {
-  min-height: 88%;
-  background: var(--heat-ember);
-}
-.heat-share-dock-bar[data-band="found"] i {
-  min-height: 100%;
-  background: var(--heat-ember);
-  box-shadow: 0 0 0.8rem var(--heat-ember);
+.heat-share-dock-bar[data-zone="hot"] i {
+  background: var(--heat-red);
+  box-shadow: 0 0 0.8rem color-mix(in srgb, var(--heat-red) 55%, transparent);
 }
 .heat-share-dock-counts {
   overflow: hidden;

@@ -244,11 +244,12 @@ export function HotAndColdShareDock({
         >
           <span className="heat-share-dock-summary">
             <span className="heat-share-dock-bars" aria-hidden="true">
-              {result.trail.map((guess) => (
+              {result.distribution.map(({ zone, intensity }) => (
                 <span
                   className="heat-share-dock-bar"
-                  key={`${guess.sequence}:${guess.rank}`}
-                  data-band={guess.band}
+                  key={zone}
+                  data-zone={zone}
+                  style={{ "--heat-share-intensity": intensity } as CSSProperties}
                 >
                   <i />
                 </span>
