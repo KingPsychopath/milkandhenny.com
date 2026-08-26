@@ -24,14 +24,14 @@ export interface HotAndColdShareResult {
   distribution: HeatDistribution[];
 }
 
-const TRAIL_LABELS: Record<HeatBand, string> = {
-  found: "found",
-  burning: "burning",
-  hot: "hot",
-  warm: "warm",
-  cool: "cool",
-  cold: "cold",
-  frozen: "frozen",
+const TRAIL_SYMBOLS: Record<HeatBand, string> = {
+  found: "✨",
+  burning: "❤️‍🔥",
+  hot: "🔥",
+  warm: "☀️",
+  cool: "🔹",
+  cold: "❄️",
+  frozen: "🧊",
 };
 
 function sampleEvenly<T>(items: readonly T[], limit: number) {
@@ -135,8 +135,8 @@ export function buildHotAndColdShareResult({
         ? "Exact on the first guess"
         : `Closest #${bestRank.toLocaleString("en-US")}`;
   const trailSummary = trail.length
-    ? trail.map(({ band }) => TRAIL_LABELS[band]).join(" — ")
-    : "no trail";
+    ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ")
+    : "—";
   const outcomeSummary = [
     guessLabel,
     hintsUsed > 0 ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}` : null,

@@ -21,7 +21,7 @@ describe("hot and cold result sharing", () => {
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
     expect(result.text).toBe(
-      "Hot & Cold · daily #12\nfrozen — cool — hot — found\n5 guesses\nClosest #400",
+      "Hot & Cold · daily #12\n🧊 → 🔹 → 🔥 → ✨\n5 guesses\nClosest #400",
     );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
@@ -30,6 +30,22 @@ describe("hot and cold result sharing", () => {
       { zone: "warm", count: 0, intensity: 0 },
       { zone: "hot", count: 1, intensity: 0.5 },
     ]);
+  });
+
+  it("shows hints alongside the guess count", () => {
+    const result = buildHotAndColdShareResult({
+      label: "daily #16",
+      guesses: [
+        { sequence: 1, rank: 6_000, band: "cool" },
+        { sequence: 2, rank: 80, band: "hot" },
+        { sequence: 3, rank: 0, band: "found" },
+      ],
+      hintsUsed: 2,
+    });
+
+    expect(result.text).toBe(
+      "Hot & Cold · daily #16\n🔹 → 🔥 → ✨\n3 guesses · 2 hints\nClosest #80",
+    );
   });
 
   it("does not include fields that could reveal guessed words", () => {
