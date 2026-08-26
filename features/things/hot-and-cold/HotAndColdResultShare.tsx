@@ -50,6 +50,8 @@ export function HotAndColdResultShare({
   hintsUsed?: number;
   outcome?: HotAndColdResultOutcome;
 }) {
+  const resultSection = useRef<HTMLElement>(null);
+  const [trailVisible, setTrailVisible] = useState(false);
   const { nativeShare, result, share, status } = useHotAndColdResultShare(
     label,
     guesses,
@@ -62,9 +64,33 @@ export function HotAndColdResultShare({
         ? "exact"
         : `#${result.bestRank.toLocaleString()}`;
   const heading = describeHotAndColdResult({ result, hintsUsed, outcome });
+  useEffect(() => {
+    const element = resultSection.current;
+    if (!element) return;
+    if (!("IntersectionObserver" in window)) {
+      setTrailVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setTrailVisible(true);
+        observer.disconnect();
+      },
+      { threshold: 0.35 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <section id={id} className="heat-result-share" aria-labelledby={`${id}-title`}>
+    <section
+      ref={resultSection}
+      id={id}
+      className="heat-result-share"
+      aria-labelledby={`${id}-title`}
+      data-trail-visible={trailVisible || undefined}
+    >
       <div className="heat-result-heading">
         <div className="heat-result-copy text-left">
           <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">your trail</p>
@@ -76,10 +102,15 @@ export function HotAndColdResultShare({
       </div>
 
       <ol className="heat-share-trail" aria-label="Distribution of guesses by temperature">
-        {result.distribution.map(({ zone, count, intensity }) => (
+        {result.distribution.map(({ zone, count, intensity }, index) => (
           <li key={zone} data-zone={zone} aria-label={`${zone}: ${count} guesses`}>
             <span
-              style={{ "--heat-share-intensity": intensity } as CSSProperties}
+              style={
+                {
+                  "--heat-share-intensity": intensity,
+                  "--heat-share-index": index,
+                } as CSSProperties
+              }
               aria-hidden="true"
             />
             <small>{zone}</small>

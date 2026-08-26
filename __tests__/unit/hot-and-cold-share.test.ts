@@ -20,7 +20,7 @@ describe("hot and cold result sharing", () => {
     expect(result.trail.map(({ sequence }) => sequence)).toEqual([1, 2, 4, 5]);
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
-    expect(result.text).toBe("Hot & Cold · daily #12\n🧊 → 🔹 → 🔥 → ✨\n5 guesses\nClosest #400");
+    expect(result.text).toBe("Hot & Cold · daily #12\n🧊 → 🔹 → 🔥 → 💡\n5 guesses\nClosest #400");
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
       { zone: "frost", count: 2, intensity: 1 },
@@ -30,7 +30,7 @@ describe("hot and cold result sharing", () => {
     ]);
   });
 
-  it("shows hints alongside the guess count", () => {
+  it("shows one compass for each hint", () => {
     const result = buildHotAndColdShareResult({
       label: "daily #16",
       guesses: [
@@ -41,7 +41,7 @@ describe("hot and cold result sharing", () => {
       hintsUsed: 2,
     });
 
-    expect(result.text).toBe("Hot & Cold · daily #16\n🔹 → 🔥 → ✨\n3 guesses · 💡💡\nClosest #80");
+    expect(result.text).toBe("Hot & Cold · daily #16\n🔹 → 🔥 → 💡\n3 guesses · 🧭🧭\nClosest #80");
   });
 
   it("does not include fields that could reveal guessed words", () => {

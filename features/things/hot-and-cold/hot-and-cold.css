@@ -435,6 +435,7 @@ main:has(.heat-result-share) .heat-source {
   list-style: none;
 }
 .heat-share-trail li:not(.heat-share-trail-empty) {
+  position: relative;
   display: grid;
   grid-template-rows: 1fr auto;
   height: 5.4rem;
@@ -443,16 +444,40 @@ main:has(.heat-result-share) .heat-source {
   border-radius: 0.35rem;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
 }
+.heat-share-trail li:not(.heat-share-trail-empty)::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0.9rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    transparent 32.5%,
+    color-mix(in srgb, var(--foreground) 10%, transparent) 33%,
+    transparent 33.5%,
+    transparent 65.5%,
+    color-mix(in srgb, var(--foreground) 10%, transparent) 66%,
+    transparent 66.5%
+  );
+}
 .heat-share-trail li span {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: calc(100% - 0.25rem);
   background: var(--heat-frost);
-  transform: scaleY(var(--heat-share-intensity));
+  transform: scaleY(0);
   transform-origin: bottom;
-  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.78s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--heat-share-index) * 70ms);
+}
+.heat-result-share[data-trail-visible] .heat-share-trail li span {
+  transform: scaleY(var(--heat-share-intensity));
 }
 .heat-share-trail li small {
+  position: relative;
+  z-index: 2;
   padding-top: 0.28rem;
   font: 500 0.48rem/1 var(--font-mono);
   color: var(--stone-500);
@@ -795,6 +820,7 @@ main:has(.heat-result-share) .heat-source {
   .heat-share-trail li span,
   .heat-share-dock-pager svg {
     transition: none;
+    transition-delay: 0s;
   }
   .heat-ledger-update {
     transform: translateX(-50%);

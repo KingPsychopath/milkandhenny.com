@@ -25,7 +25,7 @@ export interface HotAndColdShareResult {
 }
 
 const TRAIL_SYMBOLS: Record<HeatBand, string> = {
-  found: "✨",
+  found: "💡",
   burning: "❤️‍🔥",
   hot: "🔥",
   warm: "☀️",
@@ -137,7 +137,7 @@ export function buildHotAndColdShareResult({
   const trailSummary = trail.length
     ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ")
     : "—";
-  const outcomeSummary = [guessLabel, hintsUsed > 0 ? "💡".repeat(hintsUsed) : null]
+  const outcomeSummary = [guessLabel, hintsUsed > 0 ? "🧭".repeat(hintsUsed) : null]
     .filter((part): part is string => part !== null)
     .join(" · ");
 
