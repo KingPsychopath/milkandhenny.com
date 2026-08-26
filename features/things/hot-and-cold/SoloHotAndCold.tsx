@@ -116,9 +116,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     } catch (error) {
       const reason = error instanceof Error ? error.message.toLowerCase() : "";
       setMessage(
-        reason.includes("dictionary")
-          ? "not in our word list"
-          : "the scorer is warming up — try again",
+        reason.includes("dictionary") ? "not in our word list" : "couldn’t score that — try again",
       );
       return false;
     }
@@ -145,7 +143,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       setMessage(`hint · #${next.rank.toLocaleString()}`);
       void haptics.trigger("selection");
     } catch {
-      setMessage("no more hints today");
+      setMessage("couldn’t get a hint — try again");
     }
   };
   const giveUp = async () => {

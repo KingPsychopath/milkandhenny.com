@@ -4,6 +4,7 @@ import { getCookie, setCookie } from "@tanstack/react-start/server";
 
 import { getRedis } from "@/lib/platform/redis.server";
 import { query } from "@/lib/platform/postgres.server";
+import { log } from "@/lib/platform/logger.server";
 import { getCookie as getRequestCookie } from "@/lib/http/cookies";
 import { getEvent } from "@/features/events/store.server";
 import { getTicket } from "@/features/tickets/store.server";
@@ -13,8 +14,10 @@ import { ATTENDEE_SESSION_COOKIE_NAME } from "./session-cookie";
 const SESSION_PREFIX = "event-scoring:attendee-session:";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const SESSION_ROTATION_MS = 1000 * 60 * 60 * 24 * 7;
+const ATTENDEE_SESSION_SCHEMA_VERSION = 1;
 const PENDING_MFA_LIFETIME_MS = 10 * 60 * 1_000;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
+const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SESSION_LOCK_PREFIX = "event-scoring:attendee-session-lock:";
 const SESSION_LOCK_TTL_MS = 5_000;
 const SESSION_LOCK_ATTEMPTS = 12;
@@ -31,6 +34,7 @@ export type AttendeeTicketAccess = {
 };
 
 export type AttendeeSession = {
+  schemaVersion: typeof ATTENDEE_SESSION_SCHEMA_VERSION;
   id: string;
   tickets: AttendeeTicketAccess[];
   activeParticipantByEventId: Record<string, string>;
@@ -102,6 +106,27 @@ function setSessionCookie(id: string): void {
   });
 }
 
+function isUuidV7(value: string): boolean {
+  return UUID_V7_PATTERN.test(value);
+}
+
+function withoutIdentity(session: AttendeeSession): AttendeeSession {
+  const {
+    personId: _personId,
+    verifiedEmailHash: _email,
+    authenticatedAt: _authenticatedAt,
+    authenticationMethod: _authenticationMethod,
+    passkeyAuthenticatedAt: _passkeyAuthenticatedAt,
+    passkeyId: _passkeyId,
+    totpAuthenticatedAt: _totpAuthenticatedAt,
+    totpId: _totpId,
+    assurance: _assurance,
+    pendingMfa: _pendingMfa,
+    ...anonymous
+  } = session;
+  return { ...anonymous, schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION };
+}
+
 function parseStored(value: unknown): AttendeeSession | null {
   let parsed: unknown = value;
   if (typeof value === "string") {
@@ -124,10 +149,76 @@ function parseStored(value: unknown): AttendeeSession | null {
   return candidate as AttendeeSession;
 }
 
-async function readById(id: string): Promise<AttendeeSession | null> {
+type SessionRead = {
+  session: AttendeeSession;
+  identityInvalidated: boolean;
+};
+
+async function legacyPersonExists(personId: string): Promise<boolean> {
+  const rows = await query<{ exists: boolean }>(
+    "select exists(select 1 from event_people where id = $1) as exists",
+    [personId],
+  );
+  return rows[0]?.exists === true;
+}
+
+async function normalizeStoredSession(session: AttendeeSession): Promise<{
+  session: AttendeeSession;
+  changed: boolean;
+  identityInvalidated: boolean;
+}> {
+  const legacySchema = session.schemaVersion !== ATTENDEE_SESSION_SCHEMA_VERSION;
+  const existence = new Map<string, boolean>();
+  const validLegacyPerson = async (personId: string): Promise<boolean> => {
+    if (!isUuidV7(personId)) return false;
+    if (!legacySchema) return true;
+    const cached = existence.get(personId);
+    if (cached !== undefined) return cached;
+    const exists = await legacyPersonExists(personId);
+    existence.set(personId, exists);
+    return exists;
+  };
+
+  const invalidPersonId = Boolean(session.personId && !(await validLegacyPerson(session.personId)));
+  const invalidPendingPersonId = Boolean(
+    session.pendingMfa && !(await validLegacyPerson(session.pendingMfa.personId)),
+  );
+  if (invalidPersonId) {
+    log.warn("event-scoring.session", "Invalidated a legacy attendee identity");
+    return { session: withoutIdentity(session), changed: true, identityInvalidated: true };
+  }
+  if (invalidPendingPersonId) {
+    const { pendingMfa: _pendingMfa, ...withoutPendingMfa } = session;
+    log.warn("event-scoring.session", "Invalidated a legacy pending MFA identity");
+    return {
+      session: {
+        ...withoutPendingMfa,
+        schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION,
+      },
+      changed: true,
+      identityInvalidated: true,
+    };
+  }
+  if (legacySchema)
+    return {
+      session: { ...session, schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION },
+      changed: true,
+      identityInvalidated: false,
+    };
+  return { session, changed: false, identityInvalidated: false };
+}
+
+async function readById(id: string): Promise<SessionRead | null> {
   const redis = getRedis();
-  if (redis) return parseStored(await redis.get(`${SESSION_PREFIX}${id}`));
-  return allowMemoryFallback() ? (developmentSessions.get(id) ?? null) : null;
+  const parsed = redis
+    ? parseStored(await redis.get(`${SESSION_PREFIX}${id}`))
+    : allowMemoryFallback()
+      ? (developmentSessions.get(id) ?? null)
+      : null;
+  if (!parsed) return null;
+  const normalized = await normalizeStoredSession(parsed);
+  if (normalized.changed) await write(normalized.session);
+  return { session: normalized.session, identityInvalidated: normalized.identityInvalidated };
 }
 
 async function storedSessions(): Promise<AttendeeSession[]> {
@@ -259,9 +350,23 @@ async function withSessionMutation<T>(id: string, use: () => Promise<T>): Promis
 async function loadOrCreate(): Promise<AttendeeSession> {
   const existingId = readSessionId();
   const existing = existingId ? await readById(existingId) : null;
-  if (existing) return refresh(existing);
+  if (existing?.identityInvalidated)
+    return rotateSession(existing.session, {
+      personId: existing.session.personId,
+      verifiedEmailHash: existing.session.verifiedEmailHash,
+      authenticatedAt: existing.session.authenticatedAt,
+      authenticationMethod: existing.session.authenticationMethod,
+      passkeyAuthenticatedAt: existing.session.passkeyAuthenticatedAt,
+      passkeyId: existing.session.passkeyId,
+      totpAuthenticatedAt: existing.session.totpAuthenticatedAt,
+      totpId: existing.session.totpId,
+      assurance: existing.session.assurance,
+      pendingMfa: existing.session.pendingMfa,
+    });
+  if (existing) return refresh(existing.session);
   const now = new Date().toISOString();
   const created = {
+    schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION,
     id: sessionId(),
     tickets: [],
     activeParticipantByEventId: {},
@@ -294,7 +399,7 @@ async function rotateSession(
   >,
 ): Promise<AttendeeSession> {
   return withSessionMutation(session.id, async () => {
-    const current = (await readById(session.id)) ?? session;
+    const current = (await readById(session.id))?.session ?? session;
     const now = new Date().toISOString();
     const rotated = {
       ...current,
@@ -318,6 +423,7 @@ export async function authenticateAttendeeSession(input: {
   method?: "email" | "passkey";
   passkeyId?: string;
 }): Promise<AttendeeSession> {
+  if (!isUuidV7(input.personId)) throw new Error("Attendee person ID must be UUIDv7");
   const session = await loadOrCreate();
   const now = new Date().toISOString();
   const method = input.method ?? "email";
@@ -346,6 +452,7 @@ export async function beginAttendeeMfaSession(input: {
   verifiedEmailHash: string;
   returnTo: string;
 }): Promise<AttendeeSession> {
+  if (!isUuidV7(input.personId)) throw new Error("Attendee person ID must be UUIDv7");
   const session = await loadOrCreate();
   return rotateSession(session, {
     personId: undefined,
@@ -424,19 +531,7 @@ export async function stepUpAttendeeSession(input: {
 export async function signOutAttendeeSession(): Promise<AttendeeSession | null> {
   const session = await getAttendeeSession();
   if (!session) return null;
-  const {
-    personId: _personId,
-    verifiedEmailHash: _email,
-    authenticatedAt: _at,
-    authenticationMethod: _method,
-    passkeyAuthenticatedAt: _passkeyAt,
-    passkeyId: _passkeyId,
-    totpAuthenticatedAt: _totpAt,
-    totpId: _totpId,
-    assurance: _assurance,
-    pendingMfa: _pendingMfa,
-    ...anonymous
-  } = session;
+  const anonymous = withoutIdentity(session);
   return rotateSession(anonymous, {
     personId: undefined,
     verifiedEmailHash: undefined,
@@ -454,8 +549,22 @@ export async function signOutAttendeeSession(): Promise<AttendeeSession | null> 
 export async function getAttendeeSession(): Promise<AttendeeSession | null> {
   const id = readSessionId();
   if (!id) return null;
-  const session = await readById(id);
-  if (!session) return null;
+  const read = await readById(id);
+  if (!read) return null;
+  const { session } = read;
+  if (read.identityInvalidated)
+    return rotateSession(session, {
+      personId: session.personId,
+      verifiedEmailHash: session.verifiedEmailHash,
+      authenticatedAt: session.authenticatedAt,
+      authenticationMethod: session.authenticationMethod,
+      passkeyAuthenticatedAt: session.passkeyAuthenticatedAt,
+      passkeyId: session.passkeyId,
+      totpAuthenticatedAt: session.totpAuthenticatedAt,
+      totpId: session.totpId,
+      assurance: session.assurance,
+      pendingMfa: session.pendingMfa,
+    });
   if (Date.now() - Date.parse(session.createdAt) >= SESSION_ROTATION_MS) {
     return rotateSession(session, {
       personId: session.personId,
@@ -479,7 +588,7 @@ export async function getAttendeeSessionForRequest(
 ): Promise<AttendeeSession | null> {
   const id = getRequestCookie(request, ATTENDEE_SESSION_COOKIE_NAME);
   if (!id || !SESSION_ID_PATTERN.test(id)) return null;
-  return readById(id);
+  return (await readById(id))?.session ?? null;
 }
 
 export async function openAttendeeTicket(input: {
@@ -496,7 +605,7 @@ export async function openAttendeeTicket(input: {
   if (!participant || participant.eventSlug !== input.eventSlug) return null;
   const initial = await loadOrCreate();
   return withSessionMutation(initial.id, async () => {
-    const session = (await readById(initial.id)) ?? initial;
+    const session = (await readById(initial.id))?.session ?? initial;
     const existing = session.tickets.find((entry) => entry.ticketId === input.ticketId);
     const access: AttendeeTicketAccess = {
       ticketId: ticket.id,

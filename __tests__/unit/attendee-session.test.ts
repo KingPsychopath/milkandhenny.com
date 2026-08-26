@@ -4,7 +4,12 @@ const state = vi.hoisted(() => ({
   cookies: new Map<string, string>(),
   records: new Map<string, unknown>(),
   linkedParticipants: [] as string[],
+  people: new Set<string>(),
 }));
+
+const PERSON_SESSION = "01890f3e-7b1a-7cc2-b5c3-3f8b6a4d2190";
+const PERSON_MFA = "01890f3e-7b1b-7cc2-b5c3-3f8b6a4d2191";
+const PERSON_OTHER = "01890f3e-7b1c-7cc2-b5c3-3f8b6a4d2192";
 
 vi.mock("@tanstack/react-start/server", () => ({
   getCookie: (name: string) => state.cookies.get(name),
@@ -59,7 +64,10 @@ vi.mock("@/lib/platform/redis.server", () => ({
 }));
 
 vi.mock("@/lib/platform/postgres.server", () => ({
-  query: async () => state.linkedParticipants.map((id) => ({ id })),
+  query: async (text: string, values: readonly unknown[]) =>
+    text.includes("from event_people")
+      ? [{ exists: state.people.has(String(values[0])) }]
+      : state.linkedParticipants.map((id) => ({ id })),
 }));
 
 vi.mock("@/features/events/store.server", () => ({
@@ -91,6 +99,7 @@ import {
   beginAttendeeMfaSession,
   completeAttendeeMfaSession,
   getAttendeeSession,
+  getAttendeeSessionForRequest,
   openAttendeeTicket,
   revokeAttendeeSessionsForPerson,
   signOutAttendeeSession,
@@ -102,6 +111,7 @@ describe("attendee session authentication", () => {
     state.cookies.clear();
     state.records.clear();
     state.linkedParticipants = [];
+    state.people = new Set([PERSON_SESSION, PERSON_MFA, PERSON_OTHER]);
   });
 
   it("rotates on verification and sign-out without losing selected tickets", async () => {
@@ -115,17 +125,17 @@ describe("attendee session authentication", () => {
     expect(anonymousId).toBeTruthy();
 
     const authenticated = await authenticateAttendeeSession({
-      personId: "person_session",
+      personId: PERSON_SESSION,
       verifiedEmailHash: "a".repeat(64),
     });
-    expect(authenticated).toMatchObject({ personId: "person_session" });
+    expect(authenticated).toMatchObject({ personId: PERSON_SESSION, schemaVersion: 1 });
     expect(authenticated.tickets).toHaveLength(1);
     expect(authenticated.id).not.toBe(anonymousId);
     expect(state.records.has(`event-scoring:attendee-session:${anonymousId}`)).toBe(false);
 
     expect(await getAttendeeSession()).toMatchObject({
       id: authenticated.id,
-      personId: "person_session",
+      personId: PERSON_SESSION,
     });
     const signedOut = await signOutAttendeeSession();
     expect(signedOut?.personId).toBeUndefined();
@@ -136,19 +146,19 @@ describe("attendee session authentication", () => {
 
   it("keeps an email login anonymous until its second factor succeeds", async () => {
     const pending = await beginAttendeeMfaSession({
-      personId: "person_mfa",
+      personId: PERSON_MFA,
       verifiedEmailHash: "c".repeat(64),
       returnTo: "/my",
     });
     expect(pending.personId).toBeUndefined();
-    expect(pending.pendingMfa).toMatchObject({ personId: "person_mfa", returnTo: "/my" });
+    expect(pending.pendingMfa).toMatchObject({ personId: PERSON_MFA, returnTo: "/my" });
 
     const authenticated = await completeAttendeeMfaSession({
       factor: "totp",
       totpId: "totp_1",
     });
     expect(authenticated).toMatchObject({
-      personId: "person_mfa",
+      personId: PERSON_MFA,
       pendingMfa: undefined,
       assurance: {
         primary: "email",
@@ -160,7 +170,7 @@ describe("attendee session authentication", () => {
 
   it("does not complete an expired pending MFA session", async () => {
     const pending = await beginAttendeeMfaSession({
-      personId: "person_mfa",
+      personId: PERSON_MFA,
       verifiedEmailHash: "d".repeat(64),
       returnTo: "/my",
     });
@@ -231,7 +241,7 @@ describe("attendee session authentication", () => {
 
   it("uses a signed-in person's first claimed event place until they choose another", async () => {
     await authenticateAttendeeSession({
-      personId: "person_session",
+      personId: PERSON_SESSION,
       verifiedEmailHash: "a".repeat(64),
     });
     state.linkedParticipants = ["participant_claimed"];
@@ -255,31 +265,101 @@ describe("attendee session authentication", () => {
 
   it("summarizes and revokes every authenticated session for one person", async () => {
     const first = await authenticateAttendeeSession({
-      personId: "person_session",
+      personId: PERSON_SESSION,
       verifiedEmailHash: "a".repeat(64),
     });
     state.cookies.clear();
     const second = await authenticateAttendeeSession({
-      personId: "person_session",
+      personId: PERSON_SESSION,
       verifiedEmailHash: "a".repeat(64),
     });
     state.cookies.clear();
     await authenticateAttendeeSession({
-      personId: "person_other",
+      personId: PERSON_OTHER,
       verifiedEmailHash: "b".repeat(64),
     });
 
-    expect(
-      (await attendeeSessionSummaries(["person_session"])).get("person_session"),
-    ).toMatchObject({
+    expect((await attendeeSessionSummaries([PERSON_SESSION])).get(PERSON_SESSION)).toMatchObject({
       activeSessions: 2,
     });
-    expect(await revokeAttendeeSessionsForPerson("person_session")).toBe(2);
+    expect(await revokeAttendeeSessionsForPerson(PERSON_SESSION)).toBe(2);
     expect(state.records.has(`event-scoring:attendee-session:${first.id}`)).toBe(false);
     expect(state.records.has(`event-scoring:attendee-session:${second.id}`)).toBe(false);
-    expect((await attendeeSessionSummaries(["person_session"])).has("person_session")).toBe(false);
-    expect((await attendeeSessionSummaries(["person_other"])).get("person_other")).toMatchObject({
+    expect((await attendeeSessionSummaries([PERSON_SESSION])).has(PERSON_SESSION)).toBe(false);
+    expect((await attendeeSessionSummaries([PERSON_OTHER])).get(PERSON_OTHER)).toMatchObject({
       activeSessions: 1,
     });
+  });
+
+  it("signs out a pre-UUID identity without losing opened tickets", async () => {
+    const opened = await openAttendeeTicket({
+      ticketId: "01ARZ3NDEKTSV4RS",
+      eventSlug: "session-night",
+      mode: "scoring",
+    });
+    expect(opened).not.toBeNull();
+    const legacyId = opened!.session.id;
+    state.records.set(`event-scoring:attendee-session:${legacyId}`, {
+      ...opened!.session,
+      schemaVersion: 0,
+      personId: "person_before_uuidv7",
+      authenticatedAt: new Date().toISOString(),
+      authenticationMethod: "email",
+      verifiedEmailHash: "a".repeat(64),
+    });
+
+    const repaired = await getAttendeeSession();
+
+    expect(repaired).toMatchObject({ schemaVersion: 1, personId: undefined });
+    expect(repaired?.tickets).toHaveLength(1);
+    expect(repaired?.activeParticipantByEventId).toEqual({
+      evt_session: "participant_session",
+    });
+    expect(repaired?.id).not.toBe(legacyId);
+    expect(state.records.has(`event-scoring:attendee-session:${legacyId}`)).toBe(false);
+  });
+
+  it("validates a legacy UUID once before retaining its authenticated identity", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+
+    await expect(getAttendeeSession()).resolves.toMatchObject({
+      id: authenticated.id,
+      schemaVersion: 1,
+      personId: PERSON_SESSION,
+    });
+
+    state.people.delete(PERSON_SESSION);
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+    await expect(getAttendeeSession()).resolves.toMatchObject({
+      schemaVersion: 1,
+      personId: undefined,
+    });
+  });
+
+  it("fails closed for a stale identity at request-level authorization boundaries", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, {
+      ...authenticated,
+      schemaVersion: 0,
+      personId: "person_before_uuidv7",
+    });
+    const request = new Request("https://milkandhenny.com/api/example", {
+      headers: { cookie: `mah-attendee-session=${authenticated.id}` },
+    });
+
+    const repaired = await getAttendeeSessionForRequest(request);
+    expect(repaired).toMatchObject({ id: authenticated.id, schemaVersion: 1 });
+    expect(repaired).not.toHaveProperty("personId");
+    const stored = state.records.get(`event-scoring:attendee-session:${authenticated.id}`);
+    expect(stored).toMatchObject({ schemaVersion: 1 });
+    expect(stored).not.toHaveProperty("personId");
   });
 });

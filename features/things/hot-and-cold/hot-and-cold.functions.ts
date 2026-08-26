@@ -25,6 +25,22 @@ import type { HotAndColdAction, HotAndColdSnapshot } from "./types";
 const record = multiplayerRecord;
 const integer = (value: unknown) => multiplayerSequence(value);
 
+async function recordHistory(
+  operation: string,
+  context: Record<string, string | number> = {},
+  task: () => Promise<void>,
+): Promise<void> {
+  try {
+    await task();
+  } catch (error) {
+    log.warn("things.hot-and-cold", "Could not record optional game history", {
+      operation,
+      ...context,
+      errorType: error instanceof Error ? error.name : typeof error,
+    });
+  }
+}
+
 async function currentPersonId(): Promise<string | null> {
   return (await getAttendeeSession())?.personId ?? null;
 }
@@ -34,33 +50,36 @@ async function recordRoomSnapshot(input: {
   event?: { key: string; kind: string; payload?: Record<string, string | number | boolean | null> };
   abandoned?: boolean;
 }): Promise<void> {
-  const personId = await currentPersonId();
-  if (!personId) return;
-  const player = input.snapshot.players.find(({ id }) => id === input.snapshot.playerId);
-  if (!player) return;
-  const completed = input.snapshot.phase === "finished";
-  await recordPersonGame({
-    personId,
-    game: "hot-and-cold",
-    mode: "room",
-    externalRef: `${input.snapshot.roomId}:${input.snapshot.gameNumber}`,
-    displayName: player.name,
-    status: completed ? "completed" : input.abandoned ? "abandoned" : "active",
-    outcome: completed
-      ? input.snapshot.winnerIds.includes(player.id)
-        ? "won"
-        : "completed"
-      : input.abandoned
-        ? "left"
-        : undefined,
-    score: player.score,
-    summary: {
-      rounds: input.snapshot.rounds,
-      turnsUsed: player.turnsUsed,
-      guesses:
-        input.snapshot.round?.guesses.filter(({ playerId }) => playerId === player.id).length ?? 0,
-    },
-    event: input.event,
+  await recordHistory("room_snapshot", {}, async () => {
+    const personId = await currentPersonId();
+    if (!personId) return;
+    const player = input.snapshot.players.find(({ id }) => id === input.snapshot.playerId);
+    if (!player) return;
+    const completed = input.snapshot.phase === "finished";
+    await recordPersonGame({
+      personId,
+      game: "hot-and-cold",
+      mode: "room",
+      externalRef: `${input.snapshot.roomId}:${input.snapshot.gameNumber}`,
+      displayName: player.name,
+      status: completed ? "completed" : input.abandoned ? "abandoned" : "active",
+      outcome: completed
+        ? input.snapshot.winnerIds.includes(player.id)
+          ? "won"
+          : "completed"
+        : input.abandoned
+          ? "left"
+          : undefined,
+      score: player.score,
+      summary: {
+        rounds: input.snapshot.rounds,
+        turnsUsed: player.turnsUsed,
+        guesses:
+          input.snapshot.round?.guesses.filter(({ playerId }) => playerId === player.id).length ??
+          0,
+      },
+      event: input.event,
+    });
   });
 }
 function action(value: unknown): HotAndColdAction {
@@ -196,7 +215,7 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
         puzzle: hotAndColdPuzzleNumber(),
         ...(await scoreHotAndColdGuess(dailyHotAndColdTarget(), data.word)),
       };
-      try {
+      await recordHistory("daily_guess", { puzzle: result.puzzle }, async () => {
         const personId = await currentPersonId();
         if (personId)
           await recordPersonGame({
@@ -214,12 +233,7 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
               payload: { word: result.word, rank: result.rank, band: result.band },
             },
           });
-      } catch (error) {
-        log.warn("things.hot-and-cold", "Could not record the daily guess", {
-          puzzle: result.puzzle,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      });
       return result;
     } catch (error) {
       if (error instanceof HotAndColdInvalidGuessError)
@@ -233,7 +247,7 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
   });
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" }).handler(async () => {
   const puzzle = hotAndColdPuzzleNumber();
-  void (async () => {
+  void recordHistory("daily_reveal", { puzzle }, async () => {
     const personId = await currentPersonId();
     if (!personId) return;
     await recordPersonGame({
@@ -245,12 +259,7 @@ export const revealDailyHotAndColdFn = createServerFn({ method: "POST" }).handle
       outcome: "revealed",
       event: { key: "reveal", kind: "reveal" },
     });
-  })().catch((error) =>
-    log.warn("things.hot-and-cold", "Could not record the daily reveal", {
-      puzzle,
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
+  });
   return { puzzle, target: dailyHotAndColdTarget() };
 });
 export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
@@ -269,20 +278,22 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
     const hint = await hotAndColdHint(target, data.hintIndex, data.usedWords);
     const puzzle = hotAndColdPuzzleNumber();
     const band = heatBand(hint.rank);
-    const personId = await currentPersonId();
-    if (personId)
-      await recordPersonGame({
-        personId,
-        game: "hot-and-cold",
-        mode: "daily",
-        externalRef: String(puzzle),
-        summary: { hintsUsed: data.hintIndex + 1 },
-        event: {
-          key: `hint:${data.hintIndex + 1}`,
-          kind: "hint",
-          payload: { word: hint.word, rank: hint.rank, band },
-        },
-      });
+    await recordHistory("daily_hint", { puzzle }, async () => {
+      const personId = await currentPersonId();
+      if (personId)
+        await recordPersonGame({
+          personId,
+          game: "hot-and-cold",
+          mode: "daily",
+          externalRef: String(puzzle),
+          summary: { hintsUsed: data.hintIndex + 1 },
+          event: {
+            key: `hint:${data.hintIndex + 1}`,
+            kind: "hint",
+            payload: { word: hint.word, rank: hint.rank, band },
+          },
+        });
+    });
     return { ...hint, band, puzzle };
   });
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
