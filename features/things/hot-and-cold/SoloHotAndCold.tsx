@@ -74,7 +74,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     const word = raw.toLowerCase();
     const existing = state.guesses.find((item) => item.word === word);
     if (existing) {
-      setMessage(`already #${existing.rank.toLocaleString()}`);
+      setMessage(`already guessed · #${existing.rank.toLocaleString()}`);
       return false;
     }
     try {
@@ -85,7 +85,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       }
       const canonicalExisting = state.guesses.find((item) => item.word === result.word);
       if (canonicalExisting) {
-        setMessage(`already #${canonicalExisting.rank.toLocaleString()}`);
+        setMessage(`already guessed · #${canonicalExisting.rank.toLocaleString()}`);
         return false;
       }
       const next = {

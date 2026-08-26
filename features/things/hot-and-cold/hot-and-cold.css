@@ -1004,6 +1004,15 @@ main:has(.heat-result-share) .heat-ledger {
   font: 500 1rem/1 var(--font-mono);
   color: var(--foreground);
   box-shadow: 0 0.8rem 2.5rem color-mix(in srgb, var(--foreground) 8%, transparent);
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+.heat-composer input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--heat-red) 64%, var(--stone-300));
+  box-shadow:
+    0 0 0 0.18rem color-mix(in srgb, var(--heat-red) 10%, transparent),
+    0 0.8rem 2.5rem color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 .heat-composer button[type="submit"] {
   min-width: 5.7rem;
