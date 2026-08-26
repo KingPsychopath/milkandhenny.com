@@ -144,7 +144,7 @@ export async function requireAdminStepUp(request: Request): Promise<Response | n
 
 /**
  * Issues an admin step-up token after re-checking the root password or a
- * named administrator's fresh verified-email session.
+ * named administrator's fresh, user-verified passkey session.
  * Designed for `/api/admin/step-up` and consumed via `x-admin-step-up`.
  */
 export async function createAdminStepUpToken(
@@ -174,18 +174,19 @@ export async function createAdminStepUpToken(
     const { getAttendeeSessionForRequest } =
       await import("@/features/event-scoring/session.server");
     const attendee = await getAttendeeSessionForRequest(request);
-    const authenticatedAt = attendee?.authenticatedAt
-      ? Date.parse(attendee.authenticatedAt)
+    const authenticatedAt = attendee?.passkeyAuthenticatedAt
+      ? Date.parse(attendee.passkeyAuthenticatedAt)
       : Number.NaN;
     if (
       attendee?.personId !== payload.jti ||
+      attendee.assurance?.phishingResistant !== true ||
       !Number.isFinite(authenticatedAt) ||
       Date.now() - authenticatedAt > ADMIN_STEP_UP_TTL_SECONDS * 1000
     ) {
       return Response.json(
         {
-          error: "Verify your email again to continue with this protected action.",
-          code: "FRESH_EMAIL_REQUIRED",
+          error: "Use your passkey again to continue with this protected action.",
+          code: "FRESH_PASSKEY_REQUIRED",
           returnTo: "/admin",
         },
         { status: 428 },
@@ -304,7 +305,14 @@ async function activeNamedAdmin(
     import("@/lib/platform/postgres.server"),
   ]);
   const session = await getAttendeeSessionForRequest(request);
-  if (!session?.personId || !session.authenticatedAt) return null;
+  if (
+    !session?.personId ||
+    !session.authenticatedAt ||
+    !session.passkeyAuthenticatedAt ||
+    session.assurance?.phishingResistant !== true
+  ) {
+    return null;
+  }
   const grants = await query<{
     person_id: string;
     role_preset: string;

@@ -1,7 +1,6 @@
 import type { PersonGameHistoryItem } from "@/features/person-games/types";
 
 export type AttendeeAccount = {
-  personId: string;
   name: string | null;
   gameHistory: PersonGameHistoryItem[];
   emails: Array<{ id: string; masked: string; verifiedAt: string }>;
@@ -68,7 +67,47 @@ export function safeReturnTo(value: unknown): string {
   ) {
     return "/my";
   }
-  return trimmed;
+  let pathname: string;
+  try {
+    pathname = new URL(trimmed, "https://return.invalid").pathname;
+  } catch {
+    return "/my";
+  }
+  let decodedPathname: string;
+  try {
+    decodedPathname = decodeURIComponent(pathname);
+  } catch {
+    return "/my";
+  }
+  if (
+    decodedPathname.startsWith("//") ||
+    decodedPathname.includes("\\") ||
+    [...decodedPathname].some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint < 32 || codePoint === 127;
+    })
+  ) {
+    return "/my";
+  }
+  const allowed =
+    decodedPathname === "/" ||
+    [
+      "/my",
+      "/admin",
+      "/events",
+      "/ticket",
+      "/t",
+      "/things",
+      "/pics",
+      "/words",
+      "/vault",
+      "/surveys",
+      "/best-dressed",
+      "/party",
+      "/icebreaker",
+      "/pitch-night",
+    ].some((prefix) => decodedPathname === prefix || decodedPathname.startsWith(`${prefix}/`));
+  return allowed ? trimmed : "/my";
 }
 
 export function attendeeSignInHref(returnTo: unknown): string {

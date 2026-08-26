@@ -1,16 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import type { PoolClient } from "pg";
 
 import type { ActionLinkRecord } from "./action-links.server";
 
-function id(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
-}
-
 export async function ensurePendingInvitedPerson(
   client: PoolClient,
-  input: { emailHash: string; emailHint: string; canonicalName?: string },
+  input: { emailHash: string; emailHint: string; emailAddress: string; canonicalName?: string },
 ): Promise<{ personId: string; identifierId: string; verified: boolean }> {
   const existing = await client.query<{
     id: string;
@@ -24,8 +18,10 @@ export async function ensurePendingInvitedPerson(
   const found = existing.rows[0];
   if (found) {
     await client.query(
-      `update event_person_identifiers set display_hint = coalesce(display_hint, $2) where id = $1`,
-      [found.id, input.emailHint],
+      `update event_person_identifiers
+          set display_hint = coalesce(display_hint, $2),email_address = coalesce(email_address, $3)
+        where id = $1`,
+      [found.id, input.emailHint, input.emailAddress],
     );
     return {
       personId: found.person_id,
@@ -34,18 +30,21 @@ export async function ensurePendingInvitedPerson(
     };
   }
 
-  const personId = id("person");
-  const identifierId = id("identifier");
-  await client.query(`insert into event_people (id,canonical_name) values ($1,$2)`, [
-    personId,
-    input.canonicalName?.trim() || null,
-  ]);
-  await client.query(
-    `insert into event_person_identifiers
-       (id,person_id,kind,value_hash,display_hint)
-     values ($1,$2,'email',$3,$4)`,
-    [identifierId, personId, input.emailHash, input.emailHint],
+  const person = await client.query<{ id: string }>(
+    `insert into event_people (canonical_name) values ($1) returning id`,
+    [input.canonicalName?.trim() || null],
   );
+  const personId = person.rows[0]?.id;
+  if (!personId) throw new Error("Invited person could not be created");
+  const identifier = await client.query<{ id: string }>(
+    `insert into event_person_identifiers
+       (person_id,kind,value_hash,display_hint,email_address)
+     values ($1,'email',$2,$3,$4)
+     returning id`,
+    [personId, input.emailHash, input.emailHint, input.emailAddress],
+  );
+  const identifierId = identifier.rows[0]?.id;
+  if (!identifierId) throw new Error("Invited email could not be created");
   return { personId, identifierId, verified: false };
 }
 
@@ -74,14 +73,19 @@ export async function createOrResolveInvitedPerson(
     return { personId: found.person_id, identifierId: found.id };
   }
 
-  const personId = id("person");
-  const identifierId = id("identifier");
-  await client.query(`insert into event_people (id) values ($1)`, [personId]);
-  await client.query(
-    `insert into event_person_identifiers
-       (id,person_id,kind,value_hash,verified_at,display_hint)
-     values ($1,$2,'email',$3,now(),$4)`,
-    [identifierId, personId, link.intendedEmailHash, link.intendedEmailHint],
+  const person = await client.query<{ id: string }>(
+    `insert into event_people default values returning id`,
   );
+  const personId = person.rows[0]?.id;
+  if (!personId) throw new Error("Invited person could not be created");
+  const identifier = await client.query<{ id: string }>(
+    `insert into event_person_identifiers
+       (person_id,kind,value_hash,verified_at,display_hint)
+     values ($1,'email',$2,now(),$3)
+     returning id`,
+    [personId, link.intendedEmailHash, link.intendedEmailHint],
+  );
+  const identifierId = identifier.rows[0]?.id;
+  if (!identifierId) throw new Error("Invited email could not be created");
   return { personId, identifierId };
 }

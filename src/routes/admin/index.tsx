@@ -16,6 +16,7 @@ import {
   signInAdminDevelopment,
 } from "@/features/auth/auth.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
+import { PasskeySignIn } from "@/features/attendee-access/ui/PasskeySignIn";
 
 export const Route = createFileRoute("/admin/")({
   validateSearch: (
@@ -74,7 +75,8 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function AdminPage() {
-  const { auth, localDevBypassAvailable } = Route.useLoaderData();
+  const { auth, localDevBypassAvailable, namedAdminPasskeyRequired, namedAdminHasPasskey } =
+    Route.useLoaderData();
   const {
     view,
     communicationTab,
@@ -95,6 +97,29 @@ function AdminPage() {
         <div className="w-full max-w-sm text-center">
           <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
           <p className="font-mono text-sm theme-muted mt-1 mb-10">admin workspace</p>
+
+          {namedAdminPasskeyRequired ? (
+            <div className="mb-8 border-y theme-border py-5 text-left">
+              <p className="font-mono text-xs leading-relaxed">
+                Administrator access requires a passkey.
+              </p>
+              {namedAdminHasPasskey ? (
+                <PasskeySignIn
+                  returnTo="/admin"
+                  conditional={false}
+                  className="mt-4"
+                  label="continue with passkey"
+                  onAuthenticated={async () => {
+                    window.location.assign("/admin");
+                  }}
+                />
+              ) : (
+                <a href="/my" className="mh-action mh-action--secondary mt-4">
+                  add a passkey in account security
+                </a>
+              )}
+            </div>
+          ) : null}
 
           <form action={signInAdmin.url} method="post" encType="multipart/form-data">
             <label htmlFor="admin-password" className="sr-only">

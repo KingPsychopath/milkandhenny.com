@@ -54,7 +54,8 @@ import { actionEmailHash } from "@/features/attendee-operations/action-links.ser
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
 const SLUG = "attendee-operations-night";
-const BUYER = "person_buyer";
+const BUYER = "0198e9d8-53d7-7db7-9834-8896a69f1bdb";
+const BUYER_IDENTIFIER = "0198e9d8-53d7-7db8-a907-34db95bc731b";
 const BUYER_EMAIL = "buyer@example.com";
 
 async function seedEvent() {
@@ -72,8 +73,8 @@ async function seedEvent() {
   await query(
     `insert into event_person_identifiers
        (id,person_id,kind,value_hash,verified_at,display_hint)
-     values ('identifier_buyer',$1,'email',$2,now(),'b•••@example.com')`,
-    [BUYER, actionEmailHash(BUYER_EMAIL)],
+     values ($1,$2,'email',$3,now(),'b•••@example.com')`,
+    [BUYER_IDENTIFIER, BUYER, actionEmailHash(BUYER_EMAIL)],
   );
 }
 
@@ -94,8 +95,8 @@ async function ticket(name: string, claimed = false) {
   await query(
     `insert into event_order_managers
        (id,event_slug,order_id,person_id,identifier_id,status,source)
-     values ($1,$2,$3,$4,'identifier_buyer','active','verified-purchaser-email')`,
-    [`manager_${created.id}`, SLUG, created.orderId, BUYER],
+     values ($1,$2,$3,$4,$5,'active','verified-purchaser-email')`,
+    [`manager_${created.id}`, SLUG, created.orderId, BUYER, BUYER_IDENTIFIER],
   );
   if (claimed) {
     await query(`update event_participants set person_id = $2 where ticket_id = $1`, [

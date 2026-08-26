@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { query, queryOne } from "@/lib/platform/postgres.server";
-import { hash, id, type ScoreStoreResult } from "./common.server";
+import { hash, type ScoreStoreResult } from "./common.server";
 
 export async function markParticipantCheckedIn(
   participantId: string,
@@ -15,16 +15,13 @@ export async function markParticipantCheckedIn(
   return rows.length > 0;
 }
 
-export async function createPerson(input: {
-  id?: string;
-  canonicalName?: string;
-}): Promise<string> {
-  const personId = input.id ?? id("person");
-  await query(`insert into event_people (id, canonical_name) values ($1,$2)`, [
-    personId,
-    input.canonicalName ?? null,
-  ]);
-  return personId;
+export async function createPerson(input: { canonicalName?: string }): Promise<string> {
+  const person = await queryOne<{ id: string }>(
+    `insert into event_people (canonical_name) values ($1) returning id`,
+    [input.canonicalName ?? null],
+  );
+  if (!person) throw new Error("Person could not be created");
+  return person.id;
 }
 
 export async function attachPersonToParticipant(

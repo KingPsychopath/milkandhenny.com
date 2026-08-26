@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { authenticateAttendeeSession } from "@/features/event-scoring/session.server";
+import { establishEmailAuthenticatedSession } from "@/features/attendee-access/email-authentication.server";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { sendEmail } from "@/lib/platform/email.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
@@ -125,6 +125,7 @@ export async function inviteNamedAdmin(input: {
     const person = await ensurePendingInvitedPerson(client, {
       emailHash: actionEmailHash(email),
       emailHint: maskActionEmail(email),
+      emailAddress: email,
       canonicalName: input.name,
     });
     const before = await client.query<{
@@ -305,9 +306,13 @@ export async function inspectAccessAction(token: string): Promise<AccessActionPr
   };
 }
 
-export async function acceptAccessAction(
-  token: string,
-): Promise<AccessGrantResult<{ purpose: AccessActionPreview["purpose"]; destination: string }>> {
+export async function acceptAccessAction(token: string): Promise<
+  AccessGrantResult<{
+    purpose: AccessActionPreview["purpose"];
+    destination: string;
+    mfaRequired: boolean;
+  }>
+> {
   try {
     const consumed = await consumeActionLink(token, async (client, link) => {
       if (link.purpose !== "admin-invitation" && link.purpose !== "staff-invitation")
@@ -378,13 +383,18 @@ export async function acceptAccessAction(
       };
     });
     if (!consumed.ok) return consumed;
-    await authenticateAttendeeSession({
+    const authentication = await establishEmailAuthenticatedSession({
       personId: consumed.value.personId,
       verifiedEmailHash: consumed.value.verifiedEmailHash,
+      returnTo: consumed.value.destination,
     });
     return {
       ok: true,
-      value: { purpose: consumed.value.purpose, destination: consumed.value.destination },
+      value: {
+        purpose: consumed.value.purpose,
+        destination: authentication.destination,
+        mfaRequired: authentication.mfaRequired,
+      },
     };
   } catch (error) {
     return error instanceof AccessGrantError

@@ -138,13 +138,18 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
       `insert into event_people
          (id,canonical_name,acquisition_status,acquisition_restricted_at,
           acquisition_restricted_by,acquisition_restriction_reason)
-       values ('person_restricted','Restricted person','restricted',now(),'root-owner','support review')`,
+       values ($1,'Restricted person','restricted',now(),'root-owner','support review')`,
+      ["0198e9d8-53d7-7db9-a8f5-b3bf86f59d8a"],
     );
     await query(
       `insert into event_person_identifiers
          (id,person_id,kind,value_hash,verified_at,display_hint)
-       values ('identifier_restricted','person_restricted','email',$1,now(),'r•••@example.com')`,
-      [createHash("sha256").update(email).digest("hex")],
+       values ($1,$2,'email',$3,now(),'r•••@example.com')`,
+      [
+        "0198e9d8-53d7-7dba-98b2-025002b14968",
+        "0198e9d8-53d7-7db9-a8f5-b3bf86f59d8a",
+        createHash("sha256").update(email).digest("hex"),
+      ],
     );
 
     expect(await startCheckout(checkoutInput("restricted-reference", email))).toEqual({

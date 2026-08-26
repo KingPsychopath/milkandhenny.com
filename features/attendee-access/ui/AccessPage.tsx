@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { requestAttendeeAccessFn, verifyAttendeeAccessFn } from "../access.functions";
+import { PasskeySignIn } from "./PasskeySignIn";
 
 type AccessPageProps = { returnTo: string; initialMessage?: string };
 
@@ -13,6 +14,16 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [message, setMessage] = useState(initialMessage);
+
+  const completeSignIn = useCallback(
+    async (destination: string) => {
+      window.history.replaceState(null, "", window.location.pathname);
+      router.clearCache();
+      await router.invalidate();
+      await navigate({ to: destination, replace: true });
+    },
+    [navigate, router],
+  );
 
   async function requestEmail(event: FormEvent) {
     event.preventDefault();
@@ -37,10 +48,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
       try {
         const result = await verifyAttendeeAccessFn({ data: payload });
         if (!result.ok) throw new Error(result.error);
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
-        router.clearCache();
-        await router.invalidate();
-        await navigate({ to: result.value.returnTo ?? returnTo, replace: true });
+        await completeSignIn(result.value.returnTo ?? returnTo);
       } catch (error) {
         setMessage(
           error instanceof Error ? error.message : "That access code could not be verified",
@@ -48,7 +56,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
         setBusy(false);
       }
     },
-    [navigate, returnTo, router],
+    [completeSignIn, returnTo],
   );
 
   return (
@@ -63,11 +71,19 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
         <header>
           <h1 className="font-serif text-5xl leading-tight">sign in</h1>
           <p className="mt-3 font-serif text-lg leading-relaxed theme-muted">
-            Use your email to continue.
+            Continue with a passkey, or use your email.
           </p>
         </header>
 
-        <form onSubmit={requestEmail} className="mt-10">
+        <PasskeySignIn returnTo={returnTo} onAuthenticated={completeSignIn} />
+
+        <div className="my-8 flex items-center gap-4" aria-hidden="true">
+          <span className="h-px flex-1 bg-[var(--stone-200)]" />
+          <span className="font-mono text-micro theme-muted">or use email</span>
+          <span className="h-px flex-1 bg-[var(--stone-200)]" />
+        </div>
+
+        <form onSubmit={requestEmail}>
           <label htmlFor="access-email" className="block font-mono text-xs">
             email
           </label>
@@ -76,7 +92,9 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
             name="email"
             type="email"
             inputMode="email"
-            autoComplete="email"
+            // Conditional passkey mediation requires the WebAuthn autocomplete token.
+            // oxlint-disable-next-line jsx-a11y/autocomplete-valid
+            autoComplete="username webauthn"
             autoCapitalize="none"
             spellCheck={false}
             required
@@ -91,7 +109,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
             type="submit"
             disabled={busy}
             aria-busy={busy}
-            className="mh-action mh-action--primary mt-6 w-full justify-between disabled:opacity-45"
+            className="mh-action mh-action--secondary mt-6 w-full justify-between disabled:opacity-45"
           >
             <span>{busy ? "sending…" : "send sign-in link"}</span>
             <span aria-hidden="true" className="mh-action__cue">
@@ -148,28 +166,6 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
             {message}
           </p>
         ) : null}
-      </div>
-    </main>
-  );
-}
-
-export function AccessVerificationPending() {
-  return (
-    <main
-      id="main"
-      aria-busy="true"
-      className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-12"
-    >
-      <span className="w-fit font-mono text-micro theme-muted">milk &amp; henny</span>
-      <div className="my-auto py-14" role="status" aria-live="polite">
-        <p className="font-mono text-xs theme-muted">private access</p>
-        <h1 className="mt-3 font-serif text-5xl leading-tight">signing you in</h1>
-        <p className="mt-3 max-w-sm font-serif text-lg leading-relaxed theme-muted">
-          Checking your one-time link. This should only take a moment.
-        </p>
-        <div aria-hidden="true" className="mt-10 border-t theme-border">
-          <div className="-mt-px h-px w-1/3 animate-pulse bg-amber-600 motion-reduce:animate-none" />
-        </div>
       </div>
     </main>
   );

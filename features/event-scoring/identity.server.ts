@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
@@ -12,10 +12,6 @@ import {
   getParticipant,
   type ScoreStoreResult,
 } from "./store.server";
-
-function id(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 24)}`;
-}
 
 function digest(value: string): string {
   return createHash("sha256").update(value.trim().toLocaleLowerCase("en-GB")).digest("hex");
@@ -37,19 +33,22 @@ export function classifyIdentityEvidence(kinds: readonly IdentityEvidenceKind[])
 
 export async function createPersonIdentity(input: {
   canonicalName?: string;
-  identifier?: { kind: "email" | "account" | "passkey"; value: string; verified: boolean };
+  identifier?: { kind: "email" | "account"; value: string; verified: boolean };
 }): Promise<{ personId: string }> {
   const personId = await createPerson({ canonicalName: input.canonicalName });
   if (input.identifier) {
     await query(
-      `insert into event_person_identifiers (id, person_id, kind, value_hash, verified_at)
+      `insert into event_person_identifiers
+         (person_id,kind,value_hash,verified_at,email_address)
        values ($1,$2,$3,$4,$5)`,
       [
-        id("identifier"),
         personId,
         input.identifier.kind,
         digest(input.identifier.value),
         input.identifier.verified ? new Date() : null,
+        input.identifier.kind === "email"
+          ? input.identifier.value.trim().toLocaleLowerCase("en-GB")
+          : null,
       ],
     );
   }
@@ -58,15 +57,21 @@ export async function createPersonIdentity(input: {
 
 export async function addVerifiedIdentifier(input: {
   personId: string;
-  kind: "email" | "account" | "passkey";
+  kind: "email" | "account";
   value: string;
 }): Promise<ScoreStoreResult<void>> {
   const row = await queryOne<{ id: string }>(
-    `insert into event_person_identifiers (id, person_id, kind, value_hash, verified_at)
-     values ($1,$2,$3,$4,now())
+    `insert into event_person_identifiers
+       (person_id,kind,value_hash,verified_at,email_address)
+     values ($1,$2,$3,now(),$4)
      on conflict (kind, value_hash) do nothing
      returning id`,
-    [id("identifier"), input.personId, input.kind, digest(input.value)],
+    [
+      input.personId,
+      input.kind,
+      digest(input.value),
+      input.kind === "email" ? input.value.trim().toLocaleLowerCase("en-GB") : null,
+    ],
   );
   return row
     ? { ok: true, value: undefined }

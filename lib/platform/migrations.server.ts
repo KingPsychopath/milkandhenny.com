@@ -3056,6 +3056,160 @@ const MIGRATIONS: Migration[] = [
         on person_game_events (session_id, occurred_at asc);
     `,
   },
+  {
+    id: "0062_uuidv7_people_and_passkeys",
+    sql: `
+      -- There is no launched identity data. Replace the provisional text
+      -- person identifiers with native, time-ordered UUIDs before passkeys
+      -- make the identity boundary durable.
+      truncate event_people cascade;
+
+      create temporary table identity_fk_rebuild (
+        table_name text not null,
+        constraint_name text not null,
+        column_name text not null,
+        definition text not null
+      ) on commit drop;
+
+      insert into identity_fk_rebuild (table_name,constraint_name,column_name,definition)
+      select constraint_row.conrelid::regclass::text,
+             constraint_row.conname,
+             attribute.attname,
+             pg_get_constraintdef(constraint_row.oid)
+        from pg_constraint constraint_row
+        join lateral unnest(constraint_row.conkey) as constrained(attnum) on true
+        join pg_attribute attribute
+          on attribute.attrelid = constraint_row.conrelid
+         and attribute.attnum = constrained.attnum
+       where constraint_row.contype = 'f'
+         and constraint_row.confrelid in (
+           'event_people'::regclass,
+           'event_person_identifiers'::regclass
+         );
+
+      do $$
+      declare item record;
+      begin
+        for item in select distinct table_name,constraint_name from identity_fk_rebuild loop
+          execute format('alter table %s drop constraint %I', item.table_name, item.constraint_name);
+        end loop;
+        for item in select distinct table_name,column_name from identity_fk_rebuild loop
+          execute format(
+            'alter table %s alter column %I type uuid using null::uuid',
+            item.table_name,
+            item.column_name
+          );
+        end loop;
+      end;
+      $$;
+
+      alter table event_person_identifiers
+        alter column id type uuid using uuidv7(),
+        alter column id set default uuidv7();
+      alter table event_people
+        alter column id type uuid using uuidv7(),
+        alter column id set default uuidv7();
+
+      do $$
+      declare item record;
+      begin
+        for item in
+          select distinct table_name,constraint_name,definition from identity_fk_rebuild
+        loop
+          execute format(
+            'alter table %s add constraint %I %s',
+            item.table_name,
+            item.constraint_name,
+            item.definition
+          );
+        end loop;
+      end;
+      $$;
+
+      alter table event_person_identifiers
+        drop constraint event_person_identifiers_kind_check,
+        add constraint event_person_identifiers_kind_check
+          check (kind in ('email','account'));
+
+      create table person_webauthn_profiles (
+        person_id    uuid primary key references event_people (id) on delete cascade,
+        user_handle  text not null unique
+                     check (user_handle ~ '^[A-Za-z0-9_-]{43}$'),
+        created_at   timestamptz not null default now()
+      );
+
+      create table person_passkeys (
+        id             uuid primary key default uuidv7(),
+        person_id      uuid not null references event_people (id) on delete cascade,
+        credential_id  text not null unique
+                       check (char_length(credential_id) between 16 and 2048),
+        public_key     bytea not null,
+        counter        bigint not null default 0 check (counter >= 0),
+        transports     text[] not null default '{}',
+        device_type    text not null check (device_type in ('singleDevice','multiDevice')),
+        backed_up      boolean not null default false,
+        label          text not null check (char_length(label) between 1 and 80),
+        created_at     timestamptz not null default now(),
+        last_used_at   timestamptz,
+        revoked_at     timestamptz
+      );
+      create index person_passkeys_person_idx
+        on person_passkeys (person_id, created_at desc) where revoked_at is null;
+    `,
+  },
+  {
+    id: "0063_totp_and_recovery_codes",
+    sql: `
+      alter table event_person_identifiers
+        add column email_address text
+          check (email_address is null or char_length(email_address) between 3 and 320);
+
+      create table person_totp_authenticators (
+        id                 uuid primary key default uuidv7(),
+        person_id          uuid not null references event_people (id) on delete cascade,
+        label              text not null check (char_length(label) between 1 and 80),
+        secret_ciphertext  text not null check (char_length(secret_ciphertext) between 80 and 500),
+        enrollment_session_hash text
+                           check (enrollment_session_hash is null or
+                                  enrollment_session_hash ~ '^[0-9a-f]{64}$'),
+        enrollment_expires_at timestamptz,
+        last_counter       bigint,
+        created_at         timestamptz not null default now(),
+        verified_at        timestamptz,
+        last_used_at       timestamptz,
+        revoked_at         timestamptz,
+        check (verified_at is null or revoked_at is null or revoked_at >= verified_at),
+        check (verified_at is not null or
+               (enrollment_session_hash is not null and enrollment_expires_at is not null))
+      );
+      create index person_totp_authenticators_person_idx
+        on person_totp_authenticators (person_id, created_at desc)
+        where revoked_at is null;
+
+      create table person_recovery_codes (
+        id             uuid primary key default uuidv7(),
+        person_id      uuid not null references event_people (id) on delete cascade,
+        generation_id  uuid not null,
+        code_hash      text not null check (code_hash ~ '^[0-9a-f]{64}$'),
+        created_at     timestamptz not null default now(),
+        consumed_at    timestamptz,
+        unique (person_id, code_hash)
+      );
+      create index person_recovery_codes_active_idx
+        on person_recovery_codes (person_id, generation_id)
+        where consumed_at is null;
+
+      alter table email_outbox drop constraint if exists email_outbox_kind_check;
+      alter table email_outbox add constraint email_outbox_kind_check check (kind in (
+        'ticket-issued','ticket-resend','ticket-refund','ticket-exchange',
+        'ticket-exchange-payment','attendee-access','ticket-assignment',
+        'ticket-transfer','ticket-return','staff-access','admin-access','security-notice',
+        'operations-alert','operations-digest','event-broadcast','communication',
+        'communication-stage','communication-test','pitch-welcome','pitch-published',
+        'pitch-recovery','pitch-reminder'
+      ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

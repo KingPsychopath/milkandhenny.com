@@ -43,22 +43,24 @@ function TicketActionPage() {
       setBusy(null);
       return;
     }
-    if ("destination" in result.value) {
+    if (result.value.mfaRequired) {
       setDestination(result.value.destination);
-      setMessage(
-        result.value.purpose === "admin-invitation"
-          ? "Admin access activated. It is now attached to your verified identity."
-          : "Staff access activated. It is now attached to your verified identity.",
-      );
+      setMessage("Action confirmed. Finish the authenticator check to continue signing in.");
+    } else if ("purpose" in result.value && result.value.purpose === "admin-invitation") {
+      setDestination(result.value.destination);
+      setMessage("Admin access activated. It is now attached to your verified identity.");
+    } else if ("purpose" in result.value && result.value.purpose === "staff-invitation") {
+      setDestination(result.value.destination);
+      setMessage("Staff access activated. It is now attached to your verified identity.");
     } else if ("publicTicketId" in result.value) {
-      setDestination(`/ticket/${result.value.publicTicketId}`);
+      setDestination(result.value.destination);
       setMessage(
         result.value.purpose === "ticket-transfer"
           ? "Transfer accepted. The previous ticket link and QR have been replaced."
           : "Ticket claimed. It is now saved in You.",
       );
-    } else {
-      setDestination("/my");
+    } else if ("state" in result.value) {
+      setDestination(result.value.destination);
       setMessage(
         result.value.state === "pending"
           ? "Consent recorded. The refund is processing to the purchaser’s original payment method."

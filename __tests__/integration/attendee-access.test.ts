@@ -83,17 +83,20 @@ async function verify(id: string, token: string, sessionId: string) {
   });
 }
 
-async function createVerifiedPerson(personId: string, email: string) {
-  const identifierId = `identifier_${personId}`;
+async function createVerifiedPerson(canonicalName: string, email: string) {
   const emailHash = __attendeeAccessTesting.sha256(email);
-  await query(`insert into event_people (id,canonical_name) values ($1,$2)`, [personId, personId]);
-  await query(
-    `insert into event_person_identifiers
-       (id,person_id,kind,value_hash,verified_at,display_hint)
-     values ($1,$2,'email',$3,now(),$4)`,
-    [identifierId, personId, emailHash, `${email[0]}•••@example.com`],
+  const people = await query<{ id: string }>(
+    `insert into event_people (canonical_name) values ($1) returning id::text`,
+    [canonicalName],
   );
-  return { personId, emailHash };
+  const personId = people[0]!.id;
+  const identifiers = await query<{ id: string }>(
+    `insert into event_person_identifiers
+       (person_id,kind,value_hash,verified_at,display_hint,email_address)
+     values ($1,'email',$2,now(),$3,$4) returning id::text`,
+    [personId, emailHash, `${email[0]}•••@example.com`, email],
+  );
+  return { personId, identifierId: identifiers[0]!.id, emailHash };
 }
 
 describeWithDatabase("attendee person access", () => {
@@ -148,10 +151,11 @@ describeWithDatabase("attendee person access", () => {
     const account = await attendeeAccount(signedIn.value.personId);
     const buyerIdentity = account?.emails[0];
     expect(buyerIdentity).toBeDefined();
-    await query(
+    const backup = await query<{ id: string }>(
       `insert into event_person_identifiers
-         (id,person_id,kind,value_hash,verified_at,display_hint)
-       values ('identifier_backup',$1,'email',$2,now(),'b•••@example.com')`,
+         (person_id,kind,value_hash,verified_at,display_hint,email_address)
+       values ($1,'email',$2,now(),'b•••@example.com','backup@example.com')
+       returning id::text`,
       [signedIn.value.personId, __attendeeAccessTesting.sha256("backup@example.com")],
     );
 
@@ -166,7 +170,7 @@ describeWithDatabase("attendee person access", () => {
     ).toMatchObject({ ok: true, value: { removed: true } });
     expect(await managedOrderIdsForPerson(signedIn.value.personId)).toEqual(["ord_identitytest1"]);
     expect((await attendeeAccount(signedIn.value.personId))?.emails).toEqual([
-      expect.objectContaining({ id: "identifier_backup" }),
+      expect.objectContaining({ id: backup[0]!.id }),
     ]);
 
     await insertChallenge({ id: "access_removed", email: BUYER_EMAIL, token: "removed-token" });
@@ -202,7 +206,7 @@ describeWithDatabase("attendee person access", () => {
     expect(
       await removePersonEmail({
         personId: person.personId,
-        identifierId: `identifier_${person.personId}`,
+        identifierId: person.identifierId,
         actorId: person.personId,
         actorType: "attendee",
         reason: "self-service email removal",

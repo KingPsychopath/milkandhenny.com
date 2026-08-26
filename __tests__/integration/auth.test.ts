@@ -337,7 +337,7 @@ describe("auth security flows", () => {
     await expect(permissionFor("/api/admin/step-up")).resolves.toBeNull();
   });
 
-  it("uses a fresh verified-person session for named-admin step-up", async () => {
+  it("uses a fresh passkey session for named-admin step-up", async () => {
     const redis = createRedisMock();
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
     vi.doMock("@/lib/platform/postgres.server", () => ({
@@ -353,6 +353,13 @@ describe("auth security flows", () => {
       getAttendeeSessionForRequest: async () => ({
         personId: "person_named_admin",
         authenticatedAt: new Date().toISOString(),
+        passkeyAuthenticatedAt: new Date().toISOString(),
+        assurance: {
+          primary: "passkey",
+          factors: ["passkey"],
+          phishingResistant: true,
+          authenticatedAt: new Date().toISOString(),
+        },
       }),
     }));
     const { createAdminStepUpToken, requireAuthWithPayload } =

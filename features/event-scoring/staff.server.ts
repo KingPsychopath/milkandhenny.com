@@ -206,6 +206,7 @@ export async function createStaffAccess(input: {
     const invited = await ensurePendingInvitedPerson(client, {
       emailHash: actionEmailHash(recipient),
       emailHint: maskActionEmail(recipient),
+      emailAddress: recipient,
       canonicalName: input.label,
     });
     const previous = await client.query<{

@@ -350,11 +350,11 @@ describeWithDatabase("event scoring postgres", () => {
       displayMode: "alias",
       publicAlias: "Night Owl",
     });
-    await query(
-      `insert into event_people (id, canonical_name) values ('person-alice','Alice Smith')`,
-    );
-    await query(`update event_participants set person_id = 'person-alice' where id = $1`, [
+    const alice = "0198e9d8-53d7-7db3-8ca5-e337796bc432";
+    await query(`insert into event_people (id, canonical_name) values ($1,'Alice Smith')`, [alice]);
+    await query(`update event_participants set person_id = $2 where id = $1`, [
       participant!.id,
+      alice,
     ]);
 
     const generated = await publicLeaderboard({ eventSlug: "scoring-night" });
@@ -447,16 +447,18 @@ describeWithDatabase("event scoring postgres", () => {
 
   it("pseudonymizes personal identity without changing immutable scoring", async () => {
     const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const privatePerson = "0198e9d8-53d7-7db4-bfc9-22d87bc11f08";
+    await query(`insert into event_people (id,canonical_name) values ($1,'Private Name')`, [
+      privatePerson,
+    ]);
     await query(
-      `insert into event_people (id,canonical_name) values ('privacy-person','Private Name')`,
+      `insert into event_person_identifiers (person_id,kind,value_hash,verified_at)
+       values ($1,'email',$2,now())`,
+      [privatePerson, "a".repeat(64)],
     );
-    await query(
-      `insert into event_person_identifiers (id,person_id,kind,value_hash,verified_at)
-       values ('privacy-email','privacy-person','email',$1,now())`,
-      ["a".repeat(64)],
-    );
-    await query(`update event_participants set person_id = 'privacy-person' where id = $1`, [
+    await query(`update event_participants set person_id = $2 where id = $1`, [
       participant!.id,
+      privatePerson,
     ]);
     await getOrCreateSettings("scoring-night");
     await query(
@@ -481,7 +483,7 @@ describeWithDatabase("event scoring postgres", () => {
     expect(
       await pseudonymizeEventPerson({
         eventSlug: "scoring-night",
-        personId: "privacy-person",
+        personId: privatePerson,
         actorId: "admin-test",
         reason: "Verified privacy request",
       }),
@@ -493,7 +495,7 @@ describeWithDatabase("event scoring postgres", () => {
       publicAlias: expect.stringMatching(/^removed-/),
     });
     expect(
-      await query(`select id from event_person_identifiers where person_id = 'privacy-person'`),
+      await query(`select id from event_person_identifiers where person_id = $1`, [privatePerson]),
     ).toEqual([]);
     expect(
       await query<{ count: string }>(

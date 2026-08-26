@@ -26,6 +26,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as ThingsRouteImport } from './routes/things'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as AccessMfaRouteImport } from './routes/access_.mfa'
 import { Route as AccessVerifyRouteImport } from './routes/access_.verify'
 import { Route as ActionTokenRouteImport } from './routes/action/$token'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -77,7 +78,6 @@ import { Route as ApiAdminUploadAccessRouteRouteImport } from './routes/api/admi
 import { Route as ApiAdminVerifyRouteRouteImport } from './routes/api/admin/verify/route'
 import { Route as ApiAdminWordMediaRouteRouteImport } from './routes/api/admin/word-media/route'
 import { Route as ApiAdminWordSharesRouteRouteImport } from './routes/api/admin/word-shares/route'
-import { Route as ApiAttendeeAccessRouteRouteImport } from './routes/api/attendee/access/route'
 import { Route as ApiAttendeeSessionRouteRouteImport } from './routes/api/attendee/session/route'
 import { Route as ApiAttendeeTicketOperationsRouteRouteImport } from './routes/api/attendee/ticket-operations/route'
 import { Route as ApiCommunicationsClickRouteRouteImport } from './routes/api/communications/click/route'
@@ -283,6 +283,11 @@ const ThingsRoute = ThingsRouteImport.update({
 const UploadRoute = UploadRouteImport.update({
   id: '/upload',
   path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessMfaRoute = AccessMfaRouteImport.update({
+  id: '/access_/mfa',
+  path: '/access/mfa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccessVerifyRoute = AccessVerifyRouteImport.update({
@@ -542,11 +547,6 @@ const ApiAdminWordMediaRouteRoute = ApiAdminWordMediaRouteRouteImport.update({
 const ApiAdminWordSharesRouteRoute = ApiAdminWordSharesRouteRouteImport.update({
   id: '/api/admin/word-shares',
   path: '/api/admin/word-shares',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAttendeeAccessRouteRoute = ApiAttendeeAccessRouteRouteImport.update({
-  id: '/api/attendee/access',
-  path: '/api/attendee/access',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAttendeeSessionRouteRoute = ApiAttendeeSessionRouteRouteImport.update({
@@ -1260,6 +1260,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access/mfa': typeof AccessMfaRoute
   '/access/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
@@ -1306,7 +1307,6 @@ export interface FileRoutesByFullPath {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
-  '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
@@ -1452,6 +1452,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access/mfa': typeof AccessMfaRoute
   '/access/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
@@ -1498,7 +1499,6 @@ export interface FileRoutesByTo {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
-  '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
@@ -1645,6 +1645,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access_/mfa': typeof AccessMfaRoute
   '/access_/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
@@ -1691,7 +1692,6 @@ export interface FileRoutesById {
   '/api/admin/verify': typeof ApiAdminVerifyRouteRoute
   '/api/admin/word-media': typeof ApiAdminWordMediaRouteRouteWithChildren
   '/api/admin/word-shares': typeof ApiAdminWordSharesRouteRouteWithChildren
-  '/api/attendee/access': typeof ApiAttendeeAccessRouteRoute
   '/api/attendee/session': typeof ApiAttendeeSessionRouteRoute
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
@@ -1839,6 +1839,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access/mfa'
     | '/access/verify'
     | '/action/$token'
     | '/admin/cli-auth'
@@ -1885,7 +1886,6 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
-    | '/api/attendee/access'
     | '/api/attendee/session'
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
@@ -2031,6 +2031,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access/mfa'
     | '/access/verify'
     | '/action/$token'
     | '/admin/cli-auth'
@@ -2077,7 +2078,6 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
-    | '/api/attendee/access'
     | '/api/attendee/session'
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
@@ -2223,6 +2223,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access_/mfa'
     | '/access_/verify'
     | '/action/$token'
     | '/admin/cli-auth'
@@ -2269,7 +2270,6 @@ export interface FileRouteTypes {
     | '/api/admin/verify'
     | '/api/admin/word-media'
     | '/api/admin/word-shares'
-    | '/api/attendee/access'
     | '/api/attendee/session'
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
@@ -2416,6 +2416,7 @@ export interface RootRouteChildren {
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
   ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
+  AccessMfaRoute: typeof AccessMfaRoute
   AccessVerifyRoute: typeof AccessVerifyRoute
   ActionTokenRoute: typeof ActionTokenRoute
   AdminCliAuthRoute: typeof AdminCliAuthRoute
@@ -2451,7 +2452,6 @@ export interface RootRouteChildren {
   ApiAdminVerifyRouteRoute: typeof ApiAdminVerifyRouteRoute
   ApiAdminWordMediaRouteRoute: typeof ApiAdminWordMediaRouteRouteWithChildren
   ApiAdminWordSharesRouteRoute: typeof ApiAdminWordSharesRouteRouteWithChildren
-  ApiAttendeeAccessRouteRoute: typeof ApiAttendeeAccessRouteRoute
   ApiAttendeeSessionRouteRoute: typeof ApiAttendeeSessionRouteRoute
   ApiAttendeeTicketOperationsRouteRoute: typeof ApiAttendeeTicketOperationsRouteRoute
   ApiCommunicationsClickRouteRoute: typeof ApiCommunicationsClickRouteRoute
@@ -2627,6 +2627,13 @@ declare module '@tanstack/react-router' {
       path: '/upload'
       fullPath: '/upload'
       preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access_/mfa': {
+      id: '/access_/mfa'
+      path: '/access/mfa'
+      fullPath: '/access/mfa'
+      preLoaderRoute: typeof AccessMfaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/access_/verify': {
@@ -2984,13 +2991,6 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/word-shares'
       fullPath: '/api/admin/word-shares'
       preLoaderRoute: typeof ApiAdminWordSharesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/attendee/access': {
-      id: '/api/attendee/access'
-      path: '/api/attendee/access'
-      fullPath: '/api/attendee/access'
-      preLoaderRoute: typeof ApiAttendeeAccessRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/attendee/session': {
@@ -4275,6 +4275,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRouteRoute: ApiHealthRouteRoute,
   ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
+  AccessMfaRoute: AccessMfaRoute,
   AccessVerifyRoute: AccessVerifyRoute,
   ActionTokenRoute: ActionTokenRoute,
   AdminCliAuthRoute: AdminCliAuthRoute,
@@ -4311,7 +4312,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminVerifyRouteRoute: ApiAdminVerifyRouteRoute,
   ApiAdminWordMediaRouteRoute: ApiAdminWordMediaRouteRouteWithChildren,
   ApiAdminWordSharesRouteRoute: ApiAdminWordSharesRouteRouteWithChildren,
-  ApiAttendeeAccessRouteRoute: ApiAttendeeAccessRouteRoute,
   ApiAttendeeSessionRouteRoute: ApiAttendeeSessionRouteRoute,
   ApiAttendeeTicketOperationsRouteRoute: ApiAttendeeTicketOperationsRouteRoute,
   ApiCommunicationsClickRouteRoute: ApiCommunicationsClickRouteRoute,

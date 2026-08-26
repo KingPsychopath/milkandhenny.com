@@ -123,7 +123,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         `select id,person_id,coalesce(display_hint,'email identity') as display_hint,
                 verified_at,historical_until
          from event_person_identifiers
-        where person_id = any($1::text[]) and kind = 'email'
+        where person_id = any($1::uuid[]) and kind = 'email'
         order by verified_at desc nulls last,created_at desc`,
         [ids],
       ),
@@ -145,12 +145,12 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         `with ownership as (
            select participant.person_id,participant.ticket_id
              from event_participants participant
-            where participant.person_id = any($1::text[])
+            where participant.person_id = any($1::uuid[])
            union
            select manager.person_id,ticket.id as ticket_id
              from event_order_managers manager
              join tickets ticket on ticket.order_id = manager.order_id
-            where manager.person_id = any($1::text[]) and manager.status = 'active'
+            where manager.person_id = any($1::uuid[]) and manager.status = 'active'
          )
          select ownership.person_id,ticket.id,ticket.event_slug,event.title as event_title,
               ticket.holder_name,ticket.status,ticket.order_id,participant.id as participant_id,
@@ -165,7 +165,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
       ),
       query<{ person_id: string; role_preset: string; status: string; expires_at: Date | null }>(
         `select person_id,role_preset,status,expires_at from global_admin_grants
-        where person_id = any($1::text[]) order by created_at desc`,
+        where person_id = any($1::uuid[]) order by created_at desc`,
         [ids],
       ),
       query<{
@@ -176,21 +176,21 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         expires_at: Date | null;
       }>(
         `select person_id,event_slug,label,status,expires_at from score_staff_assignments
-        where person_id = any($1::text[]) order by created_at desc`,
+        where person_id = any($1::uuid[]) order by created_at desc`,
         [ids],
       ),
       query<{ person_id: string; count: string }>(
         `select person_id,count(*)::text as count from (
          select purchaser_person_id as person_id from ticket_assignments where status = 'pending'
          union all select sender_person_id from ticket_transfers where status = 'pending'
-       ) pending where person_id = any($1::text[]) group by person_id`,
+       ) pending where person_id = any($1::uuid[]) group by person_id`,
         [ids],
       ),
       query<{ person_id: string; count: string }>(
         `select assignment.person_id,count(device.device_id)::text as count
          from score_staff_assignments assignment
          join score_staff_devices device on device.assignment_id = assignment.id and device.revoked_at is null
-        where assignment.person_id = any($1::text[])
+        where assignment.person_id = any($1::uuid[])
         group by assignment.person_id`,
         [ids],
       ),

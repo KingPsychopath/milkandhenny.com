@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
-import { authenticateAttendeeSession } from "@/features/event-scoring/session.server";
+import { establishEmailAuthenticatedSession } from "@/features/attendee-access/email-authentication.server";
 import { generateTicketId } from "@/features/tickets/qr.server";
 import { refundTicket } from "@/features/tickets/checkout.server";
 import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
@@ -832,10 +832,14 @@ export async function requestTransferredTicketReturn(input: {
   }
 }
 
-export async function acceptRefundConsent(
-  token: string,
-): Promise<
-  TicketOperationResult<{ state: "succeeded" | "pending"; refunded: number; emailQueued: boolean }>
+export async function acceptRefundConsent(token: string): Promise<
+  TicketOperationResult<{
+    state: "succeeded" | "pending";
+    refunded: number;
+    emailQueued: boolean;
+    destination: string;
+    mfaRequired: boolean;
+  }>
 > {
   try {
     const consumed = await consumeActionLink(token, async (client, link) => {
@@ -877,9 +881,10 @@ export async function acceptRefundConsent(
       };
     });
     if (!consumed.ok) return consumed;
-    await authenticateAttendeeSession({
+    const authentication = await establishEmailAuthenticatedSession({
       personId: consumed.value.personId,
       verifiedEmailHash: consumed.value.verifiedEmailHash,
+      returnTo: "/my",
     });
     const refunded = await refundTicket({
       ticketId: consumed.value.ticketId,
@@ -896,7 +901,7 @@ export async function acceptRefundConsent(
           : undefined
         : refunded.error,
     });
-    return refunded;
+    return refunded.ok ? { ok: true, value: { ...refunded.value, ...authentication } } : refunded;
   } catch (error) {
     return error instanceof TicketOperationError
       ? { ok: false, status: error.status, error: error.message }
@@ -956,6 +961,8 @@ export async function acceptTicketAction(token: string): Promise<
     publicTicketId: string;
     eventSlug: string;
     operationId: string;
+    destination: string;
+    mfaRequired: boolean;
   }>
 > {
   try {
@@ -1163,9 +1170,10 @@ export async function acceptTicketAction(token: string): Promise<
       };
     });
     if (!consumed.ok) return consumed;
-    await authenticateAttendeeSession({
+    const authentication = await establishEmailAuthenticatedSession({
       personId: consumed.value.personId,
       verifiedEmailHash: consumed.value.verifiedEmailHash,
+      returnTo: `/ticket/${consumed.value.publicTicketId}`,
     });
     await emitDomainEvent({
       kind:
@@ -1183,7 +1191,7 @@ export async function acceptTicketAction(token: string): Promise<
       operationId: consumed.value.operationId,
       state: "accepted",
     });
-    return { ok: true, value: consumed.value };
+    return { ok: true, value: { ...consumed.value, ...authentication } };
   } catch (error) {
     return error instanceof TicketOperationError
       ? { ok: false, status: error.status, error: error.message }

@@ -13,6 +13,7 @@ import { ATTENDEE_SESSION_COOKIE_NAME } from "./session-cookie";
 const SESSION_PREFIX = "event-scoring:attendee-session:";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
 const SESSION_ROTATION_MS = 1000 * 60 * 60 * 24 * 7;
+const PENDING_MFA_LIFETIME_MS = 10 * 60 * 1_000;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
 const SESSION_LOCK_PREFIX = "event-scoring:attendee-session-lock:";
 const SESSION_LOCK_TTL_MS = 5_000;
@@ -36,6 +37,24 @@ export type AttendeeSession = {
   personId?: string;
   verifiedEmailHash?: string;
   authenticatedAt?: string;
+  authenticationMethod?: "email" | "passkey";
+  passkeyAuthenticatedAt?: string;
+  passkeyId?: string;
+  totpAuthenticatedAt?: string;
+  totpId?: string;
+  assurance?: {
+    primary: "email" | "passkey";
+    factors: Array<"email" | "passkey" | "totp" | "recovery-code">;
+    phishingResistant: boolean;
+    authenticatedAt: string;
+    steppedUpAt?: string;
+  };
+  pendingMfa?: {
+    personId: string;
+    verifiedEmailHash: string;
+    returnTo: string;
+    createdAt: string;
+  };
   createdAt: string;
   lastSeenAt: string;
 };
@@ -155,7 +174,9 @@ export async function attendeeSessionSummaries(
 }
 
 export async function revokeAttendeeSessionsForPerson(personId: string): Promise<number> {
-  const sessions = (await storedSessions()).filter((session) => session.personId === personId);
+  const sessions = (await storedSessions()).filter(
+    (session) => session.personId === personId || session.pendingMfa?.personId === personId,
+  );
   if (sessions.length === 0) return 0;
   const redis = getRedis();
   if (redis) {
@@ -247,7 +268,19 @@ export async function ensureAttendeeSession(): Promise<AttendeeSession> {
 
 async function rotateSession(
   session: AttendeeSession,
-  changes: Pick<AttendeeSession, "personId" | "verifiedEmailHash" | "authenticatedAt">,
+  changes: Pick<
+    AttendeeSession,
+    | "personId"
+    | "verifiedEmailHash"
+    | "authenticatedAt"
+    | "authenticationMethod"
+    | "passkeyAuthenticatedAt"
+    | "passkeyId"
+    | "totpAuthenticatedAt"
+    | "totpId"
+    | "assurance"
+    | "pendingMfa"
+  >,
 ): Promise<AttendeeSession> {
   return withSessionMutation(session.id, async () => {
     const current = (await readById(session.id)) ?? session;
@@ -270,13 +303,118 @@ async function rotateSession(
 
 export async function authenticateAttendeeSession(input: {
   personId: string;
-  verifiedEmailHash: string;
+  verifiedEmailHash?: string;
+  method?: "email" | "passkey";
+  passkeyId?: string;
 }): Promise<AttendeeSession> {
   const session = await loadOrCreate();
+  const now = new Date().toISOString();
+  const method = input.method ?? "email";
   return rotateSession(session, {
     personId: input.personId,
     verifiedEmailHash: input.verifiedEmailHash,
-    authenticatedAt: new Date().toISOString(),
+    authenticatedAt: now,
+    authenticationMethod: method,
+    passkeyAuthenticatedAt: method === "passkey" ? now : undefined,
+    passkeyId: method === "passkey" ? input.passkeyId : undefined,
+    totpAuthenticatedAt: undefined,
+    totpId: undefined,
+    assurance: {
+      primary: method,
+      factors: [method],
+      phishingResistant: method === "passkey",
+      authenticatedAt: now,
+      steppedUpAt: method === "passkey" ? now : undefined,
+    },
+    pendingMfa: undefined,
+  });
+}
+
+export async function beginAttendeeMfaSession(input: {
+  personId: string;
+  verifiedEmailHash: string;
+  returnTo: string;
+}): Promise<AttendeeSession> {
+  const session = await loadOrCreate();
+  return rotateSession(session, {
+    personId: undefined,
+    verifiedEmailHash: undefined,
+    authenticatedAt: undefined,
+    authenticationMethod: undefined,
+    passkeyAuthenticatedAt: undefined,
+    passkeyId: undefined,
+    totpAuthenticatedAt: undefined,
+    totpId: undefined,
+    assurance: undefined,
+    pendingMfa: {
+      personId: input.personId,
+      verifiedEmailHash: input.verifiedEmailHash,
+      returnTo: input.returnTo,
+      createdAt: new Date().toISOString(),
+    },
+  });
+}
+
+export async function completeAttendeeMfaSession(input: {
+  factor: "totp" | "recovery-code";
+  totpId?: string;
+}): Promise<AttendeeSession | null> {
+  const session = await getAttendeeSession();
+  if (!session?.pendingMfa) return null;
+  const pendingCreatedAt = Date.parse(session.pendingMfa.createdAt);
+  if (
+    !Number.isFinite(pendingCreatedAt) ||
+    pendingCreatedAt > Date.now() ||
+    Date.now() - pendingCreatedAt > PENDING_MFA_LIFETIME_MS
+  ) {
+    return null;
+  }
+  const now = new Date().toISOString();
+  return rotateSession(session, {
+    personId: session.pendingMfa.personId,
+    verifiedEmailHash: session.pendingMfa.verifiedEmailHash,
+    authenticatedAt: now,
+    authenticationMethod: "email",
+    passkeyAuthenticatedAt: undefined,
+    passkeyId: undefined,
+    totpAuthenticatedAt: now,
+    totpId: input.totpId,
+    assurance: {
+      primary: "email",
+      factors: ["email", input.factor],
+      phishingResistant: false,
+      authenticatedAt: now,
+      steppedUpAt: now,
+    },
+    pendingMfa: undefined,
+  });
+}
+
+export async function stepUpAttendeeSession(input: {
+  factor: "totp";
+  totpId: string;
+}): Promise<AttendeeSession | null> {
+  const session = await getAttendeeSession();
+  if (!session?.personId || !session.authenticatedAt) return null;
+  const now = new Date().toISOString();
+  const primary = session.authenticationMethod ?? "email";
+  return rotateSession(session, {
+    personId: session.personId,
+    verifiedEmailHash: session.verifiedEmailHash,
+    authenticatedAt: session.authenticatedAt,
+    authenticationMethod: primary,
+    passkeyAuthenticatedAt: session.passkeyAuthenticatedAt,
+    passkeyId: session.passkeyId,
+    totpAuthenticatedAt: now,
+    totpId: input.totpId,
+    assurance: {
+      primary,
+      factors: Array.from(new Set([...(session.assurance?.factors ?? [primary]), input.factor])),
+      phishingResistant: session.assurance?.phishingResistant ?? primary === "passkey",
+      authenticatedAt: session.assurance?.authenticatedAt ?? session.authenticatedAt,
+      steppedUpAt: now,
+    },
+    pendingMfa: undefined,
   });
 }
 
@@ -287,12 +425,26 @@ export async function signOutAttendeeSession(): Promise<AttendeeSession | null> 
     personId: _personId,
     verifiedEmailHash: _email,
     authenticatedAt: _at,
+    authenticationMethod: _method,
+    passkeyAuthenticatedAt: _passkeyAt,
+    passkeyId: _passkeyId,
+    totpAuthenticatedAt: _totpAt,
+    totpId: _totpId,
+    assurance: _assurance,
+    pendingMfa: _pendingMfa,
     ...anonymous
   } = session;
   return rotateSession(anonymous, {
     personId: undefined,
     verifiedEmailHash: undefined,
     authenticatedAt: undefined,
+    authenticationMethod: undefined,
+    passkeyAuthenticatedAt: undefined,
+    passkeyId: undefined,
+    totpAuthenticatedAt: undefined,
+    totpId: undefined,
+    assurance: undefined,
+    pendingMfa: undefined,
   });
 }
 
@@ -306,6 +458,13 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
       personId: session.personId,
       verifiedEmailHash: session.verifiedEmailHash,
       authenticatedAt: session.authenticatedAt,
+      authenticationMethod: session.authenticationMethod,
+      passkeyAuthenticatedAt: session.passkeyAuthenticatedAt,
+      passkeyId: session.passkeyId,
+      totpAuthenticatedAt: session.totpAuthenticatedAt,
+      totpId: session.totpId,
+      assurance: session.assurance,
+      pendingMfa: session.pendingMfa,
     });
   }
   return refresh(session);

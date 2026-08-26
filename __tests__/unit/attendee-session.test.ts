@@ -88,6 +88,8 @@ import {
   attendeeSessionSummaries,
   activeParticipantForEvent,
   authenticateAttendeeSession,
+  beginAttendeeMfaSession,
+  completeAttendeeMfaSession,
   getAttendeeSession,
   openAttendeeTicket,
   revokeAttendeeSessionsForPerson,
@@ -130,6 +132,51 @@ describe("attendee session authentication", () => {
     expect(signedOut?.verifiedEmailHash).toBeUndefined();
     expect(signedOut?.tickets).toHaveLength(1);
     expect(signedOut?.id).not.toBe(authenticated.id);
+  });
+
+  it("keeps an email login anonymous until its second factor succeeds", async () => {
+    const pending = await beginAttendeeMfaSession({
+      personId: "person_mfa",
+      verifiedEmailHash: "c".repeat(64),
+      returnTo: "/my",
+    });
+    expect(pending.personId).toBeUndefined();
+    expect(pending.pendingMfa).toMatchObject({ personId: "person_mfa", returnTo: "/my" });
+
+    const authenticated = await completeAttendeeMfaSession({
+      factor: "totp",
+      totpId: "totp_1",
+    });
+    expect(authenticated).toMatchObject({
+      personId: "person_mfa",
+      pendingMfa: undefined,
+      assurance: {
+        primary: "email",
+        factors: ["email", "totp"],
+        phishingResistant: false,
+      },
+    });
+  });
+
+  it("does not complete an expired pending MFA session", async () => {
+    const pending = await beginAttendeeMfaSession({
+      personId: "person_mfa",
+      verifiedEmailHash: "d".repeat(64),
+      returnTo: "/my",
+    });
+    const key = `event-scoring:attendee-session:${pending.id}`;
+    state.records.set(key, {
+      ...pending,
+      pendingMfa: {
+        ...pending.pendingMfa!,
+        createdAt: new Date(Date.now() - 11 * 60 * 1_000).toISOString(),
+      },
+    });
+
+    await expect(
+      completeAttendeeMfaSession({ factor: "totp", totpId: "totp_1" }),
+    ).resolves.toBeNull();
+    await expect(getAttendeeSession()).resolves.toMatchObject({ personId: undefined });
   });
 
   it("preserves a scoring choice on reload and switches only when another ticket is chosen", async () => {

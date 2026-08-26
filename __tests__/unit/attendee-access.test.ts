@@ -9,6 +9,10 @@ describe("attendee access boundaries", () => {
     expect(safeReturnTo("//evil.example/ticket")).toBe("/my");
     expect(safeReturnTo("/\\evil.example/ticket")).toBe("/my");
     expect(safeReturnTo("/ticket/abc\nnext")).toBe("/my");
+    expect(safeReturnTo("/api/admin/operations")).toBe("/my");
+    expect(safeReturnTo("/access/verify?token=secret")).toBe("/my");
+    expect(safeReturnTo("/%2f%2fevil.example")).toBe("/my");
+    expect(safeReturnTo("/my/%5cevil")).toBe("/my");
     expect(safeReturnTo(undefined)).toBe("/my");
   });
 

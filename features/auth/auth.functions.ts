@@ -20,15 +20,38 @@ import {
   LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
 } from "./cookies";
 import type { AuthCookieRole } from "./cookies";
+import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { queryOne } from "@/lib/platform/postgres.server";
 
 interface Credentials {
   value: string;
 }
 
-export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async () => ({
-  auth: await authenticateRequest(getRequest(), "admin"),
-  localDevBypassAvailable: isLocalDevelopment(),
-}));
+export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async () => {
+  const [auth, attendee] = await Promise.all([
+    authenticateRequest(getRequest(), "admin"),
+    getAttendeeSession(),
+  ]);
+  const namedAdmin = attendee?.personId
+    ? await queryOne<{ has_passkey: boolean }>(
+        `select exists (
+           select 1 from person_passkeys
+            where person_id = $1 and revoked_at is null
+         ) as has_passkey
+         from global_admin_grants
+        where person_id = $1 and status = 'active' and starts_at <= now()
+          and (expires_at is null or expires_at > now())
+        limit 1`,
+        [attendee.personId],
+      )
+    : null;
+  return {
+    auth,
+    localDevBypassAvailable: isLocalDevelopment(),
+    namedAdminPasskeyRequired: Boolean(namedAdmin && !auth.ok),
+    namedAdminHasPasskey: namedAdmin?.has_passkey ?? false,
+  };
+});
 
 export const getAdminEditorAccessFn = createServerFn({ method: "GET" }).handler(() =>
   authenticateRequest(getRequest(), "admin"),

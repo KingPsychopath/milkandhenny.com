@@ -29,6 +29,12 @@ export const Route = createFileRoute("/my")({
 });
 
 function MyAccountRoute() {
-  const { account, emailStepUpRequired } = Route.useLoaderData();
-  return <MyAccountPage account={account} emailStepUpRequired={emailStepUpRequired} />;
+  const { account, emailStepUpRequired, security } = Route.useLoaderData();
+  return (
+    <MyAccountPage
+      account={account}
+      emailStepUpRequired={emailStepUpRequired}
+      security={security}
+    />
+  );
 }

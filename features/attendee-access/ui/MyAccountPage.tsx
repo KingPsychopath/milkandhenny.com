@@ -14,6 +14,7 @@ import {
   updateAttendeeNameFn,
 } from "../access.functions";
 import type { AttendeeAccount } from "../types";
+import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   const groups = new Map<
@@ -44,9 +45,27 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
 export function MyAccountPage({
   account: initialAccount,
   emailStepUpRequired: initialEmailStepUpRequired,
+  security,
 }: {
   account: AttendeeAccount;
   emailStepUpRequired: boolean;
+  security: {
+    passkeys: Array<{
+      id: string;
+      label: string;
+      createdAt: string;
+      lastUsedAt?: string;
+      backedUp: boolean;
+      deviceType: "singleDevice" | "multiDevice";
+    }>;
+    totp: {
+      enabled: boolean;
+      label?: string;
+      createdAt?: string;
+      lastUsedAt?: string;
+      recoveryCodesRemaining: number;
+    };
+  };
 }) {
   const navigate = useNavigate();
   const router = useRouter();
@@ -384,6 +403,8 @@ export function MyAccountPage({
           </ul>
         </section>
       ) : null}
+
+      <SecuritySettingsPanel initialPasskeys={security.passkeys} initialTotp={security.totp} />
 
       <details className="mt-10 border-t theme-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">

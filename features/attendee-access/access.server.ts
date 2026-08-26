@@ -289,24 +289,25 @@ async function resolvePerson(
     await client.query(
       `update event_person_identifiers
           set verified_at = coalesce(verified_at, now()), historical_until = null,
-              display_hint = $2
+              display_hint = $2,email_address = $3
         where id = $1`,
-      [identifier.id, maskedEmail(challenge.email)],
+      [identifier.id, maskedEmail(challenge.email), challenge.email],
     );
     return { ok: true, value: { personId: identifier.person_id, identifierId: identifier.id } };
   }
 
-  const personId = challenge.person_id_hint ?? id("person");
-  if (!challenge.person_id_hint) {
-    await client.query(`insert into event_people (id) values ($1)`, [personId]);
-  }
-  const identifierId = id("identifier");
+  const createdPerson = challenge.person_id_hint
+    ? null
+    : await client.query<{ id: string }>(`insert into event_people default values returning id`);
+  const personId = challenge.person_id_hint ?? createdPerson?.rows[0]?.id;
+  if (!personId) throw new Error("Person could not be created");
   const inserted = await client.query<{ id: string }>(
-    `insert into event_person_identifiers (id,person_id,kind,value_hash,verified_at,display_hint)
-     values ($1,$2,'email',$3,now(),$4)
+    `insert into event_person_identifiers
+       (person_id,kind,value_hash,verified_at,display_hint,email_address)
+     values ($1,'email',$2,now(),$3,$4)
      on conflict (kind, value_hash) do nothing
      returning id`,
-    [identifierId, personId, challenge.email_hash, maskedEmail(challenge.email)],
+    [personId, challenge.email_hash, maskedEmail(challenge.email), challenge.email],
   );
   if (!inserted.rows[0]) {
     if (!challenge.person_id_hint) {
@@ -339,14 +340,15 @@ async function resolvePerson(
     if (row.historical_until) {
       await client.query(
         `update event_person_identifiers
-            set verified_at = now(), historical_until = null, display_hint = $2
+            set verified_at = now(), historical_until = null, display_hint = $2,
+                email_address = $3
           where id = $1`,
-        [row.id, maskedEmail(challenge.email)],
+        [row.id, maskedEmail(challenge.email), challenge.email],
       );
     }
     return { ok: true, value: { personId: row.person_id, identifierId: row.id } };
   }
-  return { ok: true, value: { personId, identifierId } };
+  return { ok: true, value: { personId, identifierId: inserted.rows[0]!.id } };
 }
 
 async function grantPurchaserOrders(
@@ -357,8 +359,8 @@ async function grantPurchaserOrders(
     `insert into event_order_managers
        (id,event_slug,order_id,person_id,identifier_id,role,source)
      select
-       'ordmgr_' || substr(md5(t.order_id || $1 || random()::text), 1, 24),
-       t.event_slug, t.order_id, $1, $2, 'owner', 'verified-purchaser-email'
+       'ordmgr_' || substr(md5(t.order_id || $1::text || random()::text), 1, 24),
+       t.event_slug, t.order_id, $1::uuid, $2::uuid, 'owner', 'verified-purchaser-email'
        from tickets t
       where t.email_hash = $3
       group by t.event_slug, t.order_id
@@ -374,7 +376,14 @@ export async function verifyAttendeeAccess(input: {
   token?: string;
   email?: string;
   code?: string;
-}): Promise<AccessResult<{ personId: string; emailHash: string; returnTo: string }>> {
+}): Promise<
+  AccessResult<{
+    personId: string;
+    emailHash: string;
+    returnTo: string;
+    purpose: "sign-in" | "add-email";
+  }>
+> {
   const secret = credentialSecret();
   if (!secret) return { ok: false, status: 503, error: "Email access is not configured" };
   if (!(await reserveRateLimit(`verify:${input.ipFingerprint}`, IP_RATE_LIMIT)))
@@ -409,6 +418,7 @@ export async function verifyAttendeeAccess(input: {
               personId: challenge.consumed_person_id,
               emailHash: challenge.email_hash,
               returnTo: challenge.return_to,
+              purpose: challenge.purpose,
             },
           }
         : { ok: false, status: 409, error: "That access link or code has already been used" };
@@ -447,9 +457,34 @@ export async function verifyAttendeeAccess(input: {
         personId: resolved.value.personId,
         emailHash: challenge.email_hash,
         returnTo: challenge.return_to,
+        purpose: challenge.purpose,
       },
     };
   });
+}
+
+export async function inspectAttendeeAccessLink(input: {
+  challengeId?: string;
+  token?: string;
+}): Promise<{ available: boolean; issue?: "invalid" | "expired" | "used" }> {
+  if (!input.challengeId || !input.token) return { available: false, issue: "invalid" };
+  const challenge = await queryOne<{
+    token_hash: string;
+    expires_at: Date;
+    consumed_at: Date | null;
+  }>(
+    `select token_hash,expires_at,consumed_at
+       from event_person_login_challenges where id = $1`,
+    [input.challengeId],
+  );
+  if (!challenge || !safeEquals(challenge.token_hash, sha256(input.token))) {
+    return { available: false, issue: "invalid" };
+  }
+  if (challenge.consumed_at) return { available: false, issue: "used" };
+  if (challenge.expires_at.getTime() <= Date.now()) {
+    return { available: false, issue: "expired" };
+  }
+  return { available: true };
 }
 
 export async function claimTicketForPerson(input: {
@@ -707,7 +742,6 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       )
     : [];
   return {
-    personId,
     name: person.canonical_name,
     gameHistory,
     emails: emails.map((row) => ({
@@ -805,13 +839,23 @@ export async function removeAttendeeEmail(input: {
     };
   }
 
-  return removePersonEmail({
+  const result = await removePersonEmail({
     personId: input.personId,
     identifierId: input.identifierId,
     actorId: input.personId,
     actorType: "attendee",
     reason: "self-service email removal",
   });
+  if (result.ok) {
+    const { sendPersonSecurityNotice } = await import("./security-notifications.server");
+    await sendPersonSecurityNotice({
+      personId: input.personId,
+      subject: "A sign-in email was removed",
+      message:
+        "A verified email address was removed from your account. All sessions were signed out.",
+    });
+  }
+  return result;
 }
 
 export async function currentAttendeeAccountView(): Promise<{

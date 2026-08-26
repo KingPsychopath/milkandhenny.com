@@ -5,6 +5,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import {
   currentAttendeeAccountStatus,
   currentAttendeeAccountView,
+  inspectAttendeeAccessLink,
   removeAttendeeEmail,
   requestAttendeeAccess,
   requestFingerprint,
@@ -12,12 +13,15 @@ import {
   verifyAttendeeAccess,
 } from "./access.server";
 import {
-  authenticateAttendeeSession,
   ensureAttendeeSession,
   getAttendeeSession,
   signOutAttendeeSession,
 } from "@/features/event-scoring/session.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { personTotpStatus } from "./totp.server";
+import { listPersonPasskeys } from "./passkeys.server";
+import { sendPersonSecurityNotice } from "./security-notifications.server";
+import { establishEmailAuthenticatedSession } from "./email-authentication.server";
 
 const accountLoginRedirect = () =>
   redirect({ to: "/access", search: { returnTo: "/my" }, replace: true });
@@ -36,9 +40,18 @@ export const getAttendeeShellFn = createServerFn({ method: "GET" }).handler(asyn
 });
 
 export const getMyAccountFn = createServerFn({ method: "GET" }).handler(async () => {
+  const session = await getAttendeeSession();
   const view = await currentAttendeeAccountView();
-  if (!view.account) throw accountLoginRedirect();
-  return { account: view.account, emailStepUpRequired: view.emailStepUpRequired };
+  if (!view.account || !session?.personId) throw accountLoginRedirect();
+  const [passkeys, totp] = await Promise.all([
+    listPersonPasskeys(session.personId),
+    personTotpStatus(session.personId),
+  ]);
+  return {
+    account: view.account,
+    emailStepUpRequired: view.emailStepUpRequired,
+    security: { passkeys, totp },
+  };
 });
 
 export const requestAttendeeAccessFn = createServerFn({ method: "POST" })
@@ -75,12 +88,30 @@ export const verifyAttendeeAccessFn = createServerFn({ method: "POST" })
       code: data.code,
     });
     if (!result.ok) return result;
-    await authenticateAttendeeSession({
+    const authentication = await establishEmailAuthenticatedSession({
       personId: result.value.personId,
       verifiedEmailHash: result.value.emailHash,
+      returnTo: result.value.returnTo,
     });
-    return { ok: true as const, value: { returnTo: result.value.returnTo } };
+    if (result.value.purpose === "add-email") {
+      await sendPersonSecurityNotice({
+        personId: result.value.personId,
+        subject: "A sign-in email was added",
+        message: "A new verified email address was connected to your account.",
+      });
+    }
+    return {
+      ok: true as const,
+      value: {
+        returnTo: authentication.destination,
+        mfaRequired: authentication.mfaRequired,
+      },
+    };
   });
+
+export const inspectAttendeeAccessLinkFn = createServerFn({ method: "GET" })
+  .validator((data: { challengeId?: string; token?: string }) => data)
+  .handler(({ data }) => inspectAttendeeAccessLink(data));
 
 export const updateAttendeeNameFn = createServerFn({ method: "POST" })
   .validator((data: { name: string }) => data)
