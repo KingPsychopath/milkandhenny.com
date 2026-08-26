@@ -164,7 +164,7 @@ export function HotAndColdResultShare({
       ) : null}
 
       <dl className="heat-result-stats">
-        <div className="py-4">
+        <div className="px-4 py-4">
           <dt className="font-mono text-micro uppercase tracking-[.12em] theme-muted">guesses</dt>
           <dd className="mt-1 font-serif text-2xl">{result.guessCount}</dd>
         </div>
@@ -172,13 +172,18 @@ export function HotAndColdResultShare({
           <dt className="font-mono text-micro uppercase tracking-[.12em] theme-muted">hints</dt>
           <dd className="mt-1 font-serif text-2xl">{hintsUsed}</dd>
         </div>
-        <div className="pl-4 py-4">
+        <div className="px-4 py-4">
           <dt className="font-mono text-micro uppercase tracking-[.12em] theme-muted">closest</dt>
           <dd className="mt-1 font-serif text-2xl">{closestLabel}</dd>
         </div>
       </dl>
 
-      <button type="button" onClick={() => void share()} className="heat-share-action">
+      <button
+        type="button"
+        onClick={() => void share()}
+        className="heat-share-action"
+        data-status={status}
+      >
         <span>
           {status === "copied"
             ? "copied to clipboard"
@@ -330,7 +335,12 @@ export function HotAndColdShareDock({
             </svg>
           </span>
         </button>
-        <button type="button" className="heat-share-dock-action" onClick={() => void share()}>
+        <button
+          type="button"
+          className="heat-share-dock-action"
+          data-status={status}
+          onClick={() => void share()}
+        >
           <span>{actionLabel}</span>
           <ShareIcon />
         </button>
