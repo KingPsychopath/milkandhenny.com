@@ -5,9 +5,8 @@ import { UploadDashboard } from "@/features/transfers/ui/upload/UploadDashboard"
 import { getUploadAccessFn, signInUpload } from "@/features/auth/auth.functions";
 
 export const Route = createFileRoute("/upload")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    auth: search.auth === "failed" ? ("failed" as const) : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { auth?: "failed" } =>
+    search.auth === "failed" ? { auth: "failed" } : {},
   loader: {
     handler: () => getUploadAccessFn(),
     staleReloadMode: "blocking",

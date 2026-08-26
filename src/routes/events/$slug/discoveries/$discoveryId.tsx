@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
 import { getPublicDiscoveryFn } from "@/features/event-scoring/public.functions";
@@ -112,12 +112,13 @@ function DiscoveryRoute() {
 
   return (
     <main id="main" className="mx-auto max-w-2xl px-6 py-12">
-      <a
-        href={`/events/${encodeURIComponent(discovery.eventSlug)}`}
+      <Link
+        to="/events/$slug"
+        params={{ slug: discovery.eventSlug }}
         className="font-mono text-xs underline hover:opacity-70"
       >
         ← event
-      </a>
+      </Link>
       <header className="mt-10">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">discovery</p>
         <h1 className="mt-2 font-serif text-4xl text-foreground">{discovery.name}</h1>

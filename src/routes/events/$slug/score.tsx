@@ -1,4 +1,4 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
 import { getPublicLeaderboardFn } from "@/features/event-scoring/public.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -21,14 +21,16 @@ export const Route = createFileRoute("/events/$slug/score")({
 
 function ScoreRoute() {
   const data = Route.useLoaderData();
+  const { slug } = Route.useParams();
   return (
     <main id="main" className="mx-auto max-w-2xl px-6 py-12">
-      <a
-        href={`/events/${encodeURIComponent(Route.useParams().slug)}`}
+      <Link
+        to="/events/$slug"
+        params={{ slug }}
         className="font-mono text-xs underline hover:opacity-70"
       >
         ← event
-      </a>
+      </Link>
       <header className="mt-10">
         <p className="font-mono text-micro theme-muted tracking-widest uppercase">event score</p>
         <h1 className="mt-2 font-serif text-4xl text-foreground">Leaderboard</h1>

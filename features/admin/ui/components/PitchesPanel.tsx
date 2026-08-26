@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
+import { Link } from "@tanstack/react-router";
 
 import type {
   PitchAsset,
@@ -744,12 +745,14 @@ export function PitchesPanel({
                 <ul className="mt-2 divide-y theme-border">
                   {detail.editions.map((edition) => (
                     <li key={edition.editionNumber} className="flex gap-3 py-3">
-                      <a
-                        href={`/things/pitches/${detail.pitch.id}?edition=${edition.editionNumber}`}
+                      <Link
+                        to="/things/pitches/$deckId"
+                        params={{ deckId: detail.pitch.id }}
+                        search={{ edition: edition.editionNumber }}
                         className="font-mono text-xs text-foreground underline underline-offset-4"
                       >
                         edition {edition.editionNumber}
-                      </a>
+                      </Link>
                       <span className="font-mono text-micro theme-muted">
                         v{edition.draftVersion} · {edition.title} · {when(edition.publishedAt)}
                       </span>

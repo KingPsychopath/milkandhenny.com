@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
@@ -2695,12 +2696,13 @@ export function EventsPanel({
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-                <a
-                  href={`/events/${event.slug}`}
+                <Link
+                  to="/events/$slug"
+                  params={{ slug: event.slug }}
                   className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:opacity-70"
                 >
                   view
-                </a>
+                </Link>
                 <button
                   type="button"
                   onClick={() => void toggleOperations(event.slug)}

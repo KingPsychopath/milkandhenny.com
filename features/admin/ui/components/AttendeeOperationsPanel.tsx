@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { OperationsTab } from "./AdminSectionNav";
@@ -779,21 +780,32 @@ function PurchaserContactDrawer({
               {new Date(ticket.issuedAt).toLocaleString()}
             </p>
             <div className="mt-3 flex flex-wrap gap-4">
-              <a href={`/ticket/${ticket.id}?preview=1`} className="mh-action mh-action--quiet">
+              <Link
+                to="/ticket/$id"
+                params={{ id: ticket.id }}
+                search={{ preview: true }}
+                className="mh-action mh-action--quiet"
+              >
                 preview ticket
-              </a>
-              <a
-                href={`/admin?view=events&event=${encodeURIComponent(ticket.eventSlug)}`}
+              </Link>
+              <Link
+                to="/admin"
+                search={{ view: "events", event: ticket.eventSlug }}
                 className="mh-action mh-action--quiet"
               >
                 manage event tickets
-              </a>
-              <a
-                href={`/admin?view=communications&communicationTab=delivery&emailQuery=${encodeURIComponent(ticket.id)}`}
+              </Link>
+              <Link
+                to="/admin"
+                search={{
+                  view: "communications",
+                  communicationTab: "delivery",
+                  emailQuery: ticket.id,
+                }}
                 className="mh-action mh-action--quiet"
               >
                 check failed delivery
-              </a>
+              </Link>
             </div>
           </li>
         ))}
@@ -943,12 +955,14 @@ function PersonDrawer({
       <ul className="mt-2 divide-y border-y theme-border">
         {person.tickets.map((ticket) => (
           <li key={ticket.id} className="py-3">
-            <a
-              href={`/ticket/${ticket.id}?preview=1`}
+            <Link
+              to="/ticket/$id"
+              params={{ id: ticket.id }}
+              search={{ preview: true }}
               className="font-mono text-xs underline hover:opacity-70"
             >
               {ticket.eventTitle} · {ticket.holderName}
-            </a>
+            </Link>
             <p className="mt-1 font-mono text-micro theme-muted">
               {ticket.status} · order {ticket.orderId}
             </p>

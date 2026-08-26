@@ -15,9 +15,8 @@ import { TakedownButton } from "@/features/transfers/ui/transfer/TakedownButton"
 
 export const Route = createFileRoute("/t/$id")({
   component: TransferPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === "string" ? search.token : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { token?: string } =>
+    typeof search.token === "string" ? { token: search.token } : {},
   loaderDeps: ({ search }) => ({ token: search.token }),
   loader: {
     handler: ({ params, deps }) =>

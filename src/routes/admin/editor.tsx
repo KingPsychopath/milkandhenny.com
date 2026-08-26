@@ -5,9 +5,8 @@ import { EditorAdminClient } from "@/features/admin/ui/editor/EditorAdminClient"
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/admin/editor")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    slug: typeof search.slug === "string" ? search.slug : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { slug?: string } =>
+    typeof search.slug === "string" ? { slug: search.slug } : {},
   loader: {
     handler: () => getAdminEditorAccessFn(),
     staleReloadMode: "blocking",

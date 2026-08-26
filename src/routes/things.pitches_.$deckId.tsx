@@ -7,12 +7,10 @@ import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/pitches_/$deckId")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    edition:
-      typeof search.edition === "number" && Number.isInteger(search.edition) && search.edition > 0
-        ? search.edition
-        : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { edition?: number } =>
+    typeof search.edition === "number" && Number.isInteger(search.edition) && search.edition > 0
+      ? { edition: search.edition }
+      : {},
   loaderDeps: ({ search }) => ({ edition: search.edition }),
   loader: async ({ params, deps }) => {
     const result = await readPublishedPitchFn({

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
+import { Link } from "@tanstack/react-router";
 
 import type {
   PitchDocument,
@@ -253,12 +254,14 @@ export function PitchVersionHistory({
                 {selectedItem ? (
                   <div className="flex flex-wrap gap-3">
                     {typeof selectedItem.metadata.editionNumber === "number" ? (
-                      <a
-                        href={`/things/pitches/${deckId}?edition=${selectedItem.metadata.editionNumber}`}
+                      <Link
+                        to="/things/pitches/$deckId"
+                        params={{ deckId }}
+                        search={{ edition: selectedItem.metadata.editionNumber }}
                         className="inline-flex min-h-11 items-center border theme-border-strong px-4 font-mono text-xs text-foreground hover:opacity-70"
                       >
                         open sealed edition {selectedItem.metadata.editionNumber}
-                      </a>
+                      </Link>
                     ) : null}
                     <button
                       type="button"

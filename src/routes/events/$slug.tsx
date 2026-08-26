@@ -11,8 +11,6 @@ import { absoluteUrl, OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 export const Route = createFileRoute("/events/$slug")({
   // Stripe's cancel URL lands here. Reading it is the difference between
   // "I backed out of checkout" and "did that just take my money?"
-  // Stripe's cancel URL lands here. Reading it is the difference between
-  // "I backed out of checkout" and "did that just take my money?"
   //
   // Optional key, not a key holding `undefined`: the latter would make
   // `search` a required prop on every existing link to an event page.

@@ -426,12 +426,13 @@ export function TicketPage({
                 event score
               </h2>
               {score.leaderboardAvailable !== false ? (
-                <a
-                  href={`/events/${encodeURIComponent(event.slug)}/score`}
+                <Link
+                  to="/events/$slug/score"
+                  params={{ slug: event.slug }}
                   className="font-mono text-micro underline hover:opacity-70 transition-opacity"
                 >
                   leaderboard
-                </a>
+                </Link>
               ) : (
                 <span className="font-mono text-micro theme-muted">rankings hidden</span>
               )}
@@ -530,12 +531,13 @@ export function TicketPage({
             </p>
             {!preview && (
               <div className="mt-3 flex flex-wrap gap-4">
-                <a
-                  href={`/events/${encodeURIComponent(event.slug)}/discoveries`}
+                <Link
+                  to="/events/$slug/discoveries"
+                  params={{ slug: event.slug }}
                   className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
                 >
                   open clue entry
-                </a>
+                </Link>
                 {pendingDiscovery && (
                   <a
                     href={pendingDiscovery}
