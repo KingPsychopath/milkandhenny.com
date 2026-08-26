@@ -69,6 +69,8 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     await expect(
       page.getByText("This switches event points from your other ticket."),
     ).toBeVisible();
+    const accountLink = page.getByRole("link", { name: "account", exact: true });
+    await expect(accountLink).toHaveAttribute("href", "/access?returnTo=%2Fmy");
     const mobileAccountBox = await page
       .getByRole("link", { name: "account", exact: true })
       .boundingBox();
@@ -78,9 +80,6 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     expect(mobileAccountBox).not.toBeNull();
     expect(mobileLampBox).not.toBeNull();
     expect(boxesOverlap(mobileAccountBox!, mobileLampBox!)).toBe(false);
-    await page.getByRole("link", { name: "account", exact: true }).click();
-    await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);
-    await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
     await context.close();
     await browser.close();
   }

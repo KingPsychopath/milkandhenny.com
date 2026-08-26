@@ -20,7 +20,9 @@ test("anonymous account navigation reaches sign in without an error boundary", a
   await expect(page.getByRole("heading", { name: "oops" })).toHaveCount(0);
 });
 
-test("an emailed access link is redeemed before the sign-in page renders", async ({ page }) => {
+test("an emailed access link requires deliberate confirmation before redemption", async ({
+  page,
+}) => {
   const pool = new Pool({ connectionString: databaseUrl });
   const suffix = Date.now().toString(36);
   const challengeId = `access_browser_${suffix}`;
@@ -40,6 +42,10 @@ test("an emailed access link is redeemed before the sign-in page renders", async
       `/access/verify?returnTo=%2Fmy&challenge=${encodeURIComponent(challengeId)}&token=${encodeURIComponent(token)}`,
     );
 
+    await expect(page.getByRole("heading", { name: "continue signing in" })).toBeVisible();
+    const continueButton = page.getByRole("button", { name: "continue securely" });
+    await expect(continueButton).toBeEnabled();
+    await continueButton.click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "sign in" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "account", exact: true })).toHaveAttribute(

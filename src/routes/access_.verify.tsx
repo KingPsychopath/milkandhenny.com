@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { createFileRoute, Link, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 
 import {
   inspectAttendeeAccessLinkFn,
@@ -51,9 +51,13 @@ export const Route = createFileRoute("/access_/verify")({
 
 function AccessVerificationPage() {
   const navigate = useNavigate();
+  const router = useRouter();
   const search = Route.useSearch();
+  const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => setHydrated(true), []);
 
   async function confirm() {
     setBusy(true);
@@ -64,6 +68,8 @@ function AccessVerificationPage() {
       });
       if (!result.ok) throw new Error(result.error);
       window.history.replaceState(null, "", "/access/verify");
+      router.clearCache();
+      await router.invalidate();
       await navigate({ to: result.value.returnTo ?? search.returnTo, replace: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "That link could not be verified");
@@ -84,7 +90,7 @@ function AccessVerificationPage() {
         </p>
         <button
           type="button"
-          disabled={busy}
+          disabled={!hydrated || busy}
           aria-busy={busy}
           onClick={() => void confirm()}
           className="mh-action mt-8 w-full disabled:opacity-45"
