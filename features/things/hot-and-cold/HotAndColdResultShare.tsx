@@ -18,6 +18,11 @@ function useHotAndColdResultShare(
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [status, setStatus] = useState<ShareStatus>("idle");
   const result = buildHotAndColdShareResult({ label, guesses, hintsUsed });
+  useEffect(() => {
+    if (status === "idle") return;
+    const reset = window.setTimeout(() => setStatus("idle"), 2_400);
+    return () => window.clearTimeout(reset);
+  }, [status]);
   const share = async () => {
     const url = `${location.origin}/things/hot-and-cold`;
     const response = await shareOrCopy(
@@ -33,6 +38,15 @@ function ShareIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M5 11.5v7.25A2.25 2.25 0 0 0 7.25 21h9.5A2.25 2.25 0 0 0 19 18.75V11.5" />
+    </svg>
+  );
+}
+
+function ExactBulb() {
+  return (
+    <svg className="heat-exact-bulb" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8.2 15.2A6 6 0 1 1 15.8 15.2c-.9.72-1.3 1.45-1.3 2.3h-5c0-.85-.4-1.58-1.3-2.3Z" />
+      <path d="M9.7 20h4.6M12 2V.75M4.7 5.1l-.9-.9M19.3 5.1l.9-.9" />
     </svg>
   );
 }
@@ -64,6 +78,7 @@ export function HotAndColdResultShare({
         ? "exact"
         : `#${result.bestRank.toLocaleString()}`;
   const heading = describeHotAndColdResult({ result, hintsUsed, outcome });
+  const exactOnly = result.guessCount === 1 && result.bestRank === 0;
   const outcomeLabel =
     outcome === "gave-up"
       ? "word revealed"
@@ -96,12 +111,11 @@ export function HotAndColdResultShare({
       className="heat-result-share"
       aria-labelledby={`${id}-title`}
       data-trail-visible={trailVisible || undefined}
+      data-outcome={outcome}
     >
       <div className="heat-result-heading">
         <div className="heat-result-copy text-left">
-          <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">
-            {outcomeLabel}
-          </p>
+          <p className="heat-result-eyebrow">{outcomeLabel}</p>
           <h2 id={`${id}-title`} className="mt-2 font-serif text-4xl font-semibold">
             {heading}
           </h2>
@@ -109,22 +123,38 @@ export function HotAndColdResultShare({
         <p className="heat-result-label">{label}</p>
       </div>
 
-      <ol className="heat-share-trail" aria-label="Distribution of guesses by temperature">
-        {result.distribution.map(({ zone, count, intensity }, index) => (
-          <li key={zone} data-zone={zone} aria-label={`${zone}: ${count} guesses`}>
-            <span
-              style={
-                {
-                  "--heat-share-intensity": intensity,
-                  "--heat-share-index": index,
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            />
-            <small>{zone}</small>
-          </li>
-        ))}
-      </ol>
+      {exactOnly ? (
+        <div
+          className="heat-share-exact"
+          aria-label={
+            hintsUsed
+              ? "Correct on the first player guess after hints"
+              : "Correct on the first guess"
+          }
+        >
+          <ExactBulb />
+          <p>
+            {hintsUsed ? "guided" : "straight"} to <strong>#0</strong>
+          </p>
+        </div>
+      ) : (
+        <ol className="heat-share-trail" aria-label="Distribution of guesses by temperature">
+          {result.distribution.map(({ zone, count, intensity }, index) => (
+            <li key={zone} data-zone={zone} aria-label={`${zone}: ${count} guesses`}>
+              <span
+                style={
+                  {
+                    "--heat-share-intensity": intensity,
+                    "--heat-share-index": index,
+                  } as CSSProperties
+                }
+                aria-hidden="true"
+              />
+              <small>{zone}</small>
+            </li>
+          ))}
+        </ol>
+      )}
 
       {result.longestHeatStreak >= 3 ? (
         <p className="heat-result-streak">
@@ -165,7 +195,9 @@ export function HotAndColdResultShare({
       <p className="mt-3 min-h-4 font-mono text-micro theme-faint" aria-live="polite">
         {status === "failed"
           ? "Could not copy this result."
-          : `spoiler-free · ${hintsUsed ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} shown` : "no hints"}`}
+          : status === "copied"
+            ? "copied — paste it into a message"
+            : `spoiler-free · ${hintsUsed ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} shown` : "no hints"}`}
       </p>
     </section>
   );
@@ -189,6 +221,7 @@ export function HotAndColdShareDock({
     guesses,
     hintsUsed,
   );
+  const exactOnly = result.guessCount === 1 && result.bestRank === 0;
   const actionLabel =
     status === "copied"
       ? "copied"
@@ -229,13 +262,17 @@ export function HotAndColdShareDock({
     if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
     const startY = window.scrollY;
     const distance = targetY - startY;
+    const duration = Math.min(650, Math.max(380, Math.abs(distance) * 0.32));
     const startedAt = performance.now();
     const animate = (now: number) => {
-      const elapsed = Math.min(1, (now - startedAt) / 820);
-      const spring = elapsed === 1 ? 1 : 1 - Math.exp(-8 * elapsed) * Math.cos(9 * elapsed);
-      window.scrollTo({ top: startY + distance * spring });
+      const elapsed = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - (1 - elapsed) ** 5;
+      window.scrollTo({ top: startY + distance * eased });
       if (elapsed < 1) scrollAnimation.current = requestAnimationFrame(animate);
-      else scrollAnimation.current = null;
+      else {
+        window.scrollTo({ top: targetY });
+        scrollAnimation.current = null;
+      }
     };
     scrollAnimation.current = requestAnimationFrame(animate);
   };
@@ -250,22 +287,37 @@ export function HotAndColdShareDock({
           onClick={jumpPage}
         >
           <span className="heat-share-dock-summary">
-            <span className="heat-share-dock-bars" aria-hidden="true">
-              {result.distribution.map(({ zone, intensity }) => (
-                <span
-                  className="heat-share-dock-bar"
-                  key={zone}
-                  data-zone={zone}
-                  style={{ "--heat-share-intensity": intensity } as CSSProperties}
-                >
-                  <i />
-                </span>
-              ))}
-            </span>
+            {exactOnly ? (
+              <span className="heat-share-dock-exact" aria-hidden="true">
+                <ExactBulb />
+              </span>
+            ) : (
+              <span className="heat-share-dock-bars" aria-hidden="true">
+                {result.distribution.map(({ zone, intensity }) => (
+                  <span
+                    className="heat-share-dock-bar"
+                    key={zone}
+                    data-zone={zone}
+                    style={{ "--heat-share-intensity": intensity } as CSSProperties}
+                  >
+                    <i />
+                  </span>
+                ))}
+              </span>
+            )}
             <span className="heat-share-dock-counts">
               {result.guessCount} guess{result.guessCount === 1 ? "" : "es"}
               <span aria-hidden="true"> · </span>
-              {hintsUsed} hint{hintsUsed === 1 ? "" : "s"}
+              <span className="heat-share-dock-hints">
+                {hintsUsed > 0 ? (
+                  <span className="heat-share-dock-compasses" aria-hidden="true">
+                    {Array.from({ length: hintsUsed }, (_, index) => (
+                      <i key={index} />
+                    ))}
+                  </span>
+                ) : null}
+                {hintsUsed} hint{hintsUsed === 1 ? "" : "s"}
+              </span>
             </span>
           </span>
           <span className="heat-share-dock-pager" aria-hidden="true">
@@ -286,9 +338,11 @@ export function HotAndColdShareDock({
       <span className="sr-only" aria-live="polite">
         {status === "failed"
           ? "Could not share this result."
-          : status === "idle"
-            ? ""
-            : actionLabel}
+          : status === "copied"
+            ? "Copied to clipboard. Paste it into a message."
+            : status === "idle"
+              ? ""
+              : actionLabel}
       </span>
     </aside>
   );
