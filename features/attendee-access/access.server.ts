@@ -826,6 +826,11 @@ export async function currentAttendeeAccountView(): Promise<{
   };
 }
 
+export async function currentAttendeeAccountStatus(): Promise<boolean> {
+  const session = await getAttendeeSession();
+  return session?.personId ? attendeeAccountExists(session.personId) : false;
+}
+
 export async function cleanupExpiredAccessChallenges(): Promise<{ deleted: number }> {
   const rows = await query<{ deleted: string }>(
     `with removed as (

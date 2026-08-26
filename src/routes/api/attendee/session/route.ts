@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import {
   attendeeAccount,
-  attendeeAccountExists,
   attendeeEmailStepUpRequired,
   attendeePreferredName,
+  currentAttendeeAccountStatus,
   updateAttendeeName,
 } from "@/features/attendee-access/access.server";
 import {
@@ -15,12 +15,12 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request): Promise<Response> {
   try {
+    const view = new URL(request.url).searchParams.get("view");
+    if (view === "status")
+      return Response.json({ authenticated: await currentAttendeeAccountStatus() });
     const session = await getAttendeeSession();
     if (!session?.personId)
       return Response.json({ authenticated: false, emailStepUpRequired: true });
-    const view = new URL(request.url).searchParams.get("view");
-    if (view === "status")
-      return Response.json({ authenticated: await attendeeAccountExists(session.personId) });
     if (view === "name")
       return Response.json({
         authenticated: true,

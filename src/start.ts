@@ -152,6 +152,7 @@ function applyCachePolicy(pathname: string, response: Response) {
     pathname.startsWith("/upload") ||
     pathname.startsWith("/vault/") ||
     pathname.startsWith("/t/") ||
+    pathname === "/my" ||
     pathname === "/best-dressed" ||
     pathname === "/health" ||
     pathname.endsWith("/bought") ||

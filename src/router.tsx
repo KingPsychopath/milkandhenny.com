@@ -17,9 +17,9 @@ export function getRouter() {
     scrollRestorationBehavior: "instant",
     defaultPreload: "intent",
     defaultPreloadStaleTime: 30_000,
-    // Keep recently visited pages usable during back-and-forth navigation while
-    // leaving server mutations and explicit invalidation responsible for freshness.
-    defaultStaleTime: 10_000,
+    // Route loaders may depend on identity, cookies, or mutable product state. Public routes that
+    // can safely stay fresh longer opt in locally; the safe default is to revalidate on reuse.
+    defaultStaleTime: 0,
   });
 }
 

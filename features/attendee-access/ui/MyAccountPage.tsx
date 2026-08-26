@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { rememberBrowserProfile } from "@/lib/client/browser-profile";
@@ -39,6 +39,7 @@ export function MyAccountPage({
   emailStepUpRequired: boolean;
 }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [account, setAccount] = useState(initialAccount);
   const [name, setName] = useState(initialAccount.name ?? "");
@@ -102,6 +103,7 @@ export function MyAccountPage({
         throw new Error(body.error ?? "Could not sign out");
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
+      router.clearCache();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);

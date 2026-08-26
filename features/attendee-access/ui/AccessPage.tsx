@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 
 type AccessPageProps = { returnTo: string };
@@ -10,6 +10,7 @@ async function responseBody(response: Response): Promise<{ error?: string; retur
 
 export function AccessPage({ returnTo }: AccessPageProps) {
   const navigate = useNavigate();
+  const router = useRouter();
   const hash = useRouterState({ select: (state) => state.location.hash });
   const [mounted, setMounted] = useState(false);
   const { email, setEmail, remember } = useBrowserProfileForm();
@@ -62,6 +63,7 @@ export function AccessPage({ returnTo }: AccessPageProps) {
         const body = await responseBody(response);
         if (!response.ok) throw new Error(body.error ?? "That access code could not be verified");
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        router.clearCache();
         await navigate({ to: body.returnTo ?? returnTo, replace: true });
       } catch (error) {
         setLinkVerificationFailed(true);
@@ -71,7 +73,7 @@ export function AccessPage({ returnTo }: AccessPageProps) {
         setBusy(false);
       }
     },
-    [navigate, returnTo],
+    [navigate, returnTo, router],
   );
 
   useEffect(() => {
