@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
 import { NavigationProgress } from "@/components/NavigationProgress";
@@ -209,6 +209,10 @@ function RootError({ error }: ErrorComponentProps) {
 }
 
 function RecoveryNavigation() {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => setHydrated(true), []);
+
   const goBack = () => {
     if (window.history.length > 1) {
       window.history.back();
@@ -219,7 +223,12 @@ function RecoveryNavigation() {
 
   return (
     <nav aria-label="Page recovery" className="flex flex-wrap items-center justify-center gap-2">
-      <button type="button" onClick={goBack} className="mh-action mh-action--quiet">
+      <button
+        type="button"
+        disabled={!hydrated}
+        onClick={goBack}
+        className="mh-action mh-action--quiet disabled:opacity-45"
+      >
         ← go back
       </button>
       <Link to="/" className="mh-action mh-action--quiet">
