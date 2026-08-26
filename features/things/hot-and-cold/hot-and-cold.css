@@ -68,8 +68,19 @@ main:has(.heat-result-share) .heat-source {
 .heat-gauge-track,
 .heat-gauge-progress,
 .heat-gauge-streak,
-.heat-gauge-streak-aura {
+.heat-gauge-streak-aura,
+.heat-gauge-smoke {
   fill: none;
+}
+.heat-gauge-smoke {
+  stroke: color-mix(in srgb, var(--stone-500) 88%, var(--foreground));
+  stroke-linecap: round;
+  stroke-width: 3;
+  stroke-dasharray: 16 7 9 10 6 52;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 0 0.08rem color-mix(in srgb, var(--stone-500) 45%, transparent));
 }
 .heat-gauge-streak,
 .heat-gauge-streak-aura {
@@ -120,6 +131,12 @@ main:has(.heat-result-share) .heat-source {
 }
 .heat-source-flame[data-cooling] .heat-gauge-streak-aura {
   animation: heat-streak-wisp-aura 0.65s ease-out forwards;
+}
+.heat-source-flame[data-cooling] .heat-gauge-smoke--outer {
+  animation: heat-streak-smoke 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-cooling] .heat-gauge-smoke--inner {
+  animation: heat-streak-smoke-inner 0.78s 0.06s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 .heat-gauge-track {
   stroke: color-mix(in srgb, var(--heat-color) 18%, var(--stone-200));
@@ -1082,6 +1099,48 @@ main:has(.heat-result-share) .heat-ledger {
     stroke-dashoffset: -132;
   }
 }
+@keyframes heat-streak-smoke {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  12% {
+    opacity: 0.82;
+  }
+  48% {
+    opacity: 0.58;
+    transform: translateY(-0.08rem) scale(1.18);
+    filter: blur(0.04rem);
+  }
+  to {
+    opacity: 0;
+    stroke-width: 4.4;
+    stroke-dashoffset: -18;
+    transform: translateY(-0.3rem) scale(1.48);
+    filter: blur(0.24rem);
+  }
+}
+@keyframes heat-streak-smoke-inner {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  16% {
+    opacity: 0.62;
+  }
+  52% {
+    opacity: 0.38;
+    transform: translateY(-0.06rem) scale(1.14);
+    filter: blur(0.03rem);
+  }
+  to {
+    opacity: 0;
+    stroke-width: 3.8;
+    stroke-dashoffset: 14;
+    transform: translateY(-0.18rem) scale(1.3);
+    filter: blur(0.18rem);
+  }
+}
 @keyframes heat-streak-label {
   from {
     opacity: 0;
@@ -1100,6 +1159,7 @@ main:has(.heat-result-share) .heat-ledger {
   .heat-gauge-progress,
   .heat-gauge-streak,
   .heat-gauge-streak-aura,
+  .heat-gauge-smoke,
   .heat-source-flame > span,
   .heat-source-flame > span::before,
   .heat-share-trail li span,
@@ -1113,7 +1173,8 @@ main:has(.heat-result-share) .heat-ledger {
     animation: none;
   }
   .heat-source-flame[data-cooling] .heat-gauge-streak,
-  .heat-source-flame[data-cooling] .heat-gauge-streak-aura {
+  .heat-source-flame[data-cooling] .heat-gauge-streak-aura,
+  .heat-source-flame[data-cooling] .heat-gauge-smoke {
     opacity: 0;
   }
   .heat-ledger-update {

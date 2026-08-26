@@ -35,7 +35,7 @@ export function HeatGauge({
     const finish = window.setTimeout(() => {
       setVisibleStreakLevel(undefined);
       setCooling(false);
-    }, 650);
+    }, 900);
     return () => window.clearTimeout(finish);
   }, [streakLevel, visibleStreakLevel]);
   const style = {
@@ -56,6 +56,20 @@ export function HeatGauge({
       aria-hidden="true"
     >
       <svg viewBox="0 0 48 48">
+        <circle
+          className="heat-gauge-smoke heat-gauge-smoke--outer"
+          cx="24"
+          cy="24"
+          r="23"
+          pathLength="100"
+        />
+        <circle
+          className="heat-gauge-smoke heat-gauge-smoke--inner"
+          cx="24"
+          cy="24"
+          r="22"
+          pathLength="100"
+        />
         <circle className="heat-gauge-streak-aura" cx="24" cy="24" r="23" pathLength="100" />
         <circle className="heat-gauge-streak" cx="24" cy="24" r="23" pathLength="100" />
         <circle className="heat-gauge-track" cx="24" cy="24" r="21" pathLength="100" />
