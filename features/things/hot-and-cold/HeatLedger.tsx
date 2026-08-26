@@ -79,7 +79,7 @@ export function HeatLedger({
     const visibleBottom = Math.min(window.innerHeight, composerTop ?? window.innerHeight);
     if (rowBounds.bottom > visibleTop && rowBounds.top < visibleBottom) return;
 
-    const rank = newestRank === 0 ? "0" : `#${newestRank.toLocaleString()}`;
+    const rank = `#${newestRank.toLocaleString()}`;
     const direction = rowBounds.bottom <= visibleTop ? "above" : "below";
     setOffscreenUpdate(`${newestWord} · ${rank} · added ${direction}`);
     updateTimer.current = setTimeout(() => setOffscreenUpdate(null), 2_800);
@@ -102,7 +102,7 @@ export function HeatLedger({
       <ol ref={ledger} className="heat-ledger" aria-label="Guesses ordered from hottest to coldest">
         {showRevealedTarget ? (
           <li className="heat-target">
-            <span>0</span>
+            <span>#0</span>
             <strong>{target}</strong>
             <small>the word</small>
           </li>
@@ -131,7 +131,7 @@ export function HeatLedger({
                 className={`heat-word heat-word--${band}`}
               >
                 <span className="heat-word-rank">
-                  {guess.rank === 0 ? "0" : `#${guess.rank.toLocaleString()}`}
+                  {`#${guess.rank.toLocaleString()}`}
                 </span>
                 <span className="heat-word-text">{guess.word}</span>
                 <span className="heat-word-owner">{owner}</span>
