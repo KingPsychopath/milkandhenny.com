@@ -82,6 +82,37 @@ main:has(.heat-result-share) .heat-source {
   transform-origin: center;
   filter: drop-shadow(0 0 0.08rem color-mix(in srgb, var(--stone-500) 45%, transparent));
 }
+.heat-gauge-smoke-stack {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.heat-gauge-smoke-puff {
+  position: absolute;
+  width: 0.56rem;
+  height: 0.56rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--stone-500) 68%, var(--foreground));
+  box-shadow: 0 0 0.28rem color-mix(in srgb, var(--stone-500) 46%, transparent);
+  opacity: 0;
+  transform-origin: center;
+}
+.heat-gauge-smoke-puff--one {
+  top: 0.1rem;
+  right: 0.2rem;
+}
+.heat-gauge-smoke-puff--two {
+  top: -0.18rem;
+  right: -0.2rem;
+  width: 0.44rem;
+  height: 0.44rem;
+}
+.heat-gauge-smoke-puff--three {
+  top: -0.46rem;
+  right: 0.04rem;
+  width: 0.34rem;
+  height: 0.34rem;
+}
 .heat-gauge-streak,
 .heat-gauge-streak-aura {
   stroke: currentColor;
@@ -132,11 +163,29 @@ main:has(.heat-result-share) .heat-source {
 .heat-source-flame[data-cooling] .heat-gauge-streak-aura {
   animation: heat-streak-wisp-aura 0.65s ease-out forwards;
 }
-.heat-source-flame[data-cooling] .heat-gauge-smoke--outer {
+.heat-source-flame[data-streak="glowing"][data-cooling] .heat-gauge-smoke--outer {
+  stroke-dasharray: 3 30 3 30 3 31;
+  animation: heat-streak-smoke-sparks 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-streak="lit"][data-cooling] .heat-gauge-smoke--outer {
+  stroke-dasharray: 30 70;
+  animation: heat-streak-smoke-arc 0.82s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-streak="blazing"][data-cooling] .heat-gauge-smoke--outer {
   animation: heat-streak-smoke 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
-.heat-source-flame[data-cooling] .heat-gauge-smoke--inner {
+.heat-source-flame[data-streak="blazing"][data-cooling] .heat-gauge-smoke--inner {
   animation: heat-streak-smoke-inner 0.78s 0.06s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-cooling] .heat-gauge-smoke-puff--one {
+  animation: heat-streak-smoke-puff 0.72s 0.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-streak="lit"][data-cooling] .heat-gauge-smoke-puff--two,
+.heat-source-flame[data-streak="blazing"][data-cooling] .heat-gauge-smoke-puff--two {
+  animation: heat-streak-smoke-puff 0.76s 0.12s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-streak="blazing"][data-cooling] .heat-gauge-smoke-puff--three {
+  animation: heat-streak-smoke-puff 0.8s 0.19s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 .heat-gauge-track {
   stroke: color-mix(in srgb, var(--heat-color) 18%, var(--stone-200));
@@ -1120,6 +1169,44 @@ main:has(.heat-result-share) .heat-ledger {
     filter: blur(0.24rem);
   }
 }
+@keyframes heat-streak-smoke-sparks {
+  0% {
+    opacity: 0;
+    stroke-width: 2.4;
+    transform: scale(0.96);
+  }
+  18% {
+    opacity: 0.86;
+  }
+  to {
+    opacity: 0;
+    stroke-width: 4;
+    stroke-dashoffset: -8;
+    transform: translateY(-0.22rem) scale(1.32);
+    filter: blur(0.16rem);
+  }
+}
+@keyframes heat-streak-smoke-arc {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  15% {
+    opacity: 0.78;
+  }
+  52% {
+    opacity: 0.46;
+    transform: translateY(-0.07rem) scale(1.14);
+    filter: blur(0.03rem);
+  }
+  to {
+    opacity: 0;
+    stroke-width: 4.2;
+    stroke-dashoffset: -24;
+    transform: translateY(-0.26rem) scale(1.4);
+    filter: blur(0.2rem);
+  }
+}
 @keyframes heat-streak-smoke-inner {
   0% {
     opacity: 0;
@@ -1141,6 +1228,25 @@ main:has(.heat-result-share) .heat-ledger {
     filter: blur(0.18rem);
   }
 }
+@keyframes heat-streak-smoke-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.55);
+  }
+  18% {
+    opacity: 0.86;
+  }
+  58% {
+    opacity: 0.38;
+    transform: translate(0.08rem, -0.16rem) scale(1.35);
+    filter: blur(0.02rem);
+  }
+  to {
+    opacity: 0;
+    transform: translate(0.2rem, -0.42rem) scale(2.4);
+    filter: blur(0.14rem);
+  }
+}
 @keyframes heat-streak-label {
   from {
     opacity: 0;
@@ -1160,6 +1266,7 @@ main:has(.heat-result-share) .heat-ledger {
   .heat-gauge-streak,
   .heat-gauge-streak-aura,
   .heat-gauge-smoke,
+  .heat-gauge-smoke-puff,
   .heat-source-flame > span,
   .heat-source-flame > span::before,
   .heat-share-trail li span,
@@ -1174,7 +1281,8 @@ main:has(.heat-result-share) .heat-ledger {
   }
   .heat-source-flame[data-cooling] .heat-gauge-streak,
   .heat-source-flame[data-cooling] .heat-gauge-streak-aura,
-  .heat-source-flame[data-cooling] .heat-gauge-smoke {
+  .heat-source-flame[data-cooling] .heat-gauge-smoke,
+  .heat-source-flame[data-cooling] .heat-gauge-smoke-puff {
     opacity: 0;
   }
   .heat-ledger-update {

@@ -75,6 +75,11 @@ export function HeatGauge({
         <circle className="heat-gauge-track" cx="24" cy="24" r="21" pathLength="100" />
         <circle className="heat-gauge-progress" cx="24" cy="24" r="21" pathLength="100" />
       </svg>
+      <div className="heat-gauge-smoke-stack">
+        <i className="heat-gauge-smoke-puff heat-gauge-smoke-puff--one" />
+        <i className="heat-gauge-smoke-puff heat-gauge-smoke-puff--two" />
+        <i className="heat-gauge-smoke-puff heat-gauge-smoke-puff--three" />
+      </div>
       <span />
     </div>
   );
