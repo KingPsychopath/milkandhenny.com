@@ -19,10 +19,15 @@ const PENDING_MFA_LIFETIME_MS = 10 * 60 * 1_000;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{32,64}$/;
 const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SESSION_LOCK_PREFIX = "event-scoring:attendee-session-lock:";
+const PERSON_SESSION_VERSION_PREFIX = "event-scoring:attendee-person-session-version:";
 const SESSION_LOCK_TTL_MS = 5_000;
 const SESSION_LOCK_ATTEMPTS = 12;
 const RELEASE_LOCK_SCRIPT =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+const WRITE_LOCKED_SESSION_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] and redis.call('exists', KEYS[2]) == 1 then redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3]); return 1 else return 0 end";
+const ROTATE_LOCKED_SESSION_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] and redis.call('exists', KEYS[2]) == 1 then redis.call('set', KEYS[3], ARGV[2], 'EX', ARGV[3]); redis.call('del', KEYS[2]); return 1 else return 0 end";
 
 export type AttendeeTicketAccess = {
   ticketId: string;
@@ -39,6 +44,7 @@ export type AttendeeSession = {
   tickets: AttendeeTicketAccess[];
   activeParticipantByEventId: Record<string, string>;
   personId?: string;
+  personSessionVersion?: string;
   verifiedEmailHash?: string;
   authenticatedAt?: string;
   authenticationMethod?: "email" | "passkey";
@@ -55,6 +61,7 @@ export type AttendeeSession = {
   };
   pendingMfa?: {
     personId: string;
+    personSessionVersion?: string;
     verifiedEmailHash: string;
     returnTo: string;
     createdAt: string;
@@ -82,6 +89,7 @@ export function pendingMfaIsFresh(
 
 const developmentSessions = new Map<string, AttendeeSession>();
 const developmentSessionLocks = new Map<string, Promise<void>>();
+const developmentPersonSessionVersions = new Map<string, string>();
 
 function allowMemoryFallback(): boolean {
   return process.env.NODE_ENV !== "production";
@@ -113,6 +121,7 @@ function isUuidV7(value: string): boolean {
 function withoutIdentity(session: AttendeeSession): AttendeeSession {
   const {
     personId: _personId,
+    personSessionVersion: _personSessionVersion,
     verifiedEmailHash: _email,
     authenticatedAt: _authenticatedAt,
     authenticationMethod: _authenticationMethod,
@@ -151,7 +160,7 @@ function parseStored(value: unknown): AttendeeSession | null {
 
 type SessionRead = {
   session: AttendeeSession;
-  identityInvalidated: boolean;
+  schemaUpgradeNeeded: boolean;
 };
 
 async function legacyPersonExists(personId: string): Promise<boolean> {
@@ -162,13 +171,34 @@ async function legacyPersonExists(personId: string): Promise<boolean> {
   return rows[0]?.exists === true;
 }
 
+async function personSessionVersion(personId: string): Promise<string | undefined> {
+  const redis = getRedis();
+  if (redis) {
+    const value = await redis.get<string>(`${PERSON_SESSION_VERSION_PREFIX}${personId}`);
+    return typeof value === "string" ? value : undefined;
+  }
+  if (!allowMemoryFallback()) throw new Error("Attendee session persistence is unavailable");
+  return developmentPersonSessionVersions.get(personId);
+}
+
+async function revokePersonSessionVersion(personId: string): Promise<void> {
+  const version = sessionId();
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(`${PERSON_SESSION_VERSION_PREFIX}${personId}`, version);
+    return;
+  }
+  if (!allowMemoryFallback()) throw new Error("Attendee session persistence is unavailable");
+  developmentPersonSessionVersions.set(personId, version);
+}
+
 async function normalizeStoredSession(session: AttendeeSession): Promise<{
   session: AttendeeSession;
   changed: boolean;
-  identityInvalidated: boolean;
 }> {
   const legacySchema = session.schemaVersion !== ATTENDEE_SESSION_SCHEMA_VERSION;
   const existence = new Map<string, boolean>();
+  const versions = new Map<string, string | undefined>();
   const validLegacyPerson = async (personId: string): Promise<boolean> => {
     if (!isUuidV7(personId)) return false;
     if (!legacySchema) return true;
@@ -179,33 +209,48 @@ async function normalizeStoredSession(session: AttendeeSession): Promise<{
     return exists;
   };
 
-  const invalidPersonId = Boolean(session.personId && !(await validLegacyPerson(session.personId)));
+  const hasCurrentVersion = async (
+    personId: string,
+    sessionVersion: string | undefined,
+  ): Promise<boolean> => {
+    if (!versions.has(personId)) versions.set(personId, await personSessionVersion(personId));
+    return versions.get(personId) === sessionVersion;
+  };
+
+  const invalidPersonId = Boolean(
+    session.personId &&
+    (!(await validLegacyPerson(session.personId)) ||
+      !(await hasCurrentVersion(session.personId, session.personSessionVersion))),
+  );
   const invalidPendingPersonId = Boolean(
-    session.pendingMfa && !(await validLegacyPerson(session.pendingMfa.personId)),
+    session.pendingMfa &&
+    (!(await validLegacyPerson(session.pendingMfa.personId)) ||
+      !(await hasCurrentVersion(
+        session.pendingMfa.personId,
+        session.pendingMfa.personSessionVersion,
+      ))),
   );
   if (invalidPersonId) {
-    log.warn("event-scoring.session", "Invalidated a legacy attendee identity");
-    return { session: withoutIdentity(session), changed: true, identityInvalidated: true };
+    log.warn("event-scoring.session", "Invalidated an attendee identity during session validation");
+    return { session: withoutIdentity(session), changed: true };
   }
   if (invalidPendingPersonId) {
     const { pendingMfa: _pendingMfa, ...withoutPendingMfa } = session;
-    log.warn("event-scoring.session", "Invalidated a legacy pending MFA identity");
+    log.warn("event-scoring.session", "Invalidated pending MFA during session validation");
     return {
       session: {
         ...withoutPendingMfa,
         schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION,
       },
       changed: true,
-      identityInvalidated: true,
     };
   }
   if (legacySchema)
     return {
       session: { ...session, schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION },
       changed: true,
-      identityInvalidated: false,
     };
-  return { session, changed: false, identityInvalidated: false };
+  return { session, changed: false };
 }
 
 async function readById(id: string): Promise<SessionRead | null> {
@@ -217,8 +262,10 @@ async function readById(id: string): Promise<SessionRead | null> {
       : null;
   if (!parsed) return null;
   const normalized = await normalizeStoredSession(parsed);
-  if (normalized.changed) await write(normalized.session);
-  return { session: normalized.session, identityInvalidated: normalized.identityInvalidated };
+  return {
+    session: normalized.session,
+    schemaUpgradeNeeded: normalized.changed,
+  };
 }
 
 async function storedSessions(): Promise<AttendeeSession[]> {
@@ -252,9 +299,16 @@ export async function attendeeSessionSummaries(
 ): Promise<Map<string, PersonAttendeeSessionSummary>> {
   const wanted = new Set(personIds);
   const summaries = new Map<string, PersonAttendeeSessionSummary>();
+  const versions = new Map<string, Promise<string | undefined>>();
   if (wanted.size === 0) return summaries;
   for (const session of await storedSessions()) {
     if (!session.personId || !wanted.has(session.personId)) continue;
+    let expectedVersion = versions.get(session.personId);
+    if (!expectedVersion) {
+      expectedVersion = personSessionVersion(session.personId);
+      versions.set(session.personId, expectedVersion);
+    }
+    if ((await expectedVersion) !== session.personSessionVersion) continue;
     const current = summaries.get(session.personId);
     const lastSeenAt =
       !current?.lastSeenAt || Date.parse(session.lastSeenAt) > Date.parse(current.lastSeenAt)
@@ -276,6 +330,7 @@ export async function attendeeSessionSummaries(
 }
 
 export async function revokeAttendeeSessionsForPerson(personId: string): Promise<number> {
+  await revokePersonSessionVersion(personId);
   const sessions = (await storedSessions()).filter(
     (session) => session.personId === personId || session.pendingMfa?.personId === personId,
   );
@@ -303,6 +358,11 @@ async function write(session: AttendeeSession): Promise<void> {
   developmentSessions.set(session.id, session);
 }
 
+type SessionMutation = {
+  writeCurrent: (session: AttendeeSession) => Promise<void>;
+  replaceCurrent: (session: AttendeeSession) => Promise<void>;
+};
+
 async function refresh(session: AttendeeSession): Promise<AttendeeSession> {
   const touched = { ...session, lastSeenAt: new Date().toISOString() };
   const redis = getRedis();
@@ -311,7 +371,10 @@ async function refresh(session: AttendeeSession): Promise<AttendeeSession> {
   return touched;
 }
 
-async function withSessionMutation<T>(id: string, use: () => Promise<T>): Promise<T> {
+async function withSessionMutation<T>(
+  id: string,
+  use: (mutation: SessionMutation) => Promise<T>,
+): Promise<T> {
   const redis = getRedis();
   if (redis) {
     const owner = randomBytes(18).toString("base64url");
@@ -324,7 +387,27 @@ async function withSessionMutation<T>(id: string, use: () => Promise<T>): Promis
     }
     if (!acquired) throw new Error("Attendee session is busy");
     try {
-      return await use();
+      const mutation: SessionMutation = {
+        writeCurrent: async (session) => {
+          if (session.id !== id) throw new Error("Cannot replace a session with a different ID");
+          const committed = await redis.eval(
+            WRITE_LOCKED_SESSION_SCRIPT,
+            [key, `${SESSION_PREFIX}${id}`],
+            [owner, JSON.stringify(session), String(SESSION_TTL_SECONDS)],
+          );
+          if (Number(committed) !== 1) throw new Error("Attendee session changed; try again");
+        },
+        replaceCurrent: async (session) => {
+          if (session.id === id) throw new Error("Session rotation requires a new ID");
+          const committed = await redis.eval(
+            ROTATE_LOCKED_SESSION_SCRIPT,
+            [key, `${SESSION_PREFIX}${id}`, `${SESSION_PREFIX}${session.id}`],
+            [owner, JSON.stringify(session), String(SESSION_TTL_SECONDS)],
+          );
+          if (Number(committed) !== 1) throw new Error("Attendee session changed; try again");
+        },
+      };
+      return await use(mutation);
     } finally {
       await redis.eval(RELEASE_LOCK_SCRIPT, [key], [owner]);
     }
@@ -340,7 +423,22 @@ async function withSessionMutation<T>(id: string, use: () => Promise<T>): Promis
   developmentSessionLocks.set(id, tail);
   await previous;
   try {
-    return await use();
+    const assertCurrent = (): void => {
+      if (!developmentSessions.has(id)) throw new Error("Attendee session changed; try again");
+    };
+    return await use({
+      writeCurrent: async (session) => {
+        if (session.id !== id) throw new Error("Cannot replace a session with a different ID");
+        assertCurrent();
+        developmentSessions.set(id, session);
+      },
+      replaceCurrent: async (session) => {
+        if (session.id === id) throw new Error("Session rotation requires a new ID");
+        assertCurrent();
+        developmentSessions.set(session.id, session);
+        developmentSessions.delete(id);
+      },
+    });
   } finally {
     release();
     if (developmentSessionLocks.get(id) === tail) developmentSessionLocks.delete(id);
@@ -350,9 +448,10 @@ async function withSessionMutation<T>(id: string, use: () => Promise<T>): Promis
 async function loadOrCreate(): Promise<AttendeeSession> {
   const existingId = readSessionId();
   const existing = existingId ? await readById(existingId) : null;
-  if (existing?.identityInvalidated)
+  if (existing?.schemaUpgradeNeeded)
     return rotateSession(existing.session, {
       personId: existing.session.personId,
+      personSessionVersion: existing.session.personSessionVersion,
       verifiedEmailHash: existing.session.verifiedEmailHash,
       authenticatedAt: existing.session.authenticatedAt,
       authenticationMethod: existing.session.authenticationMethod,
@@ -387,6 +486,7 @@ async function rotateSession(
   changes: Pick<
     AttendeeSession,
     | "personId"
+    | "personSessionVersion"
     | "verifiedEmailHash"
     | "authenticatedAt"
     | "authenticationMethod"
@@ -398,20 +498,18 @@ async function rotateSession(
     | "pendingMfa"
   >,
 ): Promise<AttendeeSession> {
-  return withSessionMutation(session.id, async () => {
-    const current = (await readById(session.id))?.session ?? session;
+  return withSessionMutation(session.id, async (mutation) => {
+    const current = await readById(session.id);
+    if (!current) throw new Error("Attendee session changed; try again");
     const now = new Date().toISOString();
     const rotated = {
-      ...current,
+      ...current.session,
       ...changes,
       id: sessionId(),
       createdAt: now,
       lastSeenAt: now,
     } satisfies AttendeeSession;
-    await write(rotated);
-    const redis = getRedis();
-    if (redis) await redis.del(`${SESSION_PREFIX}${session.id}`);
-    else if (allowMemoryFallback()) developmentSessions.delete(session.id);
+    await mutation.replaceCurrent(rotated);
     setSessionCookie(rotated.id);
     return rotated;
   });
@@ -427,8 +525,10 @@ export async function authenticateAttendeeSession(input: {
   const session = await loadOrCreate();
   const now = new Date().toISOString();
   const method = input.method ?? "email";
+  const version = await personSessionVersion(input.personId);
   return rotateSession(session, {
     personId: input.personId,
+    personSessionVersion: version,
     verifiedEmailHash: input.verifiedEmailHash,
     authenticatedAt: now,
     authenticationMethod: method,
@@ -454,8 +554,10 @@ export async function beginAttendeeMfaSession(input: {
 }): Promise<AttendeeSession> {
   if (!isUuidV7(input.personId)) throw new Error("Attendee person ID must be UUIDv7");
   const session = await loadOrCreate();
+  const version = await personSessionVersion(input.personId);
   return rotateSession(session, {
     personId: undefined,
+    personSessionVersion: undefined,
     verifiedEmailHash: undefined,
     authenticatedAt: undefined,
     authenticationMethod: undefined,
@@ -466,6 +568,7 @@ export async function beginAttendeeMfaSession(input: {
     assurance: undefined,
     pendingMfa: {
       personId: input.personId,
+      personSessionVersion: version,
       verifiedEmailHash: input.verifiedEmailHash,
       returnTo: input.returnTo,
       createdAt: new Date().toISOString(),
@@ -482,6 +585,7 @@ export async function completeAttendeeMfaSession(input: {
   const now = new Date().toISOString();
   return rotateSession(session, {
     personId: session.pendingMfa.personId,
+    personSessionVersion: session.pendingMfa.personSessionVersion,
     verifiedEmailHash: session.pendingMfa.verifiedEmailHash,
     authenticatedAt: now,
     authenticationMethod: "email",
@@ -510,6 +614,7 @@ export async function stepUpAttendeeSession(input: {
   const primary = session.authenticationMethod ?? "email";
   return rotateSession(session, {
     personId: session.personId,
+    personSessionVersion: session.personSessionVersion,
     verifiedEmailHash: session.verifiedEmailHash,
     authenticatedAt: session.authenticatedAt,
     authenticationMethod: primary,
@@ -534,6 +639,7 @@ export async function signOutAttendeeSession(): Promise<AttendeeSession | null> 
   const anonymous = withoutIdentity(session);
   return rotateSession(anonymous, {
     personId: undefined,
+    personSessionVersion: undefined,
     verifiedEmailHash: undefined,
     authenticatedAt: undefined,
     authenticationMethod: undefined,
@@ -552,9 +658,10 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
   const read = await readById(id);
   if (!read) return null;
   const { session } = read;
-  if (read.identityInvalidated)
+  if (read.schemaUpgradeNeeded)
     return rotateSession(session, {
       personId: session.personId,
+      personSessionVersion: session.personSessionVersion,
       verifiedEmailHash: session.verifiedEmailHash,
       authenticatedAt: session.authenticatedAt,
       authenticationMethod: session.authenticationMethod,
@@ -568,6 +675,7 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
   if (Date.now() - Date.parse(session.createdAt) >= SESSION_ROTATION_MS) {
     return rotateSession(session, {
       personId: session.personId,
+      personSessionVersion: session.personSessionVersion,
       verifiedEmailHash: session.verifiedEmailHash,
       authenticatedAt: session.authenticatedAt,
       authenticationMethod: session.authenticationMethod,
@@ -604,8 +712,10 @@ export async function openAttendeeTicket(input: {
   const participant = await participantForTicket(ticket.id);
   if (!participant || participant.eventSlug !== input.eventSlug) return null;
   const initial = await loadOrCreate();
-  return withSessionMutation(initial.id, async () => {
-    const session = (await readById(initial.id))?.session ?? initial;
+  return withSessionMutation(initial.id, async (mutation) => {
+    const current = await readById(initial.id);
+    if (!current) throw new Error("Attendee session changed; try again");
+    const session = current.session;
     const existing = session.tickets.find((entry) => entry.ticketId === input.ticketId);
     const access: AttendeeTicketAccess = {
       ticketId: ticket.id,
@@ -637,7 +747,7 @@ export async function openAttendeeTicket(input: {
       activeParticipantByEventId,
       lastSeenAt: new Date().toISOString(),
     } satisfies AttendeeSession;
-    await write(updated);
+    await mutation.writeCurrent(updated);
     setSessionCookie(updated.id);
     return { session: updated, ticket: access };
   });

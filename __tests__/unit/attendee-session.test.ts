@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   records: new Map<string, unknown>(),
   linkedParticipants: [] as string[],
   people: new Set<string>(),
+  personLookupGates: [] as Array<{ started: () => void; wait: Promise<void> }>,
 }));
 
 const PERSON_SESSION = "01890f3e-7b1a-7cc2-b5c3-3f8b6a4d2190";
@@ -31,7 +32,16 @@ vi.mock("@/lib/platform/redis.server", () => ({
     expire: async () => 1,
     eval: async (_script: string, keys: string[], args: string[]) => {
       if (state.records.get(keys[0]!) !== args[0]) return 0;
-      return state.records.delete(keys[0]!) ? 1 : 0;
+      if (keys.length === 1) return state.records.delete(keys[0]!) ? 1 : 0;
+      if (keys.length === 2) {
+        if (!state.records.has(keys[1]!)) return 0;
+        state.records.set(keys[1]!, JSON.parse(args[1]!));
+        return 1;
+      }
+      if (!state.records.has(keys[1]!)) return 0;
+      state.records.set(keys[2]!, JSON.parse(args[1]!));
+      state.records.delete(keys[1]!);
+      return 1;
     },
     scan: async (_cursor: string, options: { match?: string }) => [
       "0",
@@ -64,10 +74,15 @@ vi.mock("@/lib/platform/redis.server", () => ({
 }));
 
 vi.mock("@/lib/platform/postgres.server", () => ({
-  query: async (text: string, values: readonly unknown[]) =>
-    text.includes("from event_people")
-      ? [{ exists: state.people.has(String(values[0])) }]
-      : state.linkedParticipants.map((id) => ({ id })),
+  query: async (text: string, values: readonly unknown[]) => {
+    if (!text.includes("from event_people")) return state.linkedParticipants.map((id) => ({ id }));
+    const gate = state.personLookupGates.shift();
+    if (gate) {
+      gate.started();
+      await gate.wait;
+    }
+    return [{ exists: state.people.has(String(values[0])) }];
+  },
 }));
 
 vi.mock("@/features/events/store.server", () => ({
@@ -112,6 +127,7 @@ describe("attendee session authentication", () => {
     state.records.clear();
     state.linkedParticipants = [];
     state.people = new Set([PERSON_SESSION, PERSON_MFA, PERSON_OTHER]);
+    state.personLookupGates = [];
   });
 
   it("rotates on verification and sign-out without losing selected tickets", async () => {
@@ -327,14 +343,16 @@ describe("attendee session authentication", () => {
     const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
     state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
 
-    await expect(getAttendeeSession()).resolves.toMatchObject({
-      id: authenticated.id,
+    const retained = await getAttendeeSession();
+    expect(retained).toMatchObject({
       schemaVersion: 1,
       personId: PERSON_SESSION,
     });
+    expect(retained?.id).not.toBe(authenticated.id);
 
     state.people.delete(PERSON_SESSION);
-    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+    const { schemaVersion: _retainedSchemaVersion, ...legacyRetained } = retained!;
+    state.records.set(`event-scoring:attendee-session:${legacyRetained.id}`, legacyRetained);
     await expect(getAttendeeSession()).resolves.toMatchObject({
       schemaVersion: 1,
       personId: undefined,
@@ -359,7 +377,180 @@ describe("attendee session authentication", () => {
     expect(repaired).toMatchObject({ id: authenticated.id, schemaVersion: 1 });
     expect(repaired).not.toHaveProperty("personId");
     const stored = state.records.get(`event-scoring:attendee-session:${authenticated.id}`);
-    expect(stored).toMatchObject({ schemaVersion: 1 });
-    expect(stored).not.toHaveProperty("personId");
+    expect(stored).toMatchObject({
+      schemaVersion: 0,
+      personId: "person_before_uuidv7",
+    });
+  });
+
+  it("does not recreate a legacy session deleted by concurrent sign-out", async () => {
+    await openAttendeeTicket({
+      ticketId: "01ARZ3NDEKTSV4RS",
+      eventSlug: "session-night",
+      mode: "scoring",
+    });
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
+    const legacyKey = `event-scoring:attendee-session:${authenticated.id}`;
+    state.records.set(legacyKey, legacy);
+
+    let markLookupStarted!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => {
+      markLookupStarted = resolve;
+    });
+    let resumeLookup!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      resumeLookup = resolve;
+    });
+    state.personLookupGates.push({ started: markLookupStarted, wait });
+    const request = new Request("https://milkandhenny.com/api/example", {
+      headers: { cookie: `mah-attendee-session=${authenticated.id}` },
+    });
+
+    const delayedRead = getAttendeeSessionForRequest(request);
+    await lookupStarted;
+    const signedOut = await signOutAttendeeSession();
+    expect(state.records.has(legacyKey)).toBe(false);
+
+    resumeLookup();
+    await expect(delayedRead).resolves.toMatchObject({ personId: PERSON_SESSION });
+    expect(state.records.has(legacyKey)).toBe(false);
+    expect(signedOut?.tickets).toHaveLength(1);
+    expect(signedOut?.personId).toBeUndefined();
+  });
+
+  it("rejects a stale second rotation instead of creating two successor sessions", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+
+    let lookupsStarted = 0;
+    let markBothStarted!: () => void;
+    const bothStarted = new Promise<void>((resolve) => {
+      markBothStarted = resolve;
+    });
+    let resumeLookups!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      resumeLookups = resolve;
+    });
+    const started = () => {
+      lookupsStarted += 1;
+      if (lookupsStarted === 2) markBothStarted();
+    };
+    state.personLookupGates.push({ started, wait }, { started, wait });
+
+    const reads = [getAttendeeSession(), getAttendeeSession()];
+    await bothStarted;
+    resumeLookups();
+    const results = await Promise.allSettled(reads);
+
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const sessionKeys = [...state.records.keys()].filter((key) =>
+      key.startsWith("event-scoring:attendee-session:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+  });
+
+  it("makes forced revocation win over an in-flight legacy rotation", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+
+    let markLockedLookupStarted!: () => void;
+    const lockedLookupStarted = new Promise<void>((resolve) => {
+      markLockedLookupStarted = resolve;
+    });
+    let resumeLockedLookup!: () => void;
+    const waitForResume = new Promise<void>((resolve) => {
+      resumeLockedLookup = resolve;
+    });
+    state.personLookupGates.push(
+      { started: () => undefined, wait: Promise.resolve() },
+      { started: markLockedLookupStarted, wait: waitForResume },
+    );
+
+    const rotating = getAttendeeSession();
+    await lockedLookupStarted;
+    await expect(revokeAttendeeSessionsForPerson(PERSON_SESSION)).resolves.toBe(1);
+    resumeLockedLookup();
+
+    await expect(rotating).rejects.toThrow("Attendee session changed");
+    expect(
+      [...state.records.keys()].filter((key) => key.startsWith("event-scoring:attendee-session:")),
+    ).toHaveLength(0);
+
+    const reauthenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    await expect(getAttendeeSession()).resolves.toMatchObject({
+      id: reauthenticated.id,
+      personId: PERSON_SESSION,
+      personSessionVersion: reauthenticated.personSessionVersion,
+    });
+  });
+
+  it("rejects a session commit after its Redis lock ownership is lost", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    const { schemaVersion: _schemaVersion, ...legacy } = authenticated;
+    state.records.set(`event-scoring:attendee-session:${authenticated.id}`, legacy);
+
+    let markLockedLookupStarted!: () => void;
+    const lockedLookupStarted = new Promise<void>((resolve) => {
+      markLockedLookupStarted = resolve;
+    });
+    let resumeLockedLookup!: () => void;
+    const waitForResume = new Promise<void>((resolve) => {
+      resumeLockedLookup = resolve;
+    });
+    state.personLookupGates.push(
+      { started: () => undefined, wait: Promise.resolve() },
+      { started: markLockedLookupStarted, wait: waitForResume },
+    );
+
+    const rotating = getAttendeeSession();
+    await lockedLookupStarted;
+    state.records.delete(`event-scoring:attendee-session-lock:${authenticated.id}`);
+    resumeLockedLookup();
+
+    await expect(rotating).rejects.toThrow("Attendee session changed");
+    const sessionKeys = [...state.records.keys()].filter((key) =>
+      key.startsWith("event-scoring:attendee-session:"),
+    );
+    expect(sessionKeys).toEqual([`event-scoring:attendee-session:${authenticated.id}`]);
+  });
+
+  it("invalidates a stale successor created after forced revocation", async () => {
+    const authenticated = await authenticateAttendeeSession({
+      personId: PERSON_SESSION,
+      verifiedEmailHash: "a".repeat(64),
+    });
+    await revokeAttendeeSessionsForPerson(PERSON_SESSION);
+
+    const staleId = "S".repeat(32);
+    state.records.set(`event-scoring:attendee-session:${staleId}`, {
+      ...authenticated,
+      id: staleId,
+    });
+    state.cookies.set("mah-attendee-session", staleId);
+
+    const repaired = await getAttendeeSession();
+    expect(repaired?.id).not.toBe(staleId);
+    expect(repaired?.personId).toBeUndefined();
+    expect(repaired?.personSessionVersion).toBeUndefined();
+    expect(state.records.has(`event-scoring:attendee-session:${staleId}`)).toBe(false);
   });
 });
