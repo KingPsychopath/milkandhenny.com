@@ -7,10 +7,15 @@ import { Link } from "@tanstack/react-router";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { getResponseErrorMessage, readResponsePayload } from "@/lib/client/response";
-import { isHeifLikeFile, prepareTransferUploadFile } from "@/features/transfers/browser-heif";
+import {
+  isHeifLikeFile,
+  prepareBrowserImage,
+  type PreparedBrowserImage,
+} from "@/features/media/browser-image-prep.client";
+import { registerApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
+import { collectDroppedFiles } from "@/features/media/collect-dropped-files.client";
 import { inferTransferTitle } from "@/features/transfers/presentation";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
-import { collectDroppedFiles } from "./drop-files";
 import { copyText } from "@/lib/client/share";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 
@@ -102,13 +107,6 @@ const BROWSER_PREP_MODE = import.meta.env.VITE_TRANSFER_MEDIA_BROWSER_PREP ?? "a
 const BROWSER_PREP_CONCURRENCY = 2;
 const LARGE_BATCH_ENTRY_COUNT = 24;
 const LARGE_BATCH_UPLOAD_CONCURRENCY = 2;
-
-type PreparedTransferUpload = {
-  uploadFile: File;
-  uploadName: string;
-  originalFile?: File;
-  convertedFrom?: "heic";
-};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -505,7 +503,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           `HEIC/HIF transfer uploads require browser-side conversion. Re-enable browser prep and retry ${blockedFile.name}.`,
         );
       }
-      return selectedFiles.map<PreparedTransferUpload>((file) => ({
+      return selectedFiles.map<PreparedBrowserImage>((file) => ({
         uploadFile: file,
         uploadName: file.name,
       }));
@@ -520,7 +518,11 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     return mapWithConcurrency(selectedFiles, BROWSER_PREP_CONCURRENCY, async (file) => {
       try {
-        const prepared = await prepareTransferUploadFile(file, { derivePreview: true });
+        const prepared = await prepareBrowserImage(file, {
+          archiveOriginal: true,
+          derivePreview: true,
+          requireBrowserDecode: true,
+        });
         completed += 1;
         setUploadProgress({
           phase: "preparing",
@@ -540,7 +542,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         return {
           uploadFile: file,
           uploadName: file.name,
-        } satisfies PreparedTransferUpload;
+        } satisfies PreparedBrowserImage;
       }
     });
   }, []);
@@ -564,6 +566,15 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       const droppedFiles = await collectDroppedFiles(e.dataTransfer);
       if (droppedFiles.length > 0) addFiles(droppedFiles);
     },
+    [addFiles],
+  );
+
+  useEffect(
+    () =>
+      registerApplicationFileDrop(async (dataTransfer) => {
+        const droppedFiles = await collectDroppedFiles(dataTransfer);
+        if (droppedFiles.length > 0) addFiles(droppedFiles);
+      }),
     [addFiles],
   );
 
@@ -689,6 +700,11 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       if (!prepared) {
         throw new Error(`Could not resolve prepared upload for ${entry.name}`);
       }
+      if (prepared.originalFile && !entry.archivedOriginalUrl) {
+        throw new Error(
+          `Could not reserve original-file storage for ${prepared.originalFile.name}`,
+        );
+      }
 
       return [
         {
@@ -795,6 +811,11 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     const uploadEntries = urls.flatMap((entry) => {
       const prepared = preparedByName.get(entry.name);
       if (!prepared) throw new Error(`Could not resolve prepared upload for ${entry.name}`);
+      if (prepared.originalFile && !entry.archivedOriginalUrl) {
+        throw new Error(
+          `Could not reserve original-file storage for ${prepared.originalFile.name}`,
+        );
+      }
       return [
         {
           file: prepared.uploadFile,
@@ -847,8 +868,25 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     if (wordsScope === "word" && !cleanSlug) throw new Error("word slug is required");
     if (wordsScope === "asset" && !cleanAssetId) throw new Error("asset id is required");
 
+    setUploadProgress({ phase: "preparing", current: 0, total: files.length });
+    let preparedCount = 0;
+    const uploadFiles = await mapWithConcurrency(files, BROWSER_PREP_CONCURRENCY, async (file) => {
+      const prepared = await prepareBrowserImage(file, {
+        derivePreview: true,
+        maxDimension: 2_560,
+      });
+      preparedCount += 1;
+      setUploadProgress({
+        phase: "preparing",
+        current: preparedCount,
+        total: files.length,
+        filename: file.name,
+      });
+      return prepared.uploadFile;
+    });
+
     // 1. Presign PUT URLs
-    setUploadProgress({ phase: "uploading", current: 0, total: files.length });
+    setUploadProgress({ phase: "uploading", current: 0, total: uploadFiles.length });
     const presignRes = await authFetchWithRetry("/api/upload/words/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -857,7 +895,11 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         slug: wordsScope === "word" ? cleanSlug : undefined,
         assetId: wordsScope === "asset" ? cleanAssetId : undefined,
         force,
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: uploadFiles.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
       }),
     });
     const presignPayload = await readResponsePayload(presignRes);
@@ -890,7 +932,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     // 2. Upload bytes direct to R2 (bounded parallelism)
     const filesByName = new Map<string, File[]>();
-    for (const file of files) {
+    for (const file of uploadFiles) {
       const bucket = filesByName.get(file.name);
       if (bucket) {
         bucket.push(file);
@@ -910,7 +952,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     // 3. Finalize (process images to WebP, return markdown snippets)
     setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
-    const fileSizes = new Map(files.map((file) => [file.name, file.size]));
+    const fileSizes = new Map(uploadFiles.map((file) => [file.name, file.size]));
     const finalizeRes = await authFetchWithRetry("/api/upload/words/finalize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1172,8 +1214,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                 />
               </div>
               <p className="font-mono text-micro theme-faint">
-                uploads send original files directly; previews are generated after upload on the
-                server
+                originals stay intact; large or uncommon images get a browser-prepared working copy
+                before server previews are built
               </p>
             </>
           )}
@@ -1311,6 +1353,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
       {/* Drop zone */}
       <div
+        data-file-drop-zone
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

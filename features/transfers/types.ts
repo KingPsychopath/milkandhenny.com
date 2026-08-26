@@ -6,7 +6,7 @@ import type {
   ProcessingStatus,
 } from "./media-state";
 
-type ConvertedFrom = "heic";
+type ConvertedFrom = "browser_image";
 
 type AssetGroupMember = {
   fileId: string;

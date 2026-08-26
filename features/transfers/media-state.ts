@@ -1,4 +1,4 @@
-const PROCESSABLE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
+const PROCESSABLE_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|avif|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 const ANIMATED_EXTENSIONS = /\.gif$/i;
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|avi|mkv|m4v|wmv|flv)$/i;

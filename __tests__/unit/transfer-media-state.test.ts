@@ -20,6 +20,7 @@ describe("transfer media state helpers", () => {
 
   it("classifies processing routes by filename", () => {
     expect(classifyTransferProcessingRoute("photo.jpg")).toBe("local_image");
+    expect(classifyTransferProcessingRoute("photo.avif")).toBe("local_image");
     expect(classifyTransferProcessingRoute("loop.gif")).toBe("local_gif");
     expect(classifyTransferProcessingRoute("clip.mov")).toBe("local_video");
     expect(classifyTransferProcessingRoute("capture.hif")).toBe("local_image");

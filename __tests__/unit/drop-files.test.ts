@@ -58,7 +58,7 @@ describe("collectDroppedFiles", () => {
       },
     };
 
-    const dropped = await import("@/features/transfers/ui/upload/drop-files");
+    const dropped = await import("@/features/media/collect-dropped-files.client");
     const files = await dropped.collectDroppedFiles({
       items: [
         {

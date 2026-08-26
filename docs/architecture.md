@@ -165,6 +165,14 @@ Images and GIFs are processed on the request that finalises the upload. RAW and 
 web request -> Redis queue -> media worker drain -> R2 derivatives -> Redis pub/sub -> SSE to the viewer
 ```
 
+Before transfer uploads, a browser worker capability-checks still images. HEIF and other
+browser-decodable formats that the server cannot accept directly are normalised, while oversized
+stills are downscaled to a bounded working copy using `ImageDecoder` or `createImageBitmap` plus
+`OffscreenCanvas`. The source file remains an exact, separately archived original for transfers.
+Album and words uploads may send the bounded copy because their server-generated derivatives are
+the product artifact. Sharp remains the authoritative validation, metadata, orientation, and
+responsive-output boundary; browser preparation is an upload optimisation, not trusted processing.
+
 The worker is the same server image with `MEDIA_WORKER_ROLE=worker`; there is no separate worker build to drift. `MEDIA_PROCESSOR_MODE=local` processes everything inline and disables the queue — the right default, and the right setting whenever no worker is running, since a queue with no consumer just accumulates.
 
 See [media-worker.md](./media-worker.md).

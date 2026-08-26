@@ -1,9 +1,34 @@
-type PreparedTransferUpload = {
-  uploadFile: File;
-  uploadName: string;
-  originalFile?: File;
-  convertedFrom?: "heic";
+/// <reference lib="webworker" />
+/* oxlint-disable unicorn/require-post-message-target-origin -- WorkerGlobalScope.postMessage has no targetOrigin parameter. */
+
+type PrepareImageRequest = {
+  id: number;
+  bytes: ArrayBuffer;
+  name: string;
+  type: string;
+  maxDimension: number;
+  forceNormalize: boolean;
 };
+
+type PrepareImageResponse =
+  | {
+      id: number;
+      ok: true;
+      changed: false;
+      width: number;
+      height: number;
+    }
+  | {
+      id: number;
+      ok: true;
+      changed: true;
+      bytes: ArrayBuffer;
+      name: string;
+      type: "image/jpeg" | "image/png" | "image/webp";
+      width: number;
+      height: number;
+    }
+  | { id: number; ok: false; error: string };
 
 type HeifImageLike = {
   get_width(): number;
@@ -23,7 +48,9 @@ type LibheifLike = {
 
 const HEIF_EXTENSIONS = [".heic", ".heif", ".hif"] as const;
 const HEIF_MIME_TYPES = ["image/heic", "image/heif", "image/hif"] as const;
+const HEIF_MIME_TYPE_SET = new Set<string>(HEIF_MIME_TYPES);
 const JPEG_QUALITY = 0.9;
+const MAX_DECODE_PIXELS = 100_000_000;
 
 function hasHeifExtension(filename: string): boolean {
   const lower = filename.toLowerCase();
@@ -32,24 +59,21 @@ function hasHeifExtension(filename: string): boolean {
 
 function isHeifLikeFile(file: Pick<File, "name" | "type">): boolean {
   const type = file.type.toLowerCase();
-  return (
-    hasHeifExtension(file.name) ||
-    HEIF_MIME_TYPES.includes(type as (typeof HEIF_MIME_TYPES)[number])
-  );
+  return hasHeifExtension(file.name) || HEIF_MIME_TYPE_SET.has(type);
 }
 
-function isDerivableTransferFile(file: Pick<File, "name" | "type">): boolean {
-  return isHeifLikeFile(file);
-}
-
-function replaceExtensionWithJpg(filename: string): string {
+function replaceExtension(filename: string, outputExtension: string): string {
   const lastDot = filename.lastIndexOf(".");
-  if (lastDot <= 0) return `${filename}.jpg`;
-  return `${filename.slice(0, lastDot)}.jpg`;
+  if (lastDot <= 0) return `${filename}.${outputExtension}`;
+  const extension = filename
+    .slice(lastDot + 1)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+  return `${filename.slice(0, lastDot)}-${extension || "image"}.${outputExtension}`;
 }
 
 function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
-  if (HEIF_MIME_TYPES.includes(file.type.toLowerCase() as (typeof HEIF_MIME_TYPES)[number])) {
+  if (HEIF_MIME_TYPE_SET.has(file.type.toLowerCase())) {
     return file.type.toLowerCase();
   }
   if (file.name.toLowerCase().endsWith(".heic")) return "image/heic";
@@ -58,7 +82,7 @@ function inferHeifMimeType(file: Pick<File, "name" | "type">): string {
 }
 
 async function canNativeDecodeHeif(type: string): Promise<boolean> {
-  if (typeof window === "undefined" || !("ImageDecoder" in window)) return false;
+  if (typeof ImageDecoder === "undefined") return false;
   try {
     return await ImageDecoder.isTypeSupported(type);
   } catch {
@@ -66,11 +90,23 @@ async function canNativeDecodeHeif(type: string): Promise<boolean> {
   }
 }
 
-function createCanvas(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  return canvas;
+async function decodeWithImageBitmap(
+  bytes: ArrayBuffer,
+  type: string,
+): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
+  const bitmap = await createImageBitmap(new Blob([bytes], { type }), {
+    imageOrientation: "none",
+  });
+  return {
+    source: bitmap,
+    width: bitmap.width,
+    height: bitmap.height,
+    close: () => bitmap.close(),
+  };
+}
+
+function createCanvas(width: number, height: number): OffscreenCanvas {
+  return new OffscreenCanvas(width, height);
 }
 
 function getOrientedCanvas(
@@ -78,11 +114,19 @@ function getOrientedCanvas(
   width: number,
   height: number,
   orientation: number,
-): HTMLCanvasElement {
+  maxDimension: number,
+): OffscreenCanvas {
   const swap = orientation >= 5 && orientation <= 8;
-  const canvas = createCanvas(swap ? height : width, swap ? width : height);
+  const orientedWidth = swap ? height : width;
+  const orientedHeight = swap ? width : height;
+  const scale = Math.min(1, maxDimension / Math.max(orientedWidth, orientedHeight));
+  const canvas = createCanvas(
+    Math.max(1, Math.round(orientedWidth * scale)),
+    Math.max(1, Math.round(orientedHeight * scale)),
+  );
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D context unavailable");
+  ctx.scale(scale, scale);
 
   switch (orientation) {
     case 2:
@@ -122,20 +166,24 @@ function getOrientedCanvas(
   return canvas;
 }
 
-function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          reject(new Error("Failed to encode JPEG"));
-          return;
-        }
-        resolve(blob);
-      },
-      "image/jpeg",
-      JPEG_QUALITY,
-    );
-  });
+function preferredOutputType(request: PrepareImageRequest): "image/jpeg" | "image/webp" {
+  return /\.(png|webp|avif)$/i.test(request.name) ||
+    ["image/png", "image/webp", "image/avif"].includes(request.type)
+    ? "image/webp"
+    : "image/jpeg";
+}
+
+async function canvasToBlob(
+  canvas: OffscreenCanvas,
+  requestedType: "image/jpeg" | "image/webp",
+): Promise<Blob> {
+  const blob = await canvas.convertToBlob({ type: requestedType, quality: JPEG_QUALITY });
+  if (["image/jpeg", "image/png", "image/webp"].includes(blob.type)) return blob;
+  return canvas.convertToBlob({ type: "image/png" });
+}
+
+function isOutputImageType(value: string): value is "image/jpeg" | "image/png" | "image/webp" {
+  return value === "image/jpeg" || value === "image/png" || value === "image/webp";
 }
 
 function getUint(view: DataView, offset: number, size: number): number {
@@ -298,6 +346,32 @@ function extractHeifExifTiffBytes(bytes: Uint8Array): Uint8Array | null {
   return bytes.slice(tiffOffset, tiffOffset + tiffLength);
 }
 
+function extractJpegExifTiffBytes(bytes: Uint8Array): Uint8Array | null {
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 4 <= bytes.byteLength) {
+    if (bytes[offset] !== 0xff) return null;
+    const marker = bytes[offset + 1];
+    if (marker === 0xda || marker === 0xd9) return null;
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    if (length < 2 || offset + 2 + length > bytes.byteLength) return null;
+    if (
+      marker === 0xe1 &&
+      length >= 8 &&
+      bytes[offset + 4] === 0x45 &&
+      bytes[offset + 5] === 0x78 &&
+      bytes[offset + 6] === 0x69 &&
+      bytes[offset + 7] === 0x66 &&
+      bytes[offset + 8] === 0x00 &&
+      bytes[offset + 9] === 0x00
+    ) {
+      return bytes.slice(offset + 10, offset + 2 + length);
+    }
+    offset += 2 + length;
+  }
+  return null;
+}
+
 function normalizeExifOrientation(tiffBytes: Uint8Array): Uint8Array {
   const copy = new Uint8Array(tiffBytes);
   const view = new DataView(copy.buffer, copy.byteOffset, copy.byteLength);
@@ -367,11 +441,11 @@ function injectExifIntoJpeg(jpegBytes: Uint8Array, tiffBytes: Uint8Array): Blob 
 }
 
 async function decodeWithImageDecoder(
-  file: File,
+  bytes: ArrayBuffer,
   type: string,
 ): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   const decoder = new ImageDecoder({
-    data: await file.arrayBuffer(),
+    data: bytes,
     type,
   });
   const { image } = await decoder.decode();
@@ -379,32 +453,39 @@ async function decodeWithImageDecoder(
     source: image,
     width: image.displayWidth,
     height: image.displayHeight,
-    close: () => image.close(),
+    close: () => {
+      image.close();
+      decoder.close();
+    },
   };
 }
 
-async function readHeifOrientation(file: File): Promise<number> {
+async function readOrientation(bytes: ArrayBuffer): Promise<number> {
   try {
     const exifr = await import("exifr");
-    return (await exifr.orientation(file)) ?? 1;
+    return (await exifr.orientation(bytes)) ?? 1;
   } catch {
     return 1;
   }
 }
 
 async function decodeWithLibheif(
-  file: File,
+  bytes: ArrayBuffer,
 ): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void }> {
   const imported = await import("libheif-js/wasm-bundle");
   const libheif = (imported.default ?? imported) as unknown as LibheifLike;
   const decoder = new libheif.HeifDecoder();
-  const images = decoder.decode(await file.arrayBuffer());
-  const image = images[0];
+  const images = decoder.decode(bytes);
+  const image = images.find((candidate) => candidate.is_primary()) ?? images[0];
 
   if (!image) throw new Error("No HEIF image found");
 
   const width = image.get_width();
   const height = image.get_height();
+  if (width < 1 || height < 1 || width * height > MAX_DECODE_PIXELS) {
+    images.forEach((candidate) => candidate.free());
+    throw new Error("Image dimensions exceed the browser preparation limit");
+  }
   const imageData = new ImageData(width, height);
 
   await new Promise<void>((resolve, reject) => {
@@ -432,72 +513,101 @@ async function decodeWithLibheif(
   };
 }
 
-async function convertHeifFile(file: File): Promise<File> {
-  const orientation = await readHeifOrientation(file);
-  const bytes = new Uint8Array(await file.arrayBuffer());
+async function prepareImage(request: PrepareImageRequest): Promise<PrepareImageResponse> {
+  const orientation = await readOrientation(request.bytes);
+  const bytes = new Uint8Array(request.bytes);
+  const heif = isHeifLikeFile(request);
   let exifTiff: Uint8Array | null = null;
   try {
-    exifTiff = extractHeifExifTiffBytes(bytes);
+    exifTiff = heif ? extractHeifExifTiffBytes(bytes) : extractJpegExifTiffBytes(bytes);
   } catch {
     exifTiff = null;
   }
-  const normalizedExif = exifTiff ? normalizeExifOrientation(exifTiff) : null;
-  const type = inferHeifMimeType(file);
+  let normalizedExif: Uint8Array | null = null;
+  try {
+    normalizedExif = exifTiff ? normalizeExifOrientation(exifTiff) : null;
+  } catch {
+    normalizedExif = null;
+  }
+  const type = heif ? inferHeifMimeType(request) : request.type;
   let decoded: { source: CanvasImageSource; width: number; height: number; close: () => void };
-  if (await canNativeDecodeHeif(type)) {
+  if (!heif || (await canNativeDecodeHeif(type))) {
     try {
-      decoded = await decodeWithImageDecoder(file, type);
+      decoded = heif
+        ? await decodeWithImageDecoder(request.bytes, type)
+        : await decodeWithImageBitmap(request.bytes, type);
     } catch {
-      decoded = await decodeWithLibheif(file);
+      if (!heif) throw new Error(`This browser cannot decode ${request.name}`);
+      decoded = await decodeWithLibheif(request.bytes);
     }
   } else {
-    decoded = await decodeWithLibheif(file);
+    decoded = await decodeWithLibheif(request.bytes);
   }
 
   try {
-    const canvas = getOrientedCanvas(decoded.source, decoded.width, decoded.height, orientation);
-    const jpegBlob = await canvasToJpegBlob(canvas);
-    const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
-    const finalBlob = normalizedExif
-      ? injectExifIntoJpeg(jpegBytes, normalizedExif)
-      : new Blob([jpegBytes], { type: "image/jpeg" });
+    const swap = orientation >= 5 && orientation <= 8;
+    const orientedWidth = swap ? decoded.height : decoded.width;
+    const orientedHeight = swap ? decoded.width : decoded.height;
+    const shouldChange =
+      heif ||
+      request.forceNormalize ||
+      Math.max(orientedWidth, orientedHeight) > request.maxDimension;
+    if (!shouldChange) {
+      return {
+        id: request.id,
+        ok: true,
+        changed: false,
+        width: orientedWidth,
+        height: orientedHeight,
+      };
+    }
+    const canvas = getOrientedCanvas(
+      decoded.source,
+      decoded.width,
+      decoded.height,
+      orientation,
+      request.maxDimension,
+    );
+    const requestedType = preferredOutputType(request);
+    const encodedBlob = await canvasToBlob(canvas, requestedType);
+    const encodedBytes = new Uint8Array(await encodedBlob.arrayBuffer());
+    const finalBlob =
+      encodedBlob.type === "image/jpeg" && normalizedExif
+        ? injectExifIntoJpeg(encodedBytes, normalizedExif)
+        : new Blob([encodedBytes], { type: encodedBlob.type });
+    const outputExtension =
+      finalBlob.type === "image/webp" ? "webp" : finalBlob.type === "image/png" ? "png" : "jpg";
+    if (!isOutputImageType(finalBlob.type))
+      throw new Error("Browser returned an invalid image type");
 
-    return new File([finalBlob], replaceExtensionWithJpg(file.name), {
-      type: "image/jpeg",
-      lastModified: file.lastModified,
-    });
+    return {
+      id: request.id,
+      ok: true,
+      changed: true,
+      bytes: await finalBlob.arrayBuffer(),
+      name: replaceExtension(request.name, outputExtension),
+      type: finalBlob.type,
+      width: canvas.width,
+      height: canvas.height,
+    };
   } finally {
     decoded.close();
   }
 }
 
-async function prepareTransferUploadFile(
-  file: File,
-  options: { derivePreview?: boolean } = {},
-): Promise<PreparedTransferUpload> {
-  if (!options.derivePreview || !isDerivableTransferFile(file)) {
-    return {
-      uploadFile: file,
-      uploadName: file.name,
-    };
+self.onmessage = async (event: MessageEvent<PrepareImageRequest>) => {
+  try {
+    const response = await prepareImage(event.data);
+    if (response.ok && response.changed) {
+      self.postMessage(response, { transfer: [response.bytes] });
+      return;
+    }
+    self.postMessage(response);
+  } catch (error) {
+    self.postMessage({
+      id: event.data.id,
+      ok: false,
+      error: error instanceof Error ? error.message : "Image preparation failed",
+    } satisfies PrepareImageResponse);
   }
-
-  if (isHeifLikeFile(file)) {
-    const jpegFile = await convertHeifFile(file);
-    return {
-      uploadFile: jpegFile,
-      uploadName: jpegFile.name,
-      originalFile: file,
-      convertedFrom: "heic",
-    };
-  }
-
-  return {
-    uploadFile: file,
-    uploadName: file.name,
-  };
-}
-
-export { isDerivableTransferFile, isHeifLikeFile, prepareTransferUploadFile };
-
-export type { PreparedTransferUpload };
+};

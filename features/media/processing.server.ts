@@ -125,7 +125,7 @@ const OG_HEIGHT = 630;
 type FocalPercent = { x: number; y: number };
 
 /** Image extensions Sharp can process in the default server/runtime stack */
-const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
+const PROCESSABLE_EXTENSIONS = /\.(jpe?g|png|webp|avif|tiff?)$/i;
 
 /** HEIF stills require a dedicated conversion path on the server */
 const HEIF_EXTENSIONS = /\.(heic|heif|hif)$/i;
@@ -148,6 +148,7 @@ const MIME_TYPES: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".webp": "image/webp",
+  ".avif": "image/avif",
   ".heic": "image/heic",
   ".hif": "image/heif",
   ".tif": "image/tiff",

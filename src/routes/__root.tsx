@@ -19,6 +19,7 @@ import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { ActiveRoomNotice } from "@/features/things/shared/ActiveRoomNotice";
 import { ClaimedScoreLinks } from "@/features/event-scoring/ui/ClaimedScoreLinks";
 import { AttendeeAccessLink } from "@/features/attendee-access/ui/AttendeeAccessLink";
+import { ApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
 import { getAttendeeShellFn } from "@/features/attendee-access/access.functions";
 import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
@@ -115,6 +116,7 @@ function RootDocument({
         <LampToggle />
         <BackToTop />
         <NavigationProgress />
+        <ApplicationFileDrop />
         <OfflinePlatform />
         <WorkAccessReturnPrompt />
         <AttendeeAccessLink authenticated={authenticated} />

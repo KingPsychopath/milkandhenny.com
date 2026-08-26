@@ -17,6 +17,9 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  worker: {
+    format: "es",
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),

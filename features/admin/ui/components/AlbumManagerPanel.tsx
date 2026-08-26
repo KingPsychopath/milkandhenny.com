@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Album, Photo } from "@/features/media/albums";
+import { registerApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
+import { prepareBrowserImage } from "@/features/media/browser-image-prep.client";
+import { collectDroppedFiles } from "@/features/media/collect-dropped-files.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { copyText } from "@/lib/client/share";
+import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { AlbumPhotoGrid, type PhotoDraft } from "./AlbumPhotoGrid";
 
 type StepUpResult =
@@ -104,6 +108,7 @@ export function AlbumManagerPanel({
   const [metaDescription, setMetaDescription] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleFilesRef = useRef<((files: File[]) => Promise<void>) | null>(null);
 
   const selectedAlbum = albums.find((album) => album.slug === selectedSlug) ?? null;
   const visibleAlbums = useMemo(() => {
@@ -434,15 +439,22 @@ export function AlbumManagerPanel({
 
   const handleFiles = async (fileList: File[] | FileList) => {
     if (!selectedAlbum || busy) return;
-    const files = Array.from(fileList).filter(
+    const selectedFiles = Array.from(fileList).filter(
       (file) => file.type.startsWith("image/") || file.name,
     );
-    if (!files.length) return;
+    if (!selectedFiles.length) return;
     setBusy("upload");
     setError("");
-    setStatus(`Preparing ${files.length} image${files.length === 1 ? "" : "s"}...`);
+    setStatus(`Preparing ${selectedFiles.length} image${selectedFiles.length === 1 ? "" : "s"}...`);
     setUploadProgress(0);
     try {
+      const browserPrepared = await mapWithConcurrency(selectedFiles, 2, (file) =>
+        prepareBrowserImage(file, {
+          derivePreview: true,
+          maxDimension: 4_096,
+        }),
+      );
+      const files = browserPrepared.map((file) => file.uploadFile);
       const presignResponse = await authFetch(
         `/api/admin/albums/${encodeURIComponent(selectedAlbum.slug)}/upload/presign`,
         {
@@ -508,6 +520,16 @@ export function AlbumManagerPanel({
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+  handleFilesRef.current = (files) => handleFiles(files);
+
+  useEffect(
+    () =>
+      registerApplicationFileDrop(async (dataTransfer) => {
+        const files = await collectDroppedFiles(dataTransfer);
+        await handleFilesRef.current?.(files);
+      }),
+    [],
+  );
 
   const handleCopy = async (value: string, label: string) => {
     try {
@@ -756,16 +778,18 @@ export function AlbumManagerPanel({
             </div>
 
             <div
+              data-file-drop-zone
               onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
+              onDrop={async (event) => {
                 event.preventDefault();
-                void handleFiles(event.dataTransfer.files);
+                const files = await collectDroppedFiles(event.dataTransfer);
+                await handleFiles(files);
               }}
               className="rounded-md border border-dashed theme-border px-6 py-10 text-center"
             >
               <p className="font-serif text-lg">drop photos here</p>
               <p className="mt-1 font-mono text-xs theme-subtle">
-                or paste images anywhere in this panel
+                or drop images anywhere in the application · paste in this panel
               </p>
               <button
                 type="button"

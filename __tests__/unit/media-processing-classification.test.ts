@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getFileKind, getMimeType } from "@/features/media/processing.server";
+import { getFileKind, getMimeType, isProcessableImage } from "@/features/media/processing.server";
 
 describe("media processing classification", () => {
   it("treats camera raw files as visual images", () => {
@@ -12,5 +12,11 @@ describe("media processing classification", () => {
     expect(getMimeType("IMG_2869.dng")).toBe("image/x-adobe-dng");
     expect(getMimeType("capture.cr3")).toBe("image/x-canon-cr3");
     expect(getMimeType("photo.nef")).toBe("image/x-nikon-nef");
+  });
+
+  it("accepts AVIF as a processable image input", () => {
+    expect(getFileKind("portrait.avif")).toBe("image");
+    expect(getMimeType("portrait.avif")).toBe("image/avif");
+    expect(isProcessableImage("portrait.avif")).toBe(true);
   });
 });

@@ -52,7 +52,7 @@ type TransferFileData = {
   size: number;
   mimeType: string;
   originalFilename?: string;
-  convertedFrom?: "heic";
+  convertedFrom?: "browser_image";
   width?: number;
   height?: number;
   takenAt?: string;

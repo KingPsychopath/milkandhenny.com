@@ -88,6 +88,18 @@ async function handlePOST(request: Request) {
     if (isHeifUploadLike(file)) {
       return Response.json({ error: HEIF_TRANSFER_UPLOAD_ERROR }, { status: 400 });
     }
+    if (file.convertedFrom !== undefined && file.convertedFrom !== "browser_image") {
+      return Response.json(
+        { error: "Unsupported browser image preparation metadata" },
+        { status: 400 },
+      );
+    }
+    if (file.convertedFrom === "browser_image" && !file.originalName) {
+      return Response.json(
+        { error: "Browser-prepared images must include the original filename" },
+        { status: 400 },
+      );
+    }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return Response.json(
         { error: "Each file must include a valid non-negative size" },

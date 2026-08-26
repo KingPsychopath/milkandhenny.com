@@ -101,6 +101,12 @@ async function prepare(
       return reject("Each file must have a safe filename");
     }
     if (isHeifUploadLike(file)) return reject(HEIF_TRANSFER_UPLOAD_ERROR);
+    if (file.convertedFrom !== undefined && file.convertedFrom !== "browser_image") {
+      return reject("Unsupported browser image preparation metadata");
+    }
+    if (file.convertedFrom === "browser_image" && !file.originalName) {
+      return reject("Browser-prepared images must include the original filename");
+    }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return reject("Each file must include a valid non-negative size");
     }

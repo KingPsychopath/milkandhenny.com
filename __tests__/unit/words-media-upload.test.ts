@@ -38,6 +38,7 @@ describe("words media upload helpers", () => {
 
   it("converts processable images to webp filenames", () => {
     expect(toR2Filename("Hero Image.JPG")).toBe("hero-image.webp");
+    expect(toR2Filename("Portrait.AVIF")).toBe("portrait.webp");
   });
 
   it("preserves the original extension for raw filenames when requested", () => {
