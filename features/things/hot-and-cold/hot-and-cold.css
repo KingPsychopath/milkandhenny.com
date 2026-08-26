@@ -125,6 +125,9 @@ main:has(.heat-result-share) .heat-source {
   margin: 0;
   padding: 0 0 11rem;
 }
+main:has(.heat-result-share) .heat-ledger {
+  padding-bottom: 7rem;
+}
 .heat-band {
   --heat-color: var(--stone-500);
   --heat-band-level: 10%;

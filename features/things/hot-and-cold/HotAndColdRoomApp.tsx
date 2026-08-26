@@ -426,7 +426,7 @@ export function HotAndColdRoomApp({
                 id="room-heat-result"
                 label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
                 guesses={snapshot.round.guesses}
-                outcome={snapshot.round.exact ? "found" : "round"}
+                outcome="round"
               />
             ) : null}
             {snapshot.canControl ? (

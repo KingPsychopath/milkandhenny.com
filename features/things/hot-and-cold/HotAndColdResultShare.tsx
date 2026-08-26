@@ -64,6 +64,12 @@ export function HotAndColdResultShare({
         ? "exact"
         : `#${result.bestRank.toLocaleString()}`;
   const heading = describeHotAndColdResult({ result, hintsUsed, outcome });
+  const outcomeLabel =
+    outcome === "gave-up"
+      ? "word revealed"
+      : outcome === "round"
+        ? "round complete"
+        : "you found the heat";
   useEffect(() => {
     const element = resultSection.current;
     if (!element) return;
@@ -93,7 +99,9 @@ export function HotAndColdResultShare({
     >
       <div className="heat-result-heading">
         <div className="heat-result-copy text-left">
-          <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">your trail</p>
+          <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">
+            {outcomeLabel}
+          </p>
           <h2 id={`${id}-title`} className="mt-2 font-serif text-4xl font-semibold">
             {heading}
           </h2>

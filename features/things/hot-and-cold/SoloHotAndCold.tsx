@@ -225,9 +225,6 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
         <HeatLedger guesses={ledger} newestId={newest} target={state.target} />
         {done ? (
           <section className="pb-24 text-center">
-            <p className="font-serif text-xl theme-muted">
-              {state.gaveUp ? "Tomorrow is another word." : "You found the heat."}
-            </p>
             <HotAndColdResultShare
               id="daily-heat-result"
               label={`daily #${puzzle}`}
