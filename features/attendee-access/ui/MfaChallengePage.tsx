@@ -54,9 +54,9 @@ export function MfaChallengePage({ returnTo }: { returnTo: string }) {
       </Link>
       <div className="my-auto py-14">
         <p className="font-mono text-micro theme-muted">one more step</p>
-        <h1 className="mt-3 font-serif text-5xl leading-tight">check it’s you</h1>
+        <h1 className="mt-3 font-serif text-5xl leading-tight">verify your sign-in</h1>
         <p className="mt-3 font-serif text-lg leading-relaxed theme-muted">
-          Enter the six-digit code from your authenticator app.
+          Your email is verified. Now enter the six-digit code from your authenticator app.
         </p>
 
         <form onSubmit={verifyTotp} className="mt-8">
@@ -117,10 +117,19 @@ export function MfaChallengePage({ returnTo }: { returnTo: string }) {
 
         <div className="mt-7 border-t theme-border pt-7">
           <p className="font-mono text-micro theme-muted">
-            A saved passkey is the safer way through this check.
+            A saved passkey can sign you in directly and is the safer option.
           </p>
           <PasskeySignIn returnTo={returnTo} conditional={false} onAuthenticated={complete} />
         </div>
+
+        <Link
+          to="/access"
+          search={{ returnTo }}
+          replace
+          className="mt-5 inline-flex min-h-11 items-center font-mono text-xs underline hover:opacity-60"
+        >
+          start sign-in again
+        </Link>
 
         {message ? (
           <p role="alert" className="mt-5 font-mono text-xs theme-muted">

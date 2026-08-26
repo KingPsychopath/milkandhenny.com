@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession, pendingMfaIsFresh } from "@/features/event-scoring/session.server";
 import {
   beginTotpEnrollment,
   disableTotp,
@@ -13,7 +13,7 @@ import {
 
 export const getMfaChallengeFn = createServerFn({ method: "GET" }).handler(async () => {
   const session = await getAttendeeSession();
-  return session?.pendingMfa
+  return session?.pendingMfa && pendingMfaIsFresh(session.pendingMfa)
     ? { required: true as const, returnTo: session.pendingMfa.returnTo }
     : { required: false as const, returnTo: "/my" };
 });

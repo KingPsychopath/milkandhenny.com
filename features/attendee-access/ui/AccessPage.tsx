@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useState } from "react";
+import { type FormEvent, type RefObject, useCallback, useRef, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { requestAttendeeAccessFn, verifyAttendeeAccessFn } from "../access.functions";
@@ -12,8 +12,10 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
   const { email, setEmail, remember } = useBrowserProfileForm();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sentTo, setSentTo] = useState("");
   const [message, setMessage] = useState(initialMessage);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
 
   const completeSignIn = useCallback(
     async (destination: string) => {
@@ -25,20 +27,29 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
     [navigate, router],
   );
 
-  async function requestEmail(event: FormEvent) {
-    event.preventDefault();
+  async function sendEmail() {
     setBusy(true);
     setMessage("");
     try {
       const result = await requestAttendeeAccessFn({ data: { email, returnTo } });
       if (!result.ok) throw new Error(result.error);
       remember({ email });
-      setSent(true);
+      setSentTo(email.trim());
+      setCode("");
+      requestAnimationFrame(() => codeInputRef.current?.focus());
     } catch (error) {
+      setSentTo("");
       setMessage(error instanceof Error ? error.message : "The email could not be sent");
     } finally {
       setBusy(false);
     }
+  }
+
+  function useDifferentEmail() {
+    setSentTo("");
+    setCode("");
+    setMessage("");
+    requestAnimationFrame(() => emailInputRef.current?.focus());
   }
 
   const verify = useCallback(
@@ -75,7 +86,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
           </p>
         </header>
 
-        <PasskeySignIn returnTo={returnTo} onAuthenticated={completeSignIn} />
+        <PasskeySignIn returnTo={returnTo} conditional={!sentTo} onAuthenticated={completeSignIn} />
 
         <div className="my-8 flex items-center gap-4" aria-hidden="true">
           <span className="h-px flex-1 bg-[var(--stone-200)]" />
@@ -83,90 +94,180 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
           <span className="h-px flex-1 bg-[var(--stone-200)]" />
         </div>
 
-        <form onSubmit={requestEmail}>
-          <label htmlFor="access-email" className="block font-mono text-xs">
-            email
-          </label>
-          <input
-            id="access-email"
-            name="email"
-            type="email"
-            inputMode="email"
-            // Conditional passkey mediation requires the WebAuthn autocomplete token.
-            // oxlint-disable-next-line jsx-a11y/autocomplete-valid
-            autoComplete="username webauthn"
-            autoCapitalize="none"
-            spellCheck={false}
-            required
-            value={email}
-            onChange={(event) => {
-              setSent(false);
-              setEmail(event.target.value);
-            }}
-            className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent px-1 font-mono text-base outline-none placeholder:theme-muted focus:border-foreground"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            aria-busy={busy}
-            className="mh-action mh-action--secondary mt-6 w-full justify-between disabled:opacity-45"
-          >
-            <span>{busy ? "sending…" : "send sign-in link"}</span>
-            <span aria-hidden="true" className="mh-action__cue">
-              →
-            </span>
-          </button>
-          {sent ? (
-            <p role="status" aria-live="polite" className="mt-3 font-mono text-xs theme-muted">
-              Email sent. Use the link or code within 15 minutes.
-            </p>
-          ) : null}
-        </form>
-
-        <details className="mt-6 border-t theme-border pt-1">
-          <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-60">
-            sign in with a code
-          </summary>
-          <form
-            className="pb-4 pt-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void verify({ email, code });
-            }}
-          >
-            <label htmlFor="access-code" className="block font-mono text-xs">
-              8-character code
-            </label>
-            <input
-              id="access-code"
-              name="code"
-              inputMode="text"
-              autoCapitalize="characters"
-              autoComplete="one-time-code"
-              required
-              minLength={8}
-              maxLength={8}
-              value={code}
-              onChange={(event) => setCode(event.target.value.toUpperCase())}
-              className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent px-1 font-mono text-lg tracking-widest outline-none focus:border-foreground"
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              aria-busy={busy}
-              className="mh-action mh-action--secondary mt-5 w-full disabled:opacity-45"
+        {sentTo ? (
+          <section aria-labelledby="email-sent-heading">
+            <h2 id="email-sent-heading" className="font-serif text-2xl">
+              check your email
+            </h2>
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-2 font-mono text-xs leading-relaxed theme-muted"
             >
-              {busy ? "signing in…" : "sign in with code"}
-            </button>
-          </form>
-        </details>
+              We sent both a secure link and an 8-character code to {sentTo}. Use either within 15
+              minutes.
+            </p>
+            <EmailCodeForm
+              email={sentTo}
+              code={code}
+              busy={busy}
+              inputRef={codeInputRef}
+              autoFocus
+              onCodeChange={setCode}
+              onSubmit={verify}
+            />
+            <p className="mt-4 font-mono text-micro leading-relaxed theme-muted">
+              Prefer the link? Open the same email and choose “continue securely.” We show a
+              confirmation page before signing you in.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3 border-t theme-border pt-4">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void sendEmail()}
+                className="mh-action mh-action--secondary"
+              >
+                send a fresh email
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={useDifferentEmail}
+                className="mh-action mh-action--quiet"
+              >
+                use a different email
+              </button>
+            </div>
+            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
+              If authenticator MFA is enabled, the next step asks for that six-digit code. An
+              authenticator code cannot sign in by itself.
+            </p>
+          </section>
+        ) : (
+          <>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendEmail();
+              }}
+            >
+              <label htmlFor="access-email" className="block font-mono text-xs">
+                email
+              </label>
+              <input
+                ref={emailInputRef}
+                id="access-email"
+                name="email"
+                type="email"
+                inputMode="email"
+                // Conditional passkey mediation requires the WebAuthn autocomplete token.
+                // oxlint-disable-next-line jsx-a11y/autocomplete-valid
+                autoComplete="username webauthn"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent px-1 font-mono text-base outline-none placeholder:theme-muted focus:border-foreground"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                aria-busy={busy}
+                className="mh-action mh-action--secondary mt-6 w-full justify-between disabled:opacity-45"
+              >
+                <span>{busy ? "sending…" : "send link and code"}</span>
+                <span aria-hidden="true" className="mh-action__cue">
+                  →
+                </span>
+              </button>
+            </form>
+
+            <details className="mt-6 border-t theme-border pt-1">
+              <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-60">
+                already have a sign-in code?
+              </summary>
+              <EmailCodeForm
+                email={email}
+                code={code}
+                busy={busy}
+                inputRef={codeInputRef}
+                onCodeChange={setCode}
+                onSubmit={verify}
+              />
+            </details>
+          </>
+        )}
 
         {message ? (
-          <p role="status" aria-live="polite" className="mt-5 font-mono text-xs theme-muted">
+          <p role="alert" className="mt-5 font-mono text-xs theme-muted">
             {message}
           </p>
         ) : null}
       </div>
     </main>
+  );
+}
+
+function EmailCodeForm({
+  email,
+  code,
+  busy,
+  inputRef,
+  autoFocus = false,
+  onCodeChange,
+  onSubmit,
+}: {
+  email: string;
+  code: string;
+  busy: boolean;
+  inputRef: RefObject<HTMLInputElement | null>;
+  autoFocus?: boolean;
+  onCodeChange: (code: string) => void;
+  onSubmit: (payload: Record<string, string>) => Promise<void>;
+}) {
+  return (
+    <form
+      className="pt-5"
+      onSubmit={(event: FormEvent) => {
+        event.preventDefault();
+        void onSubmit({ email, code });
+      }}
+    >
+      <label htmlFor="access-code" className="block font-mono text-xs">
+        8-character email code
+      </label>
+      <input
+        ref={inputRef}
+        id="access-code"
+        name="code"
+        inputMode="text"
+        autoCapitalize="characters"
+        autoComplete="one-time-code"
+        spellCheck={false}
+        required
+        minLength={8}
+        maxLength={8}
+        autoFocus={autoFocus}
+        value={code}
+        onChange={(event) =>
+          onCodeChange(
+            event.target.value
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "")
+              .slice(0, 8),
+          )
+        }
+        className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent px-1 font-mono text-lg tracking-widest outline-none focus:border-foreground"
+      />
+      <button
+        type="submit"
+        disabled={busy || code.length !== 8 || !email.trim()}
+        aria-busy={busy}
+        className="mh-action mt-5 w-full disabled:opacity-45"
+      >
+        {busy ? "signing in…" : "continue with email code"}
+      </button>
+    </form>
   );
 }

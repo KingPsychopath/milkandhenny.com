@@ -15,6 +15,7 @@ import QRCode from "qrcode";
 import {
   completeAttendeeMfaSession,
   getAttendeeSession,
+  pendingMfaIsFresh,
   revokeAttendeeSessionsForPerson,
   stepUpAttendeeSession,
 } from "@/features/event-scoring/session.server";
@@ -26,7 +27,6 @@ import { sendPersonSecurityNotice } from "./security-notifications.server";
 const TOTP_PERIOD_SECONDS = 30;
 const TOTP_DIGITS = 6;
 const TOTP_WINDOW = 1;
-const PENDING_MFA_LIFETIME_MS = 10 * 60 * 1_000;
 const MANAGEMENT_STEP_UP_MS = 10 * 60 * 1_000;
 const RATE_WINDOW_SECONDS = 15 * 60;
 const RATE_MAXIMUM = 10;
@@ -166,15 +166,6 @@ function otp(secret: string, label: string): TOTP {
     period: TOTP_PERIOD_SECONDS,
     secret: Secret.fromBase32(secret),
   });
-}
-
-function validPendingMfa(createdAt: string): boolean {
-  const timestamp = Date.parse(createdAt);
-  return (
-    Number.isFinite(timestamp) &&
-    timestamp <= Date.now() &&
-    Date.now() - timestamp <= PENDING_MFA_LIFETIME_MS
-  );
 }
 
 function fresh(value: string | undefined): boolean {
@@ -390,7 +381,7 @@ export async function finishTotpEnrollment(input: {
 export async function verifyPendingTotp(token: string): Promise<TotpResult<{ returnTo: string }>> {
   const session = await getAttendeeSession();
   const secretKey = authSecret();
-  if (!session?.pendingMfa || !secretKey || !validPendingMfa(session.pendingMfa.createdAt)) {
+  if (!session?.pendingMfa || !secretKey || !pendingMfaIsFresh(session.pendingMfa)) {
     return { ok: false, status: 401, error: "Start sign-in again" };
   }
   if (!(await reserveAttempt(session.id)))
@@ -446,7 +437,7 @@ export async function verifyPendingRecoveryCode(
 ): Promise<TotpResult<{ returnTo: string; recoveryCodesRemaining: number }>> {
   const session = await getAttendeeSession();
   const secretKey = authSecret();
-  if (!session?.pendingMfa || !secretKey || !validPendingMfa(session.pendingMfa.createdAt)) {
+  if (!session?.pendingMfa || !secretKey || !pendingMfaIsFresh(session.pendingMfa)) {
     return { ok: false, status: 401, error: "Start sign-in again" };
   }
   if (!(await reserveAttempt(session.id)))

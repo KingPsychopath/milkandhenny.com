@@ -14,6 +14,10 @@ vi.mock("@/features/attendee-access/security-notifications.server", () => ({
 }));
 vi.mock("@/features/event-scoring/session.server", () => ({
   getAttendeeSession: async () => sessionState.current,
+  pendingMfaIsFresh: (pending: { createdAt?: string } | undefined) => {
+    const createdAt = pending?.createdAt ? Date.parse(pending.createdAt) : Number.NaN;
+    return Number.isFinite(createdAt) && Date.now() - createdAt <= 10 * 60 * 1_000;
+  },
   completeAttendeeMfaSession: async (input: Record<string, unknown>) => {
     sessionState.completions.push(input);
     const pending = sessionState.current?.pendingMfa as { personId?: string } | undefined;
@@ -82,6 +86,16 @@ describeWithDatabase("TOTP authentication (postgres)", () => {
     );
     expect(stored[0]?.secret_ciphertext).toMatch(/^v1\./);
     expect(stored[0]?.secret_ciphertext).not.toContain(begun.value.secret);
+
+    sessionState.current = {
+      id: "totp-without-email-proof",
+      personId: PERSON,
+      authenticatedAt: new Date().toISOString(),
+    };
+    await expect(verifyPendingTotp(authenticator.generate())).resolves.toMatchObject({
+      ok: false,
+      status: 401,
+    });
 
     const pending = {
       id: "pending-totp-session",

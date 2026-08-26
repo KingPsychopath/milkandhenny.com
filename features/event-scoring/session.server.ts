@@ -65,6 +65,17 @@ export type PersonAttendeeSessionSummary = {
   authenticatedAt?: string;
 };
 
+export function pendingMfaIsFresh(
+  pendingMfa: AttendeeSession["pendingMfa"],
+  now = Date.now(),
+): boolean {
+  if (!pendingMfa) return false;
+  const createdAt = Date.parse(pendingMfa.createdAt);
+  return (
+    Number.isFinite(createdAt) && createdAt <= now && now - createdAt <= PENDING_MFA_LIFETIME_MS
+  );
+}
+
 const developmentSessions = new Map<string, AttendeeSession>();
 const developmentSessionLocks = new Map<string, Promise<void>>();
 
@@ -360,15 +371,7 @@ export async function completeAttendeeMfaSession(input: {
   totpId?: string;
 }): Promise<AttendeeSession | null> {
   const session = await getAttendeeSession();
-  if (!session?.pendingMfa) return null;
-  const pendingCreatedAt = Date.parse(session.pendingMfa.createdAt);
-  if (
-    !Number.isFinite(pendingCreatedAt) ||
-    pendingCreatedAt > Date.now() ||
-    Date.now() - pendingCreatedAt > PENDING_MFA_LIFETIME_MS
-  ) {
-    return null;
-  }
+  if (!session?.pendingMfa || !pendingMfaIsFresh(session.pendingMfa)) return null;
   const now = new Date().toISOString();
   return rotateSession(session, {
     personId: session.pendingMfa.personId,

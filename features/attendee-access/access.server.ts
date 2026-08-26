@@ -127,7 +127,7 @@ function accessEmail(input: {
     search: { challenge: input.challengeId, token: input.token },
   });
   const text = [
-    "Your milk & henny access link",
+    "Your milk & henny sign-in",
     "",
     `Continue: ${link}`,
     "",
@@ -139,7 +139,7 @@ function accessEmail(input: {
   ].join("\n");
   const html = renderBrandedEmail({
     origin: input.origin,
-    label: "your access link",
+    label: "your sign-in",
     title: "Pick up where you left off",
     contentHtml: `<p style="margin:0">Use this private, one-time link to see your tickets and scores on this device.</p><p style="margin:18px 0 0">Or enter <strong style="font:600 20px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em">${escapeEmailHtml(input.code)}</strong></p>`,
     action: { label: "continue securely", url: link },
@@ -227,7 +227,7 @@ export async function requestAttendeeAccess(input: {
     {
       channel: "access",
       to: email,
-      subject: "Your milk & henny access link",
+      subject: "Your milk & henny sign-in",
       text: rendered.text,
       html: rendered.html,
     },

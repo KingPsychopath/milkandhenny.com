@@ -3,6 +3,7 @@ import {
   browserSupportsWebAuthn,
   browserSupportsWebAuthnAutofill,
   startAuthentication,
+  WebAuthnAbortService,
 } from "@simplewebauthn/browser";
 
 import { beginPasskeyAuthenticationFn, finishPasskeyAuthenticationFn } from "../passkeys.functions";
@@ -53,8 +54,10 @@ export function PasskeySignIn({
     setSupported(available);
     if (!available || !conditional) return;
     let active = true;
+    let started = false;
     void browserSupportsWebAuthnAutofill().then(async (autofill) => {
       if (!active || !autofill) return;
+      started = true;
       try {
         await authenticate(true);
       } catch (error) {
@@ -71,6 +74,7 @@ export function PasskeySignIn({
     });
     return () => {
       active = false;
+      if (started) WebAuthnAbortService.cancelCeremony();
     };
   }, [authenticate, conditional]);
 
