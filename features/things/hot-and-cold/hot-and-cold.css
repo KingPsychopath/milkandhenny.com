@@ -1,6 +1,6 @@
 .hot-and-cold {
   --heat-ember: var(--things-amber);
-  --heat-frost: color-mix(in srgb, var(--foreground) 32%, transparent);
+  --heat-frost: var(--things-frost);
   background:
     radial-gradient(
       circle at 50% -8rem,
@@ -24,6 +24,8 @@
   );
 }
 .heat-source-flame {
+  --heat-color: var(--heat-frost);
+  --heat-level: 12%;
   position: relative;
   display: grid;
   place-items: center;
@@ -31,33 +33,61 @@
   height: 3.5rem;
   margin: auto;
   border-radius: 999px;
-  color: var(--heat-ember);
-  box-shadow: 0 0 3rem color-mix(in srgb, var(--heat-ember) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--heat-color) 32%, transparent);
+  color: var(--heat-color);
+  background: color-mix(in srgb, var(--background) 82%, transparent);
+  box-shadow: 0 0 3rem color-mix(in srgb, var(--heat-color) 28%, transparent);
   animation: heat-breathe 2.6s ease-in-out infinite;
 }
-.heat-source-flame:not([data-found])::before {
-  content: "";
-  width: 1.45rem;
-  height: 1.8rem;
-  border-radius: 70% 30% 64% 36%;
-  background: linear-gradient(
-    145deg,
-    color-mix(in srgb, var(--heat-ember) 54%, var(--background)),
-    var(--heat-ember)
-  );
-  transform: rotate(38deg);
-  box-shadow: 0 0 1.8rem color-mix(in srgb, var(--heat-ember) 48%, transparent);
+.heat-source-flame[data-band="cool"] {
+  --heat-level: 28%;
 }
-.heat-source-flame:not([data-found])::after {
+.heat-source-flame[data-band="warm"] {
+  --heat-color: color-mix(in srgb, var(--heat-ember) 46%, var(--foreground));
+  --heat-level: 48%;
+}
+.heat-source-flame[data-band="hot"] {
+  --heat-color: color-mix(in srgb, var(--heat-ember) 78%, var(--foreground));
+  --heat-level: 68%;
+}
+.heat-source-flame[data-band="burning"] {
+  --heat-color: var(--heat-ember);
+  --heat-level: 84%;
+}
+.heat-source-flame[data-band="found"] {
+  --heat-color: var(--heat-ember);
+  --heat-level: 100%;
+}
+.heat-source-flame > span {
+  position: relative;
+  width: 0.68rem;
+  height: 2rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+.heat-source-flame > span::before {
   content: "";
   position: absolute;
-  width: 0.55rem;
-  height: 0.8rem;
-  bottom: 0.9rem;
-  border-radius: 70% 30% 65% 35%;
+  inset: auto 0.13rem 0.13rem;
+  height: var(--heat-level);
+  max-height: calc(100% - 0.26rem);
+  border-radius: inherit;
+  background: currentColor;
+  box-shadow: 0 0 1rem currentColor;
+  transition: height 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.heat-source-flame > span::after {
+  content: "";
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  left: 50%;
+  bottom: -0.3rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
   background: var(--background);
-  transform: rotate(38deg);
-  opacity: 0.72;
+  box-shadow: inset 0 0 0 0.22rem currentColor;
+  transform: translateX(-50%);
 }
 .heat-source p {
   margin-top: 0.15rem;
@@ -72,6 +102,8 @@
   padding: 0 0 11rem;
 }
 .heat-band {
+  --heat-color: var(--stone-500);
+  --heat-level: 12%;
   display: flex;
   align-items: center;
   gap: 0.8rem;
@@ -81,11 +113,61 @@
   text-transform: uppercase;
   color: var(--stone-500);
 }
+.heat-band--frozen,
+.heat-band--cold,
+.heat-band--cool {
+  --heat-color: var(--heat-frost);
+}
+.heat-band--cold {
+  --heat-level: 22%;
+}
+.heat-band--cool {
+  --heat-level: 36%;
+}
+.heat-band--warm {
+  --heat-color: color-mix(in srgb, var(--heat-ember) 50%, var(--foreground));
+  --heat-level: 52%;
+}
+.heat-band--hot {
+  --heat-color: color-mix(in srgb, var(--heat-ember) 78%, var(--foreground));
+  --heat-level: 70%;
+}
+.heat-band--burning {
+  --heat-color: var(--heat-ember);
+  --heat-level: 86%;
+}
+.heat-band--found {
+  --heat-color: var(--heat-ember);
+  --heat-level: 100%;
+}
+.heat-band-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: end;
+  width: 0.45rem;
+  height: 0.85rem;
+  border: 1px solid var(--heat-color);
+  border-radius: 999px;
+  color: var(--heat-color);
+}
+.heat-band-mark > span {
+  width: 100%;
+  height: var(--heat-level);
+  border-radius: inherit;
+  background: currentColor;
+}
+.heat-band > span:nth-child(2) {
+  color: var(--heat-color);
+}
 .heat-band::after {
   content: "";
   height: 1px;
   flex: 1;
-  background: var(--stone-200);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--heat-color) 42%, transparent),
+    var(--stone-200)
+  );
 }
 .heat-word {
   position: relative;
@@ -145,10 +227,16 @@
     transparent
   );
 }
+.heat-word--warm .heat-word-text {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--heat-ember));
+}
+.heat-word--cool .heat-word-text {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--heat-frost));
+}
 .heat-word--cold .heat-word-text,
 .heat-word--frozen .heat-word-text {
-  color: color-mix(in srgb, var(--foreground) 58%, var(--background));
-  text-shadow: 0.04em 0.04em 0 var(--heat-frost);
+  color: color-mix(in srgb, var(--foreground) 44%, var(--heat-frost));
+  text-shadow: 0 0 1.5rem color-mix(in srgb, var(--heat-frost) 18%, transparent);
 }
 .heat-word--frozen .heat-word-effect {
   background: repeating-linear-gradient(
@@ -270,9 +358,27 @@
   color: var(--stone-500);
 }
 .heat-result-share {
-  margin: 2.5rem auto 0;
-  padding: 1.5rem 0;
-  border-top: 1px solid var(--stone-200);
+  margin: 1rem auto 0;
+  padding: 1.5rem 0 1.25rem;
+  border-block: 1px solid var(--stone-200);
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--heat-frost) 7%, transparent),
+    transparent 42%,
+    color-mix(in srgb, var(--heat-ember) 9%, transparent)
+  );
+}
+.heat-result-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.heat-result-heading > p {
+  padding-bottom: 0.3rem;
+  font: 500 0.62rem/1 var(--font-mono);
+  color: var(--stone-500);
+  white-space: nowrap;
 }
 .heat-share-trail {
   display: grid;
@@ -285,16 +391,29 @@
 }
 .heat-share-trail li:not(.heat-share-trail-empty) {
   display: grid;
+  grid-template-rows: 1fr auto;
   height: 3.6rem;
-  place-items: end stretch;
+  align-items: end;
   overflow: hidden;
   border-radius: 0.35rem;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
 }
 .heat-share-trail li span {
   display: block;
+  width: 100%;
   min-height: 18%;
   background: color-mix(in srgb, var(--foreground) 22%, transparent);
+}
+.heat-share-trail li small {
+  padding-top: 0.28rem;
+  font: 500 0.48rem/1 var(--font-mono);
+  color: var(--stone-500);
+  text-align: center;
+}
+.heat-share-trail li[data-band="frozen"] span,
+.heat-share-trail li[data-band="cold"] span,
+.heat-share-trail li[data-band="cool"] span {
+  background: color-mix(in srgb, var(--heat-frost) 62%, transparent);
 }
 .heat-share-trail li[data-band="cold"] span {
   min-height: 31%;
@@ -326,6 +445,141 @@
   place-items: center;
   font: 500 0.65rem/1 var(--font-mono);
   color: var(--stone-500);
+}
+.heat-result-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-block: 1px solid var(--stone-200);
+  text-align: left;
+}
+.heat-share-action {
+  display: flex;
+  min-height: 4rem;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  padding: 0 1.4rem 0 1.6rem;
+  border-radius: 999px;
+  background: var(--heat-ember);
+  color: var(--things-night);
+  font: 700 0.76rem/1 var(--font-mono);
+}
+.heat-share-action svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+.heat-share-dock {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 1.5rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+  background: linear-gradient(transparent, var(--background) 24%);
+}
+.heat-share-dock-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  width: min(100%, 40rem);
+  min-height: 4.5rem;
+  margin: auto;
+  padding: 0.55rem 0.55rem 0.55rem 1.2rem;
+  border: 1px solid var(--stone-300);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 94%, transparent);
+  box-shadow: 0 0.8rem 2.5rem color-mix(in srgb, var(--foreground) 10%, transparent);
+  backdrop-filter: blur(1rem);
+}
+.heat-share-dock-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+.heat-share-dock-summary ol {
+  display: flex;
+  height: 1.75rem;
+  align-items: end;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.heat-share-dock-summary li {
+  display: flex;
+  width: 0.32rem;
+  height: 100%;
+  align-items: end;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.heat-share-dock-summary li span {
+  width: 100%;
+  min-height: 18%;
+  border-radius: inherit;
+  background: var(--heat-frost);
+}
+.heat-share-dock-summary li[data-band="cold"] span {
+  min-height: 31%;
+}
+.heat-share-dock-summary li[data-band="cool"] span {
+  min-height: 43%;
+}
+.heat-share-dock-summary li[data-band="warm"] span {
+  min-height: 58%;
+  background: color-mix(in srgb, var(--heat-ember) 46%, var(--foreground));
+}
+.heat-share-dock-summary li[data-band="hot"] span {
+  min-height: 74%;
+  background: color-mix(in srgb, var(--heat-ember) 72%, var(--foreground));
+}
+.heat-share-dock-summary li[data-band="burning"] span {
+  min-height: 88%;
+  background: var(--heat-ember);
+}
+.heat-share-dock-summary li[data-band="found"] span {
+  min-height: 100%;
+  background: var(--heat-ember);
+  box-shadow: 0 0 0.8rem var(--heat-ember);
+}
+.heat-share-dock-summary p {
+  overflow: hidden;
+  font: 600 0.62rem/1.2 var(--font-mono);
+  color: var(--stone-500);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.heat-share-dock button {
+  display: flex;
+  min-width: 6.2rem;
+  min-height: 3.4rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  border-radius: 999px;
+  background: var(--heat-ember);
+  color: var(--things-night);
+  font: 700 0.68rem/1 var(--font-mono);
+}
+.heat-share-dock button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 .heat-composer {
   position: fixed;

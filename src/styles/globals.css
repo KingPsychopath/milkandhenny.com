@@ -139,6 +139,7 @@
   --selection-fg: oklch(0.45 0.134 47.6);
   --things-night: oklch(0.17 0.015 56.42);
   --things-amber: oklch(0.82 0.16 79);
+  --things-frost: oklch(0.58 0.075 225);
   --things-green: oklch(0.72 0.17 151);
   --things-stone: oklch(0.78 0.025 70.7);
   --things-cream: oklch(0.96 0.02 86.42);
@@ -185,6 +186,7 @@
   --prose-pre-fg: oklch(0.856 0.01 70.7);
   --selection-bg: oklch(0.28 0.075 47.6);
   --selection-fg: oklch(0.828 0.165 86.05);
+  --things-frost: oklch(0.76 0.075 225);
   --liars-dead: oklch(0.62 0.22 27);
   --liars-alive: oklch(0.74 0.18 152);
   --liars-house-wall: oklch(0.24 0.016 56.42);

@@ -3,7 +3,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
-import { HotAndColdResultShare } from "./HotAndColdResultShare";
+import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import {
   getDailyHotAndColdHintFn,
@@ -169,8 +169,13 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
-          <div className="heat-source-flame" data-found={done || undefined} aria-hidden="true">
-            {done ? "✦" : null}
+          <div
+            className="heat-source-flame"
+            data-band={done ? "found" : (hottest?.band ?? "frozen")}
+            data-found={done || undefined}
+            aria-hidden="true"
+          >
+            <span />
           </div>
           <p>
             {done
@@ -264,7 +269,13 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             </>
           }
         />
-      ) : null}
+      ) : (
+        <HotAndColdShareDock
+          label={`daily #${puzzle}`}
+          guesses={playerGuesses}
+          hintsUsed={state.hintsUsed}
+        />
+      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.fu
 import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
-import { HotAndColdResultShare } from "./HotAndColdResultShare";
+import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { useHotAndColdRoom } from "./useHotAndColdRoom";
 import type { HotAndColdAction, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
@@ -162,6 +162,10 @@ export function HotAndColdRoomApp({
     ...guess,
     mine: guess.playerId === credentials.playerId,
   }));
+  const hottest = guesses.reduce<(typeof guesses)[number] | null>(
+    (best, guess) => (!best || guess.rank < best.rank ? guess : best),
+    null,
+  );
   if (snapshot.phase === "lobby") {
     return (
       <div className="hot-and-cold min-h-svh">
@@ -388,8 +392,13 @@ export function HotAndColdRoomApp({
       </header>
       <main id="main" className="mx-auto max-w-2xl px-5">
         <div className="heat-source">
-          <div className="heat-source-flame" aria-hidden="true">
-            {snapshot.phase === "reveal" ? "✦" : "♨"}
+          <div
+            className="heat-source-flame"
+            data-band={snapshot.round?.exact ? "found" : (hottest?.band ?? "frozen")}
+            data-found={snapshot.phase === "reveal" || undefined}
+            aria-hidden="true"
+          >
+            <span />
           </div>
           <p>
             {snapshot.phase === "reveal"
@@ -405,7 +414,7 @@ export function HotAndColdRoomApp({
         </div>
         <HeatLedger guesses={guesses} newestId={newest} target={snapshot.round?.target} />
         {snapshot.phase === "reveal" ? (
-          <section className="pb-24 text-center">
+          <section className="pb-36 text-center">
             <h1 className="font-serif text-4xl font-semibold">
               {snapshot.round?.winnerIds
                 .map((id) => snapshot.players.find((player) => player.id === id)?.name)
@@ -462,6 +471,11 @@ export function HotAndColdRoomApp({
             }
           />
         </>
+      ) : snapshot.phase === "reveal" && snapshot.round ? (
+        <HotAndColdShareDock
+          label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
+          guesses={snapshot.round.guesses}
+        />
       ) : null}
     </div>
   );
