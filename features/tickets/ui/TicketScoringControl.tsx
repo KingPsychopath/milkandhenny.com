@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTicketForScoringFn } from "../ticket-session.functions";
 
 export type TicketMode = "scoring" | "view-only";
@@ -20,6 +20,9 @@ export function TicketScoringControl({
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => setHydrated(true), []);
 
   async function useForScoring() {
     setBusy(true);
@@ -46,7 +49,7 @@ export function TicketScoringControl({
         <>
           <button
             type="button"
-            disabled={busy}
+            disabled={!hydrated || busy}
             onClick={() => void useForScoring()}
             className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
           >

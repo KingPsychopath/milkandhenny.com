@@ -140,18 +140,6 @@ async function clickSessionAction(
   buttonName: string,
   expected: string,
 ) {
-  await expect
-    .poll(
-      async () => {
-        await page.getByRole("button", { name: buttonName }).click();
-        return (
-          (await page
-            .getByRole("status")
-            .textContent({ timeout: 250 })
-            .catch(() => "")) ?? ""
-        );
-      },
-      { timeout: 15_000 },
-    )
-    .toContain(expected);
+  await page.getByRole("button", { name: buttonName }).click();
+  await expect(page.getByRole("status")).toContainText(expected, { timeout: 15_000 });
 }
