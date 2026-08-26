@@ -3059,22 +3059,40 @@ const MIGRATIONS: Migration[] = [
   {
     id: "0062_uuidv7_people_and_passkeys",
     sql: `
-      -- There is no launched identity data. Replace the provisional text
-      -- person identifiers with native, time-ordered UUIDs before passkeys
-      -- make the identity boundary durable.
-      truncate event_people cascade;
+      -- Remap every provisional identifier inside the migration transaction.
+      -- Keeping the old-to-new maps until commit lets dependent rows move to
+      -- native UUIDs without deleting identities or unrelated business data.
+      lock table event_people, event_person_identifiers in access exclusive mode;
+
+      create temporary table person_uuid_map (
+        old_id text primary key,
+        new_id uuid not null unique
+      ) on commit drop;
+      insert into person_uuid_map (old_id,new_id)
+      select id, uuidv7() from event_people;
+
+      create temporary table identifier_uuid_map (
+        old_id text primary key,
+        new_id uuid not null unique
+      ) on commit drop;
+      insert into identifier_uuid_map (old_id,new_id)
+      select id, uuidv7() from event_person_identifiers;
 
       create temporary table identity_fk_rebuild (
         table_name text not null,
         constraint_name text not null,
         column_name text not null,
+        referenced_table text not null,
         definition text not null
       ) on commit drop;
 
-      insert into identity_fk_rebuild (table_name,constraint_name,column_name,definition)
+      insert into identity_fk_rebuild (
+        table_name,constraint_name,column_name,referenced_table,definition
+      )
       select constraint_row.conrelid::regclass::text,
              constraint_row.conname,
              attribute.attname,
+             constraint_row.confrelid::regclass::text,
              pg_get_constraintdef(constraint_row.oid)
         from pg_constraint constraint_row
         join lateral unnest(constraint_row.conkey) as constrained(attnum) on true
@@ -3088,26 +3106,83 @@ const MIGRATIONS: Migration[] = [
          );
 
       do $$
-      declare item record;
+      declare
+        item record;
+        map_table text;
+        has_unmapped boolean;
       begin
         for item in select distinct table_name,constraint_name from identity_fk_rebuild loop
           execute format('alter table %s drop constraint %I', item.table_name, item.constraint_name);
         end loop;
-        for item in select distinct table_name,column_name from identity_fk_rebuild loop
+
+        for item in
+          select distinct table_name,column_name,referenced_table from identity_fk_rebuild
+        loop
+          map_table := case item.referenced_table
+            when 'event_people' then 'person_uuid_map'
+            when 'event_person_identifiers' then 'identifier_uuid_map'
+          end;
+
+          if map_table is null then
+            raise exception
+              'UUIDv7 identity migration found an unsupported reference target: %',
+              item.referenced_table;
+          end if;
+
           execute format(
-            'alter table %s alter column %I type uuid using null::uuid',
+            'select exists (
+               select 1
+                 from %s as target
+                 left join %I as mapping on mapping.old_id = target.%I
+                where target.%I is not null and mapping.old_id is null
+             )',
             item.table_name,
+            map_table,
+            item.column_name,
+            item.column_name
+          ) into has_unmapped;
+
+          if has_unmapped then
+            raise exception
+              'UUIDv7 identity migration found an unmappable reference in %.%',
+              item.table_name,
+              item.column_name;
+          end if;
+
+          execute format(
+            'update %s as target
+                set %I = mapping.new_id::text
+               from %I as mapping
+              where target.%I = mapping.old_id',
+            item.table_name,
+            item.column_name,
+            map_table,
+            item.column_name
+          );
+          execute format(
+            'alter table %s alter column %I type uuid using %I::uuid',
+            item.table_name,
+            item.column_name,
             item.column_name
           );
         end loop;
       end;
       $$;
 
+      update event_person_identifiers as target
+         set id = mapping.new_id::text
+        from identifier_uuid_map as mapping
+       where target.id = mapping.old_id;
+      update event_people as target
+         set id = mapping.new_id::text
+        from person_uuid_map as mapping
+       where target.id = mapping.old_id;
+
       alter table event_person_identifiers
-        alter column id type uuid using uuidv7(),
+        alter column id type uuid using id::uuid,
         alter column id set default uuidv7();
       alter table event_people
-        alter column id type uuid using uuidv7(),
+        alter column id type uuid using id::uuid,
         alter column id set default uuidv7();
 
       do $$
