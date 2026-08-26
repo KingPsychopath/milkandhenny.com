@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTicketForScoringFn } from "../ticket-session.functions";
 
 export type TicketMode = "scoring" | "view-only";
 
@@ -24,13 +25,8 @@ export function TicketScoringControl({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/session`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "scoring" }),
-      });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Could not use this ticket for points");
+      const result = await useTicketForScoringFn({ data: { ticketId } });
+      if (!result.ok) throw new Error(result.error);
       setActive(true);
       setAnotherTicketActive(false);
       onModeChange?.("scoring");

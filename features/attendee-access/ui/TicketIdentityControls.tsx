@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { sendTicketOperationFn } from "@/features/attendee-operations/ticket-operations.functions";
 import type { AttendeeAccount, AttendeeTicketIdentity } from "../types";
+import { claimTicketIdentityFn } from "../ticket-identity.functions";
 
 export function TicketIdentityControls({
   ticketId,
@@ -29,11 +31,8 @@ export function TicketIdentityControls({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/identity`, {
-        method: "POST",
-      });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "This ticket could not be claimed");
+      const result = await claimTicketIdentityFn({ data: { ticketId } });
+      if (!result.ok) throw new Error(result.error);
       setMessage("This ticket is now saved to You across devices.");
       setIdentity((current) => ({
         ...current,
@@ -51,24 +50,21 @@ export function TicketIdentityControls({
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/attendee/ticket-operations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const result = await sendTicketOperationFn({
+      data: {
         action: identity.personallyClaimed ? "transfer" : "assign",
         ticketId,
         recipientEmail,
-      }),
+      },
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
     setMessage(
-      response.ok
+      result.ok
         ? identity.personallyClaimed
           ? "Transfer invitation sent. You keep the ticket until it is accepted."
           : "Assignment invitation sent. You can cancel it from You while it is pending."
-        : (body.error ?? "The invitation could not be sent"),
+        : result.error,
     );
-    if (response.ok) {
+    if (result.ok) {
       setRecipientEmail("");
       setShowSend(false);
     }

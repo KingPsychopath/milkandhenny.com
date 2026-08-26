@@ -3,6 +3,16 @@ import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { rememberBrowserProfile } from "@/lib/client/browser-profile";
+import {
+  cancelTicketOperationFn,
+  resendTicketOperationFn,
+} from "@/features/attendee-operations/ticket-operations.functions";
+import {
+  removeAttendeeEmailFn,
+  requestAttendeeAccessFn,
+  signOutAttendeeFn,
+  updateAttendeeNameFn,
+} from "../access.functions";
 import type { AttendeeAccount } from "../types";
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
@@ -57,18 +67,11 @@ export function MyAccountPage({
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/attendee/session", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string; name?: string };
-    setMessage(
-      response.ok ? "Preferred name updated." : (body.error ?? "Name could not be updated"),
-    );
-    if (response.ok && body.name && account) {
-      setAccount({ ...account, name: body.name });
-      rememberBrowserProfile({ name: body.name });
+    const result = await updateAttendeeNameFn({ data: { name } });
+    setMessage(result.ok ? "Preferred name updated." : result.error);
+    if (result.ok && result.value.name && account) {
+      setAccount({ ...account, name: result.value.name });
+      rememberBrowserProfile({ name: result.value.name });
     }
     setBusy(false);
   }
@@ -77,18 +80,11 @@ export function MyAccountPage({
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    const response = await fetch("/api/attendee/access", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: newEmail, purpose: "add-email", returnTo: "/my" }),
+    const result = await requestAttendeeAccessFn({
+      data: { email: newEmail, purpose: "add-email", returnTo: "/my" },
     });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (response.status === 403) setEmailStepUpRequired(true);
-    setMessage(
-      response.ok
-        ? "Check the new address and verify it within 15 minutes."
-        : (body.error ?? "That email could not be added"),
-    );
+    if (!result.ok && result.status === 403) setEmailStepUpRequired(true);
+    setMessage(result.ok ? "Check the new address and verify it within 15 minutes." : result.error);
     setBusy(false);
   }
 
@@ -97,13 +93,10 @@ export function MyAccountPage({
     setSigningOut(true);
     setMessage("");
     try {
-      const response = await fetch("/api/attendee/session", { method: "DELETE" });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? "Could not sign out");
-      }
+      await signOutAttendeeFn();
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
       router.clearCache();
+      await router.invalidate();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
@@ -131,17 +124,14 @@ export function MyAccountPage({
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/attendee/access", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ identifierId: email.id }),
-      });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      if (!response.ok) {
-        if (response.status === 403) setEmailStepUpRequired(true);
-        throw new Error(body.error ?? "The sign-in email could not be removed");
+      const result = await removeAttendeeEmailFn({ data: { identifierId: email.id } });
+      if (!result.ok) {
+        if (result.status === 403) setEmailStepUpRequired(true);
+        throw new Error(result.error);
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
+      router.clearCache();
+      await router.invalidate();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
       setBusy(false);
@@ -150,13 +140,8 @@ export function MyAccountPage({
 
   async function cancelOperation(kind: "assignment" | "transfer" | "return", operationId: string) {
     setBusy(true);
-    const response = await fetch("/api/attendee/ticket-operations", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind, operationId }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) setMessage(body.error ?? "The invitation could not be cancelled");
+    const result = await cancelTicketOperationFn({ data: { kind, operationId } });
+    if (!result.ok) setMessage(result.error);
     else {
       setMessage("Invitation cancelled.");
       setAccount((current) => {
@@ -183,27 +168,19 @@ export function MyAccountPage({
 
   async function resendOperation(kind: "assignment" | "transfer", operationId: string) {
     setBusy(true);
-    const response = await fetch("/api/attendee/ticket-operations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "resend", kind, operationId }),
-    });
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      expiresAt?: string;
-    };
-    if (!response.ok) setMessage(body.error ?? "The invitation could not be resent");
+    const result = await resendTicketOperationFn({ data: { kind, operationId } });
+    if (!result.ok) setMessage(result.error);
     else {
       setMessage("Invitation resent.");
       setAccount((current) => {
-        if (!current || !body.expiresAt) return current;
+        if (!current || !result.value.expiresAt) return current;
         const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
         return {
           ...current,
           ticketOperations: {
             ...current.ticketOperations,
             [key]: current.ticketOperations[key].map((item) =>
-              item.id === operationId ? { ...item, expiresAt: body.expiresAt! } : item,
+              item.id === operationId ? { ...item, expiresAt: result.value.expiresAt } : item,
             ),
           },
         };

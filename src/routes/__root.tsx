@@ -19,6 +19,7 @@ import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { ActiveRoomNotice } from "@/features/things/shared/ActiveRoomNotice";
 import { ClaimedScoreLinks } from "@/features/event-scoring/ui/ClaimedScoreLinks";
 import { AttendeeAccessLink } from "@/features/attendee-access/ui/AttendeeAccessLink";
+import { getAttendeeShellFn } from "@/features/attendee-access/access.functions";
 import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
@@ -32,6 +33,8 @@ const LostGuest404 = lazy(() =>
 );
 
 export const Route = createRootRoute({
+  loader: () => getAttendeeShellFn(),
+  staleTime: Infinity,
   head: () => {
     const seo = buildSeoHead({
       title: SITE_NAME,
@@ -60,6 +63,7 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const { authenticated } = Route.useLoaderData();
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
       recordDiagnosticAction("window.error", {
@@ -83,13 +87,16 @@ function RootComponent() {
     };
   }, []);
   return (
-    <RootDocument>
+    <RootDocument authenticated={authenticated}>
       <Outlet />
     </RootDocument>
   );
 }
 
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+function RootDocument({
+  authenticated = false,
+  children,
+}: Readonly<{ authenticated?: boolean; children: ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -110,7 +117,7 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
         <NavigationProgress />
         <OfflinePlatform />
         <WorkAccessReturnPrompt />
-        <AttendeeAccessLink />
+        <AttendeeAccessLink authenticated={authenticated} />
         <ClaimedScoreLinks />
         {children}
         <ActiveRoomNotice />

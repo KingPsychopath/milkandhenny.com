@@ -1,12 +1,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { requestAttendeeAccessFn, verifyAttendeeAccessFn } from "../access.functions";
 
 type AccessPageProps = { returnTo: string };
-
-async function responseBody(response: Response): Promise<{ error?: string; returnTo?: string }> {
-  return (await response.json().catch(() => ({}))) as { error?: string; returnTo?: string };
-}
 
 export function AccessPage({ returnTo }: AccessPageProps) {
   const navigate = useNavigate();
@@ -34,13 +31,8 @@ export function AccessPage({ returnTo }: AccessPageProps) {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/attendee/access", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, returnTo }),
-      });
-      const body = await responseBody(response);
-      if (!response.ok) throw new Error(body.error ?? "The email could not be sent");
+      const result = await requestAttendeeAccessFn({ data: { email, returnTo } });
+      if (!result.ok) throw new Error(result.error);
       remember({ email });
       setSent(true);
     } catch (error) {
@@ -55,16 +47,12 @@ export function AccessPage({ returnTo }: AccessPageProps) {
       setBusy(true);
       setMessage("");
       try {
-        const response = await fetch("/api/attendee/access", {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const body = await responseBody(response);
-        if (!response.ok) throw new Error(body.error ?? "That access code could not be verified");
+        const result = await verifyAttendeeAccessFn({ data: payload });
+        if (!result.ok) throw new Error(result.error);
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
         router.clearCache();
-        await navigate({ to: body.returnTo ?? returnTo, replace: true });
+        await router.invalidate();
+        await navigate({ to: result.value.returnTo ?? returnTo, replace: true });
       } catch (error) {
         setLinkVerificationFailed(true);
         setMessage(
