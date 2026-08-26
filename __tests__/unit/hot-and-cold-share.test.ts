@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildHotAndColdShareResult } from "../../features/things/hot-and-cold/hot-and-cold-share";
+import {
+  buildHotAndColdShareResult,
+  describeHotAndColdResult,
+} from "../../features/things/hot-and-cold/hot-and-cold-share";
 
 describe("hot and cold result sharing", () => {
   it("builds a chronological spoiler-free trail", () => {
@@ -21,6 +24,12 @@ describe("hot and cold result sharing", () => {
       "Hot & Cold · daily #12\nfrozen — cool — hot — found\n5 guesses\nClosest #400",
     );
     expect(result.text).not.toContain("secret");
+    expect(result.distribution).toEqual([
+      { zone: "frost", count: 2, intensity: 1 },
+      { zone: "cool", count: 1, intensity: 0.5 },
+      { zone: "warm", count: 0, intensity: 0 },
+      { zone: "hot", count: 1, intensity: 0.5 },
+    ]);
   });
 
   it("does not include fields that could reveal guessed words", () => {
@@ -32,5 +41,26 @@ describe("hot and cold result sharing", () => {
 
     expect(result.text).not.toContain(guess.word);
     expect(result.text).toContain("Exact on the first guess");
+  });
+
+  it("describes a near miss differently from a quick solve", () => {
+    const nearMiss = buildHotAndColdShareResult({
+      label: "daily #14",
+      guesses: [{ sequence: 1, rank: 24, band: "burning" }],
+    });
+    const quickSolve = buildHotAndColdShareResult({
+      label: "daily #15",
+      guesses: [
+        { sequence: 1, rank: 8_000, band: "cool" },
+        { sequence: 2, rank: 0, band: "found" },
+      ],
+    });
+
+    expect(describeHotAndColdResult({ result: nearMiss, hintsUsed: 0, outcome: "gave-up" })).toBe(
+      "left it burning.",
+    );
+    expect(describeHotAndColdResult({ result: quickSolve, hintsUsed: 0, outcome: "found" })).toBe(
+      "barely touched the tundra.",
+    );
   });
 });

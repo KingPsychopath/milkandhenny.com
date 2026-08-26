@@ -23,6 +23,9 @@
     transparent 4.75rem
   );
 }
+main:has(.heat-result-share) .heat-source {
+  position: relative;
+}
 .heat-source-flame {
   --heat-color: var(--heat-frost);
   position: relative;
@@ -352,6 +355,11 @@
   color: var(--stone-500);
 }
 .heat-result-share {
+  display: flex;
+  min-height: calc(100svh - 7rem);
+  scroll-margin-top: 6rem;
+  flex-direction: column;
+  justify-content: center;
   margin: 1rem auto 0;
   padding: 1.5rem 0 1.25rem;
   border-block: 1px solid var(--stone-200);
@@ -368,7 +376,7 @@
   justify-content: space-between;
   gap: 1rem;
 }
-.heat-result-heading > p {
+.heat-result-label {
   padding-bottom: 0.3rem;
   font: 500 0.62rem/1 var(--font-mono);
   color: var(--stone-500);
@@ -386,7 +394,7 @@
 .heat-share-trail li:not(.heat-share-trail-empty) {
   display: grid;
   grid-template-rows: 1fr auto;
-  height: 3.6rem;
+  height: 5.4rem;
   align-items: end;
   overflow: hidden;
   border-radius: 0.35rem;
@@ -395,8 +403,11 @@
 .heat-share-trail li span {
   display: block;
   width: 100%;
-  min-height: 18%;
-  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  height: calc(100% - 0.25rem);
+  background: var(--heat-frost);
+  transform: scaleY(var(--heat-share-intensity));
+  transform-origin: bottom;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-share-trail li small {
   padding-top: 0.28rem;
@@ -404,31 +415,13 @@
   color: var(--stone-500);
   text-align: center;
 }
-.heat-share-trail li[data-band="frozen"] span,
-.heat-share-trail li[data-band="cold"] span,
-.heat-share-trail li[data-band="cool"] span {
-  background: color-mix(in srgb, var(--heat-frost) 62%, transparent);
+.heat-share-trail li[data-zone="cool"] span {
+  background: color-mix(in srgb, var(--heat-frost) 60%, var(--foreground));
 }
-.heat-share-trail li[data-band="cold"] span {
-  min-height: 31%;
-}
-.heat-share-trail li[data-band="cool"] span {
-  min-height: 43%;
-}
-.heat-share-trail li[data-band="warm"] span {
-  min-height: 58%;
+.heat-share-trail li[data-zone="warm"] span {
   background: color-mix(in srgb, var(--heat-ember) 35%, transparent);
 }
-.heat-share-trail li[data-band="hot"] span {
-  min-height: 74%;
-  background: color-mix(in srgb, var(--heat-ember) 62%, transparent);
-}
-.heat-share-trail li[data-band="burning"] span {
-  min-height: 88%;
-  background: color-mix(in srgb, var(--heat-ember) 82%, transparent);
-}
-.heat-share-trail li[data-band="found"] span {
-  min-height: 100%;
+.heat-share-trail li[data-zone="hot"] span {
   background: var(--heat-ember);
   box-shadow: 0 0 1.4rem color-mix(in srgb, var(--heat-ember) 55%, transparent);
 }
@@ -482,7 +475,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1rem;
+  gap: 0.45rem;
   width: min(100%, 40rem);
   min-height: 4.5rem;
   margin: auto;
@@ -500,16 +493,23 @@
   gap: 0.8rem;
   min-width: 0;
 }
-.heat-share-dock-summary ol {
+.heat-share-dock-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 3.4rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  text-align: left;
+}
+.heat-share-dock-bars {
   display: flex;
   height: 1.75rem;
   align-items: end;
   gap: 0.2rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
-.heat-share-dock-summary li {
+.heat-share-dock-bar {
   display: flex;
   width: 0.32rem;
   height: 100%;
@@ -518,43 +518,43 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
-.heat-share-dock-summary li span {
+.heat-share-dock-bar i {
   width: 100%;
   min-height: 18%;
   border-radius: inherit;
   background: var(--heat-frost);
 }
-.heat-share-dock-summary li[data-band="cold"] span {
+.heat-share-dock-bar[data-band="cold"] i {
   min-height: 31%;
 }
-.heat-share-dock-summary li[data-band="cool"] span {
+.heat-share-dock-bar[data-band="cool"] i {
   min-height: 43%;
 }
-.heat-share-dock-summary li[data-band="warm"] span {
+.heat-share-dock-bar[data-band="warm"] i {
   min-height: 58%;
   background: color-mix(in srgb, var(--heat-ember) 46%, var(--foreground));
 }
-.heat-share-dock-summary li[data-band="hot"] span {
+.heat-share-dock-bar[data-band="hot"] i {
   min-height: 74%;
   background: color-mix(in srgb, var(--heat-ember) 72%, var(--foreground));
 }
-.heat-share-dock-summary li[data-band="burning"] span {
+.heat-share-dock-bar[data-band="burning"] i {
   min-height: 88%;
   background: var(--heat-ember);
 }
-.heat-share-dock-summary li[data-band="found"] span {
+.heat-share-dock-bar[data-band="found"] i {
   min-height: 100%;
   background: var(--heat-ember);
   box-shadow: 0 0 0.8rem var(--heat-ember);
 }
-.heat-share-dock-summary p {
+.heat-share-dock-counts {
   overflow: hidden;
   font: 600 0.62rem/1.2 var(--font-mono);
   color: var(--stone-500);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.heat-share-dock button {
+.heat-share-dock-action {
   display: flex;
   min-width: 6.2rem;
   min-height: 3.4rem;
@@ -566,7 +566,7 @@
   color: var(--things-night);
   font: 700 0.68rem/1 var(--font-mono);
 }
-.heat-share-dock button svg {
+.heat-share-dock-action svg {
   width: 1rem;
   height: 1rem;
   fill: none;
@@ -574,6 +574,42 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.7;
+}
+.heat-share-dock-pager {
+  display: grid;
+  width: 2rem;
+  min-height: 2.5rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  color: var(--stone-500);
+}
+.heat-share-page-dots {
+  display: flex;
+  gap: 0.2rem;
+}
+.heat-share-page-dots i {
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 50%;
+  background: var(--stone-300);
+}
+.heat-share-page-dots i[data-active] {
+  background: var(--foreground);
+}
+.heat-share-dock-pager svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.heat-share-dock-pager svg[data-up] {
+  transform: rotate(180deg);
 }
 .heat-composer {
   position: fixed;
@@ -710,7 +746,9 @@
     animation: none;
   }
   .heat-gauge-progress,
-  .heat-source-flame > span::before {
+  .heat-source-flame > span::before,
+  .heat-share-trail li span,
+  .heat-share-dock-pager svg {
     transition: none;
   }
   .heat-ledger-update {

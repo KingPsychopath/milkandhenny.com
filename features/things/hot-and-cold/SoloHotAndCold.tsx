@@ -229,9 +229,11 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
               {state.gaveUp ? "Tomorrow is another word." : "You found the heat."}
             </p>
             <HotAndColdResultShare
+              id="daily-heat-result"
               label={`daily #${puzzle}`}
               guesses={playerGuesses}
               hintsUsed={state.hintsUsed}
+              outcome={state.gaveUp ? "gave-up" : "found"}
             />
             <button
               type="button"
@@ -271,6 +273,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           label={`daily #${puzzle}`}
           guesses={playerGuesses}
           hintsUsed={state.hintsUsed}
+          resultId="daily-heat-result"
         />
       )}
     </div>

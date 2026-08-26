@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { shareOrCopy } from "@/lib/client/share";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
-import { buildHotAndColdShareResult, type HotAndColdShareGuess } from "./hot-and-cold-share";
+import {
+  buildHotAndColdShareResult,
+  describeHotAndColdResult,
+  type HotAndColdResultOutcome,
+  type HotAndColdShareGuess,
+} from "./hot-and-cold-share";
 
 type ShareStatus = "idle" | "shared" | "copied" | "failed";
 
@@ -33,13 +38,17 @@ function ShareIcon() {
 }
 
 export function HotAndColdResultShare({
+  id,
   label,
   guesses,
   hintsUsed = 0,
+  outcome = "found",
 }: {
+  id: string;
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
+  outcome?: HotAndColdResultOutcome;
 }) {
   const { nativeShare, result, share, status } = useHotAndColdResultShare(
     label,
@@ -52,34 +61,30 @@ export function HotAndColdResultShare({
       : result.bestRank === 0
         ? "exact"
         : `#${result.bestRank.toLocaleString()}`;
+  const heading = describeHotAndColdResult({ result, hintsUsed, outcome });
 
   return (
-    <section className="heat-result-share" aria-labelledby="heat-result-share-title">
+    <section id={id} className="heat-result-share" aria-labelledby={`${id}-title`}>
       <div className="heat-result-heading">
-        <div className="text-left">
+        <div className="heat-result-copy text-left">
           <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">your trail</p>
-          <h2 id="heat-result-share-title" className="mt-2 font-serif text-4xl font-semibold">
-            from frost to fire.
+          <h2 id={`${id}-title`} className="mt-2 font-serif text-4xl font-semibold">
+            {heading}
           </h2>
         </div>
-        <p>{label}</p>
+        <p className="heat-result-label">{label}</p>
       </div>
 
-      <ol className="heat-share-trail" aria-label="Chronological heat milestones">
-        {result.trail.length ? (
-          result.trail.map((guess, index) => (
-            <li
-              key={`${guess.sequence}:${guess.rank}`}
-              data-band={guess.band}
-              aria-label={`Milestone ${index + 1}: ${guess.band}, rank ${guess.rank}`}
-            >
-              <span aria-hidden="true" />
-              <small>{guess.band}</small>
-            </li>
-          ))
-        ) : (
-          <li className="heat-share-trail-empty">no guesses</li>
-        )}
+      <ol className="heat-share-trail" aria-label="Distribution of guesses by temperature">
+        {result.distribution.map(({ zone, count, intensity }) => (
+          <li key={zone} data-zone={zone} aria-label={`${zone}: ${count} guesses`}>
+            <span
+              style={{ "--heat-share-intensity": intensity } as CSSProperties}
+              aria-hidden="true"
+            />
+            <small>{zone}</small>
+          </li>
+        ))}
       </ol>
 
       <dl className="heat-result-stats">
@@ -124,11 +129,15 @@ export function HotAndColdShareDock({
   label,
   guesses,
   hintsUsed = 0,
+  resultId,
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
+  resultId: string;
 }) {
+  const [showingResult, setShowingResult] = useState(false);
+  const scrollAnimation = useRef<number | null>(null);
   const { nativeShare, result, share, status } = useHotAndColdResultShare(
     label,
     guesses,
@@ -144,25 +153,85 @@ export function HotAndColdShareDock({
           : nativeShare
             ? "share"
             : "copy";
+  useEffect(() => {
+    const resultElement = document.getElementById(resultId);
+    if (!resultElement) return;
+    const observer = new IntersectionObserver(([entry]) => setShowingResult(entry.isIntersecting), {
+      threshold: 0.55,
+    });
+    observer.observe(resultElement);
+    return () => observer.disconnect();
+  }, [resultId]);
+  useEffect(
+    () => () => {
+      if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
+    },
+    [],
+  );
+
+  const jumpPage = () => {
+    const target = document.getElementById(showingResult ? "main" : resultId);
+    if (!target) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const targetY = showingResult
+      ? 0
+      : target.getBoundingClientRect().top + window.scrollY - 6 * 16;
+    if (reducedMotion) {
+      window.scrollTo({ top: targetY });
+      return;
+    }
+    if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    const startedAt = performance.now();
+    const animate = (now: number) => {
+      const elapsed = Math.min(1, (now - startedAt) / 820);
+      const spring = elapsed === 1 ? 1 : 1 - Math.exp(-8 * elapsed) * Math.cos(9 * elapsed);
+      window.scrollTo({ top: startY + distance * spring });
+      if (elapsed < 1) scrollAnimation.current = requestAnimationFrame(animate);
+      else scrollAnimation.current = null;
+    };
+    scrollAnimation.current = requestAnimationFrame(animate);
+  };
 
   return (
     <aside className="heat-share-dock" aria-label="Share your result">
       <div className="heat-share-dock-inner">
-        <div className="heat-share-dock-summary">
-          <ol aria-label="Your heat journey">
-            {result.trail.map((guess) => (
-              <li key={`${guess.sequence}:${guess.rank}`} data-band={guess.band}>
-                <span />
-              </li>
-            ))}
-          </ol>
-          <p>
-            {result.guessCount} guess{result.guessCount === 1 ? "" : "es"}
-            <span aria-hidden="true"> · </span>
-            {hintsUsed} hint{hintsUsed === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button type="button" onClick={() => void share()}>
+        <button
+          type="button"
+          className="heat-share-dock-nav"
+          aria-label={showingResult ? "Back to your guesses" : "See your result"}
+          onClick={jumpPage}
+        >
+          <span className="heat-share-dock-summary">
+            <span className="heat-share-dock-bars" aria-hidden="true">
+              {result.trail.map((guess) => (
+                <span
+                  className="heat-share-dock-bar"
+                  key={`${guess.sequence}:${guess.rank}`}
+                  data-band={guess.band}
+                >
+                  <i />
+                </span>
+              ))}
+            </span>
+            <span className="heat-share-dock-counts">
+              {result.guessCount} guess{result.guessCount === 1 ? "" : "es"}
+              <span aria-hidden="true"> · </span>
+              {hintsUsed} hint{hintsUsed === 1 ? "" : "s"}
+            </span>
+          </span>
+          <span className="heat-share-dock-pager" aria-hidden="true">
+            <span className="heat-share-page-dots">
+              <i data-active={!showingResult || undefined} />
+              <i data-active={showingResult || undefined} />
+            </span>
+            <svg viewBox="0 0 16 16" data-up={showingResult || undefined}>
+              <path d="m4 6 4 4 4-4" />
+            </svg>
+          </span>
+        </button>
+        <button type="button" className="heat-share-dock-action" onClick={() => void share()}>
           <span>{actionLabel}</span>
           <ShareIcon />
         </button>

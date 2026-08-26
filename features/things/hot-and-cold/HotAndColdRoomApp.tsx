@@ -423,8 +423,10 @@ export function HotAndColdRoomApp({
             </p>
             {snapshot.round ? (
               <HotAndColdResultShare
+                id="room-heat-result"
                 label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
                 guesses={snapshot.round.guesses}
+                outcome={snapshot.round.exact ? "found" : "round"}
               />
             ) : null}
             {snapshot.canControl ? (
@@ -472,6 +474,7 @@ export function HotAndColdRoomApp({
         <HotAndColdShareDock
           label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
           guesses={snapshot.round.guesses}
+          resultId="room-heat-result"
         />
       ) : null}
     </div>
