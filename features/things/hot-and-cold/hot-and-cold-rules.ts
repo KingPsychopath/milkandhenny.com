@@ -32,6 +32,25 @@ export function orderGuesses<T extends { rank: number; sequence: number }>(guess
   );
 }
 
+export function heatStreaks(
+  guesses: ReadonlyArray<{ rank: number; sequence: number; hint?: boolean }>,
+) {
+  let current = 0;
+  let longest = 0;
+
+  for (const guess of [...guesses].sort((left, right) => left.sequence - right.sequence)) {
+    if (guess.hint || guess.rank === 0) continue;
+    if (guess.rank < 5_000) {
+      current += 1;
+      longest = Math.max(longest, current);
+    } else {
+      current = 0;
+    }
+  }
+
+  return { current, longest };
+}
+
 export function roundWinnerIds(
   guesses: ReadonlyArray<{ playerId: string; rank: number }>,
   eligiblePlayerIds: readonly string[],

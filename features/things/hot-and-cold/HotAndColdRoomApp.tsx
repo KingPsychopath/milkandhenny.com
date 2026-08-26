@@ -9,6 +9,7 @@ import { GiveUpControl } from "../shared/GiveUpControl";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
+import { heatStreaks } from "./hot-and-cold-rules";
 import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
@@ -167,6 +168,7 @@ export function HotAndColdRoomApp({
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
   );
+  const streak = heatStreaks(guesses);
   if (snapshot.phase === "lobby") {
     return (
       <div className="hot-and-cold min-h-svh">
@@ -396,6 +398,8 @@ export function HotAndColdRoomApp({
           <HeatGauge
             band={snapshot.round?.exact ? "found" : (hottest?.band ?? "frozen")}
             rank={snapshot.round?.exact ? 0 : (hottest?.rank ?? null)}
+            streak={streak.current}
+            solved={Boolean(snapshot.round?.exact)}
           />
           <p>
             {snapshot.phase === "reveal"

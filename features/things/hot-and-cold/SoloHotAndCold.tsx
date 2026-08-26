@@ -6,6 +6,7 @@ import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
+import { heatStreaks } from "./hot-and-cold-rules";
 import {
   getDailyHotAndColdHintFn,
   revealDailyHotAndColdFn,
@@ -147,6 +148,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   };
   const done = Boolean(state.target);
   const playerGuesses = state.guesses.filter(({ hint }) => !hint);
+  const streak = heatStreaks(state.guesses);
   const hottest = ledger.reduce<(typeof ledger)[number] | null>(
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
@@ -173,6 +175,8 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           <HeatGauge
             band={done ? "found" : (hottest?.band ?? "frozen")}
             rank={done ? 0 : (hottest?.rank ?? null)}
+            streak={streak.current}
+            solved={done && !state.gaveUp}
           />
           <p>
             {done

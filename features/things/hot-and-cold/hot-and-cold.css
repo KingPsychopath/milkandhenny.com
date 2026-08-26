@@ -57,6 +57,54 @@ main:has(.heat-result-share) .heat-source {
   --heat-color: var(--heat-red);
   box-shadow: 0 0 3.4rem color-mix(in srgb, var(--heat-red) 42%, transparent);
 }
+.heat-source-flame::before,
+.heat-source-flame::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  right: 0.28rem;
+  top: -0.25rem;
+  width: 0.42rem;
+  height: 0.72rem;
+  border-radius: 70% 30% 68% 32%;
+  background: currentColor;
+  box-shadow: 0 0 0.8rem color-mix(in srgb, var(--heat-color) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(0.28rem) rotate(38deg) scale(0.45);
+  transform-origin: 50% 100%;
+  transition:
+    opacity 0.45s ease,
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.heat-source-flame::after {
+  right: -0.02rem;
+  top: 0.12rem;
+  width: 0.3rem;
+  height: 0.5rem;
+  transform: translateY(0.2rem) rotate(52deg) scale(0.4);
+}
+.heat-source-flame[data-streak="glowing"]::before {
+  opacity: 0.28;
+  transform: rotate(38deg) scale(0.8);
+}
+.heat-source-flame[data-streak="lit"]::before,
+.heat-source-flame[data-streak="blazing"]::before {
+  opacity: 0.58;
+  transform: rotate(38deg) scale(1);
+  animation: heat-streak-flicker 1.8s ease-in-out infinite;
+}
+.heat-source-flame[data-streak="blazing"]::before {
+  opacity: 0.72;
+}
+.heat-source-flame[data-streak="blazing"]::after {
+  opacity: 0.46;
+  transform: rotate(52deg) scale(1);
+  animation: heat-streak-flicker-small 1.55s 0.2s ease-in-out infinite;
+}
+.heat-source-flame[data-solved]::before {
+  animation: heat-solve-flare 0.78s cubic-bezier(0.16, 1, 0.3, 1);
+}
 .heat-source-flame > svg {
   position: absolute;
   inset: 0;
@@ -520,6 +568,24 @@ main:has(.heat-result-share) .heat-ledger {
   border-block: 1px solid var(--stone-200);
   text-align: left;
 }
+.heat-result-streak {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: -0.2rem 0 1rem;
+  font: 600 0.6rem/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--stone-500);
+}
+.heat-result-streak i {
+  width: 0.38rem;
+  height: 0.58rem;
+  border-radius: 70% 30% 68% 32%;
+  background: var(--heat-red);
+  box-shadow: 0 0 0.6rem color-mix(in srgb, var(--heat-red) 52%, transparent);
+  transform: rotate(38deg);
+}
 .heat-share-action {
   display: flex;
   min-height: 4rem;
@@ -805,6 +871,31 @@ main:has(.heat-result-share) .heat-ledger {
     transform: translateY(-0.12rem) scale(1.06);
   }
 }
+@keyframes heat-streak-flicker {
+  50% {
+    opacity: 0.42;
+    transform: translateY(-0.08rem) rotate(34deg) scale(1.08, 0.92);
+  }
+}
+@keyframes heat-streak-flicker-small {
+  50% {
+    opacity: 0.3;
+    transform: translateY(-0.06rem) rotate(58deg) scale(0.86, 1.08);
+  }
+}
+@keyframes heat-solve-flare {
+  0% {
+    opacity: 0;
+    transform: translateY(0.35rem) rotate(38deg) scale(0.25);
+  }
+  42% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.42rem) rotate(32deg) scale(1.45);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .heat-source-flame,
   .heat-word[data-newest],
@@ -814,6 +905,8 @@ main:has(.heat-result-share) .heat-ledger {
     animation: none;
   }
   .heat-source-flame,
+  .heat-source-flame::before,
+  .heat-source-flame::after,
   .heat-gauge-progress,
   .heat-source-flame > span,
   .heat-source-flame > span::before,

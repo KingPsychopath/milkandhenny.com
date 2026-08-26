@@ -44,6 +44,22 @@ describe("hot and cold result sharing", () => {
     expect(result.text).toBe("Hot & Cold · daily #16\n🔹 → 🔥 → 💡\n3 guesses · 🧭🧭\nClosest #80");
   });
 
+  it("shares a qualifying heat streak without replacing the guess trail", () => {
+    const result = buildHotAndColdShareResult({
+      label: "daily #17",
+      guesses: [
+        { sequence: 1, rank: 4_000, band: "warm" },
+        { sequence: 2, rank: 400, band: "hot" },
+        { sequence: 3, rank: 40, band: "burning" },
+        { sequence: 4, rank: 0, band: "found" },
+      ],
+    });
+
+    expect(result.longestHeatStreak).toBe(3);
+    expect(result.text).toContain("4 guesses · 🔥×3");
+    expect(result.text).toContain("☀️ → 🔥 → ❤️‍🔥 → 💡");
+  });
+
   it("does not include fields that could reveal guessed words", () => {
     const guess = { sequence: 1, rank: 0, band: "found" as const, word: "volcano" };
     const result = buildHotAndColdShareResult({
@@ -68,11 +84,29 @@ describe("hot and cold result sharing", () => {
       ],
     });
 
-    expect(describeHotAndColdResult({ result: nearMiss, hintsUsed: 0, outcome: "gave-up" })).toBe(
+    const nearMissHeading = describeHotAndColdResult({
+      result: nearMiss,
+      hintsUsed: 0,
+      outcome: "gave-up",
+    });
+    const quickSolveHeading = describeHotAndColdResult({
+      result: quickSolve,
+      hintsUsed: 0,
+      outcome: "found",
+    });
+
+    expect([
       "left it burning.",
-    );
-    expect(describeHotAndColdResult({ result: quickSolve, hintsUsed: 0, outcome: "found" })).toBe(
+      "walked away from the flame.",
+      "almost too hot to leave.",
+    ]).toContain(nearMissHeading);
+    expect([
       "barely touched the tundra.",
+      "frost never stood a chance.",
+      "straight through the cold.",
+    ]).toContain(quickSolveHeading);
+    expect(describeHotAndColdResult({ result: quickSolve, hintsUsed: 0, outcome: "found" })).toBe(
+      quickSolveHeading,
     );
   });
 });

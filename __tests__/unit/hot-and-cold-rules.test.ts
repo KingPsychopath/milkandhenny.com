@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   heatBand,
+  heatStreaks,
   orderGuesses,
   roundWinnerIds,
 } from "@/features/things/hot-and-cold/hot-and-cold-rules";
@@ -38,6 +39,20 @@ describe("Hot and Cold rules", () => {
         ["ada", "bea", "cy"],
       ),
     ).toEqual(["ada", "bea"]);
+  });
+
+  it("counts consecutive warm guesses while hints and the answer stay neutral", () => {
+    expect(
+      heatStreaks([
+        { rank: 900, sequence: 2 },
+        { rank: 6_000, sequence: 1 },
+        { rank: 300, sequence: 3, hint: true },
+        { rank: 80, sequence: 4 },
+        { rank: 0, sequence: 5 },
+        { rank: 8_000, sequence: 6 },
+        { rank: 4_000, sequence: 7 },
+      ]),
+    ).toEqual({ current: 1, longest: 2 });
   });
 
   it("does not repeat a daily target within one complete deck cycle", () => {

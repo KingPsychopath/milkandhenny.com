@@ -1,4 +1,4 @@
-import type { HeatBand } from "./hot-and-cold-rules";
+import { heatStreaks, type HeatBand } from "./hot-and-cold-rules";
 
 export interface HotAndColdShareGuess {
   rank: number;
@@ -21,6 +21,7 @@ export interface HotAndColdShareResult {
   guessCount: number;
   bestRank: number | null;
   coldestRank: number | null;
+  longestHeatStreak: number;
   distribution: HeatDistribution[];
 }
 
@@ -89,24 +90,85 @@ export function describeHotAndColdResult({
   const approachCount = result.distribution.reduce((total, item) => total + item.count, 0);
   const frostShare = approachCount ? countFor("frost") / approachCount : 0;
   const hotShare = approachCount ? countFor("hot") / approachCount : 0;
+  const seed = result.trail.reduce(
+    (value, guess) => (Math.imul(value ^ guess.rank, 16_777_619) ^ guess.sequence) >>> 0,
+    (result.guessCount * 31 + hintsUsed * 17 + outcome.length) >>> 0,
+  );
+  const pick = (phrases: readonly string[]) => phrases[seed % phrases.length];
 
   if (outcome === "gave-up") {
-    if (result.bestRank !== null && result.bestRank < 50) return "left it burning.";
-    if (result.bestRank !== null && result.bestRank < 500) return "close enough to glow.";
-    return "the trail stayed cold.";
+    if (result.bestRank !== null && result.bestRank < 50)
+      return pick(["left it burning.", "walked away from the flame.", "almost too hot to leave."]);
+    if (result.bestRank !== null && result.bestRank < 500)
+      return pick([
+        "close enough to glow.",
+        "stopped just short of the fire.",
+        "the answer was warming up.",
+      ]);
+    return pick([
+      "the trail stayed cold.",
+      "winter won this round.",
+      "never quite escaped the frost.",
+    ]);
   }
 
   if (outcome === "round") {
-    if (result.bestRank !== null && result.bestRank < 50) return "the room caught fire.";
-    return "heat moved through the room.";
+    if (result.bestRank !== null && result.bestRank < 50)
+      return pick([
+        "the room caught fire.",
+        "everyone felt the heat.",
+        "the room found its spark.",
+      ]);
+    return pick([
+      "heat moved through the room.",
+      "the room followed the temperature.",
+      "a shared trail through the cold.",
+    ]);
   }
 
-  if (result.guessCount <= 3 && hintsUsed === 0) return "barely touched the tundra.";
-  if (result.guessCount <= 6 && hintsUsed === 0) return "a quick thaw.";
-  if (hintsUsed >= 2) return "a guided climb to the heat.";
-  if (frostShare >= 0.6) return "the long way out of the tundra.";
-  if (hotShare >= 0.5) return "you lived near the flame.";
-  return "from frost to fire.";
+  if (result.guessCount <= 3 && hintsUsed === 0)
+    return pick([
+      "barely touched the tundra.",
+      "frost never stood a chance.",
+      "straight through the cold.",
+    ]);
+  if (result.longestHeatStreak >= 3)
+    return pick([
+      "caught a hot streak.",
+      "the guesses started glowing.",
+      "once warm, never looked back.",
+    ]);
+  if (result.guessCount <= 6 && hintsUsed === 0)
+    return pick(["a quick thaw.", "found the warmth fast.", "a short walk to the fire."]);
+  if (hintsUsed >= 2)
+    return pick([
+      "a guided climb to the heat.",
+      "followed the compass to the flame.",
+      "directions, then ignition.",
+    ]);
+  if (hintsUsed === 1)
+    return pick([
+      "one nudge lit the way.",
+      "a small clue, then warmth.",
+      "one compass point toward the fire.",
+    ]);
+  if (frostShare >= 0.6)
+    return pick([
+      "the long way out of the tundra.",
+      "winter held on for a while.",
+      "spent some time below zero.",
+    ]);
+  if (hotShare >= 0.5)
+    return pick([
+      "you lived near the flame.",
+      "kept circling the fire.",
+      "the trail stayed glowing.",
+    ]);
+  return pick([
+    "from frost to fire.",
+    "every guess raised the temperature.",
+    "cold start, warm finish.",
+  ]);
 }
 
 export function buildHotAndColdShareResult({
@@ -127,6 +189,7 @@ export function buildHotAndColdShareResult({
       ? 0
       : null;
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
+  const longestHeatStreak = heatStreaks(guesses).longest;
   const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
   const closest =
     bestRank === null
@@ -137,7 +200,11 @@ export function buildHotAndColdShareResult({
   const trailSummary = trail.length
     ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ")
     : "—";
-  const outcomeSummary = [guessLabel, hintsUsed > 0 ? "🧭".repeat(hintsUsed) : null]
+  const outcomeSummary = [
+    guessLabel,
+    hintsUsed > 0 ? "🧭".repeat(hintsUsed) : null,
+    longestHeatStreak >= 3 ? `🔥×${longestHeatStreak}` : null,
+  ]
     .filter((part): part is string => part !== null)
     .join(" · ");
 
@@ -147,6 +214,7 @@ export function buildHotAndColdShareResult({
     guessCount: guesses.length,
     bestRank,
     coldestRank,
+    longestHeatStreak,
     distribution: buildHeatDistribution(guesses),
   };
 }

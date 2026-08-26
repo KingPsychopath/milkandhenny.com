@@ -126,6 +126,13 @@ export function HotAndColdResultShare({
         ))}
       </ol>
 
+      {result.longestHeatStreak >= 3 ? (
+        <p className="heat-result-streak">
+          <i aria-hidden="true" />
+          best heat streak · {result.longestHeatStreak} guesses
+        </p>
+      ) : null}
+
       <dl className="heat-result-stats">
         <div className="py-4">
           <dt className="font-mono text-micro uppercase tracking-[.12em] theme-muted">guesses</dt>

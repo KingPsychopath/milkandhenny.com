@@ -8,8 +8,20 @@ function heatProgress(rank: number | null) {
   return Math.min(0.96, Math.max(0.06, progress));
 }
 
-export function HeatGauge({ band, rank }: { band: HeatBand; rank: number | null }) {
+export function HeatGauge({
+  band,
+  rank,
+  streak = 0,
+  solved = false,
+}: {
+  band: HeatBand;
+  rank: number | null;
+  streak?: number;
+  solved?: boolean;
+}) {
   const progress = heatProgress(rank);
+  const streakLevel =
+    streak >= 6 ? "blazing" : streak >= 4 ? "lit" : streak >= 3 ? "glowing" : undefined;
   const style = {
     "--heat-offset": 100 - progress * 100,
     "--heat-scale": progress,
@@ -18,7 +30,14 @@ export function HeatGauge({ band, rank }: { band: HeatBand; rank: number | null 
   } as CSSProperties;
 
   return (
-    <div className="heat-source-flame" data-band={band} style={style} aria-hidden="true">
+    <div
+      className="heat-source-flame"
+      data-band={band}
+      data-streak={streakLevel}
+      data-solved={solved || undefined}
+      style={style}
+      aria-hidden="true"
+    >
       <svg viewBox="0 0 48 48">
         <circle className="heat-gauge-track" cx="24" cy="24" r="21" pathLength="100" />
         <circle className="heat-gauge-progress" cx="24" cy="24" r="21" pathLength="100" />
