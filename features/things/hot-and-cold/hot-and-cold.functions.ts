@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { recordPersonGame } from "@/features/person-games/history.server";
+import { log } from "@/lib/platform/logger.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -225,8 +226,9 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
   });
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" }).handler(async () => {
   const puzzle = hotAndColdPuzzleNumber();
-  const personId = await currentPersonId();
-  if (personId)
+  void (async () => {
+    const personId = await currentPersonId();
+    if (!personId) return;
     await recordPersonGame({
       personId,
       game: "hot-and-cold",
@@ -236,6 +238,12 @@ export const revealDailyHotAndColdFn = createServerFn({ method: "POST" }).handle
       outcome: "revealed",
       event: { key: "reveal", kind: "reveal" },
     });
+  })().catch((error) =>
+    log.warn("things.hot-and-cold", "Could not record the daily reveal", {
+      puzzle,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
   return { puzzle, target: dailyHotAndColdTarget() };
 });
 export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })

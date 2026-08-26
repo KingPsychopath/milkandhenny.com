@@ -4,6 +4,7 @@ export interface GameActionDialogProps {
   eyebrow: string;
   title: string;
   description: string;
+  error?: string | null;
   confirmLabel: string;
   cancelLabel?: string;
   pending?: boolean;
@@ -17,6 +18,7 @@ export function GameActionDialog({
   eyebrow,
   title,
   description,
+  error,
   confirmLabel,
   cancelLabel = "cancel",
   pending = false,
@@ -37,6 +39,12 @@ export function GameActionDialog({
       tone={tone}
       onCancel={onCancel}
       onConfirm={onConfirm}
-    />
+    >
+      {error ? (
+        <p role="alert" className="text-center font-mono text-xs text-[var(--things-amber)]">
+          {error}
+        </p>
+      ) : null}
+    </ActionDialog>
   );
 }

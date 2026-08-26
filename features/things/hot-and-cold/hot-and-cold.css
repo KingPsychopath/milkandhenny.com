@@ -210,15 +210,45 @@
   border-block: 1px solid var(--stone-200);
 }
 .heat-explainer h2 {
-  font: 600 0.68rem/1 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 600 1.45rem/1.15 var(--font-serif);
 }
 .heat-explainer p {
   max-width: 36rem;
   margin-top: 0.65rem;
   font: 0.9rem/1.55 var(--font-serif);
   color: var(--stone-500);
+}
+.heat-explainer .heat-example-label {
+  margin-top: 1.1rem;
+  font: 600 0.62rem/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.heat-examples {
+  margin-top: 0.45rem;
+  border-top: 1px solid var(--stone-200);
+}
+.heat-examples div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--stone-200);
+}
+.heat-examples dt {
+  font: 500 1rem/1.2 var(--font-serif);
+}
+.heat-examples dd {
+  font: 500 0.62rem/1.2 var(--font-mono);
+  color: var(--stone-500);
+}
+.heat-examples strong {
+  margin-right: 0.45rem;
+  color: var(--foreground);
+}
+.heat-explainer .heat-guide-note {
+  font-size: 0.78rem;
 }
 .heat-target {
   display: grid;

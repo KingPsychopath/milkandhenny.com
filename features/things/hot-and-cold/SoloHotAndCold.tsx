@@ -159,13 +159,12 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
         <span>daily #{puzzle}</span>
         <button
           type="button"
-          className="grid size-11 place-items-center justify-self-end rounded-full font-mono text-xs theme-faint"
-          aria-label="How heat works"
+          className="min-h-11 justify-self-end font-mono text-micro underline decoration-transparent underline-offset-4 transition-opacity hover:opacity-60 hover:decoration-current"
           aria-expanded={showHow}
           aria-controls="how-heat-works"
           onClick={() => setShowHow((open) => !open)}
         >
-          ?
+          {showHow ? "close guide" : "how to play"}
         </button>
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
@@ -184,16 +183,40 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           </p>
         </div>
         {showHow ? (
-          <section id="how-heat-works" className="heat-explainer" aria-label="How heat works">
-            <h2>how does a word get hot?</h2>
+          <section
+            id="how-heat-works"
+            className="heat-explainer"
+            aria-labelledby="heat-guide-title"
+          >
+            <h2 id="heat-guide-title">find the secret word.</h2>
             <p>
-              Hot words live near the secret in language. They can mean something similar, belong to
-              the same group, form a familiar pair, or even be opposites. Lower ranks are hotter;
-              zero is the exact word.
+              Guess any word you think connects to the secret. Every accepted word gets a rank
+              against the dictionary: lower is closer, and 0 is the answer.
             </p>
-            <p>
-              We rank a fixed list of common dictionary words before the game. Names are not
-              accepted, and normal forms such as “dogs” resolve to “dog”.
+            <p className="heat-example-label">if the secret were car</p>
+            <dl className="heat-examples">
+              <div>
+                <dt>truck</dt>
+                <dd>
+                  <strong>#12</strong> very close
+                </dd>
+              </div>
+              <div>
+                <dt>tire</dt>
+                <dd>
+                  <strong>#344</strong> close
+                </dd>
+              </div>
+              <div>
+                <dt>banana</dt>
+                <dd>
+                  <strong>#45,333</strong> far away
+                </dd>
+              </div>
+            </dl>
+            <p className="heat-guide-note">
+              Connections can be meanings, categories, familiar pairs, or opposites. Names are not
+              accepted; common forms such as “dogs” become “dog”.
             </p>
           </section>
         ) : null}
@@ -235,6 +258,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
                 tone="dark"
                 title="Reveal today’s word?"
                 description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
+                errorMessage="Couldn’t reveal the word. Try again."
                 onGiveUp={giveUp}
               />
             </>

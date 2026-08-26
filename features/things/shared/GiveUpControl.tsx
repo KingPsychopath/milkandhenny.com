@@ -7,6 +7,7 @@ interface GiveUpControlProps {
   disabled?: boolean;
   className?: string;
   title?: string;
+  errorMessage?: string;
   onGiveUp: () => Promise<boolean> | boolean;
 }
 
@@ -17,15 +18,20 @@ export function GiveUpControl({
   disabled = false,
   className,
   title = "Give up?",
+  errorMessage = "Couldn’t give up. Try again.",
   onGiveUp,
 }: GiveUpControlProps) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const confirm = async () => {
+    setError(null);
     setPending(true);
     try {
       if (await onGiveUp()) setOpen(false);
+    } catch {
+      setError(errorMessage);
     } finally {
       setPending(false);
     }
@@ -37,7 +43,10 @@ export function GiveUpControl({
         type="button"
         className={className}
         disabled={disabled || pending}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setError(null);
+          setOpen(true);
+        }}
       >
         give up
       </button>
@@ -47,12 +56,16 @@ export function GiveUpControl({
           eyebrow="give up"
           title={title}
           description={description}
+          error={error}
           cancelLabel="keep playing"
           confirmLabel="give up"
           pending={pending}
           pendingLabel="giving up…"
           onCancel={() => {
-            if (!pending) setOpen(false);
+            if (!pending) {
+              setError(null);
+              setOpen(false);
+            }
           }}
           onConfirm={() => void confirm()}
         />
