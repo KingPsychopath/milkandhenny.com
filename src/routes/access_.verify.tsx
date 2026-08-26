@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { createFileRoute, Link, redirect, useNavigate, useRouter } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 
 import {
   inspectAttendeeAccessLinkFn,
@@ -11,32 +11,12 @@ import { buildSeoHead } from "@/lib/shared/seo";
 
 type AccessVerificationSearch = {
   returnTo: string;
-  challenge?: string;
-  token?: string;
 };
 
 export const Route = createFileRoute("/access_/verify")({
   validateSearch: (search: Record<string, unknown>): AccessVerificationSearch => ({
     returnTo: safeReturnTo(search.returnTo),
-    challenge: typeof search.challenge === "string" ? search.challenge : undefined,
-    token: typeof search.token === "string" ? search.token : undefined,
   }),
-  loaderDeps: ({ search }) => search,
-  loader: async ({ deps }) => {
-    const result = await inspectAttendeeAccessLinkFn({
-      data: { challengeId: deps.challenge, token: deps.token },
-    });
-    if (!result.available) {
-      throw redirect({
-        to: "/access",
-        search: { returnTo: deps.returnTo, issue: result.issue ?? "invalid" },
-        replace: true,
-      });
-    }
-    return { available: true as const };
-  },
-  staleTime: 0,
-  gcTime: 0,
   preload: false,
   head: () =>
     buildSeoHead({
@@ -53,21 +33,65 @@ function AccessVerificationPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = Route.useSearch();
-  const [hydrated, setHydrated] = useState(false);
+  const credential = useRef<{ challengeId: string; token: string } | null>(null);
+  const inspectionStarted = useRef(false);
+  const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  useEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    if (inspectionStarted.current) return;
+    inspectionStarted.current = true;
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const challengeId = fragment.get("challenge");
+    const token = fragment.get("token");
+
+    // Fragments never reach the server. Remove the bearer credential from browser history before
+    // sending it to the inspection endpoint or presenting the deliberate confirmation action.
+    window.history.replaceState(null, "", "/access/verify");
+    if (!challengeId || !token) {
+      void navigate({
+        to: "/access",
+        search: { returnTo: search.returnTo, issue: "invalid" },
+        replace: true,
+      });
+      return;
+    }
+    credential.current = { challengeId, token };
+    let cancelled = false;
+    void inspectAttendeeAccessLinkFn({ data: credential.current })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.available) {
+          setAvailable(true);
+          return;
+        }
+        credential.current = null;
+        void navigate({
+          to: "/access",
+          search: { returnTo: search.returnTo, issue: result.issue ?? "invalid" },
+          replace: true,
+        });
+      })
+      .catch(() => {
+        if (!cancelled)
+          setMessage("Couldn’t check this link. Open it from the email again to retry.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, search.returnTo]);
 
   async function confirm() {
+    if (!credential.current) return;
     setBusy(true);
     setMessage("");
     try {
       const result = await verifyAttendeeAccessFn({
-        data: { challengeId: search.challenge, token: search.token },
+        data: credential.current,
       });
       if (!result.ok) throw new Error(result.error);
-      window.history.replaceState(null, "", "/access/verify");
+      credential.current = null;
       router.clearCache();
       await router.invalidate();
       await navigate({ to: result.value.returnTo ?? search.returnTo, replace: true });
@@ -86,11 +110,13 @@ function AccessVerificationPage() {
         <p className="font-mono text-micro theme-muted">private access</p>
         <h1 className="mt-3 font-serif text-5xl leading-tight">continue signing in</h1>
         <p className="mt-3 max-w-sm font-serif text-lg leading-relaxed theme-muted">
-          This link is valid and has not been used. Continue only if you requested it.
+          {available
+            ? "This link is valid and has not been used. Continue only if you requested it."
+            : "Checking this private link…"}
         </p>
         <button
           type="button"
-          disabled={!hydrated || busy}
+          disabled={!available || busy}
           aria-busy={busy}
           onClick={() => void confirm()}
           className="mh-action mt-8 w-full disabled:opacity-45"

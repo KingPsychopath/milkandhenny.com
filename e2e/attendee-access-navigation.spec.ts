@@ -39,12 +39,13 @@ test("an emailed access link requires deliberate confirmation before redemption"
 
   try {
     await page.goto(
-      `/access/verify?returnTo=%2Fmy&challenge=${encodeURIComponent(challengeId)}&token=${encodeURIComponent(token)}`,
+      `/access/verify?returnTo=%2Fmy#challenge=${encodeURIComponent(challengeId)}&token=${encodeURIComponent(token)}`,
     );
 
     await expect(page.getByRole("heading", { name: "continue signing in" })).toBeVisible();
     const continueButton = page.getByRole("button", { name: "continue securely" });
     await expect(continueButton).toBeEnabled();
+    await expect(page).toHaveURL(/\/access\/verify$/);
     await continueButton.click();
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByRole("heading", { name: "sign in" })).toHaveCount(0);

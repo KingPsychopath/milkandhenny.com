@@ -124,7 +124,7 @@ function accessEmail(input: {
   code: string;
 }) {
   const link = buildAppUrl(input.origin, "/access/verify", {
-    search: { challenge: input.challengeId, token: input.token },
+    fragment: { challenge: input.challengeId, token: input.token },
   });
   const text = [
     "Your milk & henny sign-in",
