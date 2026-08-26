@@ -126,6 +126,7 @@ main:has(.heat-result-share) .heat-source {
   padding: 0 0 11rem;
 }
 main:has(.heat-result-share) .heat-ledger {
+  min-height: calc(100svh - 8rem);
   padding-bottom: 7rem;
 }
 .heat-band {
