@@ -47,6 +47,12 @@ export type AttendeeTicketOperation = {
   expiresAt: string;
 };
 
+export type AttendeeTicketIdentity = {
+  account: { name: string | null } | null;
+  personallyClaimed: boolean;
+  anotherClaimedTicketName?: string;
+};
+
 export function safeReturnTo(value: unknown): string {
   if (typeof value !== "string") return "/my";
   const trimmed = value.trim();

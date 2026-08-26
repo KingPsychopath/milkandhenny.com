@@ -25,6 +25,7 @@ import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScoreSyncStatus } from "./ScoreSyncStatus";
 import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
 import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
+import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
 
 /**
  * The ticket itself.
@@ -52,6 +53,8 @@ export function TicketPage({
   preview = false,
   previewIdentityControls,
   embedded = false,
+  attendeeIdentity,
+  initialTicketPointSelection,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -68,6 +71,12 @@ export function TicketPage({
   /** Production identity UI supplied with synthetic state by the admin preview. */
   previewIdentityControls?: ReactNode;
   embedded?: boolean;
+  attendeeIdentity?: AttendeeTicketIdentity;
+  initialTicketPointSelection?: {
+    mode: TicketMode;
+    active: boolean;
+    eventHasActive: boolean;
+  };
   score?: {
     participantId: string;
     publicAlias: string;
@@ -88,7 +97,13 @@ export function TicketPage({
   };
 }) {
   const [confirmedScore, setConfirmedScore] = useState(score?.points);
-  const [ticketMode, setTicketMode] = useState<TicketMode | null>(null);
+  const [ticketMode, setTicketMode] = useState<TicketMode | null>(
+    initialTicketPointSelection
+      ? initialTicketPointSelection.mode === "scoring" && initialTicketPointSelection.active
+        ? "scoring"
+        : "view-only"
+      : null,
+  );
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
   const invalid = ticket.status !== "valid";
@@ -424,7 +439,13 @@ export function TicketPage({
             <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
               {confirmedScore ?? score.points} points
             </p>
-            {!preview && <TicketScoringControl ticketId={ticket.id} onModeChange={setTicketMode} />}
+            {!preview && initialTicketPointSelection ? (
+              <TicketScoringControl
+                ticketId={ticket.id}
+                initialSelection={initialTicketPointSelection}
+                onModeChange={setTicketMode}
+              />
+            ) : null}
             {!preview && ticketMode === "scoring" && (
               <ScoreNotificationNotice ticketId={ticket.id} />
             )}
@@ -532,7 +553,11 @@ export function TicketPage({
         {preview ? (
           previewIdentityControls
         ) : (
-          <TicketIdentityControls ticketId={ticket.id} canManageOrder={canManageOrder} />
+          <TicketIdentityControls
+            ticketId={ticket.id}
+            canManageOrder={canManageOrder}
+            initialIdentity={attendeeIdentity ?? { account: null, personallyClaimed: false }}
+          />
         )}
 
         {/* A way to reach a human, on the page they will actually have open.

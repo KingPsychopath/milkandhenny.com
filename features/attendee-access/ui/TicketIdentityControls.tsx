@@ -1,17 +1,18 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
-import type { AttendeeAccount } from "../types";
+import type { AttendeeAccount, AttendeeTicketIdentity } from "../types";
 
 export function TicketIdentityControls({
   ticketId,
   canManageOrder,
+  initialIdentity,
 }: {
   ticketId: string;
   canManageOrder: boolean;
+  initialIdentity: AttendeeTicketIdentity;
 }) {
-  const [account, setAccount] = useState<AttendeeAccount | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [identity, setIdentity] = useState(initialIdentity);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [inAppBrowser, setInAppBrowser] = useState(false);
@@ -22,24 +23,7 @@ export function TicketIdentityControls({
     setInAppBrowser(
       /FBAN|FBAV|Instagram|Line\/|LinkedInApp|TikTok|Snapchat|Twitter/i.test(navigator.userAgent),
     );
-    void fetch("/api/attendee/session", { headers: { accept: "application/json" } })
-      .then(async (response) =>
-        response.ok ? ((await response.json()) as { account?: AttendeeAccount | null }) : null,
-      )
-      .then((body) => setAccount(body?.account ?? null))
-      .finally(() => setLoaded(true));
   }, []);
-
-  const personallyClaimed = account?.tickets.some(
-    (ticket) => ticket.id === ticketId && ticket.personallyClaimed,
-  );
-  const currentTicket = account?.tickets.find((ticket) => ticket.id === ticketId);
-  const anotherClaimedTicket = account?.tickets.find(
-    (ticket) =>
-      ticket.id !== ticketId &&
-      ticket.personallyClaimed &&
-      ticket.eventSlug === currentTicket?.eventSlug,
-  );
 
   async function claim() {
     setBusy(true);
@@ -51,18 +35,11 @@ export function TicketIdentityControls({
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "This ticket could not be claimed");
       setMessage("This ticket is now saved to You across devices.");
-      setAccount(
-        account
-          ? {
-              ...account,
-              tickets: account.tickets.some((ticket) => ticket.id === ticketId)
-                ? account.tickets.map((ticket) =>
-                    ticket.id === ticketId ? { ...ticket, personallyClaimed: true } : ticket,
-                  )
-                : account.tickets,
-            }
-          : null,
-      );
+      setIdentity((current) => ({
+        ...current,
+        personallyClaimed: true,
+        anotherClaimedTicketName: undefined,
+      }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "This ticket could not be claimed");
     } finally {
@@ -78,7 +55,7 @@ export function TicketIdentityControls({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        action: personallyClaimed ? "transfer" : "assign",
+        action: identity.personallyClaimed ? "transfer" : "assign",
         ticketId,
         recipientEmail,
       }),
@@ -86,7 +63,7 @@ export function TicketIdentityControls({
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     setMessage(
       response.ok
-        ? personallyClaimed
+        ? identity.personallyClaimed
           ? "Transfer invitation sent. You keep the ticket until it is accepted."
           : "Assignment invitation sent. You can cancel it from You while it is pending."
         : (body.error ?? "The invitation could not be sent"),
@@ -98,13 +75,12 @@ export function TicketIdentityControls({
     setBusy(false);
   }
 
-  if (!loaded) return null;
   return (
     <TicketIdentityControlsView
       ticketId={ticketId}
-      account={account}
-      personallyClaimed={Boolean(personallyClaimed)}
-      anotherClaimedTicketName={anotherClaimedTicket?.holderName}
+      account={identity.account}
+      personallyClaimed={identity.personallyClaimed}
+      anotherClaimedTicketName={identity.anotherClaimedTicketName}
       canManageOrder={canManageOrder}
       busy={busy}
       message={message}

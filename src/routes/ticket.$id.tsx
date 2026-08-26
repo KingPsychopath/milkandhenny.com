@@ -42,6 +42,8 @@ function TicketRoute() {
       hasDiscoveries={data.hasDiscoveries}
       score={data.score}
       preview={data.preview}
+      attendeeIdentity={data.attendeeIdentity}
+      initialTicketPointSelection={data.ticketPointSelection}
     />
   );
 }

@@ -20,7 +20,7 @@ import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
 import { personGameHistory } from "@/features/person-games/history.server";
-import { safeReturnTo, type AttendeeAccount } from "./types";
+import { safeReturnTo, type AttendeeAccount, type AttendeeTicketIdentity } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
 const RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
@@ -829,6 +829,40 @@ export async function currentAttendeeAccountView(): Promise<{
 export async function currentAttendeeAccountStatus(): Promise<boolean> {
   const session = await getAttendeeSession();
   return session?.personId ? attendeeAccountExists(session.personId) : false;
+}
+
+export async function currentAttendeeTicketIdentity(
+  ticketId: string,
+  eventSlug: string,
+): Promise<AttendeeTicketIdentity> {
+  const session = await getAttendeeSession();
+  if (!session?.personId) {
+    return { account: null, personallyClaimed: false };
+  }
+
+  const [person, claimedTickets] = await Promise.all([
+    queryOne<{ canonical_name: string | null }>(
+      "select canonical_name from event_people where id = $1",
+      [session.personId],
+    ),
+    query<{ id: string; holder_name: string }>(
+      `select t.id,t.holder_name
+         from event_participants p
+         join tickets t on t.id = p.ticket_id
+        where p.person_id = $1 and p.event_slug = $2 and p.status = 'active'
+        order by p.created_at asc,p.id asc`,
+      [session.personId, eventSlug],
+    ),
+  ]);
+  if (!person) return { account: null, personallyClaimed: false };
+
+  const personallyClaimed = claimedTickets.some((ticket) => ticket.id === ticketId);
+  const anotherClaimedTicket = claimedTickets.find((ticket) => ticket.id !== ticketId);
+  return {
+    account: { name: person.canonical_name },
+    personallyClaimed,
+    ...(anotherClaimedTicket ? { anotherClaimedTicketName: anotherClaimedTicket.holder_name } : {}),
+  };
 }
 
 export async function cleanupExpiredAccessChallenges(): Promise<{ deleted: number }> {

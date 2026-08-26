@@ -4,8 +4,16 @@ import { getRequest } from "@tanstack/react-start/server";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { queryOne } from "@/lib/platform/postgres.server";
-import { getAttendeeSession, openAttendeeTicket } from "@/features/event-scoring/session.server";
-import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
+import {
+  getAttendeeSession,
+  openAttendeeTicket,
+  ticketPointSelection,
+} from "@/features/event-scoring/session.server";
+import {
+  currentAttendeeTicketIdentity,
+  managedOrderIdsForPerson,
+} from "@/features/attendee-access/access.server";
+import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
 import { personalScore } from "@/features/event-scoring/scoring.server";
 import { listDiscoveries } from "@/features/event-scoring/discoveries.server";
 import { findSettings, privateOrderScore } from "@/features/event-scoring/store.server";
@@ -44,6 +52,8 @@ export type TicketPageResult =
       album: EventAlbumView;
       hasDiscoveries: boolean;
       preview?: true;
+      attendeeIdentity?: AttendeeTicketIdentity;
+      ticketPointSelection?: Awaited<ReturnType<typeof ticketPointSelection>>;
       score?: {
         participantId: string;
         publicAlias: string;
@@ -156,6 +166,20 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       }
     }
 
+    const [attendeeIdentity, pointSelection] = data.preview
+      ? [undefined, undefined]
+      : await Promise.all([
+          currentAttendeeTicketIdentity(ticket.id, event.slug).catch(() => ({
+            account: null,
+            personallyClaimed: false,
+          })),
+          ticketPointSelection(ticket.id).catch(() => ({
+            mode: "view-only" as const,
+            active: false,
+            eventHasActive: false,
+          })),
+        ]);
+
     return {
       found: true,
       ticket: {
@@ -191,6 +215,8 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       album,
       hasDiscoveries: discoveries.some((discovery) => discovery.status === "live"),
       preview: data.preview ? true : undefined,
+      attendeeIdentity,
+      ticketPointSelection: pointSelection,
       score: scoreResult?.ok
         ? {
             participantId: scoreResult.value.participant.id,
