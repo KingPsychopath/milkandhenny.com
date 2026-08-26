@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { BASE_URL, SITE_BRAND } from "@/lib/shared/config";
+import { PUBLIC_DISCOVERY_CACHE_CONTROL } from "@/lib/shared/media-cache";
 
 export const Route = createFileRoute("/feed.xml")({
   server: {
@@ -51,7 +52,7 @@ export const Route = createFileRoute("/feed.xml")({
         return new Response(feed.trim(), {
           headers: {
             "Content-Type": "application/xml; charset=utf-8",
-            "Cache-Control": "s-maxage=3600, stale-while-revalidate=3600",
+            "Cache-Control": PUBLIC_DISCOVERY_CACHE_CONTROL,
           },
         });
       },

@@ -7,6 +7,7 @@ import { getPitchOperationalStatus } from "@/features/things/pitches/operational
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
+import { PUBLIC_DISCOVERY_CACHE_CONTROL } from "@/lib/shared/media-cache";
 import { absoluteUrl } from "@/lib/shared/seo";
 
 type SitemapImage = {
@@ -274,7 +275,7 @@ export const Route = createFileRoute("/sitemap.xml")({
         return new Response(sitemap, {
           headers: {
             "Content-Type": "application/xml; charset=utf-8",
-            "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=3600",
+            "Cache-Control": PUBLIC_DISCOVERY_CACHE_CONTROL,
           },
         });
       },

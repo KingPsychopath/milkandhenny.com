@@ -2,7 +2,11 @@ import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/r
 import { ATTENDEE_SESSION_COOKIE_NAME } from "@/features/event-scoring/session-cookie";
 import { getCookie } from "@/lib/http/cookies";
 import { BASE_URL } from "@/lib/shared/config";
-import { STATIC_IMAGE_CACHE_CONTROL, STATIC_ROOT_IMAGE_PATHS } from "@/lib/shared/media-cache";
+import {
+  DYNAMIC_DOCUMENT_CACHE_CONTROL,
+  STATIC_IMAGE_CACHE_CONTROL,
+  STATIC_ROOT_IMAGE_PATHS,
+} from "@/lib/shared/media-cache";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -117,7 +121,7 @@ const corsBoundaryMiddleware = createMiddleware().server(async ({ next, pathname
   return next();
 });
 
-function applyCachePolicy(pathname: string, request: Request, response: Response) {
+export function applyCachePolicy(pathname: string, request: Request, response: Response) {
   if (pathname === "/sw.js") {
     response.headers.set("Cache-Control", "no-cache, max-age=0, must-revalidate");
     response.headers.set("Service-Worker-Allowed", "/");
@@ -166,7 +170,11 @@ function applyCachePolicy(pathname: string, request: Request, response: Response
     return;
   }
   if (pathname.startsWith("/things/")) {
-    response.headers.set("Cache-Control", "no-cache");
+    response.headers.set("Cache-Control", DYNAMIC_DOCUMENT_CACHE_CONTROL);
+    return;
+  }
+  if (!response.headers.has("Cache-Control")) {
+    response.headers.set("Cache-Control", DYNAMIC_DOCUMENT_CACHE_CONTROL);
   }
 }
 
