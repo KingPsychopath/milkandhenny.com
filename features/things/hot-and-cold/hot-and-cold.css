@@ -25,7 +25,6 @@
 }
 .heat-source-flame {
   --heat-color: var(--heat-frost);
-  --heat-level: 12%;
   position: relative;
   display: grid;
   place-items: center;
@@ -33,33 +32,54 @@
   height: 3.5rem;
   margin: auto;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--heat-color) 32%, transparent);
   color: var(--heat-color);
   background: color-mix(in srgb, var(--background) 82%, transparent);
   box-shadow: 0 0 3rem color-mix(in srgb, var(--heat-color) 28%, transparent);
+  transition:
+    color 0.55s ease,
+    box-shadow 0.55s ease;
   animation: heat-breathe 2.6s ease-in-out infinite;
-}
-.heat-source-flame[data-band="cool"] {
-  --heat-level: 28%;
 }
 .heat-source-flame[data-band="warm"] {
   --heat-color: color-mix(in srgb, var(--heat-ember) 46%, var(--foreground));
-  --heat-level: 48%;
 }
 .heat-source-flame[data-band="hot"] {
   --heat-color: color-mix(in srgb, var(--heat-ember) 78%, var(--foreground));
-  --heat-level: 68%;
 }
 .heat-source-flame[data-band="burning"] {
   --heat-color: var(--heat-ember);
-  --heat-level: 84%;
 }
 .heat-source-flame[data-band="found"] {
   --heat-color: var(--heat-ember);
-  --heat-level: 100%;
+  box-shadow: 0 0 3.4rem color-mix(in srgb, var(--heat-ember) 42%, transparent);
+}
+.heat-source-flame > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+.heat-gauge-track,
+.heat-gauge-progress {
+  fill: none;
+  stroke-width: 1.25;
+}
+.heat-gauge-track {
+  stroke: color-mix(in srgb, var(--heat-color) 18%, var(--stone-200));
+}
+.heat-gauge-progress {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: var(--heat-offset);
+  filter: drop-shadow(0 0 0.18rem color-mix(in srgb, var(--heat-color) 55%, transparent));
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-source-flame > span {
   position: relative;
+  z-index: 1;
   width: 0.68rem;
   height: 2rem;
   border: 1px solid currentColor;
@@ -69,12 +89,13 @@
   content: "";
   position: absolute;
   inset: auto 0.13rem 0.13rem;
-  height: var(--heat-level);
-  max-height: calc(100% - 0.26rem);
+  height: calc(100% - 0.26rem);
   border-radius: inherit;
   background: currentColor;
   box-shadow: 0 0 1rem currentColor;
-  transition: height 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scaleY(var(--heat-scale));
+  transform-origin: bottom;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-source-flame > span::after {
   content: "";
@@ -103,7 +124,6 @@
 }
 .heat-band {
   --heat-color: var(--stone-500);
-  --heat-level: 12%;
   display: flex;
   align-items: center;
   gap: 0.8rem;
@@ -118,45 +138,19 @@
 .heat-band--cool {
   --heat-color: var(--heat-frost);
 }
-.heat-band--cold {
-  --heat-level: 22%;
-}
-.heat-band--cool {
-  --heat-level: 36%;
-}
 .heat-band--warm {
   --heat-color: color-mix(in srgb, var(--heat-ember) 50%, var(--foreground));
-  --heat-level: 52%;
 }
 .heat-band--hot {
   --heat-color: color-mix(in srgb, var(--heat-ember) 78%, var(--foreground));
-  --heat-level: 70%;
 }
 .heat-band--burning {
   --heat-color: var(--heat-ember);
-  --heat-level: 86%;
 }
 .heat-band--found {
   --heat-color: var(--heat-ember);
-  --heat-level: 100%;
 }
-.heat-band-mark {
-  position: relative;
-  display: inline-flex;
-  align-items: end;
-  width: 0.45rem;
-  height: 0.85rem;
-  border: 1px solid var(--heat-color);
-  border-radius: 999px;
-  color: var(--heat-color);
-}
-.heat-band-mark > span {
-  width: 100%;
-  height: var(--heat-level);
-  border-radius: inherit;
-  background: currentColor;
-}
-.heat-band > span:nth-child(2) {
+.heat-band > span {
   color: var(--heat-color);
 }
 .heat-band::after {
@@ -714,6 +708,10 @@
   .heat-word[data-newest] .heat-word-effect,
   .heat-ledger-update {
     animation: none;
+  }
+  .heat-gauge-progress,
+  .heat-source-flame > span::before {
+    transition: none;
   }
   .heat-ledger-update {
     transform: translateX(-50%);

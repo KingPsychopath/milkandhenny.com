@@ -9,6 +9,7 @@ import { GiveUpControl } from "../shared/GiveUpControl";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
+import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
@@ -392,14 +393,10 @@ export function HotAndColdRoomApp({
       </header>
       <main id="main" className="mx-auto max-w-2xl px-5">
         <div className="heat-source">
-          <div
-            className="heat-source-flame"
-            data-band={snapshot.round?.exact ? "found" : (hottest?.band ?? "frozen")}
-            data-found={snapshot.phase === "reveal" || undefined}
-            aria-hidden="true"
-          >
-            <span />
-          </div>
+          <HeatGauge
+            band={snapshot.round?.exact ? "found" : (hottest?.band ?? "frozen")}
+            rank={snapshot.round?.exact ? 0 : (hottest?.rank ?? null)}
+          />
           <p>
             {snapshot.phase === "reveal"
               ? snapshot.round?.exact

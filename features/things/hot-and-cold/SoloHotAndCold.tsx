@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
+import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
@@ -169,14 +170,10 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
-          <div
-            className="heat-source-flame"
-            data-band={done ? "found" : (hottest?.band ?? "frozen")}
-            data-found={done || undefined}
-            aria-hidden="true"
-          >
-            <span />
-          </div>
+          <HeatGauge
+            band={done ? "found" : (hottest?.band ?? "frozen")}
+            rank={done ? 0 : (hottest?.rank ?? null)}
+          />
           <p>
             {done
               ? state.gaveUp

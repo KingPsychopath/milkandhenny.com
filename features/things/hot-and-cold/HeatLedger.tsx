@@ -122,9 +122,6 @@ export function HeatLedger({
             <li key={guess.id} data-ledger-item={guess.id}>
               {divider ? (
                 <div className={`heat-band heat-band--${band}`}>
-                  <span className="heat-band-mark" aria-hidden="true">
-                    <span />
-                  </span>
                   <span>{LABELS[band]}</span>
                 </div>
               ) : null}
