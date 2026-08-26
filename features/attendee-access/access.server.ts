@@ -761,6 +761,12 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
   };
 }
 
+export async function attendeeAccountExists(personId: string): Promise<boolean> {
+  return Boolean(
+    await queryOne<{ id: string }>("select id from event_people where id = $1", [personId]),
+  );
+}
+
 export async function updateAttendeeName(
   personId: string,
   name: string,
@@ -808,9 +814,16 @@ export async function removeAttendeeEmail(input: {
   });
 }
 
-export async function currentAttendeeAccount(): Promise<AttendeeAccount | null> {
+export async function currentAttendeeAccountView(): Promise<{
+  account: AttendeeAccount | null;
+  emailStepUpRequired: boolean;
+}> {
   const session = await getAttendeeSession();
-  return session?.personId ? attendeeAccount(session.personId) : null;
+  if (!session?.personId) return { account: null, emailStepUpRequired: true };
+  return {
+    account: await attendeeAccount(session.personId),
+    emailStepUpRequired: attendeeEmailStepUpRequired(session.authenticatedAt),
+  };
 }
 
 export async function cleanupExpiredAccessChallenges(): Promise<{ deleted: number }> {
