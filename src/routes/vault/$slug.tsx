@@ -12,11 +12,11 @@ import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/vault/$slug")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    share: typeof search.share === "string" ? search.share : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): { share?: string } =>
+    typeof search.share === "string" ? { share: search.share } : {},
+  loaderDeps: ({ search }) => ({ share: search.share }),
   loader: {
-    handler: ({ params }) => getPrivateWordPageFn({ data: params }),
+    handler: ({ params, deps }) => getPrivateWordPageFn({ data: { ...params, share: deps.share } }),
     staleReloadMode: "blocking",
   },
   staleTime: 0,
@@ -35,8 +35,19 @@ export const Route = createFileRoute("/vault/$slug")({
 });
 
 function WordPrivatePage() {
-  const { meta, note, published, readingTime, headings, albums, heroImage, heroImageData, images } =
-    Route.useLoaderData();
+  const {
+    meta,
+    note,
+    published,
+    readingTime,
+    headings,
+    albums,
+    heroImage,
+    heroImageData,
+    images,
+    shareAccess,
+  } = Route.useLoaderData();
+  const { share } = Route.useSearch();
   const slug = meta.slug;
 
   return (
@@ -129,7 +140,12 @@ function WordPrivatePage() {
               privateMedia
             />
           ) : (
-            <UnlockWordClient slug={slug} />
+            <UnlockWordClient
+              slug={slug}
+              shareToken={share ?? ""}
+              initialPinRequired={shareAccess.pinRequired}
+              initialError={shareAccess.error}
+            />
           )}
         </article>
       </main>

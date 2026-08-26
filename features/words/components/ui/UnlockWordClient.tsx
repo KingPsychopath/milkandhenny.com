@@ -1,110 +1,46 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearch } from "@tanstack/react-router";
-import { WordBody } from "./WordBody";
+import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { unlockPrivateWordFn } from "../../reader.functions";
 
 type Props = {
   slug: string;
+  shareToken: string;
+  initialPinRequired: boolean;
+  initialError?: string;
 };
 
-export function UnlockWordClient({ slug }: Props) {
-  const shareToken = useSearch({ from: "/vault/$slug", select: (search) => search.share ?? "" });
+export function UnlockWordClient({ slug, shareToken, initialPinRequired, initialError }: Props) {
+  const navigate = useNavigate({ from: "/vault/$slug" });
   const [pin, setPin] = useState("");
-  const [pinRequired, setPinRequired] = useState(false);
+  const [pinRequired, setPinRequired] = useState(initialPinRequired);
   const [checking, setChecking] = useState(false);
-  const [checked, setChecked] = useState(false);
-  const [error, setError] = useState("");
-  const [unlockedMarkdown, setUnlockedMarkdown] = useState<string | null>(null);
+  const [error, setError] = useState(initialError ?? "");
+  const hasShare = shareToken.trim().length > 0;
 
-  const hasShare = useMemo(() => shareToken.trim().length > 0, [shareToken]);
-
-  const loadUnlockedWord = useCallback(async (): Promise<boolean> => {
+  async function verifyShareAccess() {
+    if (!hasShare) return;
+    setChecking(true);
+    setError("");
     try {
-      const res = await fetch(`/api/words/${encodeURIComponent(slug)}`, {
-        method: "GET",
-        headers: { Accept: "application/json" },
+      const result = await unlockPrivateWordFn({
+        data: { slug, token: shareToken, pin: pinRequired ? pin : undefined },
       });
-      if (!res.ok) return false;
-      const data = (await res.json().catch(() => null)) as {
-        meta?: object;
-        markdown?: string;
-      } | null;
-      if (!data?.meta || typeof data.markdown !== "string") return false;
-      setUnlockedMarkdown(data.markdown);
-      return true;
+      if (!result.ok) {
+        setPinRequired(result.pinRequired);
+        setError(result.error);
+        return;
+      }
+      await navigate({
+        to: "/vault/$slug",
+        params: { slug },
+        search: {},
+        replace: true,
+      });
     } catch {
-      return false;
+      setError("Network error. Please try again.");
+    } finally {
+      setChecking(false);
     }
-  }, [slug]);
-
-  const verifyShareAccess = useCallback(
-    async (pinValue?: string) => {
-      if (!hasShare) return;
-      setChecking(true);
-      setError("");
-
-      try {
-        const res = await fetch("/api/words/share/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slug,
-            token: shareToken,
-            ...(pinValue ? { pin: pinValue } : {}),
-          }),
-        });
-
-        const data = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          pinRequired?: boolean;
-        };
-
-        if (!res.ok) {
-          setPinRequired(!!data.pinRequired);
-          setError(data.error ?? "Unable to unlock this page.");
-          setChecked(true);
-          return;
-        }
-
-        const didLoad = await loadUnlockedWord();
-        if (!didLoad) {
-          setError("Unlocked, but this page could not be loaded. Please retry.");
-        } else {
-          setChecked(true);
-        }
-      } catch {
-        setChecked(true);
-        setError("Network error. Please try again.");
-      } finally {
-        setChecking(false);
-      }
-    },
-    [hasShare, loadUnlockedWord, shareToken, slug],
-  );
-
-  useEffect(() => {
-    if (checked) return;
-    let cancelled = false;
-    (async () => {
-      const canLoadExisting = await loadUnlockedWord();
-      if (cancelled) return;
-      if (canLoadExisting) {
-        setChecked(true);
-        return;
-      }
-      if (hasShare) {
-        await verifyShareAccess();
-        if (!cancelled) setChecked(true);
-        return;
-      }
-      setChecked(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [checked, hasShare, loadUnlockedWord, verifyShareAccess]);
-
-  if (unlockedMarkdown) {
-    return <WordBody content={unlockedMarkdown} wordSlug={slug} />;
   }
 
   if (!hasShare) {
@@ -125,9 +61,7 @@ export function UnlockWordClient({ slug }: Props) {
       <p className="font-serif text-lg leading-relaxed text-foreground">
         {pinRequired
           ? "Enter the share PIN to continue."
-          : checked
-            ? "Use this signed link to unlock access."
-            : "Checking share link..."}
+          : "Use this signed link to unlock access."}
       </p>
       {pinRequired ? (
         <input
@@ -138,7 +72,7 @@ export function UnlockWordClient({ slug }: Props) {
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              if (!checking) void verifyShareAccess(pin);
+              if (!checking) void verifyShareAccess();
             }
           }}
           className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
@@ -147,10 +81,8 @@ export function UnlockWordClient({ slug }: Props) {
       {error ? <p className="font-mono text-xs text-[var(--prose-hashtag)]">{error}</p> : null}
       <button
         type="button"
-        onClick={() => void verifyShareAccess(pinRequired ? pin : undefined)}
-        disabled={
-          checking || (!pinRequired && !checked) || (pinRequired && pin.trim().length === 0)
-        }
+        onClick={() => void verifyShareAccess()}
+        disabled={checking || (pinRequired && pin.trim().length === 0)}
         className="font-mono text-xs px-3 py-2 rounded border theme-border hover:bg-[var(--stone-100)] dark:hover:bg-[var(--stone-900)] transition-colors disabled:opacity-60"
       >
         {checking ? "unlocking..." : pinRequired ? "unlock with PIN" : "retry unlock"}

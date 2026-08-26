@@ -1,11 +1,14 @@
 import { notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest, setCookie } from "@tanstack/react-start/server";
 
+import { getClientIp } from "@/features/auth/auth.server";
 import { resolveWordContentRef } from "@/features/media/storage";
 import { getWordRenderData } from "./components/ui/wordRenderData.server";
 import { extractMarkdownImageRefs } from "./image";
 import { loadWordImageData } from "./image.server";
 import { canReadWordInServerContext, isWordsEnabled } from "./reader.server";
+import { signWordAccessToken, verifyShareLinkAccess, wordAccessCookieName } from "./share.server";
 import { getWord, getWordMeta, listWords } from "./store.server";
 import type { WordType } from "./types";
 import type { WordListSummary } from "./components/ui/SearchableWordList";
@@ -20,6 +23,36 @@ function formatDate(isoOrDate: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+async function verifyAndRememberWordShare(input: { slug: string; token: string; pin?: string }) {
+  const verification = await verifyShareLinkAccess({
+    slug: input.slug,
+    token: input.token,
+    pin: input.pin,
+    ip: getClientIp(getRequest()),
+  });
+  if (!verification.ok) return verification;
+
+  const accessToken = signWordAccessToken(verification.link);
+  if (!accessToken) {
+    return {
+      ok: false as const,
+      error: "Private sharing is not configured.",
+      status: 503,
+    };
+  }
+  setCookie(wordAccessCookieName(input.slug), accessToken, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: Math.max(
+      1,
+      Math.floor((new Date(verification.link.expiresAt).getTime() - Date.now()) / 1000),
+    ),
+  });
+  return { ok: true as const };
 }
 
 export const getWordsPageFn = createServerFn({ method: "GET" }).handler(async () => {
@@ -44,13 +77,20 @@ export const getWordsPageFn = createServerFn({ method: "GET" }).handler(async ()
 });
 
 export const getWordPageFn = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
+  .validator((data: { slug: string; share?: string }) => data)
   .handler(async ({ data }) => {
     const { slug } = data;
     if (!isWordsEnabled()) throw notFound();
     const meta = await getWordMeta(slug);
     if (!meta) throw notFound();
-    if (meta.visibility === "private") return { kind: "private" as const, meta };
+    if (meta.visibility === "private") {
+      throw redirect({
+        to: "/vault/$slug",
+        params: { slug },
+        search: { share: data.share },
+        replace: true,
+      });
+    }
 
     const note = await getWord(slug);
     if (!note) throw notFound();
@@ -75,7 +115,6 @@ export const getWordPageFn = createServerFn({ method: "GET" })
       heroImageData?.src ?? (meta.image ? resolveWordContentRef(meta.image, slug) : "");
 
     return {
-      kind: "word" as const,
       meta,
       note,
       published,
@@ -90,7 +129,7 @@ export const getWordPageFn = createServerFn({ method: "GET" })
   });
 
 export const getPrivateWordPageFn = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
+  .validator((data: { slug: string; share?: string }) => data)
   .handler(async ({ data }) => {
     const { slug } = data;
     if (!isWordsEnabled()) throw notFound();
@@ -100,7 +139,17 @@ export const getPrivateWordPageFn = createServerFn({ method: "GET" })
       throw redirect({ to: "/words/$slug", params: { slug } });
     }
 
-    const canRead = await canReadWordInServerContext(meta);
+    let canRead = await canReadWordInServerContext(meta);
+    let shareError: string | undefined;
+    let pinRequired = false;
+    if (!canRead && data.share) {
+      const share = await verifyAndRememberWordShare({ slug, token: data.share });
+      canRead = share.ok;
+      if (!share.ok) {
+        shareError = share.error;
+        pinRequired = share.pinRequired === true;
+      }
+    }
     const note = canRead ? await getWord(slug) : null;
     if (canRead && !note) throw notFound();
 
@@ -129,5 +178,20 @@ export const getPrivateWordPageFn = createServerFn({ method: "GET" })
       heroImage,
       heroImageData,
       images,
+      shareAccess: { pinRequired, error: shareError },
     };
+  });
+
+export const unlockPrivateWordFn = createServerFn({ method: "POST" })
+  .validator((data: { slug: string; token: string; pin?: string }) => data)
+  .handler(async ({ data }) => {
+    const result = await verifyAndRememberWordShare(data);
+    return result.ok
+      ? result
+      : {
+          ok: false as const,
+          status: result.status,
+          error: result.error,
+          pinRequired: result.pinRequired === true,
+        };
   });

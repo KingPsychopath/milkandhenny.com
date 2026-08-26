@@ -1,6 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { WordBody } from "@/features/words/components/ui/WordBody";
-import { WordSplitRedirectClient } from "@/features/words/components/ui/WordSplitRedirectClient";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { JourneyRail } from "@/components/SiteFooter";
@@ -16,7 +15,10 @@ import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/words/$slug")({
   component: WordSlugPage,
-  loader: ({ params }) => getWordPageFn({ data: params }),
+  validateSearch: (search: Record<string, unknown>): { share?: string } =>
+    typeof search.share === "string" ? { share: search.share } : {},
+  loaderDeps: ({ search }) => ({ share: search.share }),
+  loader: ({ params, deps }) => getWordPageFn({ data: { ...params, share: deps.share } }),
   head: ({ loaderData }) => {
     if (!loaderData) {
       return buildSeoHead({
@@ -27,14 +29,6 @@ export const Route = createFileRoute("/words/$slug")({
       });
     }
     const { meta } = loaderData;
-    if (loaderData.kind === "private") {
-      return buildSeoHead({
-        title: `Private page — ${SITE_NAME}`,
-        description: "This page is private and requires authenticated access.",
-        path: `/words/${meta.slug}`,
-        robots: "noindex, nofollow",
-      });
-    }
     const description = meta.subtitle ?? `Read "${meta.title}" on ${SITE_NAME}`;
     return buildSeoHead({
       title: `${meta.title} — ${SITE_NAME}`,
@@ -54,46 +48,6 @@ function WordSlugPage() {
   const data = Route.useLoaderData();
   const { meta } = data;
   const slug = meta.slug;
-  if (data.kind === "private") {
-    return (
-      <div className="flex min-h-dvh flex-col bg-background">
-        <header className="max-w-2xl mx-auto px-6 pt-10 pb-6">
-          <div className="flex items-center justify-between gap-8 font-mono text-sm">
-            <Link
-              to="/words"
-              className="shrink-0 theme-muted hover:text-foreground transition-colors tracking-tight"
-            >
-              ← words
-            </Link>
-            <Link
-              to="/"
-              className="shrink-0 font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
-            >
-              {SITE_BRAND}
-            </Link>
-          </div>
-        </header>
-
-        <div className="max-w-2xl mx-auto px-6">
-          <div className="border-t theme-border" />
-        </div>
-
-        <main id="main" className="flex-1">
-          <article className="max-w-2xl mx-auto px-6 pt-12 pb-24">
-            <Breadcrumbs
-              items={[
-                { label: "home", href: "/" },
-                { label: "words", href: "/words" },
-                { label: "private" },
-              ]}
-            />
-            <WordSplitRedirectClient slug={slug} />
-          </article>
-        </main>
-      </div>
-    );
-  }
-
   const { note, published, headings, albums, heroImage, heroImageData, images } = data;
   const readingTime = note.meta.readingTime;
   const pageTitle = meta.title;
