@@ -95,13 +95,20 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
         sequence: state.guesses.length + 1,
         createdAt: Date.now(),
       };
+      const nextStreak = heatStreaks([...state.guesses, next]).current;
       setState((current) => ({
         ...current,
         guesses: [...current.guesses, next],
         target: result.rank === 0 ? result.word : current.target,
       }));
       setNewest(`${next.sequence}:${next.word}`);
-      setMessage(result.rank === 0 ? "found it" : result.band);
+      setMessage(
+        result.rank === 0
+          ? "found it"
+          : nextStreak >= 3
+            ? `hot streak · ${nextStreak}`
+            : result.band,
+      );
       void haptics.trigger(
         result.rank === 0 ? "success" : result.rank < 500 ? "warning" : "selection",
       );
@@ -186,6 +193,9 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
               : hottest
                 ? `hottest · #${hottest.rank.toLocaleString()}`
                 : "0 · the secret word"}
+            {!done && streak.current >= 3 ? (
+              <span className="heat-source-streak"> · streak {streak.current}</span>
+            ) : null}
           </p>
         </div>
         {showHow ? (

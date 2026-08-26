@@ -57,54 +57,6 @@ main:has(.heat-result-share) .heat-source {
   --heat-color: var(--heat-red);
   box-shadow: 0 0 3.4rem color-mix(in srgb, var(--heat-red) 42%, transparent);
 }
-.heat-source-flame::before,
-.heat-source-flame::after {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  right: 0.28rem;
-  top: -0.25rem;
-  width: 0.42rem;
-  height: 0.72rem;
-  border-radius: 70% 30% 68% 32%;
-  background: currentColor;
-  box-shadow: 0 0 0.8rem color-mix(in srgb, var(--heat-color) 60%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(0.28rem) rotate(38deg) scale(0.45);
-  transform-origin: 50% 100%;
-  transition:
-    opacity 0.45s ease,
-    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.heat-source-flame::after {
-  right: -0.02rem;
-  top: 0.12rem;
-  width: 0.3rem;
-  height: 0.5rem;
-  transform: translateY(0.2rem) rotate(52deg) scale(0.4);
-}
-.heat-source-flame[data-streak="glowing"]::before {
-  opacity: 0.28;
-  transform: rotate(38deg) scale(0.8);
-}
-.heat-source-flame[data-streak="lit"]::before,
-.heat-source-flame[data-streak="blazing"]::before {
-  opacity: 0.58;
-  transform: rotate(38deg) scale(1);
-  animation: heat-streak-flicker 1.8s ease-in-out infinite;
-}
-.heat-source-flame[data-streak="blazing"]::before {
-  opacity: 0.72;
-}
-.heat-source-flame[data-streak="blazing"]::after {
-  opacity: 0.46;
-  transform: rotate(52deg) scale(1);
-  animation: heat-streak-flicker-small 1.55s 0.2s ease-in-out infinite;
-}
-.heat-source-flame[data-solved]::before {
-  animation: heat-solve-flare 0.78s cubic-bezier(0.16, 1, 0.3, 1);
-}
 .heat-source-flame > svg {
   position: absolute;
   inset: 0;
@@ -114,8 +66,60 @@ main:has(.heat-result-share) .heat-source {
   transform: rotate(-90deg);
 }
 .heat-gauge-track,
-.heat-gauge-progress {
+.heat-gauge-progress,
+.heat-gauge-streak,
+.heat-gauge-streak-aura {
   fill: none;
+}
+.heat-gauge-streak,
+.heat-gauge-streak-aura {
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-dasharray: 0 100;
+  stroke-dashoffset: -8;
+  opacity: 0;
+  transition:
+    opacity 0.5s ease,
+    stroke-dasharray 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    stroke-width 0.6s ease;
+}
+.heat-gauge-streak {
+  stroke-width: 2.1;
+  filter: drop-shadow(0 0 0.26rem color-mix(in srgb, var(--heat-color) 80%, transparent));
+}
+.heat-gauge-streak-aura {
+  stroke-width: 5;
+  filter: blur(0.16rem);
+}
+.heat-source-flame[data-streak="glowing"] .heat-gauge-streak {
+  stroke-dasharray: 2 3 2 3 2 88;
+  opacity: 0.72;
+  animation: heat-streak-ignite 0.72s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.heat-source-flame[data-streak="lit"] .heat-gauge-streak {
+  stroke-dasharray: 30 70;
+  opacity: 0.78;
+  animation: heat-streak-orbit 4.2s linear infinite;
+}
+.heat-source-flame[data-streak="blazing"] .heat-gauge-streak {
+  stroke-width: 2.55;
+  stroke-dasharray: 62 38;
+  opacity: 0.95;
+  animation: heat-streak-orbit 5.2s linear infinite;
+}
+.heat-source-flame[data-streak="blazing"] .heat-gauge-streak-aura {
+  stroke-dasharray: 62 38;
+  opacity: 0.3;
+  animation: heat-streak-orbit 5.2s linear infinite;
+}
+.heat-source-flame[data-solved] .heat-gauge-streak {
+  animation: heat-streak-solve 0.82s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.heat-source-flame[data-cooling] .heat-gauge-streak {
+  animation: heat-streak-wisp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.heat-source-flame[data-cooling] .heat-gauge-streak-aura {
+  animation: heat-streak-wisp-aura 0.65s ease-out forwards;
 }
 .heat-gauge-track {
   stroke: color-mix(in srgb, var(--heat-color) 18%, var(--stone-200));
@@ -173,6 +177,11 @@ main:has(.heat-result-share) .heat-source {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--stone-500);
+}
+.heat-source-streak {
+  display: inline-block;
+  color: var(--heat-red);
+  animation: heat-streak-label 0.65s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-ledger {
   list-style: none;
@@ -1027,29 +1036,56 @@ main:has(.heat-result-share) .heat-ledger {
     transform: translateY(-0.12rem) scale(1.06);
   }
 }
-@keyframes heat-streak-flicker {
-  50% {
-    opacity: 0.42;
-    transform: translateY(-0.08rem) rotate(34deg) scale(1.08, 0.92);
-  }
-}
-@keyframes heat-streak-flicker-small {
-  50% {
-    opacity: 0.3;
-    transform: translateY(-0.06rem) rotate(58deg) scale(0.86, 1.08);
-  }
-}
-@keyframes heat-solve-flare {
+@keyframes heat-streak-ignite {
   0% {
     opacity: 0;
-    transform: translateY(0.35rem) rotate(38deg) scale(0.25);
+    stroke-dashoffset: -2;
+  }
+  55% {
+    opacity: 1;
+  }
+}
+@keyframes heat-streak-orbit {
+  to {
+    stroke-dashoffset: -108;
+  }
+}
+@keyframes heat-streak-solve {
+  0% {
+    opacity: 0;
+    stroke-dasharray: 0 100;
   }
   42% {
-    opacity: 0.9;
+    opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translateY(-0.42rem) rotate(32deg) scale(1.45);
+    stroke-dasharray: 100 0;
+  }
+}
+@keyframes heat-streak-wisp {
+  55% {
+    opacity: 0.48;
+    stroke-dashoffset: -126;
+  }
+  to {
+    opacity: 0;
+    stroke-width: 0.35;
+    stroke-dasharray: 0 100;
+    stroke-dashoffset: -142;
+  }
+}
+@keyframes heat-streak-wisp-aura {
+  to {
+    opacity: 0;
+    stroke-width: 1;
+    stroke-dashoffset: -132;
+  }
+}
+@keyframes heat-streak-label {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1061,15 +1097,24 @@ main:has(.heat-result-share) .heat-ledger {
     animation: none;
   }
   .heat-source-flame,
-  .heat-source-flame::before,
-  .heat-source-flame::after,
   .heat-gauge-progress,
+  .heat-gauge-streak,
+  .heat-gauge-streak-aura,
   .heat-source-flame > span,
   .heat-source-flame > span::before,
   .heat-share-trail li span,
   .heat-share-dock-pager svg {
     transition: none;
     transition-delay: 0s;
+  }
+  .heat-gauge-streak,
+  .heat-gauge-streak-aura,
+  .heat-source-streak {
+    animation: none;
+  }
+  .heat-source-flame[data-cooling] .heat-gauge-streak,
+  .heat-source-flame[data-cooling] .heat-gauge-streak-aura {
+    opacity: 0;
   }
   .heat-ledger-update {
     transform: translateX(-50%);

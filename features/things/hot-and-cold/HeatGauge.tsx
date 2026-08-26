@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { HeatBand } from "./hot-and-cold-rules";
 
 function heatProgress(rank: number | null) {
@@ -22,6 +22,22 @@ export function HeatGauge({
   const progress = heatProgress(rank);
   const streakLevel =
     streak >= 6 ? "blazing" : streak >= 4 ? "lit" : streak >= 3 ? "glowing" : undefined;
+  const [visibleStreakLevel, setVisibleStreakLevel] = useState(streakLevel);
+  const [cooling, setCooling] = useState(false);
+  useEffect(() => {
+    if (streakLevel) {
+      setVisibleStreakLevel(streakLevel);
+      setCooling(false);
+      return;
+    }
+    if (!visibleStreakLevel) return;
+    setCooling(true);
+    const finish = window.setTimeout(() => {
+      setVisibleStreakLevel(undefined);
+      setCooling(false);
+    }, 650);
+    return () => window.clearTimeout(finish);
+  }, [streakLevel, visibleStreakLevel]);
   const style = {
     "--heat-offset": 100 - progress * 100,
     "--heat-scale": progress,
@@ -33,12 +49,15 @@ export function HeatGauge({
     <div
       className="heat-source-flame"
       data-band={band}
-      data-streak={streakLevel}
+      data-streak={visibleStreakLevel}
+      data-cooling={cooling || undefined}
       data-solved={solved || undefined}
       style={style}
       aria-hidden="true"
     >
       <svg viewBox="0 0 48 48">
+        <circle className="heat-gauge-streak-aura" cx="24" cy="24" r="23" pathLength="100" />
+        <circle className="heat-gauge-streak" cx="24" cy="24" r="23" pathLength="100" />
         <circle className="heat-gauge-track" cx="24" cy="24" r="21" pathLength="100" />
         <circle className="heat-gauge-progress" cx="24" cy="24" r="21" pathLength="100" />
       </svg>

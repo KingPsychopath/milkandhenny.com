@@ -411,6 +411,9 @@ export function HotAndColdRoomApp({
                   ? "your free opening spark"
                   : `your turn${seconds === null ? "" : ` · ${seconds}s`}`
                 : `${current?.name ?? "someone"} is guessing`}
+            {snapshot.phase === "playing" && streak.current >= 3 ? (
+              <span className="heat-source-streak"> · streak {streak.current}</span>
+            ) : null}
           </p>
         </div>
         <HeatLedger guesses={guesses} newestId={newest} target={snapshot.round?.target} />
