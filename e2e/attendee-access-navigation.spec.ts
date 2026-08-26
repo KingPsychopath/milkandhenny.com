@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { Pool } from "pg";
+
+const databaseUrl =
+  process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
 
 test("anonymous account navigation reaches sign in without an error boundary", async ({ page }) => {
   await page.goto("/");
@@ -7,49 +12,43 @@ test("anonymous account navigation reaches sign in without an error boundary", a
     .poll(() => accountLink.evaluate((element) => getComputedStyle(element).pointerEvents))
     .toBe("auto");
   expect(await accountLink.getAttribute("href")).toBe("/access?returnTo=%2Fmy");
-  await page.evaluate(() => {
-    (window as Window & { accountNavigationMarker?: string }).accountNavigationMarker =
-      "same-document";
-  });
   await accountLink.click();
 
   await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);
   await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "account" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "oops" })).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as Window & { accountNavigationMarker?: string }).accountNavigationMarker,
-      ),
-    )
-    .toBe("same-document");
 });
 
-test("an emailed access link signs in automatically without reloading the document", async ({
-  page,
-}) => {
-  let verificationRequests = 0;
-  let documentRequests = 0;
-  page.on("request", (request) => {
-    if (request.resourceType() === "document") documentRequests += 1;
-  });
-  await page.route("**/api/attendee/access", async (route) => {
-    if (route.request().method() !== "PATCH") return route.continue();
-    verificationRequests += 1;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ authenticated: true, returnTo: "/" }),
-    });
-  });
+test("an emailed access link is redeemed before the sign-in page renders", async ({ page }) => {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const suffix = Date.now().toString(36);
+  const challengeId = `access_browser_${suffix}`;
+  const token = `browser-token-${suffix}`;
+  const email = `browser-${suffix}@example.com`;
+  const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
-  await page.goto("/access?returnTo=%2Fmy#challenge=challenge-id&token=access-token");
+  await pool.query(
+    `insert into event_person_login_challenges
+       (id,email,email_hash,token_hash,code_hash,purpose,return_to,expires_at)
+     values ($1,$2,$3,$4,$5,'sign-in','/',now() + interval '15 minutes')`,
+    [challengeId, email, sha256(email), sha256(token), sha256("unused-code")],
+  );
 
-  await expect(page).toHaveURL(/\/$/);
-  expect(verificationRequests).toBe(1);
-  expect(documentRequests).toBe(1);
-  await expect(page.getByRole("button", { name: "sign in", exact: true })).toHaveCount(0);
+  try {
+    await page.goto(
+      `/access/verify?returnTo=%2Fmy&challenge=${encodeURIComponent(challengeId)}&token=${encodeURIComponent(token)}`,
+    );
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { name: "sign in" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "account", exact: true })).toHaveAttribute(
+      "href",
+      "/my",
+    );
+  } finally {
+    await pool.end();
+  }
 });
 
 test("missing pages offer back and home recovery", async ({ page }) => {

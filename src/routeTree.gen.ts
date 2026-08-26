@@ -26,6 +26,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as ThingsRouteImport } from './routes/things'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as AccessVerifyRouteImport } from './routes/access_.verify'
 import { Route as ActionTokenRouteImport } from './routes/action/$token'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminCliAuthRouteImport } from './routes/admin/cli-auth'
@@ -282,6 +283,11 @@ const ThingsRoute = ThingsRouteImport.update({
 const UploadRoute = UploadRouteImport.update({
   id: '/upload',
   path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessVerifyRoute = AccessVerifyRouteImport.update({
+  id: '/access_/verify',
+  path: '/access/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ActionTokenRoute = ActionTokenRouteImport.update({
@@ -1254,6 +1260,7 @@ export interface FileRoutesByFullPath {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
@@ -1445,6 +1452,7 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
@@ -1637,6 +1645,7 @@ export interface FileRoutesById {
   '/api/health': typeof ApiHealthRouteRoute
   '/api/reports': typeof ApiReportsRouteRoute
   '/api/words': typeof ApiWordsRouteRouteWithChildren
+  '/access_/verify': typeof AccessVerifyRoute
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
@@ -1830,6 +1839,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access/verify'
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
@@ -2021,6 +2031,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access/verify'
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
@@ -2212,6 +2223,7 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/api/reports'
     | '/api/words'
+    | '/access_/verify'
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
@@ -2404,6 +2416,7 @@ export interface RootRouteChildren {
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
   ApiReportsRouteRoute: typeof ApiReportsRouteRoute
   ApiWordsRouteRoute: typeof ApiWordsRouteRouteWithChildren
+  AccessVerifyRoute: typeof AccessVerifyRoute
   ActionTokenRoute: typeof ActionTokenRoute
   AdminCliAuthRoute: typeof AdminCliAuthRoute
   AdminEditorRoute: typeof AdminEditorRoute
@@ -2614,6 +2627,13 @@ declare module '@tanstack/react-router' {
       path: '/upload'
       fullPath: '/upload'
       preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access_/verify': {
+      id: '/access_/verify'
+      path: '/access/verify'
+      fullPath: '/access/verify'
+      preLoaderRoute: typeof AccessVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/action/$token': {
@@ -4255,6 +4275,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRouteRoute: ApiHealthRouteRoute,
   ApiReportsRouteRoute: ApiReportsRouteRoute,
   ApiWordsRouteRoute: ApiWordsRouteRouteWithChildren,
+  AccessVerifyRoute: AccessVerifyRoute,
   ActionTokenRoute: ActionTokenRoute,
   AdminCliAuthRoute: AdminCliAuthRoute,
   AdminEditorRoute: AdminEditorRoute,

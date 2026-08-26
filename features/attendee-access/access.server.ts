@@ -123,8 +123,8 @@ function accessEmail(input: {
   token: string;
   code: string;
 }) {
-  const link = buildAppUrl(input.origin, "/access", {
-    fragment: { challenge: input.challengeId, token: input.token },
+  const link = buildAppUrl(input.origin, "/access/verify", {
+    search: { challenge: input.challengeId, token: input.token },
   });
   const text = [
     "Your milk & henny access link",

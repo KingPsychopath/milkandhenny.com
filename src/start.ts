@@ -158,6 +158,8 @@ export function applyCachePolicy(pathname: string, request: Request, response: R
     pathname.startsWith("/upload") ||
     pathname.startsWith("/vault/") ||
     pathname.startsWith("/t/") ||
+    pathname === "/access" ||
+    pathname.startsWith("/access/") ||
     pathname === "/my" ||
     pathname === "/best-dressed" ||
     pathname === "/health" ||
