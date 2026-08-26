@@ -13,6 +13,7 @@ export function HeatGauge({ band, rank }: { band: HeatBand; rank: number | null 
   const style = {
     "--heat-offset": 100 - progress * 100,
     "--heat-scale": progress,
+    "--heat-mix": `${Math.round(progress * 100)}%`,
   } as CSSProperties;
 
   return (

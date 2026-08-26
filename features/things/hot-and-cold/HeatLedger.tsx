@@ -122,6 +122,7 @@ export function HeatLedger({
             <li key={guess.id} data-ledger-item={guess.id}>
               {divider ? (
                 <div className={`heat-band heat-band--${band}`}>
+                  <i className="heat-band-thermometer" aria-hidden="true" />
                   <span>{LABELS[band]}</span>
                 </div>
               ) : null}
@@ -130,9 +131,7 @@ export function HeatLedger({
                 data-newest={guess.id === newestId || undefined}
                 className={`heat-word heat-word--${band}`}
               >
-                <span className="heat-word-rank">
-                  {`#${guess.rank.toLocaleString()}`}
-                </span>
+                <span className="heat-word-rank">{`#${guess.rank.toLocaleString()}`}</span>
                 <span className="heat-word-text">{guess.word}</span>
                 <span className="heat-word-owner">{owner}</span>
                 <span className="heat-word-effect" aria-hidden="true" />
