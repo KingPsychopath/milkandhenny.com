@@ -113,6 +113,14 @@ registerMemoryRoomSweeper("hot-and-cold", (now) => {
 
 const activePlayers = (room: RoomState) => room.players.filter((player) => !player.withdrawn);
 
+function roomRedis() {
+  const redis = getRedis();
+  if (!redis && process.env.NODE_ENV === "production") {
+    throw new Error("Hot & Cold rooms require Redis");
+  }
+  return redis;
+}
+
 function phaseKind(room: RoomState): MultiplayerRoomPhaseKind {
   if (room.phase === "lobby") return "lobby";
   if (room.phase === "finished") return "results";
@@ -136,7 +144,7 @@ const changed = (room: RoomState) => {
 };
 
 async function loadRoom(roomId: string) {
-  const redis = getRedis();
+  const redis = roomRedis();
   const room = redis
     ? await redis.get<RoomState>(hotAndColdRoomRedisKeys(roomId).state)
     : (memoryRooms.get(roomId) ?? null);
@@ -147,7 +155,7 @@ async function loadRoom(roomId: string) {
   return room;
 }
 async function saveRoom(room: RoomState) {
-  const redis = getRedis();
+  const redis = roomRedis();
   // Presence touches reach here without a revision bump, so the lease renews on save.
   applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
@@ -162,7 +170,7 @@ async function saveRoom(room: RoomState) {
   else memoryRooms.set(room.roomId, room);
 }
 async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise<T>) {
-  const redis = getRedis();
+  const redis = roomRedis();
   if (!redis) {
     const room = await loadRoom(roomId);
     if (!room) return null;

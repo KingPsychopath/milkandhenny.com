@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
@@ -13,7 +13,17 @@ beforeAll(async () => {
   roomEngine = await import("@/features/things/hot-and-cold/hot-and-cold-room-engine.server");
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("Hot and Cold room", () => {
+  it("fails closed without Redis in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    await expect(roomEngine.createHotAndColdRoom({ hostName: "Ada" })).rejects.toThrow(
+      "Hot & Cold rooms require Redis",
+    );
+  });
+
   it("rotates the free opening guess between rounds", async () => {
     const host = await roomEngine.createHotAndColdRoom({
       hostName: "Ada",
