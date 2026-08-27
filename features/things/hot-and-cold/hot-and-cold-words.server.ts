@@ -296,25 +296,75 @@ export const HOT_AND_COLD_TARGETS = [
   "zebra",
 ] as const;
 
-const DAILY_EPOCH = Date.UTC(2025, 7, 15);
+const DAILY_EPOCH = Date.UTC(2026, 7, 25);
+// Preserve the words already served while discarding the fictional public count that preceded them.
+const FIRST_SEASON_OPENING = ["chimney", "diary", "tower"] as const;
+const UK_DAY = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function ukDay(date: Date): number {
+  const parts = Object.fromEntries(
+    UK_DAY.formatToParts(date)
+      .filter(({ type }) => type !== "literal")
+      .map(({ type, value }) => [type, Number(value)]),
+  );
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
+}
 
 export function hotAndColdPuzzleNumber(date = new Date()) {
-  const day = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  return Math.max(1, Math.floor((day - DAILY_EPOCH) / 86_400_000) + 1);
+  return Math.max(1, Math.floor((ukDay(date) - DAILY_EPOCH) / 86_400_000) + 1);
+}
+
+export function hotAndColdTargetForPuzzle(puzzle: number) {
+  const offset = Math.max(0, Math.floor(puzzle) - 1);
+  const cycle = Math.floor(offset / HOT_AND_COLD_TARGETS.length);
+  const position = offset % HOT_AND_COLD_TARGETS.length;
+  const available =
+    cycle === 0
+      ? HOT_AND_COLD_TARGETS.filter(
+          (word) => !FIRST_SEASON_OPENING.includes(word as (typeof FIRST_SEASON_OPENING)[number]),
+        )
+      : [...HOT_AND_COLD_TARGETS];
+  const shuffled = available
+    .map((word) => ({
+      word,
+      order: createHash("sha256")
+        .update(`milk-and-henny:hot-and-cold:launch:${cycle}:${word}`)
+        .digest()
+        .readUInt32BE(0),
+    }))
+    .sort((left, right) => left.order - right.order || left.word.localeCompare(right.word));
+  const ordered =
+    cycle === 0
+      ? [...FIRST_SEASON_OPENING, ...shuffled.map(({ word }) => word)]
+      : shuffled.map(({ word }) => word);
+  return ordered[position];
 }
 
 export function dailyHotAndColdTarget(date = new Date()) {
-  const puzzle = hotAndColdPuzzleNumber(date) - 1;
-  const cycle = Math.floor(puzzle / HOT_AND_COLD_TARGETS.length);
-  const position = puzzle % HOT_AND_COLD_TARGETS.length;
-  const ordered = HOT_AND_COLD_TARGETS.map((word) => ({
-    word,
-    order: createHash("sha256")
-      .update(`milk-and-henny:hot-and-cold:${cycle}:${word}`)
-      .digest()
-      .readUInt32BE(0),
-  })).sort((left, right) => left.order - right.order || left.word.localeCompare(right.word));
-  return ordered[position].word;
+  return hotAndColdTargetForPuzzle(hotAndColdPuzzleNumber(date));
+}
+
+export function hotAndColdPuzzleDate(puzzle: number) {
+  return new Date(DAILY_EPOCH + (Math.max(1, Math.floor(puzzle)) - 1) * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+export function previousHotAndColdPuzzles(date = new Date()) {
+  const current = hotAndColdPuzzleNumber(date);
+  return Array.from({ length: current - 1 }, (_unused, index) => {
+    const puzzle = current - index - 1;
+    return {
+      puzzle,
+      date: hotAndColdPuzzleDate(puzzle),
+      target: hotAndColdTargetForPuzzle(puzzle),
+    };
+  });
 }
 
 export function randomHotAndColdTargets(total: number, excluded: readonly string[] = []) {

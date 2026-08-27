@@ -48,7 +48,7 @@ export function useGameScreenHistory({
         [GAME_SCREEN_STATE_KEY]: screen,
       };
       const baseUrl = `${window.location.pathname}${window.location.search}`;
-      window.history.pushState(nextState, "", `${baseUrl}#screen=${encodeURIComponent(screen)}`);
+      window.history.pushState(nextState, "", baseUrl);
       entryActive.current = true;
       return;
     }
@@ -70,8 +70,8 @@ export function useGameScreenHistory({
         return;
       }
 
-      // Forward navigation can revisit the marker after Back returned to setup. Do not leave a
-      // stale screen fragment in the address bar when the game has not been resumed.
+      // Forward navigation can revisit the marker after Back returned to setup. Strip the stale
+      // history state without pretending that the live game has been restored.
       if (isScreenState(event.state, screen)) {
         window.history.replaceState(
           withoutScreenState(event.state),

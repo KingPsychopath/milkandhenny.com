@@ -3285,6 +3285,14 @@ const MIGRATIONS: Migration[] = [
       ));
     `,
   },
+  {
+    id: "0064_person_game_solo_mode",
+    sql: `
+      alter table person_game_sessions drop constraint person_game_sessions_mode_check;
+      alter table person_game_sessions add constraint person_game_sessions_mode_check
+        check (mode in ('daily','solo','room','event'));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

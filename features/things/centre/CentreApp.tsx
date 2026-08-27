@@ -37,7 +37,13 @@ function dailySeed() {
 
 type SoloChoice = { seed: number; difficulty: CentreDifficulty; ghost?: SoloCentreReplay | null };
 
-export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTarget | null }) {
+export function CentreApp({
+  defaultPool,
+  initialSolo,
+}: {
+  defaultPool?: GamePoolDefaultLaunchTarget | null;
+  initialSolo?: "new" | "daily" | "ghost";
+}) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const { preferences, set, replace } = useGamePreferences("centre", {
@@ -45,7 +51,13 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
     delayedRivals: CENTRE_GAME_SETTINGS.delayedRivals,
   });
   const difficulty = preferences.difficulty as CentreDifficulty;
-  const [solo, setSolo] = useState<SoloChoice | null>(null);
+  const [solo, setSolo] = useState<SoloChoice | null>(() =>
+    initialSolo === "new"
+      ? { seed: freshSeed(), difficulty }
+      : initialSolo === "daily"
+        ? { seed: dailySeed(), difficulty }
+        : null,
+  );
   const [recent, setRecent] = useState<SoloCentreReplay[]>([]);
   const { name, setName, remember } = useRememberedPlayerName(32);
   const [joinCode, setJoinCode] = useState("");
@@ -55,15 +67,29 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
 
   useEffect(() => {
     void recentSoloCentreReplays()
-      .then(setRecent)
+      .then((replays) => {
+        setRecent(replays);
+        if (initialSolo === "ghost")
+          setSolo(
+            replays[0]
+              ? {
+                  seed: replays[0].seed,
+                  difficulty: replays[0].difficulty,
+                  ghost: replays[0],
+                }
+              : { seed: freshSeed(), difficulty },
+          );
+      })
       .catch(() => undefined);
-  }, []);
+  }, [difficulty, initialSolo]);
 
   if (solo)
     return (
       <SoloCentreGame
         {...solo}
-        onExit={() => setSolo(null)}
+        onExit={() =>
+          initialSolo ? void navigate({ to: "/things/centre", replace: true }) : setSolo(null)
+        }
         onNewMaze={() => setSolo({ seed: freshSeed(), difficulty })}
       />
     );
@@ -132,7 +158,7 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
               accent="amber"
               onClick={() => {
                 primeCentreAudio();
-                setSolo({ seed: freshSeed(), difficulty });
+                void navigate({ to: "/things/centre/solo", search: { mode: "new" } });
                 void haptics.trigger("selection");
               }}
             >
@@ -147,7 +173,9 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
           <GameLaunchChoices tone="theme">
             <button
               type="button"
-              onClick={() => setSolo({ seed: dailySeed(), difficulty })}
+              onClick={() =>
+                void navigate({ to: "/things/centre/solo", search: { mode: "daily" } })
+              }
               className="min-h-11"
             >
               play today’s maze
@@ -156,11 +184,7 @@ export function CentreApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunch
               <button
                 type="button"
                 onClick={() =>
-                  setSolo({
-                    seed: recent[0].seed,
-                    difficulty: recent[0].difficulty,
-                    ghost: recent[0],
-                  })
+                  void navigate({ to: "/things/centre/solo", search: { mode: "ghost" } })
                 }
                 className="min-h-11"
               >

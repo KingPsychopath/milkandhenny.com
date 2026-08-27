@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { HotAndColdApp } from "@/features/things/hot-and-cold/HotAndColdApp";
-import { getDailyHotAndColdFn } from "@/features/things/hot-and-cold/hot-and-cold.functions";
+import { getHotAndColdOverviewFn } from "@/features/things/hot-and-cold/hot-and-cold.functions";
 import { getDefaultGamePoolLaunchFn } from "@/features/things/pool/pool.functions";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead, OG_IMAGES } from "@/lib/shared/seo";
@@ -9,7 +9,7 @@ import "@/features/things/hot-and-cold/hot-and-cold.css";
 export const Route = createFileRoute("/things/hot-and-cold")({
   loader: async () => {
     const [daily, defaultPool] = await Promise.all([
-      getDailyHotAndColdFn(),
+      getHotAndColdOverviewFn(),
       getDefaultGamePoolLaunchFn({ data: { game: "hot-and-cold" } }).catch(() => null),
     ]);
     return { ...daily, defaultPool };
@@ -26,5 +26,7 @@ export const Route = createFileRoute("/things/hot-and-cold")({
 });
 function Page() {
   const data = Route.useLoaderData();
-  return <HotAndColdApp puzzle={data.puzzle} defaultPool={data.defaultPool} />;
+  return (
+    <HotAndColdApp puzzle={data.puzzle} history={data.history} defaultPool={data.defaultPool} />
+  );
 }

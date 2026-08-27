@@ -24,11 +24,16 @@ import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
 
-export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTarget | null }) {
+export function TwinApp({
+  defaultPool,
+  initialBoard,
+}: {
+  defaultPool?: GamePoolDefaultLaunchTarget | null;
+  initialBoard?: "duel" | "solo";
+}) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
-  const [board, setBoard] = useState<"duel" | "solo" | null>(null);
   const { name, setName, remember } = useRememberedPlayerName(32);
   const { preferences, set, replace } = useGamePreferences("twin", {
     handSize: TWIN_GAME_SETTINGS.handSize,
@@ -38,7 +43,13 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"friends" | "join" | null>(null);
 
-  if (board) return <TwinDuelApp mode={board} onExit={() => setBoard(null)} />;
+  if (initialBoard)
+    return (
+      <TwinDuelApp
+        mode={initialBoard}
+        onExit={() => void navigate({ to: "/things/twin", replace: true })}
+      />
+    );
 
   const handleCreate = async () => {
     if (!online) {
@@ -118,7 +129,7 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
               onClick={() => {
                 // Audio may only start from a gesture, so the context is opened on the way in.
                 primeTwinAudio();
-                setBoard("duel");
+                void navigate({ to: "/things/twin/one-screen" });
                 void haptics.trigger("selection");
               }}
             >
@@ -142,7 +153,7 @@ export function TwinApp({ defaultPool }: { defaultPool?: GamePoolDefaultLaunchTa
               type="button"
               onClick={() => {
                 primeTwinAudio();
-                setBoard("solo");
+                void navigate({ to: "/things/twin/solo" });
                 void haptics.trigger("selection");
               }}
               className="min-h-11"

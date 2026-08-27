@@ -108,8 +108,11 @@ import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
 import { Route as ThingsCentreDevRouteImport } from './routes/things.centre_.dev'
+import { Route as ThingsCentreSoloRouteImport } from './routes/things.centre_.solo'
 import { Route as ThingsDrawCountryRoomIdRouteImport } from './routes/things.draw-country_.$roomId'
+import { Route as ThingsDrawCountrySoloRouteImport } from './routes/things.draw-country_.solo'
 import { Route as ThingsHotAndColdRoomIdRouteImport } from './routes/things.hot-and-cold_.$roomId'
+import { Route as ThingsHotAndColdDailyRouteImport } from './routes/things.hot-and-cold_.daily'
 import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$roomId'
 import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
 import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
@@ -121,9 +124,12 @@ import { Route as ThingsPitchesPresentRouteImport } from './routes/things.pitche
 import { Route as ThingsPlayRoomIdRouteImport } from './routes/things.play.$roomId'
 import { Route as ThingsSameBrainRoomIdRouteImport } from './routes/things.same-brain_.$roomId'
 import { Route as ThingsSameBrainDevRouteImport } from './routes/things.same-brain_.dev'
+import { Route as ThingsSameBrainSoloRouteImport } from './routes/things.same-brain_.solo'
 import { Route as ThingsSpellingPartyRoomIdRouteImport } from './routes/things.spelling-party_.$roomId'
 import { Route as ThingsTwinRoomIdRouteImport } from './routes/things.twin_.$roomId'
 import { Route as ThingsTwinDevRouteImport } from './routes/things.twin_.dev'
+import { Route as ThingsTwinOneScreenRouteImport } from './routes/things.twin_.one-screen'
+import { Route as ThingsTwinSoloRouteImport } from './routes/things.twin_.solo'
 import { Route as ApiAdminAlbumsSlugRouteRouteImport } from './routes/api/admin/albums/$slug/route'
 import { Route as ApiAdminCliAuthExchangeRouteRouteImport } from './routes/api/admin/cli-auth/exchange/route'
 import { Route as ApiAdminCliAuthRequestRouteRouteImport } from './routes/api/admin/cli-auth/request/route'
@@ -715,14 +721,29 @@ const ThingsCentreDevRoute = ThingsCentreDevRouteImport.update({
   path: '/centre/dev',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsCentreSoloRoute = ThingsCentreSoloRouteImport.update({
+  id: '/centre_/solo',
+  path: '/centre/solo',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsDrawCountryRoomIdRoute = ThingsDrawCountryRoomIdRouteImport.update({
   id: '/draw-country_/$roomId',
   path: '/draw-country/$roomId',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsDrawCountrySoloRoute = ThingsDrawCountrySoloRouteImport.update({
+  id: '/draw-country_/solo',
+  path: '/draw-country/solo',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsHotAndColdRoomIdRoute = ThingsHotAndColdRoomIdRouteImport.update({
   id: '/hot-and-cold_/$roomId',
   path: '/hot-and-cold/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsHotAndColdDailyRoute = ThingsHotAndColdDailyRouteImport.update({
+  id: '/hot-and-cold_/daily',
+  path: '/hot-and-cold/daily',
   getParentRoute: () => ThingsRoute,
 } as any)
 const ThingsJudgeRoomIdRoute = ThingsJudgeRoomIdRouteImport.update({
@@ -780,6 +801,11 @@ const ThingsSameBrainDevRoute = ThingsSameBrainDevRouteImport.update({
   path: '/same-brain/dev',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsSameBrainSoloRoute = ThingsSameBrainSoloRouteImport.update({
+  id: '/same-brain_/solo',
+  path: '/same-brain/solo',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsSpellingPartyRoomIdRoute =
   ThingsSpellingPartyRoomIdRouteImport.update({
     id: '/spelling-party_/$roomId',
@@ -794,6 +820,16 @@ const ThingsTwinRoomIdRoute = ThingsTwinRoomIdRouteImport.update({
 const ThingsTwinDevRoute = ThingsTwinDevRouteImport.update({
   id: '/twin_/dev',
   path: '/twin/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsTwinOneScreenRoute = ThingsTwinOneScreenRouteImport.update({
+  id: '/twin_/one-screen',
+  path: '/twin/one-screen',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsTwinSoloRoute = ThingsTwinSoloRouteImport.update({
+  id: '/twin_/solo',
+  path: '/twin/solo',
   getParentRoute: () => ThingsRoute,
 } as any)
 const ApiAdminAlbumsSlugRouteRoute = ApiAdminAlbumsSlugRouteRouteImport.update({
@@ -1336,8 +1372,11 @@ export interface FileRoutesByFullPath {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
+  '/things/centre/solo': typeof ThingsCentreSoloRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
+  '/things/draw-country/solo': typeof ThingsDrawCountrySoloRoute
   '/things/hot-and-cold/$roomId': typeof ThingsHotAndColdRoomIdRoute
+  '/things/hot-and-cold/daily': typeof ThingsHotAndColdDailyRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
@@ -1349,9 +1388,12 @@ export interface FileRoutesByFullPath {
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
+  '/things/same-brain/solo': typeof ThingsSameBrainSoloRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/things/twin/$roomId': typeof ThingsTwinRoomIdRoute
   '/things/twin/dev': typeof ThingsTwinDevRoute
+  '/things/twin/one-screen': typeof ThingsTwinOneScreenRoute
+  '/things/twin/solo': typeof ThingsTwinSoloRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/cli-auth/exchange': typeof ApiAdminCliAuthExchangeRouteRoute
@@ -1528,8 +1570,11 @@ export interface FileRoutesByTo {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
+  '/things/centre/solo': typeof ThingsCentreSoloRoute
   '/things/draw-country/$roomId': typeof ThingsDrawCountryRoomIdRoute
+  '/things/draw-country/solo': typeof ThingsDrawCountrySoloRoute
   '/things/hot-and-cold/$roomId': typeof ThingsHotAndColdRoomIdRoute
+  '/things/hot-and-cold/daily': typeof ThingsHotAndColdDailyRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
@@ -1541,9 +1586,12 @@ export interface FileRoutesByTo {
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/same-brain/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain/dev': typeof ThingsSameBrainDevRoute
+  '/things/same-brain/solo': typeof ThingsSameBrainSoloRoute
   '/things/spelling-party/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/things/twin/$roomId': typeof ThingsTwinRoomIdRoute
   '/things/twin/dev': typeof ThingsTwinDevRoute
+  '/things/twin/one-screen': typeof ThingsTwinOneScreenRoute
+  '/things/twin/solo': typeof ThingsTwinSoloRoute
   '/pics/$album': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/cli-auth/exchange': typeof ApiAdminCliAuthExchangeRouteRoute
@@ -1721,8 +1769,11 @@ export interface FileRoutesById {
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre_/dev': typeof ThingsCentreDevRoute
+  '/things/centre_/solo': typeof ThingsCentreSoloRoute
   '/things/draw-country_/$roomId': typeof ThingsDrawCountryRoomIdRoute
+  '/things/draw-country_/solo': typeof ThingsDrawCountrySoloRoute
   '/things/hot-and-cold_/$roomId': typeof ThingsHotAndColdRoomIdRoute
+  '/things/hot-and-cold_/daily': typeof ThingsHotAndColdDailyRoute
   '/things/judge/$roomId': typeof ThingsJudgeRoomIdRoute
   '/things/liars_/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars_/dev': typeof ThingsLiarsDevRoute
@@ -1734,9 +1785,12 @@ export interface FileRoutesById {
   '/things/play/$roomId': typeof ThingsPlayRoomIdRoute
   '/things/same-brain_/$roomId': typeof ThingsSameBrainRoomIdRoute
   '/things/same-brain_/dev': typeof ThingsSameBrainDevRoute
+  '/things/same-brain_/solo': typeof ThingsSameBrainSoloRoute
   '/things/spelling-party_/$roomId': typeof ThingsSpellingPartyRoomIdRoute
   '/things/twin_/$roomId': typeof ThingsTwinRoomIdRoute
   '/things/twin_/dev': typeof ThingsTwinDevRoute
+  '/things/twin_/one-screen': typeof ThingsTwinOneScreenRoute
+  '/things/twin_/solo': typeof ThingsTwinSoloRoute
   '/pics/$album/': typeof PicsAlbumIndexRoute
   '/api/admin/albums/$slug': typeof ApiAdminAlbumsSlugRouteRouteWithChildren
   '/api/admin/cli-auth/exchange': typeof ApiAdminCliAuthExchangeRouteRoute
@@ -1915,8 +1969,11 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
+    | '/things/centre/solo'
     | '/things/draw-country/$roomId'
+    | '/things/draw-country/solo'
     | '/things/hot-and-cold/$roomId'
+    | '/things/hot-and-cold/daily'
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
     | '/things/liars/dev'
@@ -1928,9 +1985,12 @@ export interface FileRouteTypes {
     | '/things/play/$roomId'
     | '/things/same-brain/$roomId'
     | '/things/same-brain/dev'
+    | '/things/same-brain/solo'
     | '/things/spelling-party/$roomId'
     | '/things/twin/$roomId'
     | '/things/twin/dev'
+    | '/things/twin/one-screen'
+    | '/things/twin/solo'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/cli-auth/exchange'
@@ -2107,8 +2167,11 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
+    | '/things/centre/solo'
     | '/things/draw-country/$roomId'
+    | '/things/draw-country/solo'
     | '/things/hot-and-cold/$roomId'
+    | '/things/hot-and-cold/daily'
     | '/things/judge/$roomId'
     | '/things/liars/$roomId'
     | '/things/liars/dev'
@@ -2120,9 +2183,12 @@ export interface FileRouteTypes {
     | '/things/play/$roomId'
     | '/things/same-brain/$roomId'
     | '/things/same-brain/dev'
+    | '/things/same-brain/solo'
     | '/things/spelling-party/$roomId'
     | '/things/twin/$roomId'
     | '/things/twin/dev'
+    | '/things/twin/one-screen'
+    | '/things/twin/solo'
     | '/pics/$album'
     | '/api/admin/albums/$slug'
     | '/api/admin/cli-auth/exchange'
@@ -2299,8 +2365,11 @@ export interface FileRouteTypes {
     | '/pics/$album/$photo'
     | '/things/centre_/$roomId'
     | '/things/centre_/dev'
+    | '/things/centre_/solo'
     | '/things/draw-country_/$roomId'
+    | '/things/draw-country_/solo'
     | '/things/hot-and-cold_/$roomId'
+    | '/things/hot-and-cold_/daily'
     | '/things/judge/$roomId'
     | '/things/liars_/$roomId'
     | '/things/liars_/dev'
@@ -2312,9 +2381,12 @@ export interface FileRouteTypes {
     | '/things/play/$roomId'
     | '/things/same-brain_/$roomId'
     | '/things/same-brain_/dev'
+    | '/things/same-brain_/solo'
     | '/things/spelling-party_/$roomId'
     | '/things/twin_/$roomId'
     | '/things/twin_/dev'
+    | '/things/twin_/one-screen'
+    | '/things/twin_/solo'
     | '/pics/$album/'
     | '/api/admin/albums/$slug'
     | '/api/admin/cli-auth/exchange'
@@ -3203,6 +3275,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsCentreDevRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/centre_/solo': {
+      id: '/things/centre_/solo'
+      path: '/centre/solo'
+      fullPath: '/things/centre/solo'
+      preLoaderRoute: typeof ThingsCentreSoloRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/draw-country_/$roomId': {
       id: '/things/draw-country_/$roomId'
       path: '/draw-country/$roomId'
@@ -3210,11 +3289,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsDrawCountryRoomIdRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/draw-country_/solo': {
+      id: '/things/draw-country_/solo'
+      path: '/draw-country/solo'
+      fullPath: '/things/draw-country/solo'
+      preLoaderRoute: typeof ThingsDrawCountrySoloRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/hot-and-cold_/$roomId': {
       id: '/things/hot-and-cold_/$roomId'
       path: '/hot-and-cold/$roomId'
       fullPath: '/things/hot-and-cold/$roomId'
       preLoaderRoute: typeof ThingsHotAndColdRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/hot-and-cold_/daily': {
+      id: '/things/hot-and-cold_/daily'
+      path: '/hot-and-cold/daily'
+      fullPath: '/things/hot-and-cold/daily'
+      preLoaderRoute: typeof ThingsHotAndColdDailyRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/things/judge/$roomId': {
@@ -3294,6 +3387,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsSameBrainDevRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/same-brain_/solo': {
+      id: '/things/same-brain_/solo'
+      path: '/same-brain/solo'
+      fullPath: '/things/same-brain/solo'
+      preLoaderRoute: typeof ThingsSameBrainSoloRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/spelling-party_/$roomId': {
       id: '/things/spelling-party_/$roomId'
       path: '/spelling-party/$roomId'
@@ -3313,6 +3413,20 @@ declare module '@tanstack/react-router' {
       path: '/twin/dev'
       fullPath: '/things/twin/dev'
       preLoaderRoute: typeof ThingsTwinDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/twin_/one-screen': {
+      id: '/things/twin_/one-screen'
+      path: '/twin/one-screen'
+      fullPath: '/things/twin/one-screen'
+      preLoaderRoute: typeof ThingsTwinOneScreenRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/twin_/solo': {
+      id: '/things/twin_/solo'
+      path: '/twin/solo'
+      fullPath: '/things/twin/solo'
+      preLoaderRoute: typeof ThingsTwinSoloRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/api/admin/albums/$slug': {
@@ -3857,8 +3971,11 @@ interface ThingsRouteChildren {
   ThingsTwinRoute: typeof ThingsTwinRoute
   ThingsCentreRoomIdRoute: typeof ThingsCentreRoomIdRoute
   ThingsCentreDevRoute: typeof ThingsCentreDevRoute
+  ThingsCentreSoloRoute: typeof ThingsCentreSoloRoute
   ThingsDrawCountryRoomIdRoute: typeof ThingsDrawCountryRoomIdRoute
+  ThingsDrawCountrySoloRoute: typeof ThingsDrawCountrySoloRoute
   ThingsHotAndColdRoomIdRoute: typeof ThingsHotAndColdRoomIdRoute
+  ThingsHotAndColdDailyRoute: typeof ThingsHotAndColdDailyRoute
   ThingsJudgeRoomIdRoute: typeof ThingsJudgeRoomIdRoute
   ThingsLiarsRoomIdRoute: typeof ThingsLiarsRoomIdRoute
   ThingsLiarsDevRoute: typeof ThingsLiarsDevRoute
@@ -3870,9 +3987,12 @@ interface ThingsRouteChildren {
   ThingsPlayRoomIdRoute: typeof ThingsPlayRoomIdRoute
   ThingsSameBrainRoomIdRoute: typeof ThingsSameBrainRoomIdRoute
   ThingsSameBrainDevRoute: typeof ThingsSameBrainDevRoute
+  ThingsSameBrainSoloRoute: typeof ThingsSameBrainSoloRoute
   ThingsSpellingPartyRoomIdRoute: typeof ThingsSpellingPartyRoomIdRoute
   ThingsTwinRoomIdRoute: typeof ThingsTwinRoomIdRoute
   ThingsTwinDevRoute: typeof ThingsTwinDevRoute
+  ThingsTwinOneScreenRoute: typeof ThingsTwinOneScreenRoute
+  ThingsTwinSoloRoute: typeof ThingsTwinSoloRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
   ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
@@ -3894,8 +4014,11 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsTwinRoute: ThingsTwinRoute,
   ThingsCentreRoomIdRoute: ThingsCentreRoomIdRoute,
   ThingsCentreDevRoute: ThingsCentreDevRoute,
+  ThingsCentreSoloRoute: ThingsCentreSoloRoute,
   ThingsDrawCountryRoomIdRoute: ThingsDrawCountryRoomIdRoute,
+  ThingsDrawCountrySoloRoute: ThingsDrawCountrySoloRoute,
   ThingsHotAndColdRoomIdRoute: ThingsHotAndColdRoomIdRoute,
+  ThingsHotAndColdDailyRoute: ThingsHotAndColdDailyRoute,
   ThingsJudgeRoomIdRoute: ThingsJudgeRoomIdRoute,
   ThingsLiarsRoomIdRoute: ThingsLiarsRoomIdRoute,
   ThingsLiarsDevRoute: ThingsLiarsDevRoute,
@@ -3907,9 +4030,12 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsPlayRoomIdRoute: ThingsPlayRoomIdRoute,
   ThingsSameBrainRoomIdRoute: ThingsSameBrainRoomIdRoute,
   ThingsSameBrainDevRoute: ThingsSameBrainDevRoute,
+  ThingsSameBrainSoloRoute: ThingsSameBrainSoloRoute,
   ThingsSpellingPartyRoomIdRoute: ThingsSpellingPartyRoomIdRoute,
   ThingsTwinRoomIdRoute: ThingsTwinRoomIdRoute,
   ThingsTwinDevRoute: ThingsTwinDevRoute,
+  ThingsTwinOneScreenRoute: ThingsTwinOneScreenRoute,
+  ThingsTwinSoloRoute: ThingsTwinSoloRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
   ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,

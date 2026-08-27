@@ -19,7 +19,7 @@ import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
-import { personGameHistory } from "@/features/person-games/history.server";
+import { personGameHistory, personGameStats } from "@/features/person-games/history.server";
 import { safeReturnTo, type AttendeeAccount, type AttendeeTicketIdentity } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -652,7 +652,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     [personId],
   );
   if (!person) return null;
-  const [emails, tickets, ticketOperations, globalAccess, eventAccess, gameHistory] =
+  const [emails, tickets, ticketOperations, globalAccess, eventAccess, gameHistory, gameStats] =
     await Promise.all([
       query<{ id: string; display_hint: string; verified_at: Date }>(
         `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
@@ -722,6 +722,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
         [personId],
       ),
       personGameHistory(personId),
+      personGameStats(personId),
     ]);
   const participantIds = tickets
     .map((ticket) => ticket.participant_id)
@@ -744,6 +745,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
   return {
     name: person.canonical_name,
     gameHistory,
+    gameStats,
     emails: emails.map((row) => ({
       id: row.id,
       masked: row.display_hint,

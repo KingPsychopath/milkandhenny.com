@@ -30,15 +30,15 @@ already explains the route.
 
 ## What belongs where
 
-| Surface                       | URL owns                                     | Browser Back                                   | Local or durable state                                                                  |
-| ----------------------------- | -------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Public editorial content      | The resource path                            | The previous page                              | Server-rendered content and route data                                                  |
-| Album and photo journeys      | Album/photo path                             | The previous resource or page                  | Photo selection and viewer controls are local to the resource                           |
-| Things index and setup        | The tool path                                | Leave the tool when the user chooses Back      | Search, preferences, and setup choices are local unless they need a shareable URL       |
-| Local game round              | The tool path plus a temporary screen marker | Return to setup; a second Back leaves the tool | Timers, scores, drawings, and motion state stay in React or tab-scoped recovery storage |
-| Multiplayer room              | The room path                                | Leave through the room's exit behaviour        | Server room state and short-lived browser credentials                                   |
-| Pitch studio and presentation | The deck or room path                        | Follow the studio or presentation control      | IndexedDB/browser working copy plus server versions where the feature supports them     |
-| Dialogs and menus             | No URL by default                            | Close with their own control or Escape         | Component state; use a route only when the surface must be linkable or restorable       |
+| Surface                       | URL owns              | Browser Back                                   | Local or durable state                                                                  |
+| ----------------------------- | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Public editorial content      | The resource path     | The previous page                              | Server-rendered content and route data                                                  |
+| Album and photo journeys      | Album/photo path      | The previous resource or page                  | Photo selection and viewer controls are local to the resource                           |
+| Things index and setup        | The tool path         | Leave the tool when the user chooses Back      | Search, preferences, and setup choices are local unless they need a shareable URL       |
+| Local game round              | The tool path         | Return to setup; a second Back leaves the tool | Timers, scores, drawings, and motion state stay in React or tab-scoped recovery storage |
+| Multiplayer room              | The room path         | Leave through the room's exit behaviour        | Server room state and short-lived browser credentials                                   |
+| Pitch studio and presentation | The deck or room path | Follow the studio or presentation control      | IndexedDB/browser working copy plus server versions where the feature supports them     |
+| Dialogs and menus             | No URL by default     | Close with their own control or Escape         | Component state; use a route only when the surface must be linkable or restorable       |
 
 ## URL rules
 
@@ -62,15 +62,16 @@ already explains the route.
 ## Local game history
 
 Local games use `useGameScreenHistory` for the setup-to-round transition. The
-hook adds one same-route history entry with a small `#screen=...` marker and a
-history-state marker. It does not serialise the running game into the URL.
+hook adds one same-URL history entry with a history-state marker. It does not
+serialise the running game into the URL or expose a fragment that looks like a
+deep link but cannot restore the round.
 
 While the round is active:
 
 ```text
 /things/spelling-bee
   -> start
-/things/spelling-bee#screen=round
+/things/spelling-bee             (history state marks the active round)
   -> browser Back
 /things/spelling-bee          (setup)
   -> browser Back

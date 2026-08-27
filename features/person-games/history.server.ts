@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import { query, transaction } from "@/lib/platform/postgres.server";
-import type { PersonGameHistoryItem, PersonGameMode, PersonGameStatus } from "./types";
+import type {
+  PersonGameHistoryItem,
+  PersonGameMetadata,
+  PersonGameMode,
+  PersonGameStats,
+  PersonGameStatus,
+} from "./types";
 
 type JsonObject = Record<string, boolean | number | string | null>;
 
@@ -98,10 +104,11 @@ export async function personGameHistory(
     last_played_at: Date;
     completed_at: Date | null;
     event_count: string;
+    summary: PersonGameMetadata;
   }>(
     `select session.id,session.game,session.mode,session.external_ref,session.display_name,session.status,
             session.outcome,session.score,session.started_at,session.last_played_at,
-            session.completed_at,count(event.id)::text as event_count
+            session.completed_at,session.summary,count(event.id)::text as event_count
        from person_game_sessions session
        left join person_game_events event on event.session_id = session.id
       where session.person_id = $1
@@ -123,5 +130,68 @@ export async function personGameHistory(
     lastPlayedAt: row.last_played_at.toISOString(),
     completedAt: row.completed_at?.toISOString(),
     eventCount: Number(row.event_count),
+    summary: row.summary,
+  }));
+}
+
+export async function personGameStats(personId: string): Promise<PersonGameStats[]> {
+  const rows = await query<{
+    game: string;
+    plays: string;
+    completed: string;
+    wins: string;
+    actions: string;
+    last_played_at: Date;
+    guesses: string;
+    hints: string;
+    hot_guesses: string;
+    cold_guesses: string;
+    best_rank: number | null;
+  }>(
+    `select session.game,
+            count(distinct session.id)::text as plays,
+            count(distinct session.id) filter (where session.status = 'completed')::text as completed,
+            count(distinct session.id) filter (
+              where session.outcome in ('won','found')
+            )::text as wins,
+            count(event.id)::text as actions,
+            max(session.last_played_at) as last_played_at,
+            count(event.id) filter (where event.kind = 'guess')::text as guesses,
+            count(event.id) filter (where event.kind = 'hint')::text as hints,
+            count(event.id) filter (
+              where event.kind = 'guess'
+                and event.payload->>'band' in ('burning','hot','warm')
+            )::text as hot_guesses,
+            count(event.id) filter (
+              where event.kind = 'guess'
+                and event.payload->>'band' in ('cold','frozen')
+            )::text as cold_guesses,
+            min(
+              case when event.kind = 'guess' and event.payload->>'rank' ~ '^[0-9]+$'
+                then (event.payload->>'rank')::integer end
+            ) as best_rank
+       from person_game_sessions session
+       left join person_game_events event on event.session_id = session.id
+      where session.person_id = $1
+      group by session.game
+      order by max(session.last_played_at) desc`,
+    [personId],
+  );
+  return rows.map((row) => ({
+    game: row.game,
+    plays: Number(row.plays),
+    completed: Number(row.completed),
+    wins: Number(row.wins),
+    actions: Number(row.actions),
+    lastPlayedAt: row.last_played_at.toISOString(),
+    ...(row.game === "hot-and-cold"
+      ? {
+          guesses: Number(row.guesses),
+          hints: Number(row.hints),
+          hotGuesses: Number(row.hot_guesses),
+          coldGuesses: Number(row.cold_guesses),
+          bestRank: row.best_rank ?? undefined,
+        }
+      : {}),
   }));
 }

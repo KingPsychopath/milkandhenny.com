@@ -9,6 +9,9 @@ import {
 import {
   HOT_AND_COLD_TARGETS,
   dailyHotAndColdTarget,
+  hotAndColdPuzzleNumber,
+  hotAndColdTargetForPuzzle,
+  previousHotAndColdPuzzles,
 } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 
 describe("Hot and Cold rules", () => {
@@ -58,9 +61,24 @@ describe("Hot and Cold rules", () => {
   it("does not repeat a daily target within one complete deck cycle", () => {
     expect(new Set(HOT_AND_COLD_TARGETS).size).toBe(HOT_AND_COLD_TARGETS.length);
     const targets = Array.from({ length: HOT_AND_COLD_TARGETS.length }, (_, offset) =>
-      dailyHotAndColdTarget(new Date(Date.UTC(2025, 7, 15 + offset))),
+      hotAndColdTargetForPuzzle(offset + 1),
     );
 
     expect(new Set(targets).size).toBe(HOT_AND_COLD_TARGETS.length);
+  });
+
+  it("starts at puzzle one and changes at midnight in the UK", () => {
+    expect(hotAndColdPuzzleNumber(new Date("2026-08-25T22:59:59Z"))).toBe(1);
+    expect(hotAndColdPuzzleNumber(new Date("2026-08-25T23:00:00Z"))).toBe(2);
+    expect(hotAndColdPuzzleNumber(new Date("2026-08-27T12:00:00Z"))).toBe(3);
+    expect(dailyHotAndColdTarget(new Date("2026-08-25T12:00:00Z"))).toBe(
+      hotAndColdTargetForPuzzle(1),
+    );
+    expect(hotAndColdTargetForPuzzle(1)).toBe("chimney");
+    expect(hotAndColdTargetForPuzzle(2)).toBe("diary");
+    expect(previousHotAndColdPuzzles(new Date("2026-08-27T12:00:00Z"))).toEqual([
+      { puzzle: 2, date: "2026-08-26", target: "diary" },
+      { puzzle: 1, date: "2026-08-25", target: "chimney" },
+    ]);
   });
 });

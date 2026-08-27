@@ -42,6 +42,38 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   return [...groups.values()];
 }
 
+function gamePath(
+  game: string,
+  mode: AttendeeAccount["gameHistory"][number]["mode"],
+):
+  | "/things"
+  | "/things/hot-and-cold"
+  | "/things/hot-and-cold/daily"
+  | "/things/centre"
+  | "/things/draw-country"
+  | "/things/heads-up"
+  | "/things/icebreaker"
+  | "/things/liars"
+  | "/things/same-brain"
+  | "/things/spelling-bee"
+  | "/things/spelling-party"
+  | "/things/twin" {
+  if (game === "hot-and-cold" && mode === "daily") return "/things/hot-and-cold/daily";
+  const paths = {
+    "hot-and-cold": "/things/hot-and-cold",
+    centre: "/things/centre",
+    "draw-country": "/things/draw-country",
+    "heads-up": "/things/heads-up",
+    icebreaker: "/things/icebreaker",
+    liars: "/things/liars",
+    "same-brain": "/things/same-brain",
+    "spelling-bee": "/things/spelling-bee",
+    "spelling-party": "/things/spelling-party",
+    twin: "/things/twin",
+  } as const;
+  return game in paths ? paths[game as keyof typeof paths] : "/things";
+}
+
 export function MyAccountPage({
   account: initialAccount,
   emailStepUpRequired: initialEmailStepUpRequired,
@@ -280,11 +312,34 @@ export function MyAccountPage({
             Signed-in play stays with this account. A game name can differ from your preferred name
             without changing either one.
           </p>
+          <ul className="mt-5 grid gap-x-6 gap-y-5 border-y theme-border py-5 sm:grid-cols-2">
+            {account.gameStats.map((stats) => (
+              <li key={stats.game}>
+                <p className="font-mono text-xs">{stats.game.replaceAll("-", " ")}</p>
+                <p className="mt-2 font-serif text-xl">
+                  {stats.plays} {stats.plays === 1 ? "play" : "plays"} · {stats.wins} won
+                </p>
+                <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                  {stats.guesses !== undefined
+                    ? [
+                        `${stats.guesses} guesses`,
+                        `${stats.hotGuesses} warm`,
+                        `${stats.coldGuesses} cold`,
+                        `${stats.hints} hints`,
+                        stats.bestRank !== undefined ? `best #${stats.bestRank}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                    : `${stats.completed} completed · ${stats.actions} actions`}
+                </p>
+              </li>
+            ))}
+          </ul>
           <ul className="mt-4 divide-y border-y theme-border">
             {account.gameHistory.map((game) => (
               <li key={game.id}>
                 <Link
-                  to="/things/hot-and-cold"
+                  to={gamePath(game.game, game.mode)}
                   className="flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70"
                 >
                   <div>

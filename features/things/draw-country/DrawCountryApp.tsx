@@ -24,7 +24,6 @@ import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 import { nextSoloCountry } from "./rotation.client";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
-import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 
 function RoundSettings({
   roundTotal,
@@ -68,16 +67,17 @@ function RoundSettings({
 export function DrawCountryApp({
   initialCountry,
   defaultPool,
+  initialSoloMode,
 }: {
   initialCountry: CountryOutline | null;
   defaultPool?: GamePoolDefaultLaunchTarget | null;
+  initialSoloMode?: SoloDrawCountryMode;
 }) {
   const navigate = useNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
   const [country, setCountry] = useState(initialCountry);
   const [countryLoadFailed, setCountryLoadFailed] = useState(false);
-  const [soloMode, setSoloMode] = useState<SoloDrawCountryMode | null>(null);
   const { name, setName, remember } = useRememberedPlayerName(32);
   const { preferences, set, replace } = useGamePreferences("draw-country", {
     roundTotal: DRAW_COUNTRY_GAME_SETTINGS.roundTotal,
@@ -91,12 +91,6 @@ export function DrawCountryApp({
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"solo" | "friends" | "join" | null>(null);
-
-  useGameScreenHistory({
-    active: soloMode !== null,
-    screen: "solo",
-    onBack: () => setSoloMode(null),
-  });
 
   useEffect(() => {
     if (country) return;
@@ -114,14 +108,14 @@ export function DrawCountryApp({
     };
   }, [country, online]);
 
-  if (soloMode && country)
+  if (initialSoloMode && country)
     return (
       <SoloDrawCountry
         initialCountry={country}
-        mode={soloMode}
+        mode={initialSoloMode}
         roundTotal={roundTotal}
-        roundSeconds={soloMode === "quick" ? 30 : drawSeconds}
-        onExit={() => setSoloMode(null)}
+        roundSeconds={initialSoloMode === "quick" ? 30 : drawSeconds}
+        onExit={() => void navigate({ to: "/things/draw-country", replace: true })}
       />
     );
 
@@ -203,7 +197,10 @@ export function DrawCountryApp({
               accent="ink"
               disabled={!country}
               onClick={() => {
-                setSoloMode("quick");
+                void navigate({
+                  to: "/things/draw-country/solo",
+                  search: { mode: "quick" },
+                });
                 void haptics.trigger("selection");
               }}
             >
@@ -283,7 +280,10 @@ export function DrawCountryApp({
               <button
                 type="button"
                 onClick={() => {
-                  setSoloMode("rounds");
+                  void navigate({
+                    to: "/things/draw-country/solo",
+                    search: { mode: "rounds" },
+                  });
                   void haptics.trigger("selection");
                 }}
                 className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white sm:col-span-2"

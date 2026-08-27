@@ -20,7 +20,6 @@ import { SAME_BRAIN_GAME_SETTINGS } from "./settings";
 import { SoloSameBrain } from "./SoloSameBrain";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
-import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 /**
@@ -32,8 +31,10 @@ import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
  */
 export function SameBrainSetupApp({
   defaultPool,
+  initialSolo = false,
 }: {
   defaultPool?: GamePoolDefaultLaunchTarget | null;
+  initialSolo?: boolean;
 }) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than five.
@@ -48,20 +49,16 @@ export function SameBrainSetupApp({
     Math.max(SAME_BRAIN_ROUND_LIMITS.min, preferences.rounds),
   );
 
-  const [solo, setSolo] = useState(false);
   const [panel, setPanel] = useState<"join" | "more" | "solo" | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useSafeGameNavigation(!solo);
+  useSafeGameNavigation(!initialSolo);
 
-  useGameScreenHistory({
-    active: solo,
-    screen: "solo",
-    onBack: () => setSolo(false),
-  });
-
-  if (solo) return <SoloSameBrain onExit={() => setSolo(false)} />;
+  if (initialSolo)
+    return (
+      <SoloSameBrain onExit={() => void navigate({ to: "/things/same-brain", replace: true })} />
+    );
 
   const open = async () => {
     if (busy) return;
@@ -234,7 +231,7 @@ export function SameBrainSetupApp({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setSolo(true)}
+                  onClick={() => void navigate({ to: "/things/same-brain/solo" })}
                   className="mt-4 min-h-12 rounded-full border border-white/25 px-6 font-mono text-xs text-white/80 hover:border-[var(--things-amber)] hover:text-[var(--things-amber)]"
                 >
                   just the questions

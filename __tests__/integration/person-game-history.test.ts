@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 
-import { personGameHistory, recordPersonGame } from "@/features/person-games/history.server";
+import {
+  personGameHistory,
+  personGameStats,
+  recordPersonGame,
+} from "@/features/person-games/history.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -25,7 +29,7 @@ describeWithDatabase("person game history", () => {
       game: "hot-and-cold",
       mode: "daily" as const,
       externalRef: "42",
-      event: { key: "guess:warm", kind: "guess", payload: { rank: 12 } },
+      event: { key: "guess:warm", kind: "guess", payload: { rank: 12, band: "burning" } },
     };
     await recordPersonGame(record);
     await recordPersonGame(record);
@@ -34,7 +38,7 @@ describeWithDatabase("person game history", () => {
       status: "completed",
       outcome: "found",
       score: 0,
-      event: { key: "guess:target", kind: "guess", payload: { rank: 0 } },
+      event: { key: "guess:target", kind: "guess", payload: { rank: 0, band: "found" } },
     });
 
     expect(await personGameHistory(PERSON_TWO)).toEqual([]);
@@ -47,6 +51,19 @@ describeWithDatabase("person game history", () => {
         outcome: "found",
         score: 0,
         eventCount: 2,
+      }),
+    ]);
+    expect(await personGameStats(PERSON_ONE)).toEqual([
+      expect.objectContaining({
+        game: "hot-and-cold",
+        plays: 1,
+        completed: 1,
+        wins: 1,
+        actions: 2,
+        guesses: 2,
+        hotGuesses: 1,
+        coldGuesses: 0,
+        bestRank: 0,
       }),
     ]);
   });

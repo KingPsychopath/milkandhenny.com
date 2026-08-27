@@ -8,7 +8,7 @@ import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
 import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.functions";
-import { buildHotAndColdInviteUrl, parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
+import { buildHotAndColdInviteUrl } from "./hot-and-cold-invite";
 import { heatStreaks } from "./hot-and-cold-rules";
 import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
@@ -20,9 +20,11 @@ import type { MultiplayerActionInput } from "../shared/multiplayer";
 
 export function JoinHotAndColdRoom({
   roomId,
+  joinToken,
   onJoined,
 }: {
   roomId: string;
+  joinToken: string;
   onJoined: (credentials: HotAndColdCredentials) => void;
 }) {
   const { loaded, name, setName, remember } = useRememberedPlayerName(24);
@@ -36,7 +38,7 @@ export function JoinHotAndColdRoom({
         data: {
           roomId,
           name: name.trim(),
-          joinToken: parseHotAndColdInviteFragment(location.hash) || undefined,
+          joinToken: joinToken || undefined,
         },
       });
       if (!result.ok) {

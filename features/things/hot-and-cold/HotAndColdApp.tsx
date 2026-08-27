@@ -12,25 +12,30 @@ import {
 import { GameShell } from "../shared/GameShell";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { useGamePreferences } from "../shared/useGamePreferences";
-import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { createHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { hotAndColdRoomPath } from "./hot-and-cold-invite";
 import { HOT_AND_COLD_GAME_SETTINGS } from "./settings";
-import { SoloHotAndCold } from "./SoloHotAndCold";
+
+interface PreviousPuzzle {
+  puzzle: number;
+  date: string;
+  target: string;
+}
 
 export function HotAndColdApp({
   puzzle,
+  history,
   defaultPool,
 }: {
   puzzle: number;
+  history: PreviousPuzzle[];
   defaultPool?: GamePoolDefaultLaunchTarget | null;
 }) {
   const navigate = useNavigate();
   const { name, setName, remember } = useRememberedPlayerName(24);
-  const [solo, setSolo] = useState(false);
   const [panel, setPanel] = useState<"room" | "join" | "settings" | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,8 +45,6 @@ export function HotAndColdApp({
     guessesPerPlayer: HOT_AND_COLD_GAME_SETTINGS.guessesPerPlayer,
     turnSeconds: HOT_AND_COLD_GAME_SETTINGS.turnSeconds,
   });
-  useGameScreenHistory({ active: solo, screen: "daily", onBack: () => setSolo(false) });
-  if (solo) return <SoloHotAndCold puzzle={puzzle} onExit={() => setSolo(false)} />;
   const openRoom = async () => {
     if (!name.trim() || busy) {
       setPanel("room");
@@ -93,7 +96,10 @@ export function HotAndColdApp({
             title="hot and cold"
             description="Guess the hidden word. Lower numbers take you closer to the heat. Zero finds it."
           >
-            <GameLaunchButton accent="amber" onClick={() => setSolo(true)}>
+            <GameLaunchButton
+              accent="amber"
+              onClick={() => void navigate({ to: "/things/hot-and-cold/daily" })}
+            >
               play today’s word
             </GameLaunchButton>
             <GameLaunchMeta tone="theme">daily #{puzzle} · unlimited guesses</GameLaunchMeta>
@@ -219,6 +225,44 @@ export function HotAndColdApp({
               </p>
             ) : null}
           </GameLaunch>
+          {history.length ? (
+            <section className="mt-12 border-t theme-border pt-7" aria-labelledby="past-words">
+              <div className="flex items-end justify-between gap-6">
+                <div>
+                  <p className="font-mono text-micro uppercase tracking-[.16em] theme-muted">
+                    the ledger
+                  </p>
+                  <h2 id="past-words" className="mt-2 font-serif text-3xl font-semibold">
+                    Previous words
+                  </h2>
+                </div>
+                <p className="font-mono text-micro theme-muted">updates at midnight UK time</p>
+              </div>
+              <ol className="mt-5 divide-y border-y theme-border">
+                {history.map((entry) => (
+                  <li
+                    key={entry.puzzle}
+                    className="flex min-h-14 items-center justify-between gap-6 py-3"
+                  >
+                    <div>
+                      <p className="font-mono text-xs">daily #{entry.puzzle}</p>
+                      <time
+                        dateTime={entry.date}
+                        className="mt-1 block font-mono text-micro theme-muted"
+                      >
+                        {new Date(`${entry.date}T12:00:00Z`).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </time>
+                    </div>
+                    <p className="font-serif text-xl">{entry.target}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
         </main>
       </div>
     </GameShell>

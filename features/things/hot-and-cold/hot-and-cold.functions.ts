@@ -19,7 +19,11 @@ import {
 import { heatBand, prepareGuess } from "./hot-and-cold-rules";
 import { hotAndColdHint } from "./hot-and-cold-lexicon.server";
 import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
-import { dailyHotAndColdTarget, hotAndColdPuzzleNumber } from "./hot-and-cold-words.server";
+import {
+  dailyHotAndColdTarget,
+  hotAndColdPuzzleNumber,
+  previousHotAndColdPuzzles,
+} from "./hot-and-cold-words.server";
 import type { HotAndColdAction, HotAndColdSnapshot } from "./types";
 
 const record = multiplayerRecord;
@@ -155,7 +159,7 @@ export const joinHotAndColdRoomFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const result = await joinHotAndColdRoom(data);
     if (result.ok) await recordRoomSnapshot({ snapshot: result.snapshot });
-    return result;
+    return result.ok ? { ...result, joinToken: data.joinToken } : result;
   });
 export const readHotAndColdSnapshotFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
@@ -296,6 +300,10 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
     });
     return { ...hint, band, puzzle };
   });
+export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler(() => ({
+  puzzle: hotAndColdPuzzleNumber(),
+  history: previousHotAndColdPuzzles(),
+}));
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
 }));

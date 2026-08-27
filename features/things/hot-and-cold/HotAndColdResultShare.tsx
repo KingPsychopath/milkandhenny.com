@@ -24,7 +24,7 @@ function useHotAndColdResultShare(
     return () => window.clearTimeout(reset);
   }, [status]);
   const share = async () => {
-    const url = `${location.origin}/things/hot-and-cold`;
+    const url = `${location.origin}/things/hot-and-cold/daily`;
     const response = await shareOrCopy(
       { title: "Hot and Cold", text: result.text, url },
       { copyValue: `${result.text}\n\n${url}` },
