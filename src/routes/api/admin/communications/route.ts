@@ -18,6 +18,7 @@ import {
   saveCommunicationTemplate,
   scheduleCommunicationPlan,
   sendCommunicationStageNow,
+  sendCommunicationStageToMissingRecipients,
   previewCommunicationStage,
   previewCommunicationStageEmail,
   resetCommunicationPlanStageFromTemplate,
@@ -177,6 +178,13 @@ async function handlePOST(request: Request) {
       if (typeof body.stageId !== "string" || !body.stageId)
         return Response.json({ error: "Choose a stage" }, { status: 400 });
       return Response.json({ queued: await sendCommunicationStageNow(body.stageId, request) });
+    }
+    if (body.action === "send-stage-to-missing") {
+      if (typeof body.stageId !== "string" || !body.stageId)
+        return Response.json({ error: "Choose a stage" }, { status: 400 });
+      return Response.json({
+        queued: await sendCommunicationStageToMissingRecipients(body.stageId, request),
+      });
     }
     if (body.action === "save-template") {
       if (

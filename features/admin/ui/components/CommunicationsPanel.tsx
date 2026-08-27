@@ -84,6 +84,9 @@ type Stage = {
   status: string;
   deliveryState: string;
   recipientCount: number;
+  audienceCount: number;
+  receivedCount: number;
+  missingRecipientCount: number;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
@@ -792,6 +795,31 @@ export function CommunicationsPanel({
       setBusy(false);
     }
   };
+  const sendStageToMissingRecipients = async (stage: Stage) => {
+    const approved = await confirm({
+      eyebrow: "event communication",
+      title: `Send to ${stage.missingRecipientCount} missing attendee${stage.missingRecipientCount === 1 ? "" : "s"}?`,
+      description: `“${stage.subject}” will go only to current valid ticket holders who have never been queued for this stage. Anyone with an existing delivery record will not receive it again.`,
+      confirmLabel: "send to missing",
+    });
+    if (!approved) return;
+    setBusy(true);
+    try {
+      const data = (await post({ action: "send-stage-to-missing", stageId: stage.id })) as {
+        queued?: number;
+      };
+      onStatus(
+        data.queued
+          ? `${data.queued} missing attendee${data.queued === 1 ? "" : "s"} queued for “${stage.label}”.`
+          : `Everyone eligible for “${stage.label}” already has a delivery record.`,
+      );
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not send to missing attendees");
+    } finally {
+      setBusy(false);
+    }
+  };
   const save = async (mode: "draft" | "schedule" | "now") => {
     setBusy(true);
     try {
@@ -1104,6 +1132,7 @@ export function CommunicationsPanel({
           setTestEmail={setTestEmail}
           sendTestPlan={sendTestPlan}
           sendStageNow={sendStageNow}
+          sendStageToMissingRecipients={sendStageToMissingRecipients}
         />
       ) : null}
       {tab === "compose" ? (
@@ -1242,6 +1271,7 @@ function EventPlanView(props: {
   setTestEmail: (value: string) => void;
   sendTestPlan: () => void;
   sendStageNow: (stage: Stage) => void;
+  sendStageToMissingRecipients: (stage: Stage) => void;
 }) {
   const {
     events,
@@ -1268,6 +1298,7 @@ function EventPlanView(props: {
     setTestEmail,
     sendTestPlan,
     sendStageNow,
+    sendStageToMissingRecipients,
   } = props;
   const pausedFutureStages =
     activePlan?.stages.filter(
@@ -1387,6 +1418,12 @@ function EventPlanView(props: {
                         ? `${stage.recipientCount} recipients`
                         : "recipient count at fan-out"}
                     </p>
+                    <p className="mt-2 font-mono text-xs text-foreground">
+                      delivered to {stage.receivedCount} of {stage.audienceCount} current attendees
+                      {stage.missingRecipientCount
+                        ? ` · ${stage.missingRecipientCount} not yet sent`
+                        : ""}
+                    </p>
                     {stageNeedsManualSendDecision(stage) ? (
                       <p className="mt-2 font-mono text-micro theme-faint">
                         This did not send automatically. Send it now, or edit the time first.
@@ -1450,9 +1487,17 @@ function EventPlanView(props: {
                       >
                         {stageHasReachedSendTime(stage) ? "send now" : "send early"}
                       </Button>
+                    ) : stage.missingRecipientCount > 0 ? (
+                      <Button
+                        primary
+                        onClick={() => void sendStageToMissingRecipients(stage)}
+                        disabled={busy}
+                      >
+                        send to {stage.missingRecipientCount} missing
+                      </Button>
                     ) : (
                       <span className="self-center font-mono text-micro theme-faint">
-                        already sent
+                        sent to everyone
                       </span>
                     )}
                   </div>

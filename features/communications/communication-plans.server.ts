@@ -35,6 +35,9 @@ export type CommunicationPlanStage = {
   status: string;
   deliveryState: string;
   recipientCount: number;
+  audienceCount: number;
+  receivedCount: number;
+  missingRecipientCount: number;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
@@ -180,6 +183,9 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     status,
     deliveryState: stageDeliveryState(status, recipientCount, delivery),
     recipientCount,
+    audienceCount: Number(row.audience_count) || 0,
+    receivedCount: Number(row.received_count) || 0,
+    missingRecipientCount: Number(row.missing_recipient_count) || 0,
     queuedCount: Number(row.queued_count) || 0,
     lastError: typeof row.last_error === "string" ? row.last_error : null,
     surveyId: typeof row.survey_id === "string" ? row.survey_id : null,
@@ -207,6 +213,40 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
               'late_join_hours', s.late_join_hours,
               'status', s.status,
               'recipient_count', s.recipient_count,
+              'audience_count', (
+                select count(distinct lower(ticket.email))
+                  from tickets ticket
+                 where ticket.event_slug = p.event_slug
+                   and ticket.status = 'valid'
+                   and ticket.email is not null
+              ),
+              'received_count', (
+                select count(distinct lower(ticket.email))
+                  from tickets ticket
+                 where ticket.event_slug = p.event_slug
+                   and ticket.status = 'valid'
+                   and ticket.email is not null
+                   and exists (
+                     select 1
+                       from communication_stage_deliveries delivery
+                      where delivery.stage_id = s.id
+                        and delivery.status = 'delivered'
+                        and lower(delivery.email) = lower(ticket.email)
+                   )
+              ),
+              'missing_recipient_count', (
+                select count(distinct lower(ticket.email))
+                  from tickets ticket
+                 where ticket.event_slug = p.event_slug
+                   and ticket.status = 'valid'
+                   and ticket.email is not null
+                   and not exists (
+                     select 1
+                       from communication_stage_deliveries delivery
+                      where delivery.stage_id = s.id
+                        and lower(delivery.email) = lower(ticket.email)
+                   )
+              ),
               'queued_count', s.queued_count,
               'last_error', s.last_error,
               'survey_id', s.survey_id,
@@ -747,6 +787,36 @@ export async function sendCommunicationStageNow(
   return fanOutClaimedStages([stage], request);
 }
 
+export async function sendCommunicationStageToMissingRecipients(
+  stageId: string,
+  request?: Request,
+): Promise<number> {
+  const rows = await query<{
+    plan_id: string;
+    event_slug: string;
+    plan_status: string;
+    stage_status: string;
+  }>(
+    `select s.plan_id, p.event_slug, p.status as plan_status, s.status as stage_status
+       from communication_plan_stages s
+       join communication_plans p on p.id = s.plan_id
+      where s.id = $1`,
+    [stageId],
+  );
+  const stage = rows[0];
+  if (!stage) throw new Error("Stage not found");
+  if (!["queued", "complete", "failed"].includes(stage.stage_status)) {
+    throw new Error("Send this stage normally before sending it to missing attendees");
+  }
+  if (stage.plan_status === "cancelled") {
+    throw new Error("A cancelled plan cannot send more messages");
+  }
+  return fanOutClaimedStages(
+    [{ stageId, planId: stage.plan_id, eventSlug: stage.event_slug }],
+    request,
+  );
+}
+
 function validTestEmail(value: string): string {
   const email = value.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
@@ -1157,7 +1227,7 @@ async function fanOutClaimedStages(
     }
     await query(
       `update communication_plan_stages
-          set status = 'queued',
+          set status = case when $3 > 0 then 'queued' else status end,
               recipient_count = recipient_count + $2,
               queued_count = queued_count + $3,
               queued_at = coalesce(queued_at, now()),
