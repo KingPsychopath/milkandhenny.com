@@ -307,6 +307,8 @@ export function PitchEditor({
           role="status"
           aria-live="polite"
           aria-atomic="true"
+          aria-label={`Deck save status: ${studioStatus.label}`}
+          title="Applies to the whole working deck, including every slide. Version history is separate."
         >
           <span aria-hidden="true" className="mr-1.5">
             {studioStatus.tone === "success"
@@ -317,7 +319,7 @@ export function PitchEditor({
                   ? "•"
                   : ""}
           </span>
-          {studioStatus.label}
+          deck · {studioStatus.label}
         </span>
         <button
           type="button"

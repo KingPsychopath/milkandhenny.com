@@ -140,8 +140,9 @@ export function PitchVersionHistory({
               Version history
             </h2>
             <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
-              Choose a point to preview it. Restoring creates a new current version and keeps the
-              version you leave as a return point.
+              Saving keeps the whole current deck up to date. These are periodic and safety return
+              points, not a second live save state. Restoring creates a new current version and
+              keeps the version you leave as another return point.
             </p>
           </div>
           <button
@@ -245,8 +246,9 @@ export function PitchVersionHistory({
             </ol>
             {!loading && items.length === 0 ? (
               <p className="ml-8 border-t theme-border pt-5 font-mono text-xs leading-relaxed theme-muted">
-                No earlier points yet. They appear while you work, publish, merge devices or make a
-                change that removes content.
+                No earlier points yet. The first appears after continued work, publishing, a device
+                merge, or before a change that removes content. Your current deck can still be fully
+                saved before one appears here.
               </p>
             ) : null}
             {items.length > 0 ? (
