@@ -20,7 +20,7 @@ export function GameShell({
         <ReportIssueButton
           type="things_room_issue"
           payload={{ game: currentGame() }}
-          className="justify-center opacity-80"
+          className="things-game-report justify-center"
         />
       </div>
     </div>

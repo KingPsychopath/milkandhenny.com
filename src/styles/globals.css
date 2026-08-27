@@ -2057,6 +2057,12 @@
   .theme-faint {
     color: var(--stone-300);
   }
+  .things-game .things-game-report {
+    color: var(--things-night);
+  }
+  .things-game--night .things-game-report {
+    color: var(--things-cream);
+  }
   .theme-border {
     border-color: var(--stone-200);
   }
