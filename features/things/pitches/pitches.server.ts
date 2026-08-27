@@ -45,6 +45,7 @@ import {
   restorePitchBackupForOwner,
   restorePitchDeckFromTrash,
   restorePitchDeckFromTrashForOwner,
+  returnPitchDeckToDraftForAdmin,
   syncPitchDeck,
   updatePitchDeckForAdmin,
   type PitchStoreResult,
@@ -396,6 +397,17 @@ export async function updatePitchForAdmin(input: {
   ownerEmail: string;
 }): Promise<PitchStoreResult<StoredPitchDeck>> {
   const pitch = await updatePitchDeckForAdmin(input);
+  return pitch ? { ok: true, value: pitch } : { ok: false, status: 404, error: "Pitch not found" };
+}
+
+export async function setPitchPublicationForAdmin(
+  deckId: string,
+  publication: "draft" | "published",
+): Promise<PitchStoreResult<StoredPitchDeck>> {
+  if (publication === "published") {
+    return publishPitchDeck({ deckId, actor: "admin" });
+  }
+  const pitch = await returnPitchDeckToDraftForAdmin(deckId);
   return pitch ? { ok: true, value: pitch } : { ok: false, status: 404, error: "Pitch not found" };
 }
 

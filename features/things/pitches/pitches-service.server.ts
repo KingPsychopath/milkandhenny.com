@@ -34,6 +34,8 @@ export class PitchesService extends Context.Service<
     readonly archive: typeof archive;
     readonly adminAssets: typeof adminAssets;
     readonly updateAdmin: typeof updateAdmin;
+    readonly setLifecycleAdmin: typeof setLifecycleAdmin;
+    readonly setPublicationAdmin: typeof setPublicationAdmin;
     readonly restoreAdmin: typeof restoreAdmin;
     readonly resendAdmin: typeof resendAdmin;
     readonly deleteAdmin: typeof deleteAdmin;
@@ -74,6 +76,8 @@ export class PitchesService extends Context.Service<
     archive,
     adminAssets,
     updateAdmin,
+    setLifecycleAdmin,
+    setPublicationAdmin,
     restoreAdmin,
     resendAdmin,
     deleteAdmin,
@@ -237,6 +241,22 @@ function updateAdmin(input: Parameters<typeof engine.updatePitchForAdmin>[0]) {
   return pitchesOperation("admin_update", () => engine.updatePitchForAdmin(input), {
     access: "write",
   });
+}
+
+function setLifecycleAdmin(deckId: string, lifecycle: "active" | "archived" | "trashed") {
+  return pitchesOperation(
+    "admin_lifecycle",
+    () => store.setPitchDeckLifecycleForAdmin(deckId, lifecycle),
+    { access: "write" },
+  );
+}
+
+function setPublicationAdmin(deckId: string, publication: "draft" | "published") {
+  return pitchesOperation(
+    "admin_publication",
+    () => engine.setPitchPublicationForAdmin(deckId, publication),
+    { access: "write", timeoutMs: false },
+  );
 }
 
 function restoreAdmin(...input: Parameters<typeof engine.restorePitchForAdmin>) {

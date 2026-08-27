@@ -151,6 +151,23 @@ async function handlePATCH(request: Request) {
             ? { ok: true as const, value: pitch }
             : { ok: false as const, status: 404, error: "Pitch not found" };
         }
+        if (
+          action === "set-lifecycle" &&
+          (body.lifecycle === "active" ||
+            body.lifecycle === "archived" ||
+            body.lifecycle === "trashed")
+        ) {
+          const pitch = yield* pitches.setLifecycleAdmin(body.deckId as string, body.lifecycle);
+          return pitch
+            ? { ok: true as const, value: pitch }
+            : { ok: false as const, status: 404, error: "Pitch not found" };
+        }
+        if (
+          action === "set-publication" &&
+          (body.publication === "draft" || body.publication === "published")
+        ) {
+          return yield* pitches.setPublicationAdmin(body.deckId as string, body.publication);
+        }
         if (action === "update") {
           const title = typeof body.title === "string" ? parsePitchTitle(body.title) : null;
           const ownerName =

@@ -131,6 +131,8 @@ export function PitchesPanel({
   const [busy, setBusy] = useState("");
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
   const [form, setForm] = useState({ title: "", ownerName: "", ownerEmail: "" });
+  const [lifecycleDraft, setLifecycleDraft] = useState<"active" | "archived" | "trashed">("active");
+  const [publicationDraft, setPublicationDraft] = useState<"draft" | "published">("draft");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [operationalStatus, setOperationalStatus] = useState<PitchOperationalStatus>();
   const [modeDraft, setModeDraft] = useState<PitchOperationalMode>("enabled");
@@ -191,6 +193,8 @@ export function PitchesPanel({
         ownerName: next.pitch.ownerName,
         ownerEmail: next.pitch.ownerEmail,
       });
+      if (next.pitch.lifecycle !== "deleting") setLifecycleDraft(next.pitch.lifecycle);
+      setPublicationDraft(next.pitch.publishedAt ? "published" : "draft");
       setDeleteConfirmation("");
       setDetailFiles({});
       void loadPitchFiles(next.assets)
@@ -274,6 +278,32 @@ export function PitchesPanel({
       return false;
     } finally {
       setBusy("");
+    }
+  }
+
+  async function updateLifecycle() {
+    if (!detail || detail.pitch.lifecycle === "deleting") return;
+    const changed = await updateDetail("set-lifecycle", { lifecycle: lifecycleDraft });
+    if (changed) {
+      onStatus(
+        lifecycleDraft === "active"
+          ? "Pitch moved to active."
+          : lifecycleDraft === "archived"
+            ? "Pitch moved to archive."
+            : "Pitch moved to Trash and will remain recoverable for 30 days.",
+      );
+    }
+  }
+
+  async function updatePublication() {
+    if (!detail) return;
+    const changed = await updateDetail("set-publication", { publication: publicationDraft });
+    if (changed) {
+      onStatus(
+        publicationDraft === "published"
+          ? "The current working copy was sealed as a new public edition."
+          : "Pitch returned to draft. Earlier sealed editions remain in its history.",
+      );
     }
   }
 
@@ -473,7 +503,7 @@ export function PitchesPanel({
                   {when(pitch.updatedAt)}
                 </span>
               </button>
-              <div className="flex items-center gap-3 font-mono text-xs">
+              <div className="flex items-center gap-2 font-mono text-xs">
                 <span className={pitch.publishedAt ? "text-foreground" : "theme-muted"}>
                   {pitch.lifecycle === "trashed"
                     ? `trash · purges ${pitch.purgeAfter ? when(pitch.purgeAfter) : "later"}`
@@ -483,6 +513,24 @@ export function PitchesPanel({
                         ? "published"
                         : "draft"}
                 </span>
+                <button
+                  type="button"
+                  disabled={busy === pitch.id}
+                  onClick={() => void open(pitch)}
+                  aria-label={`Edit ${pitch.title}`}
+                  title="Edit title, owner and state"
+                  className="grid min-h-11 min-w-11 place-items-center theme-muted hover:text-foreground disabled:opacity-40"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    className="h-4 w-4 fill-none stroke-current"
+                    strokeWidth="1.5"
+                  >
+                    <path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+                    <path d="m13.5 6.5 4 4" />
+                  </svg>
+                </button>
                 {pitch.lifecycle === "trashed" ? (
                   <button
                     type="button"
@@ -546,41 +594,110 @@ export function PitchesPanel({
             <label className="font-mono text-micro theme-muted sm:col-span-2">
               pitch title
               <input
-                disabled={isTrashed}
                 value={form.title}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, title: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-serif text-xl text-foreground outline-none disabled:opacity-50"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-serif text-xl text-foreground outline-none"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
               owner name
               <input
-                disabled={isTrashed}
                 value={form.ownerName}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, ownerName: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none disabled:opacity-50"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
               owner email
               <input
-                disabled={isTrashed}
                 type="email"
                 value={form.ownerEmail}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, ownerEmail: event.target.value }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none disabled:opacity-50"
+                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
               />
+              <span className="mt-2 block leading-relaxed">
+                Changing this transfers the deck. Existing private links are revoked; send the new
+                owner a fresh link.
+              </span>
             </label>
+            <div className="sm:col-span-2">
+              <label htmlFor="pitch-lifecycle" className="font-mono text-micro theme-muted">
+                deck state
+              </label>
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <AppSelect
+                  id="pitch-lifecycle"
+                  value={lifecycleDraft}
+                  onValueChange={(value) => {
+                    if (value === "active" || value === "archived" || value === "trashed") {
+                      setLifecycleDraft(value);
+                    }
+                  }}
+                  ariaLabel="Deck state"
+                  variant="field"
+                  className="min-w-56"
+                  options={[
+                    { value: "active", label: "active · owner can edit" },
+                    { value: "archived", label: "archived · hidden from wall" },
+                    { value: "trashed", label: "Trash · recoverable for 30 days" },
+                  ]}
+                />
+                <button
+                  type="button"
+                  disabled={Boolean(busy) || lifecycleDraft === detail.pitch.lifecycle}
+                  onClick={() => void updateLifecycle()}
+                  className="min-h-11 border theme-border-strong px-4 font-mono text-xs text-foreground hover:opacity-70 disabled:opacity-40"
+                >
+                  move pitch
+                </button>
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="pitch-publication" className="font-mono text-micro theme-muted">
+                publication
+              </label>
+              <div className="mt-2 flex flex-wrap items-end gap-3">
+                <AppSelect
+                  id="pitch-publication"
+                  value={publicationDraft}
+                  onValueChange={(value) => {
+                    if (value === "draft" || value === "published") setPublicationDraft(value);
+                  }}
+                  ariaLabel="Pitch publication"
+                  variant="field"
+                  className="min-w-56"
+                  options={[
+                    { value: "draft", label: "draft · not on the public wall" },
+                    { value: "published", label: "published · seal current copy" },
+                  ]}
+                />
+                <button
+                  type="button"
+                  disabled={
+                    Boolean(busy) ||
+                    publicationDraft === (detail.pitch.publishedAt ? "published" : "draft")
+                  }
+                  onClick={() => void updatePublication()}
+                  className="min-h-11 border theme-border-strong px-4 font-mono text-xs text-foreground hover:opacity-70 disabled:opacity-40"
+                >
+                  apply publication
+                </button>
+              </div>
+              <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+                Publishing seals the current working copy as a new edition. Returning to draft hides
+                it from the wall without deleting earlier editions.
+              </p>
+            </div>
             <div className="flex flex-wrap gap-4 sm:col-span-2">
               <button
                 type="submit"
-                disabled={isTrashed || Boolean(busy)}
+                disabled={Boolean(busy)}
                 className="min-h-10 bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
               >
                 save details

@@ -8,6 +8,7 @@ import {
   uploadBuffer,
   type StorageScope,
 } from "@/lib/platform/r2.server";
+import { randomUUID } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { WORD_INDEX_KEY, wordContentKey, wordMetaKey } from "./config.server";
 import { deleteAllShareLinksForSlug } from "./share.server";
@@ -21,6 +22,57 @@ const READING_TIME_VERSION = 2;
 
 const memoryMeta = new Map<string, NoteMeta>();
 const memoryContent = new Map<string, string>();
+const memoryMutationTails = new Map<string, Promise<void>>();
+
+const WORD_MUTATION_LOCK_TTL_MS = 10 * 60 * 1_000;
+const WORD_MUTATION_LOCK_WAIT_MS = 30_000;
+const RELEASE_WORD_LOCK_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+export class WordUpdateConflictError extends Error {
+  constructor(readonly currentUpdatedAt: string) {
+    super("This word was updated elsewhere. Reload to review the latest version before saving.");
+    this.name = "WordUpdateConflictError";
+  }
+}
+
+async function withMemoryWordMutationLock<T>(slug: string, use: () => Promise<T>): Promise<T> {
+  const previous = memoryMutationTails.get(slug) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(() => gate);
+  memoryMutationTails.set(slug, tail);
+  await previous;
+  try {
+    return await use();
+  } finally {
+    release();
+    if (memoryMutationTails.get(slug) === tail) memoryMutationTails.delete(slug);
+  }
+}
+
+async function withWordMutationLock<T>(slug: string, use: () => Promise<T>): Promise<T> {
+  const redis = getRedis();
+  if (!redis) return withMemoryWordMutationLock(slug, use);
+
+  const key = `${wordMetaKey(slug)}:mutation-lock`;
+  const owner = randomUUID();
+  const deadline = Date.now() + WORD_MUTATION_LOCK_WAIT_MS;
+  let acquired = false;
+  do {
+    acquired = Boolean(await redis.set(key, owner, { nx: true, px: WORD_MUTATION_LOCK_TTL_MS }));
+    if (!acquired) await new Promise((resolve) => setTimeout(resolve, 75));
+  } while (!acquired && Date.now() < deadline);
+  if (!acquired) throw new Error("This word is still finishing another save. Please try again.");
+
+  try {
+    return await use();
+  } finally {
+    await redis.eval(RELEASE_WORD_LOCK_SCRIPT, [key], [owner]);
+  }
+}
 
 type ListWordOptions = {
   visibility?: WordVisibility;
@@ -381,10 +433,31 @@ async function updateWord(
     markdown?: string;
     tags?: string[];
     featured?: boolean;
+    expectedUpdatedAt?: string;
+  },
+): Promise<NoteRecord | null> {
+  return withWordMutationLock(slug, async () => updateWordLocked(slug, input));
+}
+
+async function updateWordLocked(
+  slug: string,
+  input: {
+    title?: string;
+    subtitle?: string | null;
+    image?: string | null;
+    type?: WordType;
+    visibility?: WordVisibility;
+    markdown?: string;
+    tags?: string[];
+    featured?: boolean;
+    expectedUpdatedAt?: string;
   },
 ): Promise<NoteRecord | null> {
   const existing = await getWordMeta(slug);
   if (!existing) return null;
+  if (input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
+    throw new WordUpdateConflictError(existing.updatedAt);
+  }
 
   const nextVisibility = input.visibility ?? existing.visibility;
   const nextType = input.type ? normaliseWordType(input.type) : existing.type;

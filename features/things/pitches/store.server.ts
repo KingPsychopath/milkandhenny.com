@@ -768,11 +768,16 @@ export async function syncPitchDeck(input: {
 
 export async function publishPitchDeck(input: {
   deckId: string;
-  ownerToken: string;
+  ownerToken?: string;
   thumbnailAssetId?: string;
+  actor?: "owner" | "admin";
 }): Promise<PitchStoreResult<StoredPitchDeck>> {
   return transaction(async (client) => {
-    if (!(await clientOwnsDeck(client, input.deckId, input.ownerToken))) {
+    const actor = input.actor ?? "owner";
+    if (
+      actor === "owner" &&
+      (!input.ownerToken || !(await clientOwnsDeck(client, input.deckId, input.ownerToken)))
+    ) {
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     const row = await clientDeck(client, input.deckId, true);
@@ -864,10 +869,37 @@ export async function publishPitchDeck(input: {
     await insertAudit(client, {
       deckId: input.deckId,
       action: "deck.published",
-      actor: "owner",
+      actor,
       metadata: { version: integer(row.draft_version), editionNumber },
     });
     return { ok: true, value: toStoredDeck(updated.rows[0]) };
+  });
+}
+
+export async function returnPitchDeckToDraftForAdmin(
+  deckId: string,
+): Promise<StoredPitchDeck | null> {
+  return transaction(async (client) => {
+    const current = await clientDeck(client, deckId, true);
+    if (!current || current.lifecycle === "deleting") return null;
+    const rows = await client.query<PitchDeckRow>(
+      `update pitch_decks
+          set published_document = null,
+              published_version = null,
+              published_title = null,
+              published_at = null,
+              updated_at = now()
+        where id = $1 and lifecycle <> 'deleting'
+        returning *`,
+      [deckId],
+    );
+    await insertAudit(client, {
+      deckId,
+      action: "deck.returned_to_draft",
+      actor: "admin",
+      metadata: { preservedEditions: true },
+    });
+    return rows.rows[0] ? toStoredDeck(rows.rows[0]) : null;
   });
 }
 
@@ -1324,18 +1356,28 @@ export async function updatePitchDeckForAdmin(input: {
   return transaction(async (client) => {
     const email = normalisePitchEmail(input.ownerEmail);
     const current = await clientDeck(client, input.deckId, true);
-    if (!current || !["active", "archived"].includes(current.lifecycle)) return null;
+    if (!current || current.lifecycle === "deleting") return null;
     const ownerChanged = current.owner_email_hash !== hashPitchValue(email);
+    const emailHash = hashPitchValue(email);
     const rows = await client.query<PitchDeckRow>(
       `update pitch_decks
         set title = $2,
             owner_name = $3,
             owner_email = $4,
             owner_email_hash = $5,
+            owner_person_id = case when $6 then (
+              select identifier.person_id
+                from event_person_identifiers identifier
+               where identifier.kind = 'email'
+                 and identifier.value_hash = $5
+                 and identifier.verified_at is not null
+                 and identifier.historical_until is null
+               limit 1
+            ) else owner_person_id end,
             updated_at = now()
-        where id = $1 and lifecycle in ('active', 'archived')
+        where id = $1 and lifecycle <> 'deleting'
         returning *`,
-      [input.deckId, input.title, input.ownerName, email, hashPitchValue(email)],
+      [input.deckId, input.title, input.ownerName, email, emailHash, ownerChanged],
     );
     if (ownerChanged) {
       await client.query(
@@ -1350,6 +1392,45 @@ export async function updatePitchDeckForAdmin(input: {
       action: "deck.metadata.updated",
       actor: "admin",
       metadata: { ownerChanged, accessRevoked: ownerChanged },
+    });
+    return toStoredDeck(rows.rows[0]);
+  });
+}
+
+export async function setPitchDeckLifecycleForAdmin(
+  deckId: string,
+  lifecycle: "active" | "archived" | "trashed",
+): Promise<StoredPitchDeck | null> {
+  return transaction(async (client) => {
+    const current = await clientDeck(client, deckId, true);
+    if (!current || current.lifecycle === "deleting") return null;
+    if (current.lifecycle === lifecycle) return toStoredDeck(current);
+
+    const rows = await client.query<PitchDeckRow>(
+      `update pitch_decks
+          set lifecycle = $2,
+              archived_at = case when $2 = 'archived' then now() else null end,
+              trashed_at = case when $2 = 'trashed' then now() else null end,
+              purge_after = case
+                when $2 = 'trashed' then now() + ($3 * interval '1 day')
+                else null
+              end,
+              updated_at = now()
+        where id = $1 and lifecycle <> 'deleting'
+        returning *`,
+      [deckId, lifecycle, PITCH_TRASH_RETENTION_DAYS],
+    );
+    if (!rows.rows[0]) return null;
+    await insertAudit(client, {
+      deckId,
+      action:
+        lifecycle === "active"
+          ? "deck.restored"
+          : lifecycle === "archived"
+            ? "deck.archived"
+            : "deck.trashed",
+      actor: "admin",
+      metadata: { from: current.lifecycle, to: lifecycle },
     });
     return toStoredDeck(rows.rows[0]);
   });

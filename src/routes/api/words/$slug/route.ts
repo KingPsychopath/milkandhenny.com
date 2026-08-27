@@ -3,7 +3,12 @@ import { getCookie } from "@/lib/http/cookies";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { wordAccessCookieName, verifyWordAccessToken } from "@/features/words/share.server";
-import { deleteWord, getWord, updateWord } from "@/features/words/store.server";
+import {
+  deleteWord,
+  getWord,
+  updateWord,
+  WordUpdateConflictError,
+} from "@/features/words/store.server";
 import type { WordVisibility } from "@/features/words/content-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isWordType, normaliseWordType } from "@/features/words/types";
@@ -97,30 +102,20 @@ async function handlePUT(request: Request, { params }: Params) {
   }
 
   try {
-    const expectedUpdatedAt = body.expectedUpdatedAt?.trim() || undefined;
-    if (expectedUpdatedAt) {
-      const current = await getWord(slug);
-      if (!current) return Response.json({ error: "Not found" }, { status: 404 });
-      if (current.meta.updatedAt !== expectedUpdatedAt) {
-        return Response.json(
-          {
-            error:
-              "This word was updated elsewhere. Reload to review the latest version before saving.",
-            conflict: true,
-            currentUpdatedAt: current.meta.updatedAt,
-          },
-          { status: 409 },
-        );
-      }
-    }
-
     const updated = await updateWord(slug, {
       ...body,
+      expectedUpdatedAt: body.expectedUpdatedAt?.trim() || undefined,
       type: body.type ? normaliseWordType(body.type) : undefined,
     });
     if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
     return Response.json(updated);
   } catch (error) {
+    if (error instanceof WordUpdateConflictError) {
+      return Response.json(
+        { error: error.message, conflict: true, currentUpdatedAt: error.currentUpdatedAt },
+        { status: 409 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Failed to update word";
     if (/invalid|required/i.test(message)) {
       return Response.json({ error: message }, { status: 400 });
