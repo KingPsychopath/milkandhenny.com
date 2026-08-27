@@ -3379,6 +3379,25 @@ const MIGRATIONS: Migration[] = [
       on conflict (run_id) do nothing;
     `,
   },
+  {
+    id: "0069_admin_ticket_invitations",
+    sql: `
+      alter table ticket_assignments
+        alter column purchaser_person_id drop not null,
+        add column issued_by_type text not null default 'attendee'
+          check (issued_by_type in ('attendee','admin','root-owner')),
+        add column issued_by_id text;
+
+      alter table ticket_assignments add constraint ticket_assignments_issuer_check check (
+        (issued_by_type = 'attendee' and purchaser_person_id is not null)
+        or (issued_by_type in ('admin','root-owner') and issued_by_id is not null)
+      );
+
+      create index ticket_assignments_admin_event_idx
+        on ticket_assignments (event_slug,created_at desc)
+        where issued_by_type in ('admin','root-owner');
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

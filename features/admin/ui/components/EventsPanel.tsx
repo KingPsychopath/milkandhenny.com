@@ -7,6 +7,7 @@ import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useQrCode } from "@/hooks/useQrCode";
+import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import {
   EVENT_HERO_HEIGHTS,
   EVENT_STATUSES,
@@ -188,6 +189,20 @@ type EventTicketSummary = {
     }
   >;
   tickets: AdminTicket[];
+};
+
+type AdminTicketInvitation = {
+  id: string;
+  ticketId: string;
+  holderName: string;
+  recipientEmail: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+  status: "pending" | "claimed" | "cancelled" | "expired";
+  createdAt: string;
+  expiresAt: string;
+  claimedAt?: string;
+  cancelledAt?: string;
 };
 
 function parseEventTicketSummary(value: unknown): EventTicketSummary | null {
@@ -399,39 +414,69 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
     : fallback;
 }
 
-/** Issue complimentary tickets: name, optional email, type, and plus-ones. */
+/** Issue one complimentary ticket and invite its named holder to claim it. */
 function AddGuestForm({
   event,
   availability,
-  eventRemaining,
+  eventUsed,
   authFetch,
   onError,
   onStatus,
   onIssued,
+  confirmAction,
 }: {
   event: EventRecord;
   availability: EventTicketSummary["byType"];
-  eventRemaining: number;
+  eventUsed: number;
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   onIssued: () => Promise<void>;
+  confirmAction: (options: {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    intent: "danger" | "default";
+  }) => Promise<boolean>;
 }) {
   const typeId = useId();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [ticketTypeId, setTicketTypeId] = useState(event.ticketTypes[0]?.id ?? "");
-  const [quantity, setQuantity] = useState("1");
-  const [overrideCapacity, setOverrideCapacity] = useState(false);
   const [busy, setBusy] = useState(false);
-  const parsedQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
   const typeRemaining = availability[ticketTypeId]?.remaining ?? 0;
-  const needsCapacityOverride = parsedQuantity > Math.min(typeRemaining, eventRemaining);
+  const eventCapacity =
+    event.capacity ?? event.ticketTypes.reduce((total, type) => total + type.quantity, 0);
+  const eventOverBy = Math.max(0, eventUsed + 1 - eventCapacity);
+  const selectedType = event.ticketTypes.find((type) => type.id === ticketTypeId);
+  const selectedTypeAvailability = availability[ticketTypeId];
+  const typeOverBy = selectedType
+    ? Math.max(
+        0,
+        (selectedTypeAvailability?.valid ?? 0) +
+          (selectedTypeAvailability?.reserved ?? 0) +
+          1 -
+          selectedType.quantity,
+      )
+    : 0;
+  const needsCapacityOverride = eventOverBy > 0 || typeOverBy > 0 || typeRemaining < 1;
 
   const submit = async () => {
-    if (!name.trim()) {
-      onError("The guest needs a name");
+    if (!name.trim() || !email.trim()) {
+      onError("Enter the ticket holder's name and email address");
       return;
+    }
+    if (needsCapacityOverride) {
+      const confirmed = await confirmAction({
+        title: "Send beyond capacity?",
+        description:
+          eventOverBy > 0
+            ? `This ticket will put ${event.title} ${eventOverBy} ${eventOverBy === 1 ? "person" : "people"} over its maximum of ${eventCapacity}.`
+            : `This ticket will put ${selectedType?.name ?? "this ticket type"} ${typeOverBy} ${typeOverBy === 1 ? "ticket" : "tickets"} over its allocation of ${selectedType?.quantity ?? 0}. The event itself still has room.`,
+        confirmLabel: "send anyway",
+        intent: "danger",
+      });
+      if (!confirmed) return;
     }
     setBusy(true);
     onError("");
@@ -440,27 +485,22 @@ function AddGuestForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "comp",
+          action: "invite",
           holderName: name.trim(),
-          email: email.trim() || undefined,
+          email: email.trim(),
           ticketTypeId,
-          quantity: parsedQuantity,
-          overrideCapacity: needsCapacityOverride && overrideCapacity,
+          overrideCapacity: needsCapacityOverride,
         }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, "Failed to add guest"));
-      const data: unknown = await response.json().catch(() => null);
-      const emailQueued =
-        data && typeof data === "object" && "emailQueued" in data && data.emailQueued === true;
+      const data = (await response.json().catch(() => null)) as { emailQueued?: boolean } | null;
       onStatus(
-        emailQueued
-          ? `${name.trim()} added — ticket email queued`
-          : `${name.trim()} received a comp ticket`,
+        data?.emailQueued
+          ? `Invitation sent to ${email.trim()}`
+          : `Ticket reserved for ${name.trim()} · email delivery needs attention`,
       );
       setName("");
       setEmail("");
-      setQuantity("1");
-      setOverrideCapacity(false);
       await onIssued();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to add guest");
@@ -475,16 +515,16 @@ function AddGuestForm({
         formEvent.preventDefault();
         void submit();
       }}
-      className="mt-3 grid gap-2 rounded-lg border theme-border p-3 sm:grid-cols-2"
+      className="mt-3 grid gap-3 border-y theme-border py-4 sm:grid-cols-2"
     >
-      <Field label="guest name" value={name} onChange={setName} />
       <Field
-        label="email (optional)"
+        label="recipient email"
         value={email}
         onChange={setEmail}
         type="email"
-        hint="given an email, their ticket is sent straight away"
+        hint="new or existing account — the invite handles both"
       />
+      <Field label="name on ticket" value={name} onChange={setName} />
       <div>
         <label htmlFor={typeId} className="font-mono text-micro theme-muted tracking-wide">
           ticket type
@@ -501,32 +541,17 @@ function AddGuestForm({
           className="mt-1 rounded text-sm"
         />
       </div>
-      <Field
-        label="how many"
-        value={quantity}
-        onChange={setQuantity}
-        type="number"
-        hint="2+ adds plus-ones under the same name"
-      />
-      {needsCapacityOverride && (
-        <label className="flex min-h-11 items-center gap-2 sm:col-span-2">
-          <input
-            type="checkbox"
-            checked={overrideCapacity}
-            onChange={(inputEvent) => setOverrideCapacity(inputEvent.target.checked)}
-          />
-          <span className="font-mono text-micro theme-subtle">
-            admit beyond capacity — this will show as an overage
-          </span>
-        </label>
-      )}
+      <p className="self-end pb-1 font-mono text-micro leading-relaxed theme-faint">
+        The ticket reserves one place now. It appears in their account after they accept the emailed
+        link.
+      </p>
       <div className="sm:col-span-2">
         <button
           type="submit"
-          disabled={busy || !ticketTypeId || (needsCapacityOverride && !overrideCapacity)}
+          disabled={busy || !ticketTypeId}
           className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
         >
-          {busy ? "issuing…" : "issue comp ticket"}
+          {busy ? "sending invitation…" : "send ticket invitation"}
         </button>
       </div>
     </form>
@@ -1871,6 +1896,102 @@ function EventOperations({
     ticketId: string;
     url: string;
   } | null>(null);
+  const [invitations, setInvitations] = useState<AdminTicketInvitation[]>([]);
+  const [invitationsLoaded, setInvitationsLoaded] = useState(false);
+  const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
+
+  const loadInvitations = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`);
+      const data = (await response.json().catch(() => null)) as {
+        invitations?: AdminTicketInvitation[];
+      } | null;
+      if (!response.ok || !Array.isArray(data?.invitations)) {
+        throw new Error("Failed to load ticket invitations");
+      }
+      if (isCurrent()) {
+        setInvitations(data.invitations);
+        setInvitationsLoaded(true);
+      }
+    },
+    [authFetch, event.slug],
+  );
+
+  useEffect(() => {
+    void loadInvitations().catch((error: unknown) => {
+      onError(error instanceof Error ? error.message : "Failed to load ticket invitations");
+    });
+  }, [loadInvitations, onError]);
+
+  const hasPendingInvitation = invitations.some((invitation) => invitation.status === "pending");
+  const invitationByTicketId = useMemo(
+    () => new Map(invitations.map((invitation) => [invitation.ticketId, invitation])),
+    [invitations],
+  );
+  useAdminAutoRefresh({
+    enabled: hasPendingInvitation,
+    cadence: "monitoring",
+    identity: `event-ticket-invitations:${event.slug}`,
+    refreshOnEnable: false,
+    refresh: loadInvitations,
+  });
+
+  const runInvitationAction = async (
+    invitation: AdminTicketInvitation,
+    action: "resend-invitation" | "cancel-invitation",
+  ) => {
+    if (action === "cancel-invitation") {
+      const confirmed = await confirmAction({
+        title: `Cancel ${invitation.holderName}'s invitation?`,
+        description:
+          "The acceptance link and reserved ticket will stop working, and the place returns to capacity.",
+        confirmLabel: "cancel invitation",
+        intent: "danger",
+      });
+      if (!confirmed) return;
+    }
+    let headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (action === "cancel-invitation") {
+      const token = await stepUp.ensureStepUpToken();
+      if (!token.ok) {
+        if (!token.cancelled) onError(token.error ?? "Step-up failed");
+        return;
+      }
+      headers = stepUp.withStepUpHeaders(token.token, headers);
+    }
+    setBusyInvitationId(invitation.id);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action, invitationId: invitation.id }),
+      });
+      if (!response.ok) {
+        throw new Error(
+          await readErrorMessage(
+            response,
+            action === "cancel-invitation" ? "Cancellation failed" : "Resend failed",
+          ),
+        );
+      }
+      const result = (await response.json().catch(() => null)) as {
+        emailQueued?: boolean;
+      } | null;
+      onStatus(
+        action === "cancel-invitation"
+          ? `${invitation.holderName}'s invitation and ticket cancelled`
+          : result?.emailQueued
+            ? `Fresh invitation sent to ${invitation.recipientEmail}`
+            : `Invitation renewed · email delivery needs attention`,
+      );
+      await Promise.all([loadInvitations(), reload()]);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Invitation action failed");
+    } finally {
+      setBusyInvitationId(null);
+    }
+  };
 
   const saveHolder = async () => {
     const editing = editingTicket;
@@ -2123,20 +2244,99 @@ function EventOperations({
           aria-expanded={showAddGuest}
           className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
         >
-          {showAddGuest ? "− close comp form" : "+ issue comp ticket"}
+          {showAddGuest ? "− close" : "+ send someone a ticket"}
         </button>
         {showAddGuest && (
           <AddGuestForm
             event={event}
             availability={summary.byType}
-            eventRemaining={remaining}
+            eventUsed={summary.valid + summary.reserved}
             authFetch={authFetch}
             onError={onError}
             onStatus={onStatus}
-            onIssued={reload}
+            onIssued={async () => {
+              await Promise.all([reload(), loadInvitations()]);
+            }}
+            confirmAction={confirmAction}
           />
         )}
       </div>
+
+      {invitationsLoaded && invitations.length > 0 && (
+        <section className="mt-5 border-t theme-border pt-4" aria-labelledby="ticket-invites-title">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h4 id="ticket-invites-title" className="font-mono text-xs text-foreground">
+              ticket invitations
+            </h4>
+            <p className="font-mono text-micro theme-faint">
+              {invitations.filter((invitation) => invitation.status === "pending").length} awaiting
+              acceptance · updates automatically
+            </p>
+          </div>
+          <ul className="mt-2 divide-y theme-divide" aria-live="polite">
+            {invitations.map((invitation) => {
+              const pending = invitation.status === "pending";
+              const expired = invitation.status === "expired";
+              const busy = busyInvitationId === invitation.id;
+              const statusLabel =
+                invitation.status === "claimed"
+                  ? "accepted"
+                  : invitation.status === "cancelled"
+                    ? "cancelled"
+                    : invitation.status;
+              return (
+                <li
+                  key={invitation.id}
+                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-foreground">{invitation.holderName}</p>
+                    <p className="truncate font-mono text-micro theme-muted">
+                      {invitation.recipientEmail} · {invitation.ticketTypeName}
+                    </p>
+                    <p className="mt-1 font-mono text-micro theme-faint">
+                      {statusLabel}
+                      {pending &&
+                        ` · expires ${new Date(invitation.expiresAt).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          timeZone: "Europe/London",
+                        })}`}
+                      {invitation.status === "claimed" &&
+                        invitation.claimedAt &&
+                        ` · ${new Date(invitation.claimedAt).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          timeZone: "Europe/London",
+                        })}`}
+                    </p>
+                  </div>
+                  {(pending || expired) && (
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void runInvitationAction(invitation, "resend-invitation")}
+                        className="min-h-10 rounded border theme-border px-3 font-mono text-xs text-foreground disabled:opacity-50"
+                      >
+                        {expired ? "send again" : "resend"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void runInvitationAction(invitation, "cancel-invitation")}
+                        className="min-h-10 px-2 font-mono text-xs theme-muted underline decoration-dotted underline-offset-4 disabled:opacity-50"
+                      >
+                        cancel
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <label className="mt-5 block">
         <span className="font-mono text-micro theme-muted">find attendee, email, or ticket</span>
@@ -2187,6 +2387,8 @@ function EventOperations({
             const busy = busyTicketId === ticket.id;
             const isLive = ticket.status === "valid";
             const paid = (ticket.amountPaidMinor ?? 0) > 0;
+            const ticketInvitation = invitationByTicketId.get(ticket.id);
+            const awaitingAcceptance = ticketInvitation?.status === "pending";
             return (
               <li key={ticket.id} className="py-3">
                 <div className="flex items-start justify-between gap-4">
@@ -2199,9 +2401,15 @@ function EventOperations({
                       {ticket.kind === "comp" ? " · comp" : ""}
                     </p>
                     <p className="mt-0.5 font-mono text-micro theme-faint">
-                      {ticket.id} · {ticketListStatus(ticket)} ·{" "}
+                      {ticket.id} ·{" "}
+                      {awaitingAcceptance ? "awaiting acceptance" : ticketListStatus(ticket)} ·{" "}
                       {formatTicketIssuedAt(ticket.issuedAt)}
                     </p>
+                    {awaitingAcceptance && (
+                      <p className="mt-1 font-mono text-micro text-[var(--prose-hashtag)]">
+                        QR withheld until the recipient accepts · use the invitation controls above
+                      </p>
+                    )}
                     {ticket.activeExchange && (
                       <p
                         role={ticket.activeExchange.errorMessage ? "alert" : "status"}
@@ -2212,17 +2420,19 @@ function EventOperations({
                       </p>
                     )}
                   </div>
-                  <a
-                    href={`/ticket/${ticket.id}?preview=1`}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
-                  >
-                    attendee preview ↗
-                  </a>
+                  {!awaitingAcceptance && (
+                    <a
+                      href={`/ticket/${ticket.id}?preview=1`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
+                    >
+                      attendee preview ↗
+                    </a>
+                  )}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {isLive && !ticket.redeemedAt && (
+                  {isLive && !awaitingAcceptance && !ticket.redeemedAt && (
                     <button
                       type="button"
                       disabled={busy}
@@ -2242,7 +2452,7 @@ function EventOperations({
                       undo check-in
                     </button>
                   )}
-                  {isLive && ticket.email && (
+                  {isLive && !awaitingAcceptance && ticket.email && (
                     <button
                       type="button"
                       disabled={busy}
@@ -2262,7 +2472,7 @@ function EventOperations({
                       refund order
                     </button>
                   )}
-                  {isLive && !paid && (
+                  {isLive && !awaitingAcceptance && !paid && (
                     <button
                       type="button"
                       disabled={busy}
@@ -2272,21 +2482,24 @@ function EventOperations({
                       cancel ticket
                     </button>
                   )}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      setEditingTicket((current) =>
-                        current?.id === ticket.id
-                          ? null
-                          : { id: ticket.id, name: ticket.holderName, email: ticket.email ?? "" },
-                      )
-                    }
-                    className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
-                  >
-                    edit
-                  </button>
+                  {!awaitingAcceptance && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setEditingTicket((current) =>
+                          current?.id === ticket.id
+                            ? null
+                            : { id: ticket.id, name: ticket.holderName, email: ticket.email ?? "" },
+                        )
+                      }
+                      className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+                    >
+                      edit
+                    </button>
+                  )}
                   {isLive &&
+                    !awaitingAcceptance &&
                     !ticket.redeemedAt &&
                     !ticket.activeExchange &&
                     event.ticketTypes.length > 1 && (

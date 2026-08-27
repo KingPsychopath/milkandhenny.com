@@ -416,6 +416,304 @@ export async function requestTicketAssignment(input: {
   }
 }
 
+export type AdminTicketInvitation = {
+  id: string;
+  ticketId: string;
+  holderName: string;
+  recipientEmail: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+  status: "pending" | "claimed" | "cancelled" | "expired";
+  createdAt: string;
+  expiresAt: string;
+  claimedAt?: string;
+  cancelledAt?: string;
+};
+
+export async function createAdminTicketInvitation(input: {
+  eventSlug: string;
+  ticketId: string;
+  recipientEmail: string;
+  actorType: "admin" | "root-owner";
+  actorId: string;
+  origin?: string;
+}): Promise<
+  TicketOperationResult<{ invitationId: string; expiresAt: string; emailQueued: boolean }>
+> {
+  if (!isValidEmail(input.recipientEmail))
+    return { ok: false, status: 400, error: "Enter a valid recipient email" };
+  const origin = operationOrigin(input.origin);
+  if (!origin) return { ok: false, status: 503, error: "Public app URL is not configured" };
+  const recipientEmail = normaliseEmail(input.recipientEmail);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
+  try {
+    const created = await transaction(async (client) => {
+      const selected = await client.query<{
+        event_slug: string;
+        title: string;
+        holder_name: string;
+        status: string;
+        redeemed_at: Date | null;
+        person_id: string | null;
+      }>(
+        `select ticket.event_slug,event.title,ticket.holder_name,ticket.status,ticket.redeemed_at,
+                participant.person_id
+           from tickets ticket join events event on event.slug = ticket.event_slug
+           join event_participants participant on participant.ticket_id = ticket.id
+          where ticket.id = $1 and ticket.event_slug = $2
+          for update of ticket,participant`,
+        [input.ticketId, input.eventSlug],
+      );
+      const ticket = selected.rows[0];
+      if (!ticket) throw new TicketOperationError(404, "Ticket not found");
+      if (ticket.status !== "valid" || ticket.redeemed_at || ticket.person_id)
+        throw new TicketOperationError(409, "This ticket can no longer be invited");
+      const invitationId = id("assign");
+      const link = await issueActionLink(client, {
+        purpose: "ticket-assignment",
+        intendedEmail: recipientEmail,
+        entityType: "ticket-assignment",
+        entityId: invitationId,
+        issuedByType: input.actorType,
+        issuedById: input.actorId,
+        expiresAt,
+      });
+      await client.query(
+        `insert into ticket_assignments
+           (id,event_slug,ticket_id,recipient_email,recipient_email_hash,recipient_email_hint,
+            action_link_id,expires_at,issued_by_type,issued_by_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          invitationId,
+          input.eventSlug,
+          input.ticketId,
+          recipientEmail,
+          actionEmailHash(recipientEmail),
+          maskActionEmail(recipientEmail),
+          link.id,
+          expiresAt,
+          input.actorType,
+          input.actorId,
+        ],
+      );
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,after_state)
+         values ('ticket.assignment.created',$1,$2,$3,'ticket-assignment',$4,
+                 '{"status":"pending","source":"admin"}'::jsonb)`,
+        [input.actorType, input.actorId, input.eventSlug, invitationId],
+      );
+      return { invitationId, ticket, token: link.token };
+    });
+    const delivery = await sendEmail(
+      actionEmail({
+        origin,
+        recipient: recipientEmail,
+        eventTitle: created.ticket.title,
+        ticketLabel: created.ticket.holder_name,
+        action: "assignment",
+        actionUrl: buildAppUrl(origin, `/action/${created.token}`),
+        expiresAt,
+      }),
+      {
+        idempotencyKey: `ticket-assignment:${created.invitationId}:admin-invitation`,
+        kind: "ticket-assignment",
+        source: "admin",
+        context: {
+          eventSlug: input.eventSlug,
+          ticketId: input.ticketId,
+          assignmentId: created.invitationId,
+        },
+      },
+    );
+    return {
+      ok: true,
+      value: {
+        invitationId: created.invitationId,
+        expiresAt: expiresAt.toISOString(),
+        emailQueued: delivery.ok,
+      },
+    };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "The ticket invitation could not be created" };
+  }
+}
+
+export async function listAdminTicketInvitations(
+  eventSlug: string,
+): Promise<AdminTicketInvitation[]> {
+  await query(
+    `update ticket_assignments set status = 'expired',updated_at = now()
+      where event_slug = $1 and issued_by_type in ('admin','root-owner')
+        and status = 'pending' and expires_at <= now()`,
+    [eventSlug],
+  );
+  const rows = await query<{
+    id: string;
+    ticket_id: string;
+    holder_name: string;
+    recipient_email: string;
+    ticket_type_id: string;
+    ticket_type_name: string;
+    status: AdminTicketInvitation["status"];
+    created_at: Date;
+    expires_at: Date;
+    claimed_at: Date | null;
+    cancelled_at: Date | null;
+  }>(
+    `select assignment.id,assignment.ticket_id,ticket.holder_name,assignment.recipient_email,
+            ticket.ticket_type_id,type.name as ticket_type_name,assignment.status,
+            assignment.created_at,assignment.expires_at,assignment.claimed_at,assignment.cancelled_at
+       from ticket_assignments assignment
+       join tickets ticket on ticket.id = assignment.ticket_id
+       join ticket_types type
+         on type.event_slug = ticket.event_slug and type.id = ticket.ticket_type_id
+      where assignment.event_slug = $1 and assignment.issued_by_type in ('admin','root-owner')
+      order by (assignment.status = 'pending') desc,assignment.created_at desc`,
+    [eventSlug],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    ticketId: row.ticket_id,
+    holderName: row.holder_name,
+    recipientEmail: row.recipient_email,
+    ticketTypeId: row.ticket_type_id,
+    ticketTypeName: row.ticket_type_name,
+    status: row.status,
+    createdAt: row.created_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+    claimedAt: row.claimed_at?.toISOString(),
+    cancelledAt: row.cancelled_at?.toISOString(),
+  }));
+}
+
+export async function cancelAdminTicketInvitation(input: {
+  eventSlug: string;
+  invitationId: string;
+  actorType: "admin" | "root-owner";
+  actorId: string;
+}): Promise<TicketOperationResult<{ cancelled: true }>> {
+  try {
+    await transaction(async (client) => {
+      const selected = await client.query<{ action_link_id: string | null; ticket_id: string }>(
+        `select action_link_id,ticket_id from ticket_assignments
+          where id = $1 and event_slug = $2 and issued_by_type in ('admin','root-owner')
+            and status in ('pending','expired') for update`,
+        [input.invitationId, input.eventSlug],
+      );
+      const row = selected.rows[0];
+      if (!row) throw new TicketOperationError(404, "Pending invitation not found");
+      await client.query(
+        `update ticket_assignments
+            set status = 'cancelled',cancelled_at = now(),updated_at = now() where id = $1`,
+        [input.invitationId],
+      );
+      if (row.action_link_id)
+        await revokeActionLink(client, row.action_link_id, "cancelled-by-admin");
+      await client.query(`update tickets set status = 'void' where id = $1 and status = 'valid'`, [
+        row.ticket_id,
+      ]);
+      await client.query(
+        `update event_participants set status = 'void',updated_at = now()
+          where ticket_id = $1 and status = 'active'`,
+        [row.ticket_id],
+      );
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,event_slug,entity_type,entity_id,after_state)
+         values ('ticket.assignment.cancelled',$1,$2,$3,'ticket-assignment',$4,
+                 '{"status":"cancelled","ticket":"void"}'::jsonb)`,
+        [input.actorType, input.actorId, input.eventSlug, input.invitationId],
+      );
+    });
+    return { ok: true, value: { cancelled: true } };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "The invitation could not be cancelled" };
+  }
+}
+
+export async function resendAdminTicketInvitation(input: {
+  eventSlug: string;
+  invitationId: string;
+  actorType: "admin" | "root-owner";
+  actorId: string;
+  origin?: string;
+}): Promise<TicketOperationResult<{ expiresAt: string; emailQueued: boolean }>> {
+  const origin = operationOrigin(input.origin);
+  if (!origin) return { ok: false, status: 503, error: "Public app URL is not configured" };
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1_000);
+  try {
+    const created = await transaction(async (client) => {
+      const selected = await client.query<{
+        action_link_id: string | null;
+        ticket_id: string;
+        event_title: string;
+        holder_name: string;
+        recipient_email: string;
+        ticket_status: string;
+      }>(
+        `select assignment.action_link_id,assignment.ticket_id,event.title as event_title,
+                ticket.holder_name,assignment.recipient_email,ticket.status as ticket_status
+           from ticket_assignments assignment
+           join tickets ticket on ticket.id = assignment.ticket_id
+           join events event on event.slug = assignment.event_slug
+          where assignment.id = $1 and assignment.event_slug = $2
+            and assignment.issued_by_type in ('admin','root-owner')
+            and assignment.status in ('pending','expired') for update of assignment,ticket`,
+        [input.invitationId, input.eventSlug],
+      );
+      const invitation = selected.rows[0];
+      if (!invitation) throw new TicketOperationError(404, "Pending invitation not found");
+      if (invitation.ticket_status !== "valid")
+        throw new TicketOperationError(409, "This ticket is no longer available");
+      if (invitation.action_link_id)
+        await revokeActionLink(client, invitation.action_link_id, "replaced-by-admin-resend");
+      const link = await issueActionLink(client, {
+        purpose: "ticket-assignment",
+        intendedEmail: invitation.recipient_email,
+        entityType: "ticket-assignment",
+        entityId: input.invitationId,
+        issuedByType: input.actorType,
+        issuedById: input.actorId,
+        expiresAt,
+      });
+      await client.query(
+        `update ticket_assignments
+            set status = 'pending',action_link_id = $2,expires_at = $3,updated_at = now()
+          where id = $1`,
+        [input.invitationId, link.id, expiresAt],
+      );
+      return { ...invitation, token: link.token };
+    });
+    const delivery = await sendEmail(
+      actionEmail({
+        origin,
+        recipient: created.recipient_email,
+        eventTitle: created.event_title,
+        ticketLabel: created.holder_name,
+        action: "assignment",
+        actionUrl: buildAppUrl(origin, `/action/${created.token}`),
+        expiresAt,
+      }),
+      {
+        idempotencyKey: `ticket-assignment:${input.invitationId}:admin-resend:${expiresAt.toISOString()}`,
+        kind: "ticket-assignment",
+        source: "admin",
+        context: { eventSlug: input.eventSlug, assignmentId: input.invitationId },
+      },
+    );
+    return { ok: true, value: { expiresAt: expiresAt.toISOString(), emailQueued: delivery.ok } };
+  } catch (error) {
+    return error instanceof TicketOperationError
+      ? { ok: false, status: error.status, error: error.message }
+      : { ok: false, status: 503, error: "The invitation could not be resent" };
+  }
+}
+
 export async function requestTicketTransfer(input: {
   ticketId: string;
   senderPersonId: string;

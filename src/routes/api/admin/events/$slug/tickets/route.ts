@@ -4,6 +4,12 @@ import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEvent } from "@/features/events/store.server";
+import {
+  cancelAdminTicketInvitation,
+  createAdminTicketInvitation,
+  listAdminTicketInvitations,
+  resendAdminTicketInvitation,
+} from "@/features/attendee-operations/ticket-operations.server";
 import { refundTicket } from "@/features/tickets/checkout.server";
 import { beginTicketExchange } from "@/features/tickets/exchange.server";
 import { sendTicketEmail } from "@/features/tickets/email.server";
@@ -37,6 +43,7 @@ type ActionBody = {
   notes?: unknown;
   sendEmail?: unknown;
   overrideCapacity?: unknown;
+  invitationId?: unknown;
 };
 
 function asString(value: unknown): string | undefined {
@@ -55,9 +62,81 @@ async function handlePOST(request: Request, slug: string) {
   }
 
   const action = asString(body.action);
+  const actorType = auth.actorType === "admin" ? "admin" : "root-owner";
+  const actorId = auth.actorId ?? "root-owner";
 
   try {
     switch (action) {
+      case "invite": {
+        const holderName = asString(body.holderName);
+        const email = asString(body.email);
+        const ticketTypeId = asString(body.ticketTypeId);
+        if (!holderName || !email || !ticketTypeId) {
+          return Response.json(
+            { error: "A name, email address, and ticket type are required" },
+            { status: 400 },
+          );
+        }
+        const issued = await issueTickets({
+          eventSlug: slug,
+          ticketTypeId,
+          holderName,
+          email,
+          quantity: 1,
+          kind: "comp",
+          bypassSalesWindow: true,
+          bypassCapacity: body.overrideCapacity === true,
+        });
+        if (!issued.ok) return Response.json({ error: issued.error }, { status: issued.status });
+        const ticket = issued.value.tickets[0];
+        const invitation = await createAdminTicketInvitation({
+          eventSlug: slug,
+          ticketId: ticket.id,
+          recipientEmail: email,
+          actorType,
+          actorId,
+          origin: getBaseUrlForRequest(request),
+        });
+        if (!invitation.ok) {
+          await voidTicket(ticket.id);
+          return Response.json({ error: invitation.error }, { status: invitation.status });
+        }
+        return Response.json({ ok: true, ticketId: ticket.id, ...invitation.value });
+      }
+
+      case "cancel-invitation": {
+        const stepUpErr = await requireAdminStepUp(request);
+        if (stepUpErr) return stepUpErr;
+        const invitationId = asString(body.invitationId);
+        if (!invitationId) {
+          return Response.json({ error: "Invitation not found" }, { status: 400 });
+        }
+        const result = await cancelAdminTicketInvitation({
+          eventSlug: slug,
+          invitationId,
+          actorType,
+          actorId,
+        });
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        return Response.json({ ok: true });
+      }
+
+      case "resend-invitation": {
+        const invitationId = asString(body.invitationId);
+        if (!invitationId) {
+          return Response.json({ error: "Invitation not found" }, { status: 400 });
+        }
+        const result = await resendAdminTicketInvitation({
+          eventSlug: slug,
+          invitationId,
+          actorType,
+          actorId,
+          origin: getBaseUrlForRequest(request),
+        });
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        return Response.json({ ok: true, ...result.value });
+      }
+
       case "comp": {
         const holderName = asString(body.holderName);
         const ticketTypeId = asString(body.ticketTypeId);
@@ -270,9 +349,25 @@ async function handlePOST(request: Request, slug: string) {
   }
 }
 
+async function handleGET(request: Request, slug: string) {
+  const authErr = await requireAuthWithPayload(request, "admin");
+  if (authErr.error) return authErr.error;
+  try {
+    return Response.json({ invitations: await listAdminTicketInvitations(slug) });
+  } catch (error) {
+    return apiErrorFromRequest(
+      request,
+      "events.admin.ticket-invitations",
+      "Failed to load ticket invitations",
+      error,
+    );
+  }
+}
+
 export const Route = createFileRoute("/api/admin/events/$slug/tickets")({
   server: {
     handlers: {
+      GET: ({ request, params }) => handleGET(request, params.slug),
       POST: ({ request, params }) => handlePOST(request, params.slug),
     },
   },
