@@ -460,6 +460,7 @@ function PitchVideoControl({
             </button>
             <button
               type="button"
+              aria-label="Move this video behind another video"
               disabled={clip.locked || atBack}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
@@ -468,10 +469,11 @@ function PitchVideoControl({
               }}
               className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
             >
-              backward
+              send back
             </button>
             <button
               type="button"
+              aria-label="Move this video in front of another video"
               disabled={clip.locked || atFront}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
@@ -480,7 +482,7 @@ function PitchVideoControl({
               }}
               className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
             >
-              forward
+              bring forward
             </button>
           </div>
           <button

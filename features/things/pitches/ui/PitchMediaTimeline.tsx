@@ -180,6 +180,7 @@ export function PitchMediaTimeline({
   onChange: (slide: PitchSlide, kind?: PitchCommandKind) => void;
 }) {
   const [dropActive, setDropActive] = useState(false);
+  const [layersExpanded, setLayersExpanded] = useState(false);
   const [gesture, setGesture] = useState<Gesture>();
   const [draftClips, setDraftClips] = useState<PitchMediaClip[]>();
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -197,6 +198,8 @@ export function PitchMediaTimeline({
     PITCH_SLIDE_DURATION_RANGE_MS.min,
     ...slide.mediaClips.map((clip) => clip.timelineStartMs + clip.durationMs),
   );
+  const laneCount = trackLanes.video.length + trackLanes.audio.length;
+  const layersOverflow = laneCount > 2;
 
   const commit = (nextClips: PitchMediaClip[], kind: PitchCommandKind = "media.change") => {
     onChange(
@@ -396,6 +399,21 @@ export function PitchMediaTimeline({
         </div>
         <button
           type="button"
+          id="pitch-media-layers-toggle"
+          aria-expanded={layersExpanded}
+          aria-controls="pitch-media-layers"
+          disabled={!layersOverflow}
+          onClick={() => setLayersExpanded((current) => !current)}
+          className="min-h-11 border-b theme-border px-3 font-mono text-xs hover:opacity-60 disabled:opacity-35"
+        >
+          {layersExpanded
+            ? "collapse lanes"
+            : layersOverflow
+              ? `expand ${laneCount} lanes`
+              : "2 lanes"}
+        </button>
+        <button
+          type="button"
           onClick={onTogglePlayback}
           className="min-h-11 border theme-border-strong px-3 font-mono text-xs hover:opacity-60"
         >
@@ -466,104 +484,112 @@ export function PitchMediaTimeline({
       </label>
 
       <div
-        ref={timelineRef}
-        className="relative mt-2 space-y-1 overflow-hidden border-y theme-border py-1"
-        onPointerMove={(event) => {
-          if (!gesture || event.pointerId !== gesture.pointerId) return;
-          const deltaMs = ((event.clientX - gesture.startX) / gesture.width) * slide.durationMs;
-          setDraftClips(updateGestureClips(gesture, deltaMs, slide.durationMs));
-        }}
-        onPointerUp={(event) => {
-          if (gesture && event.pointerId === gesture.pointerId) finishGesture();
-        }}
-        onPointerCancel={finishGesture}
+        id="pitch-media-layers"
+        aria-labelledby="pitch-media-layers-toggle"
+        className={`mt-2 overflow-y-auto overscroll-contain border-y theme-border ${
+          layersExpanded ? "max-h-[50vh]" : "max-h-40"
+        }`}
       >
-        <span
-          className="pointer-events-none absolute inset-y-0 z-30 w-px bg-[var(--prose-hashtag)]"
-          style={{ left: `${(playheadMs / Math.max(1, slide.durationMs)) * 100}%` }}
-        />
-        {(["video", "audio"] as const).map((kind) => (
-          <div key={kind} className="relative bg-surface pt-4">
-            <span className="pointer-events-none absolute left-2 top-1 z-20 font-mono text-micro uppercase theme-faint">
-              {kind}
-              {trackLanes[kind].length > 1 ? ` · ${trackLanes[kind].length} layers` : ""}
-            </span>
-            {trackLanes[kind].map((lane, laneIndex) => (
-              <div
-                key={laneIndex}
-                className="relative h-12 border-t theme-border-faint first:border-t-0"
-              >
-                {lane.map((clip) => {
-                  const left = (clip.timelineStartMs / slide.durationMs) * 100;
-                  const width = (clip.durationMs / slide.durationMs) * 100;
-                  const unavailable = clipUnavailable(clip, assets);
-                  const transferState = assets.find(
-                    (asset) => asset.id === clip.assetId,
-                  )?.transferState;
-                  return (
-                    <div
-                      key={clip.id}
-                      className={`absolute inset-y-1 overflow-hidden border ${
-                        selectedClipId === clip.id
-                          ? "border-[var(--things-amber)] bg-[var(--selection-bg)]"
-                          : unavailable
-                            ? "border-dashed border-[var(--things-amber)] bg-[var(--selection-bg)]"
-                            : transferState === "uploading"
-                              ? "border-[var(--things-amber)] bg-background motion-safe:animate-pulse"
-                              : transferState === "local" || transferState === "error"
-                                ? "border-dashed border-[var(--things-amber)] bg-background"
-                                : "theme-border-strong bg-background"
-                      } ${clip.locked ? "opacity-60" : ""}`}
-                      style={{ left: `${left}%`, width: `${width}%`, minWidth: "2.75rem" }}
-                    >
-                      {clip.kind === "video" && clipUrl(clip, assets) ? (
-                        <video
-                          src={`${clipUrl(clip, assets)}#t=${clip.sourceStartMs / 1_000}`}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
-                        />
-                      ) : null}
-                      <button
-                        type="button"
-                        onPointerDown={(event) => beginGesture(event, clip, "move")}
-                        onClick={() => onSelectClip(clip.id)}
-                        className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
-                        aria-label={`Move ${clipLabel(clip, assets)}. ${clipStorageLabel(clip, assets)}. Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
+        <div
+          ref={timelineRef}
+          className="relative space-y-1 py-1"
+          onPointerMove={(event) => {
+            if (!gesture || event.pointerId !== gesture.pointerId) return;
+            const deltaMs = ((event.clientX - gesture.startX) / gesture.width) * slide.durationMs;
+            setDraftClips(updateGestureClips(gesture, deltaMs, slide.durationMs));
+          }}
+          onPointerUp={(event) => {
+            if (gesture && event.pointerId === gesture.pointerId) finishGesture();
+          }}
+          onPointerCancel={finishGesture}
+        >
+          <span
+            className="pointer-events-none absolute inset-y-0 z-30 w-px bg-[var(--prose-hashtag)]"
+            style={{ left: `${(playheadMs / Math.max(1, slide.durationMs)) * 100}%` }}
+          />
+          {(["video", "audio"] as const).map((kind) => (
+            <div key={kind} className="relative bg-surface pt-4">
+              <span className="pointer-events-none absolute left-2 top-1 z-20 font-mono text-micro uppercase theme-faint">
+                {kind}
+                {trackLanes[kind].length > 1 ? ` · ${trackLanes[kind].length} lanes` : ""}
+              </span>
+              {trackLanes[kind].map((lane, laneIndex) => (
+                <div
+                  key={laneIndex}
+                  className="relative h-12 border-t theme-border-faint first:border-t-0"
+                >
+                  {lane.map((clip) => {
+                    const left = (clip.timelineStartMs / slide.durationMs) * 100;
+                    const width = (clip.durationMs / slide.durationMs) * 100;
+                    const unavailable = clipUnavailable(clip, assets);
+                    const transferState = assets.find(
+                      (asset) => asset.id === clip.assetId,
+                    )?.transferState;
+                    return (
+                      <div
+                        key={clip.id}
+                        className={`absolute inset-y-1 overflow-hidden border ${
+                          selectedClipId === clip.id
+                            ? "border-[var(--things-amber)] bg-[var(--selection-bg)]"
+                            : unavailable
+                              ? "border-dashed border-[var(--things-amber)] bg-[var(--selection-bg)]"
+                              : transferState === "uploading"
+                                ? "border-[var(--things-amber)] bg-background motion-safe:animate-pulse"
+                                : transferState === "local" || transferState === "error"
+                                  ? "border-dashed border-[var(--things-amber)] bg-background"
+                                  : "theme-border-strong bg-background"
+                        } ${clip.locked ? "opacity-60" : ""}`}
+                        style={{ left: `${left}%`, width: `${width}%`, minWidth: "2.75rem" }}
                       >
-                        {clip.locked ? "locked · " : ""}
-                        {clipLabel(clip, assets)}
-                        {` · ${clipStorageLabel(clip, assets)}`}
-                      </button>
-                      {!clip.locked ? (
-                        <>
-                          <button
-                            type="button"
-                            onPointerDown={(event) => beginGesture(event, clip, "trim-start")}
-                            className="absolute inset-y-0 left-0 z-20 min-w-11 border-r theme-border bg-background/70 font-mono text-micro"
-                            aria-label={`Trim the start of ${clipLabel(clip, assets)}`}
-                          >
-                            [
-                          </button>
-                          <button
-                            type="button"
-                            onPointerDown={(event) => beginGesture(event, clip, "trim-end")}
-                            className="absolute inset-y-0 right-0 z-20 min-w-11 border-l theme-border bg-background/70 font-mono text-micro"
-                            aria-label={`Trim the end of ${clipLabel(clip, assets)}`}
-                          >
-                            ]
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        ))}
+                        {clip.kind === "video" && clipUrl(clip, assets) ? (
+                          <video
+                            src={`${clipUrl(clip, assets)}#t=${clip.sourceStartMs / 1_000}`}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
+                          />
+                        ) : null}
+                        <button
+                          type="button"
+                          onPointerDown={(event) => beginGesture(event, clip, "move")}
+                          onClick={() => onSelectClip(clip.id)}
+                          className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
+                          aria-label={`Move ${clipLabel(clip, assets)}. ${clipStorageLabel(clip, assets)}. Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
+                        >
+                          {clip.locked ? "locked · " : ""}
+                          {clipLabel(clip, assets)}
+                          {` · ${clipStorageLabel(clip, assets)}`}
+                        </button>
+                        {!clip.locked ? (
+                          <>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => beginGesture(event, clip, "trim-start")}
+                              className="absolute inset-y-0 left-0 z-20 min-w-11 border-r theme-border bg-background/70 font-mono text-micro"
+                              aria-label={`Trim the start of ${clipLabel(clip, assets)}`}
+                            >
+                              [
+                            </button>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => beginGesture(event, clip, "trim-end")}
+                              className="absolute inset-y-0 right-0 z-20 min-w-11 border-l theme-border bg-background/70 font-mono text-micro"
+                              aria-label={`Trim the end of ${clipLabel(clip, assets)}`}
+                            >
+                              ]
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {selected ? (
@@ -610,6 +636,23 @@ export function PitchMediaTimeline({
             >
               {selected.loop ? "repeat on" : "repeat off"}
             </button>
+            {selected.kind === "audio" ? (
+              <button
+                type="button"
+                aria-pressed={selected.muted}
+                disabled={selected.locked}
+                onClick={() =>
+                  updateClip(selected.id, (clip) => ({
+                    ...clip,
+                    muted: !clip.muted,
+                    volume: clip.volume === 0 ? 0.85 : clip.volume,
+                  }))
+                }
+                className="min-h-11 border-b theme-border px-2 font-mono text-xs hover:opacity-60 disabled:opacity-35"
+              >
+                {selected.muted ? "sound off" : "sound on"}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={
@@ -723,13 +766,13 @@ export function PitchMediaTimeline({
             </label>
             {selected.kind === "audio" ? (
               <label className="font-mono text-micro theme-muted">
-                volume · {selected.muted ? "muted" : `${Math.round(selected.volume * 100)}%`}
+                volume · {Math.round(selected.volume * 100)}%
                 <input
                   type="range"
                   min={0}
                   max={1}
                   step={0.05}
-                  value={selected.muted ? 0 : selected.volume}
+                  value={selected.volume}
                   disabled={selected.locked}
                   onChange={(event) =>
                     updateClip(selected.id, (clip) => ({
