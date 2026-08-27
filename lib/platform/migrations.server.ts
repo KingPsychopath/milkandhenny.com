@@ -3363,6 +3363,22 @@ const MIGRATIONS: Migration[] = [
        where puzzle > 3;
     `,
   },
+  {
+    id: "0068_seed_hot_and_cold_puzzle_three",
+    sql: `
+      insert into hot_and_cold_daily_results
+        (run_id,puzzle,outcome,guesses,hints,best_rank,frost_guesses,cool_guesses,
+         warm_guesses,hot_guesses,synthetic)
+      values
+        ('00000000-0000-4000-8000-000000000301',3,'found',7,0,0,3,1,1,2,true),
+        ('00000000-0000-4000-8000-000000000302',3,'found',11,0,0,5,2,2,2,true),
+        ('00000000-0000-4000-8000-000000000303',3,'found',13,1,0,6,3,2,2,true),
+        ('00000000-0000-4000-8000-000000000304',3,'found',18,0,0,9,4,3,2,true),
+        ('00000000-0000-4000-8000-000000000305',3,'found',25,2,0,13,6,3,3,true),
+        ('00000000-0000-4000-8000-000000000306',3,'revealed',29,3,26,17,7,3,2,true)
+      on conflict (run_id) do nothing;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
