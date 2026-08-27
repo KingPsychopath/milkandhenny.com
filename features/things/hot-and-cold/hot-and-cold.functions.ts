@@ -29,6 +29,7 @@ import {
 } from "./hot-and-cold-words.server";
 import {
   hotAndColdCommunityStats,
+  hotAndColdResultCommunityStats,
   recordHotAndColdDailyResult,
 } from "./hot-and-cold-daily-results.server";
 import type {
@@ -398,7 +399,7 @@ export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
     });
     let community: HotAndColdCommunityStats | null = null;
     try {
-      community = (await hotAndColdCommunityStats([data.puzzle])).get(data.puzzle) ?? null;
+      community = await hotAndColdResultCommunityStats(data.puzzle, data.runId);
     } catch (error) {
       log.warn("things.hot-and-cold", "Could not read result community comparison", {
         puzzle: data.puzzle,
@@ -410,10 +411,13 @@ export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
 export const getHotAndColdCommunityStatsFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { puzzle: playablePuzzle(data.puzzle) };
+    const runId = multiplayerText(data.runId, 36);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))
+      throw new Error("Invalid result identifier");
+    return { puzzle: playablePuzzle(data.puzzle), runId };
   })
   .handler(async ({ data }) => ({
-    community: (await hotAndColdCommunityStats([data.puzzle])).get(data.puzzle) ?? null,
+    community: await hotAndColdResultCommunityStats(data.puzzle, data.runId),
   }));
 export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler(async () => {
   const puzzle = hotAndColdPuzzleNumber();

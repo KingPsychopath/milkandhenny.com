@@ -7,6 +7,7 @@ vi.mock("@/lib/platform/postgres.server", () => ({
 
 import {
   hotAndColdCommunityStats,
+  hotAndColdResultCommunityStats,
   recordHotAndColdDailyResult,
 } from "@/features/things/hot-and-cold/hot-and-cold-daily-results.server";
 
@@ -71,8 +72,7 @@ describe("Hot & Cold community results", () => {
       runs: 5,
       visible: true,
       solveRate: 0.8,
-      averageGuesses: 4,
-      medianGuesses: 4,
+      medianGuesses: 3.5,
     });
   });
 
@@ -98,7 +98,18 @@ describe("Hot & Cold community results", () => {
     expect((await hotAndColdCommunityStats([1])).get(1)).toMatchObject({
       runs: 5,
       visible: true,
-      averageGuesses: 3,
+      medianGuesses: 3,
+    });
+    expect(
+      await hotAndColdResultCommunityStats(1, "0198e9d8-53d7-7dc1-8da4-c0f557db73b1"),
+    ).toMatchObject({
+      standing: {
+        rank: 1,
+        runs: 5,
+        tied: true,
+        topPercent: 20,
+        hints: 0,
+      },
     });
   });
 });

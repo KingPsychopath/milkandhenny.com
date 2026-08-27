@@ -107,21 +107,15 @@ export function HotAndColdArchive({ history }: { history: HotAndColdArchiveEntry
               {open ? (
                 <div id={panelId} className="border-t theme-border pb-5 pt-4">
                   {stats ? (
-                    <dl className="grid grid-cols-3 gap-4 font-mono text-micro theme-muted">
+                    <dl className="grid grid-cols-2 gap-4 font-mono text-micro theme-muted">
                       <div>
-                        <dt>median guesses</dt>
+                        <dt>median solve</dt>
                         <dd className="mt-1 font-serif text-xl text-[var(--foreground)]">
-                          {stats.medianGuesses.toLocaleString("en-GB", {
-                            maximumFractionDigits: 1,
-                          })}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>average guesses</dt>
-                        <dd className="mt-1 font-serif text-xl text-[var(--foreground)]">
-                          {stats.averageGuesses.toLocaleString("en-GB", {
-                            maximumFractionDigits: 1,
-                          })}
+                          {stats.medianGuesses === null
+                            ? "—"
+                            : `${stats.medianGuesses.toLocaleString("en-GB", {
+                                maximumFractionDigits: 1,
+                              })} guesses`}
                         </dd>
                       </div>
                       <div>
@@ -131,11 +125,7 @@ export function HotAndColdArchive({ history }: { history: HotAndColdArchiveEntry
                         </dd>
                       </div>
                     </dl>
-                  ) : (
-                    <p className="font-mono text-micro theme-muted">
-                      Community figures appear after 5 finished runs.
-                    </p>
-                  )}
+                  ) : null}
                   {answers[entry.puzzle] ? (
                     <p className="mt-4 font-mono text-xs theme-muted">
                       your revealed word ·{" "}

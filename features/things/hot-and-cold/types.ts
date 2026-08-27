@@ -144,8 +144,13 @@ export type HotAndColdCommunityStats =
       runs: number;
       visible: true;
       solveRate: number;
-      averageGuesses: number;
-      medianGuesses: number;
-      averageHints: number;
+      medianGuesses: number | null;
       distribution: { frost: number; cool: number; warm: number; hot: number };
+      standing?: {
+        rank: number;
+        runs: number;
+        tied: boolean;
+        topPercent: number;
+        hints: number;
+      } | null;
     };

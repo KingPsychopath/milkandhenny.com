@@ -14,6 +14,7 @@ import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
+import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibilityControl";
 import { useHotAndColdRoom } from "./useHotAndColdRoom";
 import type { HotAndColdAction, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
@@ -111,6 +112,7 @@ export function HotAndColdRoomApp({
   const haptics = useWebHaptics();
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
+  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
   const snapshot = live.snapshot;
   const invite =
     typeof location === "undefined"
@@ -383,17 +385,18 @@ export function HotAndColdRoomApp({
         <span>
           round {snapshot.round?.number}/{snapshot.round?.total} · {live.connectionState}
         </span>
-        {snapshot.phase === "playing" && !me?.gaveUp ? (
-          <GiveUpControl
-            tone="dark"
-            title="Leave this round?"
-            description="Your turns will stop. You can watch the shared ledger until the next word."
-            onGiveUp={() => send({ type: "round.giveUp", roundId: snapshot.round?.id ?? "" })}
-            className="min-h-11 justify-self-end font-mono text-micro theme-faint"
-          />
-        ) : (
-          <span />
-        )}
+        <span className="flex items-center justify-self-end gap-1">
+          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
+          {snapshot.phase === "playing" && !me?.gaveUp ? (
+            <GiveUpControl
+              tone="dark"
+              title="Leave this round?"
+              description="Your turns will stop. You can watch the shared ledger until the next word."
+              onGiveUp={() => send({ type: "round.giveUp", roundId: snapshot.round?.id ?? "" })}
+              className="min-h-11 font-mono text-micro theme-faint"
+            />
+          ) : null}
+        </span>
       </header>
       <main id="main" className="mx-auto max-w-2xl px-5">
         <div className="heat-source">
@@ -418,7 +421,12 @@ export function HotAndColdRoomApp({
             ) : null}
           </p>
         </div>
-        <HeatLedger guesses={guesses} newestId={newest} target={snapshot.round?.target} />
+        <HeatLedger
+          guesses={guesses}
+          newestId={newest}
+          target={snapshot.round?.target}
+          wordsHidden={wordsHidden}
+        />
         {snapshot.phase === "reveal" ? (
           <section className="pb-36 text-center">
             <h1 className="font-serif text-4xl font-semibold">

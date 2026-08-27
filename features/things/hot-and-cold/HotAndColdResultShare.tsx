@@ -53,25 +53,74 @@ function ExactBulb() {
   );
 }
 
-function CommunityComparison({ community }: { community: HotAndColdCommunityStats }) {
-  if (!community.visible)
-    return (
-      <div className="mt-5 border-t theme-border pt-4 text-left">
-        <p className="font-mono text-micro uppercase tracking-[.12em] theme-muted">community</p>
-        <p className="mt-2 font-serif text-sm leading-relaxed theme-muted">
-          Details appear after 5 finished runs · {community.runs}/5 so far.
-        </p>
-      </div>
-    );
+function ordinal(value: number) {
+  const remainder = value % 100;
+  if (remainder >= 11 && remainder <= 13) return `${value}th`;
+  if (value % 10 === 1) return `${value}st`;
+  if (value % 10 === 2) return `${value}nd`;
+  if (value % 10 === 3) return `${value}rd`;
+  return `${value}th`;
+}
+
+function CommunityComparison({
+  community,
+}: {
+  community: Extract<HotAndColdCommunityStats, { visible: true }>;
+}) {
   const zones = ["frost", "cool", "warm", "hot"] as const;
   const largest = Math.max(...Object.values(community.distribution), 1);
+  const standing = community.standing;
+  const cohortLabel = standing
+    ? standing.hints === 0
+      ? "no-hint solvers"
+      : `${standing.hints}-hint solvers`
+    : null;
+  const placement = standing
+    ? `${standing.tied ? "joint " : ""}${ordinal(standing.rank)} of ${standing.runs}`
+    : null;
   return (
-    <div className="mt-5 border-t theme-border pt-4 text-left">
-      <div className="flex items-center justify-between gap-5">
+    <div className="mt-6 border-t theme-border pt-5 text-left">
+      <div>
+        <p className="font-mono text-micro uppercase tracking-[.14em] theme-muted">
+          {standing ? "your community standing" : "community"}
+        </p>
+        <h3 className="mt-2 font-serif text-4xl font-semibold leading-none">
+          {standing
+            ? standing.runs >= 20
+              ? `top ${standing.topPercent}%`
+              : placement
+            : `${Math.round(community.solveRate * 100)}% found it`}
+        </h3>
+        <p className="mt-2 font-mono text-micro theme-muted">
+          {standing
+            ? standing.runs >= 20
+              ? `${placement} · ${cohortLabel}`
+              : `among ${cohortLabel}`
+            : `${community.runs} finished runs`}
+        </p>
+      </div>
+      <dl className="mt-5 grid grid-cols-2 gap-4 border-y theme-border py-3">
         <div>
-          <p className="font-mono text-micro uppercase tracking-[.12em] theme-muted">community</p>
-          <p className="mt-1 font-mono text-micro theme-muted">{community.runs} finished runs</p>
+          <dt className="font-mono text-micro theme-muted">median solve</dt>
+          <dd className="mt-1 font-serif text-xl">
+            {community.medianGuesses === null
+              ? "—"
+              : `${community.medianGuesses.toLocaleString("en-GB", {
+                  maximumFractionDigits: 1,
+                })} guesses`}
+          </dd>
         </div>
+        <div>
+          <dt className="font-mono text-micro theme-muted">
+            {standing ? "found it" : "finished runs"}
+          </dt>
+          <dd className="mt-1 font-serif text-xl">
+            {standing ? `${Math.round(community.solveRate * 100)}%` : community.runs}
+          </dd>
+        </div>
+      </dl>
+      <div className="mt-3 flex items-center justify-between gap-5">
+        <p className="font-mono text-micro theme-faint">all guesses · cold to hot</p>
         <span className="heat-share-dock-bars" aria-hidden="true">
           {zones.map((zone) => (
             <span
@@ -89,24 +138,6 @@ function CommunityComparison({ community }: { community: HotAndColdCommunityStat
           ))}
         </span>
       </div>
-      <dl className="mt-4 grid grid-cols-3 gap-4 border-y theme-border py-3">
-        <div>
-          <dt className="font-mono text-micro theme-muted">median</dt>
-          <dd className="mt-1 font-serif text-xl">
-            {community.medianGuesses.toLocaleString("en-GB", { maximumFractionDigits: 1 })}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-mono text-micro theme-muted">average</dt>
-          <dd className="mt-1 font-serif text-xl">
-            {community.averageGuesses.toLocaleString("en-GB", { maximumFractionDigits: 1 })}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-mono text-micro theme-muted">found it</dt>
-          <dd className="mt-1 font-serif text-xl">{Math.round(community.solveRate * 100)}%</dd>
-        </div>
-      </dl>
     </div>
   );
 }
@@ -243,7 +274,7 @@ export function HotAndColdResultShare({
         </div>
       </dl>
 
-      {community ? <CommunityComparison community={community} /> : null}
+      {community?.visible ? <CommunityComparison community={community} /> : null}
 
       <button
         type="button"

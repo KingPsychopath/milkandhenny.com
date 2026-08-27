@@ -5,6 +5,7 @@ import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
+import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibilityControl";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { heatStreaks } from "./hot-and-cold-rules";
 import { buildHotAndColdShareResult } from "./hot-and-cold-share";
@@ -43,6 +44,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   const [showHow, setShowHow] = useState(false);
   const [community, setCommunity] = useState<HotAndColdCommunityStats | null>(null);
   const [communityLoaded, setCommunityLoaded] = useState(false);
+  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
   useEffect(() => {
     setRecovered(false);
     setCommunity(null);
@@ -224,11 +226,12 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   ]);
   useEffect(() => {
     if (!recovered || !state.target || !state.resultRecorded || communityLoaded) return;
-    void getHotAndColdCommunityStatsFn({ data: { puzzle } })
+    if (!state.runId) return;
+    void getHotAndColdCommunityStatsFn({ data: { puzzle, runId: state.runId } })
       .then(({ community: latest }) => setCommunity(latest))
       .catch(() => undefined)
       .finally(() => setCommunityLoaded(true));
-  }, [communityLoaded, puzzle, recovered, state.resultRecorded, state.target]);
+  }, [communityLoaded, puzzle, recovered, state.resultRecorded, state.runId, state.target]);
   const streak = heatStreaks(state.guesses);
   const hottest = ledger.reduce<(typeof ledger)[number] | null>(
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
@@ -241,15 +244,18 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           ← hot and cold
         </button>
         <span>daily #{puzzle}</span>
-        <button
-          type="button"
-          className="min-h-11 justify-self-end font-mono text-micro underline decoration-transparent underline-offset-4 transition-opacity hover:opacity-60 hover:decoration-current"
-          aria-expanded={showHow}
-          aria-controls="how-heat-works"
-          onClick={() => setShowHow((open) => !open)}
-        >
-          {showHow ? "close guide" : "how to play"}
-        </button>
+        <span className="flex items-center justify-self-end gap-1">
+          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
+          <button
+            type="button"
+            className="min-h-11 font-mono text-micro underline decoration-transparent underline-offset-4 transition-opacity hover:opacity-60 hover:decoration-current"
+            aria-expanded={showHow}
+            aria-controls="how-heat-works"
+            onClick={() => setShowHow((open) => !open)}
+          >
+            {showHow ? "close guide" : "how to play"}
+          </button>
+        </span>
       </header>
       <main id="main" className="mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
@@ -310,7 +316,12 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             </p>
           </section>
         ) : null}
-        <HeatLedger guesses={ledger} newestId={newest} target={state.target} />
+        <HeatLedger
+          guesses={ledger}
+          newestId={newest}
+          target={state.target}
+          wordsHidden={wordsHidden}
+        />
         {done ? (
           <section className="pb-24 text-center">
             <HotAndColdResultShare

@@ -26,11 +26,13 @@ export function HeatLedger({
   guesses,
   newestId,
   target,
+  wordsHidden = false,
   emptyMessage = "Start anywhere. A broad word is a good first spark.",
 }: {
   guesses: readonly LedgerGuess[];
   newestId?: string | null;
   target?: string | null;
+  wordsHidden?: boolean;
   emptyMessage?: string;
 }) {
   const ledger = useRef<HTMLOListElement>(null);
@@ -41,6 +43,14 @@ export function HeatLedger({
   const newestGuess = newestId ? guesses.find(({ id }) => id === newestId) : undefined;
   const newestRank = newestGuess?.rank;
   const newestWord = newestGuess?.word;
+  const bandCounts = ordered.reduce(
+    (counts, guess) => {
+      const band = heatBand(guess.rank);
+      counts[band] += 1;
+      return counts;
+    },
+    { found: 0, burning: 0, hot: 0, warm: 0, cool: 0, cold: 0, frozen: 0 },
+  );
   useLayoutEffect(() => {
     if (!ledger.current) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -81,12 +91,12 @@ export function HeatLedger({
 
     const rank = `#${newestRank.toLocaleString()}`;
     const direction = rowBounds.bottom <= visibleTop ? "above" : "below";
-    setOffscreenUpdate(`${newestWord} · ${rank} · added ${direction}`);
+    setOffscreenUpdate(`${wordsHidden ? rank : `${newestWord} · ${rank}`} · added ${direction}`);
     updateTimer.current = setTimeout(() => setOffscreenUpdate(null), 2_800);
     return () => {
       if (updateTimer.current) clearTimeout(updateTimer.current);
     };
-  }, [newestId, newestRank, newestWord]);
+  }, [newestId, newestRank, newestWord, wordsHidden]);
 
   const showRevealedTarget = Boolean(target && !ordered.some(({ rank }) => rank === 0));
   if (ordered.length === 0 && !showRevealedTarget)
@@ -99,7 +109,12 @@ export function HeatLedger({
   let previousBand: HeatBand | null = null;
   return (
     <>
-      <ol ref={ledger} className="heat-ledger" aria-label="Guesses ordered from hottest to coldest">
+      <ol
+        ref={ledger}
+        className="heat-ledger"
+        aria-label={`Guesses ordered from hottest to coldest${wordsHidden ? "; words hidden" : ""}`}
+        data-words-hidden={wordsHidden || undefined}
+      >
         {showRevealedTarget ? (
           <li className="heat-target">
             <span>#0</span>
@@ -123,7 +138,12 @@ export function HeatLedger({
               {divider ? (
                 <div className={`heat-band heat-band--${band}`}>
                   <i className="heat-band-thermometer" aria-hidden="true" />
-                  <span>{LABELS[band]}</span>
+                  <span>
+                    {LABELS[band]}
+                    {wordsHidden
+                      ? ` · ${bandCounts[band]} word${bandCounts[band] === 1 ? "" : "s"}`
+                      : ""}
+                  </span>
                 </div>
               ) : null}
               <article

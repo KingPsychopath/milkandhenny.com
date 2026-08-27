@@ -364,6 +364,11 @@ main:has(.heat-result-share) .heat-ledger {
   font: 500 clamp(1.55rem, 7vw, 2.35rem)/1.05 var(--font-serif);
   letter-spacing: -0.025em;
 }
+.heat-ledger[data-words-hidden] .heat-word-text,
+.heat-ledger[data-words-hidden] .heat-target strong {
+  filter: blur(0.42rem);
+  user-select: none;
+}
 .heat-word-owner {
   grid-area: owner;
   min-height: 1rem;

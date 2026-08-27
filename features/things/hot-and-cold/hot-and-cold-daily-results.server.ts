@@ -2,6 +2,7 @@ import { isDatabaseConfigured, query } from "@/lib/platform/postgres.server";
 import type { HotAndColdCommunityStats, HotAndColdDailyResultInput } from "./types";
 
 const MINIMUM_COMMUNITY_RUNS = 5;
+const MINIMUM_STANDING_RUNS = 3;
 function seededResult(
   runId: string,
   puzzle: number,
@@ -45,9 +46,7 @@ interface AggregateRow {
   puzzle: number;
   runs: string;
   solves: string;
-  average_guesses: string;
-  median_guesses: string;
-  average_hints: string;
+  median_guesses: string | null;
   frost: string;
   cool: string;
   warm: string;
@@ -67,9 +66,7 @@ function statsFromRows(rows: AggregateRow[]): Map<number, HotAndColdCommunitySta
       runs,
       visible: true,
       solveRate: runs ? solves / runs : 0,
-      averageGuesses: Number(row.average_guesses),
-      medianGuesses: Number(row.median_guesses),
-      averageHints: Number(row.average_hints),
+      medianGuesses: row.median_guesses === null ? null : Number(row.median_guesses),
       distribution: {
         frost: Number(row.frost),
         cool: Number(row.cool),
@@ -91,19 +88,23 @@ function aggregateMemory(puzzles: readonly number[]): Map<number, HotAndColdComm
   const rows: AggregateRow[] = [...grouped].map(([puzzle, stored]) => {
     const real = stored.filter(({ synthetic }) => !synthetic);
     const results = real.length >= MINIMUM_COMMUNITY_RUNS ? real : stored;
-    const guesses = results.map(({ guesses: count }) => count).sort((a, b) => a - b);
+    const guesses = results
+      .filter(({ outcome }) => outcome === "found")
+      .map(({ guesses: count }) => count)
+      .sort((a, b) => a - b);
     const middle = Math.floor(guesses.length / 2);
-    const median =
-      guesses.length % 2 ? guesses[middle] : (guesses[middle - 1] + guesses[middle]) / 2;
+    const median = guesses.length
+      ? guesses.length % 2
+        ? guesses[middle]
+        : (guesses[middle - 1] + guesses[middle]) / 2
+      : null;
     const total = (read: (result: HotAndColdDailyResultInput) => number) =>
       results.reduce((sum, result) => sum + read(result), 0);
     return {
       puzzle,
       runs: String(results.length),
       solves: String(results.filter(({ outcome }) => outcome === "found").length),
-      average_guesses: String(total(({ guesses: count }) => count) / results.length),
-      median_guesses: String(median),
-      average_hints: String(total(({ hints }) => hints) / results.length),
+      median_guesses: median === null ? null : String(median),
       frost: String(total(({ distribution }) => distribution.frost)),
       cool: String(total(({ distribution }) => distribution.cool)),
       warm: String(total(({ distribution }) => distribution.warm)),
@@ -160,9 +161,8 @@ export async function hotAndColdCommunityStats(
      select puzzle,
             count(*)::text as runs,
             count(*) filter (where outcome = 'found')::text as solves,
-            avg(guesses)::text as average_guesses,
-            percentile_cont(0.5) within group (order by guesses)::text as median_guesses,
-            avg(hints)::text as average_hints,
+            percentile_cont(0.5) within group (order by guesses)
+              filter (where outcome = 'found')::text as median_guesses,
             sum(frost_guesses)::text as frost,
             sum(cool_guesses)::text as cool,
             sum(warm_guesses)::text as warm,
@@ -173,4 +173,87 @@ export async function hotAndColdCommunityStats(
     [puzzles],
   );
   return statsFromRows(rows);
+}
+
+interface StandingRow {
+  runs: string;
+  better: string;
+  tied: string;
+  hints: number;
+}
+
+function standingFromStoredResults(
+  puzzle: number,
+  runId: string,
+): Extract<HotAndColdCommunityStats, { visible: true }>["standing"] {
+  const current = memoryResults.get(runId);
+  if (!current || current.puzzle !== puzzle || current.outcome !== "found") return null;
+  const stored = [...memoryResults.values()].filter((result) => result.puzzle === puzzle);
+  const real = stored.filter(({ synthetic }) => !synthetic);
+  const eligible = (real.length >= MINIMUM_COMMUNITY_RUNS ? real : stored).filter(
+    (result) => result.outcome === "found" && result.hints === current.hints,
+  );
+  if (eligible.length < MINIMUM_STANDING_RUNS) return null;
+  const better = eligible.filter(({ guesses }) => guesses < current.guesses).length;
+  const tied = eligible.filter(({ guesses }) => guesses === current.guesses).length;
+  const rank = better + 1;
+  return {
+    rank,
+    runs: eligible.length,
+    tied: tied > 1,
+    topPercent: Math.max(1, Math.ceil((rank / eligible.length) * 100)),
+    hints: current.hints,
+  };
+}
+
+export async function hotAndColdResultCommunityStats(
+  puzzle: number,
+  runId: string,
+): Promise<HotAndColdCommunityStats | null> {
+  const community = (await hotAndColdCommunityStats([puzzle])).get(puzzle) ?? null;
+  if (!community?.visible) return community;
+  if (!isDatabaseConfigured())
+    return { ...community, standing: standingFromStoredResults(puzzle, runId) };
+
+  const rows = await query<StandingRow>(
+    `with current_run as (
+       select puzzle, guesses, hints, outcome
+         from hot_and_cold_daily_results
+        where run_id = $2 and puzzle = $1
+     ), eligible as (
+       select result.*,
+              count(*) filter (where not synthetic) over (partition by result.puzzle) as real_runs
+         from hot_and_cold_daily_results result
+        where result.puzzle = $1
+     ), cohort as (
+       select eligible.guesses, current_run.hints, current_run.guesses as current_guesses
+         from eligible
+         cross join current_run
+        where eligible.outcome = 'found'
+          and current_run.outcome = 'found'
+          and eligible.hints = current_run.hints
+          and (eligible.real_runs < ${MINIMUM_COMMUNITY_RUNS} or not eligible.synthetic)
+     )
+     select count(*)::text as runs,
+            count(*) filter (where guesses < current_guesses)::text as better,
+            count(*) filter (where guesses = current_guesses)::text as tied,
+            min(hints)::integer as hints
+       from cohort
+     having count(*) >= ${MINIMUM_STANDING_RUNS}`,
+    [puzzle, runId],
+  );
+  const row = rows[0];
+  if (!row) return { ...community, standing: null };
+  const runs = Number(row.runs);
+  const rank = Number(row.better) + 1;
+  return {
+    ...community,
+    standing: {
+      rank,
+      runs,
+      tied: Number(row.tied) > 1,
+      topPercent: Math.max(1, Math.ceil((rank / runs) * 100)),
+      hints: row.hints,
+    },
+  };
 }
