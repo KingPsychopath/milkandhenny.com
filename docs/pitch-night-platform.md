@@ -71,6 +71,14 @@ address.
 - The server keeps bounded periodic backups so an admin can inspect or recover earlier work.
 - One recovery request sends a single email containing every active pitch for that address. A
   device holding more than one editing key can switch pitches directly inside the studio.
+- A device that cannot read its own pitch is told which of three things happened, because the
+  recovery differs. **In Trash**: the server still holds the pitch and its history, and the owner
+  restores it in place from the studio, which also resets the draft clock so the next expiry sweep
+  does not re-trash it. **Gone**: the record was purged, so the studio rebuilds the working copy on
+  this device as a new pitch — slides, drawings and locally held images travel, and video and sound
+  cannot, because those lived only in server storage. **Unreachable**: nothing is concluded and
+  nothing is discarded; the editing key stays on the device and the check can be repeated. Only a
+  definite "purged, and no local copy either" retires an editing key.
 
 ## Rehearsal mode
 

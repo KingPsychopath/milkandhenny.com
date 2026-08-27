@@ -34,6 +34,7 @@ import {
   readPitchBackupForOwner,
   prunePitchCommands,
   readOwnedPitchDeck,
+  readOwnedPitchDeckStatus,
   readPitchDeckForAdmin,
   readPublicPitchDeck,
   readPitchEdition,
@@ -43,6 +44,7 @@ import {
   restorePitchBackupForAdmin,
   restorePitchBackupForOwner,
   restorePitchDeckFromTrash,
+  restorePitchDeckFromTrashForOwner,
   syncPitchDeck,
   updatePitchDeckForAdmin,
   type PitchStoreResult,
@@ -53,6 +55,7 @@ import type {
   PitchAssetKind,
   PitchCommandOperation,
   PitchDocument,
+  PitchOwnerDeckStatus,
   PublicPitchDeck,
   PublicPitchDeckDetail,
 } from "./types";
@@ -143,6 +146,21 @@ export async function readOwnedPitch(
 ): Promise<PitchStoreResult<OwnedPitchDeck>> {
   const loaded = await readOwnedPitchDeck(deckId, ownerToken);
   return loaded.ok ? { ok: true, value: await ownerView(loaded.value) } : loaded;
+}
+
+export async function readOwnedPitchStatus(
+  deckId: string,
+  ownerToken: string,
+): Promise<PitchOwnerDeckStatus> {
+  return readOwnedPitchDeckStatus(deckId, ownerToken);
+}
+
+export async function restoreOwnedPitchFromTrash(
+  deckId: string,
+  ownerToken: string,
+): Promise<PitchStoreResult<OwnedPitchDeck>> {
+  const restored = await restorePitchDeckFromTrashForOwner(deckId, ownerToken);
+  return restored.ok ? { ok: true, value: await ownerView(restored.value) } : restored;
 }
 
 export async function listPitchHistory(deckId: string, ownerToken: string) {

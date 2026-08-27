@@ -135,6 +135,10 @@ export function saveLocalPitchDraft(draft: LocalPitchDraft): Promise<IDBValidKey
   return write;
 }
 
+export function deleteLocalPitchDraft(deckId: string): Promise<undefined> {
+  return transact(DRAFTS, "readwrite", (store) => store.delete(deckId));
+}
+
 export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDraft | undefined> {
   const value: unknown = await transact(DRAFTS, "readonly", (store) => store.get(deckId));
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;

@@ -3,7 +3,11 @@ import { Link } from "@tanstack/react-router";
 import { GuidedTour } from "@/components/GuidedTour";
 import { activateSiteUpdate } from "@/features/offline/client";
 import { pitchDocumentContentCount } from "../document-content";
-import { PITCH_VIDEO_DEFAULT_PLACEMENT, type PitchOperationalStatus } from "../types";
+import {
+  PITCH_VIDEO_DEFAULT_PLACEMENT,
+  type PitchCreatorIdentity,
+  type PitchOperationalStatus,
+} from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { DrawesomeInk } from "./DrawesomeInk";
 import { PitchMediaTimeline } from "./PitchMediaTimeline";
@@ -14,6 +18,7 @@ import { PitchDeviceSwitcher } from "./PitchDeviceSwitcher";
 import { PitchImportDialog } from "./PitchImportDialog";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
+import { PitchServerRestore } from "./PitchServerRestore";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
 import { PitchVersionHistory } from "./PitchVersionHistory";
 
@@ -30,10 +35,12 @@ export function PitchEditor({
   session,
   maximumSlides,
   operationalStatus,
+  creatorIdentity = null,
 }: {
   session: PitchEditorSession;
   maximumSlides: number;
   operationalStatus: PitchOperationalStatus;
+  creatorIdentity?: PitchCreatorIdentity | null;
 }) {
   const {
     isDemo,
@@ -73,6 +80,13 @@ export function PitchEditor({
     historyPreviewError,
     setHistoryPreviewError,
     restoringHistoryId,
+    serverState,
+    serverPurgeAfter,
+    restoring,
+    restoreError,
+    restoreFromTrash,
+    restoreToNewPitch,
+    recheckServerState,
     railOpen,
     setRailOpen,
     railPinned,
@@ -134,6 +148,23 @@ export function PitchEditor({
     actionDialog,
   } = usePitchEditorController({ session, maximumSlides, operationalStatus });
 
+  const mediaClipCount = visibleSlides.reduce((count, slide) => count + slide.mediaClips.length, 0);
+  const serverRestore =
+    isDemo || serverState === "active" ? null : (
+      <PitchServerRestore
+        state={serverState}
+        purgeAfter={serverPurgeAfter}
+        creatorIdentity={creatorIdentity}
+        restoring={restoring}
+        error={restoreError}
+        canRebuild={Boolean(documentState)}
+        mediaClipCount={mediaClipCount}
+        onRestoreFromTrash={() => void restoreFromTrash()}
+        onRestoreToNewPitch={(input) => void restoreToNewPitch(input)}
+        onRecheck={() => void recheckServerState()}
+      />
+    );
+
   if (phase === "loading") {
     return (
       <main id="main" className="p-8 font-mono text-sm theme-muted">
@@ -148,9 +179,14 @@ export function PitchEditor({
         <Link to="/things/pitches" className="font-mono text-xs theme-muted">
           ← pitch wall
         </Link>
-        <h1 className="mt-14 font-serif text-4xl text-foreground">This studio needs its key.</h1>
+        {serverRestore ? <div className="mt-8">{serverRestore}</div> : null}
+        <h1 className="mt-14 font-serif text-4xl text-foreground">
+          {serverState === "trashed" ? "This pitch is in the Trash." : "This studio needs its key."}
+        </h1>
         <p className="mt-4 font-serif text-lg theme-muted">
-          Open the private link on this device, or have it sent back to the original email.
+          {serverState === "trashed"
+            ? "Restore it above to carry on editing, or open the private link on the device that has your latest copy."
+            : "Open the private link on this device, or have it sent back to the original email."}
         </p>
         <div className="mt-10">
           <PitchRecovery compact />
@@ -258,15 +294,25 @@ export function PitchEditor({
                       ? "recovered + merged"
                       : syncState === "error"
                         ? "needs attention"
-                        : navigator.onLine
-                          ? "saved on this device"
-                          : "offline · safe here"}
+                        : serverState === "gone"
+                          ? "local only · not on the server"
+                          : serverState === "trashed"
+                            ? "in trash · not saving"
+                            : navigator.onLine
+                              ? "saved on this device"
+                              : "offline · safe here"}
         </span>
         <button
           type="button"
           data-tour="publish"
           onClick={() => void publish()}
-          disabled={isDemo || serverSavingPaused || syncState === "syncing" || hasUnsecuredMedia}
+          disabled={
+            isDemo ||
+            serverSavingPaused ||
+            syncState === "syncing" ||
+            hasUnsecuredMedia ||
+            (serverState !== "active" && serverState !== "unknown")
+          }
           className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-45"
         >
           {isDemo
@@ -316,6 +362,8 @@ export function PitchEditor({
           </button>
         </div>
       ) : null}
+
+      {serverRestore}
 
       {!isDemo && hasUnsecuredMedia ? (
         <div

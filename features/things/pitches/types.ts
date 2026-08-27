@@ -330,6 +330,21 @@ export interface PitchDeckAdminSummary {
   purgeAfter?: string;
 }
 
+/**
+ * What the server still holds for a deck this device has an editing key for.
+ * `trashed` decks can be restored in place; `gone` decks were purged and can
+ * only come back as a new pitch built from the copy on this device.
+ */
+export type PitchOwnerDeckState = "active" | "trashed" | "gone";
+
+export interface PitchOwnerDeckStatus {
+  state: PitchOwnerDeckState;
+  title?: string;
+  updatedAt?: string;
+  trashedAt?: string;
+  purgeAfter?: string;
+}
+
 export interface PitchOwnerCredential {
   deckId: string;
   token: string;

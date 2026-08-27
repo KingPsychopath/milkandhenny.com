@@ -44,6 +44,7 @@ function PitchEditorRoute() {
           session={{ kind: "owned", deckId }}
           maximumSlides={data.maximumSlides}
           operationalStatus={data.operationalStatus}
+          creatorIdentity={data.creatorIdentity}
         />
       </Suspense>
     </ClientOnly>

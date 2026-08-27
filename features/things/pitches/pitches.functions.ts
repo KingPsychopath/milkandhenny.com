@@ -250,6 +250,38 @@ export const readOwnedPitchFn = createServerFn({ method: "POST" })
     );
   });
 
+/**
+ * Says what the server still holds for a deck this device has a key for, so the
+ * studio can tell "purged" apart from "in Trash" and from "we could not ask".
+ */
+export const readOwnedPitchStatusFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string; ownerToken: string }) => data)
+  .handler(async ({ data }) => {
+    if (!isPitchDeckId(data.deckId) || !isPitchOwnerToken(data.ownerToken)) {
+      return invalid();
+    }
+    return runPitchesResult(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.readOwnedStatus(data.deckId, data.ownerToken);
+      }),
+    );
+  });
+
+export const restoreOwnedPitchFromTrashFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string; ownerToken: string }) => data)
+  .handler(async ({ data }) => {
+    if (!isPitchDeckId(data.deckId) || !isPitchOwnerToken(data.ownerToken)) {
+      return invalid();
+    }
+    return runOperation(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.restoreFromTrash(data.deckId, data.ownerToken);
+      }),
+    );
+  });
+
 export const listPitchHistoryFn = createServerFn({ method: "POST" })
   .validator((data: { deckId: string; ownerToken: string }) => data)
   .handler(async ({ data }) => {

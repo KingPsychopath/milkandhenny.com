@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   BinaryFileData,
@@ -19,6 +20,8 @@ import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import {
+  deleteLocalPitchDraft,
+  forgetPitchCredential,
   readLocalPitchDraft,
   pitchDeviceId,
   reconcileLocalPitchDraft,
@@ -32,13 +35,16 @@ import { PitchMediaNeedsTrimError, preparePitchMedia } from "../media.client";
 import { createEmptyPitchDocument } from "../new-document.client";
 import {
   createPitchAssetUploadFn,
+  createPitchFn,
   finalisePitchAssetFn,
   listPitchHistoryFn,
   openAccountPitchFn,
   publishPitchFn,
   readPitchOperationalStatusFn,
   readOwnedPitchFn,
+  readOwnedPitchStatusFn,
   readPitchVersionFn,
+  restoreOwnedPitchFromTrashFn,
   restorePitchVersionFn,
   syncPitchFn,
 } from "../pitches.functions";
@@ -62,6 +68,7 @@ import {
   type PitchMediaClip,
   type PitchOperationalStatus,
   type PitchOwnerCredential,
+  type PitchOwnerDeckState,
   type PitchSlide,
   type PitchVersionHistoryItem,
   type PitchVersionPreview,
@@ -74,6 +81,8 @@ import { usePitchMediaClock } from "./usePitchMediaClock";
 import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitch-stage.client";
 
 export const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
+/** A note handed from the old pitch to the rebuilt one, which mounts fresh. */
+const PITCH_RESTORE_NOTE_KEY = "milkandhenny:pitch-restore-note";
 export const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
 export const OPERATIONAL_STATUS_REFRESH_INTERVAL_MS = 30_000;
 const PITCH_IMAGE_UPLOAD_MAX_DIMENSION = 2_560;
@@ -455,6 +464,12 @@ export function usePitchEditorController({
   const [syncState, setSyncState] = useState<"saved" | "local" | "syncing" | "merged" | "error">(
     "local",
   );
+  // What the server still holds for this deck. "unknown" means we could not ask,
+  // which is not the same as the server copy being gone.
+  const [serverState, setServerState] = useState<PitchOwnerDeckState | "unknown">("unknown");
+  const [serverPurgeAfter, setServerPurgeAfter] = useState<string>();
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState("");
   const [message, setMessage] = useState("");
   const [undoEntry, setUndoEntry] = useState<{
     label: string;
@@ -524,6 +539,8 @@ export function usePitchEditorController({
   const toolbarRef = useRef<HTMLDivElement>(null);
   const presentationInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const restoreRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
+  const navigate = useNavigate();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
 
   documentRef.current = documentState;
@@ -667,6 +684,19 @@ export function usePitchEditorController({
 
   useEffect(() => {
     if (isDemo) return;
+    try {
+      const note = sessionStorage.getItem(PITCH_RESTORE_NOTE_KEY);
+      if (note) {
+        sessionStorage.removeItem(PITCH_RESTORE_NOTE_KEY);
+        setMessage(note);
+      }
+    } catch {
+      // A blocked session store only costs the confirmation note.
+    }
+  }, [deckId, isDemo]);
+
+  useEffect(() => {
+    if (isDemo) return;
     let cancelled = false;
     void (async () => {
       let remembered = await rememberTokenFromHash(deckId).catch(() => undefined);
@@ -710,9 +740,19 @@ export function usePitchEditorController({
           data: { deckId, ownerToken: remembered.token },
         });
         if (!result.ok) {
+          // The read failing is not the whole story: the deck may be in Trash and
+          // restorable, purged for good, or simply unreachable from here.
+          const status = await readOwnedPitchStatusFn({
+            data: { deckId, ownerToken: remembered.token },
+          }).catch(() => null);
+          if (cancelled) return;
+          setServerState(status?.ok ? status.value.state : "unknown");
+          setServerPurgeAfter(status?.ok ? status.value.purgeAfter : undefined);
           setPhase(local ? "ready" : "missing");
           return;
         }
+        setServerState("active");
+        setServerPurgeAfter(undefined);
         const remote = result.value;
         const remoteFiles = await loadPitchFiles(remote.assets);
         if (revisionRef.current !== loadedRevision) {
@@ -1921,6 +1961,186 @@ export function usePitchEditorController({
     if (selected.length < files.length) setMessage("Added the first 20 files from that drop.");
   }
 
+  async function adoptRestoredDeck(remote: OwnedPitchDeck) {
+    setDeck(remote);
+    deckRef.current = remote;
+    setServerState("active");
+    setServerPurgeAfter(undefined);
+    if (documentRef.current) {
+      // The working copy on this device stays in charge; its journal syncs up next.
+      setSyncState(revisionRef.current > lastSyncedRevision.current ? "local" : "saved");
+      setSyncWake((value) => value + 1);
+      return;
+    }
+    const remoteFiles = await loadPitchFiles(remote.assets).catch(() => ({}));
+    setTitle(remote.title);
+    titleRef.current = remote.title;
+    documentRef.current = remote.document;
+    setDocumentState(remote.document);
+    setFiles(remoteFiles);
+    filesRef.current = remoteFiles;
+    setActiveSlideId(remote.document.slides.find((slide) => !slide.deletedAt)?.id ?? "");
+    setSceneEpoch((value) => value + 1);
+    setSyncState("saved");
+    setPhase("ready");
+  }
+
+  /** Ask the server again what it holds, for when the first check could not run. */
+  async function recheckServerState() {
+    if (isDemo || restoring || !credential) return;
+    setRestoring(true);
+    setRestoreError("");
+    try {
+      const status = await readOwnedPitchStatusFn({
+        data: { deckId, ownerToken: credential.token },
+      });
+      if (!status.ok) {
+        setRestoreError(status.error);
+        return;
+      }
+      setServerState(status.value.state);
+      setServerPurgeAfter(status.value.purgeAfter);
+      if (status.value.state === "active" && !deckRef.current) {
+        const refreshed = await readOwnedPitchFn({
+          data: { deckId, ownerToken: credential.token },
+        });
+        if (refreshed.ok) await adoptRestoredDeck(refreshed.value);
+      }
+    } catch {
+      setRestoreError(
+        navigator.onLine
+          ? "Could not check the server copy. Try again."
+          : "Reconnect to check the server copy.",
+      );
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  /** Bring this deck back out of Trash. The id, history and editing keys all survive. */
+  async function restoreFromTrash() {
+    if (isDemo || restoring || !credential) return;
+    if (serverSavingPaused) {
+      setRestoreError(operational.message);
+      return;
+    }
+    setRestoring(true);
+    setRestoreError("");
+    try {
+      const result = await restoreOwnedPitchFromTrashFn({
+        data: { deckId, ownerToken: credential.token },
+      });
+      if (!result.ok) {
+        setRestoreError(result.error);
+        return;
+      }
+      await adoptRestoredDeck(result.value);
+      setMessage("This pitch is out of the Trash. It is saving to the server again.");
+    } catch {
+      setRestoreError(
+        navigator.onLine
+          ? "Could not restore this pitch. Try again."
+          : "Reconnect to restore this pitch.",
+      );
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  /**
+   * The server copy is gone for good, so rebuild it as a new pitch straight from
+   * the working copy on this device. Slides, drawings and the images held here
+   * come across; video and sound cannot, because those lived only on the server.
+   */
+  async function restoreToNewPitch(input: { ownerName: string; ownerEmail: string }) {
+    if (isDemo || restoring) return;
+    if (serverSavingPaused) {
+      setRestoreError(operational.message);
+      return;
+    }
+    if (!navigator.onLine) {
+      setRestoreError("Connect once to rebuild this pitch on the server.");
+      return;
+    }
+    setRestoring(true);
+    setRestoreError("");
+    try {
+      flushCanvasState();
+      const source = documentRef.current;
+      if (!source) throw new Error("This deck is not ready to restore.");
+      const rekeyed = rekeyBackup(source, filesRef.current);
+      const droppedClips = source.slides.reduce(
+        (count, slide) => count + (slide.deletedAt ? 0 : slide.mediaClips.length),
+        0,
+      );
+      const document: PitchDocument = {
+        ...rekeyed.document,
+        slides: rekeyed.document.slides.map((slide) => ({ ...slide, mediaClips: [] })),
+      };
+      // Reuse one create request across retries so a repeated attempt cannot
+      // leave two copies behind.
+      restoreRequest.current ??= { id: randomId("c_"), ownerToken: randomId("k_") };
+      const request = restoreRequest.current;
+      const result = await createPitchFn({
+        data: {
+          createRequestId: request.id,
+          ownerName: input.ownerName,
+          ownerEmail: input.ownerEmail,
+          ownerToken: request.ownerToken,
+          title: titleRef.current,
+          document,
+        },
+      });
+      if (!result.ok) {
+        setRestoreError(result.error);
+        return;
+      }
+      const created = result.value.deck;
+      await saveLocalPitchDraft({
+        deckId: created.id,
+        title: created.title,
+        document,
+        files: rekeyed.files,
+        pendingSync: false,
+        updatedAt: created.updatedAt,
+        pendingOperations: [],
+        nextSequence: 1,
+      });
+      await rememberPitchCredential({
+        deckId: created.id,
+        token: request.ownerToken,
+        title: created.title,
+        ownerName: created.ownerName,
+        updatedAt: created.updatedAt,
+      });
+      await forgetPitchCredential(deckId).catch(() => undefined);
+      await deleteLocalPitchDraft(deckId).catch(() => undefined);
+      lastSyncedRevision.current = revisionRef.current;
+      try {
+        sessionStorage.setItem(
+          PITCH_RESTORE_NOTE_KEY,
+          droppedClips > 0
+            ? `Rebuilt on the server as a new pitch. Its images are being secured. ${droppedClips} video or sound clip${droppedClips === 1 ? "" : "s"} could not come back, because the server copies were deleted with the old pitch.`
+            : "Rebuilt on the server as a new pitch. Its images are being secured.",
+        );
+      } catch {
+        // A blocked session store only costs the confirmation note.
+      }
+      await navigate({
+        to: "/things/pitches/$deckId/edit",
+        params: { deckId: created.id },
+      });
+    } catch (error) {
+      setRestoreError(
+        error instanceof Error && error.message
+          ? error.message
+          : "Could not rebuild this pitch. Try again.",
+      );
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   async function publish() {
     if (isDemo || !credential || !currentSlide || !documentState) return;
     if (serverSavingPaused) {
@@ -2300,6 +2520,14 @@ export function usePitchEditorController({
     setHistoryPreviewError,
     restoringHistoryId,
     setRestoringHistoryId,
+    serverState,
+    serverPurgeAfter,
+    restoring,
+    restoreError,
+    setRestoreError,
+    restoreFromTrash,
+    restoreToNewPitch,
+    recheckServerState,
     railOpen,
     setRailOpen,
     railPinned,

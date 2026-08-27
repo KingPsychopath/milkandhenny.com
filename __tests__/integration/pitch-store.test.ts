@@ -5,6 +5,7 @@ import { connectPitchDecksToVerifiedPerson } from "@/features/things/pitches/ide
 import {
   createPitchDeck,
   createPitchOwnerToken,
+  hardDeletePitchDeck,
   hashPitchValue,
   insertPitchAsset,
   issuePitchDeviceAccessForPerson,
@@ -13,15 +14,18 @@ import {
   listPitchBackupsForOwner,
   listPitchEditions,
   listPublicPitchDecks,
+  markExpiredPitchDecksDeleting,
   markPitchDeckDeletingForAdmin,
   readPitchBackupForOwner,
   readPitchEdition,
   markPitchAssetReady,
   publishPitchDeck,
   readOwnedPitchDeck,
+  readOwnedPitchDeckStatus,
   readPublicPitchDeck,
   restorePitchBackupForOwner,
   restorePitchDeckFromTrash,
+  restorePitchDeckFromTrashForOwner,
   syncPitchDeck,
 } from "@/features/things/pitches/store.server";
 import {
@@ -336,6 +340,79 @@ describeWithDatabase("pitch storage (postgres)", () => {
     expect(restored?.lifecycle).toBe("active");
     expect(restored?.purgeAfter).toBeUndefined();
     expect((await readOwnedPitchDeck(created.value.deck.id, ownerToken)).ok).toBe(true);
+  });
+
+  it("tells an owner whether the server copy is active, in Trash or gone", async () => {
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_status_1234",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      ownerToken,
+      title: "Status pitch",
+      document: documentWith([]),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const deckId = created.value.deck.id;
+
+    expect(await readOwnedPitchDeckStatus(deckId, ownerToken)).toMatchObject({
+      state: "active",
+      title: "Status pitch",
+    });
+    expect(await readOwnedPitchDeckStatus(deckId, createPitchOwnerToken())).toMatchObject({
+      state: "gone",
+    });
+
+    await markPitchDeckDeletingForAdmin(deckId, "Status pitch");
+    const trashed = await readOwnedPitchDeckStatus(deckId, ownerToken);
+    expect(trashed.state).toBe("trashed");
+    expect(trashed.purgeAfter).toBeTruthy();
+
+    await query(`update pitch_decks set lifecycle = 'deleting' where id = $1`, [deckId]);
+    expect(await readOwnedPitchDeckStatus(deckId, ownerToken)).toMatchObject({ state: "gone" });
+
+    expect(await hardDeletePitchDeck(deckId)).toBe(true);
+    expect(await readOwnedPitchDeckStatus(deckId, ownerToken)).toMatchObject({ state: "gone" });
+  });
+
+  it("lets an owner restore their own pitch from Trash with a fresh draft clock", async () => {
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_owner_trash_1",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      ownerToken,
+      title: "Owner restored pitch",
+      document: documentWith([]),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const deckId = created.value.deck.id;
+
+    await query(
+      `update pitch_decks set draft_expires_at = now() - interval '1 hour' where id = $1`,
+      [deckId],
+    );
+    await markExpiredPitchDecksDeleting();
+    expect(await readOwnedPitchDeckStatus(deckId, ownerToken)).toMatchObject({ state: "trashed" });
+    expect((await readOwnedPitchDeck(deckId, ownerToken)).ok).toBe(false);
+
+    const stranger = await restorePitchDeckFromTrashForOwner(deckId, createPitchOwnerToken());
+    expect(stranger.ok).toBe(false);
+
+    const restored = await restorePitchDeckFromTrashForOwner(deckId, ownerToken);
+    expect(restored.ok && restored.value.lifecycle).toBe("active");
+    expect(restored.ok && restored.value.purgeAfter).toBeUndefined();
+    // The draft clock has to move forward, or the next expiry sweep re-trashes it.
+    expect(restored.ok && new Date(restored.value.draftExpiresAt).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
+    expect((await readOwnedPitchDeck(deckId, ownerToken)).ok).toBe(true);
+
+    // Restoring an already active pitch is a no-op rather than an error.
+    const again = await restorePitchDeckFromTrashForOwner(deckId, ownerToken);
+    expect(again.ok).toBe(true);
   });
 
   it("checkpoints destructive saves and lets the owner move backward and forward", async () => {

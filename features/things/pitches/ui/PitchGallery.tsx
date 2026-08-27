@@ -8,15 +8,25 @@ import {
   listPitchCredentials,
   readLocalPitchDraft,
 } from "../browser-store.client";
-import { listPublishedPitchesFn, readOwnedPitchFn } from "../pitches.functions";
+import { listPublishedPitchesFn, readOwnedPitchStatusFn } from "../pitches.functions";
 import type {
   PersonalPitchSummary,
   PitchOperationalStatus,
   PitchOwnerCredential,
+  PitchOwnerDeckState,
   PitchWallLoad,
 } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
+
+type DeviceDeck = PitchOwnerCredential & { state: PitchOwnerDeckState | "unknown" };
+
+const DECK_STATE_LABEL: Record<DeviceDeck["state"], string> = {
+  active: "offline copy",
+  trashed: "in trash · can restore",
+  gone: "local only",
+  unknown: "not checked",
+};
 
 export function PitchGallery({
   initialWall,
@@ -31,31 +41,32 @@ export function PitchGallery({
   const [pitches, setPitches] = useState(initialWall.pitches);
   const [loadError, setLoadError] = useState(initialWall.message ?? "");
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const [mine, setMine] = useState<Array<PitchOwnerCredential & { localOnly: boolean }>>([]);
+  const [mine, setMine] = useState<DeviceDeck[]>([]);
 
   useEffect(() => {
     void listPitchCredentials()
       .then(async (credentials) => {
         const checked = await Promise.all(
-          credentials.map(async (credential) => {
-            const [remote, local] = await Promise.all([
-              readOwnedPitchFn({
+          credentials.map(async (credential): Promise<DeviceDeck | null> => {
+            const [status, local] = await Promise.all([
+              readOwnedPitchStatusFn({
                 data: { deckId: credential.deckId, ownerToken: credential.token },
               }).catch(() => null),
               readLocalPitchDraft(credential.deckId).catch(() => undefined),
             ]);
-            if (!remote?.ok && !local) {
+            // Only a definite "purged, and nothing here either" is worth forgetting
+            // the editing key over. An unreachable server is not an answer.
+            const state: DeviceDeck["state"] = status?.ok ? status.value.state : "unknown";
+            if (state === "gone" && !local) {
               await forgetPitchCredential(credential.deckId).catch(() => undefined);
               return null;
             }
-            return { ...credential, localOnly: !remote?.ok };
+            return { ...credential, state };
           }),
         );
         setMine(
           checked
-            .filter((credential): credential is PitchOwnerCredential & { localOnly: boolean } =>
-              Boolean(credential),
-            )
+            .filter((credential): credential is DeviceDeck => Boolean(credential))
             .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
         );
       })
@@ -165,15 +176,28 @@ export function PitchGallery({
                     {deck.title}
                   </Link>
                   <span className="ml-2 font-mono text-micro theme-muted">
-                    {deck.localOnly ? "local only" : "offline copy"}
+                    {DECK_STATE_LABEL[deck.state]}
                   </span>
                 </div>
               ))}
             </div>
-            {mine.some((deck) => deck.localOnly) ? (
+            {mine.some((deck) => deck.state === "trashed") ? (
               <p className="mt-5 max-w-xl font-mono text-micro leading-relaxed theme-muted">
-                “Local only” means the server copy no longer exists. Open it here to export a
-                .mahdeck backup, then import that backup into a new account-owned pitch.
+                “In trash” means the server still has the pitch, with its history, until it is
+                deleted for good. Open it and restore it to carry on where you left off.
+              </p>
+            ) : null}
+            {mine.some((deck) => deck.state === "gone") ? (
+              <p className="mt-3 max-w-xl font-mono text-micro leading-relaxed theme-muted">
+                “Local only” means the server copy is gone and nothing you type is being saved to
+                it. Open it and rebuild it as a new pitch: the slides, drawings and images on this
+                device come across. Video and sound cannot, because those lived only on the server.
+              </p>
+            ) : null}
+            {mine.some((deck) => deck.state === "unknown") ? (
+              <p className="mt-3 max-w-xl font-mono text-micro leading-relaxed theme-muted">
+                “Not checked” means we could not reach the server for that pitch just now. The copy
+                on this device is safe either way.
               </p>
             ) : null}
           </div>

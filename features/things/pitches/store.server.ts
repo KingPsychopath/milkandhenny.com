@@ -25,6 +25,7 @@ import type {
   PitchDocument,
   PitchEdition,
   PersonalPitchSummary,
+  PitchOwnerDeckStatus,
   PitchVersionHistoryItem,
   PitchVersionPreview,
   PitchVersionReason,
@@ -437,6 +438,87 @@ export async function readOwnedPitchDeck(
       return { ok: false, status: 404, error: "Pitch not found" };
     }
     return { ok: true, value: toStoredDeck(row) };
+  });
+}
+
+/**
+ * What the server still holds for a deck, without loading its document. A device
+ * that lost its editing key looks the same as a purged deck from here, because
+ * both leave nothing this token can reach.
+ */
+export async function readOwnedPitchDeckStatus(
+  deckId: string,
+  ownerToken: string,
+): Promise<PitchOwnerDeckStatus> {
+  return transaction(async (client) => {
+    if (!(await clientOwnsDeck(client, deckId, ownerToken))) return { state: "gone" };
+    const row = await clientDeck(client, deckId);
+    if (!row || row.lifecycle === "deleting") return { state: "gone" };
+    if (row.lifecycle === "trashed") {
+      return {
+        state: "trashed",
+        title: row.title,
+        updatedAt: iso(row.updated_at),
+        trashedAt: optionalIso(row.trashed_at),
+        purgeAfter: optionalIso(row.purge_after),
+      };
+    }
+    return { state: "active", title: row.title, updatedAt: iso(row.updated_at) };
+  });
+}
+
+/**
+ * Bring an owner's own deck back out of Trash. Restoring resets the draft clock,
+ * otherwise the expiry sweep would trash it again on its next pass.
+ */
+export async function restorePitchDeckFromTrashForOwner(
+  deckId: string,
+  ownerToken: string,
+): Promise<PitchStoreResult<StoredPitchDeck>> {
+  return transaction(async (client) => {
+    if (!(await clientOwnsDeck(client, deckId, ownerToken))) {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    const row = await clientDeck(client, deckId, true);
+    if (!row || row.lifecycle === "deleting") {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    if (row.lifecycle !== "trashed") return { ok: true, value: toStoredDeck(row) };
+
+    // The per-owner cap counts active pitches, so restoring has to respect it.
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [row.owner_email_hash]);
+    const count = await client.query<{ count: string }>(
+      `select count(*)::text as count from pitch_decks
+        where owner_email_hash = $1 and lifecycle = 'active'`,
+      [row.owner_email_hash],
+    );
+    if (integer(count.rows[0]?.count) >= getPitchMaxDecksPerEmail()) {
+      return {
+        ok: false,
+        status: 409,
+        error: `You can keep up to ${getPitchMaxDecksPerEmail()} active pitches at once. Publish or remove one, then restore this pitch.`,
+      };
+    }
+
+    const restored = await client.query<PitchDeckRow>(
+      `update pitch_decks
+          set lifecycle = 'active',
+              trashed_at = null,
+              purge_after = null,
+              draft_expires_at = $2,
+              updated_at = now()
+        where id = $1 and lifecycle = 'trashed'
+        returning *`,
+      [deckId, getPitchDraftExpiresAt()],
+    );
+    if (!restored.rows[0]) return { ok: false, status: 404, error: "Pitch is not in Trash" };
+    await insertAudit(client, {
+      deckId,
+      action: "deck.trash.restored",
+      actor: "owner",
+      metadata: { reason: "owner-restore" },
+    });
+    return { ok: true, value: toStoredDeck(restored.rows[0]) };
   });
 }
 
