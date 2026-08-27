@@ -11,9 +11,10 @@ import {
 import { parsePitchDocument } from "./validation";
 
 const DATABASE = "milk-and-henny-pitches";
-const VERSION = 1;
+const VERSION = 2;
 const CREDENTIALS = "credentials";
 const DRAFTS = "drafts";
+const MEDIA = "media";
 
 export interface LocalPitchDraft {
   deckId: string;
@@ -24,6 +25,18 @@ export interface LocalPitchDraft {
   updatedAt: string;
   pendingOperations?: PitchCommandOperation[];
   nextSequence?: number;
+}
+
+export interface LocalPitchMedia {
+  key: string;
+  deckId: string;
+  assetId: string;
+  kind: "audio" | "video";
+  fileName: string;
+  mimeType: string;
+  bytes: number;
+  createdAt: string;
+  blob: Blob;
 }
 
 export function pitchDeviceId(): string {
@@ -62,6 +75,10 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!database.objectStoreNames.contains(DRAFTS)) {
         database.createObjectStore(DRAFTS, { keyPath: "deckId" });
+      }
+      if (!database.objectStoreNames.contains(MEDIA)) {
+        const media = database.createObjectStore(MEDIA, { keyPath: "key" });
+        media.createIndex("deckId", "deckId", { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -137,6 +154,62 @@ export function saveLocalPitchDraft(draft: LocalPitchDraft): Promise<IDBValidKey
 
 export function deleteLocalPitchDraft(deckId: string): Promise<undefined> {
   return transact(DRAFTS, "readwrite", (store) => store.delete(deckId));
+}
+
+function localPitchMediaKey(deckId: string, assetId: string): string {
+  return `${deckId}:${assetId}`;
+}
+
+export function saveLocalPitchMedia(input: {
+  deckId: string;
+  assetId: string;
+  kind: "audio" | "video";
+  file: File;
+}): Promise<IDBValidKey> {
+  const media: LocalPitchMedia = {
+    key: localPitchMediaKey(input.deckId, input.assetId),
+    deckId: input.deckId,
+    assetId: input.assetId,
+    kind: input.kind,
+    fileName: input.file.name,
+    mimeType: input.file.type,
+    bytes: input.file.size,
+    createdAt: new Date().toISOString(),
+    blob: input.file,
+  };
+  return transact(MEDIA, "readwrite", (store) => store.put(media));
+}
+
+export async function listLocalPitchMedia(deckId: string): Promise<LocalPitchMedia[]> {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(MEDIA, "readonly");
+    const request = transaction.objectStore(MEDIA).index("deckId").getAll(deckId);
+    let result: LocalPitchMedia[] = [];
+    let settled = false;
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      database.close();
+      reject(transaction.error ?? request.error ?? new Error("Local pitch media storage failed"));
+    };
+    request.onsuccess = () => {
+      result = request.result as LocalPitchMedia[];
+    };
+    request.onerror = fail;
+    transaction.onabort = fail;
+    transaction.onerror = fail;
+    transaction.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      database.close();
+      resolve(result);
+    };
+  });
+}
+
+export function deleteLocalPitchMedia(deckId: string, assetId: string): Promise<undefined> {
+  return transact(MEDIA, "readwrite", (store) => store.delete(localPitchMediaKey(deckId, assetId)));
 }
 
 export async function readLocalPitchDraft(deckId: string): Promise<LocalPitchDraft | undefined> {

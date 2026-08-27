@@ -447,6 +447,7 @@ export const createPitchAssetUploadFn = createServerFn({ method: "POST" })
     if (
       !isPitchDeckId(data.deckId) ||
       !isPitchOwnerToken(data.ownerToken) ||
+      (data.assetId !== undefined && !isPitchAssetId(data.assetId)) ||
       !isPitchAssetKind(data.kind) ||
       typeof data.fileName !== "string" ||
       data.fileName.length > 180 ||

@@ -255,6 +255,7 @@ export function toPitchAsset(row: PitchAssetRow): PitchAsset {
     fileId: row.file_id ?? undefined,
     kind: row.kind,
     state: row.state,
+    transferState: row.state === "ready" ? "secured" : "uploading",
     availability: "unchecked",
     fileName: row.file_name,
     mimeType: row.mime_type,

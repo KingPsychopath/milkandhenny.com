@@ -132,6 +132,7 @@ export function PitchVideoLayer({
             fileName={asset?.fileName ?? "video file"}
             playheadMs={playheadMs}
             playing={playing}
+            transferState={asset?.transferState ?? "error"}
           />
         ) : (
           <PitchUnavailableVideo
@@ -165,12 +166,14 @@ function PitchVideoPlaybackClip({
   fileName,
   playheadMs,
   playing,
+  transferState,
 }: {
   clip: PitchVideoClip;
   url: string;
   fileName: string;
   playheadMs: number;
   playing: boolean;
+  transferState: PitchAsset["transferState"];
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
@@ -193,7 +196,13 @@ function PitchVideoPlaybackClip({
   if (failed) return <PitchUnavailableVideo clip={clip} fileName={fileName} />;
   return (
     <div
-      className="absolute overflow-hidden bg-foreground"
+      className={`absolute overflow-hidden bg-foreground ${
+        transferState === "secured"
+          ? ""
+          : transferState === "uploading"
+            ? "ring-2 ring-inset ring-[var(--things-amber)]"
+            : "border border-dashed border-[var(--things-amber)]"
+      }`}
       style={placementStyle(placementFor(clip))}
     >
       <video
@@ -205,6 +214,19 @@ function PitchVideoPlaybackClip({
         className={`h-full w-full ${clip.fit === "cover" ? "object-cover" : "object-contain"}`}
         onError={() => setFailed(true)}
       />
+      {transferState !== "secured" ? (
+        <span
+          className={`absolute right-2 top-2 bg-background/90 px-2 py-1 font-mono text-micro text-foreground shadow-sm ${
+            transferState === "uploading" ? "motion-safe:animate-pulse" : ""
+          }`}
+        >
+          {transferState === "uploading"
+            ? "securing…"
+            : transferState === "local"
+              ? "safe on device"
+              : "retry needed"}
+        </span>
+      ) : null}
     </div>
   );
 }

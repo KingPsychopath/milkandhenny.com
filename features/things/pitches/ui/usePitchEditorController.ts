@@ -23,12 +23,14 @@ import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import {
   deleteLocalPitchDraft,
   forgetPitchCredential,
+  listLocalPitchMedia,
   readLocalPitchDraft,
   pitchDeviceId,
   reconcileLocalPitchDraft,
   rememberPitchCredential,
   rememberTokenFromHash,
   saveLocalPitchDraft,
+  saveLocalPitchMedia,
 } from "../browser-store.client";
 import { importPresentation, type ImportedPitchSlide } from "../import.client";
 import { mergePitchDocuments } from "../merge";
@@ -186,6 +188,7 @@ export function localMediaAsset(
   kind: "audio" | "video",
   deckId: string,
   id = randomPitchAssetId(),
+  transferState: PitchAsset["transferState"] = "local",
 ): PitchAsset {
   const now = new Date().toISOString();
   return {
@@ -193,6 +196,7 @@ export function localMediaAsset(
     deckId,
     kind,
     state: "ready",
+    transferState,
     availability: "available",
     fileName: file.name,
     mimeType: file.type,
@@ -201,6 +205,18 @@ export function localMediaAsset(
     readyAt: now,
     url: URL.createObjectURL(file),
   };
+}
+
+function mergeLocalMediaAssets(current: PitchAsset[], incoming: PitchAsset[]): PitchAsset[] {
+  const byId = new Map(current.map((asset) => [asset.id, asset]));
+  for (const asset of incoming) {
+    const previous = byId.get(asset.id);
+    if (previous?.url?.startsWith("blob:") && previous.url !== asset.url) {
+      URL.revokeObjectURL(previous.url);
+    }
+    byId.set(asset.id, asset);
+  }
+  return [...byId.values()];
 }
 
 export function updateSlide(
@@ -538,6 +554,7 @@ export function usePitchEditorController({
   const [syncWake, setSyncWake] = useState(0);
   const [uploadWake, setUploadWake] = useState(0);
   const [activeImageUploadId, setActiveImageUploadId] = useState<string>();
+  const [activeMediaUploadId, setActiveMediaUploadId] = useState<string>();
   const [imageUploadFailure, setImageUploadFailure] = useState<{
     fileId: string;
     message: string;
@@ -555,6 +572,7 @@ export function usePitchEditorController({
   const documentRef = useRef(documentState);
   const deckRef = useRef(deck);
   const localMediaAssetsRef = useRef(localMediaAssets);
+  const localMediaFilesRef = useRef(new Map<string, File>());
   const filesRef = useRef(files);
   const titleRef = useRef(title);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -659,6 +677,7 @@ export function usePitchEditorController({
     : !localSaveFailed &&
       localSavedRevision >= revision &&
       uploading.current.size === 0 &&
+      !activeMediaUploadId &&
       !mediaProgress &&
       syncState !== "syncing";
   useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
@@ -780,8 +799,17 @@ export function usePitchEditorController({
     let cancelled = false;
     void (async () => {
       let remembered = await rememberTokenFromHash(deckId).catch(() => undefined);
-      const local = await readLocalPitchDraft(deckId).catch(() => undefined);
+      const [local, localMedia] = await Promise.all([
+        readLocalPitchDraft(deckId).catch(() => undefined),
+        listLocalPitchMedia(deckId).catch(() => []),
+      ]);
       if (cancelled) return;
+      const cachedAssets = localMedia.map((media) => {
+        const file = new File([media.blob], media.fileName, { type: media.mimeType });
+        localMediaFilesRef.current.set(media.assetId, file);
+        return localMediaAsset(file, media.kind, deckId, media.assetId);
+      });
+      setLocalMediaAssets(cachedAssets);
       if (remembered) setCredential(remembered);
       if (local) {
         deviceIdRef.current = pitchDeviceId();
@@ -1089,6 +1117,12 @@ export function usePitchEditorController({
     if (isDemo || serverSavingPaused) return;
     const online = () => {
       setSyncWake((value) => value + 1);
+      setLocalMediaAssets((current) =>
+        current.map((asset) =>
+          asset.transferState === "error" ? { ...asset, transferState: "local" } : asset,
+        ),
+      );
+      setUploadWake((value) => value + 1);
       void performSync();
     };
     window.addEventListener("online", online);
@@ -1116,7 +1150,20 @@ export function usePitchEditorController({
   );
   const assets = useMemo(() => {
     const byId = new Map((deck?.assets ?? []).map((asset) => [asset.id, asset]));
-    for (const asset of localMediaAssets) byId.set(asset.id, asset);
+    for (const asset of localMediaAssets) {
+      const remote = byId.get(asset.id);
+      byId.set(asset.id, {
+        ...(remote ?? asset),
+        url: asset.url ?? remote?.url,
+        availability: asset.url ? "available" : (remote?.availability ?? asset.availability),
+        transferState:
+          remote?.availability === "unavailable"
+            ? "error"
+            : remote
+              ? "secured"
+              : asset.transferState,
+      });
+    }
     return [...byId.values()];
   }, [deck?.assets, localMediaAssets]);
   const mediaClock = usePitchMediaClock({
@@ -1146,7 +1193,23 @@ export function usePitchEditorController({
     () => unsecuredImageFileIds.filter((fileId) => !files[fileId]),
     [files, unsecuredImageFileIds],
   );
-  const hasUnsecuredMedia = unsecuredImageFileIds.length > 0;
+  const referencedMediaAssetIds = useMemo(
+    () => new Set(visibleSlides.flatMap((slide) => slide.mediaClips.map((clip) => clip.assetId))),
+    [visibleSlides],
+  );
+  const unsecuredTimedMediaAssetIds = useMemo(
+    () =>
+      [...referencedMediaAssetIds].filter((assetId) => {
+        const durable = deck?.assets.find((candidate) => candidate.id === assetId);
+        return !durable || durable.state !== "ready" || durable.availability === "unavailable";
+      }),
+    [deck?.assets, referencedMediaAssetIds],
+  );
+  const hasUnsecuredMedia =
+    unsecuredImageFileIds.length > 0 || unsecuredTimedMediaAssetIds.length > 0;
+  const timedMediaUploadNeedsRetry = localMediaAssets.some(
+    (asset) => referencedMediaAssetIds.has(asset.id) && asset.transferState === "error",
+  );
 
   const uploadBlob = useCallback(
     async (
@@ -1155,6 +1218,7 @@ export function usePitchEditorController({
         kind: "image" | "audio" | "video" | "thumbnail";
         fileName: string;
         fileId?: string;
+        assetId?: string;
       },
     ) => {
       if (serverSavingPaused) throw new Error(operational.message);
@@ -1163,6 +1227,7 @@ export function usePitchEditorController({
         data: {
           deckId,
           ownerToken: credential.token,
+          assetId: input.assetId,
           fileId: input.fileId,
           kind: input.kind,
           fileName: input.fileName,
@@ -1171,6 +1236,7 @@ export function usePitchEditorController({
         },
       });
       if (!reserved.ok) throw new Error(reserved.error);
+      if (!reserved.value.uploadUrl) return reserved.value.asset;
       const uploaded = await uploadPresignedObject(
         {
           url: reserved.value.uploadUrl,
@@ -1337,9 +1403,133 @@ export function usePitchEditorController({
     uploadWake,
   ]);
 
+  useEffect(() => {
+    if (!deck?.assets.length || localMediaAssets.length === 0) return;
+    const durable = new Set(
+      deck.assets
+        .filter((asset) => asset.state === "ready" && asset.availability !== "unavailable")
+        .map((asset) => asset.id),
+    );
+    if (
+      !localMediaAssets.some((asset) => durable.has(asset.id) && asset.transferState !== "secured")
+    ) {
+      return;
+    }
+    setLocalMediaAssets((current) =>
+      current.map((asset) =>
+        durable.has(asset.id) ? { ...asset, transferState: "secured" } : asset,
+      ),
+    );
+  }, [deck?.assets, localMediaAssets]);
+
+  useEffect(() => {
+    if (
+      isDemo ||
+      !credential ||
+      serverSavingPaused ||
+      activeMediaUploadId ||
+      localSaveFailed ||
+      localSavedRevision < revision ||
+      !navigator.onLine
+    ) {
+      return;
+    }
+    const asset = localMediaAssets.find(
+      (candidate) =>
+        referencedMediaAssetIds.has(candidate.id) && candidate.transferState === "local",
+    );
+    if (!asset || uploading.current.has(asset.id)) return;
+    const file = localMediaFilesRef.current.get(asset.id);
+    if (!file) {
+      setLocalMediaAssets((current) =>
+        current.map((candidate) =>
+          candidate.id === asset.id ? { ...candidate, transferState: "error" } : candidate,
+        ),
+      );
+      setMessage(`${asset.fileName} is referenced but its browser safety copy is missing.`, {
+        tone: "error",
+      });
+      return;
+    }
+
+    uploading.current.add(asset.id);
+    setActiveMediaUploadId(asset.id);
+    setLocalMediaAssets((current) =>
+      current.map((candidate) =>
+        candidate.id === asset.id ? { ...candidate, transferState: "uploading" } : candidate,
+      ),
+    );
+    void uploadBlob(file, {
+      kind: asset.kind as "audio" | "video",
+      fileName: asset.fileName,
+      assetId: asset.id,
+    })
+      .then((stored) => {
+        setDeck((current) => {
+          if (!current) return current;
+          const withoutAsset = current.assets.filter((candidate) => candidate.id !== stored.id);
+          return { ...current, assets: [...withoutAsset, stored] };
+        });
+        setLocalMediaAssets((current) =>
+          current.map((candidate) =>
+            candidate.id === stored.id
+              ? {
+                  ...candidate,
+                  ...stored,
+                  url: candidate.url,
+                  availability: "available",
+                  transferState: "secured",
+                }
+              : candidate,
+          ),
+        );
+        setMessage(`${asset.fileName} is secured and available offline on this device.`, {
+          transient: true,
+          tone: "success",
+        });
+      })
+      .catch(() => {
+        setLocalMediaAssets((current) =>
+          current.map((candidate) =>
+            candidate.id === asset.id ? { ...candidate, transferState: "error" } : candidate,
+          ),
+        );
+        setMessage(
+          `${asset.fileName} is safe on this device, but is not secured to the pitch yet. It will retry after you reconnect or reopen the pitch.`,
+          { tone: "warning" },
+        );
+      })
+      .finally(() => {
+        uploading.current.delete(asset.id);
+        setActiveMediaUploadId(undefined);
+      });
+  }, [
+    activeMediaUploadId,
+    credential,
+    isDemo,
+    localMediaAssets,
+    localSaveFailed,
+    localSavedRevision,
+    referencedMediaAssetIds,
+    revision,
+    serverSavingPaused,
+    setMessage,
+    uploadBlob,
+    uploadWake,
+  ]);
+
   const retryImageUploads = useCallback(() => {
     setImageUploadFailure(undefined);
     setSyncState("local");
+    setUploadWake((value) => value + 1);
+  }, []);
+
+  const retryTimedMediaUploads = useCallback(() => {
+    setLocalMediaAssets((current) =>
+      current.map((asset) =>
+        asset.transferState === "error" ? { ...asset, transferState: "local" } : asset,
+      ),
+    );
     setUploadWake((value) => value + 1);
   }, []);
 
@@ -1454,13 +1644,29 @@ export function usePitchEditorController({
     setMessage(`Removed “${currentSlide.name}”. You can undo this action.`);
   }
 
+  async function cachePreparedMedia(
+    file: File,
+    kind: "audio" | "video",
+    assetId?: string,
+  ): Promise<PitchAsset> {
+    const asset = localMediaAsset(file, kind, deckId, assetId);
+    if (!isDemo) {
+      try {
+        await saveLocalPitchMedia({ deckId, assetId: asset.id, kind, file });
+      } catch {
+        if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
+        throw new Error(
+          "This browser could not make a safety copy of that media. Free some device storage and try again.",
+        );
+      }
+      localMediaFilesRef.current.set(asset.id, file);
+    }
+    return asset;
+  }
+
   async function attachMedia(file: File, selection?: { startMs: number; durationMs: number }) {
     if (isDemo) {
       setMessage("Media uploads are available once you start a saved pitch.");
-      return;
-    }
-    if (serverSavingPaused) {
-      setMessage(operational.message, { tone: "warning" });
       return;
     }
     if (!file || !currentSlide) return;
@@ -1487,11 +1693,8 @@ export function usePitchEditorController({
       if (currentSlide.mediaClips.length + actualNeededClips > PITCH_MEDIA_CLIP_LIMIT) {
         throw new Error(`This slide can have up to ${PITCH_MEDIA_CLIP_LIMIT} media tracks`);
       }
-      setMediaProgress({ name: `uploading ${file.name}`, progress: 1 });
-      const asset = await uploadBlob(prepared.file, {
-        kind: prepared.kind,
-        fileName: prepared.file.name,
-      });
+      setMediaProgress({ name: `saving ${file.name} on this device`, progress: 1 });
+      const asset = await cachePreparedMedia(prepared.file, prepared.kind);
       const maximumDuration = PITCH_SLIDE_DURATION_RANGE_MS.max;
       const desiredStart = Math.min(mediaClock.playheadMs, maximumDuration - 1);
       const timelineStartMs = Math.max(
@@ -1554,13 +1757,11 @@ export function usePitchEditorController({
       if (!nextDocument) throw new Error("This slide is no longer available");
       documentRef.current = nextDocument;
       setDocumentState(nextDocument);
-      setDeck((current) =>
-        current ? { ...current, assets: [...current.assets, asset] } : current,
-      );
+      setLocalMediaAssets((current) => [...current, asset]);
       markChanged("media.add", { slideId: currentSlide.id, assetId: asset.id });
       setMessage(
-        `${prepared.kind === "video" ? "Video" : "Sound"} added${prepared.kind === "video" && prepared.hasAudio ? " with linked sound" : ""}. Drag it to move it, or pull an edge to trim it.`,
-        { transient: true, tone: "success" },
+        `${prepared.kind === "video" ? "Video" : "Sound"} added${prepared.kind === "video" && prepared.hasAudio ? " with linked sound" : ""}. Safe on this device${serverSavingPaused || !navigator.onLine ? "; it will be secured when the server is available" : " and being secured now"}.`,
+        { transient: true, tone: serverSavingPaused || !navigator.onLine ? "warning" : "success" },
       );
     } catch (error) {
       if (error instanceof PitchMediaNeedsTrimError) {
@@ -1568,7 +1769,12 @@ export function usePitchEditorController({
         setMessage("Choose the part of this media file to use.", { transient: true });
         return;
       }
-      setMessage(error instanceof Error ? error.message : "Media upload failed", { tone: "error" });
+      setMessage(
+        error instanceof Error ? error.message : "Media could not be saved on this device",
+        {
+          tone: "error",
+        },
+      );
     } finally {
       setMediaProgress(undefined);
     }
@@ -1826,24 +2032,12 @@ export function usePitchEditorController({
       if (pendingImport.restored) {
         rememberUndo("replacing the deck from a backup");
         const remappedAssets = new Map<string, string>();
-        const restoredAssets: PitchAsset[] = [];
         const localRestoredAssets: PitchAsset[] = [];
-        if (!isDemo && !serverSavingPaused) {
-          for (const media of pendingImport.bundledMedia ?? []) {
-            setMediaProgress({ name: `restoring ${media.file.name}`, progress: 1 });
-            const asset = await uploadBlob(media.file, {
-              kind: media.kind,
-              fileName: media.file.name,
-            });
-            remappedAssets.set(media.assetId, asset.id);
-            restoredAssets.push(asset);
-          }
-        } else {
-          for (const media of pendingImport.bundledMedia ?? []) {
-            const asset = localMediaAsset(media.file, media.kind, deckId, media.assetId);
-            remappedAssets.set(media.assetId, asset.id);
-            localRestoredAssets.push(asset);
-          }
+        for (const media of pendingImport.bundledMedia ?? []) {
+          setMediaProgress({ name: `saving ${media.file.name} on this device`, progress: 1 });
+          const asset = await cachePreparedMedia(media.file, media.kind, media.assetId);
+          remappedAssets.set(media.assetId, asset.id);
+          localRestoredAssets.push(asset);
         }
         const restoredDocument: PitchDocument = {
           ...pendingImport.restored.document,
@@ -1859,28 +2053,16 @@ export function usePitchEditorController({
         setSceneEpoch((value) => value + 1);
         setActiveSlideId(restoredDocument.slides.find((slide) => !slide.deletedAt)?.id ?? "");
         setFiles(pendingImport.restored.files);
-        setLocalMediaAssets((current) => {
-          for (const asset of current) {
-            if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
-          }
-          return localRestoredAssets;
-        });
-        if (restoredAssets.length > 0) {
-          setDeck((current) =>
-            current ? { ...current, assets: [...current.assets, ...restoredAssets] } : current,
-          );
-        }
+        setLocalMediaAssets((current) => mergeLocalMediaAssets(current, localRestoredAssets));
         if (pendingImport.restoredTitle) setTitle(pendingImport.restoredTitle);
         markChanged("deck.replace", { source: "native backup" });
         setMessage(
-          isDemo || serverSavingPaused
+          isDemo
             ? "Native backup opened with its media for this tab. Download it again before closing if you want to keep your changes."
-            : Object.keys(pendingImport.restored.files).length > 0
-              ? `Native backup restored. Its images are being secured to this pitch.${restoredAssets.length ? ` ${restoredAssets.length} media file${restoredAssets.length === 1 ? " was" : "s were"} restored.` : ""}`
-              : "Native backup restored.",
+            : `Native backup restored. Its media is safe on this device${serverSavingPaused || !navigator.onLine ? " and will be secured when the server is available" : " and is being secured now"}.`,
           {
-            transient: !isDemo && !serverSavingPaused,
-            tone: isDemo || serverSavingPaused ? "warning" : "success",
+            transient: !isDemo && !serverSavingPaused && navigator.onLine,
+            tone: isDemo || serverSavingPaused || !navigator.onLine ? "warning" : "success",
           },
         );
         return;
@@ -1893,7 +2075,6 @@ export function usePitchEditorController({
           : allImported;
       if (imported.length === 0)
         throw new Error(`This deck already has all ${maximumSlides} slides`);
-      const uploadedAssets: PitchAsset[] = [];
       const localImportedAssets: PitchAsset[] = [];
       const created: PitchSlide[] = [];
       let mediaImported = 0;
@@ -1912,18 +2093,9 @@ export function usePitchEditorController({
               mediaSkipped += 1;
               continue;
             }
-            let asset: PitchAsset;
-            if (isDemo || serverSavingPaused) {
-              asset = localMediaAsset(prepared.file, prepared.kind, deckId);
-              localImportedAssets.push(asset);
-            } else {
-              setMediaProgress({ name: `uploading ${mediaFile.name}`, progress: 1 });
-              asset = await uploadBlob(prepared.file, {
-                kind: prepared.kind,
-                fileName: prepared.file.name,
-              });
-              uploadedAssets.push(asset);
-            }
+            setMediaProgress({ name: `saving ${mediaFile.name} on this device`, progress: 1 });
+            const asset = await cachePreparedMedia(prepared.file, prepared.kind);
+            localImportedAssets.push(asset);
             const clipDurationMs = Math.min(prepared.durationMs, PITCH_SLIDE_DURATION_RANGE_MS.max);
             const linkedGroupId =
               prepared.kind === "video" && prepared.hasAudio ? randomId("link_") : undefined;
@@ -1973,17 +2145,8 @@ export function usePitchEditorController({
         });
       }
       setMediaProgress(undefined);
-      if (uploadedAssets.length > 0) {
-        setDeck((current) =>
-          current ? { ...current, assets: [...current.assets, ...uploadedAssets] } : current,
-        );
-      }
       setLocalMediaAssets((current) => {
-        if (mode === "append") return [...current, ...localImportedAssets];
-        for (const asset of current) {
-          if (asset.url?.startsWith("blob:")) URL.revokeObjectURL(asset.url);
-        }
-        return localImportedAssets;
+        return mergeLocalMediaAssets(current, localImportedAssets);
       });
       const importedFiles = imported.reduce(
         (all, slide) => ({ ...all, ...slide.files }),
@@ -2723,10 +2886,14 @@ export function usePitchEditorController({
     mediaClock,
     hasUnsecuredMedia,
     unsecuredImageFileIds,
+    unsecuredTimedMediaAssetIds,
     missingLocalImageFileIds,
     activeImageUploadId,
+    activeMediaUploadId,
     imageUploadFailure,
+    timedMediaUploadNeedsRetry,
     retryImageUploads,
+    retryTimedMediaUploads,
     uploadBlob,
     onCanvasChange,
     flushCanvasState,

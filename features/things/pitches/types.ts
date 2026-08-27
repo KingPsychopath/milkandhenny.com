@@ -96,6 +96,7 @@ export type PitchDeckLifecycle = "active" | "archived" | "trashed" | "deleting";
 export type PitchAssetKind = "image" | "audio" | "video" | "thumbnail";
 export type PitchAssetState = "pending" | "ready";
 export type PitchAssetAvailability = "unchecked" | "available" | "unavailable";
+export type PitchAssetTransferState = "local" | "uploading" | "secured" | "error";
 
 /** Editor-neutral ink data. Drawesome is one adapter that reads/writes it. */
 export interface PitchInkStroke {
@@ -203,6 +204,8 @@ export interface PitchAsset {
   state: PitchAssetState;
   /** Live object-storage availability, checked when the asset is returned to a reader. */
   availability: PitchAssetAvailability;
+  /** Browser-to-object-storage lifecycle. Local media remains playable throughout. */
+  transferState: PitchAssetTransferState;
   fileName: string;
   mimeType: string;
   bytes: number;

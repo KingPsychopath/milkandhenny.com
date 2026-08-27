@@ -38,6 +38,15 @@ function clipUnavailable(clip: PitchMediaClip, assets: PitchAsset[]): boolean {
   return !asset || asset.availability === "unavailable" || !asset.url;
 }
 
+function clipStorageLabel(clip: PitchMediaClip, assets: PitchAsset[]): string {
+  const asset = assets.find((candidate) => candidate.id === clip.assetId);
+  if (!asset || asset.availability === "unavailable") return "unavailable";
+  if (asset.transferState === "local") return "safe on device";
+  if (asset.transferState === "uploading") return "securing";
+  if (asset.transferState === "error") return "safe here · retry needed";
+  return "secured";
+}
+
 function arrangeClipLanes(clips: PitchMediaClip[]): PitchMediaClip[][] {
   const lanes: PitchMediaClip[][] = [];
   for (const clip of clips.toSorted(
@@ -488,6 +497,9 @@ export function PitchMediaTimeline({
                   const left = (clip.timelineStartMs / slide.durationMs) * 100;
                   const width = (clip.durationMs / slide.durationMs) * 100;
                   const unavailable = clipUnavailable(clip, assets);
+                  const transferState = assets.find(
+                    (asset) => asset.id === clip.assetId,
+                  )?.transferState;
                   return (
                     <div
                       key={clip.id}
@@ -496,7 +508,11 @@ export function PitchMediaTimeline({
                           ? "border-[var(--things-amber)] bg-[var(--selection-bg)]"
                           : unavailable
                             ? "border-dashed border-[var(--things-amber)] bg-[var(--selection-bg)]"
-                            : "theme-border-strong bg-background"
+                            : transferState === "uploading"
+                              ? "border-[var(--things-amber)] bg-background motion-safe:animate-pulse"
+                              : transferState === "local" || transferState === "error"
+                                ? "border-dashed border-[var(--things-amber)] bg-background"
+                                : "theme-border-strong bg-background"
                       } ${clip.locked ? "opacity-60" : ""}`}
                       style={{ left: `${left}%`, width: `${width}%`, minWidth: "2.75rem" }}
                     >
@@ -515,10 +531,11 @@ export function PitchMediaTimeline({
                         onPointerDown={(event) => beginGesture(event, clip, "move")}
                         onClick={() => onSelectClip(clip.id)}
                         className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
-                        aria-label={`Move ${clipLabel(clip, assets)}. ${unavailable ? "Media unavailable. " : ""}Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
+                        aria-label={`Move ${clipLabel(clip, assets)}. ${clipStorageLabel(clip, assets)}. Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
                       >
-                        {unavailable ? "unavailable · " : clip.locked ? "locked · " : ""}
+                        {clip.locked ? "locked · " : ""}
                         {clipLabel(clip, assets)}
+                        {` · ${clipStorageLabel(clip, assets)}`}
                       </button>
                       {!clip.locked ? (
                         <>
@@ -553,7 +570,7 @@ export function PitchMediaTimeline({
         <div className="mt-3 border-t theme-border pt-3">
           <div className="flex flex-wrap items-center gap-2">
             <p className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
-              {clipLabel(selected, assets)}
+              {clipLabel(selected, assets)} · {clipStorageLabel(selected, assets)}
             </p>
             <button
               type="button"

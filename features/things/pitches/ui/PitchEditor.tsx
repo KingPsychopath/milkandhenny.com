@@ -131,10 +131,14 @@ export function PitchEditor({
     mediaClock,
     hasUnsecuredMedia,
     unsecuredImageFileIds,
+    unsecuredTimedMediaAssetIds,
     missingLocalImageFileIds,
     activeImageUploadId,
+    activeMediaUploadId,
     imageUploadFailure,
+    timedMediaUploadNeedsRetry,
     retryImageUploads,
+    retryTimedMediaUploads,
     onCanvasChange,
     addSlide,
     rememberUndo,
@@ -349,7 +353,7 @@ export function PitchEditor({
                 : imageUploadFailure
                   ? "image save needs retry"
                   : hasUnsecuredMedia
-                    ? `securing ${unsecuredImageFileIds.length} image${unsecuredImageFileIds.length === 1 ? "" : "s"}…`
+                    ? `securing ${unsecuredImageFileIds.length + unsecuredTimedMediaAssetIds.length} media item${unsecuredImageFileIds.length + unsecuredTimedMediaAssetIds.length === 1 ? "" : "s"}…`
                     : deck?.publishedAt
                       ? "publish new edition"
                       : "publish + seal"}
@@ -409,11 +413,13 @@ export function PitchEditor({
               ? `${missingLocalImageFileIds.length} image${missingLocalImageFileIds.length === 1 ? " is" : "s are"} referenced by this draft but not stored on this device. Open the pitch on the device that still shows them, or restore a .mahdeck backup from that device.`
               : imageUploadFailure
                 ? `${imageUploadFailure.message} The original remains safe in this browser.`
-                : activeImageUploadId
-                  ? `Saving the original images to this pitch · ${unsecuredImageFileIds.length} remaining.`
-                  : navigator.onLine
-                    ? "Preparing the remaining images for safe storage."
-                    : "The remaining images are safe in this browser and will save after reconnecting."}
+                : timedMediaUploadNeedsRetry
+                  ? "A sound or video file is safe on this device but still needs to be secured to the pitch."
+                  : activeImageUploadId || activeMediaUploadId
+                    ? `Securing media to this pitch · ${unsecuredImageFileIds.length + unsecuredTimedMediaAssetIds.length} remaining.`
+                    : navigator.onLine
+                      ? "Preparing the remaining media for safe storage."
+                      : "The remaining media is safe in this browser and will save after reconnecting."}
           </span>
           {imageUploadFailure && missingLocalImageFileIds.length === 0 ? (
             <button
@@ -422,6 +428,15 @@ export function PitchEditor({
               className="min-h-11 underline decoration-current underline-offset-4 hover:opacity-60"
             >
               try image save again
+            </button>
+          ) : null}
+          {timedMediaUploadNeedsRetry ? (
+            <button
+              type="button"
+              onClick={retryTimedMediaUploads}
+              className="min-h-11 underline decoration-current underline-offset-4 hover:opacity-60"
+            >
+              try media save again
             </button>
           ) : null}
           {missingLocalImageFileIds.length === 0 ? (

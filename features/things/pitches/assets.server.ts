@@ -302,7 +302,9 @@ async function withSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
 
 async function withCheckedSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
   const object = await headObject(row.object_key, { scope: "private" });
-  return object.exists ? withSignedUrl(row) : { ...toPitchAsset(row), availability: "unavailable" };
+  return object.exists
+    ? withSignedUrl(row)
+    : { ...toPitchAsset(row), availability: "unavailable", transferState: "error" };
 }
 
 export async function unavailablePitchAssetIds(
@@ -327,6 +329,7 @@ export async function unavailablePitchAssetIds(
 export async function createPitchAssetUpload(input: {
   deckId: string;
   ownerToken: string;
+  assetId?: string;
   fileId?: string;
   kind: PitchAssetKind;
   fileName: string;
@@ -335,7 +338,7 @@ export async function createPitchAssetUpload(input: {
 }): Promise<
   PitchStoreResult<{
     asset: PitchAsset;
-    uploadUrl: string;
+    uploadUrl?: string;
   }>
 > {
   if (!(await ownerCanAccessPitch(input.deckId, input.ownerToken))) {
@@ -351,6 +354,31 @@ export async function createPitchAssetUpload(input: {
       error: `That ${input.kind} file is too large`,
     };
   }
+  const requestedId = input.assetId;
+  if (requestedId) {
+    const existing = await getPitchAsset(input.deckId, requestedId);
+    if (existing) {
+      const matches =
+        existing.kind === input.kind &&
+        existing.mime_type === input.mimeType &&
+        Number(existing.bytes) === input.bytes;
+      if (!matches) {
+        return { ok: false, status: 409, error: "That media upload no longer matches" };
+      }
+      if (existing.state === "ready") {
+        const object = await headObject(existing.object_key, { scope: "private" });
+        if (object.exists) {
+          return { ok: true, value: { asset: await withSignedUrl(existing) } };
+        }
+        await deletePitchAssetRecord(existing.id);
+      } else {
+        const uploadUrl = await presignPutUrl(existing.object_key, existing.mime_type, 5 * 60, {
+          scope: "private",
+        });
+        return { ok: true, value: { asset: toPitchAsset(existing), uploadUrl } };
+      }
+    }
+  }
   const used = await pitchAssetBytes(input.deckId);
   if (used + input.bytes > PITCH_DECK_ASSET_MAX_BYTES) {
     return {
@@ -360,7 +388,7 @@ export async function createPitchAssetUpload(input: {
     };
   }
 
-  const id = createPitchAssetId();
+  const id = requestedId ?? createPitchAssetId();
   const fileName = safeFileName(input.fileName);
   const objectKey = `pitches/${input.deckId}/${input.kind}/${id}-${fileName}`;
   const row = await insertPitchAsset({

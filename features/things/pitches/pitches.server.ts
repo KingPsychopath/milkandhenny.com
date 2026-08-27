@@ -511,6 +511,7 @@ export async function restorePitchFromTrashForAdmin(
 export type PitchAssetUploadInput = {
   deckId: string;
   ownerToken: string;
+  assetId?: string;
   fileId?: string;
   kind: PitchAssetKind;
   fileName: string;
