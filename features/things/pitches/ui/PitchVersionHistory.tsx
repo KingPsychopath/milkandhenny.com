@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
 
 import type {
   PitchDocument,
+  PitchSlide,
   PitchVersionHistoryItem,
   PitchVersionPreview,
   PitchVersionReason,
@@ -33,9 +34,20 @@ function time(value: string): string {
   }).format(new Date(value));
 }
 
-function documentSummary(document: PitchDocument) {
-  const slides = document.slides.filter((slide) => !slide.deletedAt);
-  return { slides, firstSlide: slides[0] };
+function livingSlides(document: PitchDocument): PitchSlide[] {
+  return document.slides.filter((slide) => !slide.deletedAt);
+}
+
+/** The slide the owner touched last is the one they are most likely chasing. */
+function lastEditedSlide(document: PitchDocument): PitchSlide | undefined {
+  return livingSlides(document).reduce<PitchSlide | undefined>(
+    (latest, slide) => (!latest || slide.updatedAt > latest.updatedAt ? slide : latest),
+    undefined,
+  );
+}
+
+function slideLabel(index: number) {
+  return String(index + 1).padStart(2, "0");
 }
 
 function countLabel(item: Pick<PitchVersionHistoryItem, "slideCount" | "contentCount">) {
@@ -82,10 +94,24 @@ export function PitchVersionHistory({
       ? preview.document
       : undefined
     : current.document;
-  const summary = useMemo(
-    () => (selectedDocument ? documentSummary(selectedDocument) : undefined),
-    [selectedDocument],
-  );
+  // The preview stays pinned to one slide as the owner walks the timeline, so what
+  // changes between versions is the slide itself and not the subject on screen.
+  const [anchor, setAnchor] = useState(() => {
+    const slide = lastEditedSlide(current.document);
+    return slide ? { id: slide.id, name: slide.name } : undefined;
+  });
+  const summary = useMemo(() => {
+    if (!selectedDocument) return undefined;
+    const slides = livingSlides(selectedDocument);
+    const anchored = anchor ? slides.find((slide) => slide.id === anchor.id) : undefined;
+    const slide = anchored ?? slides[0];
+    return {
+      slides,
+      slide,
+      slideIndex: slides.indexOf(slide),
+      anchorMissing: Boolean(anchor) && !anchored && slides.length > 0,
+    };
+  }, [selectedDocument, anchor]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -293,15 +319,23 @@ export function PitchVersionHistory({
                 >
                   {previewError}
                 </div>
-              ) : summary?.firstSlide ? (
-                <div className="mt-8 overflow-hidden border theme-border bg-surface">
+              ) : summary?.slide ? (
+                <figure className="mt-8 overflow-hidden border theme-border bg-surface">
                   <PitchSlideThumbnail
-                    slide={summary.firstSlide}
+                    key={`${summary.slide.id}:${summary.slide.version}`}
+                    slide={summary.slide}
                     files={files}
-                    alt={`Preview of ${summary.firstSlide.name}`}
+                    alt={`Preview of ${summary.slide.name}`}
                     className="aspect-video w-full object-contain"
                   />
-                </div>
+                  <figcaption className="border-t theme-border px-4 py-2 font-mono text-micro theme-muted">
+                    <span className="theme-faint">{slideLabel(summary.slideIndex)}</span>{" "}
+                    <span className="text-foreground">{summary.slide.name}</span>
+                    {summary.anchorMissing
+                      ? ` · ${anchor?.name ?? "the followed slide"} was not in this version; showing slide 01`
+                      : null}
+                  </figcaption>
+                </figure>
               ) : (
                 <div className="mt-8 flex aspect-video items-center justify-center border theme-border bg-surface px-6 text-center font-mono text-xs theme-muted">
                   {selectedItem ? "This version is blank." : "The current version is blank."}
@@ -310,16 +344,42 @@ export function PitchVersionHistory({
 
               {summary ? (
                 <div className="mt-6 border-t theme-border pt-5">
-                  <p className="font-mono text-xs text-foreground">
-                    {summary.slides.length} slide{summary.slides.length === 1 ? "" : "s"}
+                  <p className="flex flex-wrap items-baseline justify-between gap-2 font-mono text-xs text-foreground">
+                    <span>
+                      {summary.slides.length} slide{summary.slides.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="text-micro theme-faint">
+                      choose one to follow it across versions
+                    </span>
                   </p>
                   <ol className="mt-3 divide-y theme-border">
-                    {summary.slides.map((slide, index) => (
-                      <li key={slide.id} className="flex gap-4 py-3 font-mono text-xs">
-                        <span className="theme-faint">{String(index + 1).padStart(2, "0")}</span>
-                        <span className="min-w-0 truncate text-foreground">{slide.name}</span>
-                      </li>
-                    ))}
+                    {summary.slides.map((slide, index) => {
+                      const following = slide.id === anchor?.id;
+                      return (
+                        <li key={slide.id}>
+                          <button
+                            type="button"
+                            aria-pressed={following}
+                            onClick={() => setAnchor({ id: slide.id, name: slide.name })}
+                            className="flex min-h-11 w-full items-center gap-4 py-3 text-left font-mono text-xs hover:opacity-70"
+                          >
+                            <span className={following ? "text-foreground" : "theme-faint"}>
+                              {slideLabel(index)}
+                            </span>
+                            <span
+                              className={`min-w-0 flex-1 truncate ${
+                                following ? "text-foreground" : "theme-muted"
+                              }`}
+                            >
+                              {slide.name}
+                            </span>
+                            {following ? (
+                              <span className="shrink-0 text-micro theme-muted">following</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ol>
                 </div>
               ) : null}
