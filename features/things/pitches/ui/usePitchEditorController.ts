@@ -88,6 +88,7 @@ const PITCH_RESTORE_NOTE_KEY = "milkandhenny:pitch-restore-note";
 export const PITCH_TRANSIENT_MESSAGE_MS = 8_000;
 export const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
 export const OPERATIONAL_STATUS_REFRESH_INTERVAL_MS = 30_000;
+export type PitchEditorMessageTone = "info" | "success" | "warning" | "error";
 const PITCH_IMAGE_UPLOAD_MAX_DIMENSION = 2_560;
 const PITCH_UPLOAD_TIMEOUT_MS = 45_000;
 const DIRECT_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -489,6 +490,7 @@ export function usePitchEditorController({
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
   const [message, setMessageState] = useState("");
+  const [messageTone, setMessageTone] = useState<PitchEditorMessageTone>("info");
   const [undoEntry, setUndoEntry] = useState<{
     label: string;
     title: string;
@@ -558,6 +560,8 @@ export function usePitchEditorController({
   const presentationInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const restoreRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
+  const messageRef = useRef("");
+  const messageKindRef = useRef<"general" | "sync">("general");
   const messageTimer = useRef<number | undefined>(undefined);
   const navigate = useNavigate();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
@@ -568,16 +572,33 @@ export function usePitchEditorController({
    * clear themselves so a stale line cannot be mistaken for current state.
    * Anything actionable — an error to retry, a step still running — stays put.
    */
-  const setMessage = useCallback((value: string, options?: { transient?: boolean }) => {
-    window.clearTimeout(messageTimer.current);
-    messageTimer.current = undefined;
-    setMessageState(value);
-    if (!options?.transient || !value) return;
-    messageTimer.current = window.setTimeout(() => {
+  const setMessage = useCallback(
+    (
+      value: string,
+      options?: {
+        transient?: boolean;
+        tone?: PitchEditorMessageTone;
+        kind?: "general" | "sync";
+      },
+    ) => {
+      window.clearTimeout(messageTimer.current);
       messageTimer.current = undefined;
-      setMessageState((current) => (current === value ? "" : current));
-    }, PITCH_TRANSIENT_MESSAGE_MS);
-  }, []);
+      messageRef.current = value;
+      messageKindRef.current = options?.kind ?? "general";
+      setMessageState(value);
+      setMessageTone(options?.tone ?? "info");
+      if (!options?.transient || !value) return;
+      messageTimer.current = window.setTimeout(() => {
+        messageTimer.current = undefined;
+        if (messageRef.current !== value) return;
+        messageRef.current = "";
+        messageKindRef.current = "general";
+        setMessageState("");
+        setMessageTone("info");
+      }, PITCH_TRANSIENT_MESSAGE_MS);
+    },
+    [],
+  );
 
   /**
    * Retiring one specific warning is not the same as posting a message: it runs
@@ -585,9 +606,11 @@ export function usePitchEditorController({
    * transient note is currently counting down.
    */
   const clearLocalSaveWarning = useCallback(() => {
-    setMessageState((current) =>
-      current.startsWith("This browser could not update its safety copy.") ? "" : current,
-    );
+    if (!messageRef.current.startsWith("This browser could not update its safety copy.")) return;
+    messageRef.current = "";
+    messageKindRef.current = "general";
+    setMessageState("");
+    setMessageTone("info");
   }, []);
 
   useEffect(() => () => window.clearTimeout(messageTimer.current), []);
@@ -847,6 +870,7 @@ export function usePitchEditorController({
           navigator.onLine
             ? "We could not reach this pitch right now. Try again in a moment."
             : "You are offline and this pitch is not saved on this device yet. Reconnect and try again.",
+          { tone: "error", kind: "sync" },
         );
         setPhase(local ? "ready" : "error");
       }
@@ -917,6 +941,7 @@ export function usePitchEditorController({
           setLocalSaveFailed(true);
           setMessage(
             "This browser could not update its safety copy. Keep this tab open, free some device storage if needed, then try again.",
+            { tone: "error" },
           );
         });
     }, 180);
@@ -974,7 +999,7 @@ export function usePitchEditorController({
       });
       if (!result.ok) {
         setSyncState("error");
-        setMessage(result.error);
+        setMessage(result.error, { tone: "error", kind: "sync" });
         return false;
       }
       lastSyncedRevision.current = sentRevision;
@@ -995,6 +1020,7 @@ export function usePitchEditorController({
         setSyncState("merged");
         setMessage(
           "Two saved copies were consolidated. Review slide order and media timing where both devices changed the same slide.",
+          { tone: "warning" },
         );
       } else {
         const fullySynced = revisionRef.current === sentRevision;
@@ -1013,6 +1039,7 @@ export function usePitchEditorController({
           setLocalSaveFailed(false);
         }
         setSyncState(fullySynced ? "saved" : "local");
+        if (messageKindRef.current === "sync") setMessage("");
       }
       await rememberPitchCredential({
         ...credential,
@@ -1029,6 +1056,7 @@ export function usePitchEditorController({
           : navigator.onLine
             ? "The server save was interrupted. Your working copy is safe here and will try again."
             : "You’re offline. Your working copy is safe here and will sync when you reconnect.",
+        { tone: "warning", kind: "sync" },
       );
       return false;
     } finally {
@@ -1273,7 +1301,6 @@ export function usePitchEditorController({
       .catch((error) => {
         const detail = imageUploadErrorMessage(error);
         setImageUploadFailure({ fileId, message: detail });
-        setSyncState("error");
       })
       .finally(() => {
         uploading.current.delete(fileId);
@@ -1392,7 +1419,7 @@ export function usePitchEditorController({
     setActiveSlideId(undoEntry.activeSlideId);
     setSceneEpoch((value) => value + 1);
     markChanged("history.undo", { action: undoEntry.label });
-    setMessage(`Undid ${undoEntry.label}.`, { transient: true });
+    setMessage(`Undid ${undoEntry.label}.`, { transient: true, tone: "success" });
     setUndoEntry(undefined);
   }
 
@@ -1419,7 +1446,7 @@ export function usePitchEditorController({
       return;
     }
     if (serverSavingPaused) {
-      setMessage(operational.message);
+      setMessage(operational.message, { tone: "warning" });
       return;
     }
     if (!file || !currentSlide) return;
@@ -1519,7 +1546,7 @@ export function usePitchEditorController({
       markChanged("media.add", { slideId: currentSlide.id, assetId: asset.id });
       setMessage(
         `${prepared.kind === "video" ? "Video" : "Sound"} added${prepared.kind === "video" && prepared.hasAudio ? " with linked sound" : ""}. Drag it to move it, or pull an edge to trim it.`,
-        { transient: true },
+        { transient: true, tone: "success" },
       );
     } catch (error) {
       if (error instanceof PitchMediaNeedsTrimError) {
@@ -1527,8 +1554,7 @@ export function usePitchEditorController({
         setMessage("Choose the part of this media file to use.", { transient: true });
         return;
       }
-      setSyncState("error");
-      setMessage(error instanceof Error ? error.message : "Media upload failed");
+      setMessage(error instanceof Error ? error.message : "Media upload failed", { tone: "error" });
     } finally {
       setMediaProgress(undefined);
     }
@@ -1591,9 +1617,12 @@ export function usePitchEditorController({
       markChanged("image.add", { slideId: currentSlide.id, fileId });
       setMessage("Image placed in the middle of the slide. Move it wherever you like.", {
         transient: true,
+        tone: "success",
       });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "That image could not be placed");
+      setMessage(error instanceof Error ? error.message : "That image could not be placed", {
+        tone: "error",
+      });
     }
   }
 
@@ -1745,6 +1774,7 @@ export function usePitchEditorController({
             maximumSlides,
           },
         });
+        setMessage("");
         return;
       }
 
@@ -1766,9 +1796,9 @@ export function usePitchEditorController({
           embeddedMedia: allImported.reduce((count, slide) => count + slide.mediaFiles.length, 0),
         },
       });
+      setMessage("");
     } catch (error) {
-      setSyncState("error");
-      setMessage(friendlyImportError(error, file.name));
+      setMessage(friendlyImportError(error, file.name), { tone: "error" });
     } finally {
       setImporting(false);
     }
@@ -1834,6 +1864,10 @@ export function usePitchEditorController({
             : Object.keys(pendingImport.restored.files).length > 0
               ? `Native backup restored. Its images are being secured to this pitch.${restoredAssets.length ? ` ${restoredAssets.length} media file${restoredAssets.length === 1 ? " was" : "s were"} restored.` : ""}`
               : "Native backup restored.",
+          {
+            transient: !isDemo && !serverSavingPaused,
+            tone: isDemo || serverSavingPaused ? "warning" : "success",
+          },
         );
         return;
       }
@@ -1962,10 +1996,13 @@ export function usePitchEditorController({
           : created.length < allImported.length
             ? `Added ${created.length} slides; the deck limit is ${maximumSlides}.`
             : `Added ${created.length} slides. Text and pictures are movable.${mediaImported ? ` ${mediaImported} embedded media file${mediaImported === 1 ? "" : "s"} added to the timeline.` : ""}${mediaSkipped ? ` ${mediaSkipped} unsupported media file${mediaSkipped === 1 ? " was" : "s were"} skipped.` : ""}`,
+        {
+          transient: true,
+          tone: mediaSkipped ? "warning" : "success",
+        },
       );
     } catch (error) {
-      setSyncState("error");
-      setMessage(friendlyImportError(error, pendingImport.file.name));
+      setMessage(friendlyImportError(error, pendingImport.file.name), { tone: "error" });
     } finally {
       setImporting(false);
       setMediaProgress(undefined);
@@ -1999,6 +2036,7 @@ export function usePitchEditorController({
     }
     setMessage(
       "We could not identify that file. Choose a .pptx, PDF, .mahdeck backup, image, video or sound file.",
+      { tone: "warning" },
     );
   }
 
@@ -2101,6 +2139,7 @@ export function usePitchEditorController({
       await adoptRestoredDeck(result.value);
       setMessage("This pitch is out of the Trash. It is saving to the server again.", {
         transient: true,
+        tone: "success",
       });
     } catch {
       setRestoreError(
@@ -2214,11 +2253,13 @@ export function usePitchEditorController({
   async function publish() {
     if (isDemo || !credential || !currentSlide || !documentState) return;
     if (serverSavingPaused) {
-      setMessage(operational.message);
+      setMessage(operational.message, { tone: "warning" });
       return;
     }
     if (!navigator.onLine) {
-      setMessage("Reconnect before publishing. Your working copy is safe on this device.");
+      setMessage("Reconnect before publishing. Your working copy is safe on this device.", {
+        tone: "warning",
+      });
       return;
     }
     const isRepublish = Boolean(deckRef.current?.publishedAt);
@@ -2242,12 +2283,13 @@ export function usePitchEditorController({
       ),
     );
     if (currentHasUnsecuredMedia) {
-      setMessage("Finishing your image uploads first…");
       return;
     }
     setMessage("Saving and sealing this edition…");
     if (!(await performSync())) {
-      setMessage("A newer change is still saving. Publish again when the status says saved.");
+      setMessage("A newer change is still saving. Publish again when the status says saved.", {
+        tone: "warning",
+      });
       return;
     }
     try {
@@ -2283,11 +2325,13 @@ export function usePitchEditorController({
       setDeck(result.value);
       setMessage(
         `Published edition ${result.value.currentEditionNumber ?? 1}. It is sealed and remains addressable after later editions.`,
+        { transient: true, tone: "success" },
       );
       setSyncState("saved");
     } catch (error) {
-      setSyncState("error");
-      setMessage(error instanceof Error ? error.message : "Could not publish this pitch");
+      setMessage(error instanceof Error ? error.message : "Could not publish this pitch", {
+        tone: "error",
+      });
     }
   }
 
@@ -2301,7 +2345,9 @@ export function usePitchEditorController({
       if (!result.ok) throw new Error(result.error);
       setHistoryItems(result.value);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load version history");
+      setMessage(error instanceof Error ? error.message : "Could not load version history", {
+        tone: "error",
+      });
     } finally {
       setHistoryLoading(false);
     }
@@ -2329,7 +2375,7 @@ export function usePitchEditorController({
         const nextMessage =
           error instanceof Error ? error.message : "Could not preview that version";
         setHistoryPreviewError(nextMessage);
-        setMessage(nextMessage);
+        setMessage(nextMessage, { tone: "error" });
       }
     } finally {
       if (historyPreviewRequest.current === request) setHistoryPreviewLoading(false);
@@ -2386,11 +2432,13 @@ export function usePitchEditorController({
       );
       setMessage(`Restored the version from ${new Date(item.createdAt).toLocaleString()}.`, {
         transient: true,
+        tone: "success",
       });
       await loadVersionHistory();
     } catch (error) {
-      setSyncState("error");
-      setMessage(error instanceof Error ? error.message : "Could not restore that version");
+      setMessage(error instanceof Error ? error.message : "Could not restore that version", {
+        tone: "error",
+      });
     } finally {
       setRestoringHistoryId(undefined);
     }
@@ -2535,7 +2583,7 @@ export function usePitchEditorController({
       await exporter();
       setExportOpen(false);
     } catch {
-      setMessage("We could not create that download. Try again in a moment.");
+      setMessage("We could not create that download. Try again in a moment.", { tone: "error" });
     }
   }
 
@@ -2567,6 +2615,7 @@ export function usePitchEditorController({
     syncState,
     setSyncState,
     message,
+    messageTone,
     setMessage,
     undoEntry,
     setUndoEntry,

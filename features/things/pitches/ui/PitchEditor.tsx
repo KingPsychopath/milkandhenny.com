@@ -19,7 +19,7 @@ import { PitchImportDialog } from "./PitchImportDialog";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchServerRestore } from "./PitchServerRestore";
-import { pitchStudioStatusLabel } from "./studio-status";
+import { pitchStudioStatus } from "./studio-status";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
 import { PitchVersionHistory } from "./PitchVersionHistory";
 
@@ -60,6 +60,7 @@ export function PitchEditor({
     phase,
     syncState,
     message,
+    messageTone,
     setMessage,
     undoEntry,
     inkOpen,
@@ -105,6 +106,8 @@ export function PitchEditor({
     pendingMediaTrim,
     setPendingMediaTrim,
     sceneEpoch,
+    revision,
+    localSavedRevision,
     localSaveFailed,
     setLocalSaveWake,
     setSyncWake,
@@ -151,6 +154,18 @@ export function PitchEditor({
   } = usePitchEditorController({ session, maximumSlides, operationalStatus });
 
   const mediaClipCount = visibleSlides.reduce((count, slide) => count + slide.mediaClips.length, 0);
+  const studioStatus = pitchStudioStatus({
+    isDemo,
+    serverSavingPaused,
+    localSaveFailed,
+    mediaSaveFailed: Boolean(imageUploadFailure),
+    localSaving: localSavedRevision < revision,
+    syncState,
+    serverState,
+    preparingMedia: Boolean(mediaProgress),
+    savingImages: Boolean(activeImageUploadId),
+    online: navigator.onLine,
+  });
   // Without an editing key nothing was checked and nothing can be restored: that
   // is the "needs its key" screen's job, not a banner about the server copy.
   const serverRestore =
@@ -283,17 +298,26 @@ export function PitchEditor({
           className="order-last min-w-0 basis-full bg-transparent font-serif text-xl text-foreground outline-none sm:order-none sm:flex-1 sm:basis-auto"
         />
         {!isDemo ? <PitchDeviceSwitcher deckId={deckId} /> : null}
-        <span className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
-          {pitchStudioStatusLabel({
-            isDemo,
-            serverSavingPaused,
-            localSaveFailed,
-            syncState,
-            serverState,
-            preparingMedia: Boolean(mediaProgress),
-            savingImages: Boolean(activeImageUploadId),
-            online: navigator.onLine,
-          })}
+        <span
+          className={`font-mono text-micro uppercase tracking-[0.12em] ${
+            studioStatus.tone === "error" || studioStatus.tone === "warning"
+              ? "text-foreground"
+              : "theme-muted"
+          }`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span aria-hidden="true" className="mr-1.5">
+            {studioStatus.tone === "success"
+              ? "✓"
+              : studioStatus.tone === "error"
+                ? "!"
+                : studioStatus.tone === "warning"
+                  ? "•"
+                  : ""}
+          </span>
+          {studioStatus.label}
         </span>
         <button
           type="button"
@@ -395,12 +419,33 @@ export function PitchEditor({
         </div>
       ) : null}
 
-      {message || undoEntry ? (
+      {message || undoEntry || updateState === "ready" ? (
         <div
-          className="border-b theme-border px-4 py-2 text-center font-mono text-xs theme-muted"
-          role="status"
+          className={`border-b px-4 py-2 text-center font-mono text-xs ${
+            messageTone === "error" || messageTone === "warning"
+              ? "border-[var(--things-amber)] text-foreground"
+              : "theme-border theme-muted"
+          }`}
+          role={messageTone === "error" ? "alert" : "status"}
+          aria-live={messageTone === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
         >
-          {message}
+          {message ? (
+            <>
+              <span className="font-semibold text-foreground">
+                {messageTone === "error"
+                  ? "Needs attention · "
+                  : messageTone === "warning"
+                    ? "Heads up · "
+                    : messageTone === "success"
+                      ? "Done · "
+                      : ""}
+              </span>
+              {message}
+            </>
+          ) : updateState === "ready" ? (
+            <span>A site update is ready.</span>
+          ) : null}
           {undoEntry ? (
             <button
               type="button"
