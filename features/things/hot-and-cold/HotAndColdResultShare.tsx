@@ -62,82 +62,68 @@ function ordinal(value: number) {
   return `${value}th`;
 }
 
+function guessCountLabel(value: number) {
+  return `${value.toLocaleString("en-GB", { maximumFractionDigits: 1 })} guess${value === 1 ? "" : "es"}`;
+}
+
 function CommunityComparison({
   community,
+  guessCount,
+  hintsUsed,
+  outcome,
 }: {
   community: Extract<HotAndColdCommunityStats, { visible: true }>;
+  guessCount: number;
+  hintsUsed: number;
+  outcome: HotAndColdResultOutcome;
 }) {
-  const zones = ["frost", "cool", "warm", "hot"] as const;
-  const largest = Math.max(...Object.values(community.distribution), 1);
   const standing = community.standing;
-  const cohortLabel = standing
-    ? standing.hints === 0
-      ? "no-hint solvers"
-      : `${standing.hints}-hint solvers`
-    : null;
-  const placement = standing
-    ? `${standing.tied ? "joint " : ""}${ordinal(standing.rank)} of ${standing.runs}`
-    : null;
+  const hintLabel = `${hintsUsed || "no"} hint${hintsUsed === 1 ? "" : "s"} used`;
+  const placement = standing ? `${standing.tied ? "joint " : ""}${ordinal(standing.rank)}` : null;
   return (
-    <div className="mt-6 border-t theme-border pt-5 text-left">
+    <div className="mt-6 border-t theme-border px-3 pt-6 text-left sm:px-4">
       <div>
         <p className="font-mono text-micro uppercase tracking-[.14em] theme-muted">
-          {standing ? "your community standing" : "community"}
+          your community standing
         </p>
         <h3 className="mt-2 font-serif text-4xl font-semibold leading-none">
           {standing
             ? standing.runs >= 20
               ? `top ${standing.topPercent}%`
-              : placement
-            : `${Math.round(community.solveRate * 100)}% found it`}
+              : `${placement} place`
+            : outcome === "gave-up"
+              ? "not ranked"
+              : "still taking shape"}
         </h3>
         <p className="mt-2 font-mono text-micro theme-muted">
           {standing
             ? standing.runs >= 20
-              ? `${placement} · ${cohortLabel}`
-              : `among ${cohortLabel}`
-            : `${community.runs} finished runs`}
+              ? `${placement} of ${standing.runs} comparable solvers`
+              : `of ${standing.runs} comparable solvers`
+            : outcome === "gave-up"
+              ? "only completed solves receive a standing"
+              : "more comparable solves are needed"}
         </p>
+        <p className="mt-3 font-mono text-micro theme-faint">{hintLabel}</p>
       </div>
-      <dl className="mt-5 grid grid-cols-2 gap-4 border-y theme-border py-3">
-        <div>
-          <dt className="font-mono text-micro theme-muted">median solve</dt>
-          <dd className="mt-1 font-serif text-xl">
-            {community.medianGuesses === null
-              ? "—"
-              : `${community.medianGuesses.toLocaleString("en-GB", {
-                  maximumFractionDigits: 1,
-                })} guesses`}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-mono text-micro theme-muted">
-            {standing ? "found it" : "finished runs"}
-          </dt>
-          <dd className="mt-1 font-serif text-xl">
-            {standing ? `${Math.round(community.solveRate * 100)}%` : community.runs}
-          </dd>
-        </div>
-      </dl>
-      <div className="mt-3 flex items-center justify-between gap-5">
-        <p className="font-mono text-micro theme-faint">all guesses · cold to hot</p>
-        <span className="heat-share-dock-bars" aria-hidden="true">
-          {zones.map((zone) => (
-            <span
-              className="heat-share-dock-bar"
-              key={zone}
-              data-zone={zone}
-              style={
-                {
-                  "--heat-share-intensity": community.distribution[zone] / largest,
-                } as CSSProperties
-              }
-            >
-              <i />
-            </span>
-          ))}
-        </span>
-      </div>
+      {standing ? (
+        <dl className="mt-6 grid grid-cols-2 border-y theme-border py-4">
+          <div className="pr-4">
+            <dt className="font-mono text-micro theme-muted">your solve</dt>
+            <dd className="mt-1 font-serif text-xl">{guessCountLabel(guessCount)}</dd>
+          </div>
+          <div className="border-l theme-border pl-4">
+            <dt className="font-mono text-micro theme-muted">typical solver</dt>
+            <dd className="mt-1 font-serif text-xl">{guessCountLabel(standing.medianGuesses)}</dd>
+          </div>
+        </dl>
+      ) : null}
+      <p className="py-4 font-serif text-sm leading-relaxed theme-muted">
+        <strong className="font-semibold text-[var(--foreground)]">
+          {Math.round(community.solveRate * 100)}%
+        </strong>{" "}
+        of finished runs found today’s word.
+      </p>
     </div>
   );
 }
@@ -274,7 +260,14 @@ export function HotAndColdResultShare({
         </div>
       </dl>
 
-      {community?.visible ? <CommunityComparison community={community} /> : null}
+      {community?.visible ? (
+        <CommunityComparison
+          community={community}
+          guessCount={result.guessCount}
+          hintsUsed={hintsUsed}
+          outcome={outcome}
+        />
+      ) : null}
 
       <button
         type="button"

@@ -152,5 +152,6 @@ export type HotAndColdCommunityStats =
         tied: boolean;
         topPercent: number;
         hints: number;
+        medianGuesses: number;
       } | null;
     };

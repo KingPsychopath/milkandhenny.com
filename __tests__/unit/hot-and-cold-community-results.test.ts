@@ -109,6 +109,7 @@ describe("Hot & Cold community results", () => {
         tied: true,
         topPercent: 20,
         hints: 0,
+        medianGuesses: 3,
       },
     });
   });

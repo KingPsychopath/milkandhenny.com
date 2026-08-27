@@ -186,6 +186,7 @@ interface StandingRow {
   better: string;
   tied: string;
   hints: number;
+  median_guesses: string;
 }
 
 function standingFromStoredResults(
@@ -202,6 +203,10 @@ function standingFromStoredResults(
   if (eligible.length < MINIMUM_STANDING_RUNS) return null;
   const better = eligible.filter(({ guesses }) => guesses < current.guesses).length;
   const tied = eligible.filter(({ guesses }) => guesses === current.guesses).length;
+  const guesses = eligible.map(({ guesses: count }) => count).sort((left, right) => left - right);
+  const middle = Math.floor(guesses.length / 2);
+  const medianGuesses =
+    guesses.length % 2 ? guesses[middle] : (guesses[middle - 1] + guesses[middle]) / 2;
   const rank = better + 1;
   return {
     rank,
@@ -209,6 +214,7 @@ function standingFromStoredResults(
     tied: tied > 1,
     topPercent: Math.max(1, Math.ceil((rank / eligible.length) * 100)),
     hints: current.hints,
+    medianGuesses,
   };
 }
 
@@ -243,7 +249,8 @@ export async function hotAndColdResultCommunityStats(
      select count(*)::text as runs,
             count(*) filter (where guesses < current_guesses)::text as better,
             count(*) filter (where guesses = current_guesses)::text as tied,
-            min(hints)::integer as hints
+            min(hints)::integer as hints,
+            (percentile_cont(0.5) within group (order by guesses))::text as median_guesses
        from cohort
      having count(*) >= ${MINIMUM_STANDING_RUNS}`,
     [puzzle, runId],
@@ -260,6 +267,7 @@ export async function hotAndColdResultCommunityStats(
       tied: Number(row.tied) > 1,
       topPercent: Math.max(1, Math.ceil((rank / runs) * 100)),
       hints: row.hints,
+      medianGuesses: Number(row.median_guesses),
     },
   };
 }
