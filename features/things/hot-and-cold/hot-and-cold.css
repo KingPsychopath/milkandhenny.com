@@ -986,6 +986,14 @@ main:has(.heat-result-share) .heat-ledger {
 .heat-share-dock-pager svg[data-up] {
   transform: rotate(180deg);
 }
+@media (max-width: 19.99rem) {
+  .heat-share-dock-pager {
+    min-width: 2.6rem;
+  }
+  .heat-share-dock-pager small {
+    display: none;
+  }
+}
 .heat-composer {
   position: fixed;
   z-index: 20;
