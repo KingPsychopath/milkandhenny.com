@@ -160,6 +160,7 @@ function createAssetUpload(input: Parameters<typeof engine.createPitchAssetUploa
 function finaliseAsset(input: Parameters<typeof engine.finalisePitchAsset>[0]) {
   return pitchesOperation("finalise_asset", () => engine.finalisePitchAsset(input), {
     access: "write",
+    timeoutMs: false,
   });
 }
 

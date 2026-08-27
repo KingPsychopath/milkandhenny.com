@@ -12,6 +12,7 @@ interface PreparedBrowserImage {
 interface PrepareBrowserImageOptions {
   archiveOriginal?: boolean;
   derivePreview?: boolean;
+  forceNormalize?: boolean;
   maxDimension?: number;
   requireBrowserDecode?: boolean;
 }
@@ -39,6 +40,7 @@ const HEIF_EXTENSIONS = /\.(heic|heif|hif)$/i;
 const HEIF_MIME_TYPES = new Set(["image/heic", "image/heif", "image/hif"]);
 const SERVER_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|avif|tiff?)$/i;
 const EXCLUDED_IMAGE_EXTENSIONS = /\.(gif|svg)$/i;
+const EXCLUDED_IMAGE_MIME_TYPES = new Set(["image/gif", "image/svg+xml"]);
 const BROWSER_IMAGE_EXTENSIONS = /\.(jpe?g|jfif|png|webp|avif|heic|heif|hif|tiff?|bmp|ico|jxl)$/i;
 const DEFAULT_MAX_DIMENSION = 2_560;
 const MAX_BROWSER_PREP_BYTES = 200 * 1024 * 1024;
@@ -52,7 +54,12 @@ function isHeifLikeFile(file: Pick<File, "name" | "type">): boolean {
 }
 
 function isBrowserImageCandidate(file: Pick<File, "name" | "type">): boolean {
-  if (EXCLUDED_IMAGE_EXTENSIONS.test(file.name)) return false;
+  if (
+    EXCLUDED_IMAGE_EXTENSIONS.test(file.name) ||
+    EXCLUDED_IMAGE_MIME_TYPES.has(file.type.toLowerCase())
+  ) {
+    return false;
+  }
   return (
     isHeifLikeFile(file) ||
     file.type.startsWith("image/") ||
@@ -81,7 +88,11 @@ function getWorker(): Worker {
   return worker;
 }
 
-async function runWorker(file: File, maxDimension: number): Promise<WorkerResponse> {
+async function runWorker(
+  file: File,
+  maxDimension: number,
+  forceNormalize: boolean,
+): Promise<WorkerResponse> {
   const id = nextRequestId++;
   const bytes = await file.arrayBuffer();
   const response = new Promise<WorkerResponse>((resolve, reject) => {
@@ -94,7 +105,7 @@ async function runWorker(file: File, maxDimension: number): Promise<WorkerRespon
       name: file.name,
       type: file.type || "application/octet-stream",
       maxDimension,
-      forceNormalize: !SERVER_IMAGE_EXTENSIONS.test(file.name),
+      forceNormalize: forceNormalize || !SERVER_IMAGE_EXTENSIONS.test(file.name),
     },
     [bytes],
   );
@@ -111,7 +122,7 @@ async function prepareBrowserImage(
 
   const heif = isHeifLikeFile(file);
   if (file.size > MAX_BROWSER_PREP_BYTES) {
-    if (heif && options.requireBrowserDecode) {
+    if ((heif && options.requireBrowserDecode) || options.forceNormalize) {
       throw new Error(`${file.name} is too large to prepare safely in this browser`);
     }
     return { uploadFile: file, uploadName: file.name };
@@ -122,7 +133,7 @@ async function prepareBrowserImage(
     if (!Number.isFinite(maxDimension) || maxDimension < 320 || maxDimension > 8_192) {
       throw new Error("Browser image size limit must be between 320 and 8192 pixels");
     }
-    const response = await runWorker(file, maxDimension);
+    const response = await runWorker(file, maxDimension, options.forceNormalize ?? false);
     if (!response.ok) throw new Error(response.error);
     if (!response.changed) {
       return {
@@ -146,7 +157,7 @@ async function prepareBrowserImage(
       height: response.height,
     };
   } catch (error) {
-    if (heif && options.requireBrowserDecode) {
+    if ((heif && options.requireBrowserDecode) || options.forceNormalize) {
       const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
       throw new Error(`Could not prepare ${file.name} in this browser.${detail}`, { cause: error });
     }

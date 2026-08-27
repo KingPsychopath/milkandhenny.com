@@ -7,7 +7,10 @@ import type {
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 
 import type { GuidedTourStep } from "@/components/GuidedTour";
-import { prepareBrowserImage } from "@/features/media/browser-image-prep.client";
+import {
+  isBrowserImageCandidate,
+  prepareBrowserImage,
+} from "@/features/media/browser-image-prep.client";
 import { useSiteUpdateState } from "@/features/offline/client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -317,10 +320,7 @@ type DropFileKind = "image" | "audio" | "video" | "presentation" | "backup" | "o
 export function dropFileKind(file: File): DropFileKind {
   const name = file.name.toLowerCase();
   if (name.endsWith(".mahdeck")) return "backup";
-  if (
-    ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) ||
-    [".png", ".jpg", ".jpeg", ".webp", ".gif"].some((extension) => name.endsWith(extension))
-  ) {
+  if (isBrowserImageCandidate(file) || file.type === "image/gif" || name.endsWith(".gif")) {
     return "image";
   }
   if (file.type.startsWith("audio/")) return "audio";
@@ -338,7 +338,7 @@ export function dropFileKind(file: File): DropFileKind {
 }
 
 export function normalisedImageFile(file: File): File {
-  if (["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) return file;
+  if (file.type.startsWith("image/")) return file;
   const name = file.name.toLowerCase();
   const type =
     name.endsWith(".jpg") || name.endsWith(".jpeg")
@@ -347,7 +347,10 @@ export function normalisedImageFile(file: File): File {
         ? "image/webp"
         : name.endsWith(".gif")
           ? "image/gif"
-          : "image/png";
+          : name.endsWith(".png")
+            ? "image/png"
+            : "";
+  if (!type) return file;
   return new File([file], file.name, { type, lastModified: file.lastModified });
 }
 
@@ -369,21 +372,34 @@ export function imageSize(file: File): Promise<{ width: number; height: number }
   });
 }
 
-async function prepareCanvasImageUpload(fileId: string, file: BinaryFileData): Promise<File> {
-  const blob = await dataUrlToBlob(file.dataURL);
-  const mimeType = blob.type || file.mimeType;
-  if (DIRECT_IMAGE_MIME_TYPES.has(mimeType) && blob.size <= PITCH_IMAGE_MAX_BYTES) {
-    return new File([blob], `${fileId}.${mimeType.split("/")[1] || "png"}`, { type: mimeType });
+function imageExtension(mimeType: string): string {
+  switch (mimeType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/avif":
+      return "avif";
+    case "image/heic":
+      return "heic";
+    case "image/heif":
+      return "heif";
+    default:
+      return "png";
   }
-  if (mimeType === "image/gif") {
+}
+
+async function preparePitchImageFile(source: File): Promise<File> {
+  const file = normalisedImageFile(source);
+  const mimeType = file.type.toLowerCase();
+  if (mimeType === "image/gif" && file.size > PITCH_IMAGE_MAX_BYTES) {
     throw new Error("An animated image is over 10 MB. Replace it with a smaller GIF.");
   }
-
-  const source = new File([blob], `${fileId}.source`, {
-    type: mimeType || "application/octet-stream",
-  });
-  const prepared = await prepareBrowserImage(source, {
+  const prepared = await prepareBrowserImage(file, {
     derivePreview: true,
+    forceNormalize: mimeType !== "image/gif",
     maxDimension: PITCH_IMAGE_UPLOAD_MAX_DIMENSION,
     requireBrowserDecode: true,
   });
@@ -396,6 +412,16 @@ async function prepareCanvasImageUpload(fileId: string, file: BinaryFileData): P
     );
   }
   return prepared.uploadFile;
+}
+
+async function prepareCanvasImageUpload(fileId: string, file: BinaryFileData): Promise<File> {
+  const blob = await dataUrlToBlob(file.dataURL);
+  const mimeType = blob.type || file.mimeType;
+  return preparePitchImageFile(
+    new File([blob], `${fileId}.${imageExtension(mimeType)}`, {
+      type: mimeType || "application/octet-stream",
+    }),
+  );
 }
 
 export type PitchEditorSession = { kind: "owned"; deckId: string } | { kind: "demo" };
@@ -1396,12 +1422,9 @@ export function usePitchEditorController({
 
   async function placeImage(file: File) {
     if (!currentSlide) return;
-    if (file.size > PITCH_IMAGE_MAX_BYTES) {
-      setMessage("That image is too large. Choose an image under 10 MB.");
-      return;
-    }
     try {
-      const imageFileSource = normalisedImageFile(file);
+      setMessage(`Making ${file.name} slide-ready…`);
+      const imageFileSource = await preparePitchImageFile(file);
       const [size, dataURL] = await Promise.all([
         imageSize(imageFileSource),
         blobToDataUrl(imageFileSource),

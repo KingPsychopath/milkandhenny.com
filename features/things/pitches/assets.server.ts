@@ -1,4 +1,8 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import sharp from "sharp";
 
 import {
@@ -41,6 +45,8 @@ import { getImageUrl } from "@/features/media/storage";
 
 const PITCH_THUMBNAIL_WIDTHS = [480, 960] as const;
 const PUBLIC_IMAGE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const MAX_PITCH_IMAGE_PIXELS = 100_000_000;
+const execFileAsync = promisify(execFile);
 
 type PitchThumbnailMetadata = Pick<
   ResponsiveImageData,
@@ -185,6 +191,83 @@ function maxBytes(kind: PitchAssetKind): number {
   }
 }
 
+async function validatePitchImage(row: PitchAssetRow): Promise<void> {
+  const source = await downloadBuffer(row.object_key, { scope: "private" });
+  const metadata = await sharp(source, {
+    animated: row.mime_type === "image/gif",
+    failOn: "error",
+    limitInputPixels: MAX_PITCH_IMAGE_PIXELS,
+  }).metadata();
+  const formatsByMimeType: Readonly<Record<string, string>> = {
+    "image/gif": "gif",
+    "image/jpeg": "jpeg",
+    "image/png": "png",
+    "image/webp": "webp",
+  };
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const frames = metadata.pages ?? 1;
+  if (
+    metadata.format !== formatsByMimeType[row.mime_type] ||
+    width < 1 ||
+    height < 1 ||
+    frames < 1 ||
+    width * height * frames > MAX_PITCH_IMAGE_PIXELS
+  ) {
+    throw new Error("Pitch image validation failed");
+  }
+}
+
+async function validatePitchTimedMedia(row: PitchAssetRow): Promise<void> {
+  const source = await downloadBuffer(row.object_key, { scope: "private" });
+  const directory = await mkdtemp(path.join(tmpdir(), "pitch-media-"));
+  const sourcePath = path.join(directory, row.kind === "video" ? "source-video" : "source-audio");
+  try {
+    await writeFile(sourcePath, source);
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration:stream=codec_type",
+        "-of",
+        "json",
+        sourcePath,
+      ],
+      { encoding: "utf8", maxBuffer: 512 * 1024, timeout: 15_000 },
+    );
+    const probe = JSON.parse(stdout) as unknown;
+    if (!probe || typeof probe !== "object" || Array.isArray(probe)) {
+      throw new Error("Pitch media probe returned invalid data");
+    }
+    const result = probe as {
+      format?: { duration?: unknown };
+      streams?: Array<{ codec_type?: unknown }>;
+    };
+    const duration = Number(result.format?.duration);
+    const requiredStream = row.kind;
+    if (
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      duration > 120.5 ||
+      !result.streams?.some((stream) => stream.codec_type === requiredStream)
+    ) {
+      throw new Error("Pitch media validation failed");
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function validatePitchAssetObject(row: PitchAssetRow): Promise<void> {
+  if (row.kind === "image" || row.kind === "thumbnail") {
+    await validatePitchImage(row);
+    return;
+  }
+  await validatePitchTimedMedia(row);
+}
+
 function safeFileName(value: string): string {
   const extension = path
     .extname(value)
@@ -297,6 +380,14 @@ export async function finalisePitchAsset(input: {
     }
     await deletePitchAssetRecord(pending.id);
     return { ok: false, status: 409, error: "The uploaded file did not match its reservation" };
+  }
+
+  try {
+    await validatePitchAssetObject(pending);
+  } catch {
+    await deleteObject(pending.object_key, { scope: "private" }).catch(() => undefined);
+    await deletePitchAssetRecord(pending.id);
+    return { ok: false, status: 415, error: "That media file could not be verified" };
   }
 
   const ready = await markPitchAssetReady(pending.id);
