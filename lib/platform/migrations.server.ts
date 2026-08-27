@@ -3331,6 +3331,19 @@ const MIGRATIONS: Migration[] = [
         ('00000000-0000-4000-8000-000000000205',2,'revealed',27,3,42,15,6,4,2,true);
     `,
   },
+  {
+    id: "0067_reset_hot_and_cold_daily_history",
+    sql: `
+      delete from person_game_sessions
+       where game = 'hot-and-cold'
+         and mode = 'daily'
+         and external_ref ~ '^[0-9]+$'
+         and external_ref::integer > 3;
+
+      delete from hot_and_cold_daily_results
+       where puzzle > 3;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
