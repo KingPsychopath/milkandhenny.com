@@ -113,6 +113,10 @@ export function listPitchCredentials(): Promise<PitchOwnerCredential[]> {
   return transact(CREDENTIALS, "readonly", (store) => store.getAll());
 }
 
+export function forgetPitchCredential(deckId: string): Promise<undefined> {
+  return transact(CREDENTIALS, "readwrite", (store) => store.delete(deckId));
+}
+
 const draftWriteQueues = new Map<string, Promise<IDBValidKey>>();
 
 export function saveLocalPitchDraft(draft: LocalPitchDraft): Promise<IDBValidKey> {

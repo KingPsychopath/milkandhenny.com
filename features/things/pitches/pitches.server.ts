@@ -27,6 +27,7 @@ import {
   listPitchBackupsForAdmin,
   listPitchEditions,
   listPublicPitchDecks,
+  listPitchDecksForPerson,
   markPitchDeckDeletingForAdmin,
   markExpiredPitchDecksDeleting,
   publishPitchDeck,
@@ -38,6 +39,7 @@ import {
   readPitchEdition,
   recordPitchAudit,
   removePitchAccessTokens,
+  issuePitchDeviceAccessForPerson,
   restorePitchBackupForAdmin,
   restorePitchBackupForOwner,
   restorePitchDeckFromTrash,
@@ -83,10 +85,11 @@ export async function createPitch(input: {
   ownerName: string;
   ownerEmail: string;
   ownerToken: string;
+  ownerPersonId?: string;
   title: string;
   document: PitchDocument;
   origin: string;
-}): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; duplicate: boolean }>> {
+}): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; duplicate: boolean; emailQueued: boolean }>> {
   const created = await createPitchDeck(input);
   if (!created.ok) return created;
   const delivery = await sendPitchWelcomeEmail({
@@ -115,7 +118,22 @@ export async function createPitch(input: {
     value: {
       deck: await ownerView(created.value.deck),
       duplicate: created.value.duplicate,
+      emailQueued: delivery.ok,
     },
+  };
+}
+
+export { listPitchDecksForPerson };
+
+export async function openPitchForPerson(
+  deckId: string,
+  personId: string,
+): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; token: string }>> {
+  const opened = await issuePitchDeviceAccessForPerson(deckId, personId);
+  if (!opened.ok) return opened;
+  return {
+    ok: true,
+    value: { deck: await ownerView(opened.value.deck), token: opened.value.token },
   };
 }
 

@@ -6,7 +6,7 @@ import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
-import type { PitchOperationalStatus } from "../types";
+import type { PitchCreatorIdentity, PitchOperationalStatus } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 
 function randomId(prefix = ""): string {
@@ -16,21 +16,30 @@ function randomId(prefix = ""): string {
 export function NewPitch({
   maximumSlides,
   operationalStatus,
+  creatorIdentity,
+  emailDestination,
 }: {
   maximumSlides: number;
   operationalStatus: PitchOperationalStatus;
+  creatorIdentity: PitchCreatorIdentity | null;
+  emailDestination: "inbox" | "mailpit" | "unavailable";
 }) {
   const navigate = useNavigate();
   const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [title, setTitle] = useState("");
-  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const [state, setState] = useState<"idle" | "saving" | "error" | "email-warning">("idle");
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const createRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
+  const [createdDeckId, setCreatedDeckId] = useState<string>();
 
   useEffect(() => setHydrated(true), []);
 
   async function createPitch() {
+    if (createdDeckId) {
+      await navigate({ to: "/things/pitches/$deckId/edit", params: { deckId: createdDeckId } });
+      return;
+    }
     if (state === "saving") return;
     if (!operationalStatus.canWrite) {
       setState("error");
@@ -42,12 +51,14 @@ export function NewPitch({
       setError("Add a pitch title before opening the studio.");
       return;
     }
-    if (!name.trim()) {
+    const ownerName = creatorIdentity?.name ?? name;
+    const ownerEmail = creatorIdentity?.email ?? email;
+    if (!ownerName.trim()) {
       setState("error");
       setError("Add your name so we know who owns this pitch.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim())) {
       setState("error");
       setError("Enter a valid recovery email so you can get back to this pitch.");
       return;
@@ -60,8 +71,8 @@ export function NewPitch({
       const result = await createPitchFn({
         data: {
           createRequestId,
-          ownerName: name,
-          ownerEmail: email,
+          ownerName,
+          ownerEmail,
           ownerToken,
           title,
           document,
@@ -72,7 +83,7 @@ export function NewPitch({
         setError(result.error);
         return;
       }
-      remember({ name, email });
+      remember({ name: ownerName, email: ownerEmail });
       await Promise.all([
         rememberPitchCredential({
           deckId: result.value.deck.id,
@@ -92,6 +103,14 @@ export function NewPitch({
           nextSequence: 1,
         }),
       ]);
+      if (!result.value.emailQueued) {
+        setCreatedDeckId(result.value.deck.id);
+        setState("email-warning");
+        setError(
+          "Your pitch is safe here and attached to your account, but the recovery email could not be queued.",
+        );
+        return;
+      }
       await navigate({
         to: "/things/pitches/$deckId/edit",
         params: { deckId: result.value.deck.id },
@@ -118,9 +137,26 @@ export function NewPitch({
         What are you selling us?
       </h1>
       <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
-        You get up to {maximumSlides} slides. This browser remembers the private editing key; your
-        email is only there to recover it.
+        You get up to {maximumSlides} slides. Your account owns the pitch when you are signed in;
+        this browser also keeps an offline safety copy and a private editing key.
       </p>
+
+      {emailDestination === "mailpit" ? (
+        <p
+          className="mt-6 border-y theme-border py-3 font-mono text-xs leading-relaxed"
+          role="status"
+        >
+          Local email is captured by Mailpit at 127.0.0.1:8025. It will not reach your real inbox.
+        </p>
+      ) : emailDestination === "unavailable" ? (
+        <p
+          className="mt-6 border-y theme-border py-3 font-mono text-xs leading-relaxed"
+          role="status"
+        >
+          Recovery email is currently unavailable. Signed-in pitches will still stay with your
+          account.
+        </p>
+      ) : null}
 
       {!operationalStatus.canWrite ? (
         <p
@@ -157,55 +193,69 @@ export function NewPitch({
             autoFocus
           />
         </label>
-        <div className="grid gap-8 sm:grid-cols-2">
-          <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
-            your name
-            <input
-              name="name"
-              required
-              disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
-              maxLength={120}
-              autoComplete="name"
-              value={name}
-              aria-invalid={state === "error" && !name.trim()}
-              aria-describedby="new-pitch-error"
-              onChange={(event) => {
-                setName(event.target.value);
-                setError("");
-                setState("idle");
-              }}
-              className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
-            />
-          </label>
-          <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
-            recovery email
-            <input
-              name="email"
-              required
-              disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
-              type="email"
-              autoComplete="email"
-              value={email}
-              aria-invalid={state === "error" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
-              aria-describedby="new-pitch-error"
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setError("");
-                setState("idle");
-              }}
-              className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
-            />
-          </label>
-        </div>
-        <BrowserProfileHint />
+        {creatorIdentity ? (
+          <div className="border-y theme-border py-4">
+            <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+              saving to your account
+            </p>
+            <p className="mt-2 font-serif text-xl text-foreground">{creatorIdentity.name}</p>
+            <p className="mt-1 font-mono text-xs theme-muted">{creatorIdentity.email}</p>
+          </div>
+        ) : (
+          <div className="grid gap-8 sm:grid-cols-2">
+            <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
+              your name
+              <input
+                name="name"
+                required
+                disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
+                maxLength={120}
+                autoComplete="name"
+                value={name}
+                aria-invalid={state === "error" && !name.trim()}
+                aria-describedby="new-pitch-error"
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setError("");
+                  setState("idle");
+                }}
+                className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
+              />
+            </label>
+            <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
+              recovery email
+              <input
+                name="email"
+                required
+                disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
+                type="email"
+                autoComplete="email"
+                value={email}
+                aria-invalid={state === "error" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
+                aria-describedby="new-pitch-error"
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setError("");
+                  setState("idle");
+                }}
+                className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
+              />
+            </label>
+          </div>
+        )}
+        {!creatorIdentity ? <BrowserProfileHint /> : null}
         <button
           type="submit"
           disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
           className="min-h-13 w-full bg-foreground px-7 font-mono text-sm text-background hover:opacity-80 disabled:opacity-40"
         >
-          {state === "saving" ? "opening the studio…" : "open the studio →"}
+          {state === "saving"
+            ? "opening the studio…"
+            : createdDeckId
+              ? "continue to the studio →"
+              : "open the studio →"}
         </button>
-        {state === "error" ? (
+        {state === "error" || state === "email-warning" ? (
           <p
             id="new-pitch-error"
             className="font-mono text-sm text-red-700 dark:text-red-300"

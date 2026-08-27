@@ -1,10 +1,15 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
+import { connectPitchDecksToVerifiedPerson } from "@/features/things/pitches/identity.server";
 import {
   createPitchDeck,
   createPitchOwnerToken,
+  hashPitchValue,
   insertPitchAsset,
+  issuePitchDeviceAccessForPerson,
+  listPitchDecksForPerson,
+  normalisePitchEmail,
   listPitchBackupsForOwner,
   listPitchEditions,
   listPublicPitchDecks,
@@ -25,7 +30,7 @@ import {
   type PitchDocument,
   type PitchCommandOperation,
 } from "@/features/things/pitches/types";
-import { query } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres.server";
 import { readPitchDocumentSchemaInventory, runMigrations } from "@/lib/platform/migrations.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
@@ -412,5 +417,59 @@ describeWithDatabase("pitch storage (postgres)", () => {
           (item) => item.version === 3 && item.reason === "restore" && item.contentCount === 0,
         ),
     ).toBe(true);
+  });
+
+  it("links email-hash pitches to a verified person and opens them per device", async () => {
+    const email = "linked@example.com";
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_person_link_1",
+      ownerName: "Linked Alice",
+      ownerEmail: email,
+      ownerToken,
+      title: "Account pitch",
+      document: documentWith([]),
+    });
+    if (!created.ok) throw new Error(created.error);
+    const deckId = created.value.deck.id;
+
+    const people = await query<{ id: string }>(
+      `insert into event_people (canonical_name) values ('Linked Alice') returning id::text`,
+    );
+    const personId = people[0]!.id;
+    const strangers = await query<{ id: string }>(
+      `insert into event_people (canonical_name) values ('Someone Else') returning id::text`,
+    );
+    const strangerId = strangers[0]!.id;
+    const emailHash = hashPitchValue(normalisePitchEmail(email));
+    await query(
+      `insert into event_person_identifiers (person_id,kind,value_hash,verified_at,email_address)
+       values ($1,'email',$2,now(),$3)`,
+      [personId, emailHash, email],
+    );
+
+    const linked = await transaction((client) =>
+      connectPitchDecksToVerifiedPerson(client, { personId, emailHash }),
+    );
+    expect(linked).toBe(1);
+
+    const owned = await listPitchDecksForPerson(personId);
+    expect(owned.map((pitch) => pitch.id)).toEqual([deckId]);
+    expect(await listPitchDecksForPerson(strangerId)).toEqual([]);
+
+    const denied = await issuePitchDeviceAccessForPerson(deckId, strangerId);
+    expect(denied.ok).toBe(false);
+
+    const opened = await issuePitchDeviceAccessForPerson(deckId, personId);
+    if (!opened.ok) throw new Error(opened.error);
+    const readBack = await readOwnedPitchDeck(deckId, opened.value.token);
+    expect(readBack.ok && readBack.value.id).toBe(deckId);
+
+    // Re-linking is idempotent and never steals a deck already owned by a person.
+    const relinked = await transaction((client) =>
+      connectPitchDecksToVerifiedPerson(client, { personId: strangerId, emailHash }),
+    );
+    expect(relinked).toBe(0);
+    expect((await listPitchDecksForPerson(personId)).map((pitch) => pitch.id)).toEqual([deckId]);
   });
 });

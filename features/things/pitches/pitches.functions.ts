@@ -3,11 +3,14 @@ import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
+import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { describeEmailCapability } from "@/lib/platform/email.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server";
 import { getPitchOperationalStatus } from "./operational.server";
 import { runPitchesResult } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
+import { verifiedPitchCreatorIdentity } from "./identity.server";
 import type {
   PitchCommandKind,
   PitchCommandOperation,
@@ -51,15 +54,47 @@ function validEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
+async function pitchAccountContext() {
+  const session = await getAttendeeSession();
+  if (!session?.personId || !session.verifiedEmailHash) {
+    return { creatorIdentity: null, personalPitches: [] };
+  }
+  const [identity, personalPitches] = await Promise.all([
+    verifiedPitchCreatorIdentity({
+      personId: session.personId,
+      emailHash: session.verifiedEmailHash,
+    }),
+    runPitchesResult(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.listForPerson(session.personId!);
+      }),
+    ),
+  ]);
+  return {
+    creatorIdentity: identity ? { name: identity.name, email: identity.email } : null,
+    personalPitches: personalPitches.ok ? personalPitches.value : [],
+  };
+}
+
+function pitchEmailDestination(): "inbox" | "mailpit" | "unavailable" {
+  const capability = describeEmailCapability();
+  if (!capability.senders.studio) return "unavailable";
+  return capability.provider === "mailpit" ? "mailpit" : "inbox";
+}
+
 export const listPublishedPitchesFn = createServerFn({ method: "GET" })
   .validator((data?: { search?: string }) => data)
   .handler(async ({ data }) => {
+    const accountContext = await pitchAccountContext();
     const operationalStatus = await getPitchOperationalStatus();
     if (!operationalStatus.canRead) {
       return {
         wall: unavailableWall(operationalStatus.message),
         operationalStatus,
         ...pitchEditorConfig(),
+        ...accountContext,
+        emailDestination: pitchEmailDestination(),
       };
     }
     const result = await runPitchesResult(
@@ -87,6 +122,8 @@ export const listPublishedPitchesFn = createServerFn({ method: "GET" })
       wall,
       operationalStatus,
       ...pitchEditorConfig(),
+      ...accountContext,
+      emailDestination: pitchEmailDestination(),
     };
   });
 
@@ -152,16 +189,49 @@ export const createPitchFn = createServerFn({ method: "POST" })
     if (!document.ok) {
       return invalid(document.error);
     }
+    const session = await getAttendeeSession();
+    const identity =
+      session?.personId && session.verifiedEmailHash
+        ? await verifiedPitchCreatorIdentity({
+            personId: session.personId,
+            emailHash: session.verifiedEmailHash,
+          })
+        : null;
+    if (session?.personId && !identity) {
+      return invalid("Your signed-in email could not be verified. Sign in again and retry.");
+    }
+    if (identity && identity.email.trim().toLowerCase() !== data.ownerEmail.trim().toLowerCase()) {
+      return invalid(
+        "Use a verified email from your account, or add that address under You first.",
+      );
+    }
     return runOperation(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
         return yield* pitches.create({
           ...data,
           ownerName,
+          ownerPersonId: identity?.personId,
           title,
           document: document.document,
           origin: getBaseUrlForRequest(getRequest()),
         });
+      }),
+    );
+  });
+
+export const openAccountPitchFn = createServerFn({ method: "POST" })
+  .validator((data: { deckId: string }) => data)
+  .handler(async ({ data }) => {
+    if (!isPitchDeckId(data.deckId)) return invalid();
+    const session = await getAttendeeSession();
+    if (!session?.personId) {
+      return { ok: false as const, status: 401, error: "Sign in to open this pitch" };
+    }
+    return runOperation(
+      Effect.gen(function* () {
+        const pitches = yield* PitchesService;
+        return yield* pitches.openForPerson(data.deckId, session.personId!);
       }),
     );
   });

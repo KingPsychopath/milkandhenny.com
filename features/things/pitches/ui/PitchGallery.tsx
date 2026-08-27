@@ -3,30 +3,62 @@ import { useEffect, useState } from "react";
 
 import { AppImage } from "@/components/AppImage";
 import { imagePlaceholderStyle } from "@/features/media/image";
-import { listPitchCredentials } from "../browser-store.client";
-import { listPublishedPitchesFn } from "../pitches.functions";
-import type { PitchOperationalStatus, PitchOwnerCredential, PitchWallLoad } from "../types";
+import {
+  forgetPitchCredential,
+  listPitchCredentials,
+  readLocalPitchDraft,
+} from "../browser-store.client";
+import { listPublishedPitchesFn, readOwnedPitchFn } from "../pitches.functions";
+import type {
+  PersonalPitchSummary,
+  PitchOperationalStatus,
+  PitchOwnerCredential,
+  PitchWallLoad,
+} from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
 
 export function PitchGallery({
   initialWall,
   operationalStatus,
+  personalPitches,
 }: {
   initialWall: PitchWallLoad;
   operationalStatus: PitchOperationalStatus;
+  personalPitches: PersonalPitchSummary[];
 }) {
   const [query, setQuery] = useState("");
   const [pitches, setPitches] = useState(initialWall.pitches);
   const [loadError, setLoadError] = useState(initialWall.message ?? "");
   const [refreshVersion, setRefreshVersion] = useState(0);
-  const [mine, setMine] = useState<PitchOwnerCredential[]>([]);
+  const [mine, setMine] = useState<Array<PitchOwnerCredential & { localOnly: boolean }>>([]);
 
   useEffect(() => {
     void listPitchCredentials()
-      .then((credentials) =>
-        setMine(credentials.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))),
-      )
+      .then(async (credentials) => {
+        const checked = await Promise.all(
+          credentials.map(async (credential) => {
+            const [remote, local] = await Promise.all([
+              readOwnedPitchFn({
+                data: { deckId: credential.deckId, ownerToken: credential.token },
+              }).catch(() => null),
+              readLocalPitchDraft(credential.deckId).catch(() => undefined),
+            ]);
+            if (!remote?.ok && !local) {
+              await forgetPitchCredential(credential.deckId).catch(() => undefined);
+              return null;
+            }
+            return { ...credential, localOnly: !remote?.ok };
+          }),
+        );
+        setMine(
+          checked
+            .filter((credential): credential is PitchOwnerCredential & { localOnly: boolean } =>
+              Boolean(credential),
+            )
+            .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+        );
+      })
       .catch(() => undefined);
   }, []);
 
@@ -97,6 +129,26 @@ export function PitchGallery({
       ) : null}
 
       <section className="mx-auto max-w-5xl px-6 pb-24">
+        {personalPitches.length > 0 ? (
+          <div className="mb-8 border-y theme-border py-7">
+            <p className="font-mono text-micro uppercase tracking-[0.16em] theme-muted">
+              saved to your account
+            </p>
+            <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
+              {personalPitches.map((deck) => (
+                <Link
+                  key={deck.id}
+                  to="/things/pitches/$deckId/edit"
+                  params={{ deckId: deck.id }}
+                  className="font-serif text-xl text-foreground underline decoration-border underline-offset-4 hover:opacity-60"
+                >
+                  {deck.title}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {mine.length > 0 ? (
           <div className="mb-14 border-y theme-border py-7">
             <p className="font-mono text-micro uppercase tracking-[0.16em] theme-muted">
@@ -104,16 +156,26 @@ export function PitchGallery({
             </p>
             <div className="mt-4 flex flex-wrap gap-x-7 gap-y-3">
               {mine.map((deck) => (
-                <Link
-                  key={deck.deckId}
-                  to="/things/pitches/$deckId/edit"
-                  params={{ deckId: deck.deckId }}
-                  className="font-serif text-xl text-foreground underline decoration-border underline-offset-4 hover:opacity-60"
-                >
-                  {deck.title}
-                </Link>
+                <div key={deck.deckId}>
+                  <Link
+                    to="/things/pitches/$deckId/edit"
+                    params={{ deckId: deck.deckId }}
+                    className="font-serif text-xl text-foreground underline decoration-border underline-offset-4 hover:opacity-60"
+                  >
+                    {deck.title}
+                  </Link>
+                  <span className="ml-2 font-mono text-micro theme-muted">
+                    {deck.localOnly ? "local only" : "offline copy"}
+                  </span>
+                </div>
               ))}
             </div>
+            {mine.some((deck) => deck.localOnly) ? (
+              <p className="mt-5 max-w-xl font-mono text-micro leading-relaxed theme-muted">
+                “Local only” means the server copy no longer exists. Open it here to export a
+                .mahdeck backup, then import that backup into a new account-owned pitch.
+              </p>
+            ) : null}
           </div>
         ) : null}
 

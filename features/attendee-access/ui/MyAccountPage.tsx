@@ -331,6 +331,44 @@ export function MyAccountPage({
         )}
       </section>
 
+      <section className="mt-10 border-t theme-border pt-6" aria-labelledby="my-pitches-heading">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 id="my-pitches-heading" className="font-serif text-2xl">
+              Pitches
+            </h2>
+            <p className="mt-2 max-w-md font-mono text-micro leading-relaxed theme-muted">
+              Durable pitches belong to You. Each browser also keeps an offline safety copy.
+            </p>
+          </div>
+          <Link to="/things/pitches/new" className="mh-action mh-action--quiet shrink-0">
+            new pitch →
+          </Link>
+        </div>
+        {account.pitches.length > 0 ? (
+          <ul className="mt-4 divide-y border-y theme-border">
+            {account.pitches.map((pitch) => (
+              <li key={pitch.id}>
+                <Link
+                  to="/things/pitches/$deckId/edit"
+                  params={{ deckId: pitch.id }}
+                  className="flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70"
+                >
+                  <span className="font-serif text-xl">{pitch.title}</span>
+                  <span className="shrink-0 font-mono text-micro theme-muted">
+                    {new Date(pitch.updatedAt).toLocaleDateString()} →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-4 font-mono text-xs theme-muted">
+            No account-owned pitches yet. Device-only copies are shown on the pitch wall.
+          </p>
+        )}
+      </section>
+
       {account.gameHistory.length > 0 ? (
         <section
           className="mt-10 border-t theme-border pt-6"

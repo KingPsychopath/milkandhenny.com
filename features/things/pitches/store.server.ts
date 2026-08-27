@@ -24,6 +24,7 @@ import type {
   PitchCommandOperation,
   PitchDocument,
   PitchEdition,
+  PersonalPitchSummary,
   PitchVersionHistoryItem,
   PitchVersionPreview,
   PitchVersionReason,
@@ -37,6 +38,7 @@ interface PitchDeckRow extends QueryResultRow {
   owner_name: string;
   owner_email: string;
   owner_email_hash: string;
+  owner_person_id: string | null;
   title: string;
   lifecycle: PitchDeckLifecycle;
   draft_document: unknown;
@@ -75,6 +77,7 @@ export interface StoredPitchDeck {
   id: string;
   ownerName: string;
   ownerEmail: string;
+  ownerPersonId?: string;
   title: string;
   lifecycle: PitchDeckLifecycle;
   draftDocument: PitchDocument;
@@ -222,6 +225,7 @@ function toStoredDeck(row: PitchDeckRow): StoredPitchDeck {
     id: row.id,
     ownerName: row.owner_name,
     ownerEmail: row.owner_email,
+    ownerPersonId: row.owner_person_id ?? undefined,
     title: row.title,
     lifecycle: row.lifecycle,
     draftDocument: parseStoredDocument(row.draft_document),
@@ -312,6 +316,7 @@ export async function createPitchDeck(input: {
   ownerName: string;
   ownerEmail: string;
   ownerToken: string;
+  ownerPersonId?: string;
   title: string;
   document: PitchDocument;
 }): Promise<PitchStoreResult<{ deck: StoredPitchDeck; duplicate: boolean }>> {
@@ -350,9 +355,9 @@ export async function createPitchDeck(input: {
     const deckId = createPitchDeckId();
     const inserted = await client.query<PitchDeckRow>(
       `insert into pitch_decks (
-         id, create_request_id, owner_name, owner_email, owner_email_hash,
+         id, create_request_id, owner_name, owner_email, owner_email_hash, owner_person_id,
          title, draft_document, draft_expires_at
-       ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
        returning *`,
       [
         deckId,
@@ -360,6 +365,7 @@ export async function createPitchDeck(input: {
         input.ownerName,
         email,
         emailHash,
+        input.ownerPersonId ?? null,
         input.title,
         JSON.stringify(input.document),
         getPitchDraftExpiresAt(),
@@ -380,6 +386,41 @@ export async function createPitchDeck(input: {
       ok: true,
       value: { deck: toStoredDeck(inserted.rows[0]), duplicate: false },
     };
+  });
+}
+
+export async function listPitchDecksForPerson(personId: string): Promise<PersonalPitchSummary[]> {
+  const rows = await query<Pick<PitchDeckRow, "id" | "title" | "owner_name" | "updated_at">>(
+    `select id,title,owner_name,updated_at from pitch_decks
+      where owner_person_id = $1 and lifecycle = 'active'
+      order by updated_at desc`,
+    [personId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    ownerName: row.owner_name,
+    updatedAt: iso(row.updated_at),
+  }));
+}
+
+export async function issuePitchDeviceAccessForPerson(
+  deckId: string,
+  personId: string,
+): Promise<PitchStoreResult<{ deck: StoredPitchDeck; token: string }>> {
+  return transaction(async (client) => {
+    const deck = await clientDeck(client, deckId, true);
+    if (!deck || deck.lifecycle !== "active" || deck.owner_person_id !== personId) {
+      return { ok: false, status: 404, error: "Pitch not found" };
+    }
+    const token = createPitchOwnerToken();
+    await client.query(
+      `insert into pitch_access_tokens (id,deck_id,token_hash,label)
+       values ($1,$2,$3,'signed-in device')`,
+      [randomUUID(), deckId, hashPitchValue(token)],
+    );
+    await insertAudit(client, { deckId, action: "access.issued", actor: "account" });
+    return { ok: true, value: { deck: toStoredDeck(deck), token } };
   });
 }
 

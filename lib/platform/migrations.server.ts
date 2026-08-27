@@ -3332,6 +3332,25 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
+    id: "0066_pitch_person_ownership",
+    sql: `
+      alter table pitch_decks
+        add column owner_person_id uuid references event_people (id) on delete set null;
+
+      update pitch_decks deck
+         set owner_person_id = identifier.person_id
+        from event_person_identifiers identifier
+       where identifier.kind = 'email'
+         and identifier.value_hash = deck.owner_email_hash
+         and identifier.verified_at is not null
+         and identifier.historical_until is null;
+
+      create index pitch_decks_owner_person_idx
+        on pitch_decks (owner_person_id, updated_at desc)
+        where owner_person_id is not null and lifecycle = 'active';
+    `,
+  },
+  {
     id: "0067_reset_hot_and_cold_daily_history",
     sql: `
       delete from person_game_sessions

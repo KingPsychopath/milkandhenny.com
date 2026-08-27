@@ -22,7 +22,11 @@ export const Route = createFileRoute("/things/pitches")({
 function PitchGalleryRoute() {
   const data = Route.useLoaderData();
   return data.operationalStatus.canRead ? (
-    <PitchGallery initialWall={data.wall} operationalStatus={data.operationalStatus} />
+    <PitchGallery
+      initialWall={data.wall}
+      operationalStatus={data.operationalStatus}
+      personalPitches={data.personalPitches}
+    />
   ) : (
     <PitchOperationalNotice status={data.operationalStatus} />
   );

@@ -34,6 +34,7 @@ import {
   createPitchAssetUploadFn,
   finalisePitchAssetFn,
   listPitchHistoryFn,
+  openAccountPitchFn,
   publishPitchFn,
   readPitchOperationalStatusFn,
   readOwnedPitchFn,
@@ -668,7 +669,7 @@ export function usePitchEditorController({
     if (isDemo) return;
     let cancelled = false;
     void (async () => {
-      const remembered = await rememberTokenFromHash(deckId).catch(() => undefined);
+      let remembered = await rememberTokenFromHash(deckId).catch(() => undefined);
       const local = await readLocalPitchDraft(deckId).catch(() => undefined);
       if (cancelled) return;
       if (remembered) setCredential(remembered);
@@ -687,8 +688,21 @@ export function usePitchEditorController({
         }
       }
       if (!remembered) {
-        if (!local) setPhase("missing");
-        return;
+        const accountAccess = await openAccountPitchFn({ data: { deckId } }).catch(() => null);
+        if (accountAccess?.ok) {
+          remembered = {
+            deckId,
+            token: accountAccess.value.token,
+            title: accountAccess.value.deck.title,
+            ownerName: accountAccess.value.deck.ownerName,
+            updatedAt: accountAccess.value.deck.updatedAt,
+          };
+          await rememberPitchCredential(remembered).catch(() => undefined);
+          if (!cancelled) setCredential(remembered);
+        } else {
+          if (!local) setPhase("missing");
+          return;
+        }
       }
       const loadedRevision = revisionRef.current;
       try {

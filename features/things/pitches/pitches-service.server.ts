@@ -12,6 +12,8 @@ export class PitchesService extends Context.Service<
   {
     readonly create: typeof create;
     readonly readOwned: typeof readOwned;
+    readonly listForPerson: typeof listForPerson;
+    readonly openForPerson: typeof openForPerson;
     readonly listHistory: typeof listHistory;
     readonly readVersion: typeof readVersion;
     readonly restoreVersion: typeof restoreVersion;
@@ -48,6 +50,8 @@ export class PitchesService extends Context.Service<
   static readonly layer = Layer.succeed(this, {
     create,
     readOwned,
+    listForPerson,
+    openForPerson,
     listHistory,
     readVersion,
     restoreVersion,
@@ -91,6 +95,18 @@ function create(input: Parameters<typeof engine.createPitch>[0]) {
 
 function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
   return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input), { access: "read" });
+}
+
+function listForPerson(personId: string) {
+  return pitchesOperation("list_for_person", () => engine.listPitchDecksForPerson(personId), {
+    access: "read",
+  });
+}
+
+function openForPerson(...input: Parameters<typeof engine.openPitchForPerson>) {
+  return pitchesOperation("open_for_person", () => engine.openPitchForPerson(...input), {
+    access: "read",
+  });
 }
 
 function listHistory(...input: Parameters<typeof engine.listPitchHistory>) {

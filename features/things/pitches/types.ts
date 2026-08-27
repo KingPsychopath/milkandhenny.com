@@ -338,6 +338,18 @@ export interface PitchOwnerCredential {
   updatedAt: string;
 }
 
+export interface PersonalPitchSummary {
+  id: string;
+  title: string;
+  ownerName: string;
+  updatedAt: string;
+}
+
+export interface PitchCreatorIdentity {
+  name: string;
+  email: string;
+}
+
 export type PitchSyncResult =
   | {
       ok: true;

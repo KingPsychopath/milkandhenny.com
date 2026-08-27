@@ -22,7 +22,12 @@ export const Route = createFileRoute("/things/pitches_/new")({
 function NewPitchRoute() {
   const data = Route.useLoaderData();
   return data.operationalStatus.canRead ? (
-    <NewPitch maximumSlides={data.maximumSlides} operationalStatus={data.operationalStatus} />
+    <NewPitch
+      maximumSlides={data.maximumSlides}
+      operationalStatus={data.operationalStatus}
+      creatorIdentity={data.creatorIdentity}
+      emailDestination={data.emailDestination}
+    />
   ) : (
     <PitchOperationalNotice status={data.operationalStatus} />
   );
