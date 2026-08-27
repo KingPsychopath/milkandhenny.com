@@ -51,7 +51,6 @@ export function PitchEditor({
     setSelectedMediaClipId,
     phase,
     syncState,
-    setSyncState,
     message,
     setMessage,
     undoEntry,
@@ -93,7 +92,6 @@ export function PitchEditor({
     localSaveFailed,
     setLocalSaveWake,
     setSyncWake,
-    setUploadWake,
     updateState,
     apiRef,
     historyPreviewRequest,
@@ -109,6 +107,11 @@ export function PitchEditor({
     assets,
     mediaClock,
     hasUnsecuredMedia,
+    unsecuredImageFileIds,
+    missingLocalImageFileIds,
+    activeImageUploadId,
+    imageUploadFailure,
+    retryImageUploads,
     onCanvasChange,
     addSlide,
     rememberUndo,
@@ -268,11 +271,15 @@ export function PitchEditor({
         >
           {isDemo
             ? "create to publish"
-            : hasUnsecuredMedia
-              ? "securing images…"
-              : deck?.publishedAt
-                ? "publish new edition"
-                : "publish + seal"}
+            : missingLocalImageFileIds.length > 0
+              ? "images need recovery"
+              : imageUploadFailure
+                ? "image save needs retry"
+                : hasUnsecuredMedia
+                  ? `securing ${unsecuredImageFileIds.length} image${unsecuredImageFileIds.length === 1 ? "" : "s"}…`
+                  : deck?.publishedAt
+                    ? "publish new edition"
+                    : "publish + seal"}
         </button>
       </header>
 
@@ -310,6 +317,43 @@ export function PitchEditor({
         </div>
       ) : null}
 
+      {!isDemo && hasUnsecuredMedia ? (
+        <div
+          className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b theme-border px-4 py-2 text-center font-mono text-xs theme-muted"
+          role="status"
+        >
+          <span>
+            {missingLocalImageFileIds.length > 0
+              ? `${missingLocalImageFileIds.length} image${missingLocalImageFileIds.length === 1 ? " is" : "s are"} referenced by this draft but not stored on this device. Open the pitch on the device that still shows them, or restore a .mahdeck backup from that device.`
+              : imageUploadFailure
+                ? `${imageUploadFailure.message} The original is still safe in this browser.`
+                : activeImageUploadId
+                  ? `Saving the original images to this pitch · ${unsecuredImageFileIds.length} remaining.`
+                  : navigator.onLine
+                    ? "Preparing the remaining images for safe storage."
+                    : "The remaining images are safe in this browser and will save after reconnecting."}
+          </span>
+          {imageUploadFailure && missingLocalImageFileIds.length === 0 ? (
+            <button
+              type="button"
+              onClick={retryImageUploads}
+              className="min-h-11 underline decoration-current underline-offset-4 hover:opacity-60"
+            >
+              try image save again
+            </button>
+          ) : null}
+          {missingLocalImageFileIds.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className="min-h-11 underline decoration-current underline-offset-4 hover:opacity-60"
+            >
+              download safety copy
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {message ? (
         <div
           className="border-b theme-border px-4 py-2 text-center font-mono text-xs theme-muted"
@@ -339,9 +383,7 @@ export function PitchEditor({
             <button
               type="button"
               onClick={() => {
-                setMessage("Trying the unfinished uploads again…");
-                setSyncState("local");
-                setUploadWake((value) => value + 1);
+                retryImageUploads();
                 setSyncWake((value) => value + 1);
               }}
               className="ml-3 underline underline-offset-4"

@@ -1,6 +1,7 @@
 import type { BinaryFileData, BinaryFiles, DataURL } from "@excalidraw/excalidraw/types";
 import type { FileId } from "@excalidraw/excalidraw/element/types";
 
+import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import type { PitchAsset } from "../types";
 
 export function blobToDataUrl(blob: Blob): Promise<DataURL> {
@@ -23,7 +24,10 @@ export async function loadPitchFiles(assets: PitchAsset[]): Promise<BinaryFiles>
       .filter((asset) => asset.kind === "image" && asset.fileId && asset.url)
       .map(async (asset) => {
         try {
-          const response = await fetch(asset.url!);
+          const response = await fetchWithRetry(asset.url!, undefined, {
+            retries: 1,
+            timeoutMs: 12_000,
+          });
           if (!response.ok) return;
           const blob = await response.blob();
           const dataURL = await blobToDataUrl(blob);

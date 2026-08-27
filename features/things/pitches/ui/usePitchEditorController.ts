@@ -7,12 +7,14 @@ import type {
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 
 import type { GuidedTourStep } from "@/components/GuidedTour";
+import { prepareBrowserImage } from "@/features/media/browser-image-prep.client";
 import { useSiteUpdateState } from "@/features/offline/client";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
+import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import {
   readLocalPitchDraft,
   pitchDeviceId,
@@ -70,6 +72,9 @@ import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitc
 export const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
 export const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
 export const OPERATIONAL_STATUS_REFRESH_INTERVAL_MS = 30_000;
+const PITCH_IMAGE_UPLOAD_MAX_DIMENSION = 2_560;
+const PITCH_UPLOAD_TIMEOUT_MS = 45_000;
+const DIRECT_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 let pitchStudioTourSeenThisSession = false;
 
 export const TOUR_STEPS: readonly GuidedTourStep[] = [
@@ -364,6 +369,35 @@ export function imageSize(file: File): Promise<{ width: number; height: number }
   });
 }
 
+async function prepareCanvasImageUpload(fileId: string, file: BinaryFileData): Promise<File> {
+  const blob = await dataUrlToBlob(file.dataURL);
+  const mimeType = blob.type || file.mimeType;
+  if (DIRECT_IMAGE_MIME_TYPES.has(mimeType) && blob.size <= PITCH_IMAGE_MAX_BYTES) {
+    return new File([blob], `${fileId}.${mimeType.split("/")[1] || "png"}`, { type: mimeType });
+  }
+  if (mimeType === "image/gif") {
+    throw new Error("An animated image is over 10 MB. Replace it with a smaller GIF.");
+  }
+
+  const source = new File([blob], `${fileId}.source`, {
+    type: mimeType || "application/octet-stream",
+  });
+  const prepared = await prepareBrowserImage(source, {
+    derivePreview: true,
+    maxDimension: PITCH_IMAGE_UPLOAD_MAX_DIMENSION,
+    requireBrowserDecode: true,
+  });
+  if (!DIRECT_IMAGE_MIME_TYPES.has(prepared.uploadFile.type)) {
+    throw new Error("An image uses a format this browser could not prepare for saving.");
+  }
+  if (prepared.uploadFile.size > PITCH_IMAGE_MAX_BYTES) {
+    throw new Error(
+      "An image is still over 10 MB after preparation. Replace it with a smaller copy.",
+    );
+  }
+  return prepared.uploadFile;
+}
+
 export type PitchEditorSession = { kind: "owned"; deckId: string } | { kind: "demo" };
 
 export function usePitchEditorController({
@@ -440,6 +474,11 @@ export function usePitchEditorController({
   const [localSaveWake, setLocalSaveWake] = useState(0);
   const [syncWake, setSyncWake] = useState(0);
   const [uploadWake, setUploadWake] = useState(0);
+  const [activeImageUploadId, setActiveImageUploadId] = useState<string>();
+  const [imageUploadFailure, setImageUploadFailure] = useState<{
+    fileId: string;
+    message: string;
+  }>();
   const updateState = useSiteUpdateState();
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const uploading = useRef(new Set<string>());
@@ -503,6 +542,7 @@ export function usePitchEditorController({
     : !localSaveFailed &&
       localSavedRevision >= revision &&
       uploading.current.size === 0 &&
+      !mediaProgress &&
       syncState !== "syncing";
   useUpdateReloadSafety(`pitch-studio:${deckId}`, reloadSafe);
 
@@ -902,17 +942,23 @@ export function usePitchEditorController({
     playing: mediaClock.playing,
     soundEnabled: true,
   });
-  const hasUnsecuredMedia = useMemo(
-    () =>
-      !isDemo &&
-      visibleSlides.some((slide) =>
-        slide.elements.some(
-          (element) =>
-            element.type === "image" && Boolean(element.fileId) && !slide.assetIds[element.fileId!],
-        ),
-      ),
-    [isDemo, visibleSlides],
+  const unsecuredImageFileIds = useMemo(() => {
+    if (isDemo) return [];
+    const ids = new Set<string>();
+    for (const slide of visibleSlides) {
+      for (const element of slide.elements) {
+        if (element.type === "image" && element.fileId && !slide.assetIds[element.fileId]) {
+          ids.add(element.fileId);
+        }
+      }
+    }
+    return [...ids];
+  }, [isDemo, visibleSlides]);
+  const missingLocalImageFileIds = useMemo(
+    () => unsecuredImageFileIds.filter((fileId) => !files[fileId]),
+    [files, unsecuredImageFileIds],
   );
+  const hasUnsecuredMedia = unsecuredImageFileIds.length > 0;
 
   const uploadBlob = useCallback(
     async (
@@ -937,122 +983,192 @@ export function usePitchEditorController({
         },
       });
       if (!reserved.ok) throw new Error(reserved.error);
-      const uploaded = await fetch(reserved.value.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": blob.type },
-        body: blob,
-      });
-      if (!uploaded.ok) throw new Error("Media upload failed");
-      const finalised = await finalisePitchAssetFn({
-        data: {
-          deckId,
-          ownerToken: credential.token,
-          assetId: reserved.value.asset.id,
+      const uploaded = await fetchWithRetry(
+        reserved.value.uploadUrl,
+        {
+          method: "PUT",
+          headers: { "Content-Type": blob.type },
+          body: blob,
         },
-      });
-      if (!finalised.ok) throw new Error(finalised.error);
+        {
+          retries: 2,
+          retryMethods: ["PUT"],
+          timeoutMs: PITCH_UPLOAD_TIMEOUT_MS,
+        },
+      );
+      if (!uploaded.ok) throw new Error("Media upload failed");
+      const recoverReadyImage = async () => {
+        if (!input.fileId) return undefined;
+        const refreshed = await readOwnedPitchFn({
+          data: { deckId, ownerToken: credential.token },
+        }).catch(() => undefined);
+        return refreshed?.ok
+          ? refreshed.value.assets.find(
+              (asset) => asset.kind === "image" && asset.fileId === input.fileId,
+            )
+          : undefined;
+      };
+      let finalised;
+      try {
+        finalised = await finalisePitchAssetFn({
+          data: {
+            deckId,
+            ownerToken: credential.token,
+            assetId: reserved.value.asset.id,
+          },
+        });
+      } catch {
+        try {
+          finalised = await finalisePitchAssetFn({
+            data: {
+              deckId,
+              ownerToken: credential.token,
+              assetId: reserved.value.asset.id,
+            },
+          });
+        } catch (error) {
+          const recovered = await recoverReadyImage();
+          if (recovered) return recovered;
+          throw error;
+        }
+      }
+      if (!finalised.ok) {
+        const recovered = await recoverReadyImage();
+        if (recovered) return recovered;
+        throw new Error(finalised.error);
+      }
       return finalised.value;
     },
     [credential, deckId, operational.message, serverSavingPaused],
   );
 
-  useEffect(() => {
-    if (!documentState || !credential || serverSavingPaused) return;
-    for (const [fileId, file] of Object.entries(files)) {
-      const ownerIds = new Set(
-        documentState.slides
-          .filter(
-            (slide) =>
-              !slide.deletedAt &&
-              (slide.elements.some(
-                (element) => element.type === "image" && element.fileId === fileId,
-              ) ||
-                slide.inkLayers?.some((layer) => layer.fileId === fileId)),
-          )
-          .map((slide) => slide.id),
-      );
-      if (ownerIds.size === 0) continue;
-      const knownAssetId = documentState.slides.find((slide) => slide.assetIds[fileId])?.assetIds[
-        fileId
-      ];
-      if (knownAssetId) {
-        if (
-          documentState.slides.every(
-            (slide) => !ownerIds.has(slide.id) || slide.assetIds[fileId] === knownAssetId,
-          )
-        ) {
-          continue;
-        }
-        const nextDocument = {
-          ...documentState,
-          slides: documentState.slides.map((slide) =>
-            ownerIds.has(slide.id)
-              ? {
-                  ...slide,
-                  assetIds: { ...slide.assetIds, [fileId]: knownAssetId },
-                  version: slide.version + 1,
-                  updatedAt: Date.now(),
-                }
-              : slide,
-          ),
-        };
-        documentRef.current = nextDocument;
-        setDocumentState(nextDocument);
-        markChanged("element.change", { assetLinked: fileId });
-        continue;
-      }
-      if (uploading.current.has(fileId)) continue;
-      uploading.current.add(fileId);
-      void dataUrlToBlob(file.dataURL)
-        .then((blob) =>
-          uploadBlob(blob, {
-            kind: "image",
-            fileName: `${fileId}.${blob.type.split("/")[1] || "png"}`,
-            fileId,
-          }),
-        )
-        .then((asset) => {
-          const current = documentRef.current;
-          if (!current) return;
-          const nextDocument = {
-            ...current,
-            slides: current.slides.map((slide) =>
-              ownerIds.has(slide.id)
-                ? {
-                    ...slide,
-                    assetIds: { ...slide.assetIds, [fileId]: asset.id },
-                    version: slide.version + 1,
-                    updatedAt: Date.now(),
-                  }
-                : slide,
-            ),
+  const linkImageAsset = useCallback(
+    (fileId: string, assetId: string) => {
+      const current = documentRef.current;
+      if (!current) return;
+      let changed = false;
+      const nextDocument = {
+        ...current,
+        slides: current.slides.map((slide) => {
+          const ownsImage =
+            !slide.deletedAt &&
+            (slide.elements.some(
+              (element) => element.type === "image" && element.fileId === fileId,
+            ) ||
+              slide.inkLayers?.some((layer) => layer.fileId === fileId));
+          if (!ownsImage || slide.assetIds[fileId] === assetId) return slide;
+          changed = true;
+          return {
+            ...slide,
+            assetIds: { ...slide.assetIds, [fileId]: assetId },
+            version: slide.version + 1,
+            updatedAt: Date.now(),
           };
-          documentRef.current = nextDocument;
-          setDocumentState(nextDocument);
-          markChanged("element.change", { assetLinked: fileId });
-        })
-        .catch(() => {
-          setSyncState("error");
-          setMessage(
-            updateState === "ready"
-              ? "A site update interrupted this image upload. Your image is safe on this device."
-              : navigator.onLine
-                ? "This image could not reach storage. It is safe on this device; try the upload again."
-                : "This image is safe on this device and will upload when you reconnect.",
-          );
-        })
-        .finally(() => uploading.current.delete(fileId));
+        }),
+      };
+      if (!changed) return;
+      documentRef.current = nextDocument;
+      setDocumentState(nextDocument);
+      markChanged("element.change", { assetLinked: fileId });
+    },
+    [markChanged],
+  );
+
+  useEffect(() => {
+    setImageUploadFailure(undefined);
+  }, [uploadWake]);
+
+  useEffect(() => {
+    if (
+      !documentState ||
+      !credential ||
+      serverSavingPaused ||
+      imageUploadFailure ||
+      activeImageUploadId ||
+      localSaveFailed ||
+      localSavedRevision < revision ||
+      !navigator.onLine
+    ) {
+      return;
     }
+
+    const recovered = deck?.assets.find(
+      (asset) =>
+        asset.kind === "image" &&
+        asset.fileId !== undefined &&
+        unsecuredImageFileIds.includes(asset.fileId),
+    );
+    if (recovered?.fileId) {
+      linkImageAsset(recovered.fileId, recovered.id);
+      return;
+    }
+
+    const fileId = unsecuredImageFileIds.find((candidate) => Boolean(files[candidate]));
+    if (!fileId) return;
+    const file = files[fileId];
+    if (!file || uploading.current.has(fileId)) return;
+
+    uploading.current.add(fileId);
+    setActiveImageUploadId(fileId);
+    void prepareCanvasImageUpload(fileId, file)
+      .then((prepared) =>
+        uploadBlob(prepared, {
+          kind: "image",
+          fileName: prepared.name,
+          fileId,
+        }),
+      )
+      .then((asset) => {
+        setDeck((current) =>
+          current && !current.assets.some((candidate) => candidate.id === asset.id)
+            ? { ...current, assets: [...current.assets, asset] }
+            : current,
+        );
+        linkImageAsset(fileId, asset.id);
+      })
+      .catch((error) => {
+        const detail =
+          error instanceof Error && error.message
+            ? error.message
+            : "This image could not reach storage.";
+        setImageUploadFailure({ fileId, message: detail });
+        setSyncState("error");
+        setMessage(
+          updateState === "ready"
+            ? "A site update interrupted image saving. The originals remain safe on this device."
+            : navigator.onLine
+              ? `${detail} The original remains safe on this device.`
+              : "The originals remain safe on this device and will upload after reconnecting.",
+        );
+      })
+      .finally(() => {
+        uploading.current.delete(fileId);
+        setActiveImageUploadId(undefined);
+      });
   }, [
+    activeImageUploadId,
     credential,
+    deck?.assets,
     documentState,
     files,
-    markChanged,
+    imageUploadFailure,
+    linkImageAsset,
+    localSaveFailed,
+    localSavedRevision,
+    revision,
     serverSavingPaused,
+    unsecuredImageFileIds,
     updateState,
     uploadBlob,
     uploadWake,
   ]);
+
+  const retryImageUploads = useCallback(() => {
+    setMessage("Trying the unfinished image saves again…");
+    setImageUploadFailure(undefined);
+    setSyncState("local");
+    setUploadWake((value) => value + 1);
+  }, []);
 
   function onCanvasChange(
     slideId: string,
@@ -1983,7 +2099,10 @@ export function usePitchEditorController({
       if (!asset?.url || (asset.kind !== "audio" && asset.kind !== "video")) {
         throw new Error("One media file is not ready for export");
       }
-      const response = await fetch(asset.url);
+      const response = await fetchWithRetry(asset.url, undefined, {
+        retries: 2,
+        timeoutMs: PITCH_UPLOAD_TIMEOUT_MS,
+      });
       if (!response.ok) throw new Error(`Could not download ${asset.fileName} for the backup`);
       const path = `media/${asset.id}.${asset.kind === "video" ? "mp4" : "m4a"}`;
       zip.file(path, await response.blob());
@@ -2202,6 +2321,11 @@ export function usePitchEditorController({
     assets,
     mediaClock,
     hasUnsecuredMedia,
+    unsecuredImageFileIds,
+    missingLocalImageFileIds,
+    activeImageUploadId,
+    imageUploadFailure,
+    retryImageUploads,
     uploadBlob,
     onCanvasChange,
     flushCanvasState,
