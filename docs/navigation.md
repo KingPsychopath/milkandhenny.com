@@ -36,6 +36,7 @@ already explains the route.
 | Album and photo journeys      | Album/photo path      | The previous resource or page                  | Photo selection and viewer controls are local to the resource                           |
 | Things index and setup        | The tool path         | Leave the tool when the user chooses Back      | Search, preferences, and setup choices are local unless they need a shareable URL       |
 | Local game round              | The tool path         | Return to setup; a second Back leaves the tool | Timers, scores, drawings, and motion state stay in React or tab-scoped recovery storage |
+| Daily puzzle and archive      | The numbered day path | Return to the archive or previous page         | Per-browser progress is local; completed community summaries are durable                |
 | Multiplayer room              | The room path         | Leave through the room's exit behaviour        | Server room state and short-lived browser credentials                                   |
 | Pitch studio and presentation | The deck or room path | Follow the studio or presentation control      | IndexedDB/browser working copy plus server versions where the feature supports them     |
 | Dialogs and menus             | No URL by default     | Close with their own control or Escape         | Component state; use a route only when the surface must be linkable or restorable       |
@@ -58,6 +59,10 @@ already explains the route.
   shareable.
 - A user action that ends a local mode must remove its temporary history entry;
   it must not make the next Back press skip an unrelated page.
+- A daily puzzle uses its immutable number in the path when the day itself is
+  the resource. `/things/hot-and-cold/daily` always opens today, while
+  `/things/hot-and-cold/daily/2` restores that exact historical puzzle and is
+  the URL used by result shares and account history.
 
 ## Local game history
 

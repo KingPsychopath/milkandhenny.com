@@ -1,7 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestIP } from "@tanstack/react-start/server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { recordPersonGame } from "@/features/person-games/history.server";
 import { log } from "@/lib/platform/logger.server";
+import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -20,14 +22,36 @@ import { heatBand, prepareGuess } from "./hot-and-cold-rules";
 import { hotAndColdHint } from "./hot-and-cold-lexicon.server";
 import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import {
-  dailyHotAndColdTarget,
+  hotAndColdPuzzleDate,
   hotAndColdPuzzleNumber,
+  hotAndColdTargetForPuzzle,
   previousHotAndColdPuzzles,
 } from "./hot-and-cold-words.server";
-import type { HotAndColdAction, HotAndColdSnapshot } from "./types";
+import {
+  hotAndColdCommunityStats,
+  recordHotAndColdDailyResult,
+} from "./hot-and-cold-daily-results.server";
+import type {
+  HotAndColdAction,
+  HotAndColdCommunityStats,
+  HotAndColdDailyResultInput,
+  HotAndColdSnapshot,
+} from "./types";
 
 const record = multiplayerRecord;
 const integer = (value: unknown) => multiplayerSequence(value);
+
+function playablePuzzle(value: unknown): number {
+  const puzzle = integer(value);
+  if (puzzle < 1 || puzzle > hotAndColdPuzzleNumber()) throw new Error("Puzzle not found");
+  return puzzle;
+}
+
+function boundedInteger(value: unknown, minimum: number, maximum: number): number {
+  const parsed = integer(value);
+  if (parsed < minimum || parsed > maximum) throw new Error("Invalid result summary");
+  return parsed;
+}
 
 async function recordHistory(
   operation: string,
@@ -210,14 +234,14 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
     const data = record(value);
     const word = prepareGuess(multiplayerBoundedText(data.word, 32));
     if (!word) throw new Error("Type one English word");
-    return { word };
+    return { word, puzzle: playablePuzzle(data.puzzle) };
   })
   .handler(async ({ data }) => {
     try {
       const result = {
         ok: true as const,
-        puzzle: hotAndColdPuzzleNumber(),
-        ...(await scoreHotAndColdGuess(dailyHotAndColdTarget(), data.word)),
+        puzzle: data.puzzle,
+        ...(await scoreHotAndColdGuess(hotAndColdTargetForPuzzle(data.puzzle), data.word)),
       };
       await recordHistory("daily_guess", { puzzle: result.puzzle }, async () => {
         const personId = await currentPersonId();
@@ -244,28 +268,33 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
         return {
           ok: false as const,
           error: "That word is not in our dictionary",
-          puzzle: hotAndColdPuzzleNumber(),
+          puzzle: data.puzzle,
         };
       throw error;
     }
   });
-export const revealDailyHotAndColdFn = createServerFn({ method: "POST" }).handler(async () => {
-  const puzzle = hotAndColdPuzzleNumber();
-  void recordHistory("daily_reveal", { puzzle }, async () => {
-    const personId = await currentPersonId();
-    if (!personId) return;
-    await recordPersonGame({
-      personId,
-      game: "hot-and-cold",
-      mode: "daily",
-      externalRef: String(puzzle),
-      status: "completed",
-      outcome: "revealed",
-      event: { key: "reveal", kind: "reveal" },
+export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return { puzzle: playablePuzzle(data.puzzle) };
+  })
+  .handler(async ({ data }) => {
+    const { puzzle } = data;
+    void recordHistory("daily_reveal", { puzzle }, async () => {
+      const personId = await currentPersonId();
+      if (!personId) return;
+      await recordPersonGame({
+        personId,
+        game: "hot-and-cold",
+        mode: "daily",
+        externalRef: String(puzzle),
+        status: "completed",
+        outcome: "revealed",
+        event: { key: "reveal", kind: "reveal" },
+      });
     });
+    return { puzzle, target: hotAndColdTargetForPuzzle(puzzle) };
   });
-  return { puzzle, target: dailyHotAndColdTarget() };
-});
 export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
@@ -275,12 +304,16 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
           .map((word) => prepareGuess(multiplayerBoundedText(word, 32)))
           .filter((word): word is string => Boolean(word))
       : [];
-    return { hintIndex: Math.min(2, integer(data.hintIndex)), usedWords };
+    return {
+      puzzle: playablePuzzle(data.puzzle),
+      hintIndex: Math.min(2, integer(data.hintIndex)),
+      usedWords,
+    };
   })
   .handler(async ({ data }) => {
-    const target = dailyHotAndColdTarget();
+    const target = hotAndColdTargetForPuzzle(data.puzzle);
     const hint = await hotAndColdHint(target, data.hintIndex, data.usedWords);
-    const puzzle = hotAndColdPuzzleNumber();
+    const puzzle = data.puzzle;
     const band = heatBand(hint.rank);
     await recordHistory("daily_hint", { puzzle }, async () => {
       const personId = await currentPersonId();
@@ -300,10 +333,114 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
     });
     return { ...hint, band, puzzle };
   });
-export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler(() => ({
-  puzzle: hotAndColdPuzzleNumber(),
-  history: previousHotAndColdPuzzles(),
-}));
+export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
+  .validator((value: unknown): HotAndColdDailyResultInput => {
+    const data = record(value);
+    const distribution = record(data.distribution);
+    const guesses = boundedInteger(data.guesses, 0, 10_000);
+    if (data.outcome !== "found" && data.outcome !== "revealed")
+      throw new Error("Invalid result outcome");
+    const summary: HotAndColdDailyResultInput = {
+      runId: multiplayerText(data.runId, 36),
+      puzzle: playablePuzzle(data.puzzle),
+      outcome: data.outcome,
+      guesses,
+      hints: boundedInteger(data.hints, 0, 3),
+      bestRank: data.bestRank === null ? null : boundedInteger(data.bestRank, 0, 2_147_483_647),
+      distribution: {
+        frost: boundedInteger(distribution.frost, 0, 10_000),
+        cool: boundedInteger(distribution.cool, 0, 10_000),
+        warm: boundedInteger(distribution.warm, 0, 10_000),
+        hot: boundedInteger(distribution.hot, 0, 10_000),
+      },
+    };
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        summary.runId,
+      )
+    )
+      throw new Error("Invalid result identifier");
+    const distributed = Object.values(summary.distribution).reduce((sum, count) => sum + count, 0);
+    if (distributed > guesses) throw new Error("Invalid result distribution");
+    return summary;
+  })
+  .handler(async ({ data }) => {
+    const limit = await reserveRateLimit({
+      name: "hot-and-cold-result",
+      identity: getRequestIP() || "unknown",
+      limit: 30,
+      windowSeconds: 60 * 60,
+      globalLimit: 3_000,
+    });
+    if (!limit.allowed) throw new Error("Too many results — try again later");
+    const personId = await currentPersonId();
+    await recordHotAndColdDailyResult(data, personId);
+    await recordHistory("daily_result", { puzzle: data.puzzle }, async () => {
+      if (!personId) return;
+      await recordPersonGame({
+        personId,
+        game: "hot-and-cold",
+        mode: "daily",
+        externalRef: String(data.puzzle),
+        status: "completed",
+        outcome: data.outcome,
+        score: data.outcome === "found" ? data.guesses : undefined,
+        summary: {
+          guesses: data.guesses,
+          hintsUsed: data.hints,
+          bestRank: data.bestRank,
+          frostGuesses: data.distribution.frost,
+          coolGuesses: data.distribution.cool,
+          warmGuesses: data.distribution.warm,
+          hotGuesses: data.distribution.hot,
+        },
+      });
+    });
+    let community: HotAndColdCommunityStats | null = null;
+    try {
+      community = (await hotAndColdCommunityStats([data.puzzle])).get(data.puzzle) ?? null;
+    } catch (error) {
+      log.warn("things.hot-and-cold", "Could not read result community comparison", {
+        puzzle: data.puzzle,
+        errorType: error instanceof Error ? error.name : typeof error,
+      });
+    }
+    return { recorded: true as const, community };
+  });
+export const getHotAndColdCommunityStatsFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return { puzzle: playablePuzzle(data.puzzle) };
+  })
+  .handler(async ({ data }) => ({
+    community: (await hotAndColdCommunityStats([data.puzzle])).get(data.puzzle) ?? null,
+  }));
+export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler(async () => {
+  const puzzle = hotAndColdPuzzleNumber();
+  const history = previousHotAndColdPuzzles();
+  let community = new Map<number, HotAndColdCommunityStats>();
+  try {
+    community = await hotAndColdCommunityStats(history.map((entry) => entry.puzzle));
+  } catch (error) {
+    log.warn("things.hot-and-cold", "Could not read community results", {
+      errorType: error instanceof Error ? error.name : typeof error,
+    });
+  }
+  return {
+    puzzle,
+    history: history.map((entry) => ({ ...entry, community: community.get(entry.puzzle) ?? null })),
+  };
+});
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
 }));
+export const getHotAndColdPuzzleFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    return { puzzle: playablePuzzle(data.puzzle) };
+  })
+  .handler(({ data }) => ({
+    puzzle: data.puzzle,
+    date: hotAndColdPuzzleDate(data.puzzle),
+    today: data.puzzle === hotAndColdPuzzleNumber(),
+  }));

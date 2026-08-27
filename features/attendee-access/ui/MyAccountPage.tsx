@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -72,6 +72,37 @@ function gamePath(
     twin: "/things/twin",
   } as const;
   return game in paths ? paths[game as keyof typeof paths] : "/things";
+}
+
+function GameHistoryLink({
+  game,
+  children,
+}: {
+  game: AttendeeAccount["gameHistory"][number];
+  children: ReactNode;
+}) {
+  const className = "flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70";
+  const puzzle = Number(game.reference);
+  if (
+    game.game === "hot-and-cold" &&
+    game.mode === "daily" &&
+    Number.isSafeInteger(puzzle) &&
+    puzzle > 0
+  )
+    return (
+      <Link
+        to="/things/hot-and-cold/daily/$puzzle"
+        params={{ puzzle: String(puzzle) }}
+        className={className}
+      >
+        {children}
+      </Link>
+    );
+  return (
+    <Link to={gamePath(game.game, game.mode)} className={className}>
+      {children}
+    </Link>
+  );
 }
 
 export function MyAccountPage({
@@ -338,10 +369,7 @@ export function MyAccountPage({
           <ul className="mt-4 divide-y border-y theme-border">
             {account.gameHistory.map((game) => (
               <li key={game.id}>
-                <Link
-                  to={gamePath(game.game, game.mode)}
-                  className="flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70"
-                >
+                <GameHistoryLink game={game}>
                   <div>
                     <p className="font-mono text-xs">{game.game.replaceAll("-", " ")}</p>
                     <p className="mt-1 font-mono text-micro theme-muted">
@@ -356,7 +384,7 @@ export function MyAccountPage({
                     <br />
                     {new Date(game.lastPlayedAt).toLocaleDateString()} →
                   </p>
-                </Link>
+                </GameHistoryLink>
               </li>
             ))}
           </ul>

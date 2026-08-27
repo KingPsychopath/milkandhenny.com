@@ -7,6 +7,7 @@ import {
   type HotAndColdResultOutcome,
   type HotAndColdShareGuess,
 } from "./hot-and-cold-share";
+import type { HotAndColdCommunityStats } from "./types";
 
 type ShareStatus = "idle" | "shared" | "copied" | "failed";
 
@@ -14,6 +15,7 @@ function useHotAndColdResultShare(
   label: string,
   guesses: readonly HotAndColdShareGuess[],
   hintsUsed: number,
+  sharePath: string,
 ) {
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [status, setStatus] = useState<ShareStatus>("idle");
@@ -24,7 +26,7 @@ function useHotAndColdResultShare(
     return () => window.clearTimeout(reset);
   }, [status]);
   const share = async () => {
-    const url = `${location.origin}/things/hot-and-cold/daily`;
+    const url = `${location.origin}${sharePath}`;
     const response = await shareOrCopy(
       { title: "Hot and Cold", text: result.text, url },
       { copyValue: `${result.text}\n\n${url}` },
@@ -51,18 +53,80 @@ function ExactBulb() {
   );
 }
 
+function CommunityComparison({ community }: { community: HotAndColdCommunityStats }) {
+  if (!community.visible)
+    return (
+      <div className="mt-5 border-t theme-border pt-4 text-left">
+        <p className="font-mono text-micro uppercase tracking-[.12em] theme-muted">community</p>
+        <p className="mt-2 font-serif text-sm leading-relaxed theme-muted">
+          Details appear after 5 finished runs · {community.runs}/5 so far.
+        </p>
+      </div>
+    );
+  const zones = ["frost", "cool", "warm", "hot"] as const;
+  const largest = Math.max(...Object.values(community.distribution), 1);
+  return (
+    <div className="mt-5 border-t theme-border pt-4 text-left">
+      <div className="flex items-center justify-between gap-5">
+        <div>
+          <p className="font-mono text-micro uppercase tracking-[.12em] theme-muted">community</p>
+          <p className="mt-1 font-mono text-micro theme-muted">{community.runs} finished runs</p>
+        </div>
+        <span className="heat-share-dock-bars" aria-hidden="true">
+          {zones.map((zone) => (
+            <span
+              className="heat-share-dock-bar"
+              key={zone}
+              data-zone={zone}
+              style={
+                {
+                  "--heat-share-intensity": community.distribution[zone] / largest,
+                } as CSSProperties
+              }
+            >
+              <i />
+            </span>
+          ))}
+        </span>
+      </div>
+      <dl className="mt-4 grid grid-cols-3 gap-4 border-y theme-border py-3">
+        <div>
+          <dt className="font-mono text-micro theme-muted">median</dt>
+          <dd className="mt-1 font-serif text-xl">
+            {community.medianGuesses.toLocaleString("en-GB", { maximumFractionDigits: 1 })}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro theme-muted">average</dt>
+          <dd className="mt-1 font-serif text-xl">
+            {community.averageGuesses.toLocaleString("en-GB", { maximumFractionDigits: 1 })}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro theme-muted">found it</dt>
+          <dd className="mt-1 font-serif text-xl">{Math.round(community.solveRate * 100)}%</dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
 export function HotAndColdResultShare({
   id,
   label,
   guesses,
   hintsUsed = 0,
   outcome = "found",
+  sharePath = "/things/hot-and-cold",
+  community = null,
 }: {
   id: string;
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
   outcome?: HotAndColdResultOutcome;
+  sharePath?: string;
+  community?: HotAndColdCommunityStats | null;
 }) {
   const resultSection = useRef<HTMLElement>(null);
   const [trailVisible, setTrailVisible] = useState(false);
@@ -70,6 +134,7 @@ export function HotAndColdResultShare({
     label,
     guesses,
     hintsUsed,
+    sharePath,
   );
   const closestLabel =
     result.bestRank === null
@@ -178,6 +243,8 @@ export function HotAndColdResultShare({
         </div>
       </dl>
 
+      {community ? <CommunityComparison community={community} /> : null}
+
       <button
         type="button"
         onClick={() => void share()}
@@ -202,7 +269,9 @@ export function HotAndColdResultShare({
           ? "Could not copy this result."
           : status === "copied"
             ? "copied — paste it into a message"
-            : `spoiler-free · ${hintsUsed ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} shown` : "no hints"}`}
+            : hintsUsed
+              ? `${hintsUsed} hint${hintsUsed === 1 ? "" : "s"} shown`
+              : "no hints used"}
       </p>
     </section>
   );
@@ -213,11 +282,13 @@ export function HotAndColdShareDock({
   guesses,
   hintsUsed = 0,
   resultId,
+  sharePath = "/things/hot-and-cold",
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
   resultId: string;
+  sharePath?: string;
 }) {
   const [showingResult, setShowingResult] = useState(false);
   const scrollAnimation = useRef<number | null>(null);
@@ -225,6 +296,7 @@ export function HotAndColdShareDock({
     label,
     guesses,
     hintsUsed,
+    sharePath,
   );
   const exactOnly = result.guessCount === 1 && result.bestRank === 0;
   const actionLabel =
@@ -326,13 +398,16 @@ export function HotAndColdShareDock({
             </span>
           </span>
           <span className="heat-share-dock-pager" aria-hidden="true">
-            <span className="heat-share-page-dots">
-              <i data-active={!showingResult || undefined} />
-              <i data-active={showingResult || undefined} />
+            <small>{showingResult ? "details 2/2" : "guesses 1/2"}</small>
+            <span className="heat-share-page-position">
+              <span className="heat-share-page-dots">
+                <i data-active={!showingResult || undefined} />
+                <i data-active={showingResult || undefined} />
+              </span>
+              <svg viewBox="0 0 16 16" data-up={showingResult || undefined}>
+                <path d="m4 6 4 4 4-4" />
+              </svg>
             </span>
-            <svg viewBox="0 0 16 16" data-up={showingResult || undefined}>
-              <path d="m4 6 4 4 4-4" />
-            </svg>
           </span>
         </button>
         <button

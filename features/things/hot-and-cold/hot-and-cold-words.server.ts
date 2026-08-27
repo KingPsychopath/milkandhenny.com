@@ -362,7 +362,6 @@ export function previousHotAndColdPuzzles(date = new Date()) {
     return {
       puzzle,
       date: hotAndColdPuzzleDate(puzzle),
-      target: hotAndColdTargetForPuzzle(puzzle),
     };
   });
 }

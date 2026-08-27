@@ -127,3 +127,25 @@ export interface SoloHotAndColdGuess {
   createdAt: number;
   hint?: boolean;
 }
+
+export interface HotAndColdDailyResultInput {
+  runId: string;
+  puzzle: number;
+  outcome: "found" | "revealed";
+  guesses: number;
+  hints: number;
+  bestRank: number | null;
+  distribution: { frost: number; cool: number; warm: number; hot: number };
+}
+
+export type HotAndColdCommunityStats =
+  | { runs: number; visible: false }
+  | {
+      runs: number;
+      visible: true;
+      solveRate: number;
+      averageGuesses: number;
+      medianGuesses: number;
+      averageHints: number;
+      distribution: { frost: number; cool: number; warm: number; hot: number };
+    };

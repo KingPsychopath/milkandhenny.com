@@ -7,12 +7,15 @@ import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { heatStreaks } from "./hot-and-cold-rules";
+import { buildHotAndColdShareResult } from "./hot-and-cold-share";
 import {
   getDailyHotAndColdHintFn,
+  getHotAndColdCommunityStatsFn,
+  recordDailyHotAndColdResultFn,
   revealDailyHotAndColdFn,
   scoreDailyHotAndColdGuessFn,
 } from "./hot-and-cold.functions";
-import type { SoloHotAndColdGuess } from "./types";
+import type { HotAndColdCommunityStats, SoloHotAndColdGuess } from "./types";
 
 interface DailyState {
   puzzle: number;
@@ -20,6 +23,8 @@ interface DailyState {
   target: string | null;
   gaveUp: boolean;
   hintsUsed: number;
+  runId: string | null;
+  resultRecorded: boolean;
 }
 export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () => void }) {
   const haptics = useWebHaptics();
@@ -29,31 +34,49 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     target: null,
     gaveUp: false,
     hintsUsed: 0,
+    runId: null,
+    resultRecorded: false,
   });
   const [recovered, setRecovered] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const [showHow, setShowHow] = useState(false);
+  const [community, setCommunity] = useState<HotAndColdCommunityStats | null>(null);
+  const [communityLoaded, setCommunityLoaded] = useState(false);
   useEffect(() => {
+    setRecovered(false);
+    setCommunity(null);
+    setCommunityLoaded(false);
+    const fresh = (): DailyState => ({
+      puzzle,
+      guesses: [],
+      target: null,
+      gaveUp: false,
+      hintsUsed: 0,
+      runId: crypto.randomUUID(),
+      resultRecorded: false,
+    });
     try {
       const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle));
       if (stored) {
         const saved = JSON.parse(stored) as Partial<DailyState>;
-        setState((current) => ({
-          ...current,
+        setState({
+          ...fresh(),
           ...saved,
           guesses: saved.guesses ?? [],
           hintsUsed: saved.hintsUsed ?? saved.guesses?.filter(({ hint }) => hint).length ?? 0,
-        }));
+        });
+      } else {
+        setState(fresh());
       }
     } catch {
-      /* play without recovery */
+      setState(fresh());
     } finally {
       setRecovered(true);
     }
   }, [puzzle]);
   useEffect(() => {
-    if (!recovered) return;
+    if (!recovered || state.puzzle !== puzzle) return;
     try {
       localStorage.setItem(hotAndColdBrowserKeys.daily(puzzle), JSON.stringify(state));
     } catch {
@@ -78,7 +101,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       return false;
     }
     try {
-      const result = await scoreDailyHotAndColdGuessFn({ data: { word } });
+      const result = await scoreDailyHotAndColdGuessFn({ data: { word, puzzle } });
       if (!result.ok) {
         setMessage("not in our word list");
         return false;
@@ -124,7 +147,11 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   const requestHint = async () => {
     try {
       const result = await getDailyHotAndColdHintFn({
-        data: { hintIndex: state.hintsUsed, usedWords: state.guesses.map(({ word }) => word) },
+        data: {
+          puzzle,
+          hintIndex: state.hintsUsed,
+          usedWords: state.guesses.map(({ word }) => word),
+        },
       });
       const next: SoloHotAndColdGuess = {
         word: result.word,
@@ -147,12 +174,61 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     }
   };
   const giveUp = async () => {
-    const result = await revealDailyHotAndColdFn();
+    const result = await revealDailyHotAndColdFn({ data: { puzzle } });
     setState((current) => ({ ...current, target: result.target, gaveUp: true }));
     return true;
   };
   const done = Boolean(state.target);
-  const playerGuesses = state.guesses.filter(({ hint }) => !hint);
+  const playerGuesses = useMemo(() => state.guesses.filter(({ hint }) => !hint), [state.guesses]);
+  useEffect(() => {
+    if (!recovered || !state.target || !state.runId || state.resultRecorded) return;
+    const result = buildHotAndColdShareResult({
+      label: `daily #${puzzle}`,
+      guesses: playerGuesses,
+      hintsUsed: state.hintsUsed,
+    });
+    const countFor = (zone: "frost" | "cool" | "warm" | "hot") =>
+      result.distribution.find((entry) => entry.zone === zone)?.count ?? 0;
+    const distribution = {
+      frost: countFor("frost"),
+      cool: countFor("cool"),
+      warm: countFor("warm"),
+      hot: countFor("hot"),
+    };
+    void recordDailyHotAndColdResultFn({
+      data: {
+        runId: state.runId,
+        puzzle,
+        outcome: state.gaveUp ? "revealed" : "found",
+        guesses: result.guessCount,
+        hints: state.hintsUsed,
+        bestRank: result.bestRank,
+        distribution,
+      },
+    })
+      .then((recorded) => {
+        setCommunity(recorded.community);
+        setCommunityLoaded(true);
+        setState((current) => ({ ...current, resultRecorded: true }));
+      })
+      .catch(() => undefined);
+  }, [
+    playerGuesses,
+    puzzle,
+    recovered,
+    state.gaveUp,
+    state.hintsUsed,
+    state.resultRecorded,
+    state.runId,
+    state.target,
+  ]);
+  useEffect(() => {
+    if (!recovered || !state.target || !state.resultRecorded || communityLoaded) return;
+    void getHotAndColdCommunityStatsFn({ data: { puzzle } })
+      .then(({ community: latest }) => setCommunity(latest))
+      .catch(() => undefined)
+      .finally(() => setCommunityLoaded(true));
+  }, [communityLoaded, puzzle, recovered, state.resultRecorded, state.target]);
   const streak = heatStreaks(state.guesses);
   const hottest = ledger.reduce<(typeof ledger)[number] | null>(
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
@@ -243,6 +319,8 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
               guesses={playerGuesses}
               hintsUsed={state.hintsUsed}
               outcome={state.gaveUp ? "gave-up" : "found"}
+              sharePath={`/things/hot-and-cold/daily/${puzzle}`}
+              community={community}
             />
             <button
               type="button"
@@ -269,8 +347,8 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
               </button>
               <GiveUpControl
                 tone="dark"
-                title="Reveal today’s word?"
-                description="The word will appear at the top of your ledger. You cannot continue this daily hunt."
+                title="Reveal this word?"
+                description="The word will appear at the top of your ledger. You cannot continue this hunt."
                 errorMessage="Couldn’t reveal the word. Try again."
                 onGiveUp={giveUp}
               />
@@ -283,6 +361,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           guesses={playerGuesses}
           hintsUsed={state.hintsUsed}
           resultId="daily-heat-result"
+          sharePath={`/things/hot-and-cold/daily/${puzzle}`}
         />
       )}
     </div>

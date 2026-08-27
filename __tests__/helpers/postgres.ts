@@ -102,6 +102,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists event_participants cascade;
     drop table if exists person_game_events cascade;
     drop table if exists person_game_sessions cascade;
+    drop table if exists hot_and_cold_daily_results cascade;
     drop table if exists person_recovery_codes cascade;
     drop table if exists person_totp_authenticators cascade;
     drop table if exists person_passkeys cascade;
@@ -155,7 +156,7 @@ export async function truncateAll(): Promise<void> {
   // New tables land via cascade from events/tickets, but be explicit so a
   // future FK loosening cannot quietly leak state between tests.
   await query(
-    `truncate person_recovery_codes, person_totp_authenticators, person_passkeys,
+    `truncate hot_and_cold_daily_results, person_recovery_codes, person_totp_authenticators, person_passkeys,
               person_webauthn_profiles, event_order_managers, event_ticket_identity_claims,
               event_person_login_challenges, event_person_identifiers, event_people,
               attendee_operations_audit_events, admin_alert_recipients, admin_notification_reads,

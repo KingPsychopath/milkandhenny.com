@@ -3293,6 +3293,44 @@ const MIGRATIONS: Migration[] = [
         check (mode in ('daily','solo','room','event'));
     `,
   },
+  {
+    id: "0065_hot_and_cold_daily_results",
+    sql: `
+      create table hot_and_cold_daily_results (
+        run_id          uuid primary key,
+        puzzle          integer not null check (puzzle > 0),
+        person_id       uuid references event_people (id) on delete set null,
+        outcome         text not null check (outcome in ('found','revealed')),
+        guesses         integer not null check (guesses between 0 and 10000),
+        hints           integer not null check (hints between 0 and 3),
+        best_rank       integer check (best_rank is null or best_rank >= 0),
+        frost_guesses   integer not null check (frost_guesses between 0 and 10000),
+        cool_guesses    integer not null check (cool_guesses between 0 and 10000),
+        warm_guesses    integer not null check (warm_guesses between 0 and 10000),
+        hot_guesses     integer not null check (hot_guesses between 0 and 10000),
+        synthetic       boolean not null default false,
+        created_at      timestamptz not null default now(),
+        check (frost_guesses + cool_guesses + warm_guesses + hot_guesses <= guesses)
+      );
+      create index hot_and_cold_daily_results_puzzle_idx
+        on hot_and_cold_daily_results (puzzle,created_at);
+
+      insert into hot_and_cold_daily_results
+        (run_id,puzzle,outcome,guesses,hints,best_rank,frost_guesses,cool_guesses,
+         warm_guesses,hot_guesses,synthetic)
+      values
+        ('00000000-0000-4000-8000-000000000101',1,'found',8,0,0,2,1,2,2,true),
+        ('00000000-0000-4000-8000-000000000102',1,'found',12,1,0,5,2,2,2,true),
+        ('00000000-0000-4000-8000-000000000103',1,'found',16,0,0,7,3,3,2,true),
+        ('00000000-0000-4000-8000-000000000104',1,'found',22,2,0,10,5,3,3,true),
+        ('00000000-0000-4000-8000-000000000105',1,'revealed',31,3,18,18,7,4,2,true),
+        ('00000000-0000-4000-8000-000000000201',2,'found',6,0,0,1,1,1,2,true),
+        ('00000000-0000-4000-8000-000000000202',2,'found',10,0,0,3,2,2,2,true),
+        ('00000000-0000-4000-8000-000000000203',2,'found',14,1,0,5,3,3,2,true),
+        ('00000000-0000-4000-8000-000000000204',2,'found',19,2,0,8,4,3,3,true),
+        ('00000000-0000-4000-8000-000000000205',2,'revealed',27,3,42,15,6,4,2,true);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

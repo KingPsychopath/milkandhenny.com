@@ -77,8 +77,8 @@ describe("Hot and Cold rules", () => {
     expect(hotAndColdTargetForPuzzle(1)).toBe("chimney");
     expect(hotAndColdTargetForPuzzle(2)).toBe("diary");
     expect(previousHotAndColdPuzzles(new Date("2026-08-27T12:00:00Z"))).toEqual([
-      { puzzle: 2, date: "2026-08-26", target: "diary" },
-      { puzzle: 1, date: "2026-08-25", target: "chimney" },
+      { puzzle: 2, date: "2026-08-26" },
+      { puzzle: 1, date: "2026-08-25" },
     ]);
   });
 });

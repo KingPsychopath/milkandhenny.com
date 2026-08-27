@@ -172,6 +172,7 @@ import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words
 import { Route as EventsSlugDiscoveriesIndexRouteImport } from './routes/events/$slug/discoveries/index'
 import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug/discoveries/$discoveryId'
 import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug/staff/$token'
+import { Route as ThingsHotAndColdDailyPuzzleRouteImport } from './routes/things.hot-and-cold_.daily_.$puzzle'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
 import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
@@ -1075,6 +1076,12 @@ const EventsSlugStaffTokenRoute = EventsSlugStaffTokenRouteImport.update({
   path: '/staff/$token',
   getParentRoute: () => EventsSlugRoute,
 } as any)
+const ThingsHotAndColdDailyPuzzleRoute =
+  ThingsHotAndColdDailyPuzzleRouteImport.update({
+    id: '/hot-and-cold_/daily_/$puzzle',
+    path: '/hot-and-cold/daily/$puzzle',
+    getParentRoute: () => ThingsRoute,
+  } as any)
 const ThingsLiarsRoomIdPresentRoute =
   ThingsLiarsRoomIdPresentRouteImport.update({
     id: '/liars_/$roomId_/present',
@@ -1436,6 +1443,7 @@ export interface FileRoutesByFullPath {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1634,6 +1642,7 @@ export interface FileRoutesByTo {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -1833,6 +1842,7 @@ export interface FileRoutesById {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/hot-and-cold_/daily_/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
@@ -2033,6 +2043,7 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
     | '/events/$slug/staff/$token'
+    | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -2231,6 +2242,7 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
     | '/events/$slug/staff/$token'
+    | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
@@ -2429,6 +2441,7 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
     | '/events/$slug/staff/$token'
+    | '/things/hot-and-cold_/daily_/$puzzle'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
@@ -3723,6 +3736,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsSlugStaffTokenRouteImport
       parentRoute: typeof EventsSlugRoute
     }
+    '/things/hot-and-cold_/daily_/$puzzle': {
+      id: '/things/hot-and-cold_/daily_/$puzzle'
+      path: '/hot-and-cold/daily/$puzzle'
+      fullPath: '/things/hot-and-cold/daily/$puzzle'
+      preLoaderRoute: typeof ThingsHotAndColdDailyPuzzleRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/liars_/$roomId_/present': {
       id: '/things/liars_/$roomId_/present'
       path: '/liars/$roomId/present'
@@ -3993,6 +4013,7 @@ interface ThingsRouteChildren {
   ThingsTwinDevRoute: typeof ThingsTwinDevRoute
   ThingsTwinOneScreenRoute: typeof ThingsTwinOneScreenRoute
   ThingsTwinSoloRoute: typeof ThingsTwinSoloRoute
+  ThingsHotAndColdDailyPuzzleRoute: typeof ThingsHotAndColdDailyPuzzleRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
   ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
@@ -4036,6 +4057,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsTwinDevRoute: ThingsTwinDevRoute,
   ThingsTwinOneScreenRoute: ThingsTwinOneScreenRoute,
   ThingsTwinSoloRoute: ThingsTwinSoloRoute,
+  ThingsHotAndColdDailyPuzzleRoute: ThingsHotAndColdDailyPuzzleRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
   ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,

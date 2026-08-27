@@ -18,12 +18,7 @@ import { createHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { hotAndColdRoomPath } from "./hot-and-cold-invite";
 import { HOT_AND_COLD_GAME_SETTINGS } from "./settings";
-
-interface PreviousPuzzle {
-  puzzle: number;
-  date: string;
-  target: string;
-}
+import { HotAndColdArchive, type HotAndColdArchiveEntry } from "./HotAndColdArchive";
 
 export function HotAndColdApp({
   puzzle,
@@ -31,7 +26,7 @@ export function HotAndColdApp({
   defaultPool,
 }: {
   puzzle: number;
-  history: PreviousPuzzle[];
+  history: HotAndColdArchiveEntry[];
   defaultPool?: GamePoolDefaultLaunchTarget | null;
 }) {
   const navigate = useNavigate();
@@ -225,44 +220,7 @@ export function HotAndColdApp({
               </p>
             ) : null}
           </GameLaunch>
-          {history.length ? (
-            <section className="mt-12 border-t theme-border pt-7" aria-labelledby="past-words">
-              <div className="flex items-end justify-between gap-6">
-                <div>
-                  <p className="font-mono text-micro uppercase tracking-[.16em] theme-muted">
-                    the ledger
-                  </p>
-                  <h2 id="past-words" className="mt-2 font-serif text-3xl font-semibold">
-                    Previous words
-                  </h2>
-                </div>
-                <p className="font-mono text-micro theme-muted">updates at midnight UK time</p>
-              </div>
-              <ol className="mt-5 divide-y border-y theme-border">
-                {history.map((entry) => (
-                  <li
-                    key={entry.puzzle}
-                    className="flex min-h-14 items-center justify-between gap-6 py-3"
-                  >
-                    <div>
-                      <p className="font-mono text-xs">daily #{entry.puzzle}</p>
-                      <time
-                        dateTime={entry.date}
-                        className="mt-1 block font-mono text-micro theme-muted"
-                      >
-                        {new Date(`${entry.date}T12:00:00Z`).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </time>
-                    </div>
-                    <p className="font-serif text-xl">{entry.target}</p>
-                  </li>
-                ))}
-              </ol>
-            </section>
-          ) : null}
+          <HotAndColdArchive history={history} />
         </main>
       </div>
     </GameShell>

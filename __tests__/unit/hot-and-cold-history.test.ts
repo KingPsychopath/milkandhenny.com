@@ -62,8 +62,8 @@ vi.mock("@/features/things/hot-and-cold/hot-and-cold-lexicon.server", () => ({
 }));
 
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-words.server", () => ({
-  dailyHotAndColdTarget: () => "orange",
   hotAndColdPuzzleNumber: () => 42,
+  hotAndColdTargetForPuzzle: () => "orange",
 }));
 
 import {
@@ -79,14 +79,11 @@ describe("Hot & Cold optional history", () => {
   });
 
   it("returns daily scores and hints when history recording fails", async () => {
-    await expect(scoreDailyHotAndColdGuessFn({ data: { word: "apple" } })).resolves.toMatchObject({
-      ok: true,
-      puzzle: 42,
-      word: "apple",
-      rank: 12,
-    });
     await expect(
-      getDailyHotAndColdHintFn({ data: { hintIndex: 0, usedWords: [] } }),
+      scoreDailyHotAndColdGuessFn({ data: { word: "apple", puzzle: 42 } }),
+    ).resolves.toMatchObject({ ok: true, puzzle: 42, word: "apple", rank: 12 });
+    await expect(
+      getDailyHotAndColdHintFn({ data: { puzzle: 42, hintIndex: 0, usedWords: [] } }),
     ).resolves.toMatchObject({ puzzle: 42, word: "pear", rank: 20 });
     expect(mocks.warn).toHaveBeenCalledTimes(2);
   });

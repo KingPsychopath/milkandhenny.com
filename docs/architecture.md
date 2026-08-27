@@ -141,6 +141,14 @@ The production app fails closed when required persistence is unavailable. In-mem
 
 **One key per record** remains the rule for anything still in Redis. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
 
+Hot & Cold stores one immutable, word-free completion summary per browser run
+in Postgres. Numbered daily routes can therefore show privacy-thresholded
+community distributions without exposing guesses or answers. Signed-in game
+history remains a separate person-owned read model; anonymous community runs
+never create account records. The two launch-day archive fixtures are marked
+synthetic and automatically drop out of an aggregate as soon as that puzzle
+has five real completions.
+
 Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
 process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary
 provider failures retry with backoff for at most 7 days or 10 attempts. Accepted and terminal rows
