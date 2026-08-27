@@ -11,7 +11,10 @@ import {
 } from "../types";
 
 function assetUrl(clip: PitchMediaClip, assets: PitchAsset[]): string | undefined {
-  return assets.find((asset) => asset.id === clip.assetId && asset.state === "ready")?.url;
+  return assets.find(
+    (asset) =>
+      asset.id === clip.assetId && asset.state === "ready" && asset.availability === "available",
+  )?.url;
 }
 
 function sourceTimeMs(clip: PitchMediaClip, playheadMs: number): number {
@@ -119,16 +122,24 @@ export function PitchVideoLayer({
   return (
     <div className="pointer-events-none relative h-full w-full overflow-hidden" aria-hidden="true">
       {clips.map((clip) => {
+        const asset = assets.find((candidate) => candidate.id === clip.assetId);
         const url = assetUrl(clip, assets);
         return url ? (
           <PitchVideoPlaybackClip
             key={clip.id}
             clip={clip}
             url={url}
+            fileName={asset?.fileName ?? "video file"}
             playheadMs={playheadMs}
             playing={playing}
           />
-        ) : null;
+        ) : (
+          <PitchUnavailableVideo
+            key={clip.id}
+            clip={clip}
+            fileName={asset?.fileName ?? "video file"}
+          />
+        );
       })}
     </div>
   );
@@ -151,15 +162,19 @@ function placementStyle(placement: PitchVideoPlacement): React.CSSProperties {
 function PitchVideoPlaybackClip({
   clip,
   url,
+  fileName,
   playheadMs,
   playing,
 }: {
   clip: PitchVideoClip;
   url: string;
+  fileName: string;
   playheadMs: number;
   playing: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -175,6 +190,7 @@ function PitchVideoPlaybackClip({
     else video.pause();
   }, [clip, playheadMs, playing]);
 
+  if (failed) return <PitchUnavailableVideo clip={clip} fileName={fileName} />;
   return (
     <div
       className="absolute overflow-hidden bg-foreground"
@@ -187,7 +203,22 @@ function PitchVideoPlaybackClip({
         playsInline
         preload="auto"
         className={`h-full w-full ${clip.fit === "cover" ? "object-cover" : "object-contain"}`}
+        onError={() => setFailed(true)}
       />
+    </div>
+  );
+}
+
+function PitchUnavailableVideo({ clip, fileName }: { clip: PitchVideoClip; fileName: string }) {
+  return (
+    <div
+      className="absolute flex items-center justify-center overflow-hidden border border-dashed border-[var(--things-amber)] bg-surface px-4 text-center"
+      style={placementStyle(placementFor(clip))}
+    >
+      <div>
+        <p className="font-mono text-xs font-semibold text-foreground">video unavailable</p>
+        <p className="mt-1 max-w-full truncate font-mono text-micro theme-muted">{fileName}</p>
+      </div>
     </div>
   );
 }

@@ -147,11 +147,17 @@ export async function signedPitchThumbnail(
   const row = await getReadyPitchAsset(deckId, assetId);
   if (!row || row.kind !== "thumbnail") return null;
   const metadataKey = pitchThumbnailMetadataKey(deckId, assetId);
-  const metadata = (await headObject(metadataKey, { scope: "public" })).exists
-    ? (JSON.parse(
-        (await downloadBuffer(metadataKey, { scope: "public" })).toString("utf8"),
-      ) as PitchThumbnailMetadata)
-    : await createPitchThumbnailVariants(row);
+  const storedMetadata = await headObject(metadataKey, { scope: "public" });
+  let metadata: PitchThumbnailMetadata;
+  if (storedMetadata.exists) {
+    metadata = JSON.parse(
+      (await downloadBuffer(metadataKey, { scope: "public" })).toString("utf8"),
+    ) as PitchThumbnailMetadata;
+  } else {
+    const source = await headObject(row.object_key, { scope: "private" });
+    if (!source.exists) return null;
+    metadata = await createPitchThumbnailVariants(row);
+  }
   const srcSetFor = (format: ResponsiveImageFormat) =>
     metadata.widths
       .map((width) => `${getImageUrl(pitchThumbnailKey(deckId, assetId, width, format))} ${width}w`)
@@ -291,7 +297,31 @@ async function withSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
     responseContentDisposition: "inline",
     responseCacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
   });
-  return { ...toPitchAsset(row), url };
+  return { ...toPitchAsset(row), availability: "available", url };
+}
+
+async function withCheckedSignedUrl(row: PitchAssetRow): Promise<PitchAsset> {
+  const object = await headObject(row.object_key, { scope: "private" });
+  return object.exists ? withSignedUrl(row) : { ...toPitchAsset(row), availability: "unavailable" };
+}
+
+export async function unavailablePitchAssetIds(
+  deckId: string,
+  assetIds: ReadonlySet<string>,
+): Promise<Set<string>> {
+  if (assetIds.size === 0) return new Set();
+  const rows = await listReadyPitchAssets(deckId);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const unavailable = new Set([...assetIds].filter((assetId) => !byId.has(assetId)));
+  await Promise.all(
+    [...assetIds].map(async (assetId) => {
+      const row = byId.get(assetId);
+      if (!row) return;
+      const object = await headObject(row.object_key, { scope: "private" });
+      if (!object.exists) unavailable.add(assetId);
+    }),
+  );
+  return unavailable;
 }
 
 export async function createPitchAssetUpload(input: {
@@ -401,11 +431,13 @@ export async function finalisePitchAsset(input: {
 
 export async function signedPitchAssets(
   deckId: string,
-  options?: { assetIds?: ReadonlySet<string> },
+  options?: { assetIds?: ReadonlySet<string>; checkAvailability?: boolean },
 ): Promise<PitchAsset[]> {
   const rows = await listReadyPitchAssets(deckId);
   const visible = rows.filter((row) => !options?.assetIds || options.assetIds.has(row.id));
-  return Promise.all(visible.map(withSignedUrl));
+  return Promise.all(
+    visible.map(options?.checkAvailability === false ? withSignedUrl : withCheckedSignedUrl),
+  );
 }
 
 export async function signedPitchAsset(
@@ -413,14 +445,14 @@ export async function signedPitchAsset(
   assetId: string,
 ): Promise<PitchAsset | null> {
   const row = await getReadyPitchAsset(deckId, assetId);
-  return row ? withSignedUrl(row) : null;
+  return row ? withCheckedSignedUrl(row) : null;
 }
 
 export async function adminPitchAssets(deckId: string): Promise<PitchAsset[]> {
   const rows = await listPitchAssets(deckId);
   return Promise.all(
     rows.map((row) =>
-      row.state === "ready" ? withSignedUrl(row) : Promise.resolve(toPitchAsset(row)),
+      row.state === "ready" ? withCheckedSignedUrl(row) : Promise.resolve(toPitchAsset(row)),
     ),
   );
 }

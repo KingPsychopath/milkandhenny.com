@@ -193,6 +193,7 @@ export function localMediaAsset(
     deckId,
     kind,
     state: "ready",
+    availability: "available",
     fileName: file.name,
     mimeType: file.type,
     bytes: file.size,
@@ -1007,8 +1008,21 @@ export function usePitchEditorController({
       pendingOperations.current = pendingOperations.current.filter(
         (operation) => !sentIds.has(operation.id),
       );
-      deckRef.current = result.value.deck;
-      setDeck(result.value.deck);
+      const unavailableIds = new Set(
+        currentDeck.assets
+          .filter((asset) => asset.availability === "unavailable")
+          .map((asset) => asset.id),
+      );
+      const syncedDeck = {
+        ...result.value.deck,
+        assets: result.value.deck.assets.map((asset) =>
+          unavailableIds.has(asset.id)
+            ? { ...asset, availability: "unavailable" as const, url: undefined }
+            : asset,
+        ),
+      };
+      deckRef.current = syncedDeck;
+      setDeck(syncedDeck);
       if (result.value.merged) {
         const mergedDocument = mergePitchDocuments(
           result.value.deck.document,

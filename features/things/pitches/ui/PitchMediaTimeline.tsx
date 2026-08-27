@@ -29,7 +29,30 @@ function clipLabel(clip: PitchMediaClip, assets: PitchAsset[]): string {
 }
 
 function clipUrl(clip: PitchMediaClip, assets: PitchAsset[]): string | undefined {
-  return assets.find((asset) => asset.id === clip.assetId)?.url;
+  return assets.find((asset) => asset.id === clip.assetId && asset.availability === "available")
+    ?.url;
+}
+
+function clipUnavailable(clip: PitchMediaClip, assets: PitchAsset[]): boolean {
+  const asset = assets.find((candidate) => candidate.id === clip.assetId);
+  return !asset || asset.availability === "unavailable" || !asset.url;
+}
+
+function arrangeClipLanes(clips: PitchMediaClip[]): PitchMediaClip[][] {
+  const lanes: PitchMediaClip[][] = [];
+  for (const clip of clips.toSorted(
+    (left, right) =>
+      left.timelineStartMs - right.timelineStartMs || left.id.localeCompare(right.id),
+  )) {
+    const lane = lanes.find(
+      (candidate) =>
+        (candidate.at(-1)?.timelineStartMs ?? 0) + (candidate.at(-1)?.durationMs ?? 0) <=
+        clip.timelineStartMs,
+    );
+    if (lane) lane.push(clip);
+    else lanes.push([clip]);
+  }
+  return lanes.length > 0 ? lanes : [[]];
 }
 
 type Gesture = {
@@ -154,10 +177,10 @@ export function PitchMediaTimeline({
   const clips = draftClips ?? slide.mediaClips;
   const selected = clips.find((clip) => clip.id === selectedClipId);
   const selectedGroup = selected ? timingGroup(slide.mediaClips, selected) : [];
-  const tracks = useMemo(
+  const trackLanes = useMemo(
     () => ({
-      video: clips.filter((clip) => clip.kind === "video"),
-      audio: clips.filter((clip) => clip.kind === "audio"),
+      video: arrangeClipLanes(clips.filter((clip) => clip.kind === "video")),
+      audio: arrangeClipLanes(clips.filter((clip) => clip.kind === "audio")),
     }),
     [clips],
   );
@@ -451,66 +474,77 @@ export function PitchMediaTimeline({
           style={{ left: `${(playheadMs / Math.max(1, slide.durationMs)) * 100}%` }}
         />
         {(["video", "audio"] as const).map((kind) => (
-          <div key={kind} className="relative h-12 bg-surface">
+          <div key={kind} className="relative bg-surface pt-4">
             <span className="pointer-events-none absolute left-2 top-1 z-20 font-mono text-micro uppercase theme-faint">
               {kind}
+              {trackLanes[kind].length > 1 ? ` · ${trackLanes[kind].length} layers` : ""}
             </span>
-            {tracks[kind].map((clip) => {
-              const left = (clip.timelineStartMs / slide.durationMs) * 100;
-              const width = (clip.durationMs / slide.durationMs) * 100;
-              return (
-                <div
-                  key={clip.id}
-                  className={`absolute inset-y-1 overflow-hidden border ${
-                    selectedClipId === clip.id
-                      ? "border-[var(--things-amber)] bg-[var(--selection-bg)]"
-                      : "theme-border-strong bg-background"
-                  } ${clip.locked ? "opacity-60" : ""}`}
-                  style={{ left: `${left}%`, width: `${width}%`, minWidth: "2.75rem" }}
-                >
-                  {clip.kind === "video" && clipUrl(clip, assets) ? (
-                    <video
-                      src={`${clipUrl(clip, assets)}#t=${clip.sourceStartMs / 1_000}`}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      aria-hidden="true"
-                      className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    onPointerDown={(event) => beginGesture(event, clip, "move")}
-                    onClick={() => onSelectClip(clip.id)}
-                    className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
-                    aria-label={`Move ${clipLabel(clip, assets)}. Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
-                  >
-                    {clip.locked ? "locked · " : ""}
-                    {clipLabel(clip, assets)}
-                  </button>
-                  {!clip.locked ? (
-                    <>
+            {trackLanes[kind].map((lane, laneIndex) => (
+              <div
+                key={laneIndex}
+                className="relative h-12 border-t theme-border-faint first:border-t-0"
+              >
+                {lane.map((clip) => {
+                  const left = (clip.timelineStartMs / slide.durationMs) * 100;
+                  const width = (clip.durationMs / slide.durationMs) * 100;
+                  const unavailable = clipUnavailable(clip, assets);
+                  return (
+                    <div
+                      key={clip.id}
+                      className={`absolute inset-y-1 overflow-hidden border ${
+                        selectedClipId === clip.id
+                          ? "border-[var(--things-amber)] bg-[var(--selection-bg)]"
+                          : unavailable
+                            ? "border-dashed border-[var(--things-amber)] bg-[var(--selection-bg)]"
+                            : "theme-border-strong bg-background"
+                      } ${clip.locked ? "opacity-60" : ""}`}
+                      style={{ left: `${left}%`, width: `${width}%`, minWidth: "2.75rem" }}
+                    >
+                      {clip.kind === "video" && clipUrl(clip, assets) ? (
+                        <video
+                          src={`${clipUrl(clip, assets)}#t=${clip.sourceStartMs / 1_000}`}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-30"
+                        />
+                      ) : null}
                       <button
                         type="button"
-                        onPointerDown={(event) => beginGesture(event, clip, "trim-start")}
-                        className="absolute inset-y-0 left-0 z-20 min-w-11 border-r theme-border bg-background/70 font-mono text-micro"
-                        aria-label={`Trim the start of ${clipLabel(clip, assets)}`}
+                        onPointerDown={(event) => beginGesture(event, clip, "move")}
+                        onClick={() => onSelectClip(clip.id)}
+                        className="relative z-10 h-full w-full truncate px-8 text-left font-mono text-micro text-foreground"
+                        aria-label={`Move ${clipLabel(clip, assets)}. ${unavailable ? "Media unavailable. " : ""}Starts at ${seconds(clip.timelineStartMs)} and lasts ${seconds(clip.durationMs)}.`}
                       >
-                        [
+                        {unavailable ? "unavailable · " : clip.locked ? "locked · " : ""}
+                        {clipLabel(clip, assets)}
                       </button>
-                      <button
-                        type="button"
-                        onPointerDown={(event) => beginGesture(event, clip, "trim-end")}
-                        className="absolute inset-y-0 right-0 z-20 min-w-11 border-l theme-border bg-background/70 font-mono text-micro"
-                        aria-label={`Trim the end of ${clipLabel(clip, assets)}`}
-                      >
-                        ]
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              );
-            })}
+                      {!clip.locked ? (
+                        <>
+                          <button
+                            type="button"
+                            onPointerDown={(event) => beginGesture(event, clip, "trim-start")}
+                            className="absolute inset-y-0 left-0 z-20 min-w-11 border-r theme-border bg-background/70 font-mono text-micro"
+                            aria-label={`Trim the start of ${clipLabel(clip, assets)}`}
+                          >
+                            [
+                          </button>
+                          <button
+                            type="button"
+                            onPointerDown={(event) => beginGesture(event, clip, "trim-end")}
+                            className="absolute inset-y-0 right-0 z-20 min-w-11 border-l theme-border bg-background/70 font-mono text-micro"
+                            aria-label={`Trim the end of ${clipLabel(clip, assets)}`}
+                          >
+                            ]
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         ))}
       </div>

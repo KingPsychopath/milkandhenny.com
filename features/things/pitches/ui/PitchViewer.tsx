@@ -7,6 +7,7 @@ import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
 import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { PitchMediaAvailabilityNotice } from "./PitchMediaAvailabilityNotice";
 import { usePitchMediaClock } from "./usePitchMediaClock";
 
 export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
@@ -74,6 +75,12 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
         </Link>
       </header>
       <section className="relative min-h-[60vh] flex-1">
+        <PitchMediaAvailabilityNotice
+          slides={[slide]}
+          assets={pitch.assets}
+          audience="viewer"
+          className="absolute inset-x-4 top-4 z-30 mx-auto max-w-xl shadow-sm"
+        />
         <div className="absolute inset-0 z-20">
           <ExcalidrawSurface
             key={slide.id}

@@ -11,6 +11,7 @@ import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
 import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { PitchMediaAvailabilityNotice } from "./PitchMediaAvailabilityNotice";
 import { usePitchMediaClock } from "./usePitchMediaClock";
 import { usePresentationPoll } from "./usePresentationPoll";
 
@@ -129,6 +130,12 @@ export function PresentationHost({ roomId }: { roomId: string }) {
     <main id="main" className="relative h-screen overflow-hidden bg-background">
       {slide ? (
         <>
+          <PitchMediaAvailabilityNotice
+            slides={[slide]}
+            assets={pitch?.assets ?? []}
+            audience="viewer"
+            className="absolute inset-x-4 top-16 z-30 mx-auto max-w-xl shadow-sm"
+          />
           <div className="absolute inset-0 z-10">
             <ExcalidrawSurface
               key={`${pitch?.id}:${slide.id}`}

@@ -95,6 +95,7 @@ export function isPitchOperationalMode(value: unknown): value is PitchOperationa
 export type PitchDeckLifecycle = "active" | "archived" | "trashed" | "deleting";
 export type PitchAssetKind = "image" | "audio" | "video" | "thumbnail";
 export type PitchAssetState = "pending" | "ready";
+export type PitchAssetAvailability = "unchecked" | "available" | "unavailable";
 
 /** Editor-neutral ink data. Drawesome is one adapter that reads/writes it. */
 export interface PitchInkStroke {
@@ -200,6 +201,8 @@ export interface PitchAsset {
   fileId?: string;
   kind: PitchAssetKind;
   state: PitchAssetState;
+  /** Live object-storage availability, checked when the asset is returned to a reader. */
+  availability: PitchAssetAvailability;
   fileName: string;
   mimeType: string;
   bytes: number;

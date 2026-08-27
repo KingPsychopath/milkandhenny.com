@@ -4,6 +4,7 @@ import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { PitchAsset, PitchDocument } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
+import { PitchMediaAvailabilityNotice } from "./PitchMediaAvailabilityNotice";
 import { usePitchMediaClock } from "./usePitchMediaClock";
 
 export function PitchPreview({
@@ -106,6 +107,12 @@ export function PitchPreview({
         </button>
       </header>
       <section className="relative min-h-0 flex-1">
+        <PitchMediaAvailabilityNotice
+          slides={[slide]}
+          assets={assets}
+          audience="viewer"
+          className="absolute inset-x-4 top-4 z-30 mx-auto max-w-xl shadow-sm"
+        />
         <div className="absolute inset-0 z-20">
           <ExcalidrawSurface
             key={slide.id}

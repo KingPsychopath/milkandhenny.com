@@ -9,6 +9,7 @@ import {
   finalisePitchAsset,
   signedPitchAssets,
   signedPitchThumbnail,
+  unavailablePitchAssetIds,
 } from "./assets.server";
 import { getPitchMaxSlides } from "./config.server";
 import {
@@ -61,7 +62,10 @@ import type {
   PublicPitchDeckDetail,
 } from "./types";
 
-async function ownerView(deck: StoredPitchDeck): Promise<OwnedPitchDeck> {
+async function ownerView(
+  deck: StoredPitchDeck,
+  options?: { checkAssetAvailability?: boolean },
+): Promise<OwnedPitchDeck> {
   return {
     id: deck.id,
     title: deck.title,
@@ -76,7 +80,10 @@ async function ownerView(deck: StoredPitchDeck): Promise<OwnedPitchDeck> {
     updatedAt: deck.updatedAt,
     draftExpiresAt: deck.draftExpiresAt,
     thumbnailAssetId: deck.thumbnailAssetId,
-    assets: await signedPitchAssets(deck.id),
+    assets: await signedPitchAssets(deck.id, {
+      assetIds: referencedPitchAssetIds(deck.draftDocument),
+      checkAvailability: options?.checkAssetAvailability,
+    }),
   };
 }
 
@@ -195,7 +202,7 @@ export async function syncPitch(input: {
   return {
     ok: true,
     value: {
-      deck: await ownerView(synced.value.deck),
+      deck: await ownerView(synced.value.deck, { checkAssetAvailability: false }),
       merged: synced.value.merged,
       duplicate: synced.value.duplicate,
     },
@@ -208,6 +215,17 @@ export async function publishPitch(input: {
   thumbnailAssetId?: string;
   origin: string;
 }): Promise<PitchStoreResult<OwnedPitchDeck>> {
+  const current = await readOwnedPitchDeck(input.deckId, input.ownerToken);
+  if (!current.ok) return current;
+  const referenced = referencedPitchAssetIds(current.value.draftDocument, input.thumbnailAssetId);
+  const unavailable = await unavailablePitchAssetIds(input.deckId, referenced);
+  if (unavailable.size > 0) {
+    return {
+      ok: false,
+      status: 409,
+      error: unavailableMediaMessage(unavailable.size),
+    };
+  }
   const published = await publishPitchDeck(input);
   if (!published.ok) return published;
   const delivery = await sendPitchPublishedEmail({
@@ -405,10 +423,33 @@ export async function setPitchPublicationForAdmin(
   publication: "draft" | "published",
 ): Promise<PitchStoreResult<StoredPitchDeck>> {
   if (publication === "published") {
+    const deck = await readPitchDeckForAdmin(deckId);
+    if (!deck) return { ok: false, status: 404, error: "Pitch not found" };
+    const unavailable = await unavailablePitchAssetIds(
+      deckId,
+      referencedPitchAssetIds(deck.draftDocument),
+    );
+    if (unavailable.size > 0) {
+      return { ok: false, status: 409, error: unavailableMediaMessage(unavailable.size) };
+    }
     return publishPitchDeck({ deckId, actor: "admin" });
   }
   const pitch = await returnPitchDeckToDraftForAdmin(deckId);
   return pitch ? { ok: true, value: pitch } : { ok: false, status: 404, error: "Pitch not found" };
+}
+
+function referencedPitchAssetIds(document: PitchDocument, thumbnailAssetId?: string): Set<string> {
+  return new Set([
+    ...document.slides.flatMap((slide) => [
+      ...Object.values(slide.assetIds),
+      ...slide.mediaClips.map((clip) => clip.assetId),
+    ]),
+    ...(thumbnailAssetId ? [thumbnailAssetId] : []),
+  ]);
+}
+
+function unavailableMediaMessage(count: number): string {
+  return `${count} referenced media file${count === 1 ? " is" : "s are"} no longer available in storage. Restore a .mahdeck backup, or remove and add ${count === 1 ? "the file" : "those files"} again before publishing.`;
 }
 
 export async function restorePitchForAdmin(

@@ -91,7 +91,7 @@ export async function loadPitchFiles(assets: PitchAsset[]): Promise<BinaryFiles>
             retries: 1,
             timeoutMs: 12_000,
           });
-          if (!response.ok) return;
+          if (!response.ok) throw new Error("The stored image is unavailable");
           const blob = await response.blob();
           const dataURL = await blobToDataUrl(blob);
           const id = asset.fileId as FileId;
@@ -103,9 +103,47 @@ export async function loadPitchFiles(assets: PitchAsset[]): Promise<BinaryFiles>
           };
           files[id] = file;
         } catch {
-          // A missing signed asset should not stop text and drawings loading.
+          files[asset.fileId as FileId] = unavailableImageFile(asset);
         }
       }),
   );
+  for (const asset of assets.filter(
+    (candidate) =>
+      candidate.kind === "image" && candidate.fileId && candidate.availability === "unavailable",
+  )) {
+    files[asset.fileId as FileId] = unavailableImageFile(asset);
+  }
   return files;
+}
+
+function unavailableImageFile(asset: PitchAsset): BinaryFileData {
+  const canvas = document.createElement("canvas");
+  canvas.width = 960;
+  canvas.height = 540;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Could not create the missing-image placeholder");
+  const styles = getComputedStyle(document.documentElement);
+  const background = styles.getPropertyValue("--stone-100").trim() || "Canvas";
+  const foreground = styles.getPropertyValue("--foreground").trim() || "CanvasText";
+  const border = styles.getPropertyValue("--stone-300").trim() || foreground;
+  context.fillStyle = background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = border;
+  context.lineWidth = 4;
+  context.setLineDash([16, 12]);
+  context.strokeRect(28, 28, canvas.width - 56, canvas.height - 56);
+  context.setLineDash([]);
+  context.fillStyle = foreground;
+  context.textAlign = "center";
+  context.font = "600 28px ui-monospace, monospace";
+  context.fillText("image unavailable", canvas.width / 2, canvas.height / 2 - 8);
+  context.font = "18px ui-monospace, monospace";
+  const name = asset.fileName.length > 64 ? `${asset.fileName.slice(0, 61)}…` : asset.fileName;
+  context.fillText(name, canvas.width / 2, canvas.height / 2 + 32);
+  return {
+    id: asset.fileId as FileId,
+    dataURL: canvas.toDataURL("image/png") as DataURL,
+    mimeType: "image/png",
+    created: new Date(asset.createdAt).getTime(),
+  };
 }

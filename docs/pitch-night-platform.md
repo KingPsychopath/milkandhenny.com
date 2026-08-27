@@ -102,6 +102,13 @@ Defaults are configuration, not scattered constants:
   reservations are removed by maintenance after one hour.
 - Long media opens a browser trim step before MediaBunny remuxes or transcodes the selected section.
 
+MediaBunny writes web-ready MP4. Video is H.264, reduced to at most 720p when needed and encoded at
+roughly 2.5 Mbps variable bitrate when the source cannot be remuxed safely. Sound is AAC, at most
+stereo/48 kHz, and uses roughly 128 kbps variable bitrate when it needs transcoding. Already
+compatible tracks under the file limits are remuxed instead of recompressed. These are quality
+targets, not a promise to hit an exact byte size: the studio rejects the result if it still exceeds
+the 60 MB video or 15 MB sound limit.
+
 Published decks do not expire automatically. A cleanup job first marks abandoned drafts as
 deleting, then removes R2 objects, then hard-deletes the relational records. A concurrent save
 cannot lose media between the database check and object deletion. The same maintenance pass removes
@@ -109,6 +116,13 @@ upload reservations that never reached finalisation after one hour, removes read
 not been referenced by a draft, edition or backup for 24 hours, and prunes sync idempotency rows
 after 30 days. Local browser drafts are deliberately not erased by server cleanup: they are the
 offline recovery copy and remain under the control of that browser.
+
+Every owner, public and admin read checks referenced private objects before returning playable
+URLs. Missing images and videos keep their original slide position but render an explicit
+unavailable-media replacement; missing sound is identified in the timeline and slide notice.
+Editors and admins receive recovery guidance, audiences can continue through unaffected content,
+and publishing performs a fresh object check and fails when any referenced media is unavailable.
+Temporary object-storage failures fail the read rather than being misreported as deleted media.
 
 ## Formats
 

@@ -388,6 +388,8 @@ export function PitchesPanel({
     { drafts: 0, published: 0, bytes: 0 },
   );
   const isTrashed = detail?.pitch.lifecycle === "trashed";
+  const unavailableAssetCount =
+    detail?.assets.filter((asset) => asset.availability === "unavailable").length ?? 0;
   const trashStatus = detail && isTrashed ? describeTrash(detail.pitch, detail.audit) : undefined;
 
   return (
@@ -584,6 +586,17 @@ export function PitchesPanel({
             </button>
           </div>
 
+          {unavailableAssetCount > 0 ? (
+            <div
+              className="mt-5 border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-4 py-3 font-mono text-xs text-[var(--selection-fg)]"
+              role="alert"
+            >
+              {unavailableAssetCount} stored media file
+              {unavailableAssetCount === 1 ? " is" : "s are"} missing. Publishing is blocked until
+              the owner restores a .mahdeck backup or removes and adds the affected media again.
+            </div>
+          ) : null}
+
           <form
             className="mt-6 grid gap-4 border-t theme-border pt-5 sm:grid-cols-2"
             onSubmit={(event) => {
@@ -681,6 +694,7 @@ export function PitchesPanel({
                   type="button"
                   disabled={
                     Boolean(busy) ||
+                    (publicationDraft === "published" && unavailableAssetCount > 0) ||
                     publicationDraft === (detail.pitch.publishedAt ? "published" : "draft")
                   }
                   onClick={() => void updatePublication()}
@@ -811,7 +825,7 @@ export function PitchesPanel({
                 >
                   <span className="min-w-0 truncate text-foreground">{asset.fileName}</span>
                   <span className="theme-muted">
-                    {asset.kind} · {asset.state} · {bytes(asset.bytes)}
+                    {asset.kind} · {asset.state} · {asset.availability} · {bytes(asset.bytes)}
                   </span>
                 </li>
               ))}

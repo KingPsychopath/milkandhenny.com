@@ -11,6 +11,10 @@ import {
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { DrawesomeInk } from "./DrawesomeInk";
 import { PitchMediaTimeline } from "./PitchMediaTimeline";
+import {
+  PitchMediaAvailabilityNotice,
+  unavailablePitchMedia,
+} from "./PitchMediaAvailabilityNotice";
 import { PitchVideoLayer, PitchVideoStageControls } from "./PitchMediaPlayback";
 import { PitchMediaTrimDialog } from "./PitchMediaTrimDialog";
 import { PitchOperationalNotice } from "./PitchOperationalNotice";
@@ -154,6 +158,7 @@ export function PitchEditor({
   } = usePitchEditorController({ session, maximumSlides, operationalStatus });
 
   const mediaClipCount = visibleSlides.reduce((count, slide) => count + slide.mediaClips.length, 0);
+  const unavailableMedia = unavailablePitchMedia(visibleSlides, assets);
   const studioStatus = pitchStudioStatus({
     isDemo,
     serverSavingPaused,
@@ -330,21 +335,24 @@ export function PitchEditor({
             serverSavingPaused ||
             syncState === "syncing" ||
             hasUnsecuredMedia ||
+            unavailableMedia.length > 0 ||
             (serverState !== "active" && serverState !== "unknown")
           }
           className="min-h-10 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-45"
         >
           {isDemo
             ? "create to publish"
-            : missingLocalImageFileIds.length > 0
-              ? "images need recovery"
-              : imageUploadFailure
-                ? "image save needs retry"
-                : hasUnsecuredMedia
-                  ? `securing ${unsecuredImageFileIds.length} image${unsecuredImageFileIds.length === 1 ? "" : "s"}…`
-                  : deck?.publishedAt
-                    ? "publish new edition"
-                    : "publish + seal"}
+            : unavailableMedia.length > 0
+              ? "media needs recovery"
+              : missingLocalImageFileIds.length > 0
+                ? "images need recovery"
+                : imageUploadFailure
+                  ? "image save needs retry"
+                  : hasUnsecuredMedia
+                    ? `securing ${unsecuredImageFileIds.length} image${unsecuredImageFileIds.length === 1 ? "" : "s"}…`
+                    : deck?.publishedAt
+                      ? "publish new edition"
+                      : "publish + seal"}
         </button>
       </header>
 
@@ -381,6 +389,13 @@ export function PitchEditor({
           </button>
         </div>
       ) : null}
+
+      <PitchMediaAvailabilityNotice
+        slides={visibleSlides}
+        assets={assets}
+        audience="owner"
+        className="border-x-0 border-t-0 text-center"
+      />
 
       {serverRestore}
 

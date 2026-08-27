@@ -255,6 +255,7 @@ export function toPitchAsset(row: PitchAssetRow): PitchAsset {
     fileId: row.file_id ?? undefined,
     kind: row.kind,
     state: row.state,
+    availability: "unchecked",
     fileName: row.file_name,
     mimeType: row.mime_type,
     bytes: integer(row.bytes),
