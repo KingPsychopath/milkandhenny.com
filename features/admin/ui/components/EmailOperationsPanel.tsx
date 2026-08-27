@@ -6,6 +6,10 @@ import { AppSelect } from "@/components/AppSelect";
 import type { EmailLedgerPage } from "@/features/email-operations/types";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
+  ADMIN_ACTIVE_REFRESH_WINDOW_MS,
+  useAdminAutoRefresh,
+} from "@/features/admin/ui/hooks/useAdminAutoRefresh";
+import {
   EMAIL_CHANNELS,
   EMAIL_DELIVERY_STATUSES,
   EMAIL_KINDS,
@@ -39,6 +43,21 @@ function stateLabel(entry: EmailLedgerPage["entries"][number]): string {
   return entry.status;
 }
 
+function hasRecentUnsettledEmail(
+  entry: EmailLedgerPage["entries"][number],
+  deliveryEventsConfigured: boolean,
+  now = Date.now(),
+): boolean {
+  const updatedAt = Date.parse(entry.updatedAt);
+  if (Number.isNaN(updatedAt) || now - updatedAt > ADMIN_ACTIVE_REFRESH_WINDOW_MS) return false;
+  if (entry.status === "pending" || entry.status === "processing") return true;
+  return (
+    deliveryEventsConfigured &&
+    entry.status === "accepted" &&
+    (entry.deliveryStatus === null || entry.deliveryStatus === "deferred")
+  );
+}
+
 export function EmailOperationsPanel({
   authFetch,
   onError,
@@ -70,6 +89,7 @@ export function EmailOperationsPanel({
   const [source, setSource] = useState("");
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
+  const [pollingHalted, setPollingHalted] = useState(false);
   const { confirm, dialog } = useActionDialog();
 
   useEffect(() => {
@@ -85,30 +105,51 @@ export function EmailOperationsPanel({
     setPage(1);
   }, [initialQuery]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: "40", sort });
-      if (query) params.set("q", query);
-      if (channel) params.set("channel", channel);
-      if (status) params.set("status", status);
-      if (deliveryStatus) params.set("deliveryStatus", deliveryStatus);
-      if (kind) params.set("kind", kind);
-      if (source) params.set("source", source);
-      const response = await authFetch(`/api/admin/email?${params}`);
-      if (!response.ok)
-        throw new Error(await responseError(response, "Could not load email history"));
-      setData((await response.json()) as EmailLedgerPage);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load email history");
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, channel, deliveryStatus, kind, onError, page, query, sort, source, status]);
+  const load = useCallback(
+    async (background = false) => {
+      if (!background) setLoading(true);
+      try {
+        const params = new URLSearchParams({ page: String(page), limit: "40", sort });
+        if (query) params.set("q", query);
+        if (channel) params.set("channel", channel);
+        if (status) params.set("status", status);
+        if (deliveryStatus) params.set("deliveryStatus", deliveryStatus);
+        if (kind) params.set("kind", kind);
+        if (source) params.set("source", source);
+        const response = await authFetch(`/api/admin/email?${params}`);
+        if (!response.ok) {
+          if (response.status >= 400 && response.status < 500) setPollingHalted(true);
+          throw new Error(await responseError(response, "Could not load email history"));
+        }
+        setPollingHalted(false);
+        setData((await response.json()) as EmailLedgerPage);
+      } catch (error) {
+        if (!background) {
+          onError(error instanceof Error ? error.message : "Could not load email history");
+        }
+      } finally {
+        if (!background) setLoading(false);
+      }
+    },
+    [authFetch, channel, deliveryStatus, kind, onError, page, query, sort, source, status],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const deliveryIsActive = Boolean(
+    data?.entries.some((entry) =>
+      hasRecentUnsettledEmail(entry, data.overview.deliveryEventsConfigured),
+    ),
+  );
+  useAdminAutoRefresh({
+    enabled: deliveryIsActive && !pollingHalted,
+    cadence: "active",
+    identity: `admin-email:${page}:${query}:${channel}:${status}:${deliveryStatus}:${kind}:${source}:${sort}`,
+    refreshOnEnable: false,
+    refresh: () => load(true),
+  });
 
   const post = async (
     body: Record<string, unknown>,
@@ -254,6 +295,14 @@ export function EmailOperationsPanel({
         <div className="flex gap-3">
           <button
             type="button"
+            disabled={loading || busy !== null}
+            onClick={() => void load()}
+            className="min-h-11 px-2 font-mono text-xs underline underline-offset-4 transition-opacity hover:opacity-70 disabled:opacity-50"
+          >
+            {loading ? "refreshing…" : "refresh delivery"}
+          </button>
+          <button
+            type="button"
             disabled={busy !== null}
             onClick={() => void drain()}
             className="min-h-11 px-2 font-mono text-xs underline underline-offset-4 transition-opacity hover:opacity-70 disabled:opacity-50"
@@ -270,6 +319,14 @@ export function EmailOperationsPanel({
           </button>
         </div>
       </div>
+
+      <p className="font-mono text-micro theme-faint" role="status">
+        {pollingHalted
+          ? "automatic delivery updates paused after an access error · use refresh delivery"
+          : deliveryIsActive
+            ? "delivery status updates automatically while recent messages settle"
+            : "automatic updates pause after delivery settles or 15 minutes · manual refresh remains available"}
+      </p>
 
       {overview ? (
         <>

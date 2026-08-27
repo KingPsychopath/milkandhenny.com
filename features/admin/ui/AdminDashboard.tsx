@@ -29,6 +29,7 @@ import {
 } from "./components/AdminSectionNav";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useAdminAutoRefresh } from "./hooks/useAdminAutoRefresh";
 import { formatRemaining } from "./format";
 
 type BlogSummary = {
@@ -166,6 +167,8 @@ export function AdminDashboard({
     }>
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
+  const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
 
   const {
     authFetch,
@@ -197,6 +200,7 @@ export function AdminDashboard({
       if (debugResult.status === "fulfilled" && debugResult.value.ok) {
         try {
           setDebugData((await debugResult.value.json()) as DebugResponse);
+          setSystemRefreshHalted(false);
         } catch {
           errors.push("The system check returned an unreadable response.");
         }
@@ -217,31 +221,59 @@ export function AdminDashboard({
     if (view === "overview" || view === "system") void refreshDashboard();
   }, [refreshDashboard, view]);
 
+  const refreshSystemSnapshot = useCallback(async () => {
+    const response = await authFetch("/api/debug");
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) setSystemRefreshHalted(true);
+      throw new Error("Could not refresh system status");
+    }
+    setSystemRefreshHalted(false);
+    setDebugData((await response.json()) as DebugResponse);
+  }, [authFetch]);
+
+  useAdminAutoRefresh({
+    enabled: view === "system" && !systemRefreshHalted,
+    cadence: "monitoring",
+    identity: "admin-system",
+    refreshOnEnable: false,
+    refresh: () => refreshSystemSnapshot(),
+  });
+
+  const refreshOperationsInbox = useCallback(async () => {
+    const response = await authFetch("/api/admin/operations/inbox?active=1");
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) setInboxRefreshHalted(true);
+      throw new Error("Could not refresh operations inbox");
+    }
+    const inbox = (await response.json()) as {
+      unread?: number;
+      items?: Array<{
+        id: string;
+        title: string;
+        body: string;
+        status: string;
+        severity: string;
+        category: string;
+        deepLink: string;
+        unread: boolean;
+      }>;
+    };
+    setInboxRefreshHalted(false);
+    setOperationsUnread(inbox.unread ?? 0);
+    setOperationsRecent(inbox.items?.slice(0, 3) ?? []);
+  }, [authFetch]);
+
   useEffect(() => {
-    void authFetch("/api/admin/operations/inbox?active=1")
-      .then(async (response) =>
-        response.ok
-          ? ((await response.json()) as {
-              unread?: number;
-              items?: Array<{
-                id: string;
-                title: string;
-                body: string;
-                status: string;
-                severity: string;
-                category: string;
-                deepLink: string;
-                unread: boolean;
-              }>;
-            })
-          : null,
-      )
-      .then((inbox) => {
-        setOperationsUnread(inbox?.unread ?? 0);
-        setOperationsRecent(inbox?.items?.slice(0, 3) ?? []);
-      })
-      .catch(() => undefined);
-  }, [authFetch, view]);
+    void refreshOperationsInbox().catch(() => undefined);
+  }, [refreshOperationsInbox]);
+
+  useAdminAutoRefresh({
+    enabled: !inboxRefreshHalted,
+    cadence: "monitoring",
+    identity: "admin-operations-inbox",
+    refreshOnEnable: false,
+    refresh: () => refreshOperationsInbox(),
+  });
 
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
     if (item.unread) {

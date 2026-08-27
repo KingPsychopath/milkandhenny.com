@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
-import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
+import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { AdminReportGroup } from "@/features/reports/types";
 import { copyText } from "@/lib/client/share";
 import {
@@ -164,12 +164,11 @@ export function ReportsPanel({
 
   // The shared error banner is deliberately not cleared per poll — a bare
   // interval here used to wipe other panels' errors every 30 seconds.
-  useVisibilityReconciler({
+  useAdminAutoRefresh({
     enabled: !pollingHalted,
-    intervalMs: 30_000,
+    cadence: "monitoring",
     identity: includeResolved ? "admin-reports:history" : "admin-reports:open",
-    minimumGapMs: 5_000,
-    reconcile: () => loadReports(),
+    refresh: () => loadReports(),
   });
 
   const update = async (report: AdminReportGroup, status: ReportStatus) => {

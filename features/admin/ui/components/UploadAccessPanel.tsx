@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
-import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
+import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { UploadAccessDurationMinutes } from "@/features/auth/upload-access.server";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
@@ -92,12 +92,12 @@ export function UploadAccessPanel({
 
   // Refresh only while a window is open, pause in hidden tabs, and stop on a
   // 4xx instead of re-asking a refusing endpoint four times a minute.
-  useVisibilityReconciler({
+  useAdminAutoRefresh({
     enabled: Boolean(status?.active) && !pollingHalted,
-    intervalMs: 15_000,
+    cadence: "active",
     identity: "admin-upload-access",
-    minimumGapMs: 5_000,
-    reconcile: () => load(),
+    refreshOnEnable: false,
+    refresh: () => load(),
   });
 
   const open = async () => {

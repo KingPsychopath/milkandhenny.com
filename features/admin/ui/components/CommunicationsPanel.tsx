@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import {
+  ADMIN_ACTIVE_REFRESH_WINDOW_MS,
+  useAdminAutoRefresh,
+} from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import { AdminFormAction } from "./AdminFormAction";
 import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
 import { EmailOperationsPanel } from "./EmailOperationsPanel";
@@ -87,6 +91,7 @@ type Stage = {
   audienceCount: number;
   receivedCount: number;
   missingRecipientCount: number;
+  deliveryUpdatedAt: string | null;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
@@ -307,6 +312,42 @@ function stageDeliveryStateLabel(stage: Stage): string {
   }
 }
 
+function stageHasRecentUnsettledDelivery(
+  stage: Stage,
+  deliveryEventsConfigured: boolean,
+  now = Date.now(),
+): boolean {
+  if (!stage.deliveryUpdatedAt) return false;
+  const updatedAt = Date.parse(stage.deliveryUpdatedAt);
+  if (Number.isNaN(updatedAt) || now - updatedAt > ADMIN_ACTIVE_REFRESH_WINDOW_MS) return false;
+  return (
+    stage.delivery.queued > 0 ||
+    stage.delivery.deferred > 0 ||
+    (deliveryEventsConfigured && stage.delivery.accepted > 0)
+  );
+}
+
+function stageAudienceStatusLabel(stage: Stage, deliveryEventsConfigured: boolean): string {
+  if (stage.audienceCount > 0 && stage.receivedCount >= stage.audienceCount) {
+    return "delivered to everyone";
+  }
+  if (stage.delivery.queued > 0 || stage.delivery.deferred > 0) {
+    return "sending to all current attendees";
+  }
+  if (stage.delivery.accepted > 0) {
+    return deliveryEventsConfigured
+      ? "sent to all · awaiting delivery confirmation"
+      : "sent to all current attendees · provider accepted";
+  }
+  const issues =
+    stage.delivery.failed +
+    stage.delivery.bounced +
+    stage.delivery.rejected +
+    stage.delivery.complained;
+  if (issues > 0) return "sent to all · delivery issues need attention";
+  return "sent to all current attendees";
+}
+
 function linkMetricsLabel(links: LinkMetric[]): string {
   return links
     .filter((link) => link.uniqueRecipients > 0)
@@ -453,6 +494,7 @@ export function CommunicationsPanel({
   const [localTab, setLocalTab] = useState<CommunicationsTab>(communicationTab);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [planRefreshHalted, setPlanRefreshHalted] = useState(false);
   const [localSelectedEvent, setLocalSelectedEvent] = useState(
     communicationEvent || "after-school-club-2026-09-01",
   );
@@ -550,6 +592,7 @@ export function CommunicationsPanel({
       setTemplates(data.templates || []);
       setSurveys(data.surveys || []);
       setEmail(data.email || { provider: null, mailpitUrl: null });
+      setPlanRefreshHalted(false);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load communications");
     } finally {
@@ -561,6 +604,38 @@ export function CommunicationsPanel({
   }, [load]);
 
   const activePlan = plans.find((plan) => plan.eventSlug === selectedEvent);
+  const planDeliveryIsActive =
+    tab === "event-plan" &&
+    Boolean(
+      activePlan?.stages.some((stage) =>
+        stageHasRecentUnsettledDelivery(stage, email.deliveryEventsConfigured === true),
+      ),
+    );
+  const refreshActivePlan = useCallback(async () => {
+    if (!selectedEvent) return;
+    const params = new URLSearchParams({ scope: "event-plan", eventSlug: selectedEvent });
+    const response = await authFetch(`/api/admin/communications?${params}`);
+    const data = (await response.json().catch(() => ({}))) as {
+      plans?: Plan[];
+    };
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) setPlanRefreshHalted(true);
+      throw new Error("Could not refresh event-plan delivery status");
+    }
+    const refreshed = data.plans || [];
+    setPlanRefreshHalted(false);
+    setPlans((current) => [
+      ...current.filter((plan) => plan.eventSlug !== selectedEvent),
+      ...refreshed,
+    ]);
+  }, [authFetch, selectedEvent]);
+  useAdminAutoRefresh({
+    enabled: planDeliveryIsActive && !planRefreshHalted,
+    cadence: "active",
+    identity: `admin-event-plan:${selectedEvent}`,
+    refreshOnEnable: false,
+    refresh: () => refreshActivePlan(),
+  });
   const optedInCount = contacts.filter((contact) => contact.marketingOptedIn).length;
   const scheduledCount =
     messages.filter((message) => message.status === "scheduled").length +
@@ -1133,6 +1208,9 @@ export function CommunicationsPanel({
           sendTestPlan={sendTestPlan}
           sendStageNow={sendStageNow}
           sendStageToMissingRecipients={sendStageToMissingRecipients}
+          deliveryAutoRefreshing={planDeliveryIsActive && !planRefreshHalted}
+          deliveryAutoRefreshHalted={planRefreshHalted}
+          deliveryEventsConfigured={email.deliveryEventsConfigured === true}
         />
       ) : null}
       {tab === "compose" ? (
@@ -1272,6 +1350,9 @@ function EventPlanView(props: {
   sendTestPlan: () => void;
   sendStageNow: (stage: Stage) => void;
   sendStageToMissingRecipients: (stage: Stage) => void;
+  deliveryAutoRefreshing: boolean;
+  deliveryAutoRefreshHalted: boolean;
+  deliveryEventsConfigured: boolean;
 }) {
   const {
     events,
@@ -1299,6 +1380,9 @@ function EventPlanView(props: {
     sendTestPlan,
     sendStageNow,
     sendStageToMissingRecipients,
+    deliveryAutoRefreshing,
+    deliveryAutoRefreshHalted,
+    deliveryEventsConfigured,
   } = props;
   const pausedFutureStages =
     activePlan?.stages.filter(
@@ -1354,6 +1438,13 @@ function EventPlanView(props: {
                 {pausedFutureStages
                   ? ` · ${pausedFutureStages} future stage${pausedFutureStages === 1 ? "" : "s"} paused`
                   : ""}
+              </p>
+              <p className="mt-2 font-mono text-micro theme-faint" role="status">
+                {deliveryAutoRefreshHalted
+                  ? "automatic delivery updates paused after an access error · use refresh"
+                  : deliveryAutoRefreshing
+                    ? "delivery status updates automatically while messages settle"
+                    : "automatic updates pause after delivery settles or 15 minutes · refresh remains available"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1419,7 +1510,9 @@ function EventPlanView(props: {
                         : "recipient count at fan-out"}
                     </p>
                     <p className="mt-2 font-mono text-xs text-foreground">
-                      delivered to {stage.receivedCount} of {stage.audienceCount} current attendees
+                      {deliveryEventsConfigured
+                        ? `delivered to ${stage.receivedCount} of ${stage.audienceCount} current attendees`
+                        : `sent to ${stage.audienceCount - stage.missingRecipientCount} of ${stage.audienceCount} current attendees · delivery confirmation unavailable`}
                       {stage.missingRecipientCount
                         ? ` · ${stage.missingRecipientCount} not yet sent`
                         : ""}
@@ -1497,7 +1590,7 @@ function EventPlanView(props: {
                       </Button>
                     ) : (
                       <span className="self-center font-mono text-micro theme-faint">
-                        sent to everyone
+                        {stageAudienceStatusLabel(stage, deliveryEventsConfigured)}
                       </span>
                     )}
                   </div>

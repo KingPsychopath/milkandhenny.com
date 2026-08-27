@@ -38,6 +38,7 @@ export type CommunicationPlanStage = {
   audienceCount: number;
   receivedCount: number;
   missingRecipientCount: number;
+  deliveryUpdatedAt: string | null;
   queuedCount: number;
   lastError: string | null;
   surveyId: string | null;
@@ -186,6 +187,7 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     audienceCount: Number(row.audience_count) || 0,
     receivedCount: Number(row.received_count) || 0,
     missingRecipientCount: Number(row.missing_recipient_count) || 0,
+    deliveryUpdatedAt: iso(row.delivery_updated_at as Date | string | null),
     queuedCount: Number(row.queued_count) || 0,
     lastError: typeof row.last_error === "string" ? row.last_error : null,
     surveyId: typeof row.survey_id === "string" ? row.survey_id : null,
@@ -246,6 +248,11 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
                       where delivery.stage_id = s.id
                         and lower(delivery.email) = lower(ticket.email)
                    )
+              ),
+              'delivery_updated_at', (
+                select max(delivery.updated_at)
+                  from communication_stage_deliveries delivery
+                 where delivery.stage_id = s.id
               ),
               'queued_count', s.queued_count,
               'last_error', s.last_error,

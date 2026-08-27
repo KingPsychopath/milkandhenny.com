@@ -5,6 +5,7 @@ interface VisibilityReconcilerOptions {
   intervalMs: number;
   identity: string | null;
   minimumGapMs?: number;
+  reconcileOnEnable?: boolean;
   reconcile: (isCurrent: () => boolean) => Promise<void>;
 }
 
@@ -14,6 +15,7 @@ export function useVisibilityReconciler({
   intervalMs,
   identity,
   minimumGapMs = 0,
+  reconcileOnEnable = true,
   reconcile,
 }: VisibilityReconcilerOptions) {
   const reconcileRef = useRef(reconcile);
@@ -122,7 +124,8 @@ export function useVisibilityReconciler({
     };
 
     runRef.current = run;
-    resume();
+    if (reconcileOnEnable) trigger();
+    scheduleSafety();
     window.addEventListener("online", resume);
     document.addEventListener("visibilitychange", resume);
 
@@ -135,7 +138,7 @@ export function useVisibilityReconciler({
       window.removeEventListener("online", resume);
       document.removeEventListener("visibilitychange", resume);
     };
-  }, [enabled, identity, intervalMs, minimumGapMs]);
+  }, [enabled, identity, intervalMs, minimumGapMs, reconcileOnEnable]);
 
   return useCallback(() => runRef.current?.() ?? Promise.resolve(), []);
 }

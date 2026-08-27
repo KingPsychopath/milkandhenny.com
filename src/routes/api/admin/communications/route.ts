@@ -39,6 +39,12 @@ async function handleGET(request: Request) {
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
+    const url = new URL(request.url);
+    if (url.searchParams.get("scope") === "event-plan") {
+      const eventSlug = url.searchParams.get("eventSlug")?.trim();
+      if (!eventSlug) return Response.json({ error: "Choose an event" }, { status: 400 });
+      return Response.json({ plans: await listCommunicationPlans(eventSlug) });
+    }
     const [contacts, messages, events, plans, templates, surveys] = await Promise.all([
       listCommunicationContacts(),
       listCommunicationMessages(),
