@@ -403,6 +403,21 @@ function imageExtension(mimeType: string): string {
   }
 }
 
+function imageUploadErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    ["Failed to fetch", "Fetch failed after retries"].includes(error.message)
+  ) {
+    return "This image could not reach storage.";
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return "This image took too long to reach storage.";
+  }
+  return error instanceof Error && error.message
+    ? error.message
+    : "This image could not reach storage.";
+}
+
 async function preparePitchImageFile(source: File): Promise<File> {
   const file = normalisedImageFile(source);
   const mimeType = file.type.toLowerCase();
@@ -1257,19 +1272,9 @@ export function usePitchEditorController({
         linkImageAsset(fileId, asset.id);
       })
       .catch((error) => {
-        const detail =
-          error instanceof Error && error.message
-            ? error.message
-            : "This image could not reach storage.";
+        const detail = imageUploadErrorMessage(error);
         setImageUploadFailure({ fileId, message: detail });
         setSyncState("error");
-        setMessage(
-          updateState === "ready"
-            ? "A site update interrupted image saving. The originals remain safe on this device."
-            : navigator.onLine
-              ? `${detail} The original remains safe on this device.`
-              : "The originals remain safe on this device and will upload after reconnecting.",
-        );
       })
       .finally(() => {
         uploading.current.delete(fileId);
@@ -1287,19 +1292,16 @@ export function usePitchEditorController({
     localSavedRevision,
     revision,
     serverSavingPaused,
-    setMessage,
     unsecuredImageFileIds,
-    updateState,
     uploadBlob,
     uploadWake,
   ]);
 
   const retryImageUploads = useCallback(() => {
-    setMessage("Trying the unfinished image saves again…", { transient: true });
     setImageUploadFailure(undefined);
     setSyncState("local");
     setUploadWake((value) => value + 1);
-  }, [setMessage]);
+  }, []);
 
   function onCanvasChange(
     slideId: string,

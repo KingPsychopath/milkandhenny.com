@@ -361,13 +361,13 @@ export function PitchEditor({
       {!isDemo && hasUnsecuredMedia ? (
         <div
           className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b theme-border px-4 py-2 text-center font-mono text-xs theme-muted"
-          role="status"
+          role={imageUploadFailure ? "alert" : "status"}
         >
           <span>
             {missingLocalImageFileIds.length > 0
               ? `${missingLocalImageFileIds.length} image${missingLocalImageFileIds.length === 1 ? " is" : "s are"} referenced by this draft but not stored on this device. Open the pitch on the device that still shows them, or restore a .mahdeck backup from that device.`
               : imageUploadFailure
-                ? `${imageUploadFailure.message} The original is still safe in this browser.`
+                ? `${imageUploadFailure.message} The original remains safe in this browser.`
                 : activeImageUploadId
                   ? `Saving the original images to this pitch · ${unsecuredImageFileIds.length} remaining.`
                   : navigator.onLine
