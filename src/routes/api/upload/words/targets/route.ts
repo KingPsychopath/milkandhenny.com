@@ -59,7 +59,10 @@ async function handleGET(request: Request) {
 
     if (isConfigured()) {
       const prefixes = await withTimeout(
-        Promise.all([listPrefixes("words/media/"), listPrefixes("words/assets/")]),
+        Promise.all([
+          listPrefixes("words/media/", { scope: "public" }),
+          listPrefixes("words/assets/", { scope: "public" }),
+        ]),
         R2_TARGETS_TIMEOUT_MS,
       );
 

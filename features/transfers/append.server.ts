@@ -163,6 +163,7 @@ export async function appendPresign(
           primaryKey,
           getMimeType(file.name),
           uploadUrlTtlSeconds,
+          { scope: "private" },
         );
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
         const archivedOriginalUrl =
@@ -171,6 +172,7 @@ export async function appendPresign(
                 archivedOriginalKey,
                 getMimeType(file.originalName),
                 uploadUrlTtlSeconds,
+                { scope: "private" },
               )
             : undefined;
         return {

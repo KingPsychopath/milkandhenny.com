@@ -5,7 +5,10 @@ import { presignPutUrl, isConfigured, listObjects } from "@/lib/platform/r2.serv
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getMimeType, isProcessableImage } from "@/features/media/processing.server";
 import {
+  MAX_WORD_MEDIA_FILE_BYTES,
+  MAX_WORD_MEDIA_FILES,
   getWordUploadFilenameCandidates,
+  incomingMediaPrefixForTarget,
   isRawWordUpload,
   mediaPrefixForTarget,
   parseWordMediaTarget,
@@ -86,12 +89,16 @@ async function handlePOST(request: Request) {
 
   const target = targetResult.target;
   const targetPrefix = mediaPrefixForTarget(target);
+  const incomingPrefix = incomingMediaPrefixForTarget(target);
   const storageScope = await getWordMediaStorageScope(target);
   const force = !!body.force;
   const files = body.files;
 
-  if (!Array.isArray(files) || files.length === 0) {
-    return Response.json({ error: "No files provided" }, { status: 400 });
+  if (!Array.isArray(files) || files.length === 0 || files.length > MAX_WORD_MEDIA_FILES) {
+    return Response.json(
+      { error: `Choose between 1 and ${MAX_WORD_MEDIA_FILES} files` },
+      { status: 400 },
+    );
   }
 
   for (const file of files) {
@@ -100,6 +107,9 @@ async function handlePOST(request: Request) {
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return Response.json({ error: "Each file must include a valid size" }, { status: 400 });
+    }
+    if (file.size > MAX_WORD_MEDIA_FILE_BYTES) {
+      return Response.json({ error: `${file.name} is larger than 100 MB` }, { status: 400 });
     }
   }
 
@@ -155,12 +165,10 @@ async function handlePOST(request: Request) {
 
       // Processable images are uploaded to a temp key, then finalized into either
       // WebP or original RAW storage depending on preview extraction success.
-      const uploadKey = isImage
-        ? `${targetPrefix}incoming/${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`
-        : `${targetPrefix}${filename}`;
+      const uploadKey = `${incomingPrefix}${randomUUID()}-${sanitiseStem(original)}${safeIncomingExt(original)}`;
 
       const url = await presignPutUrl(uploadKey, contentType, getUploadUrlTtlSeconds(), {
-        scope: storageScope,
+        scope: "private",
       });
 
       urls.push({

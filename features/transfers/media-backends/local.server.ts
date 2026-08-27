@@ -197,7 +197,7 @@ async function materializeVideoFromStorage(params: {
   const originalUploadSize = file.originalSize ?? 0;
 
   const maxBytes = getVideoPosterMaxBytes();
-  const head = await headObject(storageKey);
+  const head = await headObject(storageKey, { scope: "private" });
   const sourceSize = head.size ?? file.size;
 
   if (maxBytes > 0 && sourceSize > maxBytes) {
@@ -214,12 +214,16 @@ async function materializeVideoFromStorage(params: {
 
   const video = await processVideoVariantsFromSource(
     path.extname(filename) || ".mp4",
-    (destination) => downloadToFile(storageKey, destination),
+    (destination) => downloadToFile(storageKey, destination, { scope: "private" }),
   );
 
   await Promise.all([
-    uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, video.thumb.buffer, video.thumb.contentType),
-    uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType),
+    uploadBuffer(`${prefix}/thumb/${derivedId}.webp`, video.thumb.buffer, video.thumb.contentType, {
+      scope: "private",
+    }),
+    uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType, {
+      scope: "private",
+    }),
   ]);
 
   return {
@@ -257,7 +261,7 @@ async function uploadOriginalBuffer(
   filename: string,
   buffer: Buffer,
 ): Promise<void> {
-  await uploadBuffer(storageKey, buffer, getMimeType(filename));
+  await uploadBuffer(storageKey, buffer, getMimeType(filename), { scope: "private" });
 }
 
 async function buildFailedLocalResult(params: {
@@ -340,6 +344,7 @@ async function materializeVisualFromBuffer(params: {
       `${prefix}/thumb/${derivedId}.webp`,
       gif.thumb.buffer,
       gif.thumb.contentType,
+      { scope: "private" },
     );
     if (!originalAlreadyStored && !archiveStorageKey) {
       await uploadOriginalBuffer(storageKey, filename, buffer);
@@ -377,8 +382,11 @@ async function materializeVisualFromBuffer(params: {
         `${prefix}/thumb/${derivedId}.webp`,
         video.thumb.buffer,
         video.thumb.contentType,
+        { scope: "private" },
       ),
-      uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType),
+      uploadBuffer(`${prefix}/full/${derivedId}.webp`, video.full.buffer, video.full.contentType, {
+        scope: "private",
+      }),
       originalAlreadyStored || archiveStorageKey
         ? Promise.resolve()
         : uploadOriginalBuffer(storageKey, filename, buffer),
@@ -413,11 +421,13 @@ async function materializeVisualFromBuffer(params: {
         `${prefix}/thumb/${derivedId}.webp`,
         processed.thumb.buffer,
         processed.thumb.contentType,
+        { scope: "private" },
       ),
       uploadBuffer(
         `${prefix}/full/${derivedId}.webp`,
         processed.full.buffer,
         processed.full.contentType,
+        { scope: "private" },
       ),
       originalAlreadyStored || archiveStorageKey
         ? Promise.resolve()
@@ -544,7 +554,7 @@ async function processTransferObjectLocally(
     });
   }
 
-  const buffer = await downloadBuffer(storageKey);
+  const buffer = await downloadBuffer(storageKey, { scope: "private" });
   return materializeVisualFromBuffer({
     buffer,
     file,
@@ -587,10 +597,10 @@ async function inferTransferFileState(
       ]
     : await Promise.all([
         expected.thumbKey
-          ? headObject(expected.thumbKey).then((meta) => meta.exists)
+          ? headObject(expected.thumbKey, { scope: "private" }).then((meta) => meta.exists)
           : Promise.resolve(true),
         expected.fullKey
-          ? headObject(expected.fullKey).then((meta) => meta.exists)
+          ? headObject(expected.fullKey, { scope: "private" }).then((meta) => meta.exists)
           : Promise.resolve(true),
       ]);
 
@@ -630,8 +640,8 @@ function needsStateInference(file: TransferFile): boolean {
 
 async function listExistingTransferDerivativeKeys(transferId: string): Promise<Set<string>> {
   const [thumbObjects, fullObjects] = await Promise.all([
-    listObjects(`transfers/${transferId}/thumb/`),
-    listObjects(`transfers/${transferId}/full/`),
+    listObjects(`transfers/${transferId}/thumb/`, { scope: "private" }),
+    listObjects(`transfers/${transferId}/full/`, { scope: "private" }),
   ]);
   return new Set([...thumbObjects, ...fullObjects].map((object) => object.key));
 }

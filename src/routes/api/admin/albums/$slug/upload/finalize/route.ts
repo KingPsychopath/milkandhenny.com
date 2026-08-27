@@ -28,6 +28,7 @@ async function handlePOST(request: Request, slug: string) {
       message === "Invalid album upload key" ||
       message === "Invalid photo id" ||
       message === "Invalid uploaded image" ||
+      message === "Uploaded album image failed verification" ||
       message.startsWith("Choose between") ||
       message.startsWith("Photo ID already exists") ||
       message === "A photo with the same ID was added during processing"

@@ -58,9 +58,9 @@ async function adminDeleteTransfer(id: string): Promise<{
   }
 
   const prefix = `transfers/${id}/`;
-  const objects = await listObjects(prefix);
+  const objects = await listObjects(prefix, { scope: "private" });
   const keys = objects.map((o) => o.key);
-  const deletedFiles = keys.length > 0 ? await deleteObjects(keys) : 0;
+  const deletedFiles = keys.length > 0 ? await deleteObjects(keys, { scope: "private" }) : 0;
   const dataDeleted = await deleteTransferData(id);
 
   return { deletedFiles, dataDeleted };

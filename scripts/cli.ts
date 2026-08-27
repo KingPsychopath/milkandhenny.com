@@ -19,6 +19,7 @@ import { runAlbumsCli } from "./albums-cli";
 import { BASE_URL } from "@/lib/shared/config";
 import { buildTransferUrl } from "@/features/transfers/routes";
 import { listObjects, deleteObject, getBucketInfo } from "./r2-client";
+import type { StorageScope } from "@/lib/platform/r2.server";
 import {
   createTransfer,
   appendToTransfer,
@@ -332,14 +333,20 @@ async function pause() {
   await ask("", { hint: "press enter to continue" });
 }
 
+function requireBucketScope(): StorageScope {
+  const scope = getArg("scope");
+  if (scope === "public" || scope === "private") return scope;
+  throw new Error("Raw bucket commands require --scope public or --scope private.");
+}
+
 /* ─── Command handlers ─── */
 /* These return void and never call process.exit — safe for interactive mode.
  * Errors are thrown, caught by the caller. */
 
-async function cmdBucketLs(prefix = "") {
-  heading(prefix ? `Bucket: ${prefix}` : "Bucket (root)");
+async function cmdBucketLs(scope: StorageScope, prefix = "") {
+  heading(prefix ? `${scope} bucket: ${prefix}` : `${scope} bucket (root)`);
 
-  const objects = await listObjects(prefix);
+  const objects = await listObjects(prefix, { scope });
 
   if (objects.length === 0) {
     log(dim("Empty — no objects found."));
@@ -386,7 +393,7 @@ async function cmdBucketLs(prefix = "") {
   console.log();
 }
 
-async function cmdBucketRm(key: string) {
+async function cmdBucketRm(scope: StorageScope, key: string) {
   log(`${dim("Key:")} ${key}`);
   console.log();
 
@@ -399,16 +406,16 @@ async function cmdBucketRm(key: string) {
     return;
   }
 
-  await deleteObject(key);
+  await deleteObject(key, { scope });
   log(green(`✓ Deleted ${key}`));
   console.log();
 }
 
-async function cmdBucketInfo() {
-  heading("Bucket Info");
+async function cmdBucketInfo(scope: StorageScope) {
+  heading(`${scope} bucket info`);
   log(dim("Calculating..."));
 
-  const info = await getBucketInfo();
+  const info = await getBucketInfo(scope);
 
   log(`${dim("Objects:")}    ${info.totalObjects.toLocaleString()}`);
   log(`${dim("Total size:")} ${info.totalSizeMB} MB (${formatBytes(info.totalSizeBytes)})`);
@@ -2938,9 +2945,9 @@ function showHelp() {
     words share reset ${dim("--all")}
 
   ${bold("Bucket")} ${dim("(raw R2 access)")}
-    bucket ls ${dim("[prefix]")}                       Browse bucket contents
-    bucket rm ${dim("<key>")}                          Delete a file from bucket
-    bucket info                              Show bucket usage & free tier %
+    bucket ls ${dim("[prefix] --scope public|private")}       Browse bucket contents
+    bucket rm ${dim("<key> --scope public|private")}          Delete a file from bucket
+    bucket info ${dim("--scope public|private")}              Show bucket usage & free tier %
 
   ${bold("Auth")} ${dim("(session security)")}
     auth login ${dim("[--base-url http://localhost:3000]")} ${dim("(opens browser)")}
@@ -2974,7 +2981,7 @@ function showHelp() {
     ${dim("$")} pnpm cli media upload --asset brand-kit --dir ~/Desktop/brand-assets
     ${dim("$")} pnpm cli media list --slug my-first-birthday
     ${dim("$")} pnpm cli media orphans --limit 200
-    ${dim("$")} pnpm cli bucket ls words/media/my-first-birthday/
+    ${dim("$")} pnpm cli bucket ls words/media/my-first-birthday/ --scope public
 `);
 }
 
@@ -2992,6 +2999,13 @@ async function safely(fn: () => Promise<void>): Promise<void> {
 }
 
 async function interactiveBucket() {
+  const scopeChoice = await choose("Bucket scope", [
+    { label: "Private", detail: "originals, drafts, transfers, and private media" },
+    { label: "Public", detail: "published derivatives and public editorial media" },
+  ]);
+  if (scopeChoice <= 0) return;
+  const scope: StorageScope = scopeChoice === 1 ? "private" : "public";
+
   while (true) {
     const choice = await choose("Bucket", [
       { label: "Browse bucket", detail: "navigate folders in R2" },
@@ -3005,7 +3019,7 @@ async function interactiveBucket() {
       case 1: {
         let prefix = "";
         while (true) {
-          await safely(() => cmdBucketLs(prefix));
+          await safely(() => cmdBucketLs(scope, prefix));
 
           const next = await ask("Navigate", {
             hint: `type a folder name to enter, ${dim("'back'")} to go up, ${dim("'done'")} to stop`,
@@ -3034,12 +3048,12 @@ async function interactiveBucket() {
           hint: "e.g. albums/jan-2026/thumb/DSC00003.webp",
         });
         if (!key) break;
-        await safely(() => cmdBucketRm(key));
+        await safely(() => cmdBucketRm(scope, key));
         await pause();
         break;
       }
       case 3:
-        await safely(cmdBucketInfo);
+        await safely(() => cmdBucketInfo(scope));
         await pause();
         break;
     }
@@ -3349,7 +3363,7 @@ async function promptWordsMediaUpload(): Promise<void> {
 
 async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMediaTarget | null> {
   if (scope === "word") {
-    const objects = await listObjects("words/media/");
+    const objects = await listObjects("words/media/", { scope: "public" });
     const slugs = new Set<string>();
 
     for (const obj of objects) {
@@ -3375,7 +3389,7 @@ async function selectWordsMediaTarget(scope: "word" | "asset"): Promise<WordMedi
     return { scope: "word", slug: slugList[choice - 1] };
   }
 
-  const objects = await listObjects("words/assets/");
+  const objects = await listObjects("words/assets/", { scope: "public" });
   const assetIds = new Set<string>();
   for (const obj of objects) {
     const parts = obj.key.split("/");
@@ -4725,14 +4739,14 @@ async function direct() {
         case "bucket":
           switch (subcommand) {
             case "ls":
-              return cmdBucketLs(args[2] ?? "");
+              return cmdBucketLs(requireBucketScope(), args[2] ?? "");
             case "rm": {
               const key = args[2];
               if (!key) throw new Error("Usage: pnpm cli bucket rm <key>");
-              return cmdBucketRm(key);
+              return cmdBucketRm(requireBucketScope(), key);
             }
             case "info":
-              return cmdBucketInfo();
+              return cmdBucketInfo(requireBucketScope());
             default:
               throw new Error(`Unknown: bucket ${subcommand ?? ""}. Run 'pnpm cli help'.`);
           }

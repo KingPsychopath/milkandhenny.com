@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { isConfigured, isTransferStorageConfigured, presignGetUrl } from "@/lib/platform/r2.server";
+import { isPrivateStorageConfigured, presignGetUrl } from "@/lib/platform/r2.server";
 import {
   buildAttachmentContentDisposition,
   deriveDownloadFilename,
@@ -17,7 +17,7 @@ const DOWNLOAD_RESPONSE_CONTENT_TYPE = "application/octet-stream";
 export const runtime = "nodejs";
 
 async function handleGET(request: Request) {
-  if (!isConfigured()) {
+  if (!isPrivateStorageConfigured()) {
     return Response.json(
       { error: "R2 storage is not configured. Add R2 env vars." },
       { status: 503 },
@@ -32,12 +32,6 @@ async function handleGET(request: Request) {
   }
 
   if (key.startsWith("transfers/")) {
-    if (!isTransferStorageConfigured()) {
-      return Response.json(
-        { error: "Private transfer storage is not configured." },
-        { status: 503 },
-      );
-    }
     const transferId = key.split("/")[1] ?? "";
     const transfer = await getTransfer(transferId);
     if (

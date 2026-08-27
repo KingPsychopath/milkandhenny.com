@@ -64,7 +64,7 @@ async function handleGET(request: Request) {
     }
 
     // Scan R2 for any orphaned transfer prefixes not in the index
-    const transferPrefixes = await listPrefixes("transfers/");
+    const transferPrefixes = await listPrefixes("transfers/", { scope: "private" });
     const allR2Ids = transferPrefixes
       .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
       .filter(Boolean);
@@ -76,11 +76,11 @@ async function handleGET(request: Request) {
       if (exists) continue;
 
       // Transfer expired — delete all R2 objects under this prefix
-      const objects = await listObjects(`transfers/${id}/`);
+      const objects = await listObjects(`transfers/${id}/`, { scope: "private" });
       const keys = objects.map((o) => o.key);
 
       if (keys.length > 0) {
-        deletedObjects += await deleteObjects(keys);
+        deletedObjects += await deleteObjects(keys, { scope: "private" });
       }
 
       // Remove from index (belt + suspenders)

@@ -32,6 +32,7 @@ describe("words raw upload handling", () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
+      headObject: vi.fn().mockResolvedValue({ exists: true, size: 42, contentType: "image/jpeg" }),
       isConfigured: () => true,
       uploadBuffer,
     }));
@@ -68,7 +69,7 @@ describe("words raw upload handling", () => {
           {
             original: "Hero.JPG",
             filename: "hero.webp",
-            uploadKey: "words/media/launch-notes/incoming/tmp-hero.jpg",
+            uploadKey: "incoming/words/media/launch-notes/tmp-hero.jpg",
             kind: "image",
             size: 42,
             overwrote: false,
@@ -88,8 +89,8 @@ describe("words raw upload handling", () => {
       ],
       queuedCount: 0,
     });
-    expect(downloadBuffer).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
-      scope: "public",
+    expect(downloadBuffer).toHaveBeenCalledWith("incoming/words/media/launch-notes/tmp-hero.jpg", {
+      scope: "private",
     });
     expect(uploadBuffer).toHaveBeenCalledWith(
       "words/media/launch-notes/hero.webp",
@@ -100,8 +101,8 @@ describe("words raw upload handling", () => {
         scope: "public",
       },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-hero.jpg", {
-      scope: "public",
+    expect(deleteObject).toHaveBeenCalledWith("incoming/words/media/launch-notes/tmp-hero.jpg", {
+      scope: "private",
     });
   });
 
@@ -116,6 +117,9 @@ describe("words raw upload handling", () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
+      headObject: vi
+        .fn()
+        .mockResolvedValue({ exists: true, size: 42, contentType: "image/x-adobe-dng" }),
       isConfigured: () => true,
       uploadBuffer,
     }));
@@ -152,7 +156,7 @@ describe("words raw upload handling", () => {
           {
             original: "Capture.DNG",
             filename: "capture.dng",
-            uploadKey: "words/media/launch-notes/incoming/tmp-capture.dng",
+            uploadKey: "incoming/words/media/launch-notes/tmp-capture.dng",
             kind: "image",
             size: 42,
             overwrote: false,
@@ -177,8 +181,8 @@ describe("words raw upload handling", () => {
       "image/webp",
       { cacheControl: "public, max-age=3600, stale-while-revalidate=86400", scope: "public" },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
-      scope: "public",
+    expect(deleteObject).toHaveBeenCalledWith("incoming/words/media/launch-notes/tmp-capture.dng", {
+      scope: "private",
     });
   });
 
@@ -193,6 +197,9 @@ describe("words raw upload handling", () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
       deleteObject,
       downloadBuffer,
+      headObject: vi
+        .fn()
+        .mockResolvedValue({ exists: true, size: 42, contentType: "image/x-adobe-dng" }),
       isConfigured: () => true,
       uploadBuffer,
     }));
@@ -216,7 +223,7 @@ describe("words raw upload handling", () => {
           {
             original: "Capture.DNG",
             filename: "capture.dng",
-            uploadKey: "words/media/launch-notes/incoming/tmp-capture.dng",
+            uploadKey: "incoming/words/media/launch-notes/tmp-capture.dng",
             kind: "image",
             size: 42,
             overwrote: false,
@@ -245,9 +252,62 @@ describe("words raw upload handling", () => {
         scope: "public",
       },
     );
-    expect(deleteObject).toHaveBeenCalledWith("words/media/launch-notes/incoming/tmp-capture.dng", {
-      scope: "public",
+    expect(deleteObject).toHaveBeenCalledWith("incoming/words/media/launch-notes/tmp-capture.dng", {
+      scope: "private",
     });
+  });
+
+  it("promotes non-image uploads from lifecycle-managed staging", async () => {
+    const copyObject = vi.fn().mockResolvedValue(undefined);
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
+    }));
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      copyObject,
+      deleteObject,
+      headObject: vi.fn().mockResolvedValue({
+        exists: true,
+        size: 42,
+        contentType: "application/pdf",
+      }),
+      isConfigured: () => true,
+    }));
+
+    const { POST } = await import("@/src/routes/api/upload/words/finalize/route");
+    const response = await POST(
+      makeRequest("/api/upload/words/finalize", {
+        slug: "launch-notes",
+        files: [
+          {
+            original: "Programme.pdf",
+            filename: "programme.pdf",
+            uploadKey: "incoming/words/media/launch-notes/tmp-programme.pdf",
+            kind: "file",
+            size: 42,
+            overwrote: false,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(copyObject).toHaveBeenCalledWith(
+      "incoming/words/media/launch-notes/tmp-programme.pdf",
+      "words/media/launch-notes/programme.pdf",
+      {
+        sourceScope: "private",
+        destinationScope: "public",
+        contentType: "application/pdf",
+        cacheControl: "public, max-age=3600, stale-while-revalidate=86400",
+        contentDisposition:
+          "attachment; filename=\"programme.pdf\"; filename*=UTF-8''programme.pdf",
+      },
+    );
+    expect(deleteObject).toHaveBeenCalledWith(
+      "incoming/words/media/launch-notes/tmp-programme.pdf",
+      { scope: "private" },
+    );
   });
 
   it("treats raw uploads as colliding with existing webp names during presign", async () => {

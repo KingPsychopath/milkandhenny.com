@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import type { WordMediaItem } from "../types";
 
 function formatBytes(bytes: number): string {
@@ -35,6 +36,7 @@ type WordsPresignResponse = {
     filename: string;
     uploadKey: string;
     url: string;
+    contentType: string;
     kind: string;
     overwrote: boolean;
   }>;
@@ -110,7 +112,9 @@ export function WordMediaLibrary({
     throw lastError instanceof Error ? lastError : new Error("Request failed");
   };
 
-  const uploadPresignedFiles = async (entries: Array<{ file: File; url: string }>) => {
+  const uploadPresignedFiles = async (
+    entries: Array<{ file: File; url: string; contentType: string }>,
+  ) => {
     let nextIndex = 0;
     const worker = async () => {
       while (true) {
@@ -118,34 +122,15 @@ export function WordMediaLibrary({
         nextIndex += 1;
         if (index >= entries.length) return;
         const entry = entries[index];
-        let lastError: unknown;
-        let putRes: Response | null = null;
-        for (let attempt = 1; attempt <= DIRECT_UPLOAD_RETRIES + 1; attempt++) {
-          try {
-            putRes = await fetch(entry.url, {
-              method: "PUT",
-              headers: { "Content-Type": entry.file.type || "application/octet-stream" },
-              body: entry.file,
-            });
-            if (putRes.ok) break;
-            if (!isRetryableStatus(putRes.status) || attempt > DIRECT_UPLOAD_RETRIES) {
-              throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
-            }
-          } catch (error) {
-            lastError = error;
-            if (attempt > DIRECT_UPLOAD_RETRIES) {
-              throw error instanceof Error
-                ? error
-                : new Error(`Failed to upload ${entry.file.name}`);
-            }
-          }
-          await sleep(retryDelayMs(attempt));
-        }
-        if (!putRes?.ok) {
-          throw lastError instanceof Error
-            ? lastError
-            : new Error(`Failed to upload ${entry.file.name}`);
-        }
+        const putRes = await uploadPresignedObject(
+          {
+            url: entry.url,
+            body: entry.file,
+            contentType: entry.contentType,
+          },
+          { retries: DIRECT_UPLOAD_RETRIES },
+        );
+        if (!putRes.ok) throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
       }
     };
 
@@ -199,7 +184,7 @@ export function WordMediaLibrary({
         const bucket = filesByName.get(entry.original);
         const file = bucket?.shift();
         if (!file) throw new Error(`Could not resolve local file for ${entry.original}`);
-        return { file, url: entry.url };
+        return { file, url: entry.url, contentType: entry.contentType };
       });
 
       setUploadStatus(

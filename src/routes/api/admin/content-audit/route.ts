@@ -128,8 +128,8 @@ async function computeContentAudit(): Promise<Record<string, unknown>> {
     };
   } else {
     const [newMediaKeys, newAssetKeys] = await Promise.all([
-      listObjects(WORDS_MEDIA_PREFIX),
-      listObjects(WORDS_ASSETS_PREFIX),
+      listObjects(WORDS_MEDIA_PREFIX, { scope: "public" }),
+      listObjects(WORDS_ASSETS_PREFIX, { scope: "public" }),
     ]);
     const r2KeySet = new Set([...newMediaKeys, ...newAssetKeys].map((o) => o.key));
     const brokenRefs: BrokenRef[] = [];

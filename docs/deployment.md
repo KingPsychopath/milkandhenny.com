@@ -18,14 +18,25 @@ All credentials remain runtime variables.
 
 Use two R2 buckets:
 
-- `R2_PUBLIC_BUCKET=milkandhenny-public`, connected to `pics.milkandhenny.com`;
+- `R2_PUBLIC_BUCKET=milkandhenny-pics`, connected to `pics.milkandhenny.com`;
 - `R2_PRIVATE_BUCKET=milkandhenny-private`, with both custom-domain and `r2.dev` public access disabled.
 - independent Object Read & Write credentials scoped to each bucket: `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY` and `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY`;
-- an R2 lifecycle rule that expires `incoming/albums/` objects after one day.
+- the versioned CORS and lifecycle policies in [`ops/r2`](../ops/r2/).
 
 Disable the private bucket's `r2.dev` URL as well as custom domains. Enable caching only on the public bucket's custom domain. A published file can be downloaded or cached by a visitor, so unpublishing stops future discovery and origin reads but cannot recall copies that already left the service.
 
 The R2 API token must have object read/write access to both buckets. Never connect the private bucket to a public hostname.
+
+Apply the checked-in policies with an authenticated Wrangler profile:
+
+```bash
+pnpm exec wrangler r2 bucket cors set milkandhenny-pics --file ops/r2/cors-public.json --force
+pnpm exec wrangler r2 bucket cors set milkandhenny-private --file ops/r2/cors-private.json --force
+pnpm exec wrangler r2 bucket lifecycle set milkandhenny-pics --file ops/r2/lifecycle-public.json --force
+pnpm exec wrangler r2 bucket lifecycle set milkandhenny-private --file ops/r2/lifecycle-private.json --force
+```
+
+The public policy is browser read-only and supports published media plus ranged reads. Every browser upload stages in the private bucket, whose policy supports presigned PUTs, ranged reads, and authorised downloads. The private bucket expires abandoned word and album staging objects after one day. Transfer expiry also belongs there because transfer objects are never published. When adding another browser origin or signed request header, update the relevant policy and apply it explicitly.
 
 ## Railway
 

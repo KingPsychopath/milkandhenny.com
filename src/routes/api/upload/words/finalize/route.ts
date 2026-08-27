@@ -2,10 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
+  copyObject,
   deleteObject,
   downloadBuffer,
+  headObject,
   isConfigured,
-  setObjectHttpMetadata,
   uploadBuffer,
 } from "@/lib/platform/r2.server";
 import {
@@ -15,9 +16,11 @@ import {
   processResponsiveImage,
 } from "@/features/media/processing.server";
 import {
+  MAX_WORD_MEDIA_FILE_BYTES,
+  MAX_WORD_MEDIA_FILES,
+  incomingMediaPrefixForTarget,
   isRawWordUpload,
   mediaPathForTarget,
-  mediaPrefixForTarget,
   parseWordMediaTarget,
   toR2Filename,
   toMarkdownSnippetForTarget,
@@ -63,8 +66,8 @@ type FinalizeSuccess = {
 };
 
 const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
-function isSafeUploadKey(targetPrefix: string, uploadKey: string): boolean {
-  if (!uploadKey.startsWith(targetPrefix)) {
+function isSafeUploadKey(incomingPrefix: string, uploadKey: string): boolean {
+  if (!uploadKey.startsWith(incomingPrefix)) {
     return false;
   }
   if (uploadKey.includes("..")) return false;
@@ -76,7 +79,7 @@ function isSafeUploadKey(targetPrefix: string, uploadKey: string): boolean {
  *
  * Step 2 of the words media presigned upload flow.
  * Images are downloaded from R2, converted to WebP, and saved to the final target path.
- * Non-images were uploaded directly to their final key and are just reported back.
+ * Non-images are promoted from private staging to their final storage scope.
  *
  * Body: { scope?: "word"|"asset", slug?, assetId?, files: FinalizeFile[], skipped?: string[] }
  * Returns: { uploaded: UploadedWordFile[], skipped: string[] }
@@ -114,14 +117,14 @@ async function handlePOST(request: Request) {
     return Response.json({ error: targetResult.error }, { status: 400 });
   }
   const target = targetResult.target;
-  const targetPrefix = mediaPrefixForTarget(target);
+  const incomingPrefix = incomingMediaPrefixForTarget(target);
   const storageScope = await getWordMediaStorageScope(target);
   const files = body.files;
   const skipped = Array.isArray(body.skipped)
     ? body.skipped.filter((s) => typeof s === "string")
     : [];
 
-  if (!Array.isArray(files)) {
+  if (!Array.isArray(files) || files.length > MAX_WORD_MEDIA_FILES) {
     return Response.json({ error: "No files provided" }, { status: 400 });
   }
   if (files.length === 0) {
@@ -142,22 +145,45 @@ async function handlePOST(request: Request) {
     if (
       !file.uploadKey ||
       typeof file.uploadKey !== "string" ||
-      !isSafeUploadKey(targetPrefix, file.uploadKey)
+      !isSafeUploadKey(incomingPrefix, file.uploadKey)
     ) {
       return Response.json({ error: "Each file must include a safe uploadKey" }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {
       return Response.json({ error: "Each file must include a valid size" }, { status: 400 });
     }
+    if (file.size > MAX_WORD_MEDIA_FILE_BYTES) {
+      return Response.json({ error: `${file.original} is larger than 100 MB` }, { status: 400 });
+    }
   }
 
   try {
+    const uploadedObjects = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => ({
+      file,
+      object: await headObject(file.uploadKey, { scope: "private" }),
+    }));
+    for (const { file, object } of uploadedObjects) {
+      if (!object.exists || object.size !== file.size) {
+        return Response.json(
+          { error: `Uploaded file verification failed: ${file.original}` },
+          { status: 400 },
+        );
+      }
+      const expectedContentType = getMimeType(file.original);
+      if (object.contentType && object.contentType !== expectedContentType) {
+        return Response.json(
+          { error: `Uploaded file type did not match: ${file.original}` },
+          { status: 400 },
+        );
+      }
+    }
+
     const processed = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
       const original = file.original.trim();
 
       if (isProcessableImage(original)) {
         // Uploaded to a temp key → download → process → upload to final key → delete temp key.
-        const raw = await downloadBuffer(file.uploadKey, { scope: storageScope });
+        const raw = await downloadBuffer(file.uploadKey, { scope: "private" });
         const webpFilename = toR2Filename(original);
         const webpKey = mediaPathForTarget(target, webpFilename);
 
@@ -199,7 +225,7 @@ async function handlePOST(request: Request) {
           );
 
           try {
-            await deleteObject(file.uploadKey, { scope: storageScope });
+            await deleteObject(file.uploadKey, { scope: "private" });
           } catch {
             // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
           }
@@ -239,7 +265,7 @@ async function handlePOST(request: Request) {
           });
 
           try {
-            await deleteObject(file.uploadKey, { scope: storageScope });
+            await deleteObject(file.uploadKey, { scope: "private" });
           } catch {
             // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
           }
@@ -255,19 +281,19 @@ async function handlePOST(request: Request) {
         }
       }
 
-      // Already uploaded directly to finalKey.
       const kind = file.kind ?? getFileKind(original);
-      await setObjectHttpMetadata(
-        file.uploadKey,
-        {
-          cacheControl:
-            storageScope === "public"
-              ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
-              : PRIVATE_MEDIA_CACHE_CONTROL,
-          contentDisposition: buildAttachmentContentDisposition(file.filename),
-        },
-        { scope: storageScope },
-      );
+      const finalKey = mediaPathForTarget(target, file.filename);
+      await copyObject(file.uploadKey, finalKey, {
+        sourceScope: "private",
+        destinationScope: storageScope,
+        contentType: getMimeType(original),
+        cacheControl:
+          storageScope === "public"
+            ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
+            : PRIVATE_MEDIA_CACHE_CONTROL,
+        contentDisposition: buildAttachmentContentDisposition(file.filename),
+      });
+      await deleteObject(file.uploadKey, { scope: "private" });
       return {
         original,
         filename: file.filename,
@@ -300,13 +326,13 @@ async function handlePOST(request: Request) {
       .filter(
         (key): key is string =>
           typeof key === "string" &&
-          key.includes("/incoming/") &&
-          isSafeUploadKey(targetPrefix, key),
+          key.startsWith(incomingPrefix) &&
+          isSafeUploadKey(incomingPrefix, key),
       );
     await Promise.all(
       incomingKeys.map(async (key) => {
         try {
-          await deleteObject(key, { scope: storageScope });
+          await deleteObject(key, { scope: "private" });
         } catch {
           // Best-effort temp cleanup after finalize failure.
         }

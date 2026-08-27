@@ -165,6 +165,8 @@ Album manifests are JSON objects in private R2. They are a storage format, not r
 
 Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
 
+Every object-storage operation selects `public` or `private` explicitly; unknown namespaces never fall through to the public origin. Browser upload workflows share one transport for exact signed headers, cancellation, timeouts, and retry policy, while feature services continue to own authorisation, limits, key reservation, final verification, and publication. All word and album uploads land in the private bucket under lifecycle-managed `incoming/` prefixes. Feature finalisation verifies and promotes them, copying only intentional public results to the public bucket, so abandoned or partially completed uploads are never public assets.
+
 ## Media processing
 
 Images and GIFs are processed on the request that finalises the upload. RAW and video are queued, because they cost seconds of CPU and can pull gigabytes off object storage:

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { registerApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
 import { prepareBrowserImage } from "@/features/media/browser-image-prep.client";
 import { collectDroppedFiles } from "@/features/media/collect-dropped-files.client";
+import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 /**
@@ -63,10 +64,10 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 async function putFile(url: string, file: File, contentType: string): Promise<void> {
-  const response = await fetchWithRetry(url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
+  const response = await uploadPresignedObject({
+    url,
     body: file,
+    contentType,
   });
   if (!response.ok) throw new Error(`Storage rejected ${file.name} (${response.status})`);
 }

@@ -4,6 +4,7 @@ import { getImageUrl } from "@/features/media/storage";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isConfigured, listObjects } from "@/lib/platform/r2.server";
 import { isWordImageInternalKey } from "@/features/words/image";
+import { getWordMeta, storageScopeForVisibility } from "@/features/words/store.server";
 
 type MediaKind = "image" | "video" | "gif" | "audio" | "file";
 
@@ -44,7 +45,7 @@ function toMarkdown(path: string, filename: string): string {
   return `[${label}](${path})`;
 }
 
-function parsePageMediaKey(key: string, slug: string): MediaItem | null {
+function parsePageMediaKey(key: string, slug: string, isPrivate: boolean): MediaItem | null {
   const prefix = `words/media/${slug}/`;
   if (!key.startsWith(prefix)) return null;
   if (key.includes("/incoming/") || isWordImageInternalKey(key)) return null;
@@ -57,7 +58,9 @@ function parsePageMediaKey(key: string, slug: string): MediaItem | null {
     filename,
     kind: getKind(filename),
     size: 0,
-    url: getImageUrl(key),
+    url: isPrivate
+      ? `/api/words/${encodeURIComponent(slug)}/media/${encodeURIComponent(filename)}`
+      : getImageUrl(key),
     markdown: toMarkdown(key, filename),
   };
 }
@@ -108,13 +111,19 @@ async function handleGET(request: Request) {
       });
     }
 
-    const pagePromise = slug ? listObjects(`words/media/${slug}/`) : Promise.resolve([]);
-    const assetPromise = includeAssets ? listObjects("words/assets/") : Promise.resolve([]);
+    const wordMeta = slug ? await getWordMeta(slug) : null;
+    const pageScope = wordMeta ? storageScopeForVisibility(wordMeta.visibility) : "public";
+    const pagePromise = slug
+      ? listObjects(`words/media/${slug}/`, { scope: pageScope })
+      : Promise.resolve([]);
+    const assetPromise = includeAssets
+      ? listObjects("words/assets/", { scope: "public" })
+      : Promise.resolve([]);
     const [pageObjects, assetObjects] = await Promise.all([pagePromise, assetPromise]);
 
     const pageMedia = pageObjects
       .map((obj) => {
-        const parsed = slug ? parsePageMediaKey(obj.key, slug) : null;
+        const parsed = slug ? parsePageMediaKey(obj.key, slug, pageScope === "private") : null;
         return parsed ? applyObjectMeta(parsed, obj.size, obj.lastModified) : null;
       })
       .filter((item): item is MediaItem => item !== null)
@@ -153,3 +162,5 @@ export const Route = createFileRoute("/api/admin/word-media")({
     },
   },
 });
+
+export { handleGET as GET };

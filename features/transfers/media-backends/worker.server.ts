@@ -144,7 +144,7 @@ async function enqueueWorkerJob(params: {
   const mediaId = params.file.mediaId ?? getTransferFileId(params.file.name);
 
   if (params.originalBuffer) {
-    await uploadBuffer(storageKey, params.originalBuffer, mimeType);
+    await uploadBuffer(storageKey, params.originalBuffer, mimeType, { scope: "private" });
   }
 
   const expected = getExpectedTransferAssetKeys(
@@ -242,7 +242,7 @@ async function processWorkerJob(
       getWorkerProcessingTimeoutMs(),
       async (): Promise<ProcessFileResult> => {
         if (job.processingRoute === "worker_raw") {
-          const original = await downloadBuffer(current.storageKey);
+          const original = await downloadBuffer(current.storageKey, { scope: "private" });
           const filename = job.file.originalName ?? job.file.name;
           const ext = path.extname(filename).toLowerCase() || ".dng";
 
@@ -256,11 +256,13 @@ async function processWorkerJob(
               `${prefix}/thumb/${mediaId}.webp`,
               processed.thumb.buffer,
               processed.thumb.contentType,
+              { scope: "private" },
             ),
             uploadBuffer(
               `${prefix}/full/${mediaId}.webp`,
               processed.full.buffer,
               processed.full.contentType,
+              { scope: "private" },
             ),
           ]);
 

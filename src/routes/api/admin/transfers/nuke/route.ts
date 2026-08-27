@@ -21,9 +21,9 @@ async function handlePOST(request: Request) {
 
   try {
     // Delete all files under transfers/
-    const objects = await listObjects("transfers/");
+    const objects = await listObjects("transfers/", { scope: "private" });
     const keys = objects.map((o) => o.key);
-    const deletedFiles = keys.length > 0 ? await deleteObjects(keys) : 0;
+    const deletedFiles = keys.length > 0 ? await deleteObjects(keys, { scope: "private" }) : 0;
 
     // Delete all transfer metadata keys + index
     const indexedIds: string[] = await redis.smembers("transfer:index");

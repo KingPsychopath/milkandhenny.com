@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import {
   deleteObjects,
   downloadBuffer,
+  headObject,
   listObjects,
   presignPutUrl,
   uploadBuffer,
@@ -391,7 +392,6 @@ async function prepareAlbumUploads(
         contentType,
         url: await presignPutUrl(uploadKey, contentType, 15 * 60, {
           scope: "private",
-          cacheControl: PRIVATE_MEDIA_CACHE_CONTROL,
         }),
       };
     }),
@@ -406,7 +406,11 @@ async function processAlbumUpload(
     throw new Error("Invalid album upload key");
   }
   if (!isSafePhotoId(file.photoId)) throw new Error("Invalid photo id");
-  const raw = await downloadBuffer(file.uploadKey);
+  const uploaded = await headObject(file.uploadKey, { scope: "private" });
+  if (!uploaded.exists || !uploaded.size || uploaded.size > MAX_ALBUM_FILE_BYTES) {
+    throw new Error("Uploaded album image failed verification");
+  }
+  const raw = await downloadBuffer(file.uploadKey, { scope: "private" });
   const extension = path.extname(file.original).toLowerCase() || ".jpg";
   const overlay: OgOverlay = { title: album.title, photoId: file.photoId };
   const [processed, responsive] = await Promise.all([

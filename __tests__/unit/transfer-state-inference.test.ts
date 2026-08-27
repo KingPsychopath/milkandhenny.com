@@ -73,8 +73,12 @@ describe("transfer state inference", () => {
 
     const inferred = await inferTransferFileState("abc123", file);
 
-    expect(headObject).toHaveBeenNthCalledWith(1, "transfers/abc123/thumb/clip-2.webp");
-    expect(headObject).toHaveBeenNthCalledWith(2, "transfers/abc123/full/clip-2.webp");
+    expect(headObject).toHaveBeenNthCalledWith(1, "transfers/abc123/thumb/clip-2.webp", {
+      scope: "private",
+    });
+    expect(headObject).toHaveBeenNthCalledWith(2, "transfers/abc123/full/clip-2.webp", {
+      scope: "private",
+    });
     expect(inferred.previewStatus).toBe("ready");
     expect(inferred.processingStatus).toBe("local_done");
   });

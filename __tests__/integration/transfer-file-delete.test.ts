@@ -111,11 +111,14 @@ describe("transfer file delete route", () => {
       },
     });
     expect(payload.transfer).not.toHaveProperty("groups");
-    expect(deleteObjects).toHaveBeenCalledWith([
-      "transfers/transfer-1/original/photo.jpg",
-      "transfers/transfer-1/thumb/photo.webp",
-      "transfers/transfer-1/full/photo.webp",
-    ]);
+    expect(deleteObjects).toHaveBeenCalledWith(
+      [
+        "transfers/transfer-1/original/photo.jpg",
+        "transfers/transfer-1/thumb/photo.webp",
+        "transfers/transfer-1/full/photo.webp",
+      ],
+      { scope: "private" },
+    );
     expect(saveTransfer).toHaveBeenCalledOnce();
     expect(deleteTransferData).not.toHaveBeenCalled();
   });

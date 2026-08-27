@@ -66,7 +66,7 @@ async function handlePOST(request: Request) {
       });
     }
 
-    const transferPrefixes = await listPrefixes("transfers/");
+    const transferPrefixes = await listPrefixes("transfers/", { scope: "private" });
     const allR2Ids = transferPrefixes
       .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
       .filter(Boolean);
@@ -74,10 +74,10 @@ async function handlePOST(request: Request) {
     const orphanIds = await findMissingTransferIds(redis, allR2Ids);
     let deletedObjects = 0;
     for (const id of orphanIds) {
-      const objects = await listObjects(`transfers/${id}/`);
+      const objects = await listObjects(`transfers/${id}/`, { scope: "private" });
       const keys = objects.map((o) => o.key);
       if (keys.length > 0) {
-        deletedObjects += await deleteObjects(keys);
+        deletedObjects += await deleteObjects(keys, { scope: "private" });
       }
       await redis.srem("transfer:index", id);
     }

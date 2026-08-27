@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "Default Multipart Abort Rule",
+      "enabled": true,
+      "conditions": {},
+      "abortMultipartUploadsTransition": {
+        "condition": { "type": "Age", "maxAge": 604800 }
+      }
+    },
+    {
+      "id": "cleanup-album-uploads",
+      "enabled": true,
+      "conditions": { "prefix": "incoming/albums/" },
+      "deleteObjectsTransition": {
+        "condition": { "type": "Age", "maxAge": 86400 }
+      }
+    },
+    {
+      "id": "cleanup-word-uploads",
+      "enabled": true,
+      "conditions": { "prefix": "incoming/words/" },
+      "deleteObjectsTransition": {
+        "condition": { "type": "Age", "maxAge": 86400 }
+      }
+    },
+    {
+      "id": "cleanup-expired-transfers",
+      "enabled": true,
+      "conditions": { "prefix": "transfers/" },
+      "deleteObjectsTransition": {
+        "condition": { "type": "Age", "maxAge": 2678400 }
+      }
+    }
+  ]
+}

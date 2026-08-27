@@ -26,7 +26,9 @@ describe("R2 bucket routing", () => {
     process.env.R2_PRIVATE_BUCKET = "private-bucket";
 
     const privateAlbumUrl = new URL(
-      await presignPutUrl("albums/album/original/photo.jpg", "image/jpeg"),
+      await presignPutUrl("albums/album/original/photo.jpg", "image/jpeg", 900, {
+        scope: "private",
+      }),
     );
     const publicUrl = new URL(
       await presignPutUrl("words/media/public-note/photo.jpg", "image/jpeg", 900, {
@@ -34,7 +36,9 @@ describe("R2 bucket routing", () => {
       }),
     );
     const privateUrl = new URL(
-      await presignPutUrl("transfers/transfer/originals/photo.jpg", "image/jpeg"),
+      await presignPutUrl("transfers/transfer/originals/photo.jpg", "image/jpeg", 900, {
+        scope: "private",
+      }),
     );
     const privateWordUrl = new URL(
       await presignPutUrl("words/media/private-note/photo.jpg", "image/jpeg", 900, {
@@ -46,5 +50,11 @@ describe("R2 bucket routing", () => {
     expect(privateAlbumUrl.host).toBe("private-bucket.test-account.r2.cloudflarestorage.com");
     expect(privateUrl.host).toBe("private-bucket.test-account.r2.cloudflarestorage.com");
     expect(privateWordUrl.host).toBe("private-bucket.test-account.r2.cloudflarestorage.com");
+  });
+
+  it("rejects unsafe keys before creating a storage client", async () => {
+    await expect(
+      presignPutUrl("../public/escape.jpg", "image/jpeg", 900, { scope: "private" }),
+    ).rejects.toThrow("Invalid object key");
   });
 });

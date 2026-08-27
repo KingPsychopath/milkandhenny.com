@@ -46,7 +46,7 @@ async function handleDELETE(request: Request, context: RouteContext) {
   let deletedObjects = 0;
   if (isTransferStorageConfigured()) {
     const keys = getTransferFileDeleteKeys(id, file);
-    deletedObjects = keys.length > 0 ? await deleteObjects(keys) : 0;
+    deletedObjects = keys.length > 0 ? await deleteObjects(keys, { scope: "private" }) : 0;
   }
 
   const updatedTransfer = removeTransferFile(transfer, fileId);

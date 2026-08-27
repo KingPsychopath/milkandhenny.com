@@ -72,7 +72,8 @@ export async function fetchWithRetry(
     try {
       const res = await fetch(url, { ...options, signal: attempt.signal });
 
-      if (res.ok || !canRetryMethod || !retryStatuses.has(res.status) || i === retries) {
+      const retryableStatus = retryStatuses.has(res.status) || res.status >= 500;
+      if (res.ok || !canRetryMethod || !retryableStatus || i === retries) {
         return res;
       }
 

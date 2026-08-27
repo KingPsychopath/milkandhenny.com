@@ -10,6 +10,8 @@ import { RAW_IMAGE_EXTENSIONS, isProcessableImage } from "@/features/media/proce
 import type { FileKind } from "@/features/media/file-kinds";
 
 const SAFE_MEDIA_TARGET_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_WORD_MEDIA_FILES = 100;
+const MAX_WORD_MEDIA_FILE_BYTES = 100 * 1024 * 1024;
 
 type WordMediaTarget = { scope: "word"; slug: string } | { scope: "asset"; assetId: string };
 
@@ -97,6 +99,11 @@ function mediaPrefixForTarget(target: WordMediaTarget): string {
   return `words/media/${target.slug}/`;
 }
 
+function incomingMediaPrefixForTarget(target: WordMediaTarget): string {
+  if (target.scope === "asset") return `incoming/words/assets/${target.assetId}/`;
+  return `incoming/words/media/${target.slug}/`;
+}
+
 function mediaPathForTarget(target: WordMediaTarget, filename: string): string {
   return `${mediaPrefixForTarget(target)}${filename}`;
 }
@@ -121,6 +128,8 @@ function toMarkdownSnippetForTarget(
 }
 
 export {
+  MAX_WORD_MEDIA_FILES,
+  MAX_WORD_MEDIA_FILE_BYTES,
   getWordUploadFilenameCandidates,
   isRawWordUpload,
   sanitiseStem,
@@ -128,6 +137,7 @@ export {
   isValidWordMediaTargetId,
   parseWordMediaTarget,
   mediaPrefixForTarget,
+  incomingMediaPrefixForTarget,
   mediaPathForTarget,
   toMarkdownSnippetForTarget,
 };

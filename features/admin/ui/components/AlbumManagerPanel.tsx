@@ -6,6 +6,7 @@ import { prepareBrowserImage } from "@/features/media/browser-image-prep.client"
 import { collectDroppedFiles } from "@/features/media/collect-dropped-files.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { copyText } from "@/lib/client/share";
+import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { AlbumPhotoGrid, type PhotoDraft } from "./AlbumPhotoGrid";
 
@@ -59,25 +60,12 @@ function reorder(photos: Photo[], sourceId: string, targetId: string): Photo[] {
 }
 
 async function putWithRetry(file: File, upload: PreparedUpload): Promise<void> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await fetch(upload.url, {
-        method: "PUT",
-        headers: { "Content-Type": upload.contentType },
-        body: file,
-      });
-      if (response.ok) return;
-      if (response.status < 500 || attempt === 2) {
-        throw new Error(`Storage rejected ${file.name} (${response.status})`);
-      }
-    } catch (error) {
-      lastError = error;
-      if (attempt === 2) throw error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
-  }
-  throw lastError instanceof Error ? lastError : new Error(`Failed to upload ${file.name}`);
+  const response = await uploadPresignedObject({
+    url: upload.url,
+    body: file,
+    contentType: upload.contentType,
+  });
+  if (!response.ok) throw new Error(`Storage rejected ${file.name} (${response.status})`);
 }
 
 export function AlbumManagerPanel({

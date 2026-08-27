@@ -17,6 +17,7 @@ import { collectDroppedFiles } from "@/features/media/collect-dropped-files.clie
 import { inferTransferTitle } from "@/features/transfers/presentation";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { copyText } from "@/lib/client/share";
+import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 
 /* ─── Types ─── */
@@ -434,38 +435,20 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           let putRes: Response | null = null;
           let lastPutError: unknown;
 
-          for (let attempt = 1; attempt <= DIRECT_UPLOAD_RETRIES + 1; attempt++) {
-            try {
-              if (!entry.url || !/^https?:\/\//i.test(entry.url)) {
-                throw new Error(`Invalid presigned upload URL: ${entry.url || "(empty)"}`);
-              }
-
-              putRes = await fetch(entry.url, {
-                method: "PUT",
-                headers: { "Content-Type": entry.contentType },
+          try {
+            putRes = await uploadPresignedObject(
+              {
+                url: entry.url,
                 body: entry.file,
-              });
-
-              if (putRes.ok) break;
-              if (!isRetryableStatus(putRes.status) || attempt > DIRECT_UPLOAD_RETRIES) {
-                throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
-              }
-            } catch (error) {
-              lastPutError = await toFriendlyUploadError(error, entry.file);
-              if (attempt > DIRECT_UPLOAD_RETRIES) {
-                throw buildUploadFailureMessage({
-                  file: entry.file,
-                  label: entry.label,
-                  contentType: entry.contentType,
-                  url: entry.url,
-                  error: lastPutError,
-                  attempt,
-                  totalAttempts,
-                });
-              }
+                contentType: entry.contentType,
+              },
+              { retries: DIRECT_UPLOAD_RETRIES },
+            );
+            if (!putRes.ok) {
+              throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
             }
-
-            await sleep(retryDelayMs(attempt));
+          } catch (error) {
+            lastPutError = await toFriendlyUploadError(error, entry.file);
           }
 
           if (!putRes?.ok) {

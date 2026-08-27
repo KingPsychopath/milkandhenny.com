@@ -1,7 +1,10 @@
 import {
+  copyObject,
+  deleteObjects,
   deleteObject,
   downloadBuffer,
   isConfigured,
+  listObjects,
   uploadBuffer,
   type StorageScope,
 } from "@/lib/platform/r2.server";
@@ -163,6 +166,30 @@ function isValidWordSlug(slug: string): boolean {
 
 function storageScopeForVisibility(visibility: WordVisibility): StorageScope {
   return visibility === "private" ? "private" : "public";
+}
+
+async function moveWordMediaStorage(
+  slug: string,
+  sourceScope: StorageScope,
+  destinationScope: StorageScope,
+): Promise<void> {
+  if (sourceScope === destinationScope) return;
+  const prefix = `words/media/${slug}/`;
+  const [sourceObjects, destinationObjects] = await Promise.all([
+    listObjects(prefix, { scope: sourceScope }),
+    listObjects(prefix, { scope: destinationScope }),
+  ]);
+  const sourceKeys = new Set(sourceObjects.map((object) => object.key));
+
+  for (const object of sourceObjects) {
+    await copyObject(object.key, object.key, { sourceScope, destinationScope });
+  }
+
+  const staleDestinationKeys = destinationObjects
+    .map((object) => object.key)
+    .filter((key) => !sourceKeys.has(key));
+  await deleteObjects(staleDestinationKeys, { scope: destinationScope });
+  await deleteObjects([...sourceKeys], { scope: sourceScope });
 }
 
 async function writeNoteContent(
@@ -453,6 +480,9 @@ async function updateWord(
     if (isConfigured()) {
       const nextScope = storageScopeForVisibility(nextVisibility);
       const previousScope = storageScopeForVisibility(existing.visibility);
+      if (visibilityChanged) {
+        await moveWordMediaStorage(slug, previousScope, nextScope);
+      }
       if (nextBodyKey !== existing.bodyKey || nextScope !== previousScope) {
         await deleteObject(existing.bodyKey, { scope: previousScope });
       }
@@ -539,4 +569,13 @@ async function listWords(
   return { words: page, nextCursor };
 }
 
-export { isValidWordSlug, getWordMeta, getWord, createWord, updateWord, deleteWord, listWords };
+export {
+  isValidWordSlug,
+  storageScopeForVisibility,
+  getWordMeta,
+  getWord,
+  createWord,
+  updateWord,
+  deleteWord,
+  listWords,
+};

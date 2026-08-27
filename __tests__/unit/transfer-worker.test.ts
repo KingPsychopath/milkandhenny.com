@@ -208,12 +208,14 @@ describe("worker media processing", () => {
       "transfers/transfer-1/thumb/photo-2.webp",
       expect.any(Buffer),
       "image/webp",
+      { scope: "private" },
     );
     expect(uploadBuffer).toHaveBeenNthCalledWith(
       2,
       "transfers/transfer-1/full/photo-2.webp",
       expect.any(Buffer),
       "image/webp",
+      { scope: "private" },
     );
     expect(updateTransferFile).toHaveBeenLastCalledWith(
       "transfer-1",

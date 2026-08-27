@@ -712,13 +712,13 @@ async function deleteTransfer(
   const prefix = `transfers/${id}/`;
   onProgress?.(`Listing files under ${prefix}...`);
 
-  const objects = await listObjects(prefix);
+  const objects = await listObjects(prefix, { scope: "private" });
   const keys = objects.map((o) => o.key);
 
   let deletedFiles = 0;
   if (keys.length > 0) {
     onProgress?.(`Deleting ${keys.length} files from R2...`);
-    deletedFiles = await deleteObjects(keys);
+    deletedFiles = await deleteObjects(keys, { scope: "private" });
   }
 
   const dataDeleted = await deleteTransferData(id);
@@ -754,7 +754,7 @@ async function deleteTransferFile(
   let deletedObjects = 0;
   if (keys.length > 0) {
     onProgress?.(`Deleting ${keys.length} objects for ${file.filename}...`);
-    deletedObjects = await deleteObjects(keys);
+    deletedObjects = await deleteObjects(keys, { scope: "private" });
   }
 
   const updatedTransfer = removeTransferFile(transfer, file.id);
@@ -923,7 +923,7 @@ async function cleanupExpiredTransfers(
   }
 
   onProgress?.("Scanning R2 transfer prefixes...");
-  const transferPrefixes = await listPrefixes("transfers/");
+  const transferPrefixes = await listPrefixes("transfers/", { scope: "private" });
   const allR2Ids = transferPrefixes
     .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
     .filter(Boolean);
@@ -933,11 +933,11 @@ async function cleanupExpiredTransfers(
     const exists = await redis.exists(`transfer:${id}`);
     if (exists) continue;
 
-    const objects = await listObjects(`transfers/${id}/`);
+    const objects = await listObjects(`transfers/${id}/`, { scope: "private" });
     const keys = objects.map((o) => o.key);
     if (keys.length > 0) {
       onProgress?.(`Deleting ${keys.length} orphaned files for transfer ${id}...`);
-      deletedObjects += await deleteObjects(keys);
+      deletedObjects += await deleteObjects(keys, { scope: "private" });
     }
     await redis.srem("transfer:index", id);
   }
@@ -963,13 +963,13 @@ async function nukeAllTransfers(
 
   /* ─── R2 cleanup ─── */
   onProgress?.("Listing all R2 objects under transfers/...");
-  const objects = await listObjects("transfers/");
+  const objects = await listObjects("transfers/", { scope: "private" });
   const keys = objects.map((o) => o.key);
 
   let deletedFiles = 0;
   if (keys.length > 0) {
     onProgress?.(`Deleting ${keys.length} files from R2...`);
-    deletedFiles = await deleteObjects(keys);
+    deletedFiles = await deleteObjects(keys, { scope: "private" });
   } else {
     onProgress?.("No R2 objects found under transfers/.");
   }

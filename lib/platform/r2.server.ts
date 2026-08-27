@@ -66,10 +66,18 @@ type R2ClientState = {
 type StorageScope = "public" | "private";
 
 type R2OperationOptions = {
-  scope?: StorageScope;
+  scope: StorageScope;
 };
 
 type R2UploadOptions = R2OperationOptions & {
+  cacheControl?: string;
+  contentDisposition?: string;
+};
+
+type R2CopyOptions = {
+  sourceScope: StorageScope;
+  destinationScope: StorageScope;
+  contentType?: string;
   cacheControl?: string;
   contentDisposition?: string;
 };
@@ -182,17 +190,6 @@ function getClient(scope: StorageScope): { client: S3Client; config: R2RuntimeCo
   return { client, config };
 }
 
-function getStorageScope(keyOrPrefix: string): StorageScope {
-  return keyOrPrefix === "albums" ||
-    keyOrPrefix.startsWith("albums/") ||
-    keyOrPrefix === "incoming" ||
-    keyOrPrefix.startsWith("incoming/") ||
-    keyOrPrefix === "transfers" ||
-    keyOrPrefix.startsWith("transfers/")
-    ? "private"
-    : "public";
-}
-
 function getBucket(scope: StorageScope): string {
   const config = getRuntimeConfig();
   const bucket = scope === "public" ? config.publicBucket : config.privateBucket;
@@ -202,8 +199,16 @@ function getBucket(scope: StorageScope): string {
   return bucket;
 }
 
-function resolveScope(keyOrPrefix: string, options?: R2OperationOptions): StorageScope {
-  return options?.scope ?? getStorageScope(keyOrPrefix);
+function assertObjectKey(key: string): void {
+  if (!key || key.startsWith("/") || key.includes("..") || key.includes("\\")) {
+    throw new Error(`Invalid object key: ${JSON.stringify(key)}`);
+  }
+}
+
+function assertObjectPrefix(prefix: string): void {
+  if (prefix.startsWith("/") || prefix.includes("..") || prefix.includes("\\")) {
+    throw new Error(`Invalid object prefix: ${JSON.stringify(prefix)}`);
+  }
 }
 
 function sleep(ms: number): Promise<void> {
@@ -294,7 +299,7 @@ function isConfigured(): boolean {
 }
 
 function isTransferStorageConfigured(): boolean {
-  return isConfigured();
+  return isPrivateStorageConfigured();
 }
 
 /** Check whether the private transfer bucket is configured for worker-only use. */
@@ -338,8 +343,9 @@ async function checkPrivateStorageConnection(): Promise<void> {
 /* ─── Operations ─── */
 
 /** List objects under a prefix. Pass empty string for root. */
-async function listObjects(prefix = "", options?: R2OperationOptions): Promise<R2Object[]> {
-  const scope = resolveScope(prefix, options);
+async function listObjects(prefix: string, options: R2OperationOptions): Promise<R2Object[]> {
+  assertObjectPrefix(prefix);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
   const objects: R2Object[] = [];
@@ -374,8 +380,9 @@ async function listObjects(prefix = "", options?: R2OperationOptions): Promise<R
  * List immediate sub-prefixes under a prefix (like listing directories).
  * Returns the full prefix strings (e.g. "transfers/abc123/").
  */
-async function listPrefixes(prefix: string, options?: R2OperationOptions): Promise<string[]> {
-  const scope = resolveScope(prefix, options);
+async function listPrefixes(prefix: string, options: R2OperationOptions): Promise<string[]> {
+  assertObjectPrefix(prefix);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
   const prefixes: string[] = [];
@@ -406,9 +413,10 @@ async function listPrefixes(prefix: string, options?: R2OperationOptions): Promi
 /** Check if an object exists and get its metadata. */
 async function headObject(
   key: string,
-  options?: R2OperationOptions,
+  options: R2OperationOptions,
 ): Promise<{ exists: boolean; size?: number; contentType?: string; cacheControl?: string }> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -429,8 +437,9 @@ async function headObject(
 }
 
 /** Download an object as a Buffer. Throws if not found. */
-async function downloadBuffer(key: string, options?: R2OperationOptions): Promise<Buffer> {
-  const scope = resolveScope(key, options);
+async function downloadBuffer(key: string, options: R2OperationOptions): Promise<Buffer> {
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -459,9 +468,10 @@ async function downloadBuffer(key: string, options?: R2OperationOptions): Promis
 async function downloadToFile(
   key: string,
   destination: string,
-  options?: R2OperationOptions,
+  options: R2OperationOptions,
 ): Promise<number> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -488,9 +498,10 @@ async function uploadBuffer(
   key: string,
   buffer: Buffer,
   contentType: string,
-  options?: R2UploadOptions,
+  options: R2UploadOptions,
 ): Promise<void> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -508,13 +519,72 @@ async function uploadBuffer(
   );
 }
 
+/** Promote an object within or between explicitly selected storage scopes. */
+async function copyObject(
+  sourceKey: string,
+  destinationKey: string,
+  options: R2CopyOptions,
+): Promise<void> {
+  assertObjectKey(sourceKey);
+  assertObjectKey(destinationKey);
+  const sourceBucket = getBucket(options.sourceScope);
+  const destinationBucket = getBucket(options.destinationScope);
+
+  if (options.sourceScope !== options.destinationScope) {
+    await sendWithRetry("copyObjectBetweenScopes", async () => {
+      const source = await getClient(options.sourceScope).client.send(
+        new GetObjectCommand({ Bucket: sourceBucket, Key: sourceKey }),
+      );
+      if (!source.Body) throw new Error(`Object ${sourceKey} has no body`);
+      await getClient(options.destinationScope).client.send(
+        new PutObjectCommand({
+          Bucket: destinationBucket,
+          Key: destinationKey,
+          Body: source.Body,
+          ContentLength: source.ContentLength,
+          ContentType: options.contentType ?? source.ContentType,
+          CacheControl: options.cacheControl ?? source.CacheControl,
+          ContentDisposition: options.contentDisposition ?? source.ContentDisposition,
+        }),
+      );
+    });
+    return;
+  }
+
+  const { client } = getClient(options.destinationScope);
+  const replacesMetadata = Boolean(
+    options.contentType || options.cacheControl || options.contentDisposition,
+  );
+  const current =
+    replacesMetadata && !options.contentType
+      ? await sendWithRetry("headObjectForCopy", () =>
+          client.send(new HeadObjectCommand({ Bucket: sourceBucket, Key: sourceKey })),
+        )
+      : null;
+
+  await sendWithRetry("copyObject", () =>
+    client.send(
+      new CopyObjectCommand({
+        Bucket: destinationBucket,
+        Key: destinationKey,
+        CopySource: `${sourceBucket}/${sourceKey}`,
+        MetadataDirective: replacesMetadata ? "REPLACE" : undefined,
+        ContentType: options.contentType ?? current?.ContentType,
+        CacheControl: options.cacheControl ?? current?.CacheControl,
+        ContentDisposition: options.contentDisposition ?? current?.ContentDisposition,
+      }),
+    ),
+  );
+}
+
 /** Replace an object's HTTP metadata without downloading and re-uploading its body. */
 async function setObjectHttpMetadata(
   key: string,
   metadata: { cacheControl: string; contentDisposition?: string },
-  options?: R2OperationOptions,
+  options: R2OperationOptions,
 ): Promise<void> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
   const current = await sendWithRetry("headObjectForMetadata", () =>
@@ -541,8 +611,9 @@ async function setObjectHttpMetadata(
 }
 
 /** Delete a single object. */
-async function deleteObject(key: string, options?: R2OperationOptions): Promise<void> {
-  const scope = resolveScope(key, options);
+async function deleteObject(key: string, options: R2OperationOptions): Promise<void> {
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -552,54 +623,45 @@ async function deleteObject(key: string, options?: R2OperationOptions): Promise<
 }
 
 /** Delete multiple objects at once (max 1000 per call). */
-async function deleteObjects(keys: string[], options?: R2OperationOptions): Promise<number> {
+async function deleteObjects(keys: string[], options: R2OperationOptions): Promise<number> {
   if (keys.length === 0) return 0;
+  keys.forEach(assertObjectKey);
 
   let deleted = 0;
-  const keysByScope = new Map<StorageScope, string[]>();
+  const { scope } = options;
+  const { client } = getClient(scope);
+  const bucket = getBucket(scope);
+  for (let i = 0; i < keys.length; i += 1000) {
+    const batch = keys.slice(i, i + 1000);
 
-  for (const key of keys) {
-    const scope = options?.scope ?? getStorageScope(key);
-    const scopedKeys = keysByScope.get(scope) ?? [];
-    scopedKeys.push(key);
-    keysByScope.set(scope, scopedKeys);
-  }
+    const response = await sendWithRetry("deleteObjects", () =>
+      client.send(
+        new DeleteObjectsCommand({
+          Bucket: bucket,
+          Delete: {
+            Objects: batch.map((Key) => ({ Key })),
+            Quiet: true,
+          },
+        }),
+      ),
+    );
 
-  for (const [scope, scopedKeys] of keysByScope) {
-    const { client } = getClient(scope);
-    const bucket = getBucket(scope);
-    for (let i = 0; i < scopedKeys.length; i += 1000) {
-      const batch = scopedKeys.slice(i, i + 1000);
-
-      const response = await sendWithRetry("deleteObjects", () =>
-        client.send(
-          new DeleteObjectsCommand({
-            Bucket: bucket,
-            Delete: {
-              Objects: batch.map((Key) => ({ Key })),
-              Quiet: true,
-            },
-          }),
-        ),
+    if ((response.Errors?.length ?? 0) > 0) {
+      const failedKeys = response.Errors?.map((error) => error.Key).filter(Boolean) ?? [];
+      throw new Error(
+        `R2 delete failed for ${response.Errors?.length ?? 0} object(s): ${failedKeys.join(", ")}`,
       );
-
-      if ((response.Errors?.length ?? 0) > 0) {
-        const failedKeys = response.Errors?.map((error) => error.Key).filter(Boolean) ?? [];
-        throw new Error(
-          `R2 delete failed for ${response.Errors?.length ?? 0} object(s): ${failedKeys.join(", ")}`,
-        );
-      }
-
-      deleted += batch.length;
     }
+
+    deleted += batch.length;
   }
 
   return deleted;
 }
 
 /** Get bucket usage stats. */
-async function getBucketInfo(): Promise<BucketInfo> {
-  const objects = await listObjects("");
+async function getBucketInfo(scope: StorageScope): Promise<BucketInfo> {
+  const objects = await listObjects("", { scope });
   const totalSizeBytes = objects.reduce((sum, o) => sum + o.size, 0);
 
   return {
@@ -621,9 +683,10 @@ async function presignPutUrl(
   key: string,
   contentType: string,
   expiresIn = 900,
-  options?: R2UploadOptions,
+  options: R2UploadOptions,
 ): Promise<string> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -640,15 +703,16 @@ async function presignPutUrl(
 
 async function presignGetUrl(
   key: string,
-  options?: {
+  options: {
     responseCacheControl?: string;
     responseContentDisposition?: string;
     responseContentType?: string;
     expiresIn?: number;
-    scope?: StorageScope;
+    scope: StorageScope;
   },
 ): Promise<string> {
-  const scope = resolveScope(key, options);
+  assertObjectKey(key);
+  const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
@@ -675,6 +739,7 @@ export {
   downloadBuffer,
   downloadToFile,
   uploadBuffer,
+  copyObject,
   setObjectHttpMetadata,
   deleteObject,
   deleteObjects,
@@ -683,4 +748,11 @@ export {
   presignPutUrl,
 };
 
-export type { R2Object, BucketInfo, R2OperationOptions, R2UploadOptions, StorageScope };
+export type {
+  R2Object,
+  BucketInfo,
+  R2OperationOptions,
+  R2UploadOptions,
+  R2CopyOptions,
+  StorageScope,
+};

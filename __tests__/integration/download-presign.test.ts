@@ -12,8 +12,7 @@ describe("download presign", () => {
   it("should presign album originals as attachment downloads", async () => {
     const presignGetUrl = vi.fn().mockResolvedValue("https://example.com/download");
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
-      isTransferStorageConfigured: () => true,
+      isPrivateStorageConfigured: () => true,
       presignGetUrl,
     }));
     vi.doMock("@/features/media/albums.server", () => ({
@@ -44,8 +43,7 @@ describe("download presign", () => {
 
   it("should reject keys outside the allowed public download scope", async () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
-      isTransferStorageConfigured: () => true,
+      isPrivateStorageConfigured: () => true,
       presignGetUrl: vi.fn(),
     }));
 
@@ -59,8 +57,7 @@ describe("download presign", () => {
   it("should derive the filename from a valid transfer key when omitted", async () => {
     const presignGetUrl = vi.fn().mockResolvedValue("https://example.com/download");
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
-      isTransferStorageConfigured: () => true,
+      isPrivateStorageConfigured: () => true,
       presignGetUrl,
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
@@ -99,8 +96,7 @@ describe("download presign", () => {
   it("should reject a valid-looking transfer key that is not in that transfer", async () => {
     const presignGetUrl = vi.fn();
     vi.doMock("@/lib/platform/r2.server", () => ({
-      isConfigured: () => true,
-      isTransferStorageConfigured: () => true,
+      isPrivateStorageConfigured: () => true,
       presignGetUrl,
     }));
     vi.doMock("@/features/transfers/store.server", () => ({

@@ -66,9 +66,9 @@ async function handleDELETE(request: Request, context: RouteContext) {
   const prefix = `transfers/${id}/`;
   let deletedFiles = 0;
   if (isTransferStorageConfigured()) {
-    const objects = await listObjects(prefix);
+    const objects = await listObjects(prefix, { scope: "private" });
     const keys = objects.map((o) => o.key).filter((k) => k && k.startsWith(prefix));
-    deletedFiles = await deleteObjects(keys);
+    deletedFiles = await deleteObjects(keys, { scope: "private" });
   }
 
   // Delete Redis metadata

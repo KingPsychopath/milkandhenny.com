@@ -34,4 +34,18 @@ describe("fetchWithRetry", () => {
     expect(res.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("retries any 5xx response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("err", { status: 599 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const pending = fetchWithRetry("/api/guests", undefined, { retries: 1, baseDelayMs: 1 });
+    await vi.runAllTimersAsync();
+
+    await expect(pending).resolves.toMatchObject({ status: 204 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

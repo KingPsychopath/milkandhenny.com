@@ -18,6 +18,7 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
+import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import {
   deleteLocalPitchDraft,
@@ -1128,16 +1129,14 @@ export function usePitchEditorController({
         },
       });
       if (!reserved.ok) throw new Error(reserved.error);
-      const uploaded = await fetchWithRetry(
-        reserved.value.uploadUrl,
+      const uploaded = await uploadPresignedObject(
         {
-          method: "PUT",
-          headers: { "Content-Type": blob.type },
+          url: reserved.value.uploadUrl,
           body: blob,
+          contentType: blob.type,
         },
         {
           retries: 2,
-          retryMethods: ["PUT"],
           timeoutMs: PITCH_UPLOAD_TIMEOUT_MS,
         },
       );

@@ -179,6 +179,7 @@ async function handlePOST(request: Request) {
           primaryKey,
           getMimeType(file.name),
           uploadUrlTtlSeconds,
+          { scope: "private" },
         );
         const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
         const archivedOriginalUrl =
@@ -187,6 +188,7 @@ async function handlePOST(request: Request) {
                 archivedOriginalKey,
                 getMimeType(file.originalName),
                 uploadUrlTtlSeconds,
+                { scope: "private" },
               )
             : undefined;
 

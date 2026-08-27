@@ -157,19 +157,27 @@ describe("local transfer backfill", () => {
       processingStatus: "local_done",
       processingRoute: "local_image",
     });
-    expect(downloadBuffer).toHaveBeenCalledWith("transfers/transfer-1/originals/capture.hif");
+    expect(downloadBuffer).toHaveBeenCalledWith("transfers/transfer-1/originals/capture.hif", {
+      scope: "private",
+    });
     expect(uploadBuffer).toHaveBeenCalledWith(
       "transfers/transfer-1/thumb/capture.hif.webp",
       Buffer.from("thumb"),
       "image/webp",
+      { scope: "private" },
     );
     expect(uploadBuffer).toHaveBeenCalledWith(
       "transfers/transfer-1/full/capture.hif.webp",
       Buffer.from("full"),
       "image/webp",
+      { scope: "private" },
     );
-    expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/thumb/");
-    expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/full/");
+    expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/thumb/", {
+      scope: "private",
+    });
+    expect(listObjects).toHaveBeenCalledWith("transfers/transfer-1/full/", {
+      scope: "private",
+    });
     expect(saveTransfer).toHaveBeenCalled();
   });
 });
