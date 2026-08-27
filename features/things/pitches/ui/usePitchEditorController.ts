@@ -2593,6 +2593,7 @@ export function usePitchEditorController({
     setRestoringHistoryId,
     serverState,
     serverPurgeAfter,
+    hasCredential: Boolean(credential),
     restoring,
     restoreError,
     setRestoreError,

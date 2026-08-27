@@ -83,6 +83,7 @@ export function PitchEditor({
     restoringHistoryId,
     serverState,
     serverPurgeAfter,
+    hasCredential,
     restoring,
     restoreError,
     restoreFromTrash,
@@ -150,8 +151,10 @@ export function PitchEditor({
   } = usePitchEditorController({ session, maximumSlides, operationalStatus });
 
   const mediaClipCount = visibleSlides.reduce((count, slide) => count + slide.mediaClips.length, 0);
+  // Without an editing key nothing was checked and nothing can be restored: that
+  // is the "needs its key" screen's job, not a banner about the server copy.
   const serverRestore =
-    isDemo || serverState === "active" ? null : (
+    isDemo || !hasCredential || serverState === "active" ? null : (
       <PitchServerRestore
         state={serverState}
         purgeAfter={serverPurgeAfter}
