@@ -83,6 +83,8 @@ import { fromPitchStageScene, pitchStageExport, toPitchStageScene } from "./pitc
 export const PITCH_STUDIO_TOUR_KEY = "milkandhenny:pitch-studio-tour:v1";
 /** A note handed from the old pitch to the rebuilt one, which mounts fresh. */
 const PITCH_RESTORE_NOTE_KEY = "milkandhenny:pitch-restore-note";
+/** How long a note with nothing to act on stays in the status strip. */
+export const PITCH_TRANSIENT_MESSAGE_MS = 8_000;
 export const PITCH_RAIL_KEY = "milkandhenny:pitch-studio-rail:v1";
 export const OPERATIONAL_STATUS_REFRESH_INTERVAL_MS = 30_000;
 const PITCH_IMAGE_UPLOAD_MAX_DIMENSION = 2_560;
@@ -470,7 +472,7 @@ export function usePitchEditorController({
   const [serverPurgeAfter, setServerPurgeAfter] = useState<string>();
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessageState] = useState("");
   const [undoEntry, setUndoEntry] = useState<{
     label: string;
     title: string;
@@ -540,8 +542,39 @@ export function usePitchEditorController({
   const presentationInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const restoreRequest = useRef<{ id: string; ownerToken: string } | undefined>(undefined);
+  const messageTimer = useRef<number | undefined>(undefined);
   const navigate = useNavigate();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
+
+  /**
+   * The status strip is shared by confirmations, progress, errors and anything
+   * carrying a button. `transient` is for notes with nothing to act on: they
+   * clear themselves so a stale line cannot be mistaken for current state.
+   * Anything actionable — an error to retry, a step still running — stays put.
+   */
+  const setMessage = useCallback((value: string, options?: { transient?: boolean }) => {
+    window.clearTimeout(messageTimer.current);
+    messageTimer.current = undefined;
+    setMessageState(value);
+    if (!options?.transient || !value) return;
+    messageTimer.current = window.setTimeout(() => {
+      messageTimer.current = undefined;
+      setMessageState((current) => (current === value ? "" : current));
+    }, PITCH_TRANSIENT_MESSAGE_MS);
+  }, []);
+
+  /**
+   * Retiring one specific warning is not the same as posting a message: it runs
+   * after every local save, so going through `setMessage` would cancel whatever
+   * transient note is currently counting down.
+   */
+  const clearLocalSaveWarning = useCallback(() => {
+    setMessageState((current) =>
+      current.startsWith("This browser could not update its safety copy.") ? "" : current,
+    );
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(messageTimer.current), []);
 
   documentRef.current = documentState;
   deckRef.current = deck;
@@ -685,15 +718,22 @@ export function usePitchEditorController({
   useEffect(() => {
     if (isDemo) return;
     try {
-      const note = sessionStorage.getItem(PITCH_RESTORE_NOTE_KEY);
-      if (note) {
+      const stored = sessionStorage.getItem(PITCH_RESTORE_NOTE_KEY);
+      if (stored) {
         sessionStorage.removeItem(PITCH_RESTORE_NOTE_KEY);
-        setMessage(note);
+        const note: unknown = JSON.parse(stored);
+        const text =
+          note && typeof note === "object" && typeof (note as { text?: unknown }).text === "string"
+            ? (note as { text: string }).text
+            : "";
+        if (text) {
+          setMessage(text, { transient: (note as { transient?: unknown }).transient === true });
+        }
       }
     } catch {
       // A blocked session store only costs the confirmation note.
     }
-  }, [deckId, isDemo]);
+  }, [deckId, isDemo, setMessage]);
 
   useEffect(() => {
     if (isDemo) return;
@@ -798,7 +838,7 @@ export function usePitchEditorController({
     return () => {
       cancelled = true;
     };
-  }, [deckId, isDemo]);
+  }, [deckId, isDemo, setMessage]);
 
   const markChanged = useCallback(
     (
@@ -855,9 +895,7 @@ export function usePitchEditorController({
         .then(() => {
           setLocalSavedRevision((current) => Math.max(current, savedRevision));
           setLocalSaveFailed(false);
-          setMessage((current) =>
-            current.startsWith("This browser could not update its safety copy.") ? "" : current,
-          );
+          clearLocalSaveWarning();
         })
         .catch(() => {
           setLocalSaveFailed(true);
@@ -867,7 +905,19 @@ export function usePitchEditorController({
         });
     }, 180);
     return () => window.clearTimeout(timer);
-  }, [deck?.version, deckId, documentState, files, isDemo, localSaveWake, phase, revision, title]);
+  }, [
+    clearLocalSaveWarning,
+    deck?.version,
+    deckId,
+    documentState,
+    files,
+    isDemo,
+    localSaveWake,
+    phase,
+    revision,
+    setMessage,
+    title,
+  ]);
 
   const performSync = useCallback(async () => {
     const currentDeck = deckRef.current;
@@ -969,7 +1019,7 @@ export function usePitchEditorController({
       syncing.current = false;
       if (revisionRef.current > sentRevision) setSyncWake((value) => value + 1);
     }
-  }, [credential, deckId, isDemo, markChanged, serverSavingPaused, updateState]);
+  }, [credential, deckId, isDemo, markChanged, serverSavingPaused, setMessage, updateState]);
 
   useEffect(() => {
     if (isDemo || serverSavingPaused || revision <= lastSyncedRevision.current) return;
@@ -1237,6 +1287,7 @@ export function usePitchEditorController({
     localSavedRevision,
     revision,
     serverSavingPaused,
+    setMessage,
     unsecuredImageFileIds,
     updateState,
     uploadBlob,
@@ -1244,11 +1295,11 @@ export function usePitchEditorController({
   ]);
 
   const retryImageUploads = useCallback(() => {
-    setMessage("Trying the unfinished image saves again…");
+    setMessage("Trying the unfinished image saves again…", { transient: true });
     setImageUploadFailure(undefined);
     setSyncState("local");
     setUploadWake((value) => value + 1);
-  }, []);
+  }, [setMessage]);
 
   function onCanvasChange(
     slideId: string,
@@ -1340,7 +1391,7 @@ export function usePitchEditorController({
     setActiveSlideId(undoEntry.activeSlideId);
     setSceneEpoch((value) => value + 1);
     markChanged("history.undo", { action: undoEntry.label });
-    setMessage(`Undid ${undoEntry.label}.`);
+    setMessage(`Undid ${undoEntry.label}.`, { transient: true });
     setUndoEntry(undefined);
   }
 
@@ -1371,9 +1422,16 @@ export function usePitchEditorController({
       return;
     }
     if (!file || !currentSlide) return;
-    if (mediaProgress) return;
+    if (mediaProgress) {
+      setMessage("One media file is still being prepared. Add the next one when it finishes.", {
+        transient: true,
+      });
+      return;
+    }
     if (currentSlide.mediaClips.length >= PITCH_MEDIA_CLIP_LIMIT) {
-      setMessage(`This slide can have up to ${PITCH_MEDIA_CLIP_LIMIT} media tracks.`);
+      setMessage(`This slide can have up to ${PITCH_MEDIA_CLIP_LIMIT} media tracks.`, {
+        transient: true,
+      });
       return;
     }
     try {
@@ -1460,11 +1518,12 @@ export function usePitchEditorController({
       markChanged("media.add", { slideId: currentSlide.id, assetId: asset.id });
       setMessage(
         `${prepared.kind === "video" ? "Video" : "Sound"} added${prepared.kind === "video" && prepared.hasAudio ? " with linked sound" : ""}. Drag it to move it, or pull an edge to trim it.`,
+        { transient: true },
       );
     } catch (error) {
       if (error instanceof PitchMediaNeedsTrimError) {
         setPendingMediaTrim({ file, sourceDurationMs: error.durationMs, kind: error.kind });
-        setMessage("Choose the part of this media file to use.");
+        setMessage("Choose the part of this media file to use.", { transient: true });
         return;
       }
       setSyncState("error");
@@ -1529,7 +1588,9 @@ export function usePitchEditorController({
         elements: toPitchStageScene(currentSlide.id, nextElements).elements,
       });
       markChanged("image.add", { slideId: currentSlide.id, fileId });
-      setMessage("Image placed in the middle of the slide. Move it wherever you like.");
+      setMessage("Image placed in the middle of the slide. Move it wherever you like.", {
+        transient: true,
+      });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "That image could not be placed");
     }
@@ -1932,7 +1993,7 @@ export function usePitchEditorController({
       return;
     }
     if (kind === "image") {
-      setMessage("Drop an image inside the 16:9 slide frame.");
+      setMessage("Drop an image inside the 16:9 slide frame.", { transient: true });
       return;
     }
     setMessage(
@@ -1951,14 +2012,16 @@ export function usePitchEditorController({
     });
     if (deckFiles.length > 0) {
       if (selected.length > 1) {
-        setMessage("Bring in one presentation or studio backup at a time.");
+        setMessage("Bring in one presentation or studio backup at a time.", { transient: true });
         return;
       }
       await handleDroppedFile(deckFiles[0], target);
       return;
     }
     for (const file of selected) await handleDroppedFile(file, target);
-    if (selected.length < files.length) setMessage("Added the first 20 files from that drop.");
+    if (selected.length < files.length) {
+      setMessage("Added the first 20 files from that drop.", { transient: true });
+    }
   }
 
   async function adoptRestoredDeck(remote: OwnedPitchDeck) {
@@ -2035,7 +2098,9 @@ export function usePitchEditorController({
         return;
       }
       await adoptRestoredDeck(result.value);
-      setMessage("This pitch is out of the Trash. It is saving to the server again.");
+      setMessage("This pitch is out of the Trash. It is saving to the server again.", {
+        transient: true,
+      });
     } catch {
       setRestoreError(
         navigator.onLine
@@ -2119,9 +2184,13 @@ export function usePitchEditorController({
       try {
         sessionStorage.setItem(
           PITCH_RESTORE_NOTE_KEY,
-          droppedClips > 0
-            ? `Rebuilt on the server as a new pitch. Its images are being secured. ${droppedClips} video or sound clip${droppedClips === 1 ? "" : "s"} could not come back, because the server copies were deleted with the old pitch.`
-            : "Rebuilt on the server as a new pitch. Its images are being secured.",
+          JSON.stringify({
+            text:
+              droppedClips > 0
+                ? `Rebuilt on the server as a new pitch. Its images are being secured. ${droppedClips} video or sound clip${droppedClips === 1 ? "" : "s"} could not come back, because the server copies were deleted with the old pitch.`
+                : "Rebuilt on the server as a new pitch. Its images are being secured.",
+            transient: droppedClips === 0,
+          }),
         );
       } catch {
         // A blocked session store only costs the confirmation note.
@@ -2314,7 +2383,9 @@ export function usePitchEditorController({
         () => setLocalSaveFailed(false),
         () => setLocalSaveFailed(true),
       );
-      setMessage(`Restored the version from ${new Date(item.createdAt).toLocaleString()}.`);
+      setMessage(`Restored the version from ${new Date(item.createdAt).toLocaleString()}.`, {
+        transient: true,
+      });
       await loadVersionHistory();
     } catch (error) {
       setSyncState("error");

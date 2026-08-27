@@ -19,6 +19,7 @@ import { PitchImportDialog } from "./PitchImportDialog";
 import { PitchPreview } from "./PitchPreview";
 import { PitchRecovery } from "./PitchRecovery";
 import { PitchServerRestore } from "./PitchServerRestore";
+import { pitchStudioStatusLabel } from "./studio-status";
 import { PitchSlideThumbnail } from "./PitchSlideThumbnail";
 import { PitchVersionHistory } from "./PitchVersionHistory";
 
@@ -280,27 +281,16 @@ export function PitchEditor({
         />
         {!isDemo ? <PitchDeviceSwitcher deckId={deckId} /> : null}
         <span className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
-          {isDemo
-            ? "demo · not saved"
-            : serverSavingPaused
-              ? "server saving paused · safe here"
-              : localSaveFailed
-                ? "local backup needs attention"
-                : syncState === "saved"
-                  ? "saved"
-                  : syncState === "syncing"
-                    ? "syncing…"
-                    : syncState === "merged"
-                      ? "recovered + merged"
-                      : syncState === "error"
-                        ? "needs attention"
-                        : serverState === "gone"
-                          ? "local only · not on the server"
-                          : serverState === "trashed"
-                            ? "in trash · not saving"
-                            : navigator.onLine
-                              ? "saved on this device"
-                              : "offline · safe here"}
+          {pitchStudioStatusLabel({
+            isDemo,
+            serverSavingPaused,
+            localSaveFailed,
+            syncState,
+            serverState,
+            preparingMedia: Boolean(mediaProgress),
+            savingImages: Boolean(activeImageUploadId),
+            online: navigator.onLine,
+          })}
         </span>
         <button
           type="button"
@@ -402,7 +392,7 @@ export function PitchEditor({
         </div>
       ) : null}
 
-      {message ? (
+      {message || undoEntry ? (
         <div
           className="border-b theme-border px-4 py-2 text-center font-mono text-xs theme-muted"
           role="status"
