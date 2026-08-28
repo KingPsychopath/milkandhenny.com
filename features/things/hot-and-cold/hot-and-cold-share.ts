@@ -31,10 +31,20 @@ const TRAIL_SYMBOLS: Record<HeatBand, string> = {
   burning: "❤️‍🔥",
   hot: "🔥",
   warm: "☀️",
-  cool: "🔹",
+  cool: "🌬️",
   cold: "❄️",
   frozen: "🧊",
 };
+
+const TRAIL_BANDS: readonly HeatBand[] = [
+  "frozen",
+  "cold",
+  "cool",
+  "warm",
+  "hot",
+  "burning",
+  "found",
+];
 
 function sampleEvenly<T>(items: readonly T[], limit: number) {
   if (items.length <= limit) return [...items];
@@ -216,13 +226,20 @@ export function buildHotAndColdShareResult({
           ? `Our room found the hidden word in ${guessLabel}.`
           : `Our room finished after ${guessLabel}.`
         : `I found the hidden word in ${guessLabel}.`;
-  const hintSummary = hintsUsed ? `I used ${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}.` : null;
+  const hintSummary = hintsUsed ? `Hints: 🧭×${hintsUsed}` : null;
   const closest =
     bestRank === null || bestRank === 0
       ? null
       : `${outcome === "round" ? "The" : "My"} closest guess was the ${ordinal(bestRank)} closest word.`;
-  const trailSummary = trail.length
-    ? `${outcome === "round" ? "Our" : "My"} trail: ${trail.map(({ band, hint }) => (hint ? "🧭" : TRAIL_SYMBOLS[band])).join(" → ")}`
+  const bandCounts = new Map<HeatBand, number>();
+  for (const { band } of playerGuesses) bandCounts.set(band, (bandCounts.get(band) ?? 0) + 1);
+  const trailSteps = TRAIL_BANDS.flatMap((band) => {
+    const count = bandCounts.get(band) ?? 0;
+    if (!count) return [];
+    return band === "found" ? [TRAIL_SYMBOLS[band]] : [`${TRAIL_SYMBOLS[band]}×${count}`];
+  });
+  const trailSummary = trailSteps.length
+    ? `${outcome === "round" ? "Our" : "My"} trail: ${trailSteps.join(" → ")}`
     : null;
   const streakSummary =
     longestHeatStreak >= 3
