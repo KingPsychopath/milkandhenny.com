@@ -16,9 +16,9 @@ WORKDIR /app
 
 FROM base AS dependencies
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch --frozen-lockfile
+RUN pnpm fetch --frozen-lockfile
 COPY package.json ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --offline --frozen-lockfile
+RUN pnpm install --offline --frozen-lockfile
 
 # The sentence-embedding weights for Hot & Cold, fetched at build time rather than committed (23MB
 # that never changes) or downloaded at boot (a live round would depend on the Hugging Face CDN).
