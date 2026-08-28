@@ -63,6 +63,24 @@ describe("admin overview attention", () => {
     expect(getAdminAttentionItems(content, system)).toEqual([]);
   });
 
+  it("uses unresolved delivery cases instead of historical outbox failures", () => {
+    const withHistoricalFailures = {
+      ...system,
+      emailOutbox: { ...system.emailOutbox, failed: 2 },
+    };
+
+    expect(getAdminAttentionItems(content, withHistoricalFailures)).toEqual([]);
+    expect(
+      getAdminAttentionItems(content, withHistoricalFailures, { "email-delivery": 1 }),
+    ).toMatchObject([
+      {
+        id: "email:delivery-attention",
+        title: "1 email delivery issue needs review",
+        destination: { section: "communications", communicationTab: "delivery" },
+      },
+    ]);
+  });
+
   it("keeps distinct failures visible and routes them to an action area", () => {
     const items = getAdminAttentionItems(
       {

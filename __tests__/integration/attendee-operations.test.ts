@@ -359,6 +359,7 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
     });
     expect(inbox.items).toHaveLength(1);
     expect(inbox).toMatchObject({ unresolved: 1, unread: 1 });
+    expect(inbox.unresolvedByCategory).toMatchObject({ "refund-failed": 1 });
     expect(inbox.items[0]).toMatchObject({ unread: true });
     expect(inbox.administrators).toEqual([{ personId: BUYER, name: "Buyer" }]);
     const item = inbox.items[0];
@@ -405,6 +406,9 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
       privateNote: { body: "Checking the provider ledger" },
     });
     expect(resolvedItem?.assigneePersonId).toBeUndefined();
+    expect(
+      (await listAdminInbox({ viewer })).unresolvedByCategory["refund-failed"],
+    ).toBeUndefined();
     expect((await sendOperationsDigests()).recipients).toBe(1);
     expect(
       await revokeAlertRecipient({

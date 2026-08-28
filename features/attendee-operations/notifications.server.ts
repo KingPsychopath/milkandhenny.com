@@ -551,12 +551,13 @@ export async function listAdminInbox(input: {
   limit?: number;
 }): Promise<{
   unresolved: number;
+  unresolvedByCategory: Record<string, number>;
   unread: number;
   items: AdminInboxItem[];
   administrators: Array<{ personId: string; name: string }>;
 }> {
   const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 40)));
-  const [counts, rows, administrators] = await Promise.all([
+  const [counts, unresolvedCategories, rows, administrators] = await Promise.all([
     query<{ unresolved: string; unread: string }>(
       `select
          count(*) filter (where notification.status in ('new','in-progress'))::text as unresolved,
@@ -569,6 +570,12 @@ export async function listAdminInbox(input: {
          )::text as unread
        from admin_notifications notification`,
       [input.viewer.actorType, input.viewer.actorId],
+    ),
+    query<{ category: string; unresolved: string }>(
+      `select category,count(*)::text as unresolved
+         from admin_notifications
+        where status in ('new','in-progress')
+        group by category`,
     ),
     query<{
       id: string;
@@ -630,6 +637,9 @@ export async function listAdminInbox(input: {
   ]);
   return {
     unresolved: Number(counts[0]?.unresolved) || 0,
+    unresolvedByCategory: Object.fromEntries(
+      unresolvedCategories.map((category) => [category.category, Number(category.unresolved) || 0]),
+    ),
     unread: Number(counts[0]?.unread) || 0,
     items: rows.map((row) => ({
       id: row.id,

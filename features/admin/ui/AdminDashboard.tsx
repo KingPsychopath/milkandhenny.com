@@ -154,6 +154,9 @@ export function AdminDashboard({
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [debugData, setDebugData] = useState<DebugResponse | null>(null);
   const [operationsUnread, setOperationsUnread] = useState(0);
+  const [operationsUnresolvedByCategory, setOperationsUnresolvedByCategory] = useState<
+    Record<string, number>
+  >({});
   const [operationsRecent, setOperationsRecent] = useState<
     Array<{
       id: string;
@@ -247,6 +250,7 @@ export function AdminDashboard({
     }
     const inbox = (await response.json()) as {
       unread?: number;
+      unresolvedByCategory?: Record<string, number>;
       items?: Array<{
         id: string;
         title: string;
@@ -260,6 +264,7 @@ export function AdminDashboard({
     };
     setInboxRefreshHalted(false);
     setOperationsUnread(inbox.unread ?? 0);
+    setOperationsUnresolvedByCategory(inbox.unresolvedByCategory ?? {});
     setOperationsRecent(inbox.items?.slice(0, 3) ?? []);
   }, [authFetch]);
 
@@ -274,6 +279,14 @@ export function AdminDashboard({
     refreshOnEnable: false,
     refresh: () => refreshOperationsInbox(),
   });
+
+  const handleAttendeeOperationsStatus = useCallback(
+    (message: string) => {
+      setStatusMessage(message);
+      void refreshOperationsInbox().catch(() => undefined);
+    },
+    [refreshOperationsInbox],
+  );
 
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
     if (item.unread) {
@@ -549,7 +562,7 @@ export function AdminDashboard({
         <AttendeeOperationsPanel
           authFetch={authFetch}
           onError={setErrorMessage}
-          onStatus={setStatusMessage}
+          onStatus={handleAttendeeOperationsStatus}
           ensureStepUpToken={ensureStepUpTokenResult}
           withStepUpHeaders={withStepUpHeaders}
           tab={operationsTab}
@@ -578,7 +591,8 @@ export function AdminDashboard({
               content={content}
               system={debugData}
               loading={loading}
-              onRefresh={() => void refreshDashboard()}
+              unresolvedByCategory={operationsUnresolvedByCategory}
+              onRefresh={() => void Promise.all([refreshDashboard(), refreshOperationsInbox()])}
               onNavigate={onNavigate}
             />
 
@@ -592,7 +606,7 @@ export function AdminDashboard({
               <AttendeeOperationsPanel
                 authFetch={authFetch}
                 onError={setErrorMessage}
-                onStatus={setStatusMessage}
+                onStatus={handleAttendeeOperationsStatus}
                 ensureStepUpToken={ensureStepUpTokenResult}
                 withStepUpHeaders={withStepUpHeaders}
                 tab="inbox"

@@ -60,6 +60,7 @@ const STALE_QUEUE_MS = 15 * 60_000;
 export function getAdminAttentionItems(
   content: ContentSnapshot | null,
   system: OperationsSnapshot | null,
+  unresolvedByCategory: Record<string, number> = {},
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
 
@@ -85,17 +86,17 @@ export function getAdminAttentionItems(
     });
   }
 
-  if ((system?.emailOutbox.failed ?? 0) > 0) {
+  const emailDeliveryIssues = unresolvedByCategory["email-delivery"] ?? 0;
+  if (emailDeliveryIssues > 0) {
     items.push({
-      id: "email:failed",
-      title: `${system?.emailOutbox.failed} failed email ${system?.emailOutbox.failed === 1 ? "delivery" : "deliveries"}`,
-      detail: "Ticket or studio email did not reach the provider.",
+      id: "email:delivery-attention",
+      title: `${emailDeliveryIssues} email delivery ${emailDeliveryIssues === 1 ? "issue needs" : "issues need"} review`,
+      detail: "A current delivery block or failed delivery needs an administrator.",
       destination: {
         section: "communications",
         communicationTab: "delivery",
-        emailStatus: "failed",
       },
-      actionLabel: "review and retry failed email",
+      actionLabel: "review delivery issue",
     });
   }
 
@@ -200,16 +201,18 @@ export function AdminOverviewPanel({
   content,
   system,
   loading,
+  unresolvedByCategory,
   onRefresh,
   onNavigate,
 }: {
   content: ContentSnapshot | null;
   system: OperationsSnapshot | null;
   loading: boolean;
+  unresolvedByCategory: Record<string, number>;
   onRefresh: () => void;
   onNavigate: (destination: AdminDestination) => void;
 }) {
-  const attention = getAdminAttentionItems(content, system);
+  const attention = getAdminAttentionItems(content, system, unresolvedByCategory);
   const status = system?.status ?? "checking";
 
   return (
