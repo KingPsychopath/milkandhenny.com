@@ -552,7 +552,8 @@ export function AttendeeOperationsPanel({
                           start work
                         </button>
                       ) : null}
-                      {item.caseId ? (
+                      {item.caseId &&
+                      (administrators.length > 0 || item.assigneePersonId !== undefined) ? (
                         <AppSelect
                           value={item.assigneePersonId ?? ""}
                           onValueChange={(value) =>
@@ -562,6 +563,17 @@ export function AttendeeOperationsPanel({
                           }
                           options={[
                             { value: "", label: "unassigned" },
+                            ...(item.assigneePersonId &&
+                            !administrators.some(
+                              (administrator) => administrator.personId === item.assigneePersonId,
+                            )
+                              ? [
+                                  {
+                                    value: item.assigneePersonId,
+                                    label: item.assigneeName ?? "current assignee",
+                                  },
+                                ]
+                              : []),
                             ...administrators.map((administrator) => ({
                               value: administrator.personId,
                               label: administrator.name,
