@@ -190,11 +190,11 @@ function AdminPage() {
               emailStatus: destination.emailStatus,
               emailQuery: destination.emailQuery,
             },
-            resetScroll: true,
+            resetScroll: false,
           })
         }
         onViewChange={(nextView) =>
-          void navigate({ search: { view: nextView }, resetScroll: true })
+          void navigate({ search: { view: nextView }, resetScroll: false })
         }
         onCommunicationTabChange={(nextTab) =>
           void navigate({
@@ -203,7 +203,7 @@ function AdminPage() {
               view: "communications",
               communicationTab: nextTab,
             }),
-            resetScroll: true,
+            resetScroll: false,
           })
         }
         onCommunicationEventChange={(nextEvent) =>
@@ -213,13 +213,13 @@ function AdminPage() {
               view: "communications",
               communicationEvent: nextEvent,
             }),
-            resetScroll: true,
+            resetScroll: false,
           })
         }
         onOperationsTabChange={(nextTab) =>
           void navigate({
             search: { view: "operations", operationsTab: nextTab },
-            resetScroll: true,
+            resetScroll: false,
           })
         }
         onOperationsPersonChange={(nextPerson) =>
