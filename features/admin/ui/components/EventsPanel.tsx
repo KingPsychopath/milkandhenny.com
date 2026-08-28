@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
@@ -525,6 +526,11 @@ function AddGuestForm({
         hint="new or existing account — the invite handles both"
       />
       <Field label="name on ticket" value={name} onChange={setName} />
+      <EmailAddressNotice
+        email={email}
+        onAcceptSuggestion={setEmail}
+        className="sm:col-span-2 -mt-1"
+      />
       <div>
         <label htmlFor={typeId} className="font-mono text-micro theme-muted tracking-wide">
           ticket type

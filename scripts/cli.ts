@@ -2858,6 +2858,7 @@ function showHelp() {
     email show ${dim("<ledger-id>")}                     Inspect one ledger entry
     email retry ${dim("<ledger-id>")}                    Attempt retained queued content now
     email resend ${dim("<ledger-id>")}                   Regenerate a supported ticket/refund email
+    email correct ${dim("<ledger-id> --suggested --step-up")} Correct a clear domain typo and queue one copy
     email cancel ${dim("<ledger-id>")}                   Cancel an email that has not started sending
     email drain                                  Check and drain the queue now
     email cleanup --step-up                      Apply the 7/30/120-day retention policy
@@ -4287,6 +4288,20 @@ async function direct() {
               const id = args[2];
               if (!id) throw new Error(`Usage: pnpm cli email ${subcommand} <ledger-id>`);
               return cmdEmailAction({ action: subcommand, id });
+            }
+            case "correct": {
+              const id = args[2];
+              if (!id || !hasFlag("suggested")) {
+                throw new Error("Usage: pnpm cli email correct <ledger-id> --suggested --step-up");
+              }
+              if (!hasFlag("step-up") && !getArg("step-up-token")) {
+                throw new Error("Correcting a recipient requires --step-up or --step-up-token.");
+              }
+              return cmdEmailAction({
+                action: "correct-and-resend",
+                id,
+                useSuggestedCorrection: true,
+              });
             }
             case "drain":
               return cmdEmailAction({ action: "drain" });

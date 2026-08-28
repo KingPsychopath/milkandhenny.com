@@ -14,6 +14,7 @@ import {
 import { communicationLinkKey } from "@/features/communications/email.server";
 import {
   cleanupEmailOperations,
+  correctTicketRecipientAndResend,
   listEmailLedger,
   removeEmailSuppression,
 } from "@/features/email-operations/email-operations.server";
@@ -268,6 +269,62 @@ describeWithDatabase("email outbox (postgres)", () => {
     expect([first.deduplicated, repeated.deduplicated].filter(Boolean)).toHaveLength(1);
     const rows = await query<{ count: string }>(`select count(*)::text as count from email_outbox`);
     expect(rows[0]?.count).toBe("1");
+  });
+
+  it("corrects one clear ticket-domain typo and queues one replacement", async () => {
+    const ledgerId = randomUUID();
+    const oldEmail = "person@gmail.con";
+    const oldHash = hashEmailRecipient(oldEmail);
+    await query(
+      "insert into events (slug,title,status,starts_at) values ('domain-fix','Domain Fix Night','published',now() + interval '7 days')",
+    );
+    await query(
+      "insert into ticket_types (event_slug,id,name,quantity) values ('domain-fix','entry','Entry',20)",
+    );
+    await query(
+      "insert into tickets (id,event_slug,ticket_type_id,holder_name,email,email_hash,order_id,access_reference) values ('Z0AJG8E3R21PMYS5','domain-fix','entry','Person',$1,$2,'order-domain-fix','0123456789ABCDEF')",
+      [oldEmail, oldHash],
+    );
+    await query(
+      "insert into email_outbox (id,idempotency_key,channel,recipient_hash,message,status,attempts,provider_message_id,provider_status,last_error,accepted_at,failed_at,provider_delivery_status,kind,source,context,recipient_hint,subject_hint) values ($1,'domain-fix-original','tickets',$2,null,'failed',1,'provider-domain-fix',422,'Email provider reported bounced',now(),now(),'bounced','ticket-issued','system','{\"eventSlug\":\"domain-fix\",\"orderId\":\"order-domain-fix\",\"ticketId\":\"Z0AJG8E3R21PMYS5\"}','p…@gmail.con','Your ticket')",
+      [ledgerId, oldHash],
+    );
+    await query(
+      "insert into email_suppressions (recipient_hash,recipient_hint,reason,provider_message_id,first_occurred_at,last_occurred_at) values ($1,'p…@gmail.con','bounced','provider-domain-fix',now(),now())",
+      [oldHash],
+    );
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret-long-enough");
+    vi.stubEnv("EMAIL_API_KEY", "test-key");
+    vi.stubEnv("EMAIL_ACCOUNT_ID", "test-account");
+    vi.stubEnv("EMAIL_TICKETS_FROM", "tickets@example.com");
+    vi.stubEnv("EMAIL_REPLY_TO", "reply@example.com");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            errors: [],
+            result: { message_id: "provider-domain-fix-replacement" },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await expect(
+      correctTicketRecipientAndResend(ledgerId, null, "https://example.com"),
+    ).resolves.toMatchObject({ queued: true, alreadyRequested: false });
+    await expect(
+      query<{ email: string }>("select email from tickets where order_id = 'order-domain-fix'"),
+    ).resolves.toEqual([{ email: "person@gmail.com" }]);
+    await expect(
+      query("select recipient_hash from email_suppressions where recipient_hash = $1", [oldHash]),
+    ).resolves.toHaveLength(0);
+    const replacements = await query<{ recipient_hint: string }>(
+      "select recipient_hint from email_outbox where kind = 'ticket-resend' and context->>'orderId' = 'order-domain-fix'",
+    );
+    expect(replacements).toEqual([{ recipient_hint: "p…@gmail.com" }]);
   });
 
   it("stops a queued message if its recipient becomes suppressed before claiming", async () => {

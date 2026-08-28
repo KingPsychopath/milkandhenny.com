@@ -4,7 +4,7 @@ import { resolveEmailDeliveryBlock } from "./delivery-feedback.server";
 import { getEvent } from "@/features/events/store.server";
 import { sendRefundEmail, sendTicketEmail } from "@/features/tickets/email.server";
 import { listTicketsForOrder, updateTicketOrderEmail } from "@/features/tickets/store.server";
-import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
+import { assessEmailAddress, normaliseEmail } from "@/features/tickets/types";
 import { drainEmailOutbox, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { isDatabaseConfigured, query, queryOne, transaction } from "@/lib/platform/postgres.server";
@@ -509,13 +509,9 @@ export async function removeEmailSuppression(recipientHash: string): Promise<voi
 
 export async function correctTicketRecipientAndResend(
   id: string,
-  recipientEmail: string,
+  recipientEmail: string | null,
   origin: string,
 ): Promise<EmailResendResult> {
-  const normalizedEmail = normaliseEmail(recipientEmail);
-  if (!isValidEmail(normalizedEmail)) {
-    throw new EmailOperationError(400, "Enter a valid corrected email address");
-  }
   const row = await queryOne<{
     kind: string;
     context: unknown;
@@ -545,6 +541,30 @@ export async function correctTicketRecipientAndResend(
   const matchingTickets = tickets.filter(
     (ticket) => ticket.email && hashEmailRecipient(ticket.email) === row.recipient_hash,
   );
+  const suggestedEmails = [
+    ...new Set(
+      matchingTickets.flatMap((ticket) => {
+        const suggestion = assessEmailAddress(ticket.email).suggestion;
+        return suggestion ? [suggestion] : [];
+      }),
+    ),
+  ];
+  const candidateEmail = recipientEmail?.trim() || suggestedEmails[0] || "";
+  if (!recipientEmail && suggestedEmails.length !== 1) {
+    throw new EmailOperationError(
+      409,
+      "This address does not have one safe automatic correction. Enter the confirmed address.",
+    );
+  }
+  const normalizedEmail = normaliseEmail(candidateEmail);
+  const assessment = assessEmailAddress(normalizedEmail);
+  if (!assessment.valid) {
+    throw new EmailOperationError(
+      400,
+      (assessment.message ?? "Enter a valid corrected email address") +
+        (assessment.suggestion ? " Try " + assessment.suggestion + "." : ""),
+    );
+  }
   const alreadyCorrected = tickets.some(
     (ticket) => ticket.email && normaliseEmail(ticket.email) === normalizedEmail,
   );

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import type { EmailLedgerPage } from "@/features/email-operations/types";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
@@ -634,23 +635,34 @@ export function EmailOperationsPanel({
                         void recoverTicketDelivery(recoveryEntry);
                       }}
                     >
-                      <label className="min-w-0 flex-1">
-                        <span className="theme-muted">correct recipient address</span>
-                        <input
-                          type="email"
-                          required
-                          autoComplete="off"
-                          value={recoveryEmails[suppression.recipientHash] ?? ""}
-                          onChange={(event) =>
+                      <div className="min-w-0 flex-1">
+                        <label>
+                          <span className="theme-muted">correct recipient address</span>
+                          <input
+                            type="email"
+                            required
+                            autoComplete="off"
+                            value={recoveryEmails[suppression.recipientHash] ?? ""}
+                            onChange={(event) =>
+                              setRecoveryEmails((current) => ({
+                                ...current,
+                                [suppression.recipientHash]: event.target.value,
+                              }))
+                            }
+                            placeholder="name@example.com"
+                            className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                          />
+                        </label>
+                        <EmailAddressNotice
+                          email={recoveryEmails[suppression.recipientHash] ?? ""}
+                          onAcceptSuggestion={(email) =>
                             setRecoveryEmails((current) => ({
                               ...current,
-                              [suppression.recipientHash]: event.target.value,
+                              [suppression.recipientHash]: email,
                             }))
                           }
-                          placeholder="name@example.com"
-                          className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                         />
-                      </label>
+                      </div>
                       <button
                         type="submit"
                         disabled={busy !== null}

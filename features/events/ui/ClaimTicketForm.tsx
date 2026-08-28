@@ -12,6 +12,7 @@ import {
 import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "@/features/event-operations/event-page.server";
 
@@ -260,6 +261,7 @@ export function ClaimTicketForm({
               required
               className="mt-1 w-full min-h-12 px-4 font-mono text-base bg-transparent border theme-border-strong rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
             />
+            <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
           </div>
 
           <BrowserProfileHint />

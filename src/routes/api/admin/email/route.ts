@@ -98,9 +98,16 @@ async function handlePOST(request: Request) {
       }
       const recipientEmail =
         typeof body.recipientEmail === "string" ? body.recipientEmail.trim() : "";
+      const useSuggestedCorrection = body.useSuggestedCorrection === true;
+      if (!recipientEmail && !useSuggestedCorrection) {
+        return Response.json(
+          { error: "Enter or choose a corrected email address" },
+          { status: 400 },
+        );
+      }
       const result = await correctTicketRecipientAndResend(
         id,
-        recipientEmail,
+        useSuggestedCorrection ? null : recipientEmail,
         getBaseUrlForRequest(request),
       );
       return Response.json({ ok: true, ...result });

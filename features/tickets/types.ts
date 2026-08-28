@@ -4,6 +4,8 @@
  * Browser-safe. Signing lives in `qr.server.ts`; nothing here touches a secret.
  */
 
+import { IANA_TOP_LEVEL_DOMAINS } from "@/lib/shared/iana-tlds";
+
 export const TICKET_STATUSES = ["valid", "void", "refunded"] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
@@ -173,8 +175,99 @@ export function normaliseEmail(email: string): string {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+const COMMON_EMAIL_DOMAIN_CORRECTIONS: Readonly<Record<string, string>> = {
+  "gamil.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmail.cm": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmail.con": "gmail.com",
+  "gmail.om": "gmail.com",
+  "gmial.com": "gmail.com",
+  "hotmal.com": "hotmail.com",
+  "hotmail.co": "hotmail.com",
+  "hotmail.con": "hotmail.com",
+  "hotmial.com": "hotmail.com",
+  "icloud.con": "icloud.com",
+  "outlok.com": "outlook.com",
+  "outlook.co": "outlook.com",
+  "outlook.con": "outlook.com",
+  "yaho.com": "yahoo.com",
+  "yahoo.co": "yahoo.com",
+  "yahoo.con": "yahoo.com",
+};
+
+const COMMON_TLD_CORRECTIONS: Readonly<Record<string, string>> = {
+  cim: "com",
+  cmo: "com",
+  con: "com",
+  ent: "net",
+  ner: "net",
+  ogr: "org",
+  om: "com",
+  orf: "org",
+};
+
+export type EmailAddressAssessment = {
+  valid: boolean;
+  normalized: string;
+  suggestion?: string;
+  message?: string;
+};
+
+/** Validate syntax and the public DNS suffix, then offer only high-confidence typo corrections. */
+export function assessEmailAddress(value: unknown): EmailAddressAssessment {
+  const normalized = typeof value === "string" ? normaliseEmail(value) : "";
+  if (!normalized || normalized.length > 254 || !EMAIL_PATTERN.test(normalized)) {
+    return {
+      valid: false,
+      normalized,
+      message: "Enter a complete email address, including the part after the dot.",
+    };
+  }
+
+  const at = normalized.lastIndexOf("@");
+  const local = normalized.slice(0, at);
+  const domain = normalized.slice(at + 1);
+  const knownDomain = COMMON_EMAIL_DOMAIN_CORRECTIONS[domain];
+  let asciiDomain = "";
+  try {
+    asciiDomain = new URL("http://" + domain).hostname.toLowerCase();
+  } catch {
+    // The syntax result below remains invalid.
+  }
+  const validDomain =
+    asciiDomain.length <= 253 &&
+    asciiDomain
+      .split(".")
+      .every(
+        (label) =>
+          label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+      );
+  const tld = asciiDomain.split(".").at(-1) ?? "";
+  const correctedTld = COMMON_TLD_CORRECTIONS[tld];
+  const correctedDomain =
+    knownDomain ?? (correctedTld ? domain.slice(0, -(tld.length || 0)) + correctedTld : undefined);
+  const suggestion = correctedDomain ? local + "@" + correctedDomain : undefined;
+
+  if (!validDomain || !IANA_TOP_LEVEL_DOMAINS.has(tld)) {
+    return {
+      valid: false,
+      normalized,
+      suggestion,
+      message: "“." + tld + "” is not a recognised public email ending.",
+    };
+  }
+
+  return {
+    valid: true,
+    normalized,
+    suggestion,
+    ...(suggestion ? { message: "That email domain looks like a common typing mistake." } : {}),
+  };
+}
+
 export function isValidEmail(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 254 && EMAIL_PATTERN.test(value.trim());
+  return assessEmailAddress(value).valid;
 }
 
 /**

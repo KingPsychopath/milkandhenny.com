@@ -20,6 +20,7 @@ import {
 } from "@/features/tickets/qr.server";
 import {
   MANIFEST_HASH_LENGTH,
+  assessEmailAddress,
   formatTicketQrPayload,
   isValidEmail,
   isValidTicketId,
@@ -142,8 +143,14 @@ describe("hashing", () => {
     expect(normaliseEmail(" A@B.COM ")).toBe("a@b.com");
   });
 
-  it("validates email shape", () => {
+  it("validates email shape and public suffixes", () => {
     expect(isValidEmail("person@example.com")).toBe(true);
+    expect(isValidEmail("person@gmail.con")).toBe(false);
+    expect(isValidEmail("person@example.photography")).toBe(true);
+    expect(assessEmailAddress("person@gmail.con")).toMatchObject({
+      valid: false,
+      suggestion: "person@gmail.com",
+    });
     expect(isValidEmail("no-at-sign")).toBe(false);
     expect(isValidEmail("trailing@dot.")).toBe(false);
     expect(isValidEmail(`${"a".repeat(250)}@example.com`)).toBe(false);

@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import { resendTicketsFn } from "@/features/tickets/tickets.functions";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 
 /**
  * "Send my ticket again."
@@ -42,29 +43,32 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
       <summary className="min-h-11 content-center cursor-pointer font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors">
         already have a ticket but lost the email?
       </summary>
-      <form onSubmit={submit} className="mt-3 flex gap-2">
-        <label htmlFor={emailId} className="sr-only">
-          Email address
-        </label>
-        <input
-          id={emailId}
-          name="email"
-          type="email"
-          inputMode="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
-          required
-          placeholder="you@example.com"
-          className="min-h-11 min-w-0 flex-1 px-3 font-mono text-sm bg-transparent border theme-border rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-        />
-        <button
-          type="submit"
-          disabled={state === "sending"}
-          className="min-h-11 px-4 font-mono text-xs border theme-border-strong rounded-lg text-foreground disabled:opacity-50 hover:opacity-70 transition-opacity"
-        >
-          {state === "sending" ? "sending" : "send"}
-        </button>
+      <form onSubmit={submit} className="mt-3">
+        <div className="flex gap-2">
+          <label htmlFor={emailId} className="sr-only">
+            Email address
+          </label>
+          <input
+            id={emailId}
+            name="email"
+            type="email"
+            inputMode="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            required
+            placeholder="you@example.com"
+            className="min-h-11 min-w-0 flex-1 px-3 font-mono text-sm bg-transparent border theme-border rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+          />
+          <button
+            type="submit"
+            disabled={state === "sending"}
+            className="min-h-11 px-4 font-mono text-xs border theme-border-strong rounded-lg text-foreground disabled:opacity-50 hover:opacity-70 transition-opacity"
+          >
+            {state === "sending" ? "sending" : "send"}
+          </button>
+        </div>
+        <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
       </form>
       <div className="mt-2">
         <BrowserProfileHint />

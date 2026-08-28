@@ -6,6 +6,7 @@
   "scripts": {
     "audio:spelling": "tsx scripts/generate-party-spelling-audio.ts",
     "data:hot-and-cold": "tsx --tsconfig tsconfig.cli.json scripts/generate-hot-and-cold-data.ts",
+    "data:email-tlds": "node scripts/generate-email-tlds.mjs",
     "model:semantic": "tsx --tsconfig tsconfig.cli.json scripts/fetch-semantic-model.ts",
     "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",

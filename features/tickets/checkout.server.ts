@@ -34,7 +34,7 @@ import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
-import { isValidEmail, normaliseEmail, type TicketRecord } from "./types";
+import { assessEmailAddress, normaliseEmail, type TicketRecord } from "./types";
 import {
   cancelAwaitingOrderExchanges,
   exchangeRefundTotalForPayment,
@@ -78,8 +78,15 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
 
   const holderName = input.holderName?.trim();
   if (!holderName) return { ok: false, status: 400, error: "A name is required" };
-  if (!isValidEmail(input.email)) {
-    return { ok: false, status: 400, error: "That email address doesn't look right" };
+  const emailAssessment = assessEmailAddress(input.email);
+  if (!emailAssessment.valid) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        (emailAssessment.message ?? "That email address doesn't look right") +
+        (emailAssessment.suggestion ? " Try " + emailAssessment.suggestion + "." : ""),
+    };
   }
 
   const quantity = Math.round(input.quantity);
