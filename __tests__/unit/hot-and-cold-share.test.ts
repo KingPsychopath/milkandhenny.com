@@ -21,7 +21,7 @@ describe("hot and cold result sharing", () => {
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
     expect(result.text).toBe(
-      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊×1 → ❄️×1 → 💧×1 → 🔥×1 → 💡\nMy closest guess was the 400th closest word.\nCan you beat it?",
+      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊×1 → ❄️×1 → 💧×1 → 🔥×1 → 💡\nBest guess: 🎯 #400\nCan you beat it?",
     );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
@@ -46,7 +46,7 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).toBe(
-      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 💧×1 → 🔥×1 → 💡\nHints: 🧭×2\nMy closest guess was the 80th closest word.\nCan you beat it?",
+      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 💧×1 → 🔥×1 → 💡\nHints: 🧭×2\nBest guess: 🎯 #80\nCan you beat it?",
     );
   });
 

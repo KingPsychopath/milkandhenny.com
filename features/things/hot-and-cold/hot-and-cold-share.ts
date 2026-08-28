@@ -54,15 +54,6 @@ function sampleEvenly<T>(items: readonly T[], limit: number) {
   });
 }
 
-function ordinal(value: number) {
-  const remainder = value % 100;
-  if (remainder >= 11 && remainder <= 13) return `${value}th`;
-  if (value % 10 === 1) return `${value}st`;
-  if (value % 10 === 2) return `${value}nd`;
-  if (value % 10 === 3) return `${value}rd`;
-  return `${value}th`;
-}
-
 /** Selects chronological personal-best milestones, never words. */
 export function buildHotAndColdTrail(guesses: readonly HotAndColdShareGuess[], limit = 5) {
   if (limit <= 0 || guesses.length === 0) return [];
@@ -230,7 +221,7 @@ export function buildHotAndColdShareResult({
   const closest =
     bestRank === null || bestRank === 0
       ? null
-      : `${outcome === "round" ? "The" : "My"} closest guess was the ${ordinal(bestRank)} closest word.`;
+      : `Best guess: 🎯 #${bestRank.toLocaleString("en-GB")}`;
   const bandCounts = new Map<HeatBand, number>();
   for (const { band } of playerGuesses) bandCounts.set(band, (bandCounts.get(band) ?? 0) + 1);
   const trailSteps = TRAIL_BANDS.flatMap((band) => {
