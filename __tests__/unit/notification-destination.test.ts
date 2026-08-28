@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveAdminNotificationDeepLink } from "@/features/attendee-operations/notification-destination";
 
 describe("admin notification destinations", () => {
-  it("routes delivery failures to the filtered email operations surface", () => {
+  it("routes delivery failures to the complete email delivery thread", () => {
     expect(
       resolveAdminNotificationDeepLink({
         kind: "ticket.transfer_delivery_failed",
@@ -12,12 +12,10 @@ describe("admin notification destinations", () => {
         entityRefs: { ticketId: "ticket_123", transferId: "transfer_123" },
         fallback: "/admin?view=operations",
       }),
-    ).toBe(
-      "/admin?view=communications&communicationTab=delivery&emailStatus=failed&emailQuery=ticket_123",
-    );
+    ).toBe("/admin?view=communications&communicationTab=delivery&emailQuery=ticket_123");
   });
 
-  it("routes provider bounces to their exact outbox record", () => {
+  it("routes provider bounces to their complete order history", () => {
     expect(
       resolveAdminNotificationDeepLink({
         kind: "email.delivery_bounced",
@@ -25,9 +23,7 @@ describe("admin notification destinations", () => {
         eventSlug: "summer-night",
         entityRefs: { outboxId: "outbox_123", orderId: "order_123" },
       }),
-    ).toBe(
-      "/admin?view=communications&communicationTab=delivery&emailStatus=failed&emailQuery=outbox_123",
-    );
+    ).toBe("/admin?view=communications&communicationTab=delivery&emailQuery=order_123");
   });
 
   it("routes refund cases to the affected ticket", () => {

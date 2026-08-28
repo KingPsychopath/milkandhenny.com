@@ -33,9 +33,9 @@ export function resolveAdminNotificationDeepLink(input: NotificationDestinationI
   const eventSlug = input.eventSlug ?? ref(input, "eventSlug");
   const emailRecord = ref(
     input,
+    "orderId",
     "ticketId",
     "outboxId",
-    "orderId",
     "assignmentId",
     "transferId",
     "returnRequestId",
@@ -54,7 +54,6 @@ export function resolveAdminNotificationDeepLink(input: NotificationDestinationI
     return adminLink({
       view: "communications",
       communicationTab: "delivery",
-      emailStatus: "failed",
       emailQuery: emailRecord,
     });
   }

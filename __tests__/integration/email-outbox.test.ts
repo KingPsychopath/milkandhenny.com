@@ -211,7 +211,7 @@ describeWithDatabase("email outbox (postgres)", () => {
       case_status: "new",
     });
     expect(notices[0]?.deep_link).toContain(
-      "/admin?view=communications&communicationTab=delivery&emailStatus=failed&emailQuery=",
+      "/admin?view=communications&communicationTab=delivery&emailQuery=",
     );
     await expect(
       updateAdminNotification({
