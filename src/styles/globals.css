@@ -169,6 +169,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --background: oklch(0.214 0.012 56.42);
   --foreground: oklch(0.918 0.006 70.7);
   --stone-50: oklch(0.214 0.012 56.42);
@@ -198,6 +199,10 @@
   --pitch-night-cream: #f4ecda;
   --pitch-night-amber: #e2aa45;
   --pitch-night-blue: #83c5d0;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
 }
 
 @theme inline {
