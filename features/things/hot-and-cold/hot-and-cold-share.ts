@@ -4,6 +4,7 @@ export interface HotAndColdShareGuess {
   rank: number;
   band: HeatBand;
   sequence: number;
+  hint?: boolean;
 }
 
 export type HotAndColdResultOutcome = "found" | "gave-up" | "round";
@@ -25,14 +26,14 @@ export interface HotAndColdShareResult {
   distribution: HeatDistribution[];
 }
 
-const TRAIL_STEPS: Record<HeatBand, string> = {
-  found: "💡 found",
-  burning: "❤️‍🔥 burning",
-  hot: "🔥 hot",
-  warm: "☀️ warm",
-  cool: "🔹 cool",
-  cold: "❄️ cold",
-  frozen: "🧊 frozen",
+const TRAIL_SYMBOLS: Record<HeatBand, string> = {
+  found: "💡",
+  burning: "❤️‍🔥",
+  hot: "🔥",
+  warm: "☀️",
+  cool: "🔹",
+  cold: "❄️",
+  frozen: "🧊",
 };
 
 function sampleEvenly<T>(items: readonly T[], limit: number) {
@@ -57,15 +58,18 @@ export function buildHotAndColdTrail(guesses: readonly HotAndColdShareGuess[], l
   if (limit <= 0 || guesses.length === 0) return [];
   const chronological = [...guesses].sort((left, right) => left.sequence - right.sequence);
   let best = Number.POSITIVE_INFINITY;
-  const milestones = chronological.filter((guess) => {
+  const playerGuesses = chronological.filter(({ hint }) => !hint);
+  const milestones = playerGuesses.filter((guess) => {
     if (guess.rank >= best) return false;
     best = guess.rank;
     return true;
   });
-  const finalGuess = chronological.at(-1);
+  const finalGuess = playerGuesses.at(-1);
   if (finalGuess && milestones.at(-1)?.sequence !== finalGuess.sequence)
     milestones.push(finalGuess);
-  return sampleEvenly(milestones, limit);
+  const sampledMilestones = sampleEvenly(milestones, limit);
+  const includedSequences = new Set(sampledMilestones.map(({ sequence }) => sequence));
+  return chronological.filter(({ hint, sequence }) => hint || includedSequences.has(sequence));
 }
 
 function buildHeatDistribution(guesses: readonly HotAndColdShareGuess[]): HeatDistribution[] {
@@ -192,7 +196,8 @@ export function buildHotAndColdShareResult({
   outcome?: HotAndColdResultOutcome;
 }): HotAndColdShareResult {
   const trail = buildHotAndColdTrail(guesses);
-  const ranked = guesses.map(({ rank }) => rank);
+  const playerGuesses = guesses.filter(({ hint }) => !hint);
+  const ranked = playerGuesses.map(({ rank }) => rank);
   const approachRanks = ranked.filter((rank) => rank > 0);
   const bestRank = approachRanks.length
     ? Math.min(...approachRanks)
@@ -201,7 +206,7 @@ export function buildHotAndColdShareResult({
       : null;
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
   const longestHeatStreak = heatStreaks(guesses).longest;
-  const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
+  const guessLabel = `${playerGuesses.length} guess${playerGuesses.length === 1 ? "" : "es"}`;
   const solved = ranked.includes(0);
   const resultSummary =
     outcome === "gave-up"
@@ -217,7 +222,7 @@ export function buildHotAndColdShareResult({
       ? null
       : `${outcome === "round" ? "The" : "My"} closest guess was the ${ordinal(bestRank)} closest word.`;
   const trailSummary = trail.length
-    ? `${outcome === "round" ? "Our" : "My"} trail: ${trail.map(({ band }) => TRAIL_STEPS[band]).join(" → ")}`
+    ? `${outcome === "round" ? "Our" : "My"} trail: ${trail.map(({ band, hint }) => (hint ? "🧭" : TRAIL_SYMBOLS[band])).join(" → ")}`
     : null;
   const streakSummary =
     longestHeatStreak >= 3
@@ -238,10 +243,10 @@ export function buildHotAndColdShareResult({
       .filter((line): line is string => line !== null)
       .join("\n"),
     trail,
-    guessCount: guesses.length,
+    guessCount: playerGuesses.length,
     bestRank,
     coldestRank,
     longestHeatStreak,
-    distribution: buildHeatDistribution(guesses),
+    distribution: buildHeatDistribution(playerGuesses),
   };
 }

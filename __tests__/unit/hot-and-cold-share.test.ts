@@ -21,7 +21,7 @@ describe("hot and cold result sharing", () => {
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
     expect(result.text).toBe(
-      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊 frozen → 🔹 cool → 🔥 hot → 💡 found\nMy closest guess was the 400th closest word.\nCan you beat my trail?",
+      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊 → 🔹 → 🔥 → 💡\nMy closest guess was the 400th closest word.\nCan you beat my trail?",
     );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
@@ -37,14 +37,16 @@ describe("hot and cold result sharing", () => {
       label: "daily #16",
       guesses: [
         { sequence: 1, rank: 6_000, band: "cool" },
-        { sequence: 2, rank: 80, band: "hot" },
-        { sequence: 3, rank: 0, band: "found" },
+        { sequence: 2, rank: 2_000, band: "warm", hint: true },
+        { sequence: 3, rank: 80, band: "hot" },
+        { sequence: 4, rank: 20, band: "burning", hint: true },
+        { sequence: 5, rank: 0, band: "found" },
       ],
       hintsUsed: 2,
     });
 
     expect(result.text).toBe(
-      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 🔹 cool → 🔥 hot → 💡 found\nI used 2 hints.\nMy closest guess was the 80th closest word.\nCan you beat my trail?",
+      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 🔹 → 🧭 → 🔥 → 🧭 → 💡\nI used 2 hints.\nMy closest guess was the 80th closest word.\nCan you beat my trail?",
     );
   });
 
@@ -62,7 +64,7 @@ describe("hot and cold result sharing", () => {
     expect(result.longestHeatStreak).toBe(3);
     expect(result.text).toContain("I found the hidden word in 4 guesses.");
     expect(result.text).toContain("I had 3 hot guesses in a row.");
-    expect(result.text).toContain("My trail: ☀️ warm → 🔥 hot → ❤️‍🔥 burning → 💡 found");
+    expect(result.text).toContain("My trail: ☀️ → 🔥 → ❤️‍🔥 → 💡");
   });
 
   it("does not include fields that could reveal guessed words", () => {

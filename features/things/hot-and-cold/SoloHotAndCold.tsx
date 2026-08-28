@@ -327,7 +327,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             <HotAndColdResultShare
               id="daily-heat-result"
               label={`daily #${puzzle}`}
-              guesses={playerGuesses}
+              guesses={state.guesses}
               hintsUsed={state.hintsUsed}
               outcome={state.gaveUp ? "gave-up" : "found"}
               sharePath={`/things/hot-and-cold/daily/${puzzle}`}
@@ -369,7 +369,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       ) : (
         <HotAndColdShareDock
           label={`daily #${puzzle}`}
-          guesses={playerGuesses}
+          guesses={state.guesses}
           hintsUsed={state.hintsUsed}
           outcome={state.gaveUp ? "gave-up" : "found"}
           resultId="daily-heat-result"
