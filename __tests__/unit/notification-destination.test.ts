@@ -17,6 +17,19 @@ describe("admin notification destinations", () => {
     );
   });
 
+  it("routes provider bounces to their exact outbox record", () => {
+    expect(
+      resolveAdminNotificationDeepLink({
+        kind: "email.delivery_bounced",
+        category: "email-delivery",
+        eventSlug: "summer-night",
+        entityRefs: { outboxId: "outbox_123", orderId: "order_123" },
+      }),
+    ).toBe(
+      "/admin?view=communications&communicationTab=delivery&emailStatus=failed&emailQuery=outbox_123",
+    );
+  });
+
   it("routes refund cases to the affected ticket", () => {
     expect(
       resolveAdminNotificationDeepLink({

@@ -4,7 +4,7 @@ import {
   authenticateCloudflareEmailRelay,
   parseCloudflareEmailDeliveryEvent,
 } from "@/lib/platform/email-providers/cloudflare-email-events.server";
-import { recordEmailDeliveryEvent } from "@/lib/platform/email-delivery-events.server";
+import { recordEmailDeliveryFeedback } from "@/features/email-operations/delivery-feedback.server";
 import { log } from "@/lib/platform/logger.server";
 
 type RelayItem = { id?: unknown; occurredAt?: unknown; event?: unknown };
@@ -46,7 +46,7 @@ async function handlePOST(request: Request) {
 
   try {
     for (const event of events) {
-      await recordEmailDeliveryEvent(event);
+      await recordEmailDeliveryFeedback(event);
     }
     return Response.json({ received: items.length, handled: events.length });
   } catch (error) {

@@ -18,14 +18,17 @@ export type EmailDeliveryEvent = {
   occurredAt: Date;
   providerMessageId: string;
   recipients: string[];
+  suppressRecipient?: boolean;
 };
 
 function hashRecipient(value: string): string {
   return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
 }
 
-function suppressesFutureDelivery(type: EmailDeliveryStatus): boolean {
-  return type === "bounced" || type === "complained";
+function suppressesFutureDelivery(event: EmailDeliveryEvent): boolean {
+  return (
+    event.type === "complained" || (event.type === "bounced" && event.suppressRecipient === true)
+  );
 }
 
 function isPermanentDeliveryFailure(type: EmailDeliveryStatus): boolean {
@@ -48,9 +51,22 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
         [event.eventId, event.type, event.providerMessageId, recipientHash, event.occurredAt],
       );
       if (inserted.rowCount === 0) continue;
+
+      const current = await client.query(
+        `select 1
+           where not exists (
+             select 1
+               from email_delivery_events newer
+              where newer.provider_message_id = $1
+                and newer.recipient_hash = $2
+                and newer.occurred_at > $3
+           )`,
+        [event.providerMessageId, recipientHash, event.occurredAt],
+      );
+      if (current.rowCount === 0) continue;
       insertedRecipients += 1;
 
-      if (suppressesFutureDelivery(event.type)) {
+      if (suppressesFutureDelivery(event)) {
         await client.query(
           `insert into email_suppressions (
              recipient_hash, recipient_hint, reason, provider_message_id,
@@ -87,7 +103,12 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
                 last_error = $3,
                 failed_at = $4,
                 updated_at = now()
-          where provider_message_id = $1 and status in ('accepted', 'failed')`,
+          where provider_message_id = $1 and status in ('accepted', 'failed')
+            and $4 >= coalesce((
+              select max(delivery.occurred_at)
+                from email_delivery_events delivery
+               where delivery.provider_message_id = $1
+            ), $4)`,
         [
           event.providerMessageId,
           event.type,
@@ -102,7 +123,12 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
                 delivered_at = case when $2 = 'delivered' then $3 else delivered_at end,
                 last_error = case when $2 = 'deferred' then $4 else last_error end,
                 updated_at = now()
-          where provider_message_id = $1`,
+          where provider_message_id = $1
+            and $3 >= coalesce((
+              select max(delivery.occurred_at)
+                from email_delivery_events delivery
+               where delivery.provider_message_id = $1
+            ), $3)`,
         [
           event.providerMessageId,
           event.type,
@@ -117,8 +143,13 @@ export async function recordEmailDeliveryEvent(event: EmailDeliveryEvent): Promi
           set status = $2, updated_at = now()
         where outbox_id in (
           select id from email_outbox where provider_message_id = $1
-        )`,
-      [event.providerMessageId, event.type],
+        )
+          and $3 >= coalesce((
+            select max(delivery.occurred_at)
+              from email_delivery_events delivery
+             where delivery.provider_message_id = $1
+          ), $3)`,
+      [event.providerMessageId, event.type, event.occurredAt],
     );
   });
 

@@ -53,6 +53,7 @@ export function parseCloudflareEmailDeliveryEvent(
 
   const source = asRecord(event?.source);
   const payload = asRecord(event?.payload);
+  const bounce = asRecord(payload?.bounce);
   if (
     !eventId ||
     source?.type !== "email.sending" ||
@@ -69,5 +70,6 @@ export function parseCloudflareEmailDeliveryEvent(
     occurredAt,
     providerMessageId: payload.messageId,
     recipients: [payload.recipient],
+    suppressRecipient: status === "complained" || (status === "bounced" && bounce?.type === "hard"),
   };
 }

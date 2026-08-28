@@ -15,6 +15,8 @@ export type PurchaserContactDirectoryEntry = {
     status: string;
     orderId: string;
     issuedAt: string;
+    deliveryStatus?: string;
+    deliveryNeedsAttention: boolean;
   }>;
 };
 
@@ -91,7 +93,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
        left join tickets ticket on ticket.id = participant.ticket_id
       where $1 = ''
          or lower(coalesce(person.canonical_name,'')) like '%' || $1 || '%'
-         or lower(person.id) like '%' || $1 || '%'
+         or lower(person.id::text) like '%' || $1 || '%'
          or lower(coalesce(identifier.display_hint,'')) like '%' || $1 || '%'
          or ($3 <> '' and identifier.kind = 'email' and identifier.value_hash = $3)
          or lower(coalesce(ticket.id,'')) like '%' || $1 || '%'
@@ -379,6 +381,8 @@ export async function searchPurchaserContacts(
     order_id: string;
     parent_ticket_id: string | null;
     issued_at: Date;
+    delivery_status: string | null;
+    delivery_needs_attention: boolean;
   }>(
     `with matching_contacts as (
        select ticket.email_hash,max(ticket.issued_at) as last_purchased_at
@@ -400,10 +404,23 @@ export async function searchPurchaserContacts(
         limit $2
      )
      select ticket.email_hash,ticket.email,ticket.id,ticket.event_slug,event.title as event_title,
-            ticket.holder_name,ticket.status,ticket.order_id,ticket.parent_ticket_id,ticket.issued_at
+            ticket.holder_name,ticket.status,ticket.order_id,ticket.parent_ticket_id,ticket.issued_at,
+            coalesce(delivery.provider_delivery_status,delivery.status) as delivery_status,
+            coalesce(
+              delivery.provider_delivery_status in ('bounced','failed','rejected','complained')
+              or delivery.status = 'failed',
+              false
+            ) as delivery_needs_attention
        from matching_contacts contact
        join tickets ticket on ticket.email_hash = contact.email_hash
        join events event on event.slug = ticket.event_slug
+       left join lateral (
+         select outbox.provider_delivery_status,outbox.status
+           from email_outbox outbox
+          where outbox.context->>'orderId' = ticket.order_id
+          order by outbox.created_at desc,outbox.id desc
+          limit 1
+       ) delivery on true
       order by contact.last_purchased_at desc,ticket.issued_at desc`,
     [search, boundedLimit],
   );
@@ -419,6 +436,8 @@ export async function searchPurchaserContacts(
         status: row.status,
         orderId: row.order_id,
         issuedAt: row.issued_at.toISOString(),
+        deliveryStatus: row.delivery_status ?? undefined,
+        deliveryNeedsAttention: row.delivery_needs_attention,
       });
       if (!current.name && !row.parent_ticket_id) current.name = row.holder_name;
       continue;
@@ -437,6 +456,8 @@ export async function searchPurchaserContacts(
           status: row.status,
           orderId: row.order_id,
           issuedAt: row.issued_at.toISOString(),
+          deliveryStatus: row.delivery_status ?? undefined,
+          deliveryNeedsAttention: row.delivery_needs_attention,
         },
       ],
     });

@@ -512,6 +512,32 @@ export async function updateTicketHolder(
   return row ? toTicket(row) : null;
 }
 
+/** Correct the delivery address on the matching tickets from one order. */
+export async function updateTicketOrderEmail(
+  orderId: string,
+  ticketIds: readonly string[],
+  email: string,
+): Promise<number> {
+  if (ticketIds.length === 0) return 0;
+  const { hashEmail } = await import("./qr.server");
+  const { normaliseEmail } = await import("./types");
+  const normalized = normaliseEmail(email);
+  const rows = await query<{ id: string }>(
+    `update tickets
+        set email = $3, email_hash = $4
+      where order_id = $1 and id = any($2::text[])
+      returning id`,
+    [orderId, ticketIds, normalized, hashEmail(normalized)],
+  );
+  if (rows.length > 0) {
+    log.info("tickets.update", "Order delivery address corrected", {
+      orderId,
+      count: rows.length,
+    });
+  }
+  return rows.length;
+}
+
 /** Staff correction: someone scanned the wrong phone. */
 export async function releaseRedemption(id: string): Promise<void> {
   if (!isValidTicketId(id)) return;

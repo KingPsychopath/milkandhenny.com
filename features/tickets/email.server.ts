@@ -272,7 +272,7 @@ function buildHtml(
   });
 }
 
-export type TicketEmailResult = { queued: boolean; error?: string };
+export type TicketEmailResult = { queued: boolean; alreadyRequested?: boolean; error?: string };
 
 /**
  * Send one order's tickets.
@@ -340,7 +340,7 @@ export async function sendTicketEmail(input: {
   }
 
   log.info("tickets.email", "Ticket email queued", { slug: event.slug, count: tickets.length });
-  return { queued: true };
+  return { queued: true, alreadyRequested: result.deduplicated === true };
 }
 
 export type RenderedEmail = { subject: string; text: string; html: string };
@@ -595,5 +595,5 @@ export async function sendRefundEmail(input: {
   }
 
   log.info("tickets.email", "Refund email queued", { slug: event.slug, count });
-  return { queued: true };
+  return { queued: true, alreadyRequested: result.deduplicated === true };
 }

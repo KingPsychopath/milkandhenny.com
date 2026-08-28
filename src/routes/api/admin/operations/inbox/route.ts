@@ -8,12 +8,14 @@ import {
   type AdminInboxItem,
 } from "@/features/attendee-operations/notifications.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { reconcileEmailDeliveryAttention } from "@/features/email-operations/delivery-feedback.server";
 
 async function handleGET(request: Request) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   const viewer = notificationViewer(auth);
   try {
+    await reconcileEmailDeliveryAttention();
     const url = new URL(request.url);
     const status = url.searchParams.get("status") as AdminInboxItem["status"] | null;
     const valid = ["new", "in-progress", "resolved", "dismissed"].includes(status ?? "");

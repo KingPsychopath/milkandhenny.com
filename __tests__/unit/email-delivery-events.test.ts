@@ -12,7 +12,11 @@ describe("Cloudflare email delivery events", () => {
       {
         type: "cf.email.sending.message.bounced",
         source: { type: "email.sending", domain: "tickets.milkandhenny.com" },
-        payload: { messageId: "email_123", recipient: "Guest@Example.com" },
+        payload: {
+          messageId: "email_123",
+          recipient: "Guest@Example.com",
+          bounce: { type: "hard", classification: "permanent_failure" },
+        },
       },
       "event_123",
       new Date("2026-08-14T12:00:00.000Z"),
@@ -24,10 +28,29 @@ describe("Cloudflare email delivery events", () => {
       occurredAt: new Date("2026-08-14T12:00:00.000Z"),
       providerMessageId: "email_123",
       recipients: ["Guest@Example.com"],
+      suppressRecipient: true,
     });
     expect(__emailDeliveryTesting.hashRecipient(" Guest@Example.com ")).toBe(
       __emailDeliveryTesting.hashRecipient("guest@example.com"),
     );
+  });
+
+  it("records an exhausted soft bounce without permanently suppressing the recipient", () => {
+    expect(
+      parseCloudflareEmailDeliveryEvent(
+        {
+          type: "cf.email.sending.message.bounced",
+          source: { type: "email.sending" },
+          payload: {
+            messageId: "email_soft",
+            recipient: "guest@example.com",
+            bounce: { type: "soft", classification: "temporary_failure" },
+          },
+        },
+        "event_soft",
+        new Date("2026-08-14T12:00:00.000Z"),
+      )?.suppressRecipient,
+    ).toBe(false);
   });
 
   it.each([

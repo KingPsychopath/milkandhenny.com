@@ -4,6 +4,7 @@ import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import {
   cancelQueuedEmail,
   cleanupEmailOperations,
+  correctTicketRecipientAndResend,
   EmailOperationError,
   listEmailLedger,
   removeEmailSuppression,
@@ -76,7 +77,7 @@ async function handlePOST(request: Request) {
     if (action === "drain") {
       return Response.json({ ok: true, handled: await drainEmailOutbox() });
     }
-    if (action === "cleanup" || action === "unsuppress") {
+    if (action === "cleanup" || action === "unsuppress" || action === "correct-and-resend") {
       const stepUpError = await requireAdminStepUp(request);
       if (stepUpError) return stepUpError;
     }
@@ -91,13 +92,28 @@ async function handlePOST(request: Request) {
       await removeEmailSuppression(recipientHash);
       return Response.json({ ok: true });
     }
+    if (action === "correct-and-resend") {
+      if (!/^[a-f0-9-]{36}$/.test(id)) {
+        return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });
+      }
+      const recipientEmail =
+        typeof body.recipientEmail === "string" ? body.recipientEmail.trim() : "";
+      const result = await correctTicketRecipientAndResend(
+        id,
+        recipientEmail,
+        getBaseUrlForRequest(request),
+      );
+      return Response.json({ ok: true, ...result });
+    }
     if (!/^[a-f0-9-]{36}$/.test(id)) {
       return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });
     }
     if (action === "retry") await retryEmailNow(id);
     else if (action === "cancel") await cancelQueuedEmail(id);
-    else if (action === "resend") await resendEmailFromLedger(id, getBaseUrlForRequest(request));
-    else return Response.json({ error: "Choose a valid email action" }, { status: 400 });
+    else if (action === "resend") {
+      const result = await resendEmailFromLedger(id, getBaseUrlForRequest(request));
+      return Response.json({ ok: true, ...result });
+    } else return Response.json({ error: "Choose a valid email action" }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
     if (error instanceof EmailOperationError) {

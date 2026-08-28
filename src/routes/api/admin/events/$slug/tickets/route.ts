@@ -212,7 +212,11 @@ async function handlePOST(request: Request, slug: string) {
             { status: 502 },
           );
         }
-        return Response.json({ ok: true, queued: live.length });
+        return Response.json({
+          ok: true,
+          queued: delivery.alreadyRequested ? 0 : live.length,
+          alreadyRequested: delivery.alreadyRequested === true,
+        });
       }
 
       case "refund": {

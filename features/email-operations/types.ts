@@ -31,6 +31,7 @@ export interface EmailLedgerEntry {
   source: EmailSource;
   context: EmailContext;
   recipientHint: string | null;
+  suppression: EmailSuppression | null;
   subject: string | null;
   status: EmailOutboxStatus;
   deliveryStatus: EmailDeliveryStatus | null;

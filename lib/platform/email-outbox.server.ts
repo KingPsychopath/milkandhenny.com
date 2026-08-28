@@ -21,6 +21,7 @@ import {
 const CLAIM_LIMIT = 8;
 const LOCK_SECONDS = 45;
 const WORKER_BACKSTOP_INTERVAL_MS = 60_000;
+const ADMIN_RESEND_COOLDOWN_MINUTES = 5;
 
 interface OutboxRow {
   id: string;
@@ -119,9 +120,33 @@ async function insertEmail(
     QueuedEmail,
     "kind" | "source" | "context" | "notBefore" | "contentExpiresAt" | "communicationId"
   >,
-): Promise<{ id: string; status: string }> {
+): Promise<{ id: string; status: string; deduplicated: boolean }> {
   const normalizedRecipient = message.to.trim().toLowerCase();
   const recipientHash = hashEmailRecipient(normalizedRecipient);
+  const orderId = options.context?.orderId;
+  const isAdminOrderResend =
+    options.source === "admin" &&
+    typeof orderId === "string" &&
+    (options.kind === "ticket-resend" ||
+      (options.kind === "ticket-refund" && typeof options.context?.replayedFrom === "string"));
+  if (isAdminOrderResend) {
+    const lockKey = `admin-email-resend:${options.kind}:${orderId}`;
+    await client.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [lockKey]);
+    const recent = await client.query<{ id: string; status: string }>(
+      `select id, status
+         from email_outbox
+        where kind = $1
+          and source = 'admin'
+          and context->>'orderId' = $2
+          and status in ('pending', 'processing', 'accepted')
+          and created_at > now() - ($3 * interval '1 minute')
+        order by created_at desc
+        limit 1`,
+      [options.kind, orderId, ADMIN_RESEND_COOLDOWN_MINUTES],
+    );
+    const existing = recent.rows[0];
+    if (existing) return { ...existing, deduplicated: true };
+  }
   const suppression = await client.query(
     `select 1 from email_suppressions where recipient_hash = $1 limit 1`,
     [recipientHash],
@@ -131,7 +156,7 @@ async function insertEmail(
   }
 
   const id = randomUUID();
-  const result = await client.query<{ id: string; status: string }>(
+  const result = await client.query<{ id: string; status: string; deduplicated: boolean }>(
     `insert into email_outbox (
        id, idempotency_key, channel, recipient_hash, recipient_hint, subject_hint,
        kind, source, context, message, next_attempt_at, content_expires_at,
@@ -143,7 +168,7 @@ async function insertEmail(
      )
      on conflict (idempotency_key) do update
        set idempotency_key = excluded.idempotency_key
-     returning id, status`,
+     returning id, status, (xmax <> 0) as deduplicated`,
     [
       id,
       idempotencyKey,
@@ -188,7 +213,7 @@ export async function enqueueEmail(
     if (options.deliverNow !== false && queued.status !== "accepted") {
       triggerEmailOutboxDrain();
     }
-    return { ok: true, id: queued.id };
+    return { ok: true, id: queued.id, deduplicated: queued.deduplicated };
   } catch (error) {
     if (error instanceof SuppressedRecipientError) {
       log.warn("email.outbox", "Suppressed recipient was not queued", {
@@ -208,7 +233,7 @@ export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<n
     for (const item of messages) {
       try {
         const result = await insertEmail(client, item.message, item.idempotencyKey, item);
-        if (result.status === "pending") queued += 1;
+        if (result.status === "pending" && !result.deduplicated) queued += 1;
       } catch (error) {
         if (!(error instanceof SuppressedRecipientError)) throw error;
         log.warn("email.outbox", "Suppressed recipient was omitted from batch", {
@@ -234,6 +259,12 @@ async function claimBatch(): Promise<OutboxRow[]> {
                 )
             and cancelled_at is null
             and next_attempt_at <= now()
+            and attempts < $3
+            and content_expires_at > now()
+            and not exists (
+              select 1 from email_suppressions suppression
+               where suppression.recipient_hash = email_outbox.recipient_hash
+            )
           order by next_attempt_at, created_at
           for update skip locked
           limit $1
@@ -246,7 +277,7 @@ async function claimBatch(): Promise<OutboxRow[]> {
          from claimable
         where outbox.id = claimable.id
        returning outbox.id, outbox.idempotency_key, outbox.message, outbox.attempts`,
-      [CLAIM_LIMIT, LOCK_SECONDS],
+      [CLAIM_LIMIT, LOCK_SECONDS, EMAIL_MAX_DELIVERY_ATTEMPTS],
     );
     return result.rows;
   });
@@ -256,14 +287,26 @@ async function expireUndeliverableMessages(): Promise<number> {
   const rows = await query<{ id: string }>(
     `update email_outbox
         set status = 'failed', message = null, locked_until = null,
-            provider_status = 408,
+            provider_status = case when exists (
+              select 1 from email_suppressions suppression
+               where suppression.recipient_hash = email_outbox.recipient_hash
+            ) then 422 else 408 end,
             last_error = case
+              when exists (
+                select 1 from email_suppressions suppression
+                 where suppression.recipient_hash = email_outbox.recipient_hash
+              ) then 'Delivery stopped because the recipient is blocked after a delivery failure'
               when attempts >= $1 then 'Delivery stopped after the retry limit'
               else 'Delivery window expired before the provider accepted the message'
             end,
             failed_at = now(), updated_at = now()
       where (status = 'pending' or (status = 'processing' and locked_until < now()))
-        and (attempts >= $1 or content_expires_at <= now())
+        and (
+          attempts >= $1 or content_expires_at <= now() or exists (
+            select 1 from email_suppressions suppression
+             where suppression.recipient_hash = email_outbox.recipient_hash
+          )
+        )
       returning id`,
     [EMAIL_MAX_DELIVERY_ATTEMPTS],
   );
@@ -281,14 +324,16 @@ async function expireUndeliverableMessages(): Promise<number> {
 async function finishAttempt(row: OutboxRow): Promise<void> {
   const message = parseMessage(row.message);
   if (!message) {
-    await query(
+    const updated = await query<{ id: string }>(
       `update email_outbox
           set status = 'failed', message = null, locked_until = null,
               provider_status = 500, last_error = 'Stored email payload is invalid',
               failed_at = now(), updated_at = now()
-        where id = $1 and status = 'processing'`,
-      [row.id],
+        where id = $1 and status = 'processing' and attempts = $2
+        returning id`,
+      [row.id, row.attempts],
     );
+    if (updated.length === 0) return;
     await query(
       `update communication_stage_deliveries
           set status = 'failed', updated_at = now()
@@ -300,14 +345,16 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
 
   const result = await deliverEmailNow(message, row.idempotency_key);
   if (result.ok) {
-    await query(
+    const updated = await query<{ id: string }>(
       `update email_outbox
           set status = 'accepted', message = null, locked_until = null,
               provider_message_id = $2, provider_status = null, last_error = null,
               accepted_at = now(), updated_at = now()
-        where id = $1 and status = 'processing'`,
-      [row.id, result.id],
+        where id = $1 and status = 'processing' and attempts = $3
+        returning id`,
+      [row.id, result.id, row.attempts],
     );
+    if (updated.length === 0) return;
     await query(
       `update communication_stage_deliveries
           set status = 'accepted', updated_at = now()
@@ -320,24 +367,43 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
   const exhausted = row.attempts >= EMAIL_MAX_DELIVERY_ATTEMPTS;
   const permanent = isPermanentFailure(result) || exhausted;
   const safeError = result.error.replaceAll(message.to, "[recipient]").slice(0, 500);
-  await query(
-    permanent
-      ? `update email_outbox
-            set status = 'failed', message = null, locked_until = null,
-                provider_status = $2, last_error = $3, failed_at = now(), updated_at = now()
-          where id = $1 and status = 'processing'`
-      : `update email_outbox
-            set status = 'pending', locked_until = null, provider_status = $2, last_error = $3,
-                next_attempt_at = now() + ($4 * interval '1 second'), updated_at = now()
-          where id = $1 and status = 'processing'`,
-    permanent
-      ? [
-          row.id,
-          result.status,
-          exhausted ? `${safeError} (retry limit reached)`.slice(0, 500) : safeError,
-        ]
-      : [row.id, result.status, safeError, retryDelaySeconds(row.attempts)],
-  );
+  const updated = await transaction(async (client) => {
+    const update = await client.query<{ id: string }>(
+      permanent
+        ? `update email_outbox
+              set status = 'failed', message = null, locked_until = null,
+                  provider_status = $2, last_error = $3, failed_at = now(), updated_at = now()
+            where id = $1 and status = 'processing' and attempts = $4
+            returning id`
+        : `update email_outbox
+              set status = 'pending', locked_until = null, provider_status = $2, last_error = $3,
+                  next_attempt_at = now() + ($4 * interval '1 second'), updated_at = now()
+            where id = $1 and status = 'processing' and attempts = $5
+            returning id`,
+      permanent
+        ? [
+            row.id,
+            result.status,
+            exhausted ? `${safeError} (retry limit reached)`.slice(0, 500) : safeError,
+            row.attempts,
+          ]
+        : [row.id, result.status, safeError, retryDelaySeconds(row.attempts), row.attempts],
+    );
+    if (update.rowCount === 0) return false;
+    if (result.suppressRecipient) {
+      await client.query(
+        `insert into email_suppressions
+           (recipient_hash,recipient_hint,reason,provider_message_id,first_occurred_at,last_occurred_at)
+         values ($1,$2,'bounced',$3,now(),now())
+         on conflict (recipient_hash) do update
+           set reason = 'bounced',provider_message_id = excluded.provider_message_id,
+               last_occurred_at = now(),updated_at = now()`,
+        [hashEmailRecipient(message.to), maskEmailRecipient(message.to), `outbox:${row.id}`],
+      );
+    }
+    return true;
+  });
+  if (!updated) return;
   if (permanent) {
     await query(
       `update communication_stage_deliveries

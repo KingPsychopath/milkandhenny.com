@@ -98,6 +98,8 @@ type PurchaserContact = {
     status: string;
     orderId: string;
     issuedAt: string;
+    deliveryStatus?: string;
+    deliveryNeedsAttention: boolean;
   }>;
 };
 
@@ -697,6 +699,11 @@ export function AttendeeOperationsPanel({
                         <span className="font-mono text-micro theme-muted">
                           {contact.emailHint} · {contact.tickets.length} tickets
                         </span>
+                        {contact.tickets.some((ticket) => ticket.deliveryNeedsAttention) ? (
+                          <span className="mt-1 block font-mono text-micro font-bold text-[var(--prose-hashtag)]">
+                            email delivery needs attention
+                          </span>
+                        ) : null}
                       </button>
                     </li>
                   ))}
@@ -779,6 +786,12 @@ function PurchaserContactDrawer({
               {ticket.status} · order {ticket.orderId} · purchased{" "}
               {new Date(ticket.issuedAt).toLocaleString()}
             </p>
+            {ticket.deliveryNeedsAttention ? (
+              <p className="mt-2 font-mono text-xs font-bold text-[var(--prose-hashtag)]">
+                Email {ticket.deliveryStatus?.replaceAll("-", " ") ?? "failed"} · resolve before
+                sending again
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-4">
               <Link
                 to="/ticket/$id"
@@ -804,7 +817,7 @@ function PurchaserContactDrawer({
                 }}
                 className="mh-action mh-action--quiet"
               >
-                check failed delivery
+                {ticket.deliveryNeedsAttention ? "resolve email delivery" : "view email delivery"}
               </Link>
             </div>
           </li>

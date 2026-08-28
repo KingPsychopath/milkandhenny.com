@@ -58,6 +58,30 @@ function hasRecentUnsettledEmail(
   );
 }
 
+type LedgerEntry = EmailLedgerPage["entries"][number];
+
+function deliveryThreadKey(entry: LedgerEntry): string {
+  if (
+    entry.channel === "tickets" &&
+    (entry.kind === "ticket-issued" || entry.kind === "ticket-resend") &&
+    entry.context.orderId
+  ) {
+    return `ticket-order:${entry.context.orderId}`;
+  }
+  return entry.id;
+}
+
+function groupDeliveryThreads(entries: LedgerEntry[]): LedgerEntry[][] {
+  const groups = new Map<string, LedgerEntry[]>();
+  for (const entry of entries) {
+    const key = deliveryThreadKey(entry);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+  return [...groups.values()].map((group) =>
+    group.toSorted((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+  );
+}
+
 export function EmailOperationsPanel({
   authFetch,
   onError,
@@ -90,6 +114,7 @@ export function EmailOperationsPanel({
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
   const [pollingHalted, setPollingHalted] = useState(false);
+  const [recoveryEmails, setRecoveryEmails] = useState<Record<string, string>>({});
   const { confirm, dialog } = useActionDialog();
 
   useEffect(() => {
@@ -188,10 +213,12 @@ export function EmailOperationsPanel({
     setBusy(id);
     onError("");
     try {
-      await post({ action, id });
+      const result = await post({ action, id });
       onStatus(
         action === "resend"
-          ? "A fresh email was queued."
+          ? result.alreadyRequested
+            ? "A ticket resend was already requested recently · no duplicate was queued."
+            : "One fresh ticket email was queued · delivery status will update here."
           : action === "retry"
             ? "The queued email was attempted now."
             : "The queued email was cancelled and its content removed.",
@@ -223,8 +250,7 @@ export function EmailOperationsPanel({
       if (!stepUp.cancelled) onError(stepUp.error ?? "Step-up failed");
       return false;
     }
-    await post(body, withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }));
-    return true;
+    return post(body, withStepUpHeaders(stepUp.token, { "Content-Type": "application/json" }));
   };
 
   const cleanup = async () => {
@@ -257,8 +283,8 @@ export function EmailOperationsPanel({
         eyebrow: "delivery safety",
         title: `Allow ${recipientHint ?? "this recipient"} again?`,
         description:
-          "Only do this after the address owner confirms the bounce or complaint is resolved.",
-        confirmLabel: "allow email",
+          "This only removes the delivery block. It does not send an email. Only continue after the address owner confirms the bounce or complaint is resolved.",
+        confirmLabel: "remove block only",
         intent: "danger",
       }))
     )
@@ -266,7 +292,7 @@ export function EmailOperationsPanel({
     setBusy(recipientHash);
     try {
       if (await stepUpPost({ action: "unsuppress", recipientHash })) {
-        onStatus(`${recipientHint ?? "Recipient"} can receive email again.`);
+        onStatus(`${recipientHint ?? "Recipient"} is unblocked · no email was sent.`);
         await load();
       }
     } catch (error) {
@@ -276,7 +302,64 @@ export function EmailOperationsPanel({
     }
   };
 
+  const recoverTicketDelivery = async (entry: LedgerEntry) => {
+    const suppression = entry.suppression;
+    const recipientEmail = suppression
+      ? (recoveryEmails[suppression.recipientHash] ?? "").trim()
+      : "";
+    if (!suppression || !recipientEmail) {
+      onError("Enter the corrected recipient email");
+      return;
+    }
+    if (
+      !(await confirm({
+        eyebrow: "bounced ticket email",
+        title: `Correct the address and send one fresh copy?`,
+        description: `The matching address on this ticket order will become ${recipientEmail}. The old bounce block will be removed, then one fresh ticket email will be queued.`,
+        confirmLabel: "correct and queue one",
+        intent: "danger",
+      }))
+    )
+      return;
+    setBusy(entry.id);
+    onError("");
+    try {
+      const result = await stepUpPost({
+        action: "correct-and-resend",
+        id: entry.id,
+        recipientEmail,
+      });
+      if (result) {
+        onStatus(
+          result.alreadyRequested
+            ? `Address corrected and old block removed · a recent resend already exists, so no duplicate was queued.`
+            : `Address corrected and old block removed · one fresh ticket email was queued.`,
+        );
+        setRecoveryEmails((current) => {
+          const next = { ...current };
+          delete next[suppression.recipientHash];
+          return next;
+        });
+        await load();
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not recover ticket delivery");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const overview = data?.overview;
+  const deliveryThreads = groupDeliveryThreads(data?.entries ?? []);
+  const visibleSuppressionHashes = new Set(
+    data?.entries.flatMap((entry) =>
+      entry.suppression ? [entry.suppression.recipientHash] : [],
+    ) ?? [],
+  );
+  const otherSuppressions =
+    overview?.suppressions.filter(
+      (suppression) => !visibleSuppressionHashes.has(suppression.recipientHash),
+    ) ?? [];
   return (
     <section aria-labelledby="email-operations-heading" className="space-y-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -505,89 +588,183 @@ export function EmailOperationsPanel({
       </form>
 
       <div aria-busy={loading} className="divide-y theme-border">
-        {data?.entries.map((entry) => (
-          <article key={entry.id} className="py-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-mono text-micro theme-muted">
-                  {entry.kind.replaceAll("-", " ")} · {entry.channel} · {entry.source}
-                </p>
-                <h4 className="mt-1 font-serif text-lg">{entry.subject ?? "Subject removed"}</h4>
-                <p className="mt-1 font-mono text-xs theme-muted">
-                  {entry.recipientHint ?? "recipient no longer available"} ·{" "}
-                  {dateTime(entry.createdAt)}
-                </p>
+        {deliveryThreads.map((thread) => {
+          const entry = thread[0];
+          if (!entry) return null;
+          const suppression = thread.find((attempt) => attempt.suppression)?.suppression ?? null;
+          const recoveryEntry = thread.find(
+            (attempt) =>
+              attempt.suppression?.reason === "bounced" &&
+              attempt.canResend &&
+              (attempt.kind === "ticket-issued" || attempt.kind === "ticket-resend"),
+          );
+          return (
+            <article key={deliveryThreadKey(entry)} className="py-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-micro theme-muted">
+                    {entry.channel === "tickets" && thread.length > 1
+                      ? `ticket delivery · ${thread.length} attempts`
+                      : `${entry.kind.replaceAll("-", " ")} · ${entry.channel} · ${entry.source}`}
+                  </p>
+                  <h4 className="mt-1 font-serif text-lg">{entry.subject ?? "Subject removed"}</h4>
+                  <p className="mt-1 font-mono text-xs theme-muted">
+                    {entry.recipientHint ?? "recipient no longer available"} · latest{" "}
+                    {dateTime(entry.createdAt)}
+                  </p>
+                </div>
+                <p className="font-mono text-xs font-bold">{stateLabel(entry)}</p>
               </div>
-              <p className="font-mono text-xs font-bold">{stateLabel(entry)}</p>
-            </div>
-            <details className="mt-3 font-mono text-xs">
-              <summary className="min-h-11 cursor-pointer py-3 theme-muted">
-                details and controls
-              </summary>
-              <dl className="grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-2">
-                <div>
-                  <dt className="theme-faint">attempts</dt>
-                  <dd>{entry.attempts}</dd>
+
+              {suppression ? (
+                <div className="mt-4 border-l-2 border-[var(--prose-hashtag)] pl-4 font-mono text-xs">
+                  <p className="font-bold">
+                    Delivery blocked after{" "}
+                    {suppression.reason === "bounced" ? "a bounce" : "a complaint"}
+                  </p>
+                  <p className="mt-1 theme-muted">
+                    {suppression.recipientHint ?? "This recipient"} will not be emailed again until
+                    this block is resolved. Removing a block alone never sends mail.
+                  </p>
+                  {recoveryEntry ? (
+                    <form
+                      className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void recoverTicketDelivery(recoveryEntry);
+                      }}
+                    >
+                      <label className="min-w-0 flex-1">
+                        <span className="theme-muted">correct recipient address</span>
+                        <input
+                          type="email"
+                          required
+                          autoComplete="off"
+                          value={recoveryEmails[suppression.recipientHash] ?? ""}
+                          onChange={(event) =>
+                            setRecoveryEmails((current) => ({
+                              ...current,
+                              [suppression.recipientHash]: event.target.value,
+                            }))
+                          }
+                          placeholder="name@example.com"
+                          className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={busy !== null}
+                        className="min-h-11 rounded border theme-border-strong px-4 font-bold disabled:opacity-50"
+                      >
+                        correct + queue one copy
+                      </button>
+                    </form>
+                  ) : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4">
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void unsuppress(suppression.recipientHash, suppression.recipientHint)
+                      }
+                      className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
+                    >
+                      remove block only — do not send
+                    </button>
+                    {recoveryEntry ? (
+                      <span className="theme-faint">
+                        repeat requests are deduplicated for 5 minutes
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <div>
-                  <dt className="theme-faint">next attempt</dt>
-                  <dd>{dateTime(entry.nextAttemptAt)}</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">provider accepted</dt>
-                  <dd>{dateTime(entry.acceptedAt)}</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">confirmed delivered</dt>
-                  <dd>{dateTime(entry.deliveredAt)}</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">order / ticket</dt>
-                  <dd>{entry.context.orderId ?? entry.context.ticketId ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt className="theme-faint">ledger expires</dt>
-                  <dd>{dateTime(entry.retainUntil)}</dd>
-                </div>
-              </dl>
-              {entry.lastError ? (
-                <p className="mt-3 text-[var(--prose-hashtag)]">{entry.lastError}</p>
               ) : null}
-              <div className="mt-3 flex flex-wrap gap-4">
-                {entry.canRetry ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void act(entry.id, "retry")}
-                    className="min-h-11 underline underline-offset-4 disabled:opacity-50"
-                  >
-                    retry now
-                  </button>
-                ) : null}
-                {entry.canResend ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void act(entry.id, "resend")}
-                    className="min-h-11 underline underline-offset-4 disabled:opacity-50"
-                  >
-                    send fresh copy
-                  </button>
-                ) : null}
-                {entry.canCancel ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void act(entry.id, "cancel")}
-                    className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
-                  >
-                    cancel
-                  </button>
-                ) : null}
-              </div>
-            </details>
-          </article>
-        ))}
+
+              <details className="mt-3 font-mono text-xs">
+                <summary className="min-h-11 cursor-pointer py-3 theme-muted">
+                  {thread.length === 1
+                    ? "delivery details and controls"
+                    : `${thread.length} delivery attempts and controls`}
+                </summary>
+                <div className="divide-y theme-border-faint border-t theme-border-faint">
+                  {thread.map((attempt) => (
+                    <div key={attempt.id} className="py-4 first:pt-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="theme-muted">
+                          {attempt.kind.replaceAll("-", " ")} · {dateTime(attempt.createdAt)}
+                        </p>
+                        <p className="font-bold">{stateLabel(attempt)}</p>
+                      </div>
+                      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <dt className="theme-faint">provider attempts</dt>
+                          <dd>{attempt.attempts}</dd>
+                        </div>
+                        <div>
+                          <dt className="theme-faint">next attempt</dt>
+                          <dd>
+                            {attempt.status === "pending" ? dateTime(attempt.nextAttemptAt) : "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="theme-faint">provider accepted</dt>
+                          <dd>{dateTime(attempt.acceptedAt)}</dd>
+                        </div>
+                        <div>
+                          <dt className="theme-faint">confirmed delivered</dt>
+                          <dd>{dateTime(attempt.deliveredAt)}</dd>
+                        </div>
+                        <div>
+                          <dt className="theme-faint">order / ticket</dt>
+                          <dd>{attempt.context.orderId ?? attempt.context.ticketId ?? "—"}</dd>
+                        </div>
+                        <div>
+                          <dt className="theme-faint">ledger expires</dt>
+                          <dd>{dateTime(attempt.retainUntil)}</dd>
+                        </div>
+                      </dl>
+                      {attempt.lastError ? (
+                        <p className="mt-3 text-[var(--prose-hashtag)]">{attempt.lastError}</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-4">
+                        {attempt.canRetry ? (
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void act(attempt.id, "retry")}
+                            className="min-h-11 underline underline-offset-4 disabled:opacity-50"
+                          >
+                            retry queued attempt now
+                          </button>
+                        ) : null}
+                        {attempt.canResend && !attempt.suppression ? (
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void act(attempt.id, "resend")}
+                            className="min-h-11 underline underline-offset-4 disabled:opacity-50"
+                          >
+                            queue one fresh copy
+                          </button>
+                        ) : null}
+                        {attempt.canCancel ? (
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void act(attempt.id, "cancel")}
+                            className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
+                          >
+                            cancel queued attempt
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </article>
+          );
+        })}
         {!loading && data?.entries.length === 0 ? (
           <p className="py-8 font-mono text-xs theme-muted">No email matches these filters.</p>
         ) : null}
@@ -623,20 +800,20 @@ export function EmailOperationsPanel({
         </nav>
       ) : null}
 
-      {overview && overview.suppressionCount > 0 ? (
+      {overview && otherSuppressions.length > 0 ? (
         <section
           aria-labelledby="email-suppressions-heading"
           className="border-t theme-border pt-5"
         >
           <h4 id="email-suppressions-heading" className="font-serif text-xl">
-            Delivery blocks
+            Other delivery blocks
           </h4>
           <p className="mt-1 font-mono text-xs theme-muted">
             Bounce and complaint blocks prevent repeated unwanted delivery. They are tiny hashes and
             remain until reviewed.
           </p>
           <ul className="mt-3 divide-y theme-border-faint">
-            {overview.suppressions.map((item) => (
+            {otherSuppressions.map((item) => (
               <li
                 key={item.recipientHash}
                 className="flex flex-wrap items-center justify-between gap-3 py-3 font-mono text-xs"
@@ -651,7 +828,7 @@ export function EmailOperationsPanel({
                   onClick={() => void unsuppress(item.recipientHash, item.recipientHint)}
                   className="min-h-11 px-2 underline underline-offset-4 disabled:opacity-50"
                 >
-                  allow again
+                  remove block only — do not send
                 </button>
               </li>
             ))}

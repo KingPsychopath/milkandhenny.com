@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
+import { resolveEmailDeliveryBlock } from "./delivery-feedback.server";
 import { getEvent } from "@/features/events/store.server";
 import { sendRefundEmail, sendTicketEmail } from "@/features/tickets/email.server";
-import { listTicketsForOrder } from "@/features/tickets/store.server";
+import { listTicketsForOrder, updateTicketOrderEmail } from "@/features/tickets/store.server";
+import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
 import { drainEmailOutbox, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { isDatabaseConfigured, query, queryOne, transaction } from "@/lib/platform/postgres.server";
@@ -31,6 +33,11 @@ import type {
 const FEEDBACK_GRACE_MINUTES = 15;
 const RESENDABLE_KINDS = new Set(["ticket-issued", "ticket-resend", "ticket-refund"]);
 
+export interface EmailResendResult {
+  queued: boolean;
+  alreadyRequested: boolean;
+}
+
 interface LedgerRow {
   id: string;
   idempotency_key: string;
@@ -39,6 +46,10 @@ interface LedgerRow {
   source: string;
   context: unknown;
   recipient_hint: string | null;
+  suppression_reason: string | null;
+  suppression_first_occurred_at: Date | null;
+  suppression_last_occurred_at: Date | null;
+  suppression_recipient_hash: string | null;
   subject_hint: string | null;
   status: string;
   provider_delivery_status: string | null;
@@ -139,6 +150,19 @@ function entryFromRow(row: LedgerRow): EmailLedgerEntry {
     source: row.source,
     context,
     recipientHint: row.recipient_hint,
+    suppression:
+      (row.suppression_reason === "bounced" || row.suppression_reason === "complained") &&
+      row.suppression_recipient_hash &&
+      row.suppression_first_occurred_at &&
+      row.suppression_last_occurred_at
+        ? {
+            recipientHash: row.suppression_recipient_hash,
+            recipientHint: row.recipient_hint,
+            reason: row.suppression_reason,
+            firstOccurredAt: row.suppression_first_occurred_at.toISOString(),
+            lastOccurredAt: row.suppression_last_occurred_at.toISOString(),
+          }
+        : null,
     subject: row.subject_hint,
     status: row.status,
     deliveryStatus: row.provider_delivery_status,
@@ -328,6 +352,14 @@ export async function listEmailLedger(input: EmailLedgerQuery): Promise<EmailLed
     query<LedgerRow>(
       `select id, idempotency_key, channel, kind, source, context,
               recipient_hint, subject_hint, status, provider_delivery_status,
+              (select reason from email_suppressions s where s.recipient_hash = email_outbox.recipient_hash)
+                as suppression_reason,
+              (select first_occurred_at from email_suppressions s where s.recipient_hash = email_outbox.recipient_hash)
+                as suppression_first_occurred_at,
+              (select last_occurred_at from email_suppressions s where s.recipient_hash = email_outbox.recipient_hash)
+                as suppression_last_occurred_at,
+              (select recipient_hash from email_suppressions s where s.recipient_hash = email_outbox.recipient_hash)
+                as suppression_recipient_hash,
               attempts, provider_status, provider_message_id, last_error,
               message is not null as payload_retained,
               next_attempt_at, created_at, updated_at, accepted_at, delivered_at,
@@ -391,7 +423,10 @@ export async function cancelQueuedEmail(id: string): Promise<void> {
   );
 }
 
-export async function resendEmailFromLedger(id: string, origin: string): Promise<void> {
+export async function resendEmailFromLedger(
+  id: string,
+  origin: string,
+): Promise<EmailResendResult> {
   const row = await queryOne<{ kind: string; context: unknown; status: string }>(
     `select kind, context, status from email_outbox where id = $1`,
     [id],
@@ -444,7 +479,7 @@ export async function resendEmailFromLedger(id: string, origin: string): Promise
     });
     if (!result.queued)
       throw new EmailOperationError(502, result.error ?? "Refund email could not be queued");
-    return;
+    return { queued: true, alreadyRequested: result.alreadyRequested === true };
   }
 
   const live = tickets.filter((ticket) => ticket.status === "valid");
@@ -461,14 +496,86 @@ export async function resendEmailFromLedger(id: string, origin: string): Promise
   });
   if (!result.queued)
     throw new EmailOperationError(502, result.error ?? "Ticket email could not be queued");
+  return { queued: true, alreadyRequested: result.alreadyRequested === true };
 }
 
 export async function removeEmailSuppression(recipientHash: string): Promise<void> {
-  const row = await queryOne<{ recipient_hash: string }>(
-    `delete from email_suppressions where recipient_hash = $1 returning recipient_hash`,
-    [recipientHash],
+  const resolved = await resolveEmailDeliveryBlock(
+    recipientHash,
+    "Delivery block removed by an administrator",
   );
-  if (!row) throw new EmailOperationError(404, "Suppression not found");
+  if (!resolved) throw new EmailOperationError(404, "Suppression not found");
+}
+
+export async function correctTicketRecipientAndResend(
+  id: string,
+  recipientEmail: string,
+  origin: string,
+): Promise<EmailResendResult> {
+  const normalizedEmail = normaliseEmail(recipientEmail);
+  if (!isValidEmail(normalizedEmail)) {
+    throw new EmailOperationError(400, "Enter a valid corrected email address");
+  }
+  const row = await queryOne<{
+    kind: string;
+    context: unknown;
+    status: string;
+    provider_delivery_status: string | null;
+    recipient_hash: string;
+  }>(
+    `select kind, context, status, provider_delivery_status, recipient_hash
+       from email_outbox
+      where id = $1`,
+    [id],
+  );
+  if (!row || !isEmailKind(row.kind)) {
+    throw new EmailOperationError(404, "Email ledger entry not found");
+  }
+  if (
+    row.provider_delivery_status !== "bounced" ||
+    (row.kind !== "ticket-issued" && row.kind !== "ticket-resend")
+  ) {
+    throw new EmailOperationError(409, "Only a bounced ticket email can use address recovery");
+  }
+  const context = parseContext(row.context);
+  if (!context.orderId) {
+    throw new EmailOperationError(409, "This email no longer identifies its ticket order");
+  }
+  const tickets = await listTicketsForOrder(context.orderId);
+  const matchingTickets = tickets.filter(
+    (ticket) => ticket.email && hashEmailRecipient(ticket.email) === row.recipient_hash,
+  );
+  const alreadyCorrected = tickets.some(
+    (ticket) => ticket.email && normaliseEmail(ticket.email) === normalizedEmail,
+  );
+  if (matchingTickets.length === 0 && !alreadyCorrected) {
+    throw new EmailOperationError(
+      409,
+      "The order address has changed since this bounce. Refresh and resend from the current ticket record.",
+    );
+  }
+
+  const newRecipientHash = hashEmailRecipient(normalizedEmail);
+  const newSuppression = await queryOne<{ reason: string }>(
+    `select reason from email_suppressions where recipient_hash = $1`,
+    [newRecipientHash],
+  );
+  if (newSuppression && newRecipientHash !== row.recipient_hash) {
+    throw new EmailOperationError(409, "The corrected address also has an active delivery block");
+  }
+
+  if (matchingTickets.length > 0) {
+    const updated = await updateTicketOrderEmail(
+      context.orderId,
+      matchingTickets.map((ticket) => ticket.id),
+      normalizedEmail,
+    );
+    if (updated !== matchingTickets.length) {
+      throw new EmailOperationError(409, "The ticket order changed while its address was updated");
+    }
+  }
+  await removeEmailSuppression(row.recipient_hash);
+  return resendEmailFromLedger(id, origin);
 }
 
 export async function cleanupEmailOperations(): Promise<EmailCleanupResult> {

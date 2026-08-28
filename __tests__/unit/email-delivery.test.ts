@@ -96,6 +96,7 @@ describe("email provider delivery", () => {
       ok: false,
       status: 422,
       error: "Recipient address permanently bounced",
+      suppressRecipient: true,
     });
   });
 

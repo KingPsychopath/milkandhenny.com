@@ -701,12 +701,37 @@ export async function updateAdminNotification(input: {
   if ((input.status === "resolved" || input.status === "dismissed") && !input.reason?.trim())
     throw new Error("A resolution reason is required");
   return transaction(async (client) => {
-    const selected = await client.query<{ case_id: string | null; status: string }>(
-      `select case_id,status from admin_notifications where id = $1 for update`,
+    const selected = await client.query<{
+      case_id: string | null;
+      status: string;
+      category: string;
+      related_entities: Record<string, unknown> | null;
+    }>(
+      `select notification.case_id,notification.status,notification.category,
+              attention.related_entities
+         from admin_notifications notification
+         left join admin_attention_cases attention on attention.id = notification.case_id
+        where notification.id = $1
+        for update of notification`,
       [input.id],
     );
     const before = selected.rows[0];
     if (!before) return false;
+    if (
+      before.category === "email-delivery" &&
+      (input.status === "resolved" || input.status === "dismissed")
+    ) {
+      const recipientHash = before.related_entities?.recipientHash;
+      if (typeof recipientHash === "string") {
+        const activeBlock = await client.query(
+          `select 1 from email_suppressions where recipient_hash = $1`,
+          [recipientHash],
+        );
+        if (activeBlock.rowCount) {
+          throw new Error("Resolve the delivery block before closing this notification");
+        }
+      }
+    }
     const rows = await client.query<{ case_id: string | null }>(
       `update admin_notifications
           set status = $2, updated_at = now(),

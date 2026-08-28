@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 
-import { drainEmailOutbox, enqueueEmail } from "@/lib/platform/email-outbox.server";
+import {
+  drainEmailOutbox,
+  enqueueEmail,
+  hashEmailRecipient,
+} from "@/lib/platform/email-outbox.server";
 import { recordEmailDeliveryEvent } from "@/lib/platform/email-delivery-events.server";
 import {
   prepareCommunicationLinkMap,
@@ -11,7 +15,10 @@ import { communicationLinkKey } from "@/features/communications/email.server";
 import {
   cleanupEmailOperations,
   listEmailLedger,
+  removeEmailSuppression,
 } from "@/features/email-operations/email-operations.server";
+import { recordEmailDeliveryFeedback } from "@/features/email-operations/delivery-feedback.server";
+import { updateAdminNotification } from "@/features/attendee-operations/notifications.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { __migrationsForTesting } from "@/lib/platform/migrations.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
@@ -45,7 +52,9 @@ describeWithDatabase("email outbox (postgres)", () => {
       kind: "ticket-issued",
       deliverNow: false,
     });
-    expect(first).toEqual(duplicate);
+    expect(first).toMatchObject({ ok: true, deduplicated: false });
+    expect(duplicate).toMatchObject({ ok: true, deduplicated: true });
+    if (first.ok && duplicate.ok) expect(first.id).toBe(duplicate.id);
 
     const pending = await query<{
       count: string;
@@ -120,6 +129,32 @@ describeWithDatabase("email outbox (postgres)", () => {
       provider_delivery_status: string | null;
     }>(`select status, provider_delivery_status from email_outbox`);
     expect(delivered[0]).toEqual({ status: "accepted", provider_delivery_status: "delivered" });
+    await recordEmailDeliveryEvent({
+      eventId: "late-deferred-1",
+      type: "deferred",
+      occurredAt: new Date("2026-08-14T11:59:00.000Z"),
+      providerMessageId: "provider-1",
+      recipients: ["PERSON@example.com"],
+    });
+    const stillDelivered = await query<{
+      status: string;
+      provider_delivery_status: string | null;
+    }>(`select status, provider_delivery_status from email_outbox`);
+    expect(stillDelivered[0]).toEqual({
+      status: "accepted",
+      provider_delivery_status: "delivered",
+    });
+
+    await recordEmailDeliveryFeedback({
+      eventId: "late-hard-bounce-1",
+      type: "bounced",
+      occurredAt: new Date("2026-08-14T11:58:00.000Z"),
+      providerMessageId: "provider-1",
+      recipients: ["PERSON@example.com"],
+      suppressRecipient: true,
+    });
+    await expect(query(`select recipient_hash from email_suppressions`)).resolves.toHaveLength(0);
+    await expect(query(`select id from admin_notifications`)).resolves.toHaveLength(0);
 
     vi.stubEnv("AUTH_SECRET", "test-auth-secret");
     const sourceId = randomUUID();
@@ -144,17 +179,48 @@ describeWithDatabase("email outbox (postgres)", () => {
     );
     expect(click[0]?.click_count).toBe(1);
 
-    await recordEmailDeliveryEvent({
+    await recordEmailDeliveryFeedback({
       eventId: "feedback-1",
       type: "bounced",
       occurredAt: new Date("2026-08-14T12:00:00.000Z"),
       providerMessageId: "provider-1",
       recipients: ["PERSON@example.com"],
+      suppressRecipient: true,
     });
     const bounced = await query<{ status: string; provider_status: number }>(
       `select status, provider_status from email_outbox`,
     );
     expect(bounced[0]).toEqual({ status: "failed", provider_status: 422 });
+    const notices = await query<{
+      id: string;
+      category: string;
+      status: string;
+      deep_link: string;
+      case_status: string;
+    }>(
+      `select notification.id,notification.category,notification.status,notification.deep_link,
+              attention.status as case_status
+         from admin_notifications notification
+         join admin_attention_cases attention on attention.id = notification.case_id`,
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      category: "email-delivery",
+      status: "new",
+      case_status: "new",
+    });
+    expect(notices[0]?.deep_link).toContain(
+      "/admin?view=communications&communicationTab=delivery&emailStatus=failed&emailQuery=",
+    );
+    await expect(
+      updateAdminNotification({
+        id: notices[0]?.id ?? "",
+        status: "resolved",
+        actorId: "root-owner",
+        actorType: "root-owner",
+        reason: "done",
+      }),
+    ).rejects.toThrow("Resolve the delivery block before closing this notification");
     await expect(
       enqueueEmail(message, {
         idempotencyKey: "tickets:issued:order-2",
@@ -165,6 +231,84 @@ describeWithDatabase("email outbox (postgres)", () => {
       ok: false,
       status: 422,
       error: "Recipient address is suppressed after a delivery failure",
+    });
+    await removeEmailSuppression(hashEmailRecipient(message.to));
+    const resolved = await query<{ status: string; case_status: string }>(
+      `select notification.status,attention.status as case_status
+         from admin_notifications notification
+         join admin_attention_cases attention on attention.id = notification.case_id`,
+    );
+    expect(resolved[0]).toEqual({ status: "resolved", case_status: "resolved" });
+  });
+
+  it("serializes admin resends so repeated requests queue one message", async () => {
+    const message = {
+      channel: "tickets" as const,
+      to: "person@example.com",
+      subject: "Your ticket",
+      text: "Private ticket link",
+    };
+    const options = (idempotencyKey: string) => ({
+      idempotencyKey,
+      kind: "ticket-resend" as const,
+      source: "admin" as const,
+      context: { eventSlug: "party", orderId: "order-resend" },
+      deliverNow: false,
+    });
+
+    const [first, repeated] = await Promise.all([
+      enqueueEmail(message, options("tickets:admin-resend:first")),
+      enqueueEmail(message, options("tickets:admin-resend:repeated")),
+    ]);
+
+    expect(first.ok).toBe(true);
+    expect(repeated.ok).toBe(true);
+    if (!first.ok || !repeated.ok) return;
+    expect(new Set([first.id, repeated.id]).size).toBe(1);
+    expect([first.deduplicated, repeated.deduplicated].filter(Boolean)).toHaveLength(1);
+    const rows = await query<{ count: string }>(`select count(*)::text as count from email_outbox`);
+    expect(rows[0]?.count).toBe("1");
+  });
+
+  it("stops a queued message if its recipient becomes suppressed before claiming", async () => {
+    await enqueueEmail(
+      {
+        channel: "tickets",
+        to: "blocked@example.com",
+        subject: "Ticket",
+        text: "Private ticket link",
+      },
+      {
+        idempotencyKey: "tickets:queued-before-block",
+        kind: "ticket-issued",
+        deliverNow: false,
+      },
+    );
+    await query(
+      `insert into email_suppressions
+         (recipient_hash,recipient_hint,reason,provider_message_id,first_occurred_at,last_occurred_at)
+       values ($1,'b…@example.com','bounced','provider-block',now(),now())`,
+      [hashEmailRecipient("blocked@example.com")],
+    );
+    const delivery = vi.fn();
+    vi.stubGlobal("fetch", delivery);
+
+    await expect(drainEmailOutbox()).resolves.toBe(1);
+    expect(delivery).not.toHaveBeenCalled();
+    const rows = await query<{
+      status: string;
+      provider_status: number;
+      last_error: string;
+      payload_retained: boolean;
+    }>(
+      `select status,provider_status,last_error,message is not null as payload_retained
+         from email_outbox`,
+    );
+    expect(rows[0]).toEqual({
+      status: "failed",
+      provider_status: 422,
+      last_error: "Delivery stopped because the recipient is blocked after a delivery failure",
+      payload_retained: false,
     });
   });
 

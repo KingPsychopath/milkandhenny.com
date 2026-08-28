@@ -53,8 +53,8 @@ export type EmailMessage = {
 };
 
 export type SendEmailResult =
-  | { ok: true; id: string | null }
-  | { ok: false; status: number; error: string };
+  | { ok: true; id: string | null; deduplicated?: boolean }
+  | { ok: false; status: number; error: string; suppressRecipient?: boolean };
 
 const CHANNEL_SENDERS: Record<EmailChannel, { environmentVariable: string; name: string }> = {
   tickets: {
@@ -245,7 +245,12 @@ function interpretCloudflareResponse(
   const result = asRecord(record.result);
   const bounced = Array.isArray(result?.permanent_bounces) ? result.permanent_bounces : [];
   if (bounced.includes(to)) {
-    return { ok: false, status: 422, error: "Recipient address permanently bounced" };
+    return {
+      ok: false,
+      status: 422,
+      error: "Recipient address permanently bounced",
+      suppressRecipient: true,
+    };
   }
 
   const id =

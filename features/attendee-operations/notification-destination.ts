@@ -34,6 +34,8 @@ export function resolveAdminNotificationDeepLink(input: NotificationDestinationI
   const emailRecord = ref(
     input,
     "ticketId",
+    "outboxId",
+    "orderId",
     "assignmentId",
     "transferId",
     "returnRequestId",
@@ -44,7 +46,9 @@ export function resolveAdminNotificationDeepLink(input: NotificationDestinationI
   const emailFailure =
     input.kind.includes("email_failed") ||
     input.kind.includes("delivery_failed") ||
-    input.category.includes("email-fail");
+    input.kind.startsWith("email.delivery_") ||
+    input.category.includes("email-fail") ||
+    input.category === "email-delivery";
 
   if (emailFailure) {
     return adminLink({

@@ -2122,11 +2122,17 @@ function EventOperations({
         body: JSON.stringify({ action, ticketId: ticket.id }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response, "Action failed"));
-      const result = (await response.json()) as { state?: string; emailQueued?: boolean };
+      const result = (await response.json()) as {
+        state?: string;
+        emailQueued?: boolean;
+        alreadyRequested?: boolean;
+      };
       const refundPending = action === "refund" && result.state === "pending";
       onStatus(
         action === "resend"
-          ? `Ticket email queued for ${ticket.holderName}'s order`
+          ? result.alreadyRequested
+            ? `A resend for ${ticket.holderName}'s order was already requested · no duplicate queued`
+            : `One ticket email queued for ${ticket.holderName}'s order`
           : action === "refund"
             ? refundPending
               ? `${ticket.holderName}'s refund is processing`
