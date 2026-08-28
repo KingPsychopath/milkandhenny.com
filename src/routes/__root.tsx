@@ -103,7 +103,7 @@ function RootDocument({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){window.EXCALIDRAW_ASSET_PATH="/excalidraw/";var t=localStorage.getItem("${LOCAL_KEYS.theme}");var d=t==="dark"||t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches;var e=document.documentElement;e.setAttribute("data-theme",d?"dark":"light");e.style.colorScheme=d?"dark":"light";})();`,
+            __html: `(function(){window.EXCALIDRAW_ASSET_PATH="/excalidraw/";var t=localStorage.getItem("${LOCAL_KEYS.theme}");var d=t==="dark"||t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches;var e=document.documentElement;e.setAttribute("data-theme",d?"dark":"light");e.style.colorScheme=d?"dark":"light";requestAnimationFrame(function(){requestAnimationFrame(function(){e.setAttribute("data-theme-ready","")})})})();`,
           }}
         />
         <HeadContent />

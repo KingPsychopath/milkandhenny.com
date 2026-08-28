@@ -237,9 +237,6 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     touch-action: manipulation;
-    transition:
-      background-color 0.4s ease,
-      color 0.4s ease;
   }
 
   /* Mobile-friendly touch targets */
@@ -264,9 +261,9 @@
   }
 
   /* ─── Theme transition ─── */
-  *,
-  *::before,
-  *::after {
+  [data-theme-ready] *,
+  [data-theme-ready] *::before,
+  [data-theme-ready] *::after {
     transition:
       background-color 0.4s ease,
       border-color 0.4s ease,
