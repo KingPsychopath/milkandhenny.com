@@ -6,28 +6,26 @@ import { HOT_AND_COLD_TARGETS } from "@/features/things/hot-and-cold/hot-and-col
 interface Manifest {
   aliases: Record<string, string>;
   hints: Record<string, string[]>;
+  rankPacks: Record<string, { file: string; offset: number }>;
   version: number;
   words: string[];
 }
 
-const assetRoot = path.join(process.cwd(), "assets", "hot-and-cold");
+const assetRoot = path.join(process.cwd(), "runtime-assets", "hot-and-cold");
 const manifest = JSON.parse(
   fs.readFileSync(path.join(assetRoot, "lexicon.data"), "utf8"),
 ) as Manifest;
 const wordIndex = new Map(manifest.words.map((word, index) => [word, index]));
 
 function ranksFor(target: string) {
-  const bytes = fs.readFileSync(path.join(assetRoot, "ranks", `${target}.bin`));
-  return new Uint16Array(
-    bytes.buffer,
-    bytes.byteOffset,
-    bytes.byteLength / Uint16Array.BYTES_PER_ELEMENT,
-  );
+  const location = manifest.rankPacks[target];
+  const bytes = fs.readFileSync(path.join(assetRoot, location.file));
+  return new Uint16Array(bytes.buffer, bytes.byteOffset + location.offset, manifest.words.length);
 }
 
 describe("Hot and Cold generated data", () => {
   it("uses a substantial common-word lexicon without proper names", () => {
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
     expect(manifest.words.length).toBeGreaterThan(30_000);
     expect(manifest.words).not.toContain("tyler");
     expect(manifest.words).toContain("london");
@@ -39,6 +37,7 @@ describe("Hot and Cold generated data", () => {
   });
 
   it("contains a complete ordinal rank table and three progressive hints for every target", () => {
+    expect(new Set(Object.values(manifest.rankPacks).map(({ file }) => file))).toHaveLength(16);
     for (const target of HOT_AND_COLD_TARGETS) {
       const ranks = ranksFor(target);
       expect(ranks).toHaveLength(manifest.words.length);

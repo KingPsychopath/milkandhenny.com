@@ -15,8 +15,10 @@ RUN corepack enable && corepack prepare pnpm@11.17.0 --activate
 WORKDIR /app
 
 FROM base AS dependencies
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm fetch --frozen-lockfile
+COPY package.json ./
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --offline --frozen-lockfile
 
 # The sentence-embedding weights for Hot & Cold, fetched at build time rather than committed (23MB
 # that never changes) or downloaded at boot (a live round would depend on the Hugging Face CDN).

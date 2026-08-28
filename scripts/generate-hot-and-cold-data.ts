@@ -21,12 +21,12 @@ import { normaliseGameWord } from "../features/things/shared/word-normalization"
 const ROOT = process.cwd();
 const SOURCE_DIR = path.join(ROOT, ".artifacts", "hot-and-cold");
 const SOURCE_FILE = path.join(SOURCE_DIR, "english-wordnet-2025.xml.gz");
-const OUTPUT_DIR = path.join(ROOT, "assets", "hot-and-cold");
-const RANK_DIR = path.join(OUTPUT_DIR, "ranks");
+const OUTPUT_DIR = path.join(ROOT, "runtime-assets", "hot-and-cold");
 const WORDNET_URL = "https://en-word.net/static/english-wordnet-2025.xml.gz";
 const MODEL = "Xenova/all-MiniLM-L6-v2";
 const BATCH_SIZE = 256;
 const MIN_FREQUENCY = 2;
+const RANK_PACK_COUNT = 16;
 
 const require = createRequire(import.meta.url);
 const frequencies = require("subtlex-word-frequencies") as Array<{
@@ -45,6 +45,7 @@ interface LexicalWord {
 interface Manifest {
   aliases: Record<string, string>;
   hints: Record<string, string[]>;
+  rankPacks: Record<string, { file: string; offset: number }>;
   source: {
     embeddingModel: string;
     frequencyList: string;
@@ -398,28 +399,43 @@ async function main() {
   );
   const scores = await generateRanks(words, lexical, synsetNeighbours);
   fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-  fs.mkdirSync(RANK_DIR, { recursive: true });
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const hints: Record<string, string[]> = {};
+  const rankPacks: Record<string, { file: string; offset: number }> = {};
+  const packChunks = Array.from({ length: RANK_PACK_COUNT }, () => [] as Buffer[]);
+  const packLengths = new Uint32Array(RANK_PACK_COUNT);
   HOT_AND_COLD_TARGETS.forEach((target, index) => {
     const result = rankAndHints(target, words, scores[index], lexical);
     hints[target] = result.hints;
-    fs.writeFileSync(path.join(RANK_DIR, `${target}.bin`), Buffer.from(result.ranks.buffer));
+    const packIndex = index % RANK_PACK_COUNT;
+    const file = `ranks-${packIndex.toString().padStart(2, "0")}.data`;
+    const bytes = Buffer.from(result.ranks.buffer);
+    rankPacks[target] = { file, offset: packLengths[packIndex] };
+    packChunks[packIndex].push(bytes);
+    packLengths[packIndex] += bytes.byteLength;
   });
+  packChunks.forEach((chunks, index) =>
+    fs.writeFileSync(
+      path.join(OUTPUT_DIR, `ranks-${index.toString().padStart(2, "0")}.data`),
+      Buffer.concat(chunks),
+    ),
+  );
   const manifest: Manifest = {
     aliases,
     hints,
+    rankPacks,
     source: {
       embeddingModel: MODEL,
       frequencyList: "SUBTLEX-US via subtlex-word-frequencies 2.0.0",
       wordnet: "Open English WordNet 2025",
     },
-    version: 1,
+    version: 2,
     words,
   };
   fs.writeFileSync(path.join(OUTPUT_DIR, "lexicon.data"), JSON.stringify(manifest));
   fs.writeFileSync(
     path.join(OUTPUT_DIR, "README.md"),
-    "# Hot and Cold generated data\n\nRun `pnpm data:hot-and-cold` to rebuild. The lexicon derives from Open English WordNet 2025 (CC BY 4.0) and SUBTLEX-US frequency data. Rank files are generated with the bundled Xenova/all-MiniLM-L6-v2 model.\n",
+    "# Hot and Cold generated data\n\nRun `pnpm data:hot-and-cold` to rebuild. The lexicon derives from Open English WordNet 2025 (CC BY 4.0) and SUBTLEX-US frequency data. Rank packs are generated with the bundled Xenova/all-MiniLM-L6-v2 model.\n",
   );
   console.log(`wrote ${OUTPUT_DIR}`);
 }

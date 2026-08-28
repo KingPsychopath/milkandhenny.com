@@ -17,6 +17,7 @@
     "event-scoring:print": "python3 scripts/event-scoring-print.py",
     "event-scoring": "tsx --tsconfig tsconfig.cli.json scripts/event-scoring-cli.ts",
     "build": "node --max-old-space-size=6144 node_modules/vite/bin/vite.js build",
+    "postbuild": "node scripts/copy-hot-and-cold-assets.mjs",
     "start": "node .output/server/index.mjs",
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix .",

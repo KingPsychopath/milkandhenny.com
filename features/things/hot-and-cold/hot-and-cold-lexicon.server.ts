@@ -1,9 +1,11 @@
-import { useStorage as getStorage } from "nitro/storage";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { prepareGuess } from "./hot-and-cold-rules";
 
 interface HotAndColdManifest {
   aliases: Record<string, string>;
   hints: Record<string, string[]>;
+  rankPacks: Record<string, { file: string; offset: number }>;
   version: number;
   words: string[];
 }
@@ -14,7 +16,19 @@ interface LoadedLexicon {
 }
 
 let lexiconPromise: Promise<LoadedLexicon> | null = null;
-const rankTables = new Map<string, Promise<Uint16Array>>();
+const rankPacks = new Map<string, Promise<Uint8Array>>();
+
+function assetPath(file: string) {
+  const root =
+    process.env.NODE_ENV === "production"
+      ? path.join(process.cwd(), ".output", "server", "assets", "hot-and-cold")
+      : path.join(process.cwd(), "runtime-assets", "hot-and-cold");
+  return path.join(root, file);
+}
+
+async function readAsset(file: string) {
+  return new Uint8Array(await readFile(assetPath(file)));
+}
 
 function parseManifest(bytes: Uint8Array): HotAndColdManifest {
   const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
@@ -29,8 +43,11 @@ function parseManifest(bytes: Uint8Array): HotAndColdManifest {
     !("hints" in value) ||
     typeof value.hints !== "object" ||
     value.hints === null ||
+    !("rankPacks" in value) ||
+    typeof value.rankPacks !== "object" ||
+    value.rankPacks === null ||
     !("version" in value) ||
-    typeof value.version !== "number"
+    value.version !== 2
   )
     throw new Error("The Hot and Cold lexicon is invalid");
   return value as HotAndColdManifest;
@@ -38,8 +55,7 @@ function parseManifest(bytes: Uint8Array): HotAndColdManifest {
 
 async function loadLexicon() {
   lexiconPromise ??= (async () => {
-    const bytes = await getStorage("assets:hot-and-cold").getItemRaw<Uint8Array>("lexicon.data");
-    const manifest = bytes ? parseManifest(Uint8Array.from(bytes)) : null;
+    const manifest = parseManifest(await readAsset("lexicon.data"));
     if (!manifest?.words.length) throw new Error("The Hot and Cold lexicon is unavailable");
     return {
       index: new Map(manifest.words.map((word, index) => [word, index])),
@@ -50,18 +66,29 @@ async function loadLexicon() {
 }
 
 async function loadRanks(target: string) {
-  const existing = rankTables.get(target);
-  if (existing) return existing;
-  const pending = (async () => {
-    const bytes = await getStorage("assets:hot-and-cold").getItemRaw<Uint8Array>(
-      `ranks/${target}.bin`,
-    );
-    if (!bytes) throw new Error("The Hot and Cold rank table is unavailable");
-    const copy = Uint8Array.from(bytes);
-    return new Uint16Array(copy.buffer);
-  })();
-  rankTables.set(target, pending);
-  return pending;
+  const { manifest } = await loadLexicon();
+  const location = manifest.rankPacks[target];
+  if (!location) throw new Error("The Hot and Cold rank table is unavailable");
+  let pending = rankPacks.get(location.file);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        return await readAsset(location.file);
+      } catch {
+        throw new Error("The Hot and Cold rank pack is unavailable");
+      }
+    })();
+    rankPacks.set(location.file, pending);
+  }
+  const pack = await pending;
+  const byteLength = manifest.words.length * Uint16Array.BYTES_PER_ELEMENT;
+  if (
+    location.offset < 0 ||
+    location.offset % Uint16Array.BYTES_PER_ELEMENT !== 0 ||
+    location.offset + byteLength > pack.byteLength
+  )
+    throw new Error("The Hot and Cold rank pack is invalid");
+  return new Uint16Array(pack.buffer, pack.byteOffset + location.offset, manifest.words.length);
 }
 
 export async function resolveHotAndColdGuess(raw: string) {
