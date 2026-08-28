@@ -20,7 +20,9 @@ describe("hot and cold result sharing", () => {
     expect(result.trail.map(({ sequence }) => sequence)).toEqual([1, 2, 4, 5]);
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
-    expect(result.text).toBe("Hot & Cold · daily #12\n🧊 → 🔹 → 🔥 → 💡\n5 guesses\nClosest #400");
+    expect(result.text).toBe(
+      "Hot & Cold · daily #12\nFound the hidden word in 5 guesses.\nTrail: 🧊 → 🔹 → 🔥 → 💡\nClosest guess before solving: 400th closest to the word\nCan you beat my trail?",
+    );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
       { zone: "frost", count: 2, intensity: 1 },
@@ -41,7 +43,9 @@ describe("hot and cold result sharing", () => {
       hintsUsed: 2,
     });
 
-    expect(result.text).toBe("Hot & Cold · daily #16\n🔹 → 🔥 → 💡\n3 guesses · 🧭🧭\nClosest #80");
+    expect(result.text).toBe(
+      "Hot & Cold · daily #16\nFound the hidden word in 3 guesses using 2 hints.\nTrail: 🔹 → 🔥 → 💡\nClosest guess before solving: 80th closest to the word\nCan you beat my trail?",
+    );
   });
 
   it("shares a qualifying heat streak without replacing the guess trail", () => {
@@ -56,8 +60,9 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.longestHeatStreak).toBe(3);
-    expect(result.text).toContain("4 guesses · 🔥×3");
-    expect(result.text).toContain("☀️ → 🔥 → ❤️‍🔥 → 💡");
+    expect(result.text).toContain("Found the hidden word in 4 guesses.");
+    expect(result.text).toContain("Trail: ☀️ → 🔥 → ❤️‍🔥 → 💡");
+    expect(result.text).toContain("🔥 3 hot guesses in a row");
   });
 
   it("does not include fields that could reveal guessed words", () => {
@@ -68,7 +73,7 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).not.toContain(guess.word);
-    expect(result.text).toContain("Exact on the first guess");
+    expect(result.text).toContain("Found the hidden word on the first guess.");
   });
 
   it("describes a near miss differently from a quick solve", () => {

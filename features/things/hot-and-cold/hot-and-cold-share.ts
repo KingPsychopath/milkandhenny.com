@@ -43,6 +43,15 @@ function sampleEvenly<T>(items: readonly T[], limit: number) {
   });
 }
 
+function ordinal(value: number) {
+  const remainder = value % 100;
+  if (remainder >= 11 && remainder <= 13) return `${value}th`;
+  if (value % 10 === 1) return `${value}st`;
+  if (value % 10 === 2) return `${value}nd`;
+  if (value % 10 === 3) return `${value}rd`;
+  return `${value}th`;
+}
+
 /** Selects chronological personal-best milestones, never words. */
 export function buildHotAndColdTrail(guesses: readonly HotAndColdShareGuess[], limit = 5) {
   if (limit <= 0 || guesses.length === 0) return [];
@@ -175,10 +184,12 @@ export function buildHotAndColdShareResult({
   label,
   guesses,
   hintsUsed = 0,
+  outcome = "found",
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
+  outcome?: HotAndColdResultOutcome;
 }): HotAndColdShareResult {
   const trail = buildHotAndColdTrail(guesses);
   const ranked = guesses.map(({ rank }) => rank);
@@ -191,25 +202,42 @@ export function buildHotAndColdShareResult({
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
   const longestHeatStreak = heatStreaks(guesses).longest;
   const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
+  const hintLabel = hintsUsed ? ` using ${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}` : "";
+  const solved = ranked.includes(0);
+  const resultSummary =
+    outcome === "gave-up"
+      ? `Revealed the hidden word after ${guessLabel}${hintLabel}.`
+      : outcome === "round"
+        ? solved
+          ? `Our room found the hidden word in ${guessLabel}.`
+          : `Our room finished after ${guessLabel}.`
+        : guesses.length === 1 && solved
+          ? `Found the hidden word on the first guess${hintLabel}.`
+          : `Found the hidden word in ${guessLabel}${hintLabel}.`;
   const closest =
     bestRank === null
-      ? "No ranked guesses"
+      ? null
       : bestRank === 0
-        ? "Exact on the first guess"
-        : `Closest #${bestRank.toLocaleString("en-US")}`;
+        ? "Closest guess: exact on the first try"
+        : `${outcome === "found" ? "Closest guess before solving" : "Closest guess"}: ${ordinal(bestRank)} closest to the word`;
   const trailSummary = trail.length
     ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ")
     : "—";
-  const outcomeSummary = [
-    guessLabel,
-    hintsUsed > 0 ? "🧭".repeat(hintsUsed) : null,
-    longestHeatStreak >= 3 ? `🔥×${longestHeatStreak}` : null,
-  ]
-    .filter((part): part is string => part !== null)
-    .join(" · ");
+  const streakSummary =
+    longestHeatStreak >= 3 ? `🔥 ${longestHeatStreak} hot guesses in a row` : null;
+  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat my trail?";
 
   return {
-    text: [`Hot & Cold · ${label}`, trailSummary, outcomeSummary, closest].join("\n"),
+    text: [
+      `Hot & Cold · ${label}`,
+      resultSummary,
+      `Trail: ${trailSummary}`,
+      closest,
+      streakSummary,
+      invitation,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
     trail,
     guessCount: guesses.length,
     bestRank,

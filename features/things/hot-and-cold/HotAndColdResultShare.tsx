@@ -15,11 +15,12 @@ function useHotAndColdResultShare(
   label: string,
   guesses: readonly HotAndColdShareGuess[],
   hintsUsed: number,
+  outcome: HotAndColdResultOutcome,
   sharePath: string,
 ) {
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [status, setStatus] = useState<ShareStatus>("idle");
-  const result = buildHotAndColdShareResult({ label, guesses, hintsUsed });
+  const result = buildHotAndColdShareResult({ label, guesses, hintsUsed, outcome });
   useEffect(() => {
     if (status === "idle") return;
     const reset = window.setTimeout(() => setStatus("idle"), 2_400);
@@ -151,6 +152,7 @@ export function HotAndColdResultShare({
     label,
     guesses,
     hintsUsed,
+    outcome,
     sharePath,
   );
   const closestLabel =
@@ -305,12 +307,14 @@ export function HotAndColdShareDock({
   label,
   guesses,
   hintsUsed = 0,
+  outcome = "found",
   resultId,
   sharePath = "/things/hot-and-cold",
 }: {
   label: string;
   guesses: readonly HotAndColdShareGuess[];
   hintsUsed?: number;
+  outcome?: HotAndColdResultOutcome;
   resultId: string;
   sharePath?: string;
 }) {
@@ -320,6 +324,7 @@ export function HotAndColdShareDock({
     label,
     guesses,
     hintsUsed,
+    outcome,
     sharePath,
   );
   const exactOnly = result.guessCount === 1 && result.bestRank === 0;

@@ -491,6 +491,7 @@ export function HotAndColdRoomApp({
         <HotAndColdShareDock
           label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
           guesses={snapshot.round.guesses}
+          outcome="round"
           resultId="room-heat-result"
         />
       ) : null}

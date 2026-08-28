@@ -371,6 +371,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           label={`daily #${puzzle}`}
           guesses={playerGuesses}
           hintsUsed={state.hintsUsed}
+          outcome={state.gaveUp ? "gave-up" : "found"}
           resultId="daily-heat-result"
           sharePath={`/things/hot-and-cold/daily/${puzzle}`}
         />
