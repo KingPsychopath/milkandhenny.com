@@ -21,7 +21,7 @@ describe("hot and cold result sharing", () => {
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
     expect(result.text).toBe(
-      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊×1 → ❄️×1 → 🌬️×1 → 🔥×1 → 💡\nMy closest guess was the 400th closest word.\nCan you beat my trail?",
+      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy trail: 🧊×1 → ❄️×1 → 💧×1 → 🔥×1 → 💡\nMy closest guess was the 400th closest word.\nCan you beat it?",
     );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
@@ -46,11 +46,11 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).toBe(
-      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 🌬️×1 → 🔥×1 → 💡\nHints: 🧭×2\nMy closest guess was the 80th closest word.\nCan you beat my trail?",
+      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nMy trail: 💧×1 → 🔥×1 → 💡\nHints: 🧭×2\nMy closest guess was the 80th closest word.\nCan you beat it?",
     );
   });
 
-  it("shares a qualifying heat streak in plain language", () => {
+  it("keeps the heat streak out of shared copy", () => {
     const result = buildHotAndColdShareResult({
       label: "daily #17",
       guesses: [
@@ -63,7 +63,7 @@ describe("hot and cold result sharing", () => {
 
     expect(result.longestHeatStreak).toBe(3);
     expect(result.text).toContain("I found the hidden word in 4 guesses.");
-    expect(result.text).toContain("I had 3 hot guesses in a row.");
+    expect(result.text).not.toContain("hot guesses in a row");
     expect(result.text).toContain("My trail: ☀️×1 → 🔥×1 → ❤️‍🔥×1 → 💡");
   });
 

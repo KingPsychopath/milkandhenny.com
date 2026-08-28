@@ -31,7 +31,7 @@ const TRAIL_SYMBOLS: Record<HeatBand, string> = {
   burning: "❤️‍🔥",
   hot: "🔥",
   warm: "☀️",
-  cool: "🌬️",
+  cool: "💧",
   cold: "❄️",
   frozen: "🧊",
 };
@@ -241,22 +241,10 @@ export function buildHotAndColdShareResult({
   const trailSummary = trailSteps.length
     ? `${outcome === "round" ? "Our" : "My"} trail: ${trailSteps.join(" → ")}`
     : null;
-  const streakSummary =
-    longestHeatStreak >= 3
-      ? `${outcome === "round" ? "We had" : "I had"} ${longestHeatStreak} hot guesses in a row.`
-      : null;
-  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat my trail?";
+  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat it?";
 
   return {
-    text: [
-      `Hot & Cold · ${label}`,
-      resultSummary,
-      trailSummary,
-      hintSummary,
-      closest,
-      streakSummary,
-      invitation,
-    ]
+    text: [`Hot & Cold · ${label}`, resultSummary, trailSummary, hintSummary, closest, invitation]
       .filter((line): line is string => line !== null)
       .join("\n"),
     trail,
