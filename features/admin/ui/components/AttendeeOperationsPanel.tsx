@@ -27,6 +27,7 @@ type InboxItem = {
   createdAt: string;
 };
 type Administrator = { personId: string; name: string };
+type CaseEditor = { itemId: string; mode: "private-note" | "resolve"; value: string };
 type InboxView = {
   name: string;
   status: string;
@@ -146,6 +147,8 @@ export function AttendeeOperationsPanel({
   const [eventFilter, setEventFilter] = useState("");
   const [savedViews, setSavedViews] = useState<InboxView[]>([]);
   const [identityBusy, setIdentityBusy] = useState(false);
+  const [inboxBusy, setInboxBusy] = useState<string>();
+  const [caseEditor, setCaseEditor] = useState<CaseEditor>();
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
@@ -193,28 +196,50 @@ export function AttendeeOperationsPanel({
   async function updateItem(
     item: InboxItem,
     status: InboxItem["status"],
-    extra: { assigneePersonId?: string; privateNote?: string } = {},
-  ) {
-    const reason =
-      status === "resolved" || status === "dismissed"
-        ? window.prompt("What resolved this item?")?.trim()
-        : undefined;
-    if ((status === "resolved" || status === "dismissed") && !reason) return;
-    const response = await authFetch("/api/admin/operations/inbox", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: item.id, status, reason, ...extra }),
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      onError(body.error ?? "Inbox item could not be updated");
-      return;
+    extra: { assigneePersonId?: string | null; privateNote?: string; reason?: string } = {},
+  ): Promise<boolean> {
+    setInboxBusy(item.id);
+    try {
+      const response = await authFetch("/api/admin/operations/inbox", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: item.id, status, ...extra }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? "Inbox item could not be updated");
+      }
+      if (status === "in-progress" && item.unread) {
+        await setItemRead(item, true, false);
+      }
+      onStatus(
+        status === "resolved"
+          ? "Case resolved."
+          : extra.privateNote
+            ? "Private note saved."
+            : "Inbox updated.",
+      );
+      await loadInbox();
+      return true;
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Inbox item could not be updated");
+      return false;
+    } finally {
+      setInboxBusy(undefined);
     }
-    if (status === "in-progress" && item.unread) {
-      await setItemRead(item, true, false);
-    }
-    onStatus(status === "resolved" ? "Case resolved." : "Inbox updated.");
-    await loadInbox();
+  }
+
+  async function submitCaseEditor(event: FormEvent, item: InboxItem) {
+    event.preventDefault();
+    if (!caseEditor || caseEditor.itemId !== item.id) return;
+    const value = caseEditor.value.trim();
+    if (!value) return;
+    const saved = await updateItem(
+      item,
+      caseEditor.mode === "resolve" ? "resolved" : item.status,
+      caseEditor.mode === "resolve" ? { reason: value } : { privateNote: value },
+    );
+    if (saved) setCaseEditor(undefined);
   }
 
   async function setItemRead(item: InboxItem, read: boolean, reload = true) {
@@ -514,99 +539,184 @@ export function AttendeeOperationsPanel({
                         {item.body}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                      <a
-                        href={item.deepLink}
-                        onClick={(event) => {
-                          if (!item.unread) return;
-                          event.preventDefault();
-                          void openItem(item);
-                        }}
-                        className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <div
+                        role="group"
+                        aria-label="Notification actions"
+                        className="flex flex-wrap items-center gap-x-4 gap-y-1"
                       >
-                        open relevant page
-                      </a>
-                      {item.unread ? (
-                        <button
-                          type="button"
-                          onClick={() => void setItemRead(item, true)}
-                          className="min-h-11 font-mono text-xs underline"
-                        >
-                          mark read
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void setItemRead(item, false)}
-                          className="min-h-11 font-mono text-xs underline"
-                        >
-                          mark unread
-                        </button>
-                      )}
-                      {item.status === "new" ? (
-                        <button
-                          type="button"
-                          onClick={() => void updateItem(item, "in-progress")}
-                          className="min-h-11 font-mono text-xs underline"
-                        >
-                          start work
-                        </button>
-                      ) : null}
-                      {item.caseId &&
-                      (administrators.length > 0 || item.assigneePersonId !== undefined) ? (
-                        <AppSelect
-                          value={item.assigneePersonId ?? ""}
-                          onValueChange={(value) =>
-                            void updateItem(item, item.status, {
-                              assigneePersonId: value || undefined,
-                            })
-                          }
-                          options={[
-                            { value: "", label: "unassigned" },
-                            ...(item.assigneePersonId &&
-                            !administrators.some(
-                              (administrator) => administrator.personId === item.assigneePersonId,
-                            )
-                              ? [
-                                  {
-                                    value: item.assigneePersonId,
-                                    label: item.assigneeName ?? "current assignee",
-                                  },
-                                ]
-                              : []),
-                            ...administrators.map((administrator) => ({
-                              value: administrator.personId,
-                              label: administrator.name,
-                            })),
-                          ]}
-                          ariaLabel={`Assign ${item.title}`}
-                        />
-                      ) : null}
-                      {item.caseId ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const privateNote = window
-                              .prompt("Private note", item.privateNote?.body ?? "")
-                              ?.trim();
-                            if (privateNote) void updateItem(item, item.status, { privateNote });
+                        <a
+                          href={item.deepLink}
+                          onClick={(event) => {
+                            if (!item.unread) return;
+                            event.preventDefault();
+                            void openItem(item);
                           }}
-                          className="min-h-11 font-mono text-xs underline"
+                          className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
                         >
-                          private note
-                        </button>
-                      ) : null}
-                      {!(["resolved", "dismissed"] as string[]).includes(item.status) ? (
+                          open relevant page
+                        </a>
                         <button
                           type="button"
-                          onClick={() => void updateItem(item, "resolved")}
+                          onClick={() => void setItemRead(item, item.unread)}
                           className="min-h-11 font-mono text-xs underline"
                         >
-                          resolve
+                          {item.unread ? "mark read" : "mark unread"}
                         </button>
+                      </div>
+                      {item.caseId ? (
+                        <div
+                          role="group"
+                          aria-label="Case actions"
+                          className="flex flex-wrap items-center gap-x-4 gap-y-1 border-l theme-border pl-4"
+                        >
+                          {item.status === "new" ? (
+                            <button
+                              type="button"
+                              onClick={() => void updateItem(item, "in-progress")}
+                              disabled={inboxBusy === item.id}
+                              className="min-h-11 font-mono text-xs underline disabled:opacity-50"
+                            >
+                              start work
+                            </button>
+                          ) : null}
+                          {administrators.length > 0 || item.assigneePersonId !== undefined ? (
+                            <AppSelect
+                              value={item.assigneePersonId ?? ""}
+                              onValueChange={(value) =>
+                                void updateItem(item, item.status, {
+                                  assigneePersonId: value || null,
+                                })
+                              }
+                              disabled={inboxBusy === item.id}
+                              options={[
+                                { value: "", label: "unassigned" },
+                                ...(item.assigneePersonId &&
+                                !administrators.some(
+                                  (administrator) =>
+                                    administrator.personId === item.assigneePersonId,
+                                )
+                                  ? [
+                                      {
+                                        value: item.assigneePersonId,
+                                        label: item.assigneeName ?? "current assignee",
+                                      },
+                                    ]
+                                  : []),
+                                ...administrators.map((administrator) => ({
+                                  value: administrator.personId,
+                                  label: administrator.name,
+                                })),
+                              ]}
+                              ariaLabel={`Assign ${item.title}`}
+                            />
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCaseEditor((current) =>
+                                current?.itemId === item.id && current.mode === "private-note"
+                                  ? undefined
+                                  : {
+                                      itemId: item.id,
+                                      mode: "private-note",
+                                      value: item.privateNote?.body ?? "",
+                                    },
+                              )
+                            }
+                            disabled={inboxBusy === item.id}
+                            aria-expanded={
+                              caseEditor?.itemId === item.id && caseEditor.mode === "private-note"
+                            }
+                            aria-controls={`case-editor-${item.id}`}
+                            className="min-h-11 font-mono text-xs underline disabled:opacity-50"
+                          >
+                            {item.privateNote?.body ? "edit private note" : "add private note"}
+                          </button>
+                          {!(["resolved", "dismissed"] as string[]).includes(item.status) ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCaseEditor((current) =>
+                                  current?.itemId === item.id && current.mode === "resolve"
+                                    ? undefined
+                                    : { itemId: item.id, mode: "resolve", value: "" },
+                                )
+                              }
+                              disabled={inboxBusy === item.id}
+                              aria-expanded={
+                                caseEditor?.itemId === item.id && caseEditor.mode === "resolve"
+                              }
+                              aria-controls={`case-editor-${item.id}`}
+                              className="min-h-11 font-mono text-xs underline disabled:opacity-50"
+                            >
+                              resolve
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   </div>
+                  {caseEditor?.itemId === item.id ? (
+                    <form
+                      id={`case-editor-${item.id}`}
+                      onSubmit={(event) => void submitCaseEditor(event, item)}
+                      className="mt-4 max-w-2xl border-t theme-border pt-4"
+                    >
+                      <label
+                        htmlFor={`case-editor-value-${item.id}`}
+                        className="font-mono text-xs font-bold"
+                      >
+                        {caseEditor.mode === "resolve" ? "resolution note" : "private note"}
+                      </label>
+                      <p
+                        id={`case-editor-help-${item.id}`}
+                        className="mt-1 font-mono text-micro theme-muted"
+                      >
+                        {caseEditor.mode === "resolve"
+                          ? "Record what resolved the case. This is kept in the audit history."
+                          : "Visible only to administrators. Saving replaces the previous private note."}
+                      </p>
+                      <textarea
+                        id={`case-editor-value-${item.id}`}
+                        value={caseEditor.value}
+                        onChange={(event) =>
+                          setCaseEditor((current) =>
+                            current?.itemId === item.id
+                              ? { ...current, value: event.target.value }
+                              : current,
+                          )
+                        }
+                        rows={3}
+                        required
+                        maxLength={2000}
+                        autoFocus
+                        aria-describedby={`case-editor-help-${item.id}`}
+                        className="mt-3 w-full resize-y rounded border theme-border bg-transparent px-3 py-2 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                      />
+                      <div className="mt-3 flex flex-wrap gap-4">
+                        <button
+                          type="submit"
+                          disabled={inboxBusy === item.id || !caseEditor.value.trim()}
+                          className="min-h-11 rounded border theme-border-strong px-4 font-mono text-xs font-bold disabled:opacity-50"
+                        >
+                          {inboxBusy === item.id
+                            ? "saving…"
+                            : caseEditor.mode === "resolve"
+                              ? "resolve case"
+                              : "save private note"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCaseEditor(undefined)}
+                          disabled={inboxBusy === item.id}
+                          className="min-h-11 font-mono text-xs underline disabled:opacity-50"
+                        >
+                          cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
                   {item.assigneeName || item.privateNote?.body || item.resolutionReason ? (
                     <div className="mt-3 border-t theme-border pt-3 font-mono text-micro theme-muted">
                       {item.assigneeName ? <p>assigned to {item.assigneeName}</p> : null}

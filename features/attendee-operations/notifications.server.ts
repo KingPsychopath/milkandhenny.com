@@ -754,7 +754,7 @@ export async function updateAdminNotification(input: {
       await client.query(
         `update admin_attention_cases
             set status = $2, updated_at = now(), resolution_reason = coalesce($3,resolution_reason),
-                assignee_person_id = coalesce($4,assignee_person_id),
+                assignee_person_id = case when $7::boolean then $4 else assignee_person_id end,
                 private_note = case when $5::text is null then private_note else
                   jsonb_build_object('body',$5::text,'actorId',$6::text,'updatedAt',now()) end,
                 resolved_at = case when $2 in ('resolved','dismissed') then now() else null end
@@ -766,6 +766,7 @@ export async function updateAdminNotification(input: {
           input.assigneePersonId ?? null,
           input.privateNote?.trim() || null,
           input.actorId,
+          input.assigneePersonId !== undefined,
         ],
       );
     }

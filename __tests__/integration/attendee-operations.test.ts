@@ -384,17 +384,27 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
     expect(
       await updateAdminNotification({
         id: item.id,
+        status: "in-progress",
+        actorId: BUYER,
+        actorType: "admin",
+        assigneePersonId: null,
+      }),
+    ).toBe(true);
+    expect(
+      await updateAdminNotification({
+        id: item.id,
         status: "resolved",
         actorId: BUYER,
         actorType: "admin",
         reason: "Reconciled against provider records",
       }),
     ).toBe(true);
-    expect((await listAdminInbox({ viewer, status: "resolved" })).items[0]).toMatchObject({
-      assigneePersonId: BUYER,
+    const resolvedItem = (await listAdminInbox({ viewer, status: "resolved" })).items[0];
+    expect(resolvedItem).toMatchObject({
       resolutionReason: "Reconciled against provider records",
       privateNote: { body: "Checking the provider ledger" },
     });
+    expect(resolvedItem?.assigneePersonId).toBeUndefined();
     expect((await sendOperationsDigests()).recipients).toBe(1);
     expect(
       await revokeAlertRecipient({
