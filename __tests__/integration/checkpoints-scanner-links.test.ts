@@ -104,7 +104,7 @@ async function issueOne(ticketTypeId: string, name = "Alice") {
   return result.value.tickets[0];
 }
 
-describeWithDatabase("checkpoints (postgres)", () => {
+describeWithDatabase("ticket admission operations (postgres)", () => {
   beforeAll(async () => {
     await applySchema();
   });
@@ -115,614 +115,602 @@ describeWithDatabase("checkpoints (postgres)", () => {
 
   beforeEach(async () => {
     await truncateAll();
-    await seedEvent();
-    await seedDinnerCheckpoint();
   });
 
-  it("consumes one unit per scan and reports the remainder", async () => {
-    const ticket = await issueOne("entry");
-
-    const first = await checkpointScan({
-      scanned: buildTicketQrPayload(ticket.id),
-      eventSlug: SLUG,
-      checkpointId: "dinner",
+  describe("checkpoints", () => {
+    beforeEach(async () => {
+      await seedEvent();
+      await seedDinnerCheckpoint();
     });
-    expect(first.result).toBe("consumed");
-    if (first.result !== "consumed") return;
-    expect(first.ticket.used).toBe(1);
-    expect(first.ticket.allowance).toBe(1);
 
-    const second = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
+    it("consumes one unit per scan and reports the remainder", async () => {
+      const ticket = await issueOne("entry");
+
+      const first = await checkpointScan({
+        scanned: buildTicketQrPayload(ticket.id),
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(first.result).toBe("consumed");
+      if (first.result !== "consumed") return;
+      expect(first.ticket.used).toBe(1);
+      expect(first.ticket.allowance).toBe(1);
+
+      const second = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(second.result).toBe("exhausted");
     });
-    expect(second.result).toBe("exhausted");
-  });
 
-  it("accepts only the rotated public credential after a transfer", async () => {
-    const ticket = await issueOne("entry", "Transferred holder");
-    const publicId = generateTicketId();
-    await query(`update tickets set access_reference = $2 where id = $1`, [ticket.id, publicId]);
+    it("accepts only the rotated public credential after a transfer", async () => {
+      const ticket = await issueOne("entry", "Transferred holder");
+      const publicId = generateTicketId();
+      await query(`update tickets set access_reference = $2 where id = $1`, [ticket.id, publicId]);
 
-    const oldCredential = await checkpointScan({
-      scanned: buildTicketQrPayload(ticket.id),
-      eventSlug: SLUG,
-      checkpointId: "dinner",
+      const oldCredential = await checkpointScan({
+        scanned: buildTicketQrPayload(ticket.id),
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(oldCredential.result).toBe("not-found");
+
+      const currentCredential = await checkpointScan({
+        scanned: buildTicketQrPayload(publicId),
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(currentCredential.result).toBe("consumed");
+      if (currentCredential.result === "consumed") {
+        expect(currentCredential.ticket.ticketId).toBe(publicId);
+      }
     });
-    expect(oldCredential.result).toBe("not-found");
 
-    const currentCredential = await checkpointScan({
-      scanned: buildTicketQrPayload(publicId),
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(currentCredential.result).toBe("consumed");
-    if (currentCredential.result === "consumed") {
-      expect(currentCredential.ticket.ticketId).toBe(publicId);
-    }
-  });
+    it("honours per-type allowance overrides", async () => {
+      const vip = await issueOne("vip", "Bea");
 
-  it("honours per-type allowance overrides", async () => {
-    const vip = await issueOne("vip", "Bea");
+      for (let i = 1; i <= 3; i += 1) {
+        const scan = await checkpointScan({
+          scanned: vip.id,
+          eventSlug: SLUG,
+          checkpointId: "dinner",
+        });
+        expect(scan.result).toBe("consumed");
+        if (scan.result === "consumed") expect(scan.ticket.used).toBe(i);
+      }
 
-    for (let i = 1; i <= 3; i += 1) {
-      const scan = await checkpointScan({
+      const fourth = await checkpointScan({
         scanned: vip.id,
         eventSlug: SLUG,
         checkpointId: "dinner",
       });
+      expect(fourth.result).toBe("exhausted");
+    });
+
+    it("never over-hands-out under simultaneous scans", async () => {
+      const vip = await issueOne("vip", "Cara");
+
+      const scans = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          checkpointScan({ scanned: vip.id, eventSlug: SLUG, checkpointId: "dinner" }),
+        ),
+      );
+      const consumed = scans.filter((scan) => scan.result === "consumed");
+      expect(consumed.length).toBe(3);
+      const summaries = await getCheckpointSummaries(SLUG);
+      expect(summaries.find((entry) => entry.checkpointId === "dinner")?.unitsUsed).toBe(3);
+    });
+
+    it("refuses more than remains in one ask", async () => {
+      const vip = await issueOne("vip", "Dan");
+      const first = await checkpointScan({
+        scanned: vip.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        consume: 2,
+      });
+      expect(first.result).toBe("consumed");
+
+      const over = await checkpointScan({
+        scanned: vip.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        consume: 2,
+      });
+      expect(over.result).toBe("over-remaining");
+    });
+
+    it("treats a zero allowance as not included", async () => {
+      await upsertCheckpoint({
+        eventSlug: SLUG,
+        id: "cloakroom",
+        name: "Cloakroom",
+        defaultAllowance: 0,
+        allowances: { vip: 1 },
+      });
+      const entry = await issueOne("entry", "Eve");
+      const scan = await checkpointScan({
+        scanned: entry.id,
+        eventSlug: SLUG,
+        checkpointId: "cloakroom",
+      });
+      expect(scan.result).toBe("not-included");
+    });
+
+    it("peeks without consuming when consume is 0", async () => {
+      const ticket = await issueOne("entry", "Fay");
+      const peek = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        consume: 0,
+      });
+      expect(peek.result).toBe("consumed");
+      if (peek.result === "consumed") expect(peek.ticket.used).toBe(0);
+
+      const real = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(real.result).toBe("consumed");
+    });
+
+    it("undo puts a unit back", async () => {
+      const ticket = await issueOne("entry", "Gus");
+      await checkpointScan({ scanned: ticket.id, eventSlug: SLUG, checkpointId: "dinner" });
+
+      const undo = await undoCheckpointUse({
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        ticketId: ticket.id,
+      });
+      expect(undo.ok).toBe(true);
+      if (undo.ok) expect(undo.value.used).toBe(0);
+
+      const again = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(again.result).toBe("consumed");
+    });
+
+    it("rejects void tickets and wrong events", async () => {
+      const ticket = await issueOne("entry", "Hal");
+      await voidTicket(ticket.id);
+      const scan = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(scan.result).toBe("void");
+
+      // A ticket from another night, scanned at this event's checkpoint.
+      const otherEvent = normaliseEventInput({
+        slug: "other-night",
+        title: "Other Night",
+        status: "published",
+        area: "East London",
+        startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+        ticketTypes: [
+          {
+            id: "entry",
+            name: "Entry",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: 5,
+            perPersonLimit: 2,
+          },
+        ],
+      });
+      if (!otherEvent.ok) throw new Error(otherEvent.error);
+      await putEvent(otherEvent.value);
+      const foreign = await issueTickets({
+        eventSlug: "other-night",
+        ticketTypeId: "entry",
+        holderName: "Ida",
+        quantity: 1,
+        kind: "free",
+      });
+      if (!foreign.ok) throw new Error(foreign.error);
+
+      const wrong = await checkpointScan({
+        scanned: foreign.value.tickets[0].id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(wrong.result).toBe("wrong-event");
+
+      // And a station that simply does not exist.
+      const fresh = await issueOne("entry", "Kim");
+      const unknown = await checkpointScan({
+        scanned: fresh.id,
+        eventSlug: SLUG,
+        checkpointId: "no-such-station",
+      });
+      expect(unknown.result).toBe("unknown-checkpoint");
+    });
+
+    it("tells the scanner what the rest of the order still has", async () => {
+      // One buyer, two VIP tickets — the plus-one's QR lives on the same phone.
+      const issued = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "vip",
+        holderName: "Pair Buyer",
+        quantity: 2,
+        kind: "free",
+      });
+      if (!issued.ok) throw new Error(issued.error);
+      const [first, second] = issued.value.tickets;
+
+      // Drain the first ticket's 3 dinners.
+      const drained = await checkpointScan({
+        scanned: first.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        consume: 3,
+      });
+      expect(drained.result).toBe("consumed");
+      if (drained.result === "consumed") {
+        expect(drained.group).toEqual({ otherTickets: 1, othersLeft: 3 });
+      }
+
+      // Re-scanning the drained QR must point at the sibling, not say "done".
+      const rescanned = await checkpointScan({
+        scanned: first.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(rescanned.result).toBe("exhausted");
+      if (rescanned.result === "exhausted") {
+        expect(rescanned.group).toEqual({ otherTickets: 1, othersLeft: 3 });
+      }
+
+      // Serving off the sibling shrinks what's left for the group.
+      await checkpointScan({ scanned: second.id, eventSlug: SLUG, checkpointId: "dinner" });
+      const after = await checkpointScan({
+        scanned: first.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(after.result === "exhausted" && after.group?.othersLeft).toBe(2);
+
+      // A single-ticket order carries no group at all.
+      const solo = await issueOne("entry", "Solo");
+      const soloScan = await checkpointScan({
+        scanned: solo.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(soloScan.result === "consumed" && soloScan.group).toBeUndefined();
+    });
+
+    it("a single-scan station clamps every scan to one unit", async () => {
+      await upsertCheckpoint({
+        eventSlug: SLUG,
+        id: "strict-bar",
+        name: "Strict Bar",
+        defaultAllowance: 3,
+        allowances: {},
+        multiScan: false,
+      });
+      const ticket = await issueOne("entry", "Sip");
+      const scan = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "strict-bar",
+        consume: 3,
+      });
       expect(scan.result).toBe("consumed");
-      if (scan.result === "consumed") expect(scan.ticket.used).toBe(i);
+      if (scan.result === "consumed") {
+        expect(scan.consumed).toBe(1);
+        expect(scan.ticket.used).toBe(1);
+      }
+    });
+
+    it("deleting a checkpoint removes it and its usage", async () => {
+      const ticket = await issueOne("entry", "Jo");
+      await checkpointScan({ scanned: ticket.id, eventSlug: SLUG, checkpointId: "dinner" });
+
+      const removed = await deleteCheckpoint(SLUG, "dinner");
+      expect(removed.ok).toBe(true);
+      expect(await listCheckpoints(SLUG)).toHaveLength(0);
+
+      const scan = await checkpointScan({
+        scanned: ticket.id,
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+      });
+      expect(scan.result).toBe("unknown-checkpoint");
+    });
+
+    it("allowance helper prefers the override and falls back to the default", () => {
+      const checkpoint = { defaultAllowance: 1, allowances: { vip: 3, none: 0 } };
+      expect(checkpointAllowanceFor(checkpoint, "vip")).toBe(3);
+      expect(checkpointAllowanceFor(checkpoint, "none")).toBe(0);
+      expect(checkpointAllowanceFor(checkpoint, "entry")).toBe(1);
+    });
+  });
+
+  describe("scanner links", () => {
+    beforeEach(async () => {
+      await seedEvent();
+      await seedDinnerCheckpoint();
+    });
+
+    it("creates, resolves, and revokes a door link", async () => {
+      const created = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: null,
+        label: "Alice — door",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const resolved = await resolveScannerLink(created.value.token);
+      expect(resolved?.eventSlug).toBe(SLUG);
+      expect(resolved?.checkpointId).toBeNull();
+      expect(resolved?.lastUsedAt).toBeDefined();
+
+      await revokeScannerLink(created.value.token);
+      expect(await resolveScannerLink(created.value.token)).toBeNull();
+
+      // Still listed for the admin, marked revoked.
+      const links = await listScannerLinks(SLUG);
+      expect(links).toHaveLength(1);
+      expect(links[0].revokedAt).toBeDefined();
+    });
+
+    it("scopes links to an existing checkpoint", async () => {
+      const missing = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: "nonexistent",
+        label: "Caterer",
+      });
+      expect(missing.ok).toBe(false);
+
+      const created = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: "dinner",
+        label: "Caterer",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expect((await resolveScannerLink(created.value.token))?.checkpointId).toBe("dinner");
+    });
+
+    it("expired links stop resolving", async () => {
+      const created = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: null,
+        label: "Short shift",
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expect(await resolveScannerLink(created.value.token)).toBeNull();
+    });
+
+    it("rejects garbage tokens without touching the database", async () => {
+      expect(await resolveScannerLink("not-a-token")).toBeNull();
+      expect(await resolveScannerLink("scn_short")).toBeNull();
+    });
+
+    it("applies role defaults and per-link ability overrides", async () => {
+      const { updateScannerLink } = await import("@/features/tickets/scanner-links.server");
+
+      const scanner = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label: "A" });
+      if (!scanner.ok) throw new Error(scanner.error);
+      expect(scanner.value.permissions).toEqual({
+        requestGuests: true,
+        addGuests: false,
+        approveRequests: false,
+      });
+
+      // Promote just one ability without changing the role.
+      const boosted = await updateScannerLink(scanner.value.token, {
+        permissions: { requestGuests: true, addGuests: true, approveRequests: false },
+      });
+      expect(boosted.ok && boosted.value.role).toBe("scanner");
+      expect(boosted.ok && boosted.value.permissions.addGuests).toBe(true);
+      expect(boosted.ok && boosted.value.permissions.approveRequests).toBe(false);
+
+      // A manager stripped of approvals keeps their other defaults.
+      const manager = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: null,
+        label: "B",
+        role: "manager",
+      });
+      if (!manager.ok) throw new Error(manager.error);
+      const restricted = await updateScannerLink(manager.value.token, {
+        permissions: { requestGuests: true, addGuests: true, approveRequests: false },
+      });
+      expect(restricted.ok && restricted.value.permissions).toEqual({
+        requestGuests: true,
+        addGuests: true,
+        approveRequests: false,
+      });
+
+      // Resolution carries the effective permissions to the scanner page.
+      const resolved = await resolveScannerLink(manager.value.token);
+      expect(resolved?.permissions.approveRequests).toBe(false);
+    });
+
+    it("carries a role, defaulting to scanner", async () => {
+      const scanner = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label: "A" });
+      const manager = await createScannerLink({
+        eventSlug: SLUG,
+        checkpointId: null,
+        label: "B",
+        role: "manager",
+      });
+      expect(scanner.ok && scanner.value.role).toBe("scanner");
+      expect(manager.ok && manager.value.role).toBe("manager");
+    });
+  });
+
+  describe("guest requests", () => {
+    beforeEach(async () => {
+      await seedEvent();
+    });
+
+    async function makeLink(label = "Door helper") {
+      const created = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label });
+      if (!created.ok) throw new Error(created.error);
+      return created.value;
     }
 
-    const fourth = await checkpointScan({
-      scanned: vip.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(fourth.result).toBe("exhausted");
-  });
-
-  it("never over-hands-out under simultaneous scans", async () => {
-    const vip = await issueOne("vip", "Cara");
-
-    const scans = await Promise.all(
-      Array.from({ length: 8 }, () =>
-        checkpointScan({ scanned: vip.id, eventSlug: SLUG, checkpointId: "dinner" }),
-      ),
-    );
-    const consumed = scans.filter((scan) => scan.result === "consumed");
-    expect(consumed.length).toBe(3);
-    const summaries = await getCheckpointSummaries(SLUG);
-    expect(summaries.find((entry) => entry.checkpointId === "dinner")?.unitsUsed).toBe(3);
-  });
-
-  it("refuses more than remains in one ask", async () => {
-    const vip = await issueOne("vip", "Dan");
-    const first = await checkpointScan({
-      scanned: vip.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      consume: 2,
-    });
-    expect(first.result).toBe("consumed");
-
-    const over = await checkpointScan({
-      scanned: vip.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      consume: 2,
-    });
-    expect(over.result).toBe("over-remaining");
-  });
-
-  it("treats a zero allowance as not included", async () => {
-    await upsertCheckpoint({
-      eventSlug: SLUG,
-      id: "cloakroom",
-      name: "Cloakroom",
-      defaultAllowance: 0,
-      allowances: { vip: 1 },
-    });
-    const entry = await issueOne("entry", "Eve");
-    const scan = await checkpointScan({
-      scanned: entry.id,
-      eventSlug: SLUG,
-      checkpointId: "cloakroom",
-    });
-    expect(scan.result).toBe("not-included");
-  });
-
-  it("peeks without consuming when consume is 0", async () => {
-    const ticket = await issueOne("entry", "Fay");
-    const peek = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      consume: 0,
-    });
-    expect(peek.result).toBe("consumed");
-    if (peek.result === "consumed") expect(peek.ticket.used).toBe(0);
-
-    const real = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(real.result).toBe("consumed");
-  });
-
-  it("undo puts a unit back", async () => {
-    const ticket = await issueOne("entry", "Gus");
-    await checkpointScan({ scanned: ticket.id, eventSlug: SLUG, checkpointId: "dinner" });
-
-    const undo = await undoCheckpointUse({
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      ticketId: ticket.id,
-    });
-    expect(undo.ok).toBe(true);
-    if (undo.ok) expect(undo.value.used).toBe(0);
-
-    const again = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(again.result).toBe("consumed");
-  });
-
-  it("rejects void tickets and wrong events", async () => {
-    const ticket = await issueOne("entry", "Hal");
-    await voidTicket(ticket.id);
-    const scan = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(scan.result).toBe("void");
-
-    // A ticket from another night, scanned at this event's checkpoint.
-    const otherEvent = normaliseEventInput({
-      slug: "other-night",
-      title: "Other Night",
-      status: "published",
-      area: "East London",
-      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
-      ticketTypes: [
-        {
-          id: "entry",
-          name: "Entry",
-          priceMinor: 0,
-          currency: "GBP",
-          quantity: 5,
-          perPersonLimit: 2,
-        },
-      ],
-    });
-    if (!otherEvent.ok) throw new Error(otherEvent.error);
-    await putEvent(otherEvent.value);
-    const foreign = await issueTickets({
-      eventSlug: "other-night",
-      ticketTypeId: "entry",
-      holderName: "Ida",
-      quantity: 1,
-      kind: "free",
-    });
-    if (!foreign.ok) throw new Error(foreign.error);
-
-    const wrong = await checkpointScan({
-      scanned: foreign.value.tickets[0].id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(wrong.result).toBe("wrong-event");
-
-    // And a station that simply does not exist.
-    const fresh = await issueOne("entry", "Kim");
-    const unknown = await checkpointScan({
-      scanned: fresh.id,
-      eventSlug: SLUG,
-      checkpointId: "no-such-station",
-    });
-    expect(unknown.result).toBe("unknown-checkpoint");
-  });
-
-  it("tells the scanner what the rest of the order still has", async () => {
-    // One buyer, two VIP tickets — the plus-one's QR lives on the same phone.
-    const issued = await issueTickets({
-      eventSlug: SLUG,
-      ticketTypeId: "vip",
-      holderName: "Pair Buyer",
-      quantity: 2,
-      kind: "free",
-    });
-    if (!issued.ok) throw new Error(issued.error);
-    const [first, second] = issued.value.tickets;
-
-    // Drain the first ticket's 3 dinners.
-    const drained = await checkpointScan({
-      scanned: first.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      consume: 3,
-    });
-    expect(drained.result).toBe("consumed");
-    if (drained.result === "consumed") {
-      expect(drained.group).toEqual({ otherTickets: 1, othersLeft: 3 });
-    }
-
-    // Re-scanning the drained QR must point at the sibling, not say "done".
-    const rescanned = await checkpointScan({
-      scanned: first.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(rescanned.result).toBe("exhausted");
-    if (rescanned.result === "exhausted") {
-      expect(rescanned.group).toEqual({ otherTickets: 1, othersLeft: 3 });
-    }
-
-    // Serving off the sibling shrinks what's left for the group.
-    await checkpointScan({ scanned: second.id, eventSlug: SLUG, checkpointId: "dinner" });
-    const after = await checkpointScan({
-      scanned: first.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(after.result === "exhausted" && after.group?.othersLeft).toBe(2);
-
-    // A single-ticket order carries no group at all.
-    const solo = await issueOne("entry", "Solo");
-    const soloScan = await checkpointScan({
-      scanned: solo.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(soloScan.result === "consumed" && soloScan.group).toBeUndefined();
-  });
-
-  it("a single-scan station clamps every scan to one unit", async () => {
-    await upsertCheckpoint({
-      eventSlug: SLUG,
-      id: "strict-bar",
-      name: "Strict Bar",
-      defaultAllowance: 3,
-      allowances: {},
-      multiScan: false,
-    });
-    const ticket = await issueOne("entry", "Sip");
-    const scan = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "strict-bar",
-      consume: 3,
-    });
-    expect(scan.result).toBe("consumed");
-    if (scan.result === "consumed") {
-      expect(scan.consumed).toBe(1);
-      expect(scan.ticket.used).toBe(1);
-    }
-  });
-
-  it("deleting a checkpoint removes it and its usage", async () => {
-    const ticket = await issueOne("entry", "Jo");
-    await checkpointScan({ scanned: ticket.id, eventSlug: SLUG, checkpointId: "dinner" });
-
-    const removed = await deleteCheckpoint(SLUG, "dinner");
-    expect(removed.ok).toBe(true);
-    expect(await listCheckpoints(SLUG)).toHaveLength(0);
-
-    const scan = await checkpointScan({
-      scanned: ticket.id,
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-    });
-    expect(scan.result).toBe("unknown-checkpoint");
-  });
-
-  it("allowance helper prefers the override and falls back to the default", () => {
-    const checkpoint = { defaultAllowance: 1, allowances: { vip: 3, none: 0 } };
-    expect(checkpointAllowanceFor(checkpoint, "vip")).toBe(3);
-    expect(checkpointAllowanceFor(checkpoint, "none")).toBe(0);
-    expect(checkpointAllowanceFor(checkpoint, "entry")).toBe(1);
-  });
-});
-
-describeWithDatabase("scanner links (postgres)", () => {
-  beforeAll(async () => {
-    await applySchema();
-  });
-
-  afterAll(async () => {
-    await closeDatabase();
-  });
-
-  beforeEach(async () => {
-    await truncateAll();
-    await seedEvent();
-    await seedDinnerCheckpoint();
-  });
-
-  it("creates, resolves, and revokes a door link", async () => {
-    const created = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: null,
-      label: "Alice — door",
-    });
-    expect(created.ok).toBe(true);
-    if (!created.ok) return;
-
-    const resolved = await resolveScannerLink(created.value.token);
-    expect(resolved?.eventSlug).toBe(SLUG);
-    expect(resolved?.checkpointId).toBeNull();
-    expect(resolved?.lastUsedAt).toBeDefined();
-
-    await revokeScannerLink(created.value.token);
-    expect(await resolveScannerLink(created.value.token)).toBeNull();
-
-    // Still listed for the admin, marked revoked.
-    const links = await listScannerLinks(SLUG);
-    expect(links).toHaveLength(1);
-    expect(links[0].revokedAt).toBeDefined();
-  });
-
-  it("scopes links to an existing checkpoint", async () => {
-    const missing = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: "nonexistent",
-      label: "Caterer",
-    });
-    expect(missing.ok).toBe(false);
-
-    const created = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: "dinner",
-      label: "Caterer",
-    });
-    expect(created.ok).toBe(true);
-    if (!created.ok) return;
-    expect((await resolveScannerLink(created.value.token))?.checkpointId).toBe("dinner");
-  });
-
-  it("expired links stop resolving", async () => {
-    const created = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: null,
-      label: "Short shift",
-      expiresAt: new Date(Date.now() - 1000).toISOString(),
-    });
-    expect(created.ok).toBe(true);
-    if (!created.ok) return;
-    expect(await resolveScannerLink(created.value.token)).toBeNull();
-  });
-
-  it("rejects garbage tokens without touching the database", async () => {
-    expect(await resolveScannerLink("not-a-token")).toBeNull();
-    expect(await resolveScannerLink("scn_short")).toBeNull();
-  });
-
-  it("applies role defaults and per-link ability overrides", async () => {
-    const { updateScannerLink } = await import("@/features/tickets/scanner-links.server");
-
-    const scanner = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label: "A" });
-    if (!scanner.ok) throw new Error(scanner.error);
-    expect(scanner.value.permissions).toEqual({
-      requestGuests: true,
-      addGuests: false,
-      approveRequests: false,
-    });
-
-    // Promote just one ability without changing the role.
-    const boosted = await updateScannerLink(scanner.value.token, {
-      permissions: { requestGuests: true, addGuests: true, approveRequests: false },
-    });
-    expect(boosted.ok && boosted.value.role).toBe("scanner");
-    expect(boosted.ok && boosted.value.permissions.addGuests).toBe(true);
-    expect(boosted.ok && boosted.value.permissions.approveRequests).toBe(false);
-
-    // A manager stripped of approvals keeps their other defaults.
-    const manager = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: null,
-      label: "B",
-      role: "manager",
-    });
-    if (!manager.ok) throw new Error(manager.error);
-    const restricted = await updateScannerLink(manager.value.token, {
-      permissions: { requestGuests: true, addGuests: true, approveRequests: false },
-    });
-    expect(restricted.ok && restricted.value.permissions).toEqual({
-      requestGuests: true,
-      addGuests: true,
-      approveRequests: false,
-    });
-
-    // Resolution carries the effective permissions to the scanner page.
-    const resolved = await resolveScannerLink(manager.value.token);
-    expect(resolved?.permissions.approveRequests).toBe(false);
-  });
-
-  it("carries a role, defaulting to scanner", async () => {
-    const scanner = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label: "A" });
-    const manager = await createScannerLink({
-      eventSlug: SLUG,
-      checkpointId: null,
-      label: "B",
-      role: "manager",
-    });
-    expect(scanner.ok && scanner.value.role).toBe("scanner");
-    expect(manager.ok && manager.value.role).toBe("manager");
-  });
-});
-
-describeWithDatabase("guest requests (postgres)", () => {
-  beforeAll(async () => {
-    await applySchema();
-  });
-
-  afterAll(async () => {
-    await closeDatabase();
-  });
-
-  beforeEach(async () => {
-    await truncateAll();
-    await seedEvent();
-  });
-
-  async function makeLink(label = "Door helper") {
-    const created = await createScannerLink({ eventSlug: SLUG, checkpointId: null, label });
-    if (!created.ok) throw new Error(created.error);
-    return created.value;
-  }
-
-  it("raises, lists, and cancels a request", async () => {
-    const link = await makeLink();
-    const created = await createGuestRequest({
-      eventSlug: SLUG,
-      token: link.token,
-      requestedBy: link.label,
-      name: "Walk Up",
-    });
-    expect(created.ok).toBe(true);
-
-    const own = await listGuestRequestsForToken(link.token);
-    expect(own).toHaveLength(1);
-    expect(own[0].status).toBe("pending");
-
-    if (!created.ok) return;
-    const cancelled = await cancelGuestRequest(created.value.id, link.token);
-    expect(cancelled.ok).toBe(true);
-    expect((await listGuestRequestsForToken(link.token))[0].status).toBe("cancelled");
-
-    // Cancelling twice reports "already decided" rather than flapping.
-    expect((await cancelGuestRequest(created.value.id, link.token)).ok).toBe(false);
-  });
-
-  it("approval comps a ticket exactly once under concurrent deciders", async () => {
-    const link = await makeLink();
-    const created = await createGuestRequest({
-      eventSlug: SLUG,
-      token: link.token,
-      requestedBy: link.label,
-      name: "Late Guest",
-    });
-    if (!created.ok) throw new Error(created.error);
-
-    const decisions = await Promise.all([
-      decideGuestRequest({ eventSlug: SLUG, id: created.value.id, approve: true, decidedBy: "a" }),
-      decideGuestRequest({ eventSlug: SLUG, id: created.value.id, approve: true, decidedBy: "b" }),
-    ]);
-    const wins = decisions.filter((decision) => decision.ok);
-    expect(wins).toHaveLength(1);
-
-    const request = (await listGuestRequests(SLUG))[0];
-    expect(request.status).toBe("approved");
-    expect(request.ticketId).toBeDefined();
-    const ticket = request.ticketId ? await getTicket(request.ticketId) : null;
-    expect(ticket?.kind).toBe("comp");
-    expect(ticket?.holderName).toBe("Late Guest");
-  });
-
-  it("decline issues nothing", async () => {
-    const link = await makeLink();
-    const created = await createGuestRequest({
-      eventSlug: SLUG,
-      token: link.token,
-      requestedBy: link.label,
-      name: "No Entry",
-    });
-    if (!created.ok) throw new Error(created.error);
-
-    const declined = await decideGuestRequest({
-      eventSlug: SLUG,
-      id: created.value.id,
-      approve: false,
-      decidedBy: "admin",
-    });
-    expect(declined.ok && declined.value.status).toBe("declined");
-    expect(declined.ok && declined.value.ticketId).toBeUndefined();
-  });
-
-  it("caps pending requests per link", async () => {
-    const link = await makeLink();
-    for (let i = 0; i < 10; i += 1) {
+    it("raises, lists, and cancels a request", async () => {
+      const link = await makeLink();
       const created = await createGuestRequest({
         eventSlug: SLUG,
         token: link.token,
         requestedBy: link.label,
-        name: `Guest ${i}`,
+        name: "Walk Up",
       });
       expect(created.ok).toBe(true);
-    }
-    const over = await createGuestRequest({
-      eventSlug: SLUG,
-      token: link.token,
-      requestedBy: link.label,
-      name: "One Too Many",
+
+      const own = await listGuestRequestsForToken(link.token);
+      expect(own).toHaveLength(1);
+      expect(own[0].status).toBe("pending");
+
+      if (!created.ok) return;
+      const cancelled = await cancelGuestRequest(created.value.id, link.token);
+      expect(cancelled.ok).toBe(true);
+      expect((await listGuestRequestsForToken(link.token))[0].status).toBe("cancelled");
+
+      // Cancelling twice reports "already decided" rather than flapping.
+      expect((await cancelGuestRequest(created.value.id, link.token)).ok).toBe(false);
     });
-    expect(over.ok).toBe(false);
-  });
-});
 
-describeWithDatabase("ticket holder updates (postgres)", () => {
-  beforeAll(async () => {
-    await applySchema();
-  });
+    it("approval comps a ticket exactly once under concurrent deciders", async () => {
+      const link = await makeLink();
+      const created = await createGuestRequest({
+        eventSlug: SLUG,
+        token: link.token,
+        requestedBy: link.label,
+        name: "Late Guest",
+      });
+      if (!created.ok) throw new Error(created.error);
 
-  afterAll(async () => {
-    await closeDatabase();
-  });
+      const decisions = await Promise.all([
+        decideGuestRequest({
+          eventSlug: SLUG,
+          id: created.value.id,
+          approve: true,
+          decidedBy: "a",
+        }),
+        decideGuestRequest({
+          eventSlug: SLUG,
+          id: created.value.id,
+          approve: true,
+          decidedBy: "b",
+        }),
+      ]);
+      const wins = decisions.filter((decision) => decision.ok);
+      expect(wins).toHaveLength(1);
 
-  beforeEach(async () => {
-    await truncateAll();
-    await seedEvent();
-  });
-
-  it("changes name and email, and the new address can find the ticket", async () => {
-    const issued = await issueTickets({
-      eventSlug: SLUG,
-      ticketTypeId: "entry",
-      holderName: "Old Name",
-      email: "old@example.com",
-      quantity: 1,
-      kind: "free",
+      const request = (await listGuestRequests(SLUG))[0];
+      expect(request.status).toBe("approved");
+      expect(request.ticketId).toBeDefined();
+      const ticket = request.ticketId ? await getTicket(request.ticketId) : null;
+      expect(ticket?.kind).toBe("comp");
+      expect(ticket?.holderName).toBe("Late Guest");
     });
-    if (!issued.ok) throw new Error(issued.error);
-    const ticket = issued.value.tickets[0];
 
-    const updated = await updateTicketHolder(ticket.id, {
-      holderName: "New Name",
-      email: "NEW@Example.com",
+    it("decline issues nothing", async () => {
+      const link = await makeLink();
+      const created = await createGuestRequest({
+        eventSlug: SLUG,
+        token: link.token,
+        requestedBy: link.label,
+        name: "No Entry",
+      });
+      if (!created.ok) throw new Error(created.error);
+
+      const declined = await decideGuestRequest({
+        eventSlug: SLUG,
+        id: created.value.id,
+        approve: false,
+        decidedBy: "admin",
+      });
+      expect(declined.ok && declined.value.status).toBe("declined");
+      expect(declined.ok && declined.value.ticketId).toBeUndefined();
     });
-    expect(updated?.holderName).toBe("New Name");
-    expect(updated?.email).toBe("new@example.com");
 
-    const found = await lookupTicketsByEmail(SLUG, "new@example.com");
-    expect(found.ok && found.value.tickets.map((entry) => entry.id)).toContain(ticket.id);
-    const stale = await lookupTicketsByEmail(SLUG, "old@example.com");
-    expect(stale.ok && stale.value.tickets).toHaveLength(0);
+    it("caps pending requests per link", async () => {
+      const link = await makeLink();
+      for (let i = 0; i < 10; i += 1) {
+        const created = await createGuestRequest({
+          eventSlug: SLUG,
+          token: link.token,
+          requestedBy: link.label,
+          name: `Guest ${i}`,
+        });
+        expect(created.ok).toBe(true);
+      }
+      const over = await createGuestRequest({
+        eventSlug: SLUG,
+        token: link.token,
+        requestedBy: link.label,
+        name: "One Too Many",
+      });
+      expect(over.ok).toBe(false);
+    });
   });
 
-  it("clears an email with null and leaves it alone when undefined", async () => {
-    const issued = await issueTickets({
-      eventSlug: SLUG,
-      ticketTypeId: "entry",
-      holderName: "Keep",
-      email: "keep@example.com",
-      quantity: 1,
-      kind: "free",
+  describe("ticket holder updates", () => {
+    beforeEach(async () => {
+      await seedEvent();
     });
-    if (!issued.ok) throw new Error(issued.error);
-    const ticket = issued.value.tickets[0];
 
-    const renamed = await updateTicketHolder(ticket.id, { holderName: "Kept" });
-    expect(renamed?.email).toBe("keep@example.com");
+    it("changes name and email, and the new address can find the ticket", async () => {
+      const issued = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Old Name",
+        email: "old@example.com",
+        quantity: 1,
+        kind: "free",
+      });
+      if (!issued.ok) throw new Error(issued.error);
+      const ticket = issued.value.tickets[0];
 
-    const cleared = await updateTicketHolder(ticket.id, { email: null });
-    expect(cleared?.email).toBeUndefined();
-    expect(cleared?.emailHash).toBeUndefined();
+      const updated = await updateTicketHolder(ticket.id, {
+        holderName: "New Name",
+        email: "NEW@Example.com",
+      });
+      expect(updated?.holderName).toBe("New Name");
+      expect(updated?.email).toBe("new@example.com");
+
+      const found = await lookupTicketsByEmail(SLUG, "new@example.com");
+      expect(found.ok && found.value.tickets.map((entry) => entry.id)).toContain(ticket.id);
+      const stale = await lookupTicketsByEmail(SLUG, "old@example.com");
+      expect(stale.ok && stale.value.tickets).toHaveLength(0);
+    });
+
+    it("clears an email with null and leaves it alone when undefined", async () => {
+      const issued = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Keep",
+        email: "keep@example.com",
+        quantity: 1,
+        kind: "free",
+      });
+      if (!issued.ok) throw new Error(issued.error);
+      const ticket = issued.value.tickets[0];
+
+      const renamed = await updateTicketHolder(ticket.id, { holderName: "Kept" });
+      expect(renamed?.email).toBe("keep@example.com");
+
+      const cleared = await updateTicketHolder(ticket.id, { email: null });
+      expect(cleared?.email).toBeUndefined();
+      expect(cleared?.emailHash).toBeUndefined();
+    });
   });
 });
 
