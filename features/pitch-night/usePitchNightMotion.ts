@@ -1,4 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
+import { createIsomorphicFn } from "@tanstack/react-start";
 
 import { createPitchNightScrollMotion } from "./pitch-night-scroll.client";
 import { createPitchNightWorld } from "./pitch-night-world.client";
@@ -9,6 +10,10 @@ const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 const ANCHOR_SETTLE_MS = 180;
 const JOURNEY_SCENE_QUERY = ":scope > section, :scope > [data-breath]";
 const JOURNEY_POSITION_KEY = "pitch-night:journey-position";
+
+const loadPitchNightMotionModules = createIsomorphicFn().client(() =>
+  Promise.all([import("three"), import("gsap"), import("gsap/ScrollTrigger")]),
+);
 
 interface JourneyAnchor {
   element: HTMLElement;
@@ -267,11 +272,9 @@ export function usePitchNightMotion(
 
     void (async () => {
       try {
-        const [THREE, gsapModule, scrollModule] = await Promise.all([
-          import("three"),
-          import("gsap"),
-          import("gsap/ScrollTrigger"),
-        ]);
+        const loadedModules = await loadPitchNightMotionModules();
+        if (!loadedModules) return;
+        const [THREE, gsapModule, scrollModule] = loadedModules;
         if (cancelled) return;
 
         const gsap = gsapModule.gsap;

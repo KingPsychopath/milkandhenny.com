@@ -2,6 +2,7 @@ import type { BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import type JSZip from "jszip";
 
+import { loadExcalidraw, loadPitchPdfJs } from "./browser-modules";
 import { PITCH_SLIDE_STAGE } from "./types";
 import { blobToDataUrl } from "./ui/files.client";
 
@@ -52,12 +53,12 @@ function fitWithinStage(width: number, height: number) {
 }
 
 async function loadConvertToExcalidrawElements() {
-  const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+  const { convertToExcalidrawElements } = await loadExcalidraw();
   return convertToExcalidrawElements;
 }
 
 export async function importPdf(file: File, maximumSlides = 12): Promise<ImportedPitchSlide[]> {
-  const pdfjs = await import("pdfjs-dist");
+  const pdfjs = await loadPitchPdfJs();
   const convertToExcalidrawElements = await loadConvertToExcalidrawElements();
   pdfjs.GlobalWorkerOptions.workerSrc = new URL(
     "pdfjs-dist/build/pdf.worker.min.mjs",

@@ -1,5 +1,6 @@
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
+import { createIsomorphicFn } from "@tanstack/react-start";
 import {
   getTransferThumbUrl,
   getTransferFullUrl,
@@ -115,8 +116,13 @@ const PAGE_SIZE = 120;
 const PROCESSED_IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?)$/i;
 const RAW_IMAGE_EXTENSIONS = /\.(dng|arw|cr2|cr3|nef|orf|raf|rw2|raw)$/i;
 
+const loadTransferPdfReader = createIsomorphicFn().client(
+  () => import("@/features/transfers/ui/transfer/TransferPdfReader"),
+);
+
 const TransferPdfReader = lazy(async () => {
-  const module = await import("@/features/transfers/ui/transfer/TransferPdfReader");
+  const module = await loadTransferPdfReader();
+  if (!module) throw new Error("The PDF reader is only available in a browser");
   return { default: module.TransferPdfReader };
 });
 

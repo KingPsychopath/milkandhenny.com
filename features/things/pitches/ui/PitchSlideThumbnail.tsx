@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import { AppImage } from "@/components/AppImage";
+import { loadExcalidraw } from "../browser-modules";
 import type { PitchSlide } from "../types";
 
 export function PitchSlideThumbnail({
@@ -24,7 +25,7 @@ export function PitchSlideThumbnail({
       const background = getComputedStyle(document.documentElement)
         .getPropertyValue("--background")
         .trim();
-      void Promise.all([import("@excalidraw/excalidraw"), import("./pitch-stage.client")])
+      void Promise.all([loadExcalidraw(), import("./pitch-stage.client")])
         .then(([{ exportToBlob }, { pitchStageExport }]) =>
           exportToBlob({
             ...pitchStageExport(slide.id, slide.elements),

@@ -6,6 +6,7 @@ import type {
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
+import { loadExcalidraw } from "../browser-modules";
 
 import type { GuidedTourStep } from "@/components/GuidedTour";
 import {
@@ -1799,7 +1800,7 @@ export function usePitchEditorController({
         mimeType: imageFileSource.type as BinaryFileData["mimeType"],
         created: Date.now(),
       };
-      const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+      const { convertToExcalidrawElements } = await loadExcalidraw();
       const [image] = convertToExcalidrawElements(
         [
           {
@@ -1862,7 +1863,7 @@ export function usePitchEditorController({
       mimeType: "image/png",
       created: Date.now(),
     };
-    const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
+    const { convertToExcalidrawElements } = await loadExcalidraw();
     const [image] = convertToExcalidrawElements(
       [
         {
@@ -2474,7 +2475,7 @@ export function usePitchEditorController({
       const api = apiRef.current;
       const cover = currentVisibleSlides[0];
       if (api && cover) {
-        const { exportToBlob } = await import("@excalidraw/excalidraw");
+        const { exportToBlob } = await loadExcalidraw();
         const stage = pitchStageExport(cover.id, cover.elements);
         const thumbnail = await exportToBlob({
           ...stage,
@@ -2697,7 +2698,7 @@ export function usePitchEditorController({
 
   async function exportCurrentPng() {
     if (!currentSlide) return;
-    const { exportToBlob } = await import("@excalidraw/excalidraw");
+    const { exportToBlob } = await loadExcalidraw();
     const stage = pitchStageExport(currentSlide.id, currentSlide.elements);
     const blob = await exportToBlob({
       ...stage,
@@ -2715,7 +2716,7 @@ export function usePitchEditorController({
 
   async function exportCurrentSvg() {
     if (!currentSlide) return;
-    const { exportToSvg } = await import("@excalidraw/excalidraw");
+    const { exportToSvg } = await loadExcalidraw();
     const stage = pitchStageExport(currentSlide.id, currentSlide.elements);
     const svg = await exportToSvg({
       ...stage,
@@ -2735,7 +2736,7 @@ export function usePitchEditorController({
   async function exportDeckZip() {
     flushCanvasState();
     const { default: JSZip } = await import("jszip");
-    const { exportToBlob } = await import("@excalidraw/excalidraw");
+    const { exportToBlob } = await loadExcalidraw();
     const zip = new JSZip();
     for (const [index, slide] of visibleSlides.entries()) {
       const stage = pitchStageExport(slide.id, slide.elements);

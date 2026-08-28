@@ -11,6 +11,7 @@ import type { BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidra
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
 
+import { loadExcalidraw } from "../browser-modules";
 import { fromPitchStageScene, toPitchStageScene } from "./pitch-stage.client";
 
 const UI_OPTIONS = {
@@ -171,7 +172,7 @@ function ExcalidrawSurfaceCanvas({
 
   useEffect(() => {
     let cancelled = false;
-    void import("@excalidraw/excalidraw").then((module) => {
+    void loadExcalidraw().then((module) => {
       if (!cancelled) setCanvas(() => module.Excalidraw);
     });
     return () => {
