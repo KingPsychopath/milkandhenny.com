@@ -64,6 +64,7 @@ These endpoints are intended for operational control and incident response.
 | ----------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Admin login (issue JWT) | `POST /api/admin/verify`                  | Returns `{ token }` on success                                                                                                    |
 | Step-up token           | `POST /api/admin/step-up`                 | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
+| CLI browser approval    | `POST /api/admin/cli-auth/request`        | Login requests use PKCE; step-up requests additionally require an admin bearer token and bind approval to that token's `jti`      |
 | List token sessions     | `GET /api/admin/tokens/sessions`          | Redis-backed list of issued sessions by `jti` with status + expiry                                                                |
 | Revoke one session      | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header                                                                                                 |
 | Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "upload" \| "all" }` + requires `x-admin-step-up`                                                        |

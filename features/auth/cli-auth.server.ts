@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { issueAdminTokenForCli } from "./auth.server";
+import { signStepUpToken } from "./internal/authorization.server";
 
 const CLI_REQUEST_TTL_SECONDS = 5 * 60;
 const CLI_CODE_TTL_SECONDS = 60;
@@ -10,6 +11,8 @@ const PKCE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
 const PKCE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
+export type CliAuthorizationPurpose = "login" | "step-up";
+
 type CliAuthorizationRecord = {
   redirectUri: string;
   codeChallenge: string;
@@ -17,7 +20,7 @@ type CliAuthorizationRecord = {
   createdAt: number;
   ip: string;
   ua: string;
-};
+} & ({ purpose: "login"; parentJti?: never } | { purpose: "step-up"; parentJti: string });
 
 type CliAuthorizationCode = {
   token: string;
@@ -85,6 +88,8 @@ export async function createCliAuthorizationRequest(input: {
   ip: string;
   ua: string;
   browserUrlOrigin: string;
+  purpose: CliAuthorizationPurpose;
+  parentJti?: string;
 }): Promise<{ requestId: string; browserUrl: string } | null> {
   const redis = loadRedis();
   if (!redis) return null;
@@ -92,9 +97,10 @@ export async function createCliAuthorizationRequest(input: {
   const redirectUri = validateRedirectUri(input.redirectUri);
   if (!redirectUri || !PKCE_CHALLENGE_PATTERN.test(input.codeChallenge)) return null;
   if (!isValidState(input.state)) return null;
+  if (input.purpose === "step-up" && !input.parentJti) return null;
 
   const requestId = newOpaqueValue();
-  const record: CliAuthorizationRecord = {
+  const baseRecord = {
     redirectUri,
     codeChallenge: input.codeChallenge,
     state: input.state,
@@ -102,6 +108,10 @@ export async function createCliAuthorizationRequest(input: {
     ip: input.ip.slice(0, 128),
     ua: input.ua.slice(0, 256),
   };
+  const record: CliAuthorizationRecord =
+    input.purpose === "step-up"
+      ? { ...baseRecord, purpose: "step-up", parentJti: input.parentJti as string }
+      : { ...baseRecord, purpose: "login" };
 
   try {
     await redis.set(requestKey(requestId), record, { ex: CLI_REQUEST_TTL_SECONDS, nx: true });
@@ -154,7 +164,10 @@ export async function approveCliAuthorization(
     });
     if (!claimed) return getCompletedApproval(redis, requestId);
 
-    const token = await issueAdminTokenForCli({ ip: record.ip, ua: record.ua });
+    const token =
+      record.purpose === "step-up"
+        ? signStepUpToken(record.parentJti)
+        : await issueAdminTokenForCli({ ip: record.ip, ua: record.ua });
     if (!token) {
       await redis.del(approvalKey(requestId));
       return null;

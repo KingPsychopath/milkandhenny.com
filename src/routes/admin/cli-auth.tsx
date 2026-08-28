@@ -82,16 +82,19 @@ function CliAuthPage() {
         : search.auth === "expired"
           ? "This CLI sign-in request has expired."
           : null;
+  const isStepUp = page.purpose === "step-up";
+  const actionLabel = isStepUp ? "approve protected CLI action" : "approve CLI sign-in";
 
   if (!page.authenticated) {
     return (
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
         <div className="w-full max-w-sm text-center">
           <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
-          <p className="font-mono text-sm theme-muted mt-1 mb-10">approve CLI sign-in</p>
+          <p className="font-mono text-sm theme-muted mt-1 mb-10">{actionLabel}</p>
           <p className="font-mono text-xs leading-relaxed theme-muted mb-6">
-            The terminal is asking for a short-lived admin session. Your password stays in this
-            browser and is never sent to the CLI.
+            {isStepUp
+              ? "Sign in here to review a protected terminal action. Your password stays in this browser and is never sent to the CLI."
+              : "The terminal is asking for a short-lived admin session. Your password stays in this browser and is never sent to the CLI."}
           </p>
 
           <form
@@ -133,12 +136,15 @@ function CliAuthPage() {
     <main id="main" className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <h1 className="font-mono font-bold tracking-tighter text-lg">{SITE_NAME}</h1>
-        <p className="font-mono text-sm theme-muted mt-1 mb-8">approve CLI sign-in</p>
+        <p className="font-mono text-sm theme-muted mt-1 mb-8">{actionLabel}</p>
         <div className="border-t theme-border pt-5 space-y-3">
-          <p className="font-mono text-sm">{page.client} is requesting access.</p>
+          <p className="font-mono text-sm">
+            {page.client} is requesting {isStepUp ? "approval for a protected action" : "access"}.
+          </p>
           <p className="font-mono text-xs leading-relaxed theme-muted">
-            This creates one admin JWT for the terminal. It expires in one hour and can be revoked
-            from the admin session list.
+            {isStepUp
+              ? "This creates a one-time, short-lived approval bound to the terminal session that opened this page. It does not create another admin session."
+              : "This creates one admin JWT for the terminal. It expires in one hour and can be revoked from the admin session list."}
           </p>
           <p className="font-mono text-xs theme-muted">
             Request expires at {new Date(page.expiresAt * 1000).toLocaleTimeString()}.
@@ -153,7 +159,11 @@ function CliAuthPage() {
             aria-busy={pendingAction === "approve"}
             className="mt-8 min-h-12 w-full rounded-md bg-[var(--foreground)] px-4 py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] hover:opacity-90 transition-opacity disabled:cursor-wait disabled:opacity-60"
           >
-            {pendingAction === "approve" ? "approving…" : "approve terminal"}
+            {pendingAction === "approve"
+              ? "approving…"
+              : isStepUp
+                ? "approve protected action"
+                : "approve terminal"}
           </button>
         </form>
         <form action={denyCliAuth.url} method="post" onSubmit={() => setPendingAction("deny")}>

@@ -1028,7 +1028,11 @@ async function openCliBrowser(url: string): Promise<boolean> {
   }
 }
 
-async function loginWithBrowser(baseUrl: string): Promise<string> {
+async function authorizeWithBrowser(
+  baseUrl: string,
+  purpose: "login" | "step-up",
+  adminToken?: string,
+): Promise<string> {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const state = randomBytes(32).toString("base64url");
@@ -1042,18 +1046,28 @@ async function loginWithBrowser(baseUrl: string): Promise<string> {
       codeChallenge: challenge,
       state,
       userAgent,
+      purpose,
+      adminToken,
     });
 
-    progress("Opening your browser for admin approval...");
+    progress(
+      purpose === "step-up"
+        ? "Opening your browser to approve this protected action..."
+        : "Opening your browser for admin approval...",
+    );
     const opened = await openCliBrowser(authorization.browserUrl);
     if (!opened) {
       log(yellow("Could not open a browser automatically."));
     }
-    log(dim(`Approve this sign-in at: ${authorization.browserUrl}`));
+    log(
+      dim(
+        `${purpose === "step-up" ? "Approve this action" : "Approve this sign-in"} at: ${authorization.browserUrl}`,
+      ),
+    );
 
     const result = await listener.waitForCallback();
     if ("error" in result) throw new Error(result.error);
-    if (result.state !== state) throw new Error("CLI sign-in state did not match.");
+    if (result.state !== state) throw new Error("CLI authorization state did not match.");
 
     progress("Exchanging the one-time approval code...");
     return await exchangeCliAuthorizationCode({
@@ -1064,6 +1078,10 @@ async function loginWithBrowser(baseUrl: string): Promise<string> {
   } finally {
     await listener.close();
   }
+}
+
+async function loginWithBrowser(baseUrl: string): Promise<string> {
+  return authorizeWithBrowser(baseUrl, "login");
 }
 
 type CliAdminTokenCacheEntry = {
@@ -1238,12 +1256,15 @@ async function resolvedAdminRequest(options: {
   let stepUpToken = getArg("step-up-token");
 
   if (hasFlag("step-up")) {
-    const storedToken = adminToken || adminPasswordArg ? null : await getStoredAdminToken(baseUrl);
-    const adminPassword =
-      adminPasswordArg ?? (await promptForAdminPassword("Re-authenticate for this action."));
-    const token =
-      adminToken || storedToken || (await resolveAdminTokenForCli({ baseUrl, adminPassword }));
-    stepUpToken = (await createStepUpToken({ baseUrl, adminToken: token, adminPassword })).token;
+    const token = await resolveAdminTokenForCli({
+      baseUrl,
+      adminToken,
+      adminPassword: adminPasswordArg,
+    });
+    stepUpToken = adminPasswordArg
+      ? (await createStepUpToken({ baseUrl, adminToken: token, adminPassword: adminPasswordArg }))
+          .token
+      : await authorizeWithBrowser(baseUrl, "step-up", token);
   }
 
   return withResolvedAdminToken({ baseUrl, adminToken, adminPassword: adminPasswordArg }, (token) =>
@@ -2840,7 +2861,7 @@ function showHelp() {
       --admin-password ${dim("<password>")}              Sign in and cache an admin JWT
       --json ${dim("<object>")}                           JSON request body
       --file ${dim("<path>")}                             Read JSON request body from a file
-      --step-up                                      Create and send a step-up token
+      --step-up                                      Approve a protected action in the browser
       --step-up-token ${dim("<token>")}                   Send an existing step-up token
       --dry-run                                      Print the mutation without sending it
       --yes                                          Skip the mutation confirmation prompt

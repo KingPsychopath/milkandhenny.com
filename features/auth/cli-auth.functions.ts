@@ -24,6 +24,7 @@ export const getCliAuthPage = createServerFn({ method: "GET" })
       valid: true as const,
       authenticated: auth.ok,
       client: "Milk & Henny CLI",
+      purpose: request.purpose,
       expiresAt: request.createdAt + 5 * 60,
     };
   });

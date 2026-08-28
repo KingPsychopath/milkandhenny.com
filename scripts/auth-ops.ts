@@ -276,6 +276,8 @@ export async function requestCliAuthorization(params: {
   codeChallenge: string;
   state: string;
   userAgent: string;
+  purpose?: "login" | "step-up";
+  adminToken?: string;
 }): Promise<{ requestId: string; browserUrl: string }> {
   const res = await fetch(`${params.baseUrl}/api/admin/cli-auth/request`, {
     method: "POST",
@@ -283,11 +285,13 @@ export async function requestCliAuthorization(params: {
       "Content-Type": "application/json",
       Origin: new URL(params.baseUrl).origin,
       "User-Agent": params.userAgent,
+      ...(params.adminToken ? { Authorization: `Bearer ${params.adminToken}` } : {}),
     },
     body: JSON.stringify({
       redirectUri: params.redirectUri,
       codeChallenge: params.codeChallenge,
       state: params.state,
+      purpose: params.purpose ?? "login",
     }),
   });
   const data = (await res.json().catch(() => ({}))) as CliAuthorizationRequestResponse;

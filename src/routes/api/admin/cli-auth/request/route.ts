@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getClientIp } from "@/features/auth/auth.server";
-import { createCliAuthorizationRequest } from "@/features/auth/cli-auth.server";
+import { getClientIp, requireAuthWithPayload } from "@/features/auth/auth.server";
+import {
+  createCliAuthorizationRequest,
+  type CliAuthorizationPurpose,
+} from "@/features/auth/cli-auth.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 
 type RequestBody = {
   redirectUri?: unknown;
   codeChallenge?: unknown;
   state?: unknown;
+  purpose?: unknown;
 };
 
 async function handlePOST(request: Request) {
@@ -20,12 +24,22 @@ async function handlePOST(request: Request) {
   if (
     typeof body.redirectUri !== "string" ||
     typeof body.codeChallenge !== "string" ||
-    typeof body.state !== "string"
+    typeof body.state !== "string" ||
+    (body.purpose !== undefined && body.purpose !== "login" && body.purpose !== "step-up")
   ) {
     return Response.json(
-      { error: "redirectUri, codeChallenge, and state are required" },
+      { error: "redirectUri, codeChallenge, state, and a valid purpose are required" },
       { status: 400 },
     );
+  }
+
+  const purpose: CliAuthorizationPurpose = body.purpose === "step-up" ? "step-up" : "login";
+  let parentJti: string | undefined;
+  if (purpose === "step-up") {
+    const auth = await requireAuthWithPayload(request, "admin");
+    if (auth.error || !auth.payload)
+      return auth.error ?? Response.json({ error: "Unauthorized" }, { status: 401 });
+    parentJti = auth.payload.jti;
   }
 
   const result = await createCliAuthorizationRequest({
@@ -35,6 +49,8 @@ async function handlePOST(request: Request) {
     ip: getClientIp(request),
     ua: request.headers.get("user-agent") ?? "milkandhenny-cli",
     browserUrlOrigin: getBaseUrlForRequest(request),
+    purpose,
+    parentJti,
   });
   if (!result) {
     return Response.json({ error: "CLI authorization is unavailable" }, { status: 503 });

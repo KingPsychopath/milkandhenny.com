@@ -100,8 +100,11 @@ still rejected by the database, as it should be.
 - Mutations show a confirmation prompt by default.
 - `--dry-run` prints the exact method, path, and body without sending it.
 - `--yes` skips the prompt for scripts and agent workflows.
-- `--step-up` obtains a fresh step-up token with a private password prompt (or
-  `--admin-password`) for money-adjacent or destructive routes.
+- `--step-up` opens a browser approval page and obtains a short-lived token bound
+  to the current CLI session. `--admin-password` remains an explicit noninteractive
+  fallback; the CLI never prompts for a password during browser step-up.
+- `--yes` skips only the mutation confirmation. It never skips authentication or
+  browser approval.
 
 For an email, use the event email route with `preview: true` first. Send only
 after reviewing the rendered message and recipient count.
