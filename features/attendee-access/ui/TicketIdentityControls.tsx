@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { sendTicketOperationFn } from "@/features/attendee-operations/ticket-operations.functions";
 import type { AttendeeAccount, AttendeeTicketIdentity } from "../types";
 import { claimTicketIdentityFn } from "../ticket-identity.functions";
@@ -204,6 +205,7 @@ export function TicketIdentityControlsView({
               {busy ? "sending…" : personallyClaimed ? "review and transfer" : "send assignment"}
             </button>
           </div>
+          <EmailAddressNotice email={recipientEmail} onAcceptSuggestion={onRecipientEmailChange} />
           <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
             {personallyClaimed
               ? "You remain the holder until the recipient accepts. Scoring and refunds pause while pending."

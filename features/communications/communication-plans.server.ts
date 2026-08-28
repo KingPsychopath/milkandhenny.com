@@ -4,6 +4,7 @@ import { enqueueEmail } from "@/lib/platform/email-outbox.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { BASE_URL, getBaseUrlForRequest } from "@/lib/shared/config";
 import { buildAppUrl } from "@/lib/shared/app-url";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { getEvent } from "@/features/events/store.server";
 import { listTicketsForEvent } from "@/features/tickets/store.server";
 import {
@@ -825,8 +826,8 @@ export async function sendCommunicationStageToMissingRecipients(
 }
 
 function validTestEmail(value: string): string {
-  const email = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+  const email = normaliseEmail(value);
+  if (!isValidEmail(email)) {
     throw new Error("Enter a valid test email address");
   }
   return email;

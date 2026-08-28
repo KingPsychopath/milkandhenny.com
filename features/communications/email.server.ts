@@ -1,6 +1,7 @@
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { BASE_URL } from "@/lib/shared/config";
 import { buildAppUrl } from "@/lib/shared/app-url";
+import { isValidEmail } from "@/lib/shared/email-address";
 import type { EventRecord } from "@/features/events/types";
 
 export type CommunicationKind =
@@ -30,7 +31,7 @@ function safeUrl(value: string): string | null {
 function safeLinkUrl(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.startsWith("mailto:")) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed.slice("mailto:".length)) ? trimmed : null;
+    return isValidEmail(trimmed.slice("mailto:".length)) ? trimmed : null;
   }
   return safeUrl(trimmed);
 }

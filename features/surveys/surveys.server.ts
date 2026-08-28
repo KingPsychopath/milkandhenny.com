@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { query } from "@/lib/platform/postgres.server";
+import { isValidEmail } from "@/lib/shared/email-address";
 import {
   SURVEY_QUESTION_TYPES,
   type SurveyQuestion,
@@ -70,10 +71,6 @@ function normaliseSlug(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-}
-
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
 export async function listSurveys(): Promise<SurveyRecord[]> {
@@ -156,7 +153,7 @@ function cleanAnswer(question: SurveyQuestion, value: unknown): string | string[
     return null;
   if (question.type === "yes_no" && answer !== "yes" && answer !== "no") return null;
   if (question.type === "single_choice" && !(question.options ?? []).includes(answer)) return null;
-  if (question.type === "email" && !validEmail(answer)) return null;
+  if (question.type === "email" && !isValidEmail(answer)) return null;
   return answer;
 }
 
@@ -176,7 +173,7 @@ export async function submitSurvey(input: {
     if (answer !== null) answers[question.id] = answer;
   }
   const email = input.respondentEmail?.trim().toLowerCase() || null;
-  if (email && !validEmail(email)) throw new Error("Enter a valid email address");
+  if (email && !isValidEmail(email)) throw new Error("Enter a valid email address");
   const emailHash = email ? hashEmail(email) : null;
   const rows = await query<{ inserted: boolean }>(
     `with inserted as (

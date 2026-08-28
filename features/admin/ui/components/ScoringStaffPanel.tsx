@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import type {
   AdminScoringActivity,
   AdminStaffAssignment,
@@ -148,20 +149,23 @@ export function ScoringStaffPanel({
           />
         </label>
         {assignmentType === "personal" ? (
-          <label className="font-mono text-xs">
-            verified email
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              value={recipientEmail}
-              onChange={(event) => setRecipientEmail(event.target.value)}
-              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-            />
-            <span className="mt-2 block leading-relaxed theme-muted">
-              Access activates only after the one-time invitation reaches this mailbox.
-            </span>
-          </label>
+          <div>
+            <label className="font-mono text-xs">
+              verified email
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={recipientEmail}
+                onChange={(event) => setRecipientEmail(event.target.value)}
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+              />
+              <span className="mt-2 block leading-relaxed theme-muted">
+                Access activates only after the one-time invitation reaches this mailbox.
+              </span>
+            </label>
+            <EmailAddressNotice email={recipientEmail} onAcceptSuggestion={setRecipientEmail} />
+          </div>
         ) : null}
         <label className="font-mono text-xs">
           access type

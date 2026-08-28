@@ -4,7 +4,7 @@ import { resolveEmailDeliveryBlock } from "./delivery-feedback.server";
 import { getEvent } from "@/features/events/store.server";
 import { sendRefundEmail, sendTicketEmail } from "@/features/tickets/email.server";
 import { listTicketsForOrder, updateTicketOrderEmail } from "@/features/tickets/store.server";
-import { assessEmailAddress, normaliseEmail } from "@/features/tickets/types";
+import { assessEmailAddress, normaliseEmail } from "@/lib/shared/email-address";
 import { drainEmailOutbox, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { isDatabaseConfigured, query, queryOne, transaction } from "@/lib/platform/postgres.server";

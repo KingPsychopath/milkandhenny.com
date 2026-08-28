@@ -1,5 +1,6 @@
 import { type FormEvent, type RefObject, useCallback, useRef, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { requestAttendeeAccessFn, verifyAttendeeAccessFn } from "../access.functions";
 import { PasskeySignIn } from "./PasskeySignIn";
@@ -170,6 +171,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
                 onChange={(event) => setEmail(event.target.value)}
                 className="mt-2 min-h-12 w-full border-b theme-border-strong bg-transparent px-1 font-mono text-base outline-none placeholder:theme-muted focus:border-foreground"
               />
+              <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
               <button
                 type="submit"
                 disabled={busy}

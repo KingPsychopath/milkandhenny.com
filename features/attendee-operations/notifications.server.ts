@@ -6,7 +6,7 @@ import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { actionEmailHash, maskActionEmail } from "./action-links.server";
 import { resolveAdminNotificationDeepLink } from "./notification-destination";
-import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 
 export type DomainEventSeverity = "info" | "prompt" | "warning" | "critical";
 

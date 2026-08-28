@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
-import { normaliseEmail } from "@/features/tickets/types";
+import { normaliseEmail } from "@/lib/shared/email-address";
 
 const REDEMPTION_WINDOW_SECONDS = 15 * 60;
 const MAX_REDEMPTION_ATTEMPTS = 12;

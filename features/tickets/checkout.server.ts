@@ -34,7 +34,8 @@ import { hashEmail, isTicketSigningConfigured } from "./qr.server";
 import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
-import { assessEmailAddress, normaliseEmail, type TicketRecord } from "./types";
+import { assessEmailAddress, normaliseEmail } from "@/lib/shared/email-address";
+import type { TicketRecord } from "./types";
 import {
   cancelAwaitingOrderExchanges,
   exchangeRefundTotalForPayment,

@@ -21,7 +21,8 @@ import {
   unredeemTicket,
   voidTicket,
 } from "@/features/tickets/tickets.server";
-import { isValidEmail, isValidTicketId } from "@/features/tickets/types";
+import { isValidTicketId } from "@/features/tickets/types";
+import { isValidEmail } from "@/lib/shared/email-address";
 
 /**
  * Admin ticket operations for one event.

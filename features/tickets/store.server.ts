@@ -483,7 +483,7 @@ export async function updateTicketHolder(
 ): Promise<TicketRecord | null> {
   if (!isValidTicketId(id)) return null;
   const { hashEmail } = await import("./qr.server");
-  const { normaliseEmail } = await import("./types");
+  const { normaliseEmail } = await import("@/lib/shared/email-address");
 
   const setEmail = changes.email !== undefined;
   const email = changes.email ? normaliseEmail(changes.email) : null;
@@ -520,7 +520,7 @@ export async function updateTicketOrderEmail(
 ): Promise<number> {
   if (ticketIds.length === 0) return 0;
   const { hashEmail } = await import("./qr.server");
-  const { normaliseEmail } = await import("./types");
+  const { normaliseEmail } = await import("@/lib/shared/email-address");
   const normalized = normaliseEmail(email);
   const rows = await query<{ id: string }>(
     `update tickets

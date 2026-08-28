@@ -17,6 +17,7 @@ import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThum
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
 import { AppSelect } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -624,21 +625,29 @@ export function PitchesPanel({
                 className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
               />
             </label>
-            <label className="font-mono text-micro theme-muted">
-              owner email
-              <input
-                type="email"
-                value={form.ownerEmail}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, ownerEmail: event.target.value }))
+            <div>
+              <label className="font-mono text-micro theme-muted">
+                owner email
+                <input
+                  type="email"
+                  value={form.ownerEmail}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, ownerEmail: event.target.value }))
+                  }
+                  className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
+                />
+                <span className="mt-2 block leading-relaxed">
+                  Changing this transfers the deck. Existing private links are revoked; send the new
+                  owner a fresh link.
+                </span>
+              </label>
+              <EmailAddressNotice
+                email={form.ownerEmail}
+                onAcceptSuggestion={(ownerEmail) =>
+                  setForm((current) => ({ ...current, ownerEmail }))
                 }
-                className="mt-1 min-h-11 w-full border-b theme-border-strong bg-transparent font-mono text-sm text-foreground outline-none"
               />
-              <span className="mt-2 block leading-relaxed">
-                Changing this transfers the deck. Existing private links are revoked; send the new
-                owner a fresh link.
-              </span>
-            </label>
+            </div>
             <div className="sm:col-span-2">
               <label htmlFor="pitch-lifecycle" className="font-mono text-micro theme-muted">
                 deck state

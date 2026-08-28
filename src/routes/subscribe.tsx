@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -93,6 +94,7 @@ function SubscribePage() {
                     className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
                   />
                 </label>
+                <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
                 <button
                   type="submit"
                   disabled={busy}

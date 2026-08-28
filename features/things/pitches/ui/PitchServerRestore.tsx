@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import type { PitchCreatorIdentity, PitchOwnerDeckState } from "../types";
 
@@ -132,17 +133,20 @@ export function PitchServerRestore({
                   className="mt-1 min-h-11 w-48 border-b border-current bg-transparent px-0 text-current outline-none"
                 />
               </label>
-              <label className="text-left">
-                <span className="block uppercase tracking-[0.14em]">recovery email</span>
-                <input
-                  value={email}
-                  required
-                  type="email"
-                  autoComplete="email"
-                  onChange={(event) => setEmail(event.target.value)}
-                  className="mt-1 min-h-11 w-60 border-b border-current bg-transparent px-0 text-current outline-none"
-                />
-              </label>
+              <div>
+                <label className="text-left">
+                  <span className="block uppercase tracking-[0.14em]">recovery email</span>
+                  <input
+                    value={email}
+                    required
+                    type="email"
+                    autoComplete="email"
+                    onChange={(event) => setEmail(event.target.value)}
+                    className="mt-1 min-h-11 w-60 border-b border-current bg-transparent px-0 text-current outline-none"
+                  />
+                </label>
+                <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
+              </div>
             </>
           )}
           <button

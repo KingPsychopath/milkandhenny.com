@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { normaliseEmail } from "@/features/tickets/types";
+import { normaliseEmail } from "@/lib/shared/email-address";
 import { queryOne } from "@/lib/platform/postgres.server";
 
 function identityEmailHash(email: string): string {

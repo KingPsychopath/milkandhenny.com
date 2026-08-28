@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import {
   GLOBAL_ADMIN_ROLE_PRESETS,
   type GlobalAdminRole,
@@ -144,17 +145,20 @@ export function AdminAccessSettings({
             className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
           />
         </label>
-        <label className="font-mono text-xs">
-          verified email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          />
-        </label>
+        <div>
+          <label className="font-mono text-xs">
+            verified email
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+            />
+          </label>
+          <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
+        </div>
         <label className="font-mono text-xs">
           role
           <AppSelect

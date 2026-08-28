@@ -6,6 +6,7 @@ import { authenticateRequest } from "@/features/auth/auth.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { isValidEmail } from "@/lib/shared/email-address";
 import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server";
 import { getPitchOperationalStatus } from "./operational.server";
 import { runPitchesResult } from "./pitches-runtime.server";
@@ -48,10 +49,6 @@ async function runOperation<T>(
   return result.ok
     ? result.value
     : { ok: false, status: result.status, error: result.error, retryable: result.retryable };
-}
-
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
 async function pitchAccountContext() {
@@ -180,7 +177,7 @@ export const createPitchFn = createServerFn({ method: "POST" })
     if (!title) {
       return invalid("Add a pitch title before opening the studio.");
     }
-    if (!validEmail(data.ownerEmail)) {
+    if (!isValidEmail(data.ownerEmail)) {
       return invalid("Enter a valid recovery email so you can get back to this pitch.");
     }
     if (!isPitchCreateRequestId(data.createRequestId) || !isPitchOwnerToken(data.ownerToken)) {
@@ -488,7 +485,7 @@ export const recoverPitchAccessFn = createServerFn({ method: "POST" })
   .validator((data: { email: string }) => data)
   .handler(async ({ data }): Promise<OperationResult<{ queued: boolean }>> => {
     const email = data.email.trim().toLowerCase();
-    if (!validEmail(email)) return invalid("That email address doesn't look right");
+    if (!isValidEmail(email)) return invalid("That email address doesn't look right");
     const allowed = await runPitchesResult(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;

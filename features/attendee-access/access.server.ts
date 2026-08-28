@@ -15,7 +15,7 @@ import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { describeEmailCapability, sendEmail } from "@/lib/platform/email.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
-import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";

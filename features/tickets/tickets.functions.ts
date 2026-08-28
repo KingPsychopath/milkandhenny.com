@@ -31,12 +31,12 @@ import { resolveScannerLink } from "./scanner-links.server";
 import { getTicket } from "./store.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
-  isValidEmail,
   isValidTicketId,
   type DoorTicketView,
   type RedeemOutcome,
   type TicketStatus,
 } from "./types";
+import { isValidEmail } from "@/lib/shared/email-address";
 
 /**
  * TanStack server-function boundary for tickets.

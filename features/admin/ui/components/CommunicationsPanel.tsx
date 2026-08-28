@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppSelect, type AppSelectOption } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   ADMIN_ACTIVE_REFRESH_WINDOW_MS,
@@ -1465,18 +1466,21 @@ function EventPlanView(props: {
             </div>
           </div>
           <div className="admin-form-row grid gap-3 border-b theme-border py-4 sm:grid-cols-[minmax(18rem,1fr)_auto]">
-            <label className="admin-form-field">
-              <span className="font-mono text-micro theme-muted">test recipient</span>
-              <input
-                value={testEmail}
-                onChange={(event) => setTestEmail(event.target.value)}
-                type="email"
-                className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
-              />
-              <span className="mt-2 block font-mono text-micro theme-faint">
-                Sends every stage with a [TEST] subject. It does not schedule the plan.
-              </span>
-            </label>
+            <div className="admin-form-field">
+              <label>
+                <span className="font-mono text-micro theme-muted">test recipient</span>
+                <input
+                  value={testEmail}
+                  onChange={(event) => setTestEmail(event.target.value)}
+                  type="email"
+                  className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
+                />
+                <span className="mt-2 block font-mono text-micro theme-faint">
+                  Sends every stage with a [TEST] subject. It does not schedule the plan.
+                </span>
+              </label>
+              <EmailAddressNotice email={testEmail} onAcceptSuggestion={setTestEmail} />
+            </div>
             <AdminFormAction spacing="comfortable">
               <Button onClick={sendTestPlan} disabled={busy || !testEmail.trim()}>
                 send all test emails

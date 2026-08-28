@@ -2,16 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { transaction } from "@/lib/platform/postgres.server";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { MARKETING_CONSENT_VERSION, MARKETING_PRIVACY_NOTICE_VERSION } from "./marketing-consent";
 
 const ADMIN_MARKETING_CONSENT_VERSION = "admin-action-v1";
 
 type ConsentSource = "subscribe" | "ticket_purchase" | "admin" | "unsubscribe";
 type ConsentDecision = "granted" | "withdrawn";
-
-function normaliseEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
 
 function hashEmail(email: string): string {
   return createHash("sha256").update(normaliseEmail(email)).digest("hex");
@@ -61,7 +58,7 @@ export async function recordMarketingConsent(input: {
   occurredAt?: Date;
 }): Promise<void> {
   const email = normaliseEmail(input.email);
-  if (!email || email.length > 254) throw new Error("Invalid email");
+  if (!isValidEmail(email)) throw new Error("Invalid email");
   const emailHash = hashEmail(email);
   const occurredAt = input.occurredAt ?? new Date();
   const contactSource = input.source === "ticket_purchase" ? "event" : "subscribe";

@@ -35,9 +35,7 @@ import {
 } from "./qr.server";
 import { getTicketCapacitySnapshot } from "./capacity.server";
 import {
-  isValidEmail,
   isValidTicketId,
-  normaliseEmail,
   parseTicketQrPayload,
   type DoorManifest,
   type DoorTicketView,
@@ -45,6 +43,7 @@ import {
   type TicketKind,
   type TicketRecord,
 } from "./types";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 
 /**
  * Ticket workflows.

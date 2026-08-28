@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { rememberBrowserProfile } from "@/lib/client/browser-profile";
 import {
   cancelTicketOperationFn,
@@ -613,6 +614,7 @@ export function MyAccountPage({
                 autoComplete="email"
                 className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
               />
+              <EmailAddressNotice email={newEmail} onAcceptSuggestion={setNewEmail} />
               <button
                 type="submit"
                 disabled={busy}

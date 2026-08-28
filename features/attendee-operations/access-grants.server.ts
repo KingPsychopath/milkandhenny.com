@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { establishEmailAuthenticatedSession } from "@/features/attendee-access/email-authentication.server";
-import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { sendEmail } from "@/lib/platform/email.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { buildAppUrl } from "@/lib/shared/app-url";

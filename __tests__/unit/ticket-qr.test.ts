@@ -20,13 +20,11 @@ import {
 } from "@/features/tickets/qr.server";
 import {
   MANIFEST_HASH_LENGTH,
-  assessEmailAddress,
   formatTicketQrPayload,
-  isValidEmail,
   isValidTicketId,
-  normaliseEmail,
   parseTicketQrPayload,
 } from "@/features/tickets/types";
+import { assessEmailAddress, isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 
 describe("ticket ids", () => {
   it("generates ids over the unambiguous alphabet", () => {
@@ -147,9 +145,19 @@ describe("hashing", () => {
     expect(isValidEmail("person@example.com")).toBe(true);
     expect(isValidEmail("person@gmail.con")).toBe(false);
     expect(isValidEmail("person@example.photography")).toBe(true);
+    expect(isValidEmail("person@company.om")).toBe(true);
+    expect(isValidEmail("first..last@example.com")).toBe(false);
+    expect(assessEmailAddress("person@gmail.co")).toMatchObject({
+      valid: true,
+      suggestion: "person@gmail.com",
+    });
     expect(assessEmailAddress("person@gmail.con")).toMatchObject({
       valid: false,
       suggestion: "person@gmail.com",
+    });
+    expect(assessEmailAddress("person@company.con")).toMatchObject({
+      valid: false,
+      suggestion: undefined,
     });
     expect(isValidEmail("no-at-sign")).toBe(false);
     expect(isValidEmail("trailing@dot.")).toBe(false);

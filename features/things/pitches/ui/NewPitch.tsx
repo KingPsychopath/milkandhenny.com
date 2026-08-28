@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
+import { isValidEmail } from "@/lib/shared/email-address";
 import { createPitchFn } from "../pitches.functions";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
@@ -58,7 +60,7 @@ export function NewPitch({
       setError("Add your name so we know who owns this pitch.");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail.trim())) {
+    if (!isValidEmail(ownerEmail)) {
       setState("error");
       setError("Enter a valid recovery email so you can get back to this pitch.");
       return;
@@ -222,25 +224,28 @@ export function NewPitch({
                 className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
               />
             </label>
-            <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
-              recovery email
-              <input
-                name="email"
-                required
-                disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
-                type="email"
-                autoComplete="email"
-                value={email}
-                aria-invalid={state === "error" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())}
-                aria-describedby="new-pitch-error"
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setError("");
-                  setState("idle");
-                }}
-                className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
-              />
-            </label>
+            <div>
+              <label className="block font-mono text-xs uppercase tracking-[0.12em] theme-muted">
+                recovery email
+                <input
+                  name="email"
+                  required
+                  disabled={!hydrated || state === "saving" || !operationalStatus.canWrite}
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  aria-invalid={state === "error" && !isValidEmail(email)}
+                  aria-describedby="new-pitch-error"
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setError("");
+                    setState("idle");
+                  }}
+                  className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent font-mono text-base normal-case tracking-normal text-foreground outline-none focus:border-foreground"
+                />
+              </label>
+              <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
+            </div>
           </div>
         )}
         {!creatorIdentity ? <BrowserProfileHint /> : null}

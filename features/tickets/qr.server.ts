@@ -4,8 +4,8 @@ import {
   TICKET_QR_VERSION,
   formatTicketQrPayload,
   isValidTicketId,
-  normaliseEmail,
 } from "./types";
+import { normaliseEmail } from "@/lib/shared/email-address";
 
 /**
  * Ticket identity and QR signing.

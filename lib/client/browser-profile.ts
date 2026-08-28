@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getStorageKey } from "@/lib/shared/storage-keys";
+import { isValidEmail, normaliseEmail as normaliseSharedEmail } from "@/lib/shared/email-address";
 import { getStored, removeStored, setStored } from "./storage";
 
 /**
@@ -40,8 +41,8 @@ export function gameNameDefault(value: string, maxLength: number): string {
 
 function normaliseEmail(value: unknown): string {
   if (typeof value !== "string") return "";
-  const email = value.trim().toLowerCase();
-  return email.length <= MAX_EMAIL_LENGTH && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+  const email = normaliseSharedEmail(value);
+  return email.length <= MAX_EMAIL_LENGTH && isValidEmail(email) ? email : "";
 }
 
 export function readBrowserProfile(): BrowserProfile {

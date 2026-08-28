@@ -10,7 +10,7 @@ import { ensurePendingInvitedPerson } from "@/features/attendee-operations/invit
 import { requireIdentityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import { emitDomainEvent } from "@/features/attendee-operations/notifications.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
-import { isValidEmail, normaliseEmail } from "@/features/tickets/types";
+import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { sendEmail } from "@/lib/platform/email.server";
 import { query } from "@/lib/platform/postgres.server";
 import { transaction } from "@/lib/platform/postgres.server";

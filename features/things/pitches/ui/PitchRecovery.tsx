@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { recoverPitchAccessFn } from "../pitches.functions";
 
 export function PitchRecovery({ compact = false }: { compact?: boolean }) {
@@ -50,6 +51,7 @@ export function PitchRecovery({ compact = false }: { compact?: boolean }) {
           className="mt-3 block min-h-12 w-full border-b theme-border-strong bg-transparent px-0 font-mono text-base text-foreground outline-none focus:border-foreground"
         />
       </label>
+      <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
       <div className="mt-2">
         <BrowserProfileHint />
       </div>

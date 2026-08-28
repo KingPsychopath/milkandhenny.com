@@ -387,17 +387,22 @@ function Field({
   type?: string;
   hint?: string;
 }) {
+  const id = useId();
   return (
-    <label className="admin-form-field block">
-      <span className="font-mono text-micro theme-muted tracking-wide">{label}</span>
+    <div className="admin-form-field block">
+      <label htmlFor={id} className="font-mono text-micro theme-muted tracking-wide">
+        {label}
+      </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="mt-1 w-full min-h-10 px-3 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
       />
+      {type === "email" ? <EmailAddressNotice email={value} onAcceptSuggestion={onChange} /> : null}
       {hint && <span className="mt-1 block font-mono text-micro theme-faint">{hint}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -526,11 +531,6 @@ function AddGuestForm({
         hint="new or existing account — the invite handles both"
       />
       <Field label="name on ticket" value={name} onChange={setName} />
-      <EmailAddressNotice
-        email={email}
-        onAcceptSuggestion={setEmail}
-        className="sm:col-span-2 -mt-1"
-      />
       <div>
         <label htmlFor={typeId} className="font-mono text-micro theme-muted tracking-wide">
           ticket type

@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { ADMIN_ALERT_CATEGORIES } from "@/features/attendee-operations/alert-categories";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -194,16 +195,19 @@ export function AlertSettings({
         </p>
       </details>
       <form onSubmit={(event) => void save(event)} className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="font-mono text-xs">
-          verified email
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
-          />
-        </label>
+        <div>
+          <label className="font-mono text-xs">
+            verified email
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-2 min-h-11 w-full border theme-border bg-background px-3"
+            />
+          </label>
+          <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
+        </div>
         <label className="font-mono text-xs">
           event slugs (optional, comma separated)
           <input

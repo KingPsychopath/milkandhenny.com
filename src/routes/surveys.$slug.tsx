@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
+import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { getPublicSurveyFn, submitSurveyFn } from "@/features/surveys/surveys.functions";
 import type { SurveyQuestion, SurveyRecord } from "@/features/surveys/types";
 import { SITE_BRAND } from "@/lib/shared/config";
@@ -134,15 +135,21 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
                   className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                 />
               </label>
-              <label className="block">
-                <span className="font-mono text-micro theme-muted">email (optional)</span>
-                <input
-                  type="email"
-                  value={respondentEmail}
-                  onChange={(event) => setRespondentEmail(event.target.value)}
-                  className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+              <div>
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted">email (optional)</span>
+                  <input
+                    type="email"
+                    value={respondentEmail}
+                    onChange={(event) => setRespondentEmail(event.target.value)}
+                    className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  />
+                </label>
+                <EmailAddressNotice
+                  email={respondentEmail}
+                  onAcceptSuggestion={setRespondentEmail}
                 />
-              </label>
+              </div>
             </div>
             <p className="mt-3 font-mono text-micro theme-faint">
               We will only use this to reply about your feedback.
@@ -281,29 +288,38 @@ function QuestionField({
       </fieldset>
     );
   }
+  if (question.type === "email") {
+    const email = typeof value === "string" ? value : "";
+    return (
+      <div>
+        <label htmlFor={id} className="block">
+          <span className="block">{label}</span>
+          {hint}
+          <input
+            id={id}
+            type="email"
+            value={email}
+            onChange={(event) => onChange(event.target.value)}
+            required={question.required}
+            className="mt-4 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+          />
+        </label>
+        <EmailAddressNotice email={email} onAcceptSuggestion={onChange} />
+      </div>
+    );
+  }
   return (
     <label htmlFor={id} className="block">
       <span className="block">{label}</span>
       {hint}
-      {question.type === "email" ? (
-        <input
-          id={id}
-          type="email"
-          value={typeof value === "string" ? value : ""}
-          onChange={(event) => onChange(event.target.value)}
-          required={question.required}
-          className="mt-4 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-        />
-      ) : (
-        <textarea
-          id={id}
-          value={typeof value === "string" ? value : ""}
-          onChange={(event) => onChange(event.target.value)}
-          required={question.required}
-          rows={5}
-          className="mt-4 w-full rounded border theme-border bg-transparent px-3 py-3 font-serif text-lg leading-relaxed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-        />
-      )}
+      <textarea
+        id={id}
+        value={typeof value === "string" ? value : ""}
+        onChange={(event) => onChange(event.target.value)}
+        required={question.required}
+        rows={5}
+        className="mt-4 w-full rounded border theme-border bg-transparent px-3 py-3 font-serif text-lg leading-relaxed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+      />
     </label>
   );
 }

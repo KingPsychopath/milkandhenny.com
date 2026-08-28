@@ -17,10 +17,7 @@ import {
 import { PITCH_REMINDER_TEMPLATES } from "@/features/things/pitches/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
-
-function validEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
-}
+import { isValidEmail } from "@/lib/shared/email-address";
 
 async function handleGET(request: Request) {
   const authError = await requireAuth(request, "admin");
@@ -174,7 +171,7 @@ async function handlePATCH(request: Request) {
             typeof body.ownerName === "string" ? parsePitchOwnerName(body.ownerName) : null;
           const ownerEmail =
             typeof body.ownerEmail === "string" ? body.ownerEmail.trim().toLowerCase() : "";
-          if (!title || !ownerName || !validEmail(ownerEmail)) {
+          if (!title || !ownerName || !isValidEmail(ownerEmail)) {
             return { ok: false as const, status: 400, error: "Check the title, name and email" };
           }
           return yield* pitches.updateAdmin({

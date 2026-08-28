@@ -6,6 +6,7 @@ import {
   MARKETING_PRIVACY_NOTICE_VERSION,
 } from "@/features/communications/marketing-consent";
 import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
+import { assessEmailAddress } from "@/lib/shared/email-address";
 
 async function handlePOST(request: Request) {
   // Consent records are written for whatever address arrives, so the only
@@ -27,10 +28,18 @@ async function handlePOST(request: Request) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const emailAssessment = assessEmailAddress(body.email);
+    const email = emailAssessment.normalized;
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : null;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
-      return Response.json({ error: "Enter a valid email address" }, { status: 400 });
+    if (!emailAssessment.valid) {
+      return Response.json(
+        {
+          error:
+            (emailAssessment.message ?? "Enter a valid email address") +
+            (emailAssessment.suggestion ? " Try " + emailAssessment.suggestion + "." : ""),
+        },
+        { status: 400 },
+      );
     }
     await recordMarketingConsent({
       email,
