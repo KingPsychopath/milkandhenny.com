@@ -285,8 +285,8 @@ export function HotAndColdResultShare({
               : status === "failed"
                 ? "try sharing again"
                 : nativeShare
-                  ? "share this trail"
-                  : "copy this trail"}
+                  ? "share this result"
+                  : "copy this result"}
         </span>
         <ShareIcon />
       </button>

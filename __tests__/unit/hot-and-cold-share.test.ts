@@ -21,7 +21,7 @@ describe("hot and cold result sharing", () => {
     expect(result.bestRank).toBe(400);
     expect(result.coldestRank).toBe(70_000);
     expect(result.text).toBe(
-      "Hot & Cold · daily #12\nFound the hidden word in 5 guesses.\nTrail: 🧊 → 🔹 → 🔥 → 💡\nClosest guess before solving: 400th closest to the word\nCan you beat my trail?",
+      "Hot & Cold · daily #12\nI found the hidden word in 5 guesses.\nMy closest guess was the 400th closest word.\nCan you beat it?",
     );
     expect(result.text).not.toContain("secret");
     expect(result.distribution).toEqual([
@@ -44,11 +44,11 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).toBe(
-      "Hot & Cold · daily #16\nFound the hidden word in 3 guesses using 2 hints.\nTrail: 🔹 → 🔥 → 💡\nClosest guess before solving: 80th closest to the word\nCan you beat my trail?",
+      "Hot & Cold · daily #16\nI found the hidden word in 3 guesses.\nI used 2 hints.\nMy closest guess was the 80th closest word.\nCan you beat it?",
     );
   });
 
-  it("shares a qualifying heat streak without replacing the guess trail", () => {
+  it("shares a qualifying heat streak in plain language", () => {
     const result = buildHotAndColdShareResult({
       label: "daily #17",
       guesses: [
@@ -60,9 +60,9 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.longestHeatStreak).toBe(3);
-    expect(result.text).toContain("Found the hidden word in 4 guesses.");
-    expect(result.text).toContain("Trail: ☀️ → 🔥 → ❤️‍🔥 → 💡");
-    expect(result.text).toContain("🔥 3 hot guesses in a row");
+    expect(result.text).toContain("I found the hidden word in 4 guesses.");
+    expect(result.text).toContain("I had 3 hot guesses in a row.");
+    expect(result.text).not.toContain("→");
   });
 
   it("does not include fields that could reveal guessed words", () => {
@@ -73,7 +73,7 @@ describe("hot and cold result sharing", () => {
     });
 
     expect(result.text).not.toContain(guess.word);
-    expect(result.text).toContain("Found the hidden word on the first guess.");
+    expect(result.text).toContain("I found the hidden word in 1 guess.");
   });
 
   it("describes a near miss differently from a quick solve", () => {

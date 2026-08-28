@@ -25,16 +25,6 @@ export interface HotAndColdShareResult {
   distribution: HeatDistribution[];
 }
 
-const TRAIL_SYMBOLS: Record<HeatBand, string> = {
-  found: "💡",
-  burning: "❤️‍🔥",
-  hot: "🔥",
-  warm: "☀️",
-  cool: "🔹",
-  cold: "❄️",
-  frozen: "🧊",
-};
-
 function sampleEvenly<T>(items: readonly T[], limit: number) {
   if (items.length <= limit) return [...items];
   return Array.from({ length: limit }, (_, index) => {
@@ -202,40 +192,28 @@ export function buildHotAndColdShareResult({
   const coldestRank = ranked.length ? Math.max(...ranked) : null;
   const longestHeatStreak = heatStreaks(guesses).longest;
   const guessLabel = `${guesses.length} guess${guesses.length === 1 ? "" : "es"}`;
-  const hintLabel = hintsUsed ? ` using ${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}` : "";
   const solved = ranked.includes(0);
   const resultSummary =
     outcome === "gave-up"
-      ? `Revealed the hidden word after ${guessLabel}${hintLabel}.`
+      ? `I revealed the hidden word after ${guessLabel}.`
       : outcome === "round"
         ? solved
           ? `Our room found the hidden word in ${guessLabel}.`
           : `Our room finished after ${guessLabel}.`
-        : guesses.length === 1 && solved
-          ? `Found the hidden word on the first guess${hintLabel}.`
-          : `Found the hidden word in ${guessLabel}${hintLabel}.`;
+        : `I found the hidden word in ${guessLabel}.`;
+  const hintSummary = hintsUsed ? `I used ${hintsUsed} hint${hintsUsed === 1 ? "" : "s"}.` : null;
   const closest =
-    bestRank === null
+    bestRank === null || bestRank === 0
       ? null
-      : bestRank === 0
-        ? "Closest guess: exact on the first try"
-        : `${outcome === "found" ? "Closest guess before solving" : "Closest guess"}: ${ordinal(bestRank)} closest to the word`;
-  const trailSummary = trail.length
-    ? trail.map(({ band }) => TRAIL_SYMBOLS[band]).join(" → ")
-    : "—";
+      : `${outcome === "round" ? "The" : "My"} closest guess was the ${ordinal(bestRank)} closest word.`;
   const streakSummary =
-    longestHeatStreak >= 3 ? `🔥 ${longestHeatStreak} hot guesses in a row` : null;
-  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat my trail?";
+    longestHeatStreak >= 3
+      ? `${outcome === "round" ? "We had" : "I had"} ${longestHeatStreak} hot guesses in a row.`
+      : null;
+  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat it?";
 
   return {
-    text: [
-      `Hot & Cold · ${label}`,
-      resultSummary,
-      `Trail: ${trailSummary}`,
-      closest,
-      streakSummary,
-      invitation,
-    ]
+    text: [`Hot & Cold · ${label}`, resultSummary, hintSummary, closest, streakSummary, invitation]
       .filter((line): line is string => line !== null)
       .join("\n"),
     trail,
