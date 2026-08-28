@@ -25,6 +25,16 @@ export interface HotAndColdShareResult {
   distribution: HeatDistribution[];
 }
 
+const TRAIL_STEPS: Record<HeatBand, string> = {
+  found: "💡 found",
+  burning: "❤️‍🔥 burning",
+  hot: "🔥 hot",
+  warm: "☀️ warm",
+  cool: "🔹 cool",
+  cold: "❄️ cold",
+  frozen: "🧊 frozen",
+};
+
 function sampleEvenly<T>(items: readonly T[], limit: number) {
   if (items.length <= limit) return [...items];
   return Array.from({ length: limit }, (_, index) => {
@@ -206,14 +216,25 @@ export function buildHotAndColdShareResult({
     bestRank === null || bestRank === 0
       ? null
       : `${outcome === "round" ? "The" : "My"} closest guess was the ${ordinal(bestRank)} closest word.`;
+  const trailSummary = trail.length
+    ? `${outcome === "round" ? "Our" : "My"} trail: ${trail.map(({ band }) => TRAIL_STEPS[band]).join(" → ")}`
+    : null;
   const streakSummary =
     longestHeatStreak >= 3
       ? `${outcome === "round" ? "We had" : "I had"} ${longestHeatStreak} hot guesses in a row.`
       : null;
-  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat it?";
+  const invitation = outcome === "round" ? "Can your room beat it?" : "Can you beat my trail?";
 
   return {
-    text: [`Hot & Cold · ${label}`, resultSummary, hintSummary, closest, streakSummary, invitation]
+    text: [
+      `Hot & Cold · ${label}`,
+      resultSummary,
+      trailSummary,
+      hintSummary,
+      closest,
+      streakSummary,
+      invitation,
+    ]
       .filter((line): line is string => line !== null)
       .join("\n"),
     trail,
