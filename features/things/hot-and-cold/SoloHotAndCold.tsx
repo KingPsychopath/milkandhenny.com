@@ -13,6 +13,7 @@ import {
   getDailyHotAndColdHintFn,
   getHotAndColdCommunityStatsFn,
   recordDailyHotAndColdResultFn,
+  rescoreSavedDailyHotAndColdWordsFn,
   revealDailyHotAndColdFn,
   scoreDailyHotAndColdGuessFn,
 } from "./hot-and-cold.functions";
@@ -56,7 +57,9 @@ export function SoloHotAndCold({
   const [communityLoaded, setCommunityLoaded] = useState(false);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
   const storageKey = hotAndColdBrowserKeys.daily(puzzle, judgingVersion);
+  const previousStorageKey = hotAndColdBrowserKeys.previousDaily(puzzle);
   useEffect(() => {
+    let cancelled = false;
     setRecovered(false);
     setCommunity(null);
     setCommunityLoaded(false);
@@ -70,26 +73,84 @@ export function SoloHotAndCold({
       runId: crypto.randomUUID(),
       resultRecorded: false,
     });
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const saved = JSON.parse(stored) as Partial<DailyState>;
+    const parseSaved = (stored: string | null): Partial<DailyState> | null => {
+      if (!stored) return null;
+      try {
+        const parsed: unknown = JSON.parse(stored);
+        return typeof parsed === "object" && parsed !== null
+          ? (parsed as Partial<DailyState>)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+    const recover = async () => {
+      try {
+        const currentSaved = parseSaved(localStorage.getItem(storageKey));
+        const previousSaved = parseSaved(localStorage.getItem(previousStorageKey));
+        const currentGuesses = Array.isArray(currentSaved?.guesses) ? currentSaved.guesses : [];
+        const previousGuesses = Array.isArray(previousSaved?.guesses)
+          ? previousSaved.guesses.slice(0, 256)
+          : [];
+        const restorePrevious =
+          previousSaved !== null &&
+          ((!currentSaved?.target && Boolean(previousSaved.target)) ||
+            (!currentSaved?.target && currentGuesses.length === 0 && previousGuesses.length > 0));
+        if (currentSaved && !restorePrevious) {
+          if (cancelled) return;
+          setState({
+            ...fresh(),
+            ...currentSaved,
+            judgingVersion,
+            guesses: currentGuesses,
+            hintsUsed: currentSaved.hintsUsed ?? currentGuesses.filter(({ hint }) => hint).length,
+          });
+          return;
+        }
+        if (!previousSaved) {
+          if (!cancelled) setState(fresh());
+          return;
+        }
+        const rescored = await rescoreSavedDailyHotAndColdWordsFn({
+          data: {
+            puzzle,
+            judgingVersion,
+            words: previousGuesses.map(({ word }) => word),
+          },
+        });
+        if (cancelled) return;
+        const guesses = previousGuesses.map((guess, index) => {
+          const score = rescored.words[index];
+          return {
+            word: score.word,
+            rank: score.rank,
+            band: score.band,
+            sequence: guess.sequence,
+            createdAt: guess.createdAt,
+            hint: guess.hint,
+          };
+        });
         setState({
           ...fresh(),
-          ...saved,
+          ...previousSaved,
+          puzzle,
           judgingVersion,
-          guesses: saved.guesses ?? [],
-          hintsUsed: saved.hintsUsed ?? saved.guesses?.filter(({ hint }) => hint).length ?? 0,
+          guesses,
+          hintsUsed: previousSaved.hintsUsed ?? guesses.filter(({ hint }) => hint).length,
+          resultRecorded: false,
         });
-      } else {
-        setState(fresh());
+        setMessage(`saved guesses restored · judging ${judgingVersion}`);
+      } catch {
+        if (!cancelled) setState(fresh());
+      } finally {
+        if (!cancelled) setRecovered(true);
       }
-    } catch {
-      setState(fresh());
-    } finally {
-      setRecovered(true);
-    }
-  }, [judgingVersion, puzzle, storageKey]);
+    };
+    void recover();
+    return () => {
+      cancelled = true;
+    };
+  }, [judgingVersion, previousStorageKey, puzzle, storageKey]);
   useEffect(() => {
     if (!recovered || state.puzzle !== puzzle) return;
     try {

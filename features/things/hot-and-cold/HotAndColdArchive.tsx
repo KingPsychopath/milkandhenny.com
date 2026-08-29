@@ -37,13 +37,20 @@ export function HotAndColdArchive({ history }: { history: HotAndColdArchiveEntry
   useEffect(() => {
     const recovered: Record<number, string> = {};
     for (const { judgingVersion, puzzle } of history) {
-      try {
-        const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle, judgingVersion));
+      const candidates = [
+        localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle, judgingVersion)),
+        localStorage.getItem(hotAndColdBrowserKeys.previousDaily(puzzle)),
+      ];
+      for (const stored of candidates) {
         if (!stored) continue;
-        const parsed = JSON.parse(stored) as { target?: unknown };
-        if (typeof parsed.target === "string" && parsed.target) recovered[puzzle] = parsed.target;
-      } catch {
-        /* A damaged local run should not block the archive. */
+        try {
+          const parsed = JSON.parse(stored) as { target?: unknown };
+          if (typeof parsed.target !== "string" || !parsed.target) continue;
+          recovered[puzzle] = parsed.target;
+          break;
+        } catch {
+          /* Try the previous save if the current one is damaged. */
+        }
       }
     }
     setAnswers(recovered);

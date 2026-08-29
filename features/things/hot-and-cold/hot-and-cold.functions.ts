@@ -292,6 +292,29 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
       throw error;
     }
   });
+export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST" })
+  .validator((value: unknown) => {
+    const data = record(value);
+    if (!Array.isArray(data.words) || data.words.length > 256)
+      throw new Error("Invalid saved guesses");
+    const words = data.words.map((value) => {
+      const word = prepareGuess(multiplayerBoundedText(value, 32));
+      if (!word) throw new Error("Invalid saved guess");
+      return word;
+    });
+    return {
+      words,
+      puzzle: playablePuzzle(data.puzzle),
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
+    };
+  })
+  .handler(async ({ data }) => ({
+    puzzle: data.puzzle,
+    judgingVersion: data.judgingVersion,
+    words: await Promise.all(
+      data.words.map((word) => scoreHotAndColdGuess(hotAndColdTargetForPuzzle(data.puzzle), word)),
+    ),
+  }));
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
