@@ -4,8 +4,31 @@ import { gameWordIsUsable, normaliseGameWord } from "../shared/word-normalizatio
  * Semantic version of every player-visible judging decision: word identity,
  * ranks, heat bands, and official hints. Persist the exact version with runs.
  */
-export const HOT_AND_COLD_JUDGING_VERSION = "1.0.0" as const;
-export const HOT_AND_COLD_ASSET_SCHEMA_VERSION = 3;
+export const HOT_AND_COLD_JUDGING_VERSIONS = ["1.0.0", "2.0.0"] as const;
+export type HotAndColdJudgingVersion = (typeof HOT_AND_COLD_JUDGING_VERSIONS)[number];
+export const HOT_AND_COLD_LATEST_JUDGING_VERSION: HotAndColdJudgingVersion = "2.0.0";
+export const HOT_AND_COLD_ASSET_SCHEMA_VERSION = 4;
+
+const DAILY_JUDGING_REVISIONS = [
+  { fromPuzzle: 1, judgingVersion: "1.0.0" },
+  { fromPuzzle: 6, judgingVersion: "2.0.0" },
+] as const satisfies ReadonlyArray<{
+  fromPuzzle: number;
+  judgingVersion: HotAndColdJudgingVersion;
+}>;
+
+export function isHotAndColdJudgingVersion(value: unknown): value is HotAndColdJudgingVersion {
+  return HOT_AND_COLD_JUDGING_VERSIONS.some((version) => version === value);
+}
+
+export function hotAndColdJudgingVersionForPuzzle(puzzle: number): HotAndColdJudgingVersion {
+  let revision: HotAndColdJudgingVersion = DAILY_JUDGING_REVISIONS[0].judgingVersion;
+  for (const candidate of DAILY_JUDGING_REVISIONS) {
+    if (puzzle < candidate.fromPuzzle) break;
+    revision = candidate.judgingVersion;
+  }
+  return revision;
+}
 
 export const HOT_AND_COLD_PLAYER_LIMITS = { min: 2, max: 8 } as const;
 export const HOT_AND_COLD_ROUND_LIMITS = { min: 1, max: 7 } as const;

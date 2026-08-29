@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   heatBand,
   heatStreaks,
+  hotAndColdJudgingVersionForPuzzle,
   orderGuesses,
   roundWinnerIds,
 } from "@/features/things/hot-and-cold/hot-and-cold-rules";
@@ -82,5 +83,11 @@ describe("Hot and Cold rules", () => {
       { puzzle: 2, date: "2026-08-26" },
       { puzzle: 1, date: "2026-08-25" },
     ]);
+  });
+
+  it("keeps played dailies on their original judging revision", () => {
+    expect(hotAndColdJudgingVersionForPuzzle(1)).toBe("1.0.0");
+    expect(hotAndColdJudgingVersionForPuzzle(5)).toBe("1.0.0");
+    expect(hotAndColdJudgingVersionForPuzzle(6)).toBe("2.0.0");
   });
 });

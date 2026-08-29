@@ -164,10 +164,23 @@ independently.
 
 The exact revision travels with generated assets, authoritative room state,
 browser recovery, history, and community results. Revisions coexist in durable
-storage; a new revision replays recoverable client inputs into a new result and
-never deletes the earlier record. CI compares immutable judging assets with the
-base revision and rejects asset changes without a version increase. Games that
-have no comparable generated or server-side rulings do not need this machinery.
+storage. Revision-addressed assets keep a historical daily on its original
+ruling, while the browser recovery path can discover saves from any earlier
+revision and replay their raw guesses against the revision selected for that
+puzzle. CI compares immutable judging assets with the base revision and rejects
+asset changes without a version increase. Games that have no comparable
+generated or server-side rulings do not need this machinery.
+
+Hot and Cold also has a rolling editorial release gate. Every generated target
+must have a complete deterministic rank permutation, target at rank zero, three
+progressively closer safe hints, and matching review evidence. The next 30
+unplayed daily targets additionally require a small human trail: expected close
+words, comparison regressions, approved hints, and only failure-specific
+forbidden hints. Approval stores a hash of the exact top-30 trail and hint set,
+so regeneration automatically requires review again. The admin games view shows
+those trails, changes from the previous revision, suspicious rare or polysemous
+words, and comparison failures. The records remain source-controlled rather
+than mutable production data.
 
 Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
 process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary

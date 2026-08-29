@@ -251,7 +251,8 @@ async function requiredNamedAdminPermission(
   if (
     pathname.includes("/scoring") ||
     pathname.includes("/discover") ||
-    pathname.includes("/game-pools")
+    pathname.includes("/game-pools") ||
+    pathname.includes("/hot-and-cold-review")
   )
     return "manageScoring";
   if (

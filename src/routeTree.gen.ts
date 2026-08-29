@@ -69,6 +69,7 @@ import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/ad
 import { Route as ApiAdminEmailRouteRouteImport } from './routes/api/admin/email/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
+import { Route as ApiAdminHotAndColdReviewRouteRouteImport } from './routes/api/admin/hot-and-cold-review/route'
 import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
@@ -510,6 +511,12 @@ const ApiAdminGamePoolsRouteRoute = ApiAdminGamePoolsRouteRouteImport.update({
   path: '/api/admin/game-pools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminHotAndColdReviewRouteRoute =
+  ApiAdminHotAndColdReviewRouteRouteImport.update({
+    id: '/api/admin/hot-and-cold-review',
+    path: '/api/admin/hot-and-cold-review',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
   id: '/api/admin/pitches',
   path: '/api/admin/pitches',
@@ -1341,6 +1348,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
+  '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -1540,6 +1548,7 @@ export interface FileRoutesByTo {
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
+  '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -1740,6 +1749,7 @@ export interface FileRoutesById {
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
+  '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
@@ -1941,6 +1951,7 @@ export interface FileRouteTypes {
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
+    | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -2140,6 +2151,7 @@ export interface FileRouteTypes {
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
+    | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -2339,6 +2351,7 @@ export interface FileRouteTypes {
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
+    | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
     | '/api/admin/reports'
     | '/api/admin/step-up'
@@ -2528,6 +2541,7 @@ export interface RootRouteChildren {
   ApiAdminEmailRouteRoute: typeof ApiAdminEmailRouteRoute
   ApiAdminEventsRouteRoute: typeof ApiAdminEventsRouteRouteWithChildren
   ApiAdminGamePoolsRouteRoute: typeof ApiAdminGamePoolsRouteRouteWithChildren
+  ApiAdminHotAndColdReviewRouteRoute: typeof ApiAdminHotAndColdReviewRouteRoute
   ApiAdminPitchesRouteRoute: typeof ApiAdminPitchesRouteRoute
   ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
@@ -3013,6 +3027,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/game-pools'
       fullPath: '/api/admin/game-pools'
       preLoaderRoute: typeof ApiAdminGamePoolsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/hot-and-cold-review': {
+      id: '/api/admin/hot-and-cold-review'
+      path: '/api/admin/hot-and-cold-review'
+      fullPath: '/api/admin/hot-and-cold-review'
+      preLoaderRoute: typeof ApiAdminHotAndColdReviewRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/pitches': {
@@ -4451,6 +4472,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminEmailRouteRoute: ApiAdminEmailRouteRoute,
   ApiAdminEventsRouteRoute: ApiAdminEventsRouteRouteWithChildren,
   ApiAdminGamePoolsRouteRoute: ApiAdminGamePoolsRouteRouteWithChildren,
+  ApiAdminHotAndColdReviewRouteRoute: ApiAdminHotAndColdReviewRouteRoute,
   ApiAdminPitchesRouteRoute: ApiAdminPitchesRouteRoute,
   ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,

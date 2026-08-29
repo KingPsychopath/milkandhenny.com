@@ -47,6 +47,7 @@ jobs:
       - run: pnpm check:game-judging --base "$GAME_JUDGING_BASE"
         env:
           GAME_JUDGING_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - run: pnpm check:hot-and-cold-quality
       - run: pnpm check
       - run: pnpm test:coverage
       - run: pnpm exec playwright install --with-deps chromium

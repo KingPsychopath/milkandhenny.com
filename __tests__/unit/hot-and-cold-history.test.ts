@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HOT_AND_COLD_JUDGING_VERSION } from "@/features/things/hot-and-cold/hot-and-cold-rules";
+import { HOT_AND_COLD_LATEST_JUDGING_VERSION } from "@/features/things/hot-and-cold/hot-and-cold-rules";
 
 const mocks = vi.hoisted(() => ({
   recordPersonGame: vi.fn(),
@@ -65,7 +65,7 @@ vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
       word: "apple",
       rank: 12,
       band: "hot",
-      judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+      judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
     };
   },
 }));
@@ -95,7 +95,11 @@ describe("Hot & Cold optional history", () => {
   it("returns daily scores and hints when history recording fails", async () => {
     await expect(
       scoreDailyHotAndColdGuessFn({
-        data: { word: "apple", puzzle: 42, judgingVersion: HOT_AND_COLD_JUDGING_VERSION },
+        data: {
+          word: "apple",
+          puzzle: 42,
+          judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
+        },
       }),
     ).resolves.toMatchObject({ ok: true, puzzle: 42, word: "apple", rank: 12 });
     await expect(
@@ -104,7 +108,7 @@ describe("Hot & Cold optional history", () => {
           puzzle: 42,
           hintIndex: 0,
           usedWords: [],
-          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
         },
       }),
     ).resolves.toMatchObject({ puzzle: 42, word: "pear", rank: 20 });
@@ -123,7 +127,7 @@ describe("Hot & Cold optional history", () => {
       rescoreSavedDailyHotAndColdWordsFn({
         data: {
           puzzle: 42,
-          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
           words: ["apple", "old!"],
         },
       }),

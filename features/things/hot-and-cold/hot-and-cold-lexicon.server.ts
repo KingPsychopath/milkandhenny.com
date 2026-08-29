@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   HOT_AND_COLD_ASSET_SCHEMA_VERSION,
-  HOT_AND_COLD_JUDGING_VERSION,
+  type HotAndColdJudgingVersion,
   prepareGuess,
 } from "./hot-and-cold-rules";
 
@@ -23,23 +23,27 @@ interface LoadedLexicon {
   manifest: HotAndColdManifest;
 }
 
-let lexiconPromise: Promise<LoadedLexicon> | null = null;
+const lexicons = new Map<HotAndColdJudgingVersion, Promise<LoadedLexicon>>();
 const rankPacks = new Map<string, Promise<Uint8Array>>();
 
-function assetPath(file: string) {
+function assetPath(judgingVersion: HotAndColdJudgingVersion, file: string) {
   const root =
     process.env.NODE_ENV === "production"
       ? path.join(process.cwd(), ".output", "server", "assets", "hot-and-cold")
       : path.join(process.cwd(), "runtime-assets", "hot-and-cold");
-  return path.join(root, file);
+  return path.join(root, judgingVersion, file);
 }
 
-async function readAsset(file: string) {
-  return new Uint8Array(await readFile(assetPath(file)));
+async function readAsset(judgingVersion: HotAndColdJudgingVersion, file: string) {
+  return new Uint8Array(await readFile(assetPath(judgingVersion, file)));
 }
 
-function parseManifest(bytes: Uint8Array): HotAndColdManifest {
+function parseManifest(
+  bytes: Uint8Array,
+  judgingVersion: HotAndColdJudgingVersion,
+): HotAndColdManifest {
   const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  const expectedFormatVersion = judgingVersion === "1.0.0" ? 3 : HOT_AND_COLD_ASSET_SCHEMA_VERSION;
   if (
     typeof value !== "object" ||
     value === null ||
@@ -64,47 +68,55 @@ function parseManifest(bytes: Uint8Array): HotAndColdManifest {
     typeof value.trails !== "object" ||
     value.trails === null ||
     !("formatVersion" in value) ||
-    value.formatVersion !== HOT_AND_COLD_ASSET_SCHEMA_VERSION ||
+    value.formatVersion !== expectedFormatVersion ||
     !("judgingVersion" in value) ||
-    value.judgingVersion !== HOT_AND_COLD_JUDGING_VERSION
+    value.judgingVersion !== judgingVersion
   )
     throw new Error("The Hot and Cold lexicon is invalid");
   return value as HotAndColdManifest;
 }
 
-async function loadLexicon() {
-  lexiconPromise ??= (async () => {
-    const manifest = parseManifest(await readAsset("lexicon.data"));
-    if (!manifest?.words.length) throw new Error("The Hot and Cold lexicon is unavailable");
-    const words = new Set(manifest.words);
-    if (
-      Object.entries(manifest.aliases).some(
-        ([form, canonical]) => words.has(form) || !words.has(canonical),
+async function loadLexicon(judgingVersion: HotAndColdJudgingVersion) {
+  let pending = lexicons.get(judgingVersion);
+  if (!pending) {
+    pending = (async () => {
+      const manifest = parseManifest(
+        await readAsset(judgingVersion, "lexicon.data"),
+        judgingVersion,
+      );
+      if (!manifest.words.length) throw new Error("The Hot and Cold lexicon is unavailable");
+      const words = new Set(manifest.words);
+      if (
+        Object.entries(manifest.aliases).some(
+          ([form, canonical]) => words.has(form) || !words.has(canonical),
+        )
       )
-    )
-      throw new Error("The Hot and Cold aliases are ambiguous");
-    return {
-      index: new Map(manifest.words.map((word, index) => [word, index])),
-      manifest,
-    };
-  })();
-  return lexiconPromise;
+        throw new Error("The Hot and Cold aliases are ambiguous");
+      return {
+        index: new Map(manifest.words.map((word, index) => [word, index])),
+        manifest,
+      };
+    })();
+    lexicons.set(judgingVersion, pending);
+  }
+  return pending;
 }
 
-async function loadRanks(target: string) {
-  const { manifest } = await loadLexicon();
+async function loadRanks(target: string, judgingVersion: HotAndColdJudgingVersion) {
+  const { manifest } = await loadLexicon(judgingVersion);
   const location = manifest.rankPacks[target];
   if (!location) throw new Error("The Hot and Cold rank table is unavailable");
-  let pending = rankPacks.get(location.file);
+  const key = `${judgingVersion}:${location.file}`;
+  let pending = rankPacks.get(key);
   if (!pending) {
     pending = (async () => {
       try {
-        return await readAsset(location.file);
+        return await readAsset(judgingVersion, location.file);
       } catch {
         throw new Error("The Hot and Cold rank pack is unavailable");
       }
     })();
-    rankPacks.set(location.file, pending);
+    rankPacks.set(key, pending);
   }
   const pack = await pending;
   const byteLength = manifest.words.length * Uint16Array.BYTES_PER_ELEMENT;
@@ -117,17 +129,27 @@ async function loadRanks(target: string) {
   return new Uint16Array(pack.buffer, pack.byteOffset + location.offset, manifest.words.length);
 }
 
-export async function resolveHotAndColdGuess(raw: string) {
+export async function resolveHotAndColdGuess(
+  raw: string,
+  judgingVersion: HotAndColdJudgingVersion,
+) {
   const prepared = prepareGuess(raw);
   if (!prepared) return null;
-  const { index, manifest } = await loadLexicon();
+  const { index, manifest } = await loadLexicon(judgingVersion);
   const word = index.has(prepared) ? prepared : manifest.aliases[prepared];
   if (!word || !index.has(word)) return null;
   return word;
 }
 
-export async function rankHotAndColdWord(target: string, word: string) {
-  const [{ index }, ranks] = await Promise.all([loadLexicon(), loadRanks(target)]);
+export async function rankHotAndColdWord(
+  target: string,
+  word: string,
+  judgingVersion: HotAndColdJudgingVersion,
+) {
+  const [{ index }, ranks] = await Promise.all([
+    loadLexicon(judgingVersion),
+    loadRanks(target, judgingVersion),
+  ]);
   const wordIndex = index.get(word);
   if (wordIndex === undefined || wordIndex >= ranks.length)
     throw new Error("That word is not in the Hot and Cold dictionary");
@@ -138,13 +160,14 @@ export async function hotAndColdHint(
   target: string,
   hintIndex: number,
   excluded: readonly string[],
+  judgingVersion: HotAndColdJudgingVersion,
 ) {
-  const { manifest } = await loadLexicon();
+  const { manifest } = await loadLexicon(judgingVersion);
   const candidates = manifest.hints[target];
   if (!candidates?.length) throw new Error("No hint is available for this word");
   const excludedWords = new Set(excluded);
   const start = Math.min(Math.max(0, hintIndex), candidates.length - 1);
   const word = candidates.slice(start).find((candidate) => !excludedWords.has(candidate));
   if (!word) throw new Error("You have used every hint");
-  return { word, rank: await rankHotAndColdWord(target, word) };
+  return { word, rank: await rankHotAndColdWord(target, word, judgingVersion) };
 }

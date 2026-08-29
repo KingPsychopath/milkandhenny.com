@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { gunzipSync } from "node:zlib";
 import { env, matmul, pipeline, type Tensor } from "@huggingface/transformers";
@@ -21,21 +22,32 @@ import {
 } from "../features/things/hot-and-cold/hot-and-cold-words.server";
 import {
   HOT_AND_COLD_ASSET_SCHEMA_VERSION,
-  HOT_AND_COLD_JUDGING_VERSION,
+  HOT_AND_COLD_LATEST_JUDGING_VERSION,
 } from "../features/things/hot-and-cold/hot-and-cold-rules";
+import {
+  HOT_AND_COLD_HUMAN_TRAILS,
+  hotAndColdApprovalHash,
+} from "../features/things/hot-and-cold/hot-and-cold-quality.server";
 import { normaliseGameWord } from "../features/things/shared/word-normalization";
 
 const ROOT = process.cwd();
 const SOURCE_DIR = path.join(ROOT, ".artifacts", "hot-and-cold");
 const SOURCE_FILE = path.join(SOURCE_DIR, "english-wordnet-2025.xml.gz");
-const OUTPUT_DIR = path.join(ROOT, "runtime-assets", "hot-and-cold");
+const ASSET_ROOT = path.join(ROOT, "runtime-assets", "hot-and-cold");
+const OUTPUT_DIR = path.join(ASSET_ROOT, HOT_AND_COLD_LATEST_JUDGING_VERSION);
+const PREVIOUS_ASSET_DIR = path.join(ASSET_ROOT, "1.0.0");
+const SCORE_CACHE_FILE = path.join(SOURCE_DIR, "scores-2.0.0.data");
+const SCORE_CACHE_META = path.join(SOURCE_DIR, "scores-2.0.0.json");
 const WORDNET_URL = "https://en-word.net/static/english-wordnet-2025.xml.gz";
 const MODEL = "Xenova/all-MiniLM-L6-v2";
 const BATCH_SIZE = 256;
 const MIN_FREQUENCY = 2;
 const RANK_PACK_COUNT = 16;
-const RAW_WORD_WEIGHT = 0.2;
-const SENSE_CONTEXT_WEIGHT = 0.8;
+const ASSOCIATION_WEIGHT = 0.72;
+const INTENDED_SENSE_WEIGHT = 0.25;
+const WORDNET_SYNONYM_BOOST = 0.05;
+const WORDNET_RELATION_BOOST = 0.025;
+const MAX_ALTERNATIVE_SENSE_PENALTY = 0.1;
 const MIN_AUTOMATIC_HINT_FREQUENCY = 50;
 const AUTOMATIC_HINT_MAX_RANKS = [250, 100, 30] as const;
 const HINT_CURATION_REQUIRED = new Set<string>();
@@ -51,9 +63,9 @@ const CURATED_HINTS: Partial<Record<(typeof HOT_AND_COLD_TARGETS)[number], strin
   pillow: ["soft", "duvet", "sleep"],
   scarf: ["helmet", "blanket", "shawl"],
   shark: ["ocean", "predator", "fin"],
-  snowman: ["cold", "winter", "snow"],
+  snowman: ["cold", "winter", "frost"],
   whale: ["ocean", "giant", "mammal"],
-  windmill: ["electricity", "wind", "turbine"],
+  windmill: ["electricity", "breeze", "turbine"],
 };
 
 const CURATED_TARGET_CONTEXTS: Partial<Record<(typeof HOT_AND_COLD_TARGETS)[number], string>> = {
@@ -62,6 +74,8 @@ const CURATED_TARGET_CONTEXTS: Partial<Record<(typeof HOT_AND_COLD_TARGETS)[numb
   panda: "a black-and-white bear from China that lives in bamboo forest and eats bamboo",
   penguin: "a flightless black-and-white bird that swims and lives in cold Antarctic regions",
   pillow: "a soft cushion that supports your head in bed while sleeping",
+  scarf:
+    "a warm clothing accessory worn around the neck with a coat, hat, or gloves in cold weather",
   shark: "a predatory ocean fish with fins, rows of sharp teeth, and rough skin",
   snowman: "a person-shaped figure built from snow, often with a carrot nose, hat, and scarf",
   sun: "the star at the centre of the solar system that gives Earth daylight, light, and warmth",
@@ -90,9 +104,10 @@ interface Manifest {
   hints: Record<string, string[]>;
   judgingVersion: string;
   rankingPolicy: {
-    candidateSenses: string;
-    contextWeight: number;
-    rawWordWeight: number;
+    alternativeSensePenalty: number;
+    associationWeight: number;
+    intendedSenseWeight: number;
+    wordnetBoostCap: number;
     targetSenses: string;
   };
   rankPacks: Record<string, { file: string; offset: number }>;
@@ -103,8 +118,38 @@ interface Manifest {
   };
   targetSenses: Record<string, { definition: string; synset: string }>;
   targetContexts: Record<string, string>;
+  review: Record<string, TargetReview>;
   trails: Record<string, string[]>;
   words: string[];
+}
+
+interface RankedWordReview {
+  frequency: number;
+  rank: number;
+  reasons: string[];
+  word: string;
+}
+
+interface RankChangeReview {
+  change: number;
+  previousRank: number;
+  rank: number;
+  word: string;
+}
+
+interface TargetReview {
+  approvalHash: string;
+  changes: RankChangeReview[];
+  comparisons: Array<{
+    closer: string;
+    closerRank: number;
+    farther: string;
+    fartherRank: number;
+    passes: boolean;
+  }>;
+  expectedClose: Array<{ rank: number; word: string }>;
+  suspicious: RankedWordReview[];
+  top: RankedWordReview[];
 }
 
 const EXCLUDED_WORDS = new Set([
@@ -322,14 +367,8 @@ function buildLexicon(lexical: Map<string, LexicalWord>) {
   return { aliases, words };
 }
 
-const PART_OF_SPEECH_ORDER = ["n", "a", "s", "v", "r"] as const;
-
-function primarySenses(word: LexicalWord | undefined) {
-  if (!word) return [];
-  return PART_OF_SPEECH_ORDER.flatMap((partOfSpeech) => {
-    const sense = word.senses.find((candidate) => candidate.partOfSpeech === partOfSpeech);
-    return sense ? [sense] : [];
-  });
+function ordinarySense(word: LexicalWord | undefined) {
+  return word?.senses[0] ?? null;
 }
 
 function selectedTargetSense(target: string, lexical: Map<string, LexicalWord>) {
@@ -351,6 +390,13 @@ function targetContext(target: string, lexical: Map<string, LexicalWord>) {
   return `${target}: ${reviewed ?? sense.definition}`;
 }
 
+function targetAssociationWords(target: string) {
+  const trail = HOT_AND_COLD_HUMAN_TRAILS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
+  const comparisonWords = new Set(trail?.comparisons.map(({ farther }) => farther));
+  const anchors = trail?.closeWords.filter((word) => !comparisonWords.has(word)).slice(0, 5) ?? [];
+  return [target, ...anchors];
+}
+
 function relatedWords(
   target: string,
   lexical: Map<string, LexicalWord>,
@@ -363,13 +409,8 @@ function relatedWords(
   };
 }
 
-function sharesAny(left: Set<string>, right: Set<string>) {
-  for (const item of left) if (right.has(item)) return true;
-  return false;
-}
-
-function contextualTexts(word: string, lexical: Map<string, LexicalWord>) {
-  const senses = primarySenses(lexical.get(word));
+function candidateSenseTexts(word: string, lexical: Map<string, LexicalWord>) {
+  const senses = lexical.get(word)?.senses.slice(0, 6) ?? [];
   if (senses.length) return senses.map(({ definition }) => `${word}: ${definition}`);
   const definition = lexical.get(word)?.definitions[0];
   return [definition ? `${word}: ${definition}` : word];
@@ -399,7 +440,14 @@ async function generateRanks(
   const targetRelations = targetWords.map((target) =>
     relatedWords(target, lexical, synsetNeighbours),
   );
-  const rawTargets = (await extractor(targetWords, {
+  const associationGroups = targetWords.map(targetAssociationWords);
+  const associationOffsets: number[] = [];
+  let associationOffset = 0;
+  for (const group of associationGroups) {
+    associationOffsets.push(associationOffset);
+    associationOffset += group.length;
+  }
+  const associationTargets = (await extractor(associationGroups.flat(), {
     pooling: "mean",
     normalize: true,
   })) as Tensor;
@@ -407,46 +455,62 @@ async function generateRanks(
     targetWords.map((target) => targetContext(target, lexical)),
     { pooling: "mean", normalize: true },
   )) as Tensor;
-  const rawTargetT = rawTargets.transpose(1, 0);
+  const associationTargetT = associationTargets.transpose(1, 0);
   const contextTargetT = contextTargets.transpose(1, 0);
   const scores = targetWords.map(() => new Float32Array(words.length));
 
   for (let start = 0; start < words.length; start += BATCH_SIZE) {
     const batch = words.slice(start, start + BATCH_SIZE);
     const raw = (await extractor(batch, { pooling: "mean", normalize: true })) as Tensor;
-    const contexts = batch.map((word) => contextualTexts(word, lexical));
+    const contexts = batch.map((word) => candidateSenseTexts(word, lexical));
     const flattenedContexts = contexts.flat();
     const context = (await extractor(flattenedContexts, {
       pooling: "mean",
       normalize: true,
     })) as Tensor;
-    const rawScores = await matmul(raw, rawTargetT);
+    const rawScores = await matmul(raw, associationTargetT);
     const contextScores = await matmul(context, contextTargetT);
     let contextRow = 0;
     for (let row = 0; row < batch.length; row += 1) {
-      const rawRow = tensorRow(rawScores.data, row, targetWords.length);
+      const rawRow = tensorRow(rawScores.data, row, associationOffset);
       const contextualRows = contexts[row].map(() => {
         const values = tensorRow(contextScores.data, contextRow, targetWords.length);
         contextRow += 1;
         return values;
       });
       const word = batch[row];
-      const wordSynsets = new Set(primarySenses(lexical.get(word)).map(({ id }) => id));
+      const ordinary = ordinarySense(lexical.get(word));
       for (let targetIndex = 0; targetIndex < targetWords.length; targetIndex += 1) {
         const target = targetWords[targetIndex];
         const related = targetRelations[targetIndex];
-        const synonymous = wordSynsets.has(related.targetSense.id);
-        const directlyRelated = sharesAny(wordSynsets, related.directSynsets);
-        const contextScore = Math.max(...contextualRows.map((values) => values[targetIndex]));
+        const associationStart = associationOffsets[targetIndex];
+        const associationValues = associationGroups[targetIndex].map(
+          (_, anchorIndex) => rawRow[associationStart + anchorIndex],
+        );
+        const associationMean =
+          associationValues.reduce((sum, value) => sum + value, 0) / associationValues.length;
+        const associationScore = associationMean * 0.6 + Math.max(...associationValues) * 0.4;
+        const synonymous = ordinary?.id === related.targetSense.id;
+        const directlyRelated = ordinary ? related.directSynsets.has(ordinary.id) : false;
+        const ordinarySenseScore = contextualRows[0][targetIndex];
+        const alternativeSenseScore = Math.max(
+          ordinarySenseScore,
+          ...contextualRows.slice(1).map((values) => values[targetIndex]),
+        );
+        const alternativeSensePenalty = Math.min(
+          MAX_ALTERNATIVE_SENSE_PENALTY,
+          Math.max(0, alternativeSenseScore - Math.max(associationScore, ordinarySenseScore)) * 0.5,
+        );
         const substringArtifact =
           !synonymous &&
           !directlyRelated &&
           Math.min(word.length, target.length) >= 3 &&
           (word.includes(target) || target.includes(word));
         scores[targetIndex][start + row] =
-          rawRow[targetIndex] * RAW_WORD_WEIGHT +
-          contextScore * SENSE_CONTEXT_WEIGHT +
-          (synonymous ? 0.32 : directlyRelated ? 0.09 : 0) -
+          associationScore * ASSOCIATION_WEIGHT +
+          ordinarySenseScore * INTENDED_SENSE_WEIGHT +
+          (synonymous ? WORDNET_SYNONYM_BOOST : directlyRelated ? WORDNET_RELATION_BOOST : 0) -
+          alternativeSensePenalty -
           (substringArtifact ? 0.1 : 0);
       }
     }
@@ -458,12 +522,68 @@ async function generateRanks(
   return scores;
 }
 
+async function generateOrReadScores(
+  words: string[],
+  lexical: Map<string, LexicalWord>,
+  synsetNeighbours: Map<string, Set<string>>,
+) {
+  const signature = createHash("sha256")
+    .update(
+      JSON.stringify({
+        model: MODEL,
+        words,
+        targets: HOT_AND_COLD_TARGETS.map((target) => targetContext(target, lexical)),
+        associations: HOT_AND_COLD_TARGETS.map(targetAssociationWords),
+        associationWeight: ASSOCIATION_WEIGHT,
+        intendedSenseWeight: INTENDED_SENSE_WEIGHT,
+        synonymBoost: WORDNET_SYNONYM_BOOST,
+        relationBoost: WORDNET_RELATION_BOOST,
+        alternativeSensePenalty: MAX_ALTERNATIVE_SENSE_PENALTY,
+        scoring: generateRanks.toString(),
+      }),
+    )
+    .digest("hex");
+  const expectedBytes = HOT_AND_COLD_TARGETS.length * words.length * Float32Array.BYTES_PER_ELEMENT;
+  if (fs.existsSync(SCORE_CACHE_FILE) && fs.existsSync(SCORE_CACHE_META)) {
+    const metadata = JSON.parse(fs.readFileSync(SCORE_CACHE_META, "utf8")) as {
+      bytes?: number;
+      signature?: string;
+    };
+    const bytes = fs.readFileSync(SCORE_CACHE_FILE);
+    if (
+      metadata.signature === signature &&
+      metadata.bytes === expectedBytes &&
+      bytes.length === expectedBytes
+    ) {
+      console.log("reusing calibrated score cache");
+      const targetBytes = words.length * Float32Array.BYTES_PER_ELEMENT;
+      return HOT_AND_COLD_TARGETS.map((_, targetIndex) =>
+        Float32Array.from(
+          new Float32Array(
+            bytes.buffer,
+            bytes.byteOffset + targetIndex * targetBytes,
+            words.length,
+          ),
+        ),
+      );
+    }
+  }
+  const scores = await generateRanks(words, lexical, synsetNeighbours);
+  fs.writeFileSync(
+    SCORE_CACHE_FILE,
+    Buffer.concat(
+      scores.map((score) => Buffer.from(score.buffer, score.byteOffset, score.byteLength)),
+    ),
+  );
+  fs.writeFileSync(SCORE_CACHE_META, JSON.stringify({ bytes: expectedBytes, signature }));
+  return scores;
+}
+
 function rankAndHints(
   target: string,
   words: string[],
   score: Float32Array,
   lexical: Map<string, LexicalWord>,
-  synsetNeighbours: Map<string, Set<string>>,
 ) {
   const order = words
     .map((_, index) => index)
@@ -476,26 +596,16 @@ function rankAndHints(
   order.forEach((wordIndex, index) => {
     ranks[wordIndex] = index;
   });
-  const curated = CURATED_HINTS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
+  const humanTrail = HOT_AND_COLD_HUMAN_TRAILS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
+  const curated =
+    humanTrail?.approvedHints ?? CURATED_HINTS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
   if (curated) {
     if (curated.some((word) => !words.includes(word) || word === target))
       throw new Error(`Curated hints are invalid for ${target}: ${curated.join(", ")}`);
     const hints = [...curated].sort(
       (left, right) => ranks[words.indexOf(right)] - ranks[words.indexOf(left)],
     );
-    return { hints, ranks, trail: order.slice(0, 20).map((index) => words[index]) };
-  }
-  const targetSense = selectedTargetSense(target, lexical);
-  let frontier = new Set([targetSense.id]);
-  const trustedSynsets = new Set(frontier);
-  for (let depth = 0; depth < 3; depth += 1) {
-    const next = new Set<string>();
-    for (const synset of frontier)
-      for (const neighbour of synsetNeighbours.get(synset) ?? []) {
-        trustedSynsets.add(neighbour);
-        next.add(neighbour);
-      }
-    frontier = next;
+    return { hints, ranks, trail: order.slice(0, 30).map((index) => words[index]) };
   }
   const safeHint = (word: string) =>
     word !== target &&
@@ -503,7 +613,8 @@ function rankAndHints(
     !target.includes(word) &&
     word.length >= 4 &&
     (lexical.get(word)?.frequency ?? 0) >= MIN_AUTOMATIC_HINT_FREQUENCY &&
-    primarySenses(lexical.get(word)).some(({ id }) => trustedSynsets.has(id));
+    Boolean(ordinarySense(lexical.get(word))?.id) &&
+    (lexical.get(word)?.senses.length ?? 0) <= 2;
   const candidates = order
     .slice(1, 2_000)
     .map((index) => words[index])
@@ -523,7 +634,7 @@ function rankAndHints(
       .slice(0, 3)
       .toReversed();
     if (fallback.length < 3) throw new Error(`No provisional hints are available for ${target}`);
-    return { hints: fallback, ranks, trail: order.slice(0, 20).map((index) => words[index]) };
+    return { hints: fallback, ranks, trail: order.slice(0, 30).map((index) => words[index]) };
   }
   const desiredRanks = [100, 40, 10] as const;
   const penalty = (candidateIndex: number, desiredRank: number) => {
@@ -561,7 +672,138 @@ function rankAndHints(
   if (!hints) throw new Error(`Hot and Cold needs progressive trustworthy hints for ${target}`);
   if (hints.some((word, index) => ranks[words.indexOf(word)] > AUTOMATIC_HINT_MAX_RANKS[index]))
     HINT_CURATION_REQUIRED.add(target);
-  return { hints, ranks, trail: order.slice(0, 20).map((index) => words[index]) };
+  return { hints, ranks, trail: order.slice(0, 30).map((index) => words[index]) };
+}
+
+interface PreviousManifest {
+  rankPacks: Record<string, { file: string; offset: number }>;
+  words: string[];
+}
+
+function readPreviousManifest(): PreviousManifest | null {
+  const file = path.join(PREVIOUS_ASSET_DIR, "lexicon.data");
+  return fs.existsSync(file)
+    ? (JSON.parse(fs.readFileSync(file, "utf8")) as PreviousManifest)
+    : null;
+}
+
+function previousRanksFor(target: string, manifest: PreviousManifest | null) {
+  const location = manifest?.rankPacks[target];
+  if (!manifest || !location) return null;
+  const bytes = fs.readFileSync(path.join(PREVIOUS_ASSET_DIR, location.file));
+  return new Uint16Array(bytes.buffer, bytes.byteOffset + location.offset, manifest.words.length);
+}
+
+function validateGeneratedTarget(
+  target: string,
+  words: string[],
+  ranks: Uint16Array,
+  hints: string[],
+  lexical: Map<string, LexicalWord>,
+) {
+  const targetIndex = words.indexOf(target);
+  if (targetIndex < 0 || ranks[targetIndex] !== 0) throw new Error(`${target} is not rank zero`);
+  const seen = new Uint8Array(words.length);
+  for (const rank of ranks) {
+    if (rank >= words.length || seen[rank])
+      throw new Error(`${target} has an incomplete rank table`);
+    seen[rank] = 1;
+  }
+  const hintRanks = hints.map((word) => ranks[words.indexOf(word)]);
+  if (
+    hints.length !== 3 ||
+    hintRanks.some((rank, index) => index > 0 && rank >= hintRanks[index - 1])
+  )
+    throw new Error(`${target} does not have three progressively closer hints`);
+  for (const hint of hints) {
+    const record = HOT_AND_COLD_HUMAN_TRAILS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
+    const explicitlyApproved =
+      (record?.approvedHints.includes(hint) ?? false) ||
+      (CURATED_HINTS[target as (typeof HOT_AND_COLD_TARGETS)[number]]?.includes(hint) ?? false);
+    if (
+      hint.includes(target) ||
+      target.includes(hint) ||
+      (!explicitlyApproved && (lexical.get(hint)?.frequency ?? 0) < MIN_AUTOMATIC_HINT_FREQUENCY) ||
+      (!explicitlyApproved && (lexical.get(hint)?.senses.length ?? 0) > 4)
+    )
+      throw new Error(`${target} has an unsafe official hint: ${hint}`);
+    if (record?.forbiddenHints?.includes(hint))
+      throw new Error(`${target} uses a forbidden official hint: ${hint}`);
+  }
+}
+
+function targetReview(
+  target: string,
+  words: string[],
+  ranks: Uint16Array,
+  hints: string[],
+  trail: string[],
+  lexical: Map<string, LexicalWord>,
+  previousManifest: PreviousManifest | null,
+): TargetReview {
+  const index = new Map(words.map((word, wordIndex) => [word, wordIndex]));
+  const rankOf = (word: string) => {
+    const wordIndex = index.get(word);
+    if (wordIndex === undefined) throw new Error(`${target} quality trail references ${word}`);
+    return ranks[wordIndex];
+  };
+  const describe = (word: string): RankedWordReview => {
+    const entry = lexical.get(word);
+    const reasons: string[] = [];
+    if ((entry?.frequency ?? 0) < MIN_AUTOMATIC_HINT_FREQUENCY) reasons.push("rare");
+    if ((entry?.senses.length ?? 0) > 3) reasons.push("polysemous");
+    return { word, rank: rankOf(word), frequency: entry?.frequency ?? 0, reasons };
+  };
+  const record = HOT_AND_COLD_HUMAN_TRAILS[target as (typeof HOT_AND_COLD_TARGETS)[number]];
+  const comparisons = (record?.comparisons ?? []).map(({ closer, farther }) => ({
+    closer,
+    closerRank: rankOf(closer),
+    farther,
+    fartherRank: rankOf(farther),
+    passes: rankOf(closer) < rankOf(farther),
+  }));
+  const failed = comparisons.filter(({ passes }) => !passes);
+  if (failed.length)
+    throw new Error(
+      `${target} failed comparisons: ${failed
+        .map(
+          ({ closer, closerRank, farther, fartherRank }) =>
+            `${closer} #${closerRank} < ${farther} #${fartherRank}`,
+        )
+        .join(", ")}`,
+    );
+  const expectedClose = (record?.closeWords ?? []).map((word) => ({ word, rank: rankOf(word) }));
+  if (expectedClose.some(({ rank }) => rank > 1_000))
+    throw new Error(`${target} has an expected close word outside the top 1,000`);
+
+  const previousRanks = previousRanksFor(target, previousManifest);
+  const previousIndex = previousManifest
+    ? new Map(previousManifest.words.map((word, wordIndex) => [word, wordIndex]))
+    : null;
+  const changes = previousRanks
+    ? words
+        .flatMap((word, wordIndex) => {
+          const oldIndex = previousIndex?.get(word);
+          if (oldIndex === undefined) return [];
+          const previousRank = previousRanks[oldIndex];
+          const rank = ranks[wordIndex];
+          return [{ word, rank, previousRank, change: rank - previousRank }];
+        })
+        .sort(
+          (left, right) =>
+            Math.abs(right.change) - Math.abs(left.change) || left.word.localeCompare(right.word),
+        )
+        .slice(0, 20)
+    : [];
+  const top = trail.map(describe);
+  return {
+    approvalHash: hotAndColdApprovalHash(target, trail, hints),
+    changes,
+    comparisons,
+    expectedClose,
+    suspicious: top.filter(({ reasons }) => reasons.length > 0),
+    top,
+  };
 }
 
 async function main() {
@@ -573,16 +815,28 @@ async function main() {
   console.log(
     `${words.length.toLocaleString()} accepted words · ${Object.keys(aliases).length.toLocaleString()} inflections`,
   );
-  const scores = await generateRanks(words, lexical, synsetNeighbours);
+  const scores = await generateOrReadScores(words, lexical, synsetNeighbours);
   const hints: Record<string, string[]> = {};
+  const review: Record<string, TargetReview> = {};
   const trails: Record<string, string[]> = {};
   const rankPacks: Record<string, { file: string; offset: number }> = {};
   const packChunks = Array.from({ length: RANK_PACK_COUNT }, () => [] as Buffer[]);
   const packLengths = new Uint32Array(RANK_PACK_COUNT);
+  const previousManifest = readPreviousManifest();
   HOT_AND_COLD_TARGETS.forEach((target, index) => {
-    const result = rankAndHints(target, words, scores[index], lexical, synsetNeighbours);
+    const result = rankAndHints(target, words, scores[index], lexical);
+    validateGeneratedTarget(target, words, result.ranks, result.hints, lexical);
     hints[target] = result.hints;
     trails[target] = result.trail;
+    review[target] = targetReview(
+      target,
+      words,
+      result.ranks,
+      result.hints,
+      result.trail,
+      lexical,
+      previousManifest,
+    );
     const packIndex = index % RANK_PACK_COUNT;
     const file = `ranks-${packIndex.toString().padStart(2, "0")}.data`;
     const bytes = Buffer.from(result.ranks.buffer);
@@ -592,26 +846,20 @@ async function main() {
   });
   if (HINT_CURATION_REQUIRED.size > 0)
     throw new Error(`Curated hints are required for: ${[...HINT_CURATION_REQUIRED].join(", ")}`);
-  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  packChunks.forEach((chunks, index) =>
-    fs.writeFileSync(
-      path.join(OUTPUT_DIR, `ranks-${index.toString().padStart(2, "0")}.data`),
-      Buffer.concat(chunks),
-    ),
-  );
   const manifest: Manifest = {
     aliases,
     formatVersion: HOT_AND_COLD_ASSET_SCHEMA_VERSION,
     hints,
-    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+    judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
     rankingPolicy: {
-      candidateSenses: "most similar primary sense per part of speech",
-      contextWeight: SENSE_CONTEXT_WEIGHT,
-      rawWordWeight: RAW_WORD_WEIGHT,
+      alternativeSensePenalty: MAX_ALTERNATIVE_SENSE_PENALTY,
+      associationWeight: ASSOCIATION_WEIGHT,
+      intendedSenseWeight: INTENDED_SENSE_WEIGHT,
+      wordnetBoostCap: WORDNET_SYNONYM_BOOST,
       targetSenses: "one reviewed ordinary noun sense and context per target",
     },
     rankPacks,
+    review,
     source: {
       embeddingModel: MODEL,
       frequencyList: "SUBTLEX-US via subtlex-word-frequencies 2.0.0",
@@ -629,11 +877,22 @@ async function main() {
     trails,
     words,
   };
-  fs.writeFileSync(path.join(OUTPUT_DIR, "lexicon.data"), JSON.stringify(manifest));
-  fs.writeFileSync(
-    path.join(OUTPUT_DIR, "README.md"),
-    `# Hot and Cold generated data\n\nJudging revision: ${HOT_AND_COLD_JUDGING_VERSION}. Run \`pnpm data:hot-and-cold\` to rebuild. The lexicon derives from Open English WordNet 2025 (CC BY 4.0) and SUBTLEX-US frequency data. Rank packs are generated with the bundled Xenova/all-MiniLM-L6-v2 model.\n\nThe judging revision uses semantic versioning: major changes alter word identity or ranks, minor changes alter official hints or other game rulings without replacing ranks, and patches are metadata-only. Every player-visible result is attached to the exact revision.\n`,
+  const temporaryOutput = `${OUTPUT_DIR}.tmp`;
+  fs.rmSync(temporaryOutput, { recursive: true, force: true });
+  fs.mkdirSync(temporaryOutput, { recursive: true });
+  packChunks.forEach((chunks, index) =>
+    fs.writeFileSync(
+      path.join(temporaryOutput, `ranks-${index.toString().padStart(2, "0")}.data`),
+      Buffer.concat(chunks),
+    ),
   );
+  fs.writeFileSync(path.join(temporaryOutput, "lexicon.data"), JSON.stringify(manifest));
+  fs.writeFileSync(
+    path.join(temporaryOutput, "README.md"),
+    `# Hot and Cold generated data\n\nJudging revision: ${HOT_AND_COLD_LATEST_JUDGING_VERSION}. Run \`pnpm data:hot-and-cold\` to rebuild. The lexicon derives from Open English WordNet 2025 (CC BY 4.0) and SUBTLEX-US frequency data. Rank packs are generated with the bundled Xenova/all-MiniLM-L6-v2 model.\n\nOrdinary distributional word association is the main signal. Intended target and ordinary candidate senses provide supporting evidence, WordNet boosts are capped, and alternative-sense-only matches are penalised.\n`,
+  );
+  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+  fs.renameSync(temporaryOutput, OUTPUT_DIR);
   console.log(`wrote ${OUTPUT_DIR}`);
 }
 

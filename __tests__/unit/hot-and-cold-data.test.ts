@@ -3,8 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   HOT_AND_COLD_ASSET_SCHEMA_VERSION,
-  HOT_AND_COLD_JUDGING_VERSION,
+  HOT_AND_COLD_LATEST_JUDGING_VERSION,
 } from "@/features/things/hot-and-cold/hot-and-cold-rules";
+import { HOT_AND_COLD_HUMAN_TRAILS } from "@/features/things/hot-and-cold/hot-and-cold-quality.server";
+import type { HotAndColdTargetReview } from "@/features/things/hot-and-cold/hot-and-cold-review";
 import { HOT_AND_COLD_TARGETS } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 
 interface Manifest {
@@ -13,13 +15,19 @@ interface Manifest {
   formatVersion: number;
   judgingVersion: string;
   rankPacks: Record<string, { file: string; offset: number }>;
+  review: Record<string, HotAndColdTargetReview>;
   targetContexts: Record<string, string>;
   targetSenses: Record<string, { definition: string; synset: string }>;
   trails: Record<string, string[]>;
   words: string[];
 }
 
-const assetRoot = path.join(process.cwd(), "runtime-assets", "hot-and-cold");
+const assetRoot = path.join(
+  process.cwd(),
+  "runtime-assets",
+  "hot-and-cold",
+  HOT_AND_COLD_LATEST_JUDGING_VERSION,
+);
 const manifest = JSON.parse(
   fs.readFileSync(path.join(assetRoot, "lexicon.data"), "utf8"),
 ) as Manifest;
@@ -34,7 +42,7 @@ function ranksFor(target: string) {
 describe("Hot and Cold generated data", () => {
   it("uses a substantial common-word lexicon without proper names", () => {
     expect(manifest.formatVersion).toBe(HOT_AND_COLD_ASSET_SCHEMA_VERSION);
-    expect(manifest.judgingVersion).toBe(HOT_AND_COLD_JUDGING_VERSION);
+    expect(manifest.judgingVersion).toBe(HOT_AND_COLD_LATEST_JUDGING_VERSION);
     expect(manifest.words.length).toBeGreaterThan(30_000);
     expect(manifest.words).not.toContain("tyler");
     expect(manifest.words).toContain("london");
@@ -63,7 +71,7 @@ describe("Hot and Cold generated data", () => {
         synset: expect.any(String),
       });
       expect(manifest.targetContexts[target]).toMatch(new RegExp(`^${target}: `));
-      expect(manifest.trails[target]).toHaveLength(20);
+      expect(manifest.trails[target]).toHaveLength(30);
       expect(manifest.trails[target][0]).toBe(target);
       expect(manifest.trails[target]).toEqual(
         [...manifest.trails[target]].sort(
@@ -83,5 +91,18 @@ describe("Hot and Cold generated data", () => {
     const music = ranksFor("music");
     expect(banana[wordIndex.get("mango")!]).toBeLessThan(banana[wordIndex.get("car")!]);
     expect(music[wordIndex.get("melody")!]).toBeLessThan(music[wordIndex.get("medicine")!]);
+  });
+
+  it("keeps the scarf clothing neighbourhood ahead of polysemy contamination", () => {
+    const ranks = ranksFor("scarf");
+    const rank = (word: string) => ranks[wordIndex.get(word)!];
+    expect(rank("clothing")).toBeLessThan(rank("sheath"));
+    expect(rank("hat")).toBeLessThan(rank("sheath"));
+    expect(rank("sheath")).toBeLessThan(rank("sword"));
+    expect(rank("sword")).toBeLessThan(rank("sharp"));
+    expect(rank("sheath")).toBeLessThan(250);
+    expect(manifest.hints.scarf).not.toContain("sheath");
+    expect(manifest.review.scarf.approvalHash).toBe(HOT_AND_COLD_HUMAN_TRAILS.scarf?.approvalHash);
+    expect(manifest.review.scarf.comparisons.every(({ passes }) => passes)).toBe(true);
   });
 });

@@ -18,7 +18,7 @@ import {
   joinHotAndColdRoom,
   readHotAndColdSnapshot,
 } from "./hot-and-cold-room.server";
-import { heatBand, HOT_AND_COLD_JUDGING_VERSION, prepareGuess } from "./hot-and-cold-rules";
+import { heatBand, hotAndColdJudgingVersionForPuzzle, prepareGuess } from "./hot-and-cold-rules";
 import { hotAndColdHint } from "./hot-and-cold-lexicon.server";
 import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import {
@@ -48,14 +48,14 @@ function playablePuzzle(value: unknown): number {
   return puzzle;
 }
 
-function currentJudgingVersion(value: unknown) {
-  if (value !== HOT_AND_COLD_JUDGING_VERSION)
-    throw new Error("The judging revision changed — reload this game");
-  return HOT_AND_COLD_JUDGING_VERSION;
+function currentJudgingVersion(puzzle: number, value: unknown) {
+  const expected = hotAndColdJudgingVersionForPuzzle(puzzle);
+  if (value !== expected) throw new Error("The judging revision changed — reload this game");
+  return expected;
 }
 
 function dailyHistoryReference(puzzle: number) {
-  return `${puzzle}@${HOT_AND_COLD_JUDGING_VERSION}`;
+  return `${puzzle}@${hotAndColdJudgingVersionForPuzzle(puzzle)}`;
 }
 
 function boundedInteger(value: unknown, minimum: number, maximum: number): number {
@@ -245,10 +245,11 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
     const data = record(value);
     const word = prepareGuess(multiplayerBoundedText(data.word, 32));
     if (!word) throw new Error("Type one English word");
+    const puzzle = playablePuzzle(data.puzzle);
     return {
       word,
-      puzzle: playablePuzzle(data.puzzle),
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      puzzle,
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
     };
   })
   .handler(async ({ data }) => {
@@ -256,7 +257,11 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
       const result = {
         ok: true as const,
         puzzle: data.puzzle,
-        ...(await scoreHotAndColdGuess(hotAndColdTargetForPuzzle(data.puzzle), data.word)),
+        ...(await scoreHotAndColdGuess(
+          hotAndColdTargetForPuzzle(data.puzzle),
+          data.word,
+          data.judgingVersion,
+        )),
       };
       await recordHistory("daily_guess", { puzzle: result.puzzle }, async () => {
         const personId = await currentPersonId();
@@ -302,10 +307,11 @@ export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST
       if (!word) throw new Error("Invalid saved guess");
       return word;
     });
+    const puzzle = playablePuzzle(data.puzzle);
     return {
       words,
-      puzzle: playablePuzzle(data.puzzle),
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      puzzle,
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
     };
   })
   .handler(async ({ data }) => {
@@ -317,7 +323,10 @@ export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST
       words: await Promise.all(
         data.words.map(async (word) => {
           try {
-            return { ok: true as const, ...(await scoreHotAndColdGuess(target, word)) };
+            return {
+              ok: true as const,
+              ...(await scoreHotAndColdGuess(target, word, data.judgingVersion)),
+            };
           } catch (error) {
             if (error instanceof HotAndColdInvalidGuessError) return { ok: false as const, word };
             throw error;
@@ -329,9 +338,10 @@ export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
+    const puzzle = playablePuzzle(data.puzzle);
     return {
-      puzzle: playablePuzzle(data.puzzle),
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      puzzle,
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
     };
   })
   .handler(async ({ data }) => {
@@ -368,16 +378,17 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
           .map((word) => prepareGuess(multiplayerBoundedText(word, 32)))
           .filter((word): word is string => Boolean(word))
       : [];
+    const puzzle = playablePuzzle(data.puzzle);
     return {
-      puzzle: playablePuzzle(data.puzzle),
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      puzzle,
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
       hintIndex: Math.min(2, integer(data.hintIndex)),
       usedWords,
     };
   })
   .handler(async ({ data }) => {
     const target = hotAndColdTargetForPuzzle(data.puzzle);
-    const hint = await hotAndColdHint(target, data.hintIndex, data.usedWords);
+    const hint = await hotAndColdHint(target, data.hintIndex, data.usedWords, data.judgingVersion);
     const puzzle = data.puzzle;
     const band = heatBand(hint.rank);
     await recordHistory("daily_hint", { puzzle }, async () => {
@@ -416,7 +427,7 @@ export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
       outcome: data.outcome,
       guesses,
       hints: boundedInteger(data.hints, 0, 3),
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
       bestRank: data.bestRank === null ? null : boundedInteger(data.bestRank, 0, 2_147_483_647),
       target: hotAndColdTargetForPuzzle(puzzle),
       distribution: {
@@ -487,10 +498,11 @@ export const getHotAndColdCommunityStatsFn = createServerFn({ method: "POST" })
     const runId = multiplayerText(data.runId, 36);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))
       throw new Error("Invalid result identifier");
+    const puzzle = playablePuzzle(data.puzzle);
     return {
-      puzzle: playablePuzzle(data.puzzle),
+      puzzle,
       runId,
-      judgingVersion: currentJudgingVersion(data.judgingVersion),
+      judgingVersion: currentJudgingVersion(puzzle, data.judgingVersion),
     };
   })
   .handler(async ({ data }) => ({
@@ -509,17 +521,17 @@ export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler
   }
   return {
     puzzle,
-    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+    judgingVersion: hotAndColdJudgingVersionForPuzzle(puzzle),
     history: history.map((entry) => ({
       ...entry,
-      judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+      judgingVersion: hotAndColdJudgingVersionForPuzzle(entry.puzzle),
       community: community.get(entry.puzzle) ?? null,
     })),
   };
 });
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
-  judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+  judgingVersion: hotAndColdJudgingVersionForPuzzle(hotAndColdPuzzleNumber()),
 }));
 export const getHotAndColdPuzzleFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
@@ -529,6 +541,6 @@ export const getHotAndColdPuzzleFn = createServerFn({ method: "POST" })
   .handler(({ data }) => ({
     puzzle: data.puzzle,
     date: hotAndColdPuzzleDate(data.puzzle),
-    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+    judgingVersion: hotAndColdJudgingVersionForPuzzle(data.puzzle),
     today: data.puzzle === hotAndColdPuzzleNumber(),
   }));

@@ -5,10 +5,10 @@ const policies = [
   {
     game: "hot-and-cold",
     versionFile: "features/things/hot-and-cold/hot-and-cold-rules.ts",
-    versionPattern: /HOT_AND_COLD_JUDGING_VERSION\s*=\s*"(\d+\.\d+\.\d+)"/,
+    versionPattern: /HOT_AND_COLD_LATEST_JUDGING_VERSION[^=]*=\s*"(\d+\.\d+\.\d+)"/,
     assetPatterns: [
-      /^runtime-assets\/hot-and-cold\/lexicon\.data$/,
-      /^runtime-assets\/hot-and-cold\/ranks-\d+\.data$/,
+      /^runtime-assets\/hot-and-cold\/\d+\.\d+\.\d+\/lexicon\.data$/,
+      /^runtime-assets\/hot-and-cold\/\d+\.\d+\.\d+\/ranks-\d+\.data$/,
     ],
   },
 ];

@@ -10,7 +10,10 @@ import {
   hotAndColdResultCommunityStats,
   recordHotAndColdDailyResult,
 } from "@/features/things/hot-and-cold/hot-and-cold-daily-results.server";
-import { HOT_AND_COLD_JUDGING_VERSION } from "@/features/things/hot-and-cold/hot-and-cold-rules";
+import {
+  HOT_AND_COLD_LATEST_JUDGING_VERSION,
+  hotAndColdJudgingVersionForPuzzle,
+} from "@/features/things/hot-and-cold/hot-and-cold-rules";
 import { hotAndColdTargetForPuzzle } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 
 describe("Hot & Cold community results", () => {
@@ -32,7 +35,7 @@ describe("Hot & Cold community results", () => {
           runId,
           puzzle: 901,
           target: hotAndColdTargetForPuzzle(901),
-          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
           outcome: "found",
           guesses: index + 2,
           hints: index % 2,
@@ -51,7 +54,7 @@ describe("Hot & Cold community results", () => {
         runId: runIds[4],
         puzzle: 901,
         target: hotAndColdTargetForPuzzle(901),
-        judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+        judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
         outcome: "revealed",
         guesses: 6,
         hints: 0,
@@ -65,7 +68,7 @@ describe("Hot & Cold community results", () => {
         runId: runIds[0],
         puzzle: 901,
         target: hotAndColdTargetForPuzzle(901),
-        judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+        judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
         outcome: "revealed",
         guesses: 100,
         hints: 3,
@@ -92,7 +95,7 @@ describe("Hot & Cold community results", () => {
           runId: `0198e9d8-53d7-7dc${index}-8da4-c0f557db73b${index}`,
           puzzle: 1,
           target: hotAndColdTargetForPuzzle(1),
-          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          judgingVersion: hotAndColdJudgingVersionForPuzzle(1),
           outcome: "found",
           guesses: 3,
           hints: 0,
@@ -141,7 +144,7 @@ describe("Hot & Cold community results", () => {
         {
           ...result,
           runId: index === 1 ? repeatedRun : `0198e9d8-53d7-7de${index}-8da4-c0f557db73c${index}`,
-          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          judgingVersion: HOT_AND_COLD_LATEST_JUDGING_VERSION,
         },
         null,
       );

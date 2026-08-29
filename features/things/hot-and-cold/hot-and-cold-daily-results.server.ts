@@ -1,5 +1,5 @@
 import { isDatabaseConfigured, query } from "@/lib/platform/postgres.server";
-import { HOT_AND_COLD_JUDGING_VERSION } from "./hot-and-cold-rules";
+import { hotAndColdJudgingVersionForPuzzle } from "./hot-and-cold-rules";
 import { hotAndColdTargetForPuzzle } from "./hot-and-cold-words.server";
 import type { HotAndColdCommunityStats, HotAndColdDailyResultInput } from "./types";
 
@@ -56,7 +56,7 @@ function aggregateMemory(puzzles: readonly number[]): Map<number, HotAndColdComm
   for (const result of memoryResults.values()) {
     if (
       !wanted.has(result.puzzle) ||
-      result.judgingVersion !== HOT_AND_COLD_JUDGING_VERSION ||
+      result.judgingVersion !== hotAndColdJudgingVersionForPuzzle(result.puzzle) ||
       result.target !== hotAndColdTargetForPuzzle(result.puzzle)
     )
       continue;
@@ -131,10 +131,9 @@ export async function hotAndColdCommunityStats(
   const rows = await query<AggregateRow>(
     `with eligible as (
        select result.*
-         from hot_and_cold_daily_results result
+        from hot_and_cold_daily_results result
         where puzzle = any($1::integer[])
-          and judging_version = $2
-          and concat(puzzle, ':', target) = any($3::text[])
+          and concat(puzzle, ':', target, ':', judging_version) = any($2::text[])
      )
      select puzzle,
             count(*)::text as runs,
@@ -149,8 +148,10 @@ export async function hotAndColdCommunityStats(
       group by puzzle`,
     [
       puzzles,
-      HOT_AND_COLD_JUDGING_VERSION,
-      puzzles.map((puzzle) => `${puzzle}:${hotAndColdTargetForPuzzle(puzzle)}`),
+      puzzles.map(
+        (puzzle) =>
+          `${puzzle}:${hotAndColdTargetForPuzzle(puzzle)}:${hotAndColdJudgingVersionForPuzzle(puzzle)}`,
+      ),
     ],
   );
   return statsFromRows(rows);
@@ -169,7 +170,7 @@ function standingFromStoredResults(
   runId: string,
 ): Extract<HotAndColdCommunityStats, { visible: true }>["standing"] {
   const current = memoryResults.get(
-    resultKey({ runId, judgingVersion: HOT_AND_COLD_JUDGING_VERSION }),
+    resultKey({ runId, judgingVersion: hotAndColdJudgingVersionForPuzzle(puzzle) }),
   );
   if (!current || current.puzzle !== puzzle || current.outcome !== "found") return null;
   const eligible = [...memoryResults.values()].filter(
@@ -236,7 +237,7 @@ export async function hotAndColdResultCommunityStats(
             (percentile_cont(0.5) within group (order by guesses))::text as median_guesses
        from cohort
      having count(*) >= ${MINIMUM_STANDING_RUNS}`,
-    [puzzle, runId, hotAndColdTargetForPuzzle(puzzle), HOT_AND_COLD_JUDGING_VERSION],
+    [puzzle, runId, hotAndColdTargetForPuzzle(puzzle), hotAndColdJudgingVersionForPuzzle(puzzle)],
   );
   const row = rows[0];
   if (!row) return { ...community, standing: null };

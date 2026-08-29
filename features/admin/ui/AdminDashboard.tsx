@@ -13,6 +13,7 @@ import { EventsPanel } from "./components/EventsPanel";
 import { EventScoringPanel } from "./components/EventScoringPanel";
 import { PitchesPanel } from "./components/PitchesPanel";
 import { GamePoolsPanel } from "./components/GamePoolsPanel";
+import { HotAndColdReviewPanel } from "./components/HotAndColdReviewPanel";
 import { BestDressedPanel } from "./components/BestDressedPanel";
 import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
 import { SystemHealthPanel } from "./components/SystemHealthPanel";
@@ -538,16 +539,16 @@ export function AdminDashboard({
         <section aria-labelledby="games-view-heading" className="space-y-10">
           <div className="border-b theme-border pb-6">
             <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              shared multiplayer
+              game operations
             </p>
             <h2
               id="games-view-heading"
               className="mt-2 font-serif text-3xl font-semibold tracking-tight"
             >
-              Game-night entrances
+              Games
             </h2>
             <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-              Set the experience once, share one QR code, and let the server fill rooms.
+              Manage shared entrances and inspect the quality evidence behind semantic judging.
             </p>
           </div>
           <GamePoolsPanel
@@ -555,6 +556,7 @@ export function AdminDashboard({
             onError={setErrorMessage}
             onStatus={setStatusMessage}
           />
+          <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
         </section>
       ) : null}
 
