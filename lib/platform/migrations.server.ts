@@ -3424,6 +3424,15 @@ const MIGRATIONS: Migration[] = [
         unique (run_id,judging_version);
     `,
   },
+  {
+    id: "0072_hot_and_cold_revision_identity",
+    sql: `
+      alter table hot_and_cold_daily_results
+        drop constraint hot_and_cold_daily_results_run_revision_key,
+        drop constraint hot_and_cold_daily_results_pkey,
+        add primary key (run_id,judging_version);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
