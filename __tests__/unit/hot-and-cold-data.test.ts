@@ -1,13 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  HOT_AND_COLD_ASSET_SCHEMA_VERSION,
+  HOT_AND_COLD_JUDGING_VERSION,
+} from "@/features/things/hot-and-cold/hot-and-cold-rules";
 import { HOT_AND_COLD_TARGETS } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 
 interface Manifest {
   aliases: Record<string, string>;
   hints: Record<string, string[]>;
+  formatVersion: number;
+  judgingVersion: string;
   rankPacks: Record<string, { file: string; offset: number }>;
-  version: number;
+  targetContexts: Record<string, string>;
+  targetSenses: Record<string, { definition: string; synset: string }>;
+  trails: Record<string, string[]>;
   words: string[];
 }
 
@@ -25,15 +33,21 @@ function ranksFor(target: string) {
 
 describe("Hot and Cold generated data", () => {
   it("uses a substantial common-word lexicon without proper names", () => {
-    expect(manifest.version).toBe(2);
+    expect(manifest.formatVersion).toBe(HOT_AND_COLD_ASSET_SCHEMA_VERSION);
+    expect(manifest.judgingVersion).toBe(HOT_AND_COLD_JUDGING_VERSION);
     expect(manifest.words.length).toBeGreaterThan(30_000);
     expect(manifest.words).not.toContain("tyler");
     expect(manifest.words).toContain("london");
     expect(manifest.words).toContain("mozart");
     expect(manifest.aliases.dogs).toBe("dog");
-    expect(manifest.aliases.watching).toBe("watch");
+    expect(manifest.words).toContain("watching");
+    expect(manifest.aliases.watching).toBeUndefined();
     expect(manifest.aliases.won).toBe("win");
     expect(manifest.aliases.invasion).toBeUndefined();
+    expect(manifest.words).toContain("glass");
+    expect(manifest.words).toContain("glasses");
+    expect(manifest.aliases.glasses).toBeUndefined();
+    expect(Object.keys(manifest.aliases).some((form) => wordIndex.has(form))).toBe(false);
   });
 
   it("contains a complete ordinal rank table and three progressive hints for every target", () => {
@@ -44,6 +58,18 @@ describe("Hot and Cold generated data", () => {
       expect(ranks[wordIndex.get(target)!]).toBe(0);
       expect(new Set(ranks).size).toBe(manifest.words.length);
       expect(manifest.hints[target]).toHaveLength(3);
+      expect(manifest.targetSenses[target]).toMatchObject({
+        definition: expect.any(String),
+        synset: expect.any(String),
+      });
+      expect(manifest.targetContexts[target]).toMatch(new RegExp(`^${target}: `));
+      expect(manifest.trails[target]).toHaveLength(20);
+      expect(manifest.trails[target][0]).toBe(target);
+      expect(manifest.trails[target]).toEqual(
+        [...manifest.trails[target]].sort(
+          (left, right) => ranks[wordIndex.get(left)!] - ranks[wordIndex.get(right)!],
+        ),
+      );
       expect(manifest.hints[target].map((word) => ranks[wordIndex.get(word)!])).toEqual(
         manifest.hints[target]
           .map((word) => ranks[wordIndex.get(word)!])

@@ -6,6 +6,7 @@ import type { HotAndColdCommunityStats } from "./types";
 export interface HotAndColdArchiveEntry {
   puzzle: number;
   date: string;
+  judgingVersion: string;
   community: HotAndColdCommunityStats | null;
 }
 
@@ -35,9 +36,9 @@ export function HotAndColdArchive({ history }: { history: HotAndColdArchiveEntry
   const [answers, setAnswers] = useState<Record<number, string>>({});
   useEffect(() => {
     const recovered: Record<number, string> = {};
-    for (const { puzzle } of history) {
+    for (const { judgingVersion, puzzle } of history) {
       try {
-        const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle));
+        const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle, judgingVersion));
         if (!stored) continue;
         const parsed = JSON.parse(stored) as { target?: unknown };
         if (typeof parsed.target === "string" && parsed.target) recovered[puzzle] = parsed.target;

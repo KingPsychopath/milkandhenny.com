@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { HOT_AND_COLD_JUDGING_VERSION } from "@/features/things/hot-and-cold/hot-and-cold-rules";
 
 const mocks = vi.hoisted(() => ({
   recordPersonGame: vi.fn(),
@@ -54,7 +55,12 @@ vi.mock("@/features/things/hot-and-cold/hot-and-cold-room.server", () => ({
 
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
   HotAndColdInvalidGuessError: class extends Error {},
-  scoreHotAndColdGuess: async () => ({ word: "apple", rank: 12, band: "hot" }),
+  scoreHotAndColdGuess: async () => ({
+    word: "apple",
+    rank: 12,
+    band: "hot",
+    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+  }),
 }));
 
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-lexicon.server", () => ({
@@ -80,10 +86,19 @@ describe("Hot & Cold optional history", () => {
 
   it("returns daily scores and hints when history recording fails", async () => {
     await expect(
-      scoreDailyHotAndColdGuessFn({ data: { word: "apple", puzzle: 42 } }),
+      scoreDailyHotAndColdGuessFn({
+        data: { word: "apple", puzzle: 42, judgingVersion: HOT_AND_COLD_JUDGING_VERSION },
+      }),
     ).resolves.toMatchObject({ ok: true, puzzle: 42, word: "apple", rank: 12 });
     await expect(
-      getDailyHotAndColdHintFn({ data: { puzzle: 42, hintIndex: 0, usedWords: [] } }),
+      getDailyHotAndColdHintFn({
+        data: {
+          puzzle: 42,
+          hintIndex: 0,
+          usedWords: [],
+          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+        },
+      }),
     ).resolves.toMatchObject({ puzzle: 42, word: "pear", rank: 20 });
     expect(mocks.warn).toHaveBeenCalledTimes(2);
   });

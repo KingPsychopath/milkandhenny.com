@@ -32,6 +32,7 @@ import {
   HOT_AND_COLD_DEFAULT_ROUNDS,
   HOT_AND_COLD_DEFAULT_TURN_SECONDS,
   HOT_AND_COLD_GUESS_LIMITS,
+  HOT_AND_COLD_JUDGING_VERSION,
   HOT_AND_COLD_PLAYER_LIMITS,
   HOT_AND_COLD_ROUND_LIMITS,
   HOT_AND_COLD_TURN_SECOND_OPTIONS,
@@ -103,6 +104,7 @@ interface RoomState {
   round: RoundState | null;
   processedActions: string[];
   gameNumber: number;
+  judgingVersion: string;
 }
 
 const memoryRooms = createMemoryRoomStore<RoomState>("hot-and-cold");
@@ -148,7 +150,11 @@ async function loadRoom(roomId: string) {
   const room = redis
     ? await redis.get<RoomState>(hotAndColdRoomRedisKeys(roomId).state)
     : (memoryRooms.get(roomId) ?? null);
-  if (!room || room.expiresAt <= Date.now()) {
+  if (
+    !room ||
+    room.judgingVersion !== HOT_AND_COLD_JUDGING_VERSION ||
+    room.expiresAt <= Date.now()
+  ) {
     if (room && !redis) memoryRooms.delete(roomId);
     return null;
   }
@@ -280,6 +286,7 @@ function snapshot(room: RoomState, playerId: string): HotAndColdSnapshot {
     expiresAt: room.expiresAt,
     managed: room.managed,
     gameNumber: room.gameNumber,
+    judgingVersion: room.judgingVersion,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
     rounds: room.rounds,
@@ -381,6 +388,7 @@ export async function createHotAndColdRoom(input: {
     round: null,
     processedActions: [],
     gameNumber: 1,
+    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
   };
   await saveRoom(room);
   return {

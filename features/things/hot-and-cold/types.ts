@@ -56,6 +56,7 @@ export interface HotAndColdSnapshot extends MultiplayerReadiness {
   expiresAt: number;
   managed?: boolean;
   gameNumber: number;
+  judgingVersion: string;
   hostPlayerId: string;
   canControl: boolean;
   rounds: number;
@@ -134,7 +135,9 @@ export interface HotAndColdDailyResultInput {
   outcome: "found" | "revealed";
   guesses: number;
   hints: number;
+  judgingVersion: string;
   bestRank: number | null;
+  target: string;
   distribution: { frost: number; cool: number; warm: number; hot: number };
 }
 

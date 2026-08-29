@@ -1,12 +1,20 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { prepareGuess } from "./hot-and-cold-rules";
+import {
+  HOT_AND_COLD_ASSET_SCHEMA_VERSION,
+  HOT_AND_COLD_JUDGING_VERSION,
+  prepareGuess,
+} from "./hot-and-cold-rules";
 
 interface HotAndColdManifest {
   aliases: Record<string, string>;
+  formatVersion: number;
   hints: Record<string, string[]>;
+  judgingVersion: string;
   rankPacks: Record<string, { file: string; offset: number }>;
-  version: number;
+  targetContexts: Record<string, string>;
+  targetSenses: Record<string, { definition: string; synset: string }>;
+  trails: Record<string, string[]>;
   words: string[];
 }
 
@@ -46,8 +54,19 @@ function parseManifest(bytes: Uint8Array): HotAndColdManifest {
     !("rankPacks" in value) ||
     typeof value.rankPacks !== "object" ||
     value.rankPacks === null ||
-    !("version" in value) ||
-    value.version !== 2
+    !("targetSenses" in value) ||
+    typeof value.targetSenses !== "object" ||
+    value.targetSenses === null ||
+    !("targetContexts" in value) ||
+    typeof value.targetContexts !== "object" ||
+    value.targetContexts === null ||
+    !("trails" in value) ||
+    typeof value.trails !== "object" ||
+    value.trails === null ||
+    !("formatVersion" in value) ||
+    value.formatVersion !== HOT_AND_COLD_ASSET_SCHEMA_VERSION ||
+    !("judgingVersion" in value) ||
+    value.judgingVersion !== HOT_AND_COLD_JUDGING_VERSION
   )
     throw new Error("The Hot and Cold lexicon is invalid");
   return value as HotAndColdManifest;
@@ -57,6 +76,13 @@ async function loadLexicon() {
   lexiconPromise ??= (async () => {
     const manifest = parseManifest(await readAsset("lexicon.data"));
     if (!manifest?.words.length) throw new Error("The Hot and Cold lexicon is unavailable");
+    const words = new Set(manifest.words);
+    if (
+      Object.entries(manifest.aliases).some(
+        ([form, canonical]) => words.has(form) || !words.has(canonical),
+      )
+    )
+      throw new Error("The Hot and Cold aliases are ambiguous");
     return {
       index: new Map(manifest.words.map((word, index) => [word, index])),
       manifest,
@@ -95,7 +121,7 @@ export async function resolveHotAndColdGuess(raw: string) {
   const prepared = prepareGuess(raw);
   if (!prepared) return null;
   const { index, manifest } = await loadLexicon();
-  const word = manifest.aliases[prepared] ?? (index.has(prepared) ? prepared : undefined);
+  const word = index.has(prepared) ? prepared : manifest.aliases[prepared];
   if (!word || !index.has(word)) return null;
   return word;
 }

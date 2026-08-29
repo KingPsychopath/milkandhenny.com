@@ -3,7 +3,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
   scoreHotAndColdGuess: vi.fn(async (_target: string, guess: string) =>
-    guess === "exact" ? { rank: 0, band: "found" } : { rank: 500, band: "warm" },
+    guess === "exact"
+      ? { word: guess, rank: 0, band: "found", judgingVersion: "1.0.0" }
+      : { word: guess, rank: 500, band: "warm", judgingVersion: "1.0.0" },
   ),
 }));
 

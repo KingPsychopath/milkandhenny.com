@@ -10,6 +10,8 @@ import {
   hotAndColdResultCommunityStats,
   recordHotAndColdDailyResult,
 } from "@/features/things/hot-and-cold/hot-and-cold-daily-results.server";
+import { HOT_AND_COLD_JUDGING_VERSION } from "@/features/things/hot-and-cold/hot-and-cold-rules";
+import { hotAndColdTargetForPuzzle } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 
 describe("Hot & Cold community results", () => {
   beforeEach(() => {
@@ -29,6 +31,8 @@ describe("Hot & Cold community results", () => {
         {
           runId,
           puzzle: 901,
+          target: hotAndColdTargetForPuzzle(901),
+          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
           outcome: "found",
           guesses: index + 2,
           hints: index % 2,
@@ -46,6 +50,8 @@ describe("Hot & Cold community results", () => {
       {
         runId: runIds[4],
         puzzle: 901,
+        target: hotAndColdTargetForPuzzle(901),
+        judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
         outcome: "revealed",
         guesses: 6,
         hints: 0,
@@ -58,6 +64,8 @@ describe("Hot & Cold community results", () => {
       {
         runId: runIds[0],
         puzzle: 901,
+        target: hotAndColdTargetForPuzzle(901),
+        judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
         outcome: "revealed",
         guesses: 100,
         hints: 3,
@@ -76,16 +84,15 @@ describe("Hot & Cold community results", () => {
     });
   });
 
-  it("uses launch fixtures only until five real runs exist", async () => {
-    expect((await hotAndColdCommunityStats([1])).get(1)).toMatchObject({
-      runs: 5,
-      visible: true,
-    });
+  it("keeps an unplayed puzzle private until five real runs exist", async () => {
+    expect((await hotAndColdCommunityStats([1])).get(1)).toBeUndefined();
     for (let index = 1; index <= 5; index += 1) {
       await recordHotAndColdDailyResult(
         {
           runId: `0198e9d8-53d7-7dc${index}-8da4-c0f557db73b${index}`,
           puzzle: 1,
+          target: hotAndColdTargetForPuzzle(1),
+          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
           outcome: "found",
           guesses: 3,
           hints: 0,

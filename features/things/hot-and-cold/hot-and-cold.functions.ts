@@ -18,7 +18,7 @@ import {
   joinHotAndColdRoom,
   readHotAndColdSnapshot,
 } from "./hot-and-cold-room.server";
-import { heatBand, prepareGuess } from "./hot-and-cold-rules";
+import { heatBand, HOT_AND_COLD_JUDGING_VERSION, prepareGuess } from "./hot-and-cold-rules";
 import { hotAndColdHint } from "./hot-and-cold-lexicon.server";
 import { HotAndColdInvalidGuessError, scoreHotAndColdGuess } from "./hot-and-cold-scorer.server";
 import {
@@ -46,6 +46,16 @@ function playablePuzzle(value: unknown): number {
   const puzzle = integer(value);
   if (puzzle < 1 || puzzle > hotAndColdPuzzleNumber()) throw new Error("Puzzle not found");
   return puzzle;
+}
+
+function currentJudgingVersion(value: unknown) {
+  if (value !== HOT_AND_COLD_JUDGING_VERSION)
+    throw new Error("The judging revision changed — reload this game");
+  return HOT_AND_COLD_JUDGING_VERSION;
+}
+
+function dailyHistoryReference(puzzle: number) {
+  return `${puzzle}@${HOT_AND_COLD_JUDGING_VERSION}`;
 }
 
 function boundedInteger(value: unknown, minimum: number, maximum: number): number {
@@ -235,7 +245,11 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
     const data = record(value);
     const word = prepareGuess(multiplayerBoundedText(data.word, 32));
     if (!word) throw new Error("Type one English word");
-    return { word, puzzle: playablePuzzle(data.puzzle) };
+    return {
+      word,
+      puzzle: playablePuzzle(data.puzzle),
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
+    };
   })
   .handler(async ({ data }) => {
     try {
@@ -251,11 +265,15 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
             personId,
             game: "hot-and-cold",
             mode: "daily",
-            externalRef: String(result.puzzle),
+            externalRef: dailyHistoryReference(result.puzzle),
             status: result.rank === 0 ? "completed" : "active",
             outcome: result.rank === 0 ? "found" : undefined,
             score: result.rank === 0 ? 0 : undefined,
-            summary: { latestRank: result.rank },
+            summary: {
+              judgingVersion: result.judgingVersion,
+              latestRank: result.rank,
+              target: hotAndColdTargetForPuzzle(result.puzzle),
+            },
             event: {
               key: `guess:${result.word}`,
               kind: "guess",
@@ -277,7 +295,10 @@ export const scoreDailyHotAndColdGuessFn = createServerFn({ method: "POST" })
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);
-    return { puzzle: playablePuzzle(data.puzzle) };
+    return {
+      puzzle: playablePuzzle(data.puzzle),
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
+    };
   })
   .handler(async ({ data }) => {
     const { puzzle } = data;
@@ -288,13 +309,21 @@ export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
         personId,
         game: "hot-and-cold",
         mode: "daily",
-        externalRef: String(puzzle),
+        externalRef: dailyHistoryReference(puzzle),
         status: "completed",
         outcome: "revealed",
+        summary: {
+          judgingVersion: data.judgingVersion,
+          target: hotAndColdTargetForPuzzle(puzzle),
+        },
         event: { key: "reveal", kind: "reveal" },
       });
     });
-    return { puzzle, target: hotAndColdTargetForPuzzle(puzzle) };
+    return {
+      puzzle,
+      target: hotAndColdTargetForPuzzle(puzzle),
+      judgingVersion: data.judgingVersion,
+    };
   });
 export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
@@ -307,6 +336,7 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
       : [];
     return {
       puzzle: playablePuzzle(data.puzzle),
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
       hintIndex: Math.min(2, integer(data.hintIndex)),
       usedWords,
     };
@@ -323,8 +353,12 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
           personId,
           game: "hot-and-cold",
           mode: "daily",
-          externalRef: String(puzzle),
-          summary: { hintsUsed: data.hintIndex + 1 },
+          externalRef: dailyHistoryReference(puzzle),
+          summary: {
+            hintsUsed: data.hintIndex + 1,
+            judgingVersion: data.judgingVersion,
+            target,
+          },
           event: {
             key: `hint:${data.hintIndex + 1}`,
             kind: "hint",
@@ -332,7 +366,7 @@ export const getDailyHotAndColdHintFn = createServerFn({ method: "POST" })
           },
         });
     });
-    return { ...hint, band, puzzle };
+    return { ...hint, band, puzzle, judgingVersion: data.judgingVersion };
   });
 export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
   .validator((value: unknown): HotAndColdDailyResultInput => {
@@ -341,13 +375,16 @@ export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
     const guesses = boundedInteger(data.guesses, 0, 10_000);
     if (data.outcome !== "found" && data.outcome !== "revealed")
       throw new Error("Invalid result outcome");
+    const puzzle = playablePuzzle(data.puzzle);
     const summary: HotAndColdDailyResultInput = {
       runId: multiplayerText(data.runId, 36),
-      puzzle: playablePuzzle(data.puzzle),
+      puzzle,
       outcome: data.outcome,
       guesses,
       hints: boundedInteger(data.hints, 0, 3),
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
       bestRank: data.bestRank === null ? null : boundedInteger(data.bestRank, 0, 2_147_483_647),
+      target: hotAndColdTargetForPuzzle(puzzle),
       distribution: {
         frost: boundedInteger(distribution.frost, 0, 10_000),
         cool: boundedInteger(distribution.cool, 0, 10_000),
@@ -382,14 +419,16 @@ export const recordDailyHotAndColdResultFn = createServerFn({ method: "POST" })
         personId,
         game: "hot-and-cold",
         mode: "daily",
-        externalRef: String(data.puzzle),
+        externalRef: dailyHistoryReference(data.puzzle),
         status: "completed",
         outcome: data.outcome,
         score: data.outcome === "found" ? data.guesses : undefined,
         summary: {
           guesses: data.guesses,
           hintsUsed: data.hints,
+          judgingVersion: data.judgingVersion,
           bestRank: data.bestRank,
+          target: data.target,
           frostGuesses: data.distribution.frost,
           coolGuesses: data.distribution.cool,
           warmGuesses: data.distribution.warm,
@@ -414,7 +453,11 @@ export const getHotAndColdCommunityStatsFn = createServerFn({ method: "POST" })
     const runId = multiplayerText(data.runId, 36);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))
       throw new Error("Invalid result identifier");
-    return { puzzle: playablePuzzle(data.puzzle), runId };
+    return {
+      puzzle: playablePuzzle(data.puzzle),
+      runId,
+      judgingVersion: currentJudgingVersion(data.judgingVersion),
+    };
   })
   .handler(async ({ data }) => ({
     community: await hotAndColdResultCommunityStats(data.puzzle, data.runId),
@@ -432,11 +475,17 @@ export const getHotAndColdOverviewFn = createServerFn({ method: "GET" }).handler
   }
   return {
     puzzle,
-    history: history.map((entry) => ({ ...entry, community: community.get(entry.puzzle) ?? null })),
+    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+    history: history.map((entry) => ({
+      ...entry,
+      judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+      community: community.get(entry.puzzle) ?? null,
+    })),
   };
 });
 export const getDailyHotAndColdFn = createServerFn({ method: "GET" }).handler(() => ({
   puzzle: hotAndColdPuzzleNumber(),
+  judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
 }));
 export const getHotAndColdPuzzleFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
@@ -446,5 +495,6 @@ export const getHotAndColdPuzzleFn = createServerFn({ method: "POST" })
   .handler(({ data }) => ({
     puzzle: data.puzzle,
     date: hotAndColdPuzzleDate(data.puzzle),
+    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
     today: data.puzzle === hotAndColdPuzzleNumber(),
   }));

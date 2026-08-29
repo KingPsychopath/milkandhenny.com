@@ -65,6 +65,7 @@ describe("Hot and Cold rules", () => {
     );
 
     expect(new Set(targets).size).toBe(HOT_AND_COLD_TARGETS.length);
+    expect([...targets].sort()).toEqual([...HOT_AND_COLD_TARGETS].sort());
   });
 
   it("starts at puzzle one and changes at midnight in the UK", () => {
@@ -76,6 +77,7 @@ describe("Hot and Cold rules", () => {
     );
     expect(hotAndColdTargetForPuzzle(1)).toBe("chimney");
     expect(hotAndColdTargetForPuzzle(2)).toBe("diary");
+    expect(hotAndColdTargetForPuzzle(5)).toBe("scarf");
     expect(previousHotAndColdPuzzles(new Date("2026-08-27T12:00:00Z"))).toEqual([
       { puzzle: 2, date: "2026-08-26" },
       { puzzle: 1, date: "2026-08-25" },

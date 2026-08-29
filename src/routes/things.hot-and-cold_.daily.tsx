@@ -21,10 +21,11 @@ export const Route = createFileRoute("/things/hot-and-cold_/daily")({
 
 function DailyHotAndColdRoute() {
   const navigate = useNavigate();
-  const { puzzle } = Route.useLoaderData();
+  const { judgingVersion, puzzle } = Route.useLoaderData();
   return (
     <SoloHotAndCold
       puzzle={puzzle}
+      judgingVersion={judgingVersion}
       onExit={() => void navigate({ to: "/things/hot-and-cold", replace: true })}
     />
   );

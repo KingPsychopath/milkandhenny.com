@@ -1,5 +1,12 @@
 import { gameWordIsUsable, normaliseGameWord } from "../shared/word-normalization";
 
+/**
+ * Semantic version of every player-visible judging decision: word identity,
+ * ranks, heat bands, and official hints. Persist the exact version with runs.
+ */
+export const HOT_AND_COLD_JUDGING_VERSION = "1.0.0" as const;
+export const HOT_AND_COLD_ASSET_SCHEMA_VERSION = 3;
+
 export const HOT_AND_COLD_PLAYER_LIMITS = { min: 2, max: 8 } as const;
 export const HOT_AND_COLD_ROUND_LIMITS = { min: 1, max: 7 } as const;
 export const HOT_AND_COLD_GUESS_LIMITS = { min: 2, max: 10 } as const;

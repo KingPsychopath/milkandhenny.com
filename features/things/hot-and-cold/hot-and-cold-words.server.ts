@@ -1,4 +1,6 @@
-import { createHash, randomInt } from "node:crypto";
+import { randomInt } from "node:crypto";
+
+import { HOT_AND_COLD_DAILY_SCHEDULE } from "./hot-and-cold-daily-schedule.server";
 
 /** Curated targets. General guesses remain open; targets need reliable semantic neighbourhoods. */
 export const HOT_AND_COLD_TARGETS = [
@@ -296,9 +298,63 @@ export const HOT_AND_COLD_TARGETS = [
   "zebra",
 ] as const;
 
+export type HotAndColdTarget = (typeof HOT_AND_COLD_TARGETS)[number];
+
+/**
+ * The ordinary sense intended by each otherwise ambiguous target. Targets not
+ * listed here use their first noun sense. IDs pin Open English WordNet 2025.
+ */
+export const HOT_AND_COLD_TARGET_SENSES: Partial<Record<HotAndColdTarget, string>> = {
+  armour: "oewn-02742673-n",
+  banana: "oewn-07769568-n",
+  bank: "oewn-08437235-n",
+  battery: "oewn-02813606-n",
+  brush: "oewn-02911542-n",
+  canal: "oewn-02950684-n",
+  captain: "oewn-10318579-n",
+  castle: "oewn-02983900-n",
+  chocolate: "oewn-07617570-n",
+  cinema: "oewn-03036237-n",
+  clown: "oewn-09950334-n",
+  cloud: "oewn-09270316-n",
+  coconut: "oewn-07788911-n",
+  college: "oewn-08295245-n",
+  cowboy: "oewn-86290056-n",
+  crown: "oewn-03143320-n",
+  dolphin: "oewn-02071627-n",
+  flower: "oewn-11689786-n",
+  garlic: "oewn-07834253-n",
+  ghost: "oewn-09569105-n",
+  glove: "oewn-03446036-n",
+  gold: "oewn-14662977-n",
+  hammer: "oewn-03486255-n",
+  hedgehog: "oewn-01896466-n",
+  jellyfish: "oewn-01913388-n",
+  jungle: "oewn-08456014-n",
+  kingdom: "oewn-08575692-n",
+  kite: "oewn-03626682-n",
+  lobster: "oewn-01985291-n",
+  moon: "oewn-09381123-n",
+  nightmare: "oewn-05777059-n",
+  octopus: "oewn-01972805-n",
+  passport: "oewn-06512928-n",
+  pepper: "oewn-07736187-n",
+  pirate: "oewn-10455134-n",
+  queen: "oewn-10518940-n",
+  radio: "oewn-04050813-n",
+  ring: "oewn-04099721-n",
+  scarf: "oewn-04150962-n",
+  skeleton: "oewn-05593033-n",
+  sun: "oewn-09473603-n",
+  table: "oewn-04386330-n",
+  tiger: "oewn-02132256-n",
+  turtle: "oewn-01665425-n",
+  whale: "oewn-02065397-n",
+  whistle: "oewn-04586953-n",
+  wizard: "oewn-10645222-n",
+};
+
 const DAILY_EPOCH = Date.UTC(2026, 7, 25);
-// Preserve the words already served while discarding the fictional public count that preceded them.
-const FIRST_SEASON_OPENING = ["chimney", "diary", "tower"] as const;
 const UK_DAY = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/London",
   year: "numeric",
@@ -321,28 +377,7 @@ export function hotAndColdPuzzleNumber(date = new Date()) {
 
 export function hotAndColdTargetForPuzzle(puzzle: number) {
   const offset = Math.max(0, Math.floor(puzzle) - 1);
-  const cycle = Math.floor(offset / HOT_AND_COLD_TARGETS.length);
-  const position = offset % HOT_AND_COLD_TARGETS.length;
-  const available =
-    cycle === 0
-      ? HOT_AND_COLD_TARGETS.filter(
-          (word) => !FIRST_SEASON_OPENING.includes(word as (typeof FIRST_SEASON_OPENING)[number]),
-        )
-      : [...HOT_AND_COLD_TARGETS];
-  const shuffled = available
-    .map((word) => ({
-      word,
-      order: createHash("sha256")
-        .update(`milk-and-henny:hot-and-cold:launch:${cycle}:${word}`)
-        .digest()
-        .readUInt32BE(0),
-    }))
-    .sort((left, right) => left.order - right.order || left.word.localeCompare(right.word));
-  const ordered =
-    cycle === 0
-      ? [...FIRST_SEASON_OPENING, ...shuffled.map(({ word }) => word)]
-      : shuffled.map(({ word }) => word);
-  return ordered[position];
+  return HOT_AND_COLD_DAILY_SCHEDULE[offset % HOT_AND_COLD_DAILY_SCHEDULE.length];
 }
 
 export function dailyHotAndColdTarget(date = new Date()) {

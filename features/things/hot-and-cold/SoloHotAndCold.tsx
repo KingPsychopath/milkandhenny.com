@@ -24,10 +24,19 @@ interface DailyState {
   target: string | null;
   gaveUp: boolean;
   hintsUsed: number;
+  judgingVersion: string;
   runId: string | null;
   resultRecorded: boolean;
 }
-export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () => void }) {
+export function SoloHotAndCold({
+  puzzle,
+  judgingVersion,
+  onExit,
+}: {
+  puzzle: number;
+  judgingVersion: string;
+  onExit: () => void;
+}) {
   const haptics = useWebHaptics();
   const [state, setState] = useState<DailyState>({
     puzzle,
@@ -35,6 +44,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     target: null,
     gaveUp: false,
     hintsUsed: 0,
+    judgingVersion,
     runId: null,
     resultRecorded: false,
   });
@@ -45,6 +55,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   const [community, setCommunity] = useState<HotAndColdCommunityStats | null>(null);
   const [communityLoaded, setCommunityLoaded] = useState(false);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
+  const storageKey = hotAndColdBrowserKeys.daily(puzzle, judgingVersion);
   useEffect(() => {
     setRecovered(false);
     setCommunity(null);
@@ -55,16 +66,18 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       target: null,
       gaveUp: false,
       hintsUsed: 0,
+      judgingVersion,
       runId: crypto.randomUUID(),
       resultRecorded: false,
     });
     try {
-      const stored = localStorage.getItem(hotAndColdBrowserKeys.daily(puzzle));
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         const saved = JSON.parse(stored) as Partial<DailyState>;
         setState({
           ...fresh(),
           ...saved,
+          judgingVersion,
           guesses: saved.guesses ?? [],
           hintsUsed: saved.hintsUsed ?? saved.guesses?.filter(({ hint }) => hint).length ?? 0,
         });
@@ -76,15 +89,15 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     } finally {
       setRecovered(true);
     }
-  }, [puzzle]);
+  }, [judgingVersion, puzzle, storageKey]);
   useEffect(() => {
     if (!recovered || state.puzzle !== puzzle) return;
     try {
-      localStorage.setItem(hotAndColdBrowserKeys.daily(puzzle), JSON.stringify(state));
+      localStorage.setItem(storageKey, JSON.stringify(state));
     } catch {
       /* play without recovery */
     }
-  }, [puzzle, recovered, state]);
+  }, [puzzle, recovered, state, storageKey]);
   const ledger = useMemo(
     () =>
       state.guesses.map((guess) => ({
@@ -103,7 +116,9 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       return false;
     }
     try {
-      const result = await scoreDailyHotAndColdGuessFn({ data: { word, puzzle } });
+      const result = await scoreDailyHotAndColdGuessFn({
+        data: { word, puzzle, judgingVersion },
+      });
       if (!result.ok) {
         setMessage("not in our word list");
         return false;
@@ -141,7 +156,11 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     } catch (error) {
       const reason = error instanceof Error ? error.message.toLowerCase() : "";
       setMessage(
-        reason.includes("dictionary") ? "not in our word list" : "couldn’t score that — try again",
+        reason.includes("revision")
+          ? "judging updated · reload this game"
+          : reason.includes("dictionary")
+            ? "not in our word list"
+            : "couldn’t score that — try again",
       );
       return false;
     }
@@ -153,6 +172,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
           puzzle,
           hintIndex: state.hintsUsed,
           usedWords: state.guesses.map(({ word }) => word),
+          judgingVersion,
         },
       });
       const next: SoloHotAndColdGuess = {
@@ -176,7 +196,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
     }
   };
   const giveUp = async () => {
-    const result = await revealDailyHotAndColdFn({ data: { puzzle } });
+    const result = await revealDailyHotAndColdFn({ data: { puzzle, judgingVersion } });
     setState((current) => ({ ...current, target: result.target, gaveUp: true }));
     return true;
   };
@@ -204,6 +224,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
         outcome: state.gaveUp ? "revealed" : "found",
         guesses: result.guessCount,
         hints: state.hintsUsed,
+        judgingVersion,
         bestRank: result.bestRank,
         distribution,
       },
@@ -215,6 +236,7 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
       })
       .catch(() => undefined);
   }, [
+    judgingVersion,
     playerGuesses,
     puzzle,
     recovered,
@@ -227,11 +249,21 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
   useEffect(() => {
     if (!recovered || !state.target || !state.resultRecorded || communityLoaded) return;
     if (!state.runId) return;
-    void getHotAndColdCommunityStatsFn({ data: { puzzle, runId: state.runId } })
+    void getHotAndColdCommunityStatsFn({
+      data: { puzzle, runId: state.runId, judgingVersion },
+    })
       .then(({ community: latest }) => setCommunity(latest))
       .catch(() => undefined)
       .finally(() => setCommunityLoaded(true));
-  }, [communityLoaded, puzzle, recovered, state.resultRecorded, state.runId, state.target]);
+  }, [
+    communityLoaded,
+    judgingVersion,
+    puzzle,
+    recovered,
+    state.resultRecorded,
+    state.runId,
+    state.target,
+  ]);
   const streak = heatStreaks(state.guesses);
   const hottest = ledger.reduce<(typeof ledger)[number] | null>(
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
@@ -312,7 +344,11 @@ export function SoloHotAndCold({ puzzle, onExit }: { puzzle: number; onExit: () 
             </dl>
             <p className="heat-guide-note">
               Connections can be meanings, categories, familiar pairs, or opposites. Names are not
-              accepted; common forms such as “dogs” become “dog”.
+              accepted. Exact dictionary words stay distinct; otherwise common forms such as “dogs”
+              become “dog”.
+            </p>
+            <p className="mt-3 font-mono text-micro theme-muted">
+              judging {judgingVersion} · fixed offline word map
             </p>
           </section>
         ) : null}

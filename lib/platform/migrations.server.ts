@@ -3398,6 +3398,24 @@ const MIGRATIONS: Migration[] = [
         where issued_by_type in ('admin','root-owner');
     `,
   },
+  {
+    id: "0070_hot_and_cold_judging_revision",
+    sql: `
+      delete from person_game_sessions
+       where game = 'hot-and-cold';
+
+      delete from hot_and_cold_daily_results;
+
+      alter table hot_and_cold_daily_results
+        add column target text not null,
+        add column judging_version text not null,
+        drop column synthetic;
+
+      drop index hot_and_cold_daily_results_puzzle_idx;
+      create index hot_and_cold_daily_results_judging_idx
+        on hot_and_cold_daily_results (puzzle,target,judging_version,created_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
