@@ -145,9 +145,29 @@ Hot & Cold stores one immutable, word-free completion summary per browser run
 in Postgres. Numbered daily routes can therefore show privacy-thresholded
 community distributions without exposing guesses or answers. Signed-in game
 history remains a separate person-owned read model; anonymous community runs
-never create account records. The two launch-day archive fixtures are marked
-synthetic and automatically drop out of an aggregate as soon as that puzzle
-has five real completions.
+never create account records. Community summaries contain real completed runs
+only and remain hidden until the privacy threshold is met.
+
+### Game judging revisions
+
+Games with deterministic judging or scoring assets own an independent semantic
+version. This is deliberately not the application package version: an app
+release can leave judging untouched, and different games can revise their rules
+independently.
+
+- Major revisions change word identity, ranks, scoring, or another boundary that
+  makes results incomparable.
+- Minor revisions change official hints or another player-visible ruling while
+  preserving the comparable core score.
+- Patch revisions change metadata or implementation without intentionally
+  changing a ruling.
+
+The exact revision travels with generated assets, authoritative room state,
+browser recovery, history, and community results. Revisions coexist in durable
+storage; a new revision replays recoverable client inputs into a new result and
+never deletes the earlier record. CI compares immutable judging assets with the
+base revision and rejects asset changes without a version increase. Games that
+have no comparable generated or server-side rulings do not need this machinery.
 
 Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
 process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary

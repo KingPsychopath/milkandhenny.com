@@ -120,4 +120,36 @@ describe("Hot & Cold community results", () => {
       },
     });
   });
+
+  it("keeps the same browser run independently in each judging revision", async () => {
+    const repeatedRun = "0198e9d8-53d7-7de1-8da4-c0f557db73c1";
+    const result = {
+      puzzle: 902,
+      target: hotAndColdTargetForPuzzle(902),
+      outcome: "found" as const,
+      guesses: 3,
+      hints: 0,
+      bestRank: 0,
+      distribution: { frost: 1, cool: 0, warm: 0, hot: 1 },
+    };
+    await recordHotAndColdDailyResult(
+      { ...result, runId: repeatedRun, judgingVersion: "0.9.0" },
+      null,
+    );
+    for (let index = 1; index <= 5; index += 1) {
+      await recordHotAndColdDailyResult(
+        {
+          ...result,
+          runId: index === 1 ? repeatedRun : `0198e9d8-53d7-7de${index}-8da4-c0f557db73c${index}`,
+          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+        },
+        null,
+      );
+    }
+
+    expect((await hotAndColdCommunityStats([902])).get(902)).toMatchObject({
+      runs: 5,
+      visible: true,
+    });
+  });
 });

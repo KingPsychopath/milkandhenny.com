@@ -298,7 +298,7 @@ export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST
     if (!Array.isArray(data.words) || data.words.length > 256)
       throw new Error("Invalid saved guesses");
     const words = data.words.map((value) => {
-      const word = prepareGuess(multiplayerBoundedText(value, 32));
+      const word = multiplayerBoundedText(value, 32).trim();
       if (!word) throw new Error("Invalid saved guess");
       return word;
     });
@@ -308,13 +308,24 @@ export const rescoreSavedDailyHotAndColdWordsFn = createServerFn({ method: "POST
       judgingVersion: currentJudgingVersion(data.judgingVersion),
     };
   })
-  .handler(async ({ data }) => ({
-    puzzle: data.puzzle,
-    judgingVersion: data.judgingVersion,
-    words: await Promise.all(
-      data.words.map((word) => scoreHotAndColdGuess(hotAndColdTargetForPuzzle(data.puzzle), word)),
-    ),
-  }));
+  .handler(async ({ data }) => {
+    const target = hotAndColdTargetForPuzzle(data.puzzle);
+    return {
+      puzzle: data.puzzle,
+      target,
+      judgingVersion: data.judgingVersion,
+      words: await Promise.all(
+        data.words.map(async (word) => {
+          try {
+            return { ok: true as const, ...(await scoreHotAndColdGuess(target, word)) };
+          } catch (error) {
+            if (error instanceof HotAndColdInvalidGuessError) return { ok: false as const, word };
+            throw error;
+          }
+        }),
+      ),
+    };
+  });
 export const revealDailyHotAndColdFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = record(value);

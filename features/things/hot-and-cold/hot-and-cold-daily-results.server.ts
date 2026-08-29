@@ -10,6 +10,10 @@ type StoredResult = HotAndColdDailyResultInput & {
 };
 const memoryResults = new Map<string, StoredResult>();
 
+function resultKey(result: Pick<HotAndColdDailyResultInput, "runId" | "judgingVersion">) {
+  return `${result.runId}@${result.judgingVersion}`;
+}
+
 interface AggregateRow {
   puzzle: number;
   runs: string;
@@ -91,7 +95,8 @@ export async function recordHotAndColdDailyResult(
 ): Promise<void> {
   if (!isDatabaseConfigured()) {
     if (process.env.NODE_ENV === "production") throw new Error("Result persistence unavailable");
-    if (!memoryResults.has(input.runId)) memoryResults.set(input.runId, { ...input, personId });
+    const key = resultKey(input);
+    if (!memoryResults.has(key)) memoryResults.set(key, { ...input, personId });
     return;
   }
   await query(
@@ -99,7 +104,7 @@ export async function recordHotAndColdDailyResult(
        (run_id,puzzle,target,judging_version,person_id,outcome,guesses,hints,best_rank,
         frost_guesses,cool_guesses,warm_guesses,hot_guesses)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-     on conflict (run_id) do nothing`,
+     on conflict (run_id,judging_version) do nothing`,
     [
       input.runId,
       input.puzzle,
@@ -163,7 +168,9 @@ function standingFromStoredResults(
   puzzle: number,
   runId: string,
 ): Extract<HotAndColdCommunityStats, { visible: true }>["standing"] {
-  const current = memoryResults.get(runId);
+  const current = memoryResults.get(
+    resultKey({ runId, judgingVersion: HOT_AND_COLD_JUDGING_VERSION }),
+  );
   if (!current || current.puzzle !== puzzle || current.outcome !== "found") return null;
   const eligible = [...memoryResults.values()].filter(
     (result) =>

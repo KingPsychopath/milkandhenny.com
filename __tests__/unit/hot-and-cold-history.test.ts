@@ -54,13 +54,20 @@ vi.mock("@/features/things/hot-and-cold/hot-and-cold-room.server", () => ({
 }));
 
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
-  HotAndColdInvalidGuessError: class extends Error {},
-  scoreHotAndColdGuess: async () => ({
-    word: "apple",
-    rank: 12,
-    band: "hot",
-    judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
-  }),
+  HotAndColdInvalidGuessError: class HotAndColdInvalidGuessError extends Error {},
+  scoreHotAndColdGuess: async (_target: string, word: string) => {
+    if (word === "old!") {
+      const { HotAndColdInvalidGuessError } =
+        await import("@/features/things/hot-and-cold/hot-and-cold-scorer.server");
+      throw new HotAndColdInvalidGuessError();
+    }
+    return {
+      word: "apple",
+      rank: 12,
+      band: "hot",
+      judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+    };
+  },
 }));
 
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-lexicon.server", () => ({
@@ -75,6 +82,7 @@ vi.mock("@/features/things/hot-and-cold/hot-and-cold-words.server", () => ({
 import {
   createHotAndColdRoomFn,
   getDailyHotAndColdHintFn,
+  rescoreSavedDailyHotAndColdWordsFn,
   scoreDailyHotAndColdGuessFn,
 } from "@/features/things/hot-and-cold/hot-and-cold.functions";
 
@@ -108,5 +116,23 @@ describe("Hot & Cold optional history", () => {
       createHotAndColdRoomFn({ data: { hostName: "Abel", rounds: 3 } }),
     ).resolves.toMatchObject({ snapshot: { roomId: "ROOM" } });
     expect(mocks.warn).toHaveBeenCalledOnce();
+  });
+
+  it("replays valid saved words without losing the whole run to a retired word", async () => {
+    await expect(
+      rescoreSavedDailyHotAndColdWordsFn({
+        data: {
+          puzzle: 42,
+          judgingVersion: HOT_AND_COLD_JUDGING_VERSION,
+          words: ["apple", "old!"],
+        },
+      }),
+    ).resolves.toMatchObject({
+      target: "orange",
+      words: [
+        { ok: true, word: "apple", rank: 12 },
+        { ok: false, word: "old!" },
+      ],
+    });
   });
 });

@@ -6,6 +6,7 @@ import { HeatLedger } from "./HeatLedger";
 import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibilityControl";
+import { recoverDailyHotAndColdState } from "./hot-and-cold-daily-recovery";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { heatStreaks } from "./hot-and-cold-rules";
 import { buildHotAndColdShareResult } from "./hot-and-cold-share";
@@ -57,7 +58,6 @@ export function SoloHotAndCold({
   const [communityLoaded, setCommunityLoaded] = useState(false);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
   const storageKey = hotAndColdBrowserKeys.daily(puzzle, judgingVersion);
-  const previousStorageKey = hotAndColdBrowserKeys.previousDaily(puzzle);
   useEffect(() => {
     let cancelled = false;
     setRecovered(false);
@@ -73,41 +73,21 @@ export function SoloHotAndCold({
       runId: crypto.randomUUID(),
       resultRecorded: false,
     });
-    const parseSaved = (stored: string | null): Partial<DailyState> | null => {
-      if (!stored) return null;
-      try {
-        const parsed: unknown = JSON.parse(stored);
-        return typeof parsed === "object" && parsed !== null
-          ? (parsed as Partial<DailyState>)
-          : null;
-      } catch {
-        return null;
-      }
-    };
     const recover = async () => {
       try {
-        const currentSaved = parseSaved(localStorage.getItem(storageKey));
-        const previousSaved = parseSaved(localStorage.getItem(previousStorageKey));
-        const currentGuesses = Array.isArray(currentSaved?.guesses) ? currentSaved.guesses : [];
-        const previousGuesses = Array.isArray(previousSaved?.guesses)
-          ? previousSaved.guesses.slice(0, 256)
-          : [];
-        const restorePrevious =
-          previousSaved !== null &&
-          ((!currentSaved?.target && Boolean(previousSaved.target)) ||
-            (!currentSaved?.target && currentGuesses.length === 0 && previousGuesses.length > 0));
-        if (currentSaved && !restorePrevious) {
+        const recovered = recoverDailyHotAndColdState(localStorage, puzzle, judgingVersion);
+        if (recovered && !recovered.needsReplay) {
           if (cancelled) return;
+          const next = fresh();
           setState({
-            ...fresh(),
-            ...currentSaved,
+            ...next,
+            ...recovered.state,
             judgingVersion,
-            guesses: currentGuesses,
-            hintsUsed: currentSaved.hintsUsed ?? currentGuesses.filter(({ hint }) => hint).length,
+            runId: recovered.state.runId ?? next.runId,
           });
           return;
         }
-        if (!previousSaved) {
+        if (!recovered) {
           if (!cancelled) setState(fresh());
           return;
         }
@@ -115,28 +95,36 @@ export function SoloHotAndCold({
           data: {
             puzzle,
             judgingVersion,
-            words: previousGuesses.map(({ word }) => word),
+            words: recovered.state.guesses.map(({ word }) => word),
           },
         });
         if (cancelled) return;
-        const guesses = previousGuesses.map((guess, index) => {
+        const guesses = recovered.state.guesses.flatMap((guess, index) => {
           const score = rescored.words[index];
-          return {
-            word: score.word,
-            rank: score.rank,
-            band: score.band,
-            sequence: guess.sequence,
-            createdAt: guess.createdAt,
-            hint: guess.hint,
-          };
+          return score.ok
+            ? [
+                {
+                  word: score.word,
+                  rank: score.rank,
+                  band: score.band,
+                  sequence: guess.sequence,
+                  createdAt: guess.createdAt,
+                  hint: guess.hint,
+                },
+              ]
+            : [];
         });
+        const completed = recovered.state.gaveUp || guesses.some(({ rank }) => rank === 0);
+        const next = fresh();
         setState({
-          ...fresh(),
-          ...previousSaved,
+          ...next,
+          ...recovered.state,
           puzzle,
           judgingVersion,
           guesses,
-          hintsUsed: previousSaved.hintsUsed ?? guesses.filter(({ hint }) => hint).length,
+          target: completed ? rescored.target : null,
+          gaveUp: completed && recovered.state.gaveUp,
+          runId: recovered.state.runId ?? next.runId,
           resultRecorded: false,
         });
         setMessage(`saved guesses restored · judging ${judgingVersion}`);
@@ -150,7 +138,7 @@ export function SoloHotAndCold({
     return () => {
       cancelled = true;
     };
-  }, [judgingVersion, previousStorageKey, puzzle, storageKey]);
+  }, [judgingVersion, puzzle]);
   useEffect(() => {
     if (!recovered || state.puzzle !== puzzle) return;
     try {

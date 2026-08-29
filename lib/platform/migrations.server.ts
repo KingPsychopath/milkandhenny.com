@@ -3416,6 +3416,14 @@ const MIGRATIONS: Migration[] = [
         on hot_and_cold_daily_results (puzzle,target,judging_version,created_at);
     `,
   },
+  {
+    id: "0071_hot_and_cold_revision_replay",
+    sql: `
+      alter table hot_and_cold_daily_results
+        add constraint hot_and_cold_daily_results_run_revision_key
+        unique (run_id,judging_version);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

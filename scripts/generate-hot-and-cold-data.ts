@@ -36,7 +36,9 @@ const MIN_FREQUENCY = 2;
 const RANK_PACK_COUNT = 16;
 const RAW_WORD_WEIGHT = 0.2;
 const SENSE_CONTEXT_WEIGHT = 0.8;
-const HINT_CURATION_REQUIRED: string[] = [];
+const MIN_AUTOMATIC_HINT_FREQUENCY = 50;
+const AUTOMATIC_HINT_MAX_RANKS = [250, 100, 30] as const;
+const HINT_CURATION_REQUIRED = new Set<string>();
 
 const CURATED_HINTS: Partial<Record<(typeof HOT_AND_COLD_TARGETS)[number], string[]>> = {
   avalanche: ["ice", "storm", "snow"],
@@ -500,14 +502,14 @@ function rankAndHints(
     !word.includes(target) &&
     !target.includes(word) &&
     word.length >= 4 &&
-    (lexical.get(word)?.frequency ?? 0) >= 20 &&
+    (lexical.get(word)?.frequency ?? 0) >= MIN_AUTOMATIC_HINT_FREQUENCY &&
     primarySenses(lexical.get(word)).some(({ id }) => trustedSynsets.has(id));
   const candidates = order
     .slice(1, 2_000)
     .map((index) => words[index])
     .filter(safeHint);
   if (candidates.length < 3) {
-    HINT_CURATION_REQUIRED.push(target);
+    HINT_CURATION_REQUIRED.add(target);
     const fallback = order
       .slice(1, 2_000)
       .map((index) => words[index])
@@ -516,7 +518,7 @@ function rankAndHints(
           word.length >= 4 &&
           !word.includes(target) &&
           !target.includes(word) &&
-          (lexical.get(word)?.frequency ?? 0) >= 20,
+          (lexical.get(word)?.frequency ?? 0) >= MIN_AUTOMATIC_HINT_FREQUENCY,
       )
       .slice(0, 3)
       .toReversed();
@@ -557,6 +559,8 @@ function rankAndHints(
   }
   const hints = best?.hints;
   if (!hints) throw new Error(`Hot and Cold needs progressive trustworthy hints for ${target}`);
+  if (hints.some((word, index) => ranks[words.indexOf(word)] > AUTOMATIC_HINT_MAX_RANKS[index]))
+    HINT_CURATION_REQUIRED.add(target);
   return { hints, ranks, trail: order.slice(0, 20).map((index) => words[index]) };
 }
 
@@ -570,8 +574,6 @@ async function main() {
     `${words.length.toLocaleString()} accepted words · ${Object.keys(aliases).length.toLocaleString()} inflections`,
   );
   const scores = await generateRanks(words, lexical, synsetNeighbours);
-  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const hints: Record<string, string[]> = {};
   const trails: Record<string, string[]> = {};
   const rankPacks: Record<string, { file: string; offset: number }> = {};
@@ -588,6 +590,10 @@ async function main() {
     packChunks[packIndex].push(bytes);
     packLengths[packIndex] += bytes.byteLength;
   });
+  if (HINT_CURATION_REQUIRED.size > 0)
+    throw new Error(`Curated hints are required for: ${[...HINT_CURATION_REQUIRED].join(", ")}`);
+  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   packChunks.forEach((chunks, index) =>
     fs.writeFileSync(
       path.join(OUTPUT_DIR, `ranks-${index.toString().padStart(2, "0")}.data`),
@@ -629,8 +635,6 @@ async function main() {
     `# Hot and Cold generated data\n\nJudging revision: ${HOT_AND_COLD_JUDGING_VERSION}. Run \`pnpm data:hot-and-cold\` to rebuild. The lexicon derives from Open English WordNet 2025 (CC BY 4.0) and SUBTLEX-US frequency data. Rank packs are generated with the bundled Xenova/all-MiniLM-L6-v2 model.\n\nThe judging revision uses semantic versioning: major changes alter word identity or ranks, minor changes alter official hints or other game rulings without replacing ranks, and patches are metadata-only. Every player-visible result is attached to the exact revision.\n`,
   );
   console.log(`wrote ${OUTPUT_DIR}`);
-  if (HINT_CURATION_REQUIRED.length > 0)
-    throw new Error(`Curated hints are required for: ${HINT_CURATION_REQUIRED.join(", ")}`);
 }
 
 main().catch((error: unknown) => {

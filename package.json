@@ -24,6 +24,7 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "check": "pnpm format:check && pnpm check:native-dropdowns && pnpm typecheck && pnpm lint",
+    "check:game-judging": "node scripts/check-game-judging-revisions.mjs",
     "check:native-dropdowns": "node scripts/check-native-dropdowns.mjs",
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "maintenance": "node ops/run-maintenance.mjs",

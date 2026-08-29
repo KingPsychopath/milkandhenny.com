@@ -12,7 +12,8 @@ export const hotAndColdBrowserKeys = {
   playerSession: (roomId: string) =>
     gameBrowserKey("hot-and-cold", 2, "room", roomId, "player-session"),
   invite: (roomId: string) => gameBrowserKey("hot-and-cold", 2, "room", roomId, "invite"),
+  dailyPrefix: () => gameBrowserKey("hot-and-cold", 2, "daily"),
   daily: (puzzle: number, judgingVersion: string) =>
     gameBrowserKey("hot-and-cold", 2, "daily", judgingVersion, String(puzzle)),
-  previousDaily: (puzzle: number) => gameBrowserKey("hot-and-cold", 1, "daily", String(puzzle)),
+  legacyDaily: (puzzle: number) => gameBrowserKey("hot-and-cold", 1, "daily", String(puzzle)),
 };
