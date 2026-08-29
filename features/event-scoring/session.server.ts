@@ -363,14 +363,6 @@ type SessionMutation = {
   replaceCurrent: (session: AttendeeSession) => Promise<void>;
 };
 
-async function refresh(session: AttendeeSession): Promise<AttendeeSession> {
-  const touched = { ...session, lastSeenAt: new Date().toISOString() };
-  const redis = getRedis();
-  if (redis) await redis.expire(`${SESSION_PREFIX}${session.id}`, SESSION_TTL_SECONDS);
-  setSessionCookie(touched.id);
-  return touched;
-}
-
 async function withSessionMutation<T>(
   id: string,
   use: (mutation: SessionMutation) => Promise<T>,
@@ -462,7 +454,7 @@ async function loadOrCreate(): Promise<AttendeeSession> {
       assurance: existing.session.assurance,
       pendingMfa: existing.session.pendingMfa,
     });
-  if (existing) return refresh(existing.session);
+  if (existing) return existing.session;
   const now = new Date().toISOString();
   const created = {
     schemaVersion: ATTENDEE_SESSION_SCHEMA_VERSION,
@@ -687,7 +679,7 @@ export async function getAttendeeSession(): Promise<AttendeeSession | null> {
       pendingMfa: session.pendingMfa,
     });
   }
-  return refresh(session);
+  return session;
 }
 
 /** Read identity for an explicit HTTP request without relying on Start context. */

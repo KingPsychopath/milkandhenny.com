@@ -89,4 +89,7 @@ Socket input is bounded by message size, message rate, wake frequency, per-room 
 
 Bring the worker up before switching the web service to `hybrid` — the reverse order queues jobs nobody drains. Full cutover and rollback order is in [media-worker.md](./media-worker.md#cutover).
 
-The worker's Redis cost is proportional to work, not to time: one blocking claim per queue while idle, a heartbeat at most every 30s, and one publish per file processed.
+The worker's queue cost is proportional to work, not to time. Each concurrency
+slot holds one indefinite blocking claim on its own Redis connection, so an
+idle queue does not issue repeated commands. The only time-based writes are a
+heartbeat every five minutes and a reconciliation sweep every 15 minutes.

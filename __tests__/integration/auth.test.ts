@@ -21,6 +21,7 @@ type RedisLike = {
   sadd: (key: string, value: string) => Promise<void>;
   srem: (key: string, value: string) => Promise<void>;
   smembers: (key: string) => Promise<string[]>;
+  mget: (...keys: string[]) => Promise<unknown[]>;
   eval: (script: string, keys: string[], args: number[]) => Promise<number[]>;
   pipeline: () => {
     del: (key: string) => void;
@@ -69,6 +70,9 @@ function createRedisMock(): RedisLike {
     },
     async smembers(key) {
       return [...(sets.get(key) ?? new Set<string>())];
+    },
+    async mget(...keys) {
+      return keys.map((key) => kv.get(key) ?? null);
     },
     async eval(_script, keys, args) {
       const limit = Number(args[0]);
@@ -194,6 +198,7 @@ describe("auth security flows", () => {
 
   it("revoking a specific jti makes that token unauthorized", async () => {
     const redis = createRedisMock();
+    const mget = vi.spyOn(redis, "mget");
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => redis }));
     const { handleVerifyRequest, requireAuth } = await import("@/features/auth/auth.server");
 
@@ -221,6 +226,11 @@ describe("auth security flows", () => {
     );
     expect(err).not.toBeNull();
     expect(err?.status).toBe(401);
+    expect(mget).toHaveBeenCalledTimes(1);
+    expect(mget).toHaveBeenCalledWith(
+      `auth:revoked-jti:${payload.jti}`,
+      "auth:token-version:admin",
+    );
   });
 
   it("accepts upload auth via httpOnly cookie (no Authorization header)", async () => {

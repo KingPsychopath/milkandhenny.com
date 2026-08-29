@@ -208,6 +208,28 @@ export async function getCurrentTokenVersion(role: RevocableRole): Promise<numbe
   }
 }
 
+async function getTokenValidationState(
+  jti: string,
+  role: RevocableRole,
+): Promise<{ revoked: boolean; version: number } | null> {
+  const redis = getRedis();
+  if (!redis) {
+    return process.env.NODE_ENV === "production" ? null : { revoked: false, version: 1 };
+  }
+
+  try {
+    const [revoked, storedVersion] = await redis.mget<[unknown, unknown]>(
+      `auth:revoked-jti:${jti}`,
+      tokenVersionKey(role),
+    );
+    const version = storedVersion === null ? 1 : Number(storedVersion);
+    if (!Number.isInteger(version) || version < 1) return null;
+    return { revoked: revoked !== null, version };
+  } catch {
+    return process.env.NODE_ENV === "production" ? null : { revoked: false, version: 1 };
+  }
+}
+
 /** Sign a JWT for the given role. Payload: { role, exp, iat, jti, tv }. */
 export function generateTokenJti(): string {
   // Include UUID + random bytes + timestamp so test/runtime entropy differences
@@ -352,20 +374,8 @@ export async function verifyToken(
     return null;
   }
 
-  const redis = getRedis();
-  if (redis) {
-    try {
-      const revoked = await redis.exists(`auth:revoked-jti:${payload.jti}`);
-      if (revoked) return null;
-    } catch {
-      if (process.env.NODE_ENV === "production") {
-        return null;
-      }
-    }
-  }
-
-  const currentVersion = await getCurrentTokenVersion(expectedRole);
-  if (!currentVersion || payload.tv !== currentVersion) return null;
+  const validation = await getTokenValidationState(payload.jti, expectedRole);
+  if (!validation || validation.revoked || payload.tv !== validation.version) return null;
 
   return payload;
 }

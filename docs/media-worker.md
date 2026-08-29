@@ -65,11 +65,6 @@ MEDIA_PROCESSOR_MODE=local    # everything inline, no queue — the default, and
 MEDIA_PROCESSOR_MODE=hybrid   # heavy routes queued for the worker
 ```
 
-`worker` is accepted as a deprecated alias for `hybrid`. It once meant "queue
-without attempting locally first", but that distinction died with the
-local-first attempt: the worker runs the same image as the web role, so a
-decode the web role cannot do the worker cannot do either.
-
 In `local` mode the queue is disabled outright and a worker-role instance logs
 a warning and stays idle — a queue with no consumer is worse than no queue.
 
@@ -94,9 +89,9 @@ and the client closes the stream instead of reconnecting forever.
 - **At-least-once.** `BRPOPLPUSH` moves a job to a processing list; it is
   removed only after the job settles. A worker that dies mid-job leaves the job
   there, and the next worker start requeues it.
-- **Recovery runs once, at startup.** A sweep cannot tell a crashed job from
-  one another replica is working on right now, so the long-running loop never
-  repeats it.
+- **Recovery respects leases.** Startup and each reconciliation cycle move
+  only processing entries whose 30-minute lease has expired, so a crashed job
+  returns to the queue without stealing work from a healthy replica.
 - **Replays are safe.** A job whose file is already `local_done`/`worker_done`
   is skipped, derivative keys are deterministic so re-uploads overwrite, and a
   job for a deleted file finds nothing to update.
@@ -119,10 +114,11 @@ or `ready` pointing at a thumbnail that is gone.
 from what is actually in object storage and requeues whatever is genuinely
 unfinished. Two things run it:
 
-1. **The worker, whenever its queue goes idle** (`MEDIA_RECONCILE_INTERVAL_MS`,
+1. **The worker's independent repair timer** (`MEDIA_RECONCILE_INTERVAL_MS`,
    default 15 min — the staleness window, so a stranded file is repaired within
-   about two windows). Idle is the cheapest moment to look for work that should
-   have been in the queue.
+   about two windows). It runs independently because the queue consumers stay
+   blocked indefinitely while idle. The same cycle requeues expired processing
+   leases before repairing transfer records.
 2. **The daily maintenance run**, as `POST /api/cron/process-transfer-media`.
    This is the backstop for the case the worker sweep cannot cover: the worker
    itself being down.
@@ -150,7 +146,8 @@ re-decoding them forever would be the worst possible version of this.
 | `MEDIA_WORKER_CONCURRENCY`           | `1`          | worker     | jobs in flight per instance                           |
 | `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000`     | worker     | per-job ceiling                                       |
 | `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`      | worker     | pause after a claim error                             |
-| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000`     | worker     | idle sweep for stranded files; `0` disables           |
+| `MEDIA_WORKER_HEARTBEAT_INTERVAL_MS` | `300000`     | worker     | liveness write interval; minimum 30 seconds           |
+| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000`     | worker     | periodic sweep for stranded files; `0` disables       |
 | `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000`     | web        | ceiling for work the request path still does          |
 | `MEDIA_VIDEO_POSTER_MAX_BYTES`       | `2147483648` | worker     | above this, skip the poster; `0` disables the cap     |
 | `REDIS_URL`                          | —            | both       | direct connection; required for the queue and for SSE |
@@ -161,8 +158,8 @@ re-decoding them forever would be the worst possible version of this.
 Health and queue depth appear in the admin dashboard and in
 `GET /api/cron/process-transfer-media`. Worth alerting on:
 
-- **stale heartbeat** — the worker writes one at least every 30s while idle.
-  Nothing for several minutes means it is down or wedged.
+- **stale heartbeat** — the worker writes one every five minutes by default.
+  Nothing for two configured intervals means it is down or wedged.
 - **growing queue depth** — arrivals outpacing the worker; raise
   `MEDIA_WORKER_CONCURRENCY` or add a replica.
 - **repeated retry exhaustion** — something is failing that is not terminal.
@@ -175,8 +172,14 @@ queue used to be claimed on every idle pass; it had a consumer but no producer
 was costing a blocking Redis call every loop to watch a queue nothing wrote to.
 It is gone.
 
-Scaling out is safe: the queue is the coordination point, and recovery only
-runs at startup, so replicas do not steal each other's in-flight jobs.
+Every concurrency slot owns a dedicated direct Redis connection and issues one
+indefinite `BRPOPLPUSH`. Sharing a connection would serialize blocking claims;
+using finite timeouts would turn an empty queue into a permanent command poll.
+Shutdown disconnects only those blocking connections, allowing any claimed job
+to finish and be acknowledged through the separate command connection.
+
+Scaling out is safe: the queue is the coordination point, and recovery skips
+every processing entry whose lease is still current.
 
 ## Rebuilding finished files
 

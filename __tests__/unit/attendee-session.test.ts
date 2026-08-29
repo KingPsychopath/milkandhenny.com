@@ -6,6 +6,8 @@ const state = vi.hoisted(() => ({
   linkedParticipants: [] as string[],
   people: new Set<string>(),
   personLookupGates: [] as Array<{ started: () => void; wait: Promise<void> }>,
+  getCalls: 0,
+  expireCalls: 0,
 }));
 
 const PERSON_SESSION = "01890f3e-7b1a-7cc2-b5c3-3f8b6a4d2190";
@@ -22,14 +24,20 @@ vi.mock("@tanstack/react-start/server", () => ({
 
 vi.mock("@/lib/platform/redis.server", () => ({
   getRedis: () => ({
-    get: async (key: string) => state.records.get(key) ?? null,
+    get: async (key: string) => {
+      state.getCalls += 1;
+      return state.records.get(key) ?? null;
+    },
     set: async (key: string, value: unknown, options?: { nx?: boolean }) => {
       if (options?.nx && state.records.has(key)) return null;
       state.records.set(key, value);
       return "OK";
     },
     del: async (key: string) => (state.records.delete(key) ? 1 : 0),
-    expire: async () => 1,
+    expire: async () => {
+      state.expireCalls += 1;
+      return 1;
+    },
     eval: async (_script: string, keys: string[], args: string[]) => {
       if (state.records.get(keys[0]!) !== args[0]) return 0;
       if (keys.length === 1) return state.records.delete(keys[0]!) ? 1 : 0;
@@ -128,6 +136,23 @@ describe("attendee session authentication", () => {
     state.linkedParticipants = [];
     state.people = new Set([PERSON_SESSION, PERSON_MFA, PERSON_OTHER]);
     state.personLookupGates = [];
+    state.getCalls = 0;
+    state.expireCalls = 0;
+  });
+
+  it("reads an active session with one command and no expiry write", async () => {
+    await openAttendeeTicket({
+      ticketId: "01ARZ3NDEKTSV4RS",
+      eventSlug: "session-night",
+      mode: "scoring",
+    });
+    state.getCalls = 0;
+    state.expireCalls = 0;
+
+    await expect(getAttendeeSession()).resolves.not.toBeNull();
+
+    expect(state.getCalls).toBe(1);
+    expect(state.expireCalls).toBe(0);
   });
 
   it("rotates on verification and sign-out without losing selected tickets", async () => {

@@ -1,6 +1,5 @@
 import Redis from "ioredis";
 
-let blockingRedis: Redis | null = null;
 let commandRedis: Redis | null = null;
 
 interface DirectRedisConfig {
@@ -54,13 +53,6 @@ function createDirectRedisClient(): Redis {
   return createRedisClient();
 }
 
-function getBlockingRedis(): Redis {
-  if (!blockingRedis) {
-    blockingRedis = createRedisClient();
-  }
-  return blockingRedis;
-}
-
 function getCommandRedis(): Redis {
   if (!commandRedis) {
     commandRedis = createRedisClient();
@@ -69,8 +61,7 @@ function getCommandRedis(): Redis {
 }
 
 async function closeDirectRedisConnections(): Promise<void> {
-  const clients = [blockingRedis, commandRedis].filter(Boolean) as Redis[];
-  blockingRedis = null;
+  const clients = [commandRedis].filter(Boolean) as Redis[];
   commandRedis = null;
 
   await Promise.all(
@@ -87,7 +78,6 @@ async function closeDirectRedisConnections(): Promise<void> {
 export {
   closeDirectRedisConnections,
   createDirectRedisClient,
-  getBlockingRedis,
   getCommandRedis,
   getDirectRedisConfig,
 };

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import type Redis from "ioredis";
 import { getMediaProcessorMode } from "@/features/media/config.server";
-import { getBlockingRedis, getCommandRedis } from "@/lib/platform/redis-direct.server";
+import { getCommandRedis } from "@/lib/platform/redis-direct.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import type { ProcessingRoute } from "./media-state";
 import type { TransferUploadFileInput } from "./upload-types";
@@ -159,6 +160,7 @@ function directEval(
 }
 
 async function claimTransferMediaJobBlocking(
+  blockingRedis: Redis,
   timeoutSeconds = 0,
 ): Promise<ClaimedTransferMediaJob | null> {
   if (getMediaProcessorMode() === "local") {
@@ -166,7 +168,7 @@ async function claimTransferMediaJobBlocking(
   }
 
   while (true) {
-    const raw = await getBlockingRedis().brpoplpush(
+    const raw = await blockingRedis.brpoplpush(
       TRANSFER_MEDIA_QUEUE_KEY,
       TRANSFER_MEDIA_PROCESSING_KEY,
       timeoutSeconds,

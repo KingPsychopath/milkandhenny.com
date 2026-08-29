@@ -50,7 +50,7 @@ async function handleGET(request: Request) {
 /**
  * POST — reconcile media that never finished.
  *
- * The worker already sweeps for stranded files whenever its queue goes idle.
+ * The worker already sweeps for stranded files on its reconciliation timer.
  * This is the backstop for the case that sweep cannot cover: the worker itself
  * being down. Both paths share a Redis lock, so running both is harmless.
  */
