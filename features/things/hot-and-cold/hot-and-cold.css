@@ -249,45 +249,7 @@ main:has(.heat-result-share) .heat-source {
   color: var(--heat-red);
   animation: heat-streak-label 0.65s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.heat-source-keyboard-summary {
-  display: none;
-}
-.hot-and-cold[data-mobile-keyboard] .heat-game-main {
-  min-height: var(--mobile-keyboard-layout-height, 100svh);
-  padding-top: var(--mobile-keyboard-viewport-top, 0);
-}
-.hot-and-cold[data-mobile-keyboard] .heat-source {
-  top: var(--mobile-keyboard-viewport-top, 0);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.7rem;
-  padding-block: 0.45rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--stone-200) 72%, transparent);
-  background:
-    radial-gradient(
-      circle at 2.5rem 50%,
-      color-mix(in srgb, var(--heat-ember) 12%, transparent),
-      transparent 4rem
-    ),
-    color-mix(in srgb, var(--background) 94%, transparent);
-  box-shadow: 0 0.8rem 1.8rem color-mix(in srgb, var(--background) 72%, transparent);
-  text-align: left;
-  backdrop-filter: blur(0.9rem);
-}
-.hot-and-cold[data-mobile-keyboard] .heat-source-flame {
-  width: 3rem;
-  height: 3rem;
-  margin: 0;
-}
-.hot-and-cold[data-mobile-keyboard] .heat-source p {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hot-and-cold[data-mobile-keyboard] .heat-source-keyboard-summary {
+.heat-source-hottest-word {
   display: inline;
   font: 600 0.9rem/1 var(--font-serif);
   letter-spacing: -0.01em;
@@ -297,7 +259,7 @@ main:has(.heat-result-share) .heat-source {
 .heat-ledger {
   list-style: none;
   margin: 0;
-  padding: 0 0 11rem;
+  padding: 0 0 3rem;
 }
 main:has(.heat-result-share) .heat-ledger {
   min-height: calc(100svh - 8rem);
@@ -480,40 +442,6 @@ main:has(.heat-result-share) .heat-ledger {
 .heat-word--burning[data-newest] .heat-word-effect,
 .heat-word--found[data-newest] .heat-word-effect {
   animation: heat-flare 1.15s ease-out;
-}
-.heat-ledger-update {
-  position: fixed;
-  z-index: 19;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-height: 2.75rem;
-  bottom: calc(8.5rem + env(safe-area-inset-bottom));
-  left: 50%;
-  max-width: calc(100vw - 2rem);
-  margin: 0;
-  padding: 0.65rem 0.9rem;
-  overflow: hidden;
-  border: 1px solid var(--stone-300);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--background) 94%, transparent);
-  box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--foreground) 10%, transparent);
-  font: 600 0.65rem/1 var(--font-mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--stone-500);
-  touch-action: manipulation;
-  animation: heat-update 2.8s ease both;
-}
-.heat-ledger-update span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.heat-ledger-update strong {
-  color: var(--foreground);
-  text-decoration: underline;
-  text-underline-offset: 0.2rem;
 }
 .heat-ledger-empty {
   min-height: 17rem;
@@ -1059,18 +987,35 @@ main:has(.heat-result-share) .heat-ledger {
   }
 }
 .heat-composer {
-  position: fixed;
-  z-index: 20;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 0.75rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom))
-    max(1rem, env(safe-area-inset-left));
+  position: relative;
+  z-index: 9;
+  margin: 0.25rem 0 1rem;
+  padding: 0.75rem 0 0.5rem;
   background: transparent;
+  scroll-margin-top: 5rem;
   touch-action: pan-y;
 }
-.hot-and-cold[data-mobile-keyboard] .heat-composer {
-  bottom: var(--mobile-keyboard-dock-offset, 0);
+.heat-guess-receipt {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 50%;
+  max-width: calc(100% - 2rem);
+  overflow: hidden;
+  border: 1px solid var(--stone-300);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background) 96%, transparent);
+  padding: 0.7rem 0.9rem;
+  box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+  font: 600 0.65rem/1 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -95%);
+  -webkit-backdrop-filter: blur(0.85rem);
+  backdrop-filter: blur(0.85rem);
+  animation: heat-receipt 2.8s ease both;
 }
 .heat-composer-inner {
   width: min(100%, 40rem);
@@ -1124,10 +1069,11 @@ main:has(.heat-result-share) .heat-ledger {
 }
 .heat-composer-tools > span {
   display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
   min-height: 2.75rem;
   min-width: 0;
-  max-width: 52%;
+  max-width: 100%;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--stone-200) 72%, transparent);
   border-radius: 999px;
@@ -1148,10 +1094,6 @@ main:has(.heat-result-share) .heat-ledger {
   display: none;
   min-height: 2.75rem;
   white-space: nowrap;
-}
-.hot-and-cold[data-mobile-keyboard] .heat-keyboard-dismiss {
-  display: inline-flex;
-  align-items: center;
 }
 .heat-composer-actions {
   display: flex;
@@ -1196,6 +1138,12 @@ main:has(.heat-result-share) .heat-ledger {
     padding-inline: 0.6rem;
   }
 }
+@media (hover: none) and (pointer: coarse) {
+  .heat-composer:focus-within .heat-keyboard-dismiss {
+    display: inline-flex;
+    align-items: center;
+  }
+}
 @keyframes heat-arrive {
   from {
     opacity: 0;
@@ -1232,19 +1180,19 @@ main:has(.heat-result-share) .heat-ledger {
     transform: scale(1.15);
   }
 }
-@keyframes heat-update {
+@keyframes heat-receipt {
   0% {
     opacity: 0;
-    transform: translate(-50%, 0.45rem);
+    transform: translate(-50%, calc(-95% + 0.4rem));
   }
   12%,
   82% {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translate(-50%, -95%);
   }
   to {
     opacity: 0;
-    transform: translate(-50%, -0.2rem);
+    transform: translate(-50%, calc(-95% - 0.2rem));
   }
 }
 @keyframes heat-breathe {
@@ -1405,10 +1353,10 @@ main:has(.heat-result-share) .heat-ledger {
 }
 @media (prefers-reduced-motion: reduce) {
   .heat-source-flame,
+  .heat-guess-receipt,
   .heat-word[data-newest],
   .heat-word[data-newest] .heat-word-text,
-  .heat-word[data-newest] .heat-word-effect,
-  .heat-ledger-update {
+  .heat-word[data-newest] .heat-word-effect {
     animation: none;
   }
   .heat-source-flame,
@@ -1434,8 +1382,5 @@ main:has(.heat-result-share) .heat-ledger {
   .heat-source-flame[data-cooling] .heat-gauge-smoke,
   .heat-source-flame[data-cooling] .heat-gauge-smoke-puff {
     opacity: 0;
-  }
-  .heat-ledger-update {
-    transform: translateX(-50%);
   }
 }

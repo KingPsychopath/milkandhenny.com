@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { HeatGauge } from "./HeatGauge";
@@ -40,7 +40,6 @@ export function SoloHotAndCold({
   onExit: () => void;
 }) {
   const haptics = useWebHaptics();
-  const keyboardSurface = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<DailyState>({
     puzzle,
     guesses: [],
@@ -185,20 +184,13 @@ export function SoloHotAndCold({
         sequence: state.guesses.length + 1,
         createdAt: Date.now(),
       };
-      const nextStreak = heatStreaks([...state.guesses, next]).current;
       setState((current) => ({
         ...current,
         guesses: [...current.guesses, next],
         target: result.rank === 0 ? result.word : current.target,
       }));
       setNewest(`${next.sequence}:${next.word}`);
-      setMessage(
-        result.rank === 0
-          ? "found it"
-          : nextStreak >= 3
-            ? `hot streak · ${nextStreak}`
-            : result.band,
-      );
+      setMessage(null);
       void haptics.trigger(
         result.rank === 0 ? "success" : result.rank < 500 ? "warning" : "selection",
       );
@@ -319,8 +311,18 @@ export function SoloHotAndCold({
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
   );
+  const newestGuess = newest ? ledger.find(({ id }) => id === newest) : null;
+  const receipt =
+    newestGuess?.mine && newestGuess.rank !== 0
+      ? {
+          id: newestGuess.id,
+          label: `${newestGuess.word} · #${newestGuess.rank.toLocaleString()}${
+            newestGuess.id === hottest?.id ? " · hottest" : ""
+          }`,
+        }
+      : null;
   return (
-    <div ref={keyboardSurface} className="hot-and-cold min-h-svh">
+    <div className="hot-and-cold min-h-svh">
       <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={onExit}>
           ← hot and cold
@@ -348,9 +350,7 @@ export function SoloHotAndCold({
             solved={done && !state.gaveUp}
           />
           <p>
-            {hottest ? (
-              <span className="heat-source-keyboard-summary">{hottest.word} · </span>
-            ) : null}
+            {hottest ? <span className="heat-source-hottest-word">{hottest.word} · </span> : null}
             {done
               ? state.gaveUp
                 ? "revealed"
@@ -363,6 +363,32 @@ export function SoloHotAndCold({
             ) : null}
           </p>
         </div>
+        {!done ? (
+          <GuessComposer
+            continuous
+            message={message}
+            receipt={receipt}
+            onGuess={guess}
+            actions={
+              <>
+                <button
+                  type="button"
+                  disabled={state.hintsUsed >= 3}
+                  onClick={() => void requestHint()}
+                >
+                  {state.hintsUsed >= 3 ? "hints used" : "hint"}
+                </button>
+                <GiveUpControl
+                  tone="dark"
+                  title="Reveal this word?"
+                  description="The word will appear at the top of your ledger. You cannot continue this hunt."
+                  errorMessage="Couldn’t reveal the word. Try again."
+                  onGiveUp={giveUp}
+                />
+              </>
+            }
+          />
+        ) : null}
         {showHow ? (
           <section
             id="how-heat-works"
@@ -432,32 +458,7 @@ export function SoloHotAndCold({
           </section>
         ) : null}
       </main>
-      {!done ? (
-        <GuessComposer
-          continuous
-          keyboardSurfaceRef={keyboardSurface}
-          message={message}
-          onGuess={guess}
-          actions={
-            <>
-              <button
-                type="button"
-                disabled={state.hintsUsed >= 3}
-                onClick={() => void requestHint()}
-              >
-                {state.hintsUsed >= 3 ? "hints used" : "hint"}
-              </button>
-              <GiveUpControl
-                tone="dark"
-                title="Reveal this word?"
-                description="The word will appear at the top of your ledger. You cannot continue this hunt."
-                errorMessage="Couldn’t reveal the word. Try again."
-                onGiveUp={giveUp}
-              />
-            </>
-          }
-        />
-      ) : (
+      {done ? (
         <HotAndColdShareDock
           label={`daily #${puzzle}`}
           guesses={state.guesses}
@@ -466,7 +467,7 @@ export function SoloHotAndCold({
           resultId="daily-heat-result"
           sharePath={`/things/hot-and-cold/daily/${puzzle}`}
         />
-      )}
+      ) : null}
     </div>
   );
 }

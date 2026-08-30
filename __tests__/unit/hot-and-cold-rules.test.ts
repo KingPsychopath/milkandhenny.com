@@ -4,7 +4,6 @@ import {
   heatBand,
   heatStreaks,
   hotAndColdJudgingVersionForPuzzle,
-  offscreenGuessDirection,
   orderGuesses,
   roundWinnerIds,
 } from "@/features/things/hot-and-cold/hot-and-cold-rules";
@@ -31,16 +30,6 @@ describe("Hot and Cold rules", () => {
         { rank: 500, sequence: 2, word: "second" },
       ]).map(({ word }) => word),
     ).toEqual(["hot", "first", "second"]);
-  });
-
-  it("only offers to reveal a guess when it is completely outside the usable ledger", () => {
-    const visibleArea = { top: 120, bottom: 680 };
-
-    expect(offscreenGuessDirection({ top: 40, bottom: 120 }, visibleArea)).toBe("above");
-    expect(offscreenGuessDirection({ top: 680, bottom: 740 }, visibleArea)).toBe("below");
-    expect(offscreenGuessDirection({ top: 100, bottom: 140 }, visibleArea)).toBeNull();
-    expect(offscreenGuessDirection({ top: 660, bottom: 700 }, visibleArea)).toBeNull();
-    expect(offscreenGuessDirection({ top: 240, bottom: 300 }, visibleArea)).toBeNull();
   });
 
   it("allows tied closest players to share a round win", () => {

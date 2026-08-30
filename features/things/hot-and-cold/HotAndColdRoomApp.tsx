@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
@@ -133,7 +133,6 @@ export function HotAndColdRoomApp({
     initialSnapshot: credentials.snapshot,
   });
   const haptics = useWebHaptics();
-  const keyboardSurface = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
@@ -151,10 +150,12 @@ export function HotAndColdRoomApp({
     if (!latestId) return;
     setNewest(latestId);
     const guess = snapshot?.round?.guesses.find(({ id }) => id === latestId);
-    if (guess && guess.playerId === credentials.playerId)
+    if (guess && guess.playerId === credentials.playerId) {
+      setMessage(null);
       void haptics.trigger(
         guess.rank === 0 ? "success" : guess.rank < 500 ? "warning" : "selection",
       );
+    }
   }, [credentials.playerId, haptics, latestId, snapshot?.round?.guesses]);
   const send = async (action: MultiplayerActionInput<HotAndColdAction>) => {
     try {
@@ -196,6 +197,16 @@ export function HotAndColdRoomApp({
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
   );
+  const newestGuess = newest ? guesses.find(({ id }) => id === newest) : null;
+  const receipt =
+    newestGuess?.mine && newestGuess.rank !== 0
+      ? {
+          id: newestGuess.id,
+          label: `${newestGuess.word} · #${newestGuess.rank.toLocaleString()}${
+            newestGuess.id === hottest?.id ? " · hottest" : ""
+          }`,
+        }
+      : null;
   const streak = heatStreaks(guesses);
   if (snapshot.phase === "lobby") {
     return (
@@ -401,7 +412,7 @@ export function HotAndColdRoomApp({
     ? Math.max(0, Math.ceil((snapshot.round.turnEndsAt - snapshot.serverNow) / 1_000))
     : null;
   return (
-    <div ref={keyboardSurface} className="hot-and-cold min-h-svh">
+    <div className="hot-and-cold min-h-svh">
       <header className="mx-auto grid max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={() => void leave()}>
           ← leave
@@ -431,9 +442,7 @@ export function HotAndColdRoomApp({
             solved={Boolean(snapshot.round?.exact)}
           />
           <p>
-            {hottest ? (
-              <span className="heat-source-keyboard-summary">{hottest.word} · </span>
-            ) : null}
+            {hottest ? <span className="heat-source-hottest-word">{hottest.word} · </span> : null}
             {snapshot.phase === "reveal"
               ? snapshot.round?.exact
                 ? "found"
@@ -448,6 +457,35 @@ export function HotAndColdRoomApp({
             ) : null}
           </p>
         </div>
+        {snapshot.phase === "playing" ? (
+          <GuessComposer
+            disabled={!myTurn || me?.gaveUp}
+            message={message}
+            receipt={receipt}
+            turnLabel={
+              myTurn
+                ? snapshot.round?.openingGuess
+                  ? "free opening guess"
+                  : `${snapshot.guessesPerPlayer - (me?.turnsUsed ?? 0)} guesses left`
+                : `watching ${current?.name ?? "the room"}`
+            }
+            onGuess={(word) =>
+              send({ type: "guess.submit", word, roundId: snapshot.round?.id ?? "" })
+            }
+            actions={
+              myTurn ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void send({ type: "turn.pass", roundId: snapshot.round?.id ?? "" })
+                  }
+                >
+                  pass
+                </button>
+              ) : null
+            }
+          />
+        ) : null}
         <HeatLedger
           guesses={guesses}
           newestId={newest}
@@ -485,37 +523,7 @@ export function HotAndColdRoomApp({
           </section>
         ) : null}
       </main>
-      {snapshot.phase === "playing" ? (
-        <>
-          <GuessComposer
-            disabled={!myTurn || me?.gaveUp}
-            keyboardSurfaceRef={keyboardSurface}
-            message={message}
-            turnLabel={
-              myTurn
-                ? snapshot.round?.openingGuess
-                  ? "free opening guess"
-                  : `${snapshot.guessesPerPlayer - (me?.turnsUsed ?? 0)} guesses left`
-                : `watching ${current?.name ?? "the room"}`
-            }
-            onGuess={(word) =>
-              send({ type: "guess.submit", word, roundId: snapshot.round?.id ?? "" })
-            }
-            actions={
-              myTurn ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void send({ type: "turn.pass", roundId: snapshot.round?.id ?? "" })
-                  }
-                >
-                  pass
-                </button>
-              ) : null
-            }
-          />
-        </>
-      ) : snapshot.phase === "reveal" && snapshot.round ? (
+      {snapshot.phase === "reveal" && snapshot.round ? (
         <HotAndColdShareDock
           label={`room ${snapshot.roomId} · round ${snapshot.round.number}/${snapshot.round.total}`}
           guesses={snapshot.round.guesses}

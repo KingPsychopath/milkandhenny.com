@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useWebHaptics } from "web-haptics/react";
-import { useMobileKeyboardSession } from "@/hooks/useMobileKeyboardSession";
 
 function localGuessError(word: string) {
   const trimmed = word.trim();
@@ -11,30 +10,37 @@ function localGuessError(word: string) {
   return null;
 }
 
+export interface GuessReceipt {
+  id: string;
+  label: string;
+}
+
 export function GuessComposer({
   disabled,
   message,
+  receipt,
   onGuess,
   actions,
   continuous = false,
-  keyboardSurfaceRef,
   turnLabel,
 }: {
   disabled?: boolean;
   message?: string | null;
+  receipt?: GuessReceipt | null;
   onGuess: (word: string) => Promise<boolean>;
   actions?: ReactNode;
   continuous?: boolean;
-  keyboardSurfaceRef: RefObject<HTMLDivElement | null>;
   turnLabel?: string;
 }) {
   const haptics = useWebHaptics();
   const [word, setWord] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [rejected, setRejected] = useState(false);
-  const composer = useRef<HTMLFormElement>(null);
+  const [visibleReceipt, setVisibleReceipt] = useState<GuessReceipt | null>(null);
+  const visibleReceiptRef = useRef<GuessReceipt | null>(null);
+  const receiptQueue = useRef<GuessReceipt[]>([]);
+  const queuedReceiptIds = useRef(new Set<string>());
   const input = useRef<HTMLInputElement>(null);
   const wordRef = useRef(word);
   const activeWord = useRef<string | null>(null);
@@ -44,20 +50,6 @@ export function GuessComposer({
   const retainFocusUntil = useRef(0);
   const disabledRef = useRef(disabled);
   const onGuessRef = useRef(onGuess);
-  const { dismissKeyboard } = useMobileKeyboardSession({
-    dockRef: composer,
-    inputRef: input,
-    restoreScrollOnClose: true,
-    surfaceRef: keyboardSurfaceRef,
-    onSessionOpen: ({ input: activeInput, surface }) => {
-      if (document.activeElement !== activeInput) return;
-      const source = surface.querySelector<HTMLElement>(".heat-source");
-      const hottest = surface.querySelector<HTMLElement>(".heat-ledger > li:first-child");
-      if (!source || !hottest) return;
-      const delta = hottest.getBoundingClientRect().top - source.getBoundingClientRect().bottom;
-      if (Math.abs(delta) > 2) window.scrollBy({ top: delta, behavior: "auto" });
-    },
-  });
   disabledRef.current = disabled;
   onGuessRef.current = onGuess;
   wordRef.current = word;
@@ -78,9 +70,6 @@ export function GuessComposer({
       { duration: 380, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
     );
   };
-  const updatePendingCount = () => {
-    if (mounted.current) setPendingCount(queue.current.length + (activeWord.current ? 1 : 0));
-  };
   const drainQueue = async () => {
     if (processing.current) return;
     processing.current = true;
@@ -89,7 +78,6 @@ export function GuessComposer({
       const submittedWord = queue.current.shift();
       if (!submittedWord) continue;
       activeWord.current = submittedWord;
-      updatePendingCount();
       let accepted = false;
       try {
         accepted = await onGuessRef.current(submittedWord);
@@ -97,7 +85,6 @@ export function GuessComposer({
         accepted = false;
       }
       activeWord.current = null;
-      updatePendingCount();
       if (!mounted.current) return;
       if (!accepted) {
         if (queue.current.length === 0 && !wordRef.current) {
@@ -113,7 +100,6 @@ export function GuessComposer({
     activeWord.current = null;
     if (!mounted.current) return;
     setBusy(false);
-    setPendingCount(0);
     if (!disabledRef.current && matchMedia("(hover: hover) and (pointer: fine)").matches)
       requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
   };
@@ -144,7 +130,6 @@ export function GuessComposer({
     setWord("");
     setRejected(false);
     setLocalMessage(null);
-    updatePendingCount();
     void drainQueue();
   };
   useEffect(() => {
@@ -169,23 +154,47 @@ export function GuessComposer({
   useEffect(() => {
     if (!disabled) return;
     queue.current = [];
-    updatePendingCount();
   }, [disabled]);
-  const progressMessage =
-    continuous && busy
-      ? pendingCount > 1
-        ? `${pendingCount} guesses queued`
-        : "scoring · keep typing"
-      : null;
+  const receiptId = receipt?.id;
+  const receiptLabel = receipt?.label;
+  useEffect(() => {
+    if (!receiptId || !receiptLabel || queuedReceiptIds.current.has(receiptId)) return;
+    const nextReceipt = { id: receiptId, label: receiptLabel };
+    queuedReceiptIds.current.add(receiptId);
+    if (visibleReceiptRef.current) {
+      receiptQueue.current.push(nextReceipt);
+      return;
+    }
+    visibleReceiptRef.current = nextReceipt;
+    setVisibleReceipt(nextReceipt);
+  }, [receiptId, receiptLabel]);
+  useEffect(() => {
+    if (!visibleReceipt) return;
+    const timer = setTimeout(() => {
+      const nextReceipt = receiptQueue.current.shift() ?? null;
+      visibleReceiptRef.current = nextReceipt;
+      setVisibleReceipt(nextReceipt);
+    }, 2_800);
+    return () => clearTimeout(timer);
+  }, [visibleReceipt]);
   return (
     <form
-      ref={composer}
       className="heat-composer"
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
+      {visibleReceipt ? (
+        <output
+          key={visibleReceipt.id}
+          className="heat-guess-receipt"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {visibleReceipt.label}
+        </output>
+      ) : null}
       <div className="heat-composer-inner">
         <label className="sr-only" htmlFor="hot-and-cold-guess">
           Guess a word
@@ -224,7 +233,7 @@ export function GuessComposer({
             setLocalMessage(null);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Escape") dismissKeyboard();
+            if (event.key === "Escape") input.current?.blur();
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               submit();
@@ -233,22 +242,16 @@ export function GuessComposer({
         />
         <button
           type="submit"
-          disabled={disabled || (!continuous && busy) || !word.trim()}
+          disabled={disabled || (!continuous && busy)}
           onPointerDown={(event) => {
             if (document.activeElement === input.current) event.preventDefault();
           }}
         >
-          {busy
-            ? continuous && word.trim()
-              ? "queue"
-              : pendingCount > 1
-                ? `${pendingCount} queued`
-                : "scoring…"
-            : "guess"}
+          guess
         </button>
         <div className="heat-composer-tools">
-          <span id="hot-and-cold-guess-message" aria-live="polite">
-            {localMessage ?? progressMessage ?? message ?? turnLabel ?? "lower is hotter"}
+          <span id="hot-and-cold-guess-message" aria-live="polite" aria-atomic="true">
+            {localMessage ?? message ?? turnLabel ?? "lower is hotter"}
           </span>
           <div className="heat-composer-controls">
             <button
@@ -261,13 +264,13 @@ export function GuessComposer({
               }}
               onClick={() => {
                 retainFocusUntil.current = 0;
-                dismissKeyboard();
+                input.current?.blur();
               }}
             >
               hide keys
             </button>
             {actions ? (
-              <fieldset className="heat-composer-actions" disabled={busy}>
+              <fieldset className="heat-composer-actions" disabled={busy && !continuous}>
                 <legend className="sr-only">Game actions</legend>
                 {actions}
               </fieldset>
