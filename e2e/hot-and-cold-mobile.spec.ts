@@ -38,6 +38,10 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
     await input.fill("table");
     await input.press("Enter");
     await expect.poll(() => firstScoreRequestSeen).toBe(true);
+    await page.evaluate(() => {
+      document.querySelector<HTMLInputElement>("#hot-and-cold-guess")?.blur();
+    });
+    await expect(input).toBeFocused();
     await expect(input).toHaveValue("");
     await expect(input).toBeEditable();
     await expect(input).not.toHaveAttribute("readonly", "");
@@ -70,10 +74,37 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
     const game = page.locator(".hot-and-cold").first();
     await expect(game).toHaveAttribute("data-heat-keyboard", "");
     const keyboardStatus = page.locator(".heat-source");
+    const hottestGuess = page.locator(".heat-ledger > li").first();
     await expect(page.locator(".heat-source-keyboard-summary")).toBeVisible();
     await expect
       .poll(async () => Math.round((await keyboardStatus.boundingBox())?.y ?? 0))
       .toBeGreaterThanOrEqual(420);
+    await expect
+      .poll(async () => {
+        const status = await keyboardStatus.boundingBox();
+        const hottest = await hottestGuess.boundingBox();
+        if (!status || !hottest) return Number.POSITIVE_INFINITY;
+        return Math.round(Math.abs(hottest.y - (status.y + status.height)));
+      })
+      .toBeLessThanOrEqual(3);
+    await page.waitForTimeout(150);
+
+    const alignedScrollY = await page.evaluate(() => window.scrollY);
+    await page.evaluate(() => {
+      // Two guesses alone are not tall enough to prove that the player can keep scrolling.
+      const ledger = document.querySelector<HTMLElement>(".heat-ledger");
+      if (ledger) {
+        ledger.style.paddingBottom = "40rem";
+        ledger.getBoundingClientRect();
+      }
+      window.scrollBy({ top: 120, behavior: "auto" });
+      window.visualViewport?.dispatchEvent(new Event("scroll"));
+    });
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(alignedScrollY + 80);
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(alignedScrollY + 80);
 
     const hideKeyboard = page.getByRole("button", { name: "Hide keyboard" });
     await expect(hideKeyboard).toBeVisible();

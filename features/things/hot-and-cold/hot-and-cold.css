@@ -254,6 +254,7 @@ main:has(.heat-result-share) .heat-source {
 }
 .hot-and-cold[data-heat-keyboard] .heat-game-main {
   min-height: var(--heat-layout-height, 100svh);
+  padding-top: var(--heat-keyboard-spacer, 0);
 }
 .hot-and-cold[data-heat-keyboard] .heat-source {
   top: var(--heat-visual-top, 0);

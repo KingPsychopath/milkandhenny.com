@@ -38,6 +38,7 @@ export function GuessComposer({
   const queue = useRef<string[]>([]);
   const processing = useRef(false);
   const mounted = useRef(true);
+  const retainFocusUntil = useRef(0);
   const disabledRef = useRef(disabled);
   const onGuessRef = useRef(onGuess);
   disabledRef.current = disabled;
@@ -96,10 +97,16 @@ export function GuessComposer({
     if (!mounted.current) return;
     setBusy(false);
     setPendingCount(0);
-    if (!disabledRef.current)
+    if (!disabledRef.current && matchMedia("(hover: hover) and (pointer: fine)").matches)
       requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
   };
+  const retainMobileFocus = () => {
+    if (!continuous || disabled || navigator.maxTouchPoints === 0) return;
+    retainFocusUntil.current = Date.now() + 1_200;
+    input.current?.focus({ preventScroll: true });
+  };
   const submit = () => {
+    retainMobileFocus();
     const submittedWord = word.trim();
     if (!submittedWord || (!continuous && processing.current) || disabled) return;
     const invalidMessage = localGuessError(submittedWord);
@@ -128,12 +135,23 @@ export function GuessComposer({
     input.current?.focus({ preventScroll: true });
   }, [disabled]);
   useEffect(() => {
+    if (!continuous) return;
+    const allowIntentionalBlur = () => {
+      retainFocusUntil.current = 0;
+    };
+    document.addEventListener("pointerdown", allowIntentionalBlur, true);
+    return () => document.removeEventListener("pointerdown", allowIntentionalBlur, true);
+  }, [continuous]);
+  useEffect(() => {
     const visualViewport = window.visualViewport;
     const inputElement = input.current;
     const game = composer.current?.closest<HTMLElement>(".hot-and-cold");
     if (!visualViewport || !inputElement || !game || navigator.maxTouchPoints === 0) return;
 
     let frame = 0;
+    let alignTimer: ReturnType<typeof setTimeout> | null = null;
+    let keyboardWasOpen = false;
+    let alignedForSession = false;
     let expandedHeight = Math.max(
       window.innerHeight,
       document.documentElement.clientHeight,
@@ -143,6 +161,17 @@ export function GuessComposer({
       game.removeAttribute("data-heat-keyboard");
       game.style.removeProperty("--heat-layout-height");
       game.style.removeProperty("--heat-visual-top");
+      game.style.removeProperty("--heat-keyboard-spacer");
+    };
+    const alignHottestGuess = () => {
+      alignTimer = null;
+      if (document.activeElement !== inputElement) return;
+      const source = game.querySelector<HTMLElement>(".heat-source");
+      const hottest = game.querySelector<HTMLElement>(".heat-ledger > li:first-child");
+      if (!source || !hottest) return;
+      alignedForSession = true;
+      const delta = hottest.getBoundingClientRect().top - source.getBoundingClientRect().bottom;
+      if (Math.abs(delta) > 2) window.scrollBy({ top: delta, behavior: "auto" });
     };
     const measure = () => {
       frame = 0;
@@ -154,6 +183,9 @@ export function GuessComposer({
       const focused = document.activeElement === inputElement;
       if (!focused) {
         expandedHeight = Math.max(expandedHeight, layoutHeight);
+        keyboardWasOpen = false;
+        alignedForSession = false;
+        if (alignTimer) clearTimeout(alignTimer);
         clearKeyboardLayout();
         return;
       }
@@ -163,12 +195,27 @@ export function GuessComposer({
         visualViewport.scale < 1.1 &&
         keyboardDepth > Math.max(120, Math.round(keyboardLayoutHeight * 0.18));
       if (!keyboardOpen) {
+        keyboardWasOpen = false;
+        alignedForSession = false;
+        if (alignTimer) clearTimeout(alignTimer);
         clearKeyboardLayout();
         return;
+      }
+      if (!keyboardWasOpen) {
+        keyboardWasOpen = true;
+        alignedForSession = false;
       }
       game.setAttribute("data-heat-keyboard", "");
       game.style.setProperty("--heat-layout-height", `${keyboardLayoutHeight}px`);
       game.style.setProperty("--heat-visual-top", `${Math.max(0, visualViewport.offsetTop)}px`);
+      if (!alignedForSession) {
+        game.style.setProperty(
+          "--heat-keyboard-spacer",
+          `${Math.max(0, visualViewport.offsetTop)}px`,
+        );
+        if (alignTimer) clearTimeout(alignTimer);
+        alignTimer = setTimeout(alignHottestGuess, 90);
+      }
     };
     const scheduleMeasure = () => {
       cancelAnimationFrame(frame);
@@ -183,6 +230,7 @@ export function GuessComposer({
     scheduleMeasure();
     return () => {
       cancelAnimationFrame(frame);
+      if (alignTimer) clearTimeout(alignTimer);
       inputElement.removeEventListener("focus", scheduleMeasure);
       inputElement.removeEventListener("blur", scheduleMeasure);
       visualViewport.removeEventListener("resize", scheduleMeasure);
@@ -238,6 +286,17 @@ export function GuessComposer({
           maxLength={32}
           spellCheck={false}
           placeholder={disabled ? "watch the ledger" : "guess any word"}
+          onBlur={(event) => {
+            if (
+              !continuous ||
+              disabled ||
+              navigator.maxTouchPoints === 0 ||
+              event.relatedTarget ||
+              Date.now() > retainFocusUntil.current
+            )
+              return;
+            event.currentTarget.focus({ preventScroll: true });
+          }}
           onChange={(event) => {
             wordRef.current = event.target.value;
             setWord(event.target.value);
@@ -276,8 +335,14 @@ export function GuessComposer({
               type="button"
               className="heat-keyboard-dismiss"
               aria-label="Hide keyboard"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => input.current?.blur()}
+              onPointerDown={(event) => {
+                retainFocusUntil.current = 0;
+                event.preventDefault();
+              }}
+              onClick={() => {
+                retainFocusUntil.current = 0;
+                input.current?.blur();
+              }}
             >
               hide keys
             </button>
