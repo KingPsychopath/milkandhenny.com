@@ -10,6 +10,7 @@ import {
 } from "@/features/things/pool/preset-bundle";
 import { parseGameSettingsDocument } from "@/features/things/shared/game-settings";
 import type { GamePoolEntrance } from "@/features/things/pool/types";
+import { AdminStatus, adminToneBorderClass } from "./AdminStatus";
 
 export function GamePoolSettingsTransfer({
   entrance,
@@ -225,7 +226,7 @@ export function GamePoolSettingsTransfer({
             <p
               id={`${textareaId}-error`}
               role="alert"
-              className="font-mono text-xs text-[var(--prose-hashtag)]"
+              className={`border-l-2 pl-3 font-mono text-xs ${adminToneBorderClass("danger")}`}
             >
               {parseError}
             </p>
@@ -233,6 +234,9 @@ export function GamePoolSettingsTransfer({
           {parsed ? (
             <div className="border-t theme-border pt-4">
               <p className="font-serif text-lg font-semibold">{parsed.label}</p>
+              <AdminStatus tone="positive" className="mt-1 font-mono text-xs">
+                settings bundle valid
+              </AdminStatus>
               <p className="mt-1 font-mono text-xs theme-muted">
                 {parsed.game} · {parsed.targetSize} per room ·{" "}
                 {parsed.admission.autoJoin ? "fast repeat joins" : "confirm every join"}
@@ -251,10 +255,10 @@ export function GamePoolSettingsTransfer({
                     load into this entrance
                   </button>
                 ) : (
-                  <p className="font-mono text-xs theme-muted">
+                  <AdminStatus tone="attention" className="font-mono text-xs">
                     This entrance uses {entrance.game}. Create a new entrance to use this{" "}
                     {parsed.game} bundle.
-                  </p>
+                  </AdminStatus>
                 )}
                 <button
                   type="button"

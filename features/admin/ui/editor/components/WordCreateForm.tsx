@@ -5,7 +5,7 @@ import { WORD_TYPES, getWordTypeLabel } from "@/features/words/types";
 import type { NoteVisibility, WordType } from "../types";
 
 function featuredButtonClass(isFeatured: boolean): string {
-  return `h-full min-h-10 px-3 rounded border font-mono text-xs transition-colors ${
+  return `h-full min-h-11 px-3 rounded border font-mono text-xs transition-colors ${
     isFeatured
       ? "border-[var(--foreground)] text-[var(--foreground)]"
       : "theme-border theme-muted hover:text-[var(--foreground)]"

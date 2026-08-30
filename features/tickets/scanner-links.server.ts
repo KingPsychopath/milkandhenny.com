@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { log } from "@/lib/platform/logger.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { isValidEventSlug } from "@/features/events/types";
+import { getEvent } from "@/features/events/store.server";
 import {
   SCANNER_PERMISSIONS,
   effectiveScannerPermissions,
@@ -83,6 +84,9 @@ export async function createScannerLink(
   if (!isValidEventSlug(input.eventSlug)) {
     return { ok: false, status: 404, error: "Event not found" };
   }
+  if (!(await getEvent(input.eventSlug))) {
+    return { ok: false, status: 404, error: "Event not found" };
+  }
 
   if (input.checkpointId !== null) {
     if (!isValidCheckpointId(input.checkpointId)) {
@@ -97,6 +101,9 @@ export async function createScannerLink(
     const parsed = new Date(input.expiresAt);
     if (Number.isNaN(parsed.getTime())) {
       return { ok: false, status: 400, error: "That expiry doesn't look like a date" };
+    }
+    if (parsed.getTime() <= Date.now()) {
+      return { ok: false, status: 400, error: "Choose an expiry in the future" };
     }
     expiresAt = parsed;
   }

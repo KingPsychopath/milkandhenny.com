@@ -1,6 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import {
+  getAttendeeSession,
+  openedTicketForReference,
+} from "@/features/event-scoring/session.server";
+import { getTicketByCurrentReference } from "@/features/tickets/store.server";
 import { claimTicketForPerson } from "./access.server";
 
 export const claimTicketIdentityFn = createServerFn({ method: "POST" })
@@ -10,7 +14,8 @@ export const claimTicketIdentityFn = createServerFn({ method: "POST" })
     if (!session?.personId || !session.verifiedEmailHash) {
       return { ok: false as const, status: 401, error: "Verify your email first" };
     }
-    const access = session.tickets.find((entry) => entry.ticketId === data.ticketId);
+    const ticket = await getTicketByCurrentReference(data.ticketId);
+    const access = await openedTicketForReference(data.ticketId);
     if (!access) {
       return {
         ok: false as const,
@@ -21,7 +26,7 @@ export const claimTicketIdentityFn = createServerFn({ method: "POST" })
     return claimTicketForPerson({
       personId: session.personId,
       verifiedEmailHash: session.verifiedEmailHash,
-      ticketId: data.ticketId,
+      ticketId: ticket?.id ?? data.ticketId,
       permittedParticipantId: access.participantId,
     });
   });

@@ -2,7 +2,7 @@ import type { TransferData, TransferFile } from "./types";
 
 type PublicTransferFile = Omit<
   TransferFile,
-  "storageKey" | "originalStorageKey" | "processingErrorDetail"
+  "storageKey" | "originalStorageKey" | "processingErrorDetail" | "storedBytes"
 >;
 type PublicTransfer = Omit<TransferData, "deleteToken" | "files"> & {
   files: PublicTransferFile[];
@@ -13,6 +13,7 @@ function toPublicTransferFile(file: TransferFile): PublicTransferFile {
     storageKey: _storageKey,
     originalStorageKey: _originalStorageKey,
     processingErrorDetail: _processingErrorDetail,
+    storedBytes: _storedBytes,
     ...publicFile
   } = file;
   return publicFile;

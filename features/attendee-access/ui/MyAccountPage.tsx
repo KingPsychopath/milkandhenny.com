@@ -43,6 +43,25 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   return [...groups.values()];
 }
 
+function formatAccountDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeZone: "Europe/London",
+  }).format(date);
+}
+
+function formatAccountDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/London",
+  }).format(date);
+}
+
 function gamePath(
   game: string,
   mode: AttendeeAccount["gameHistory"][number]["mode"],
@@ -150,25 +169,37 @@ export function MyAccountPage({
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    const result = await updateAttendeeNameFn({ data: { name } });
-    setMessage(result.ok ? "Preferred name updated." : result.error);
-    if (result.ok && result.value.name && account) {
-      setAccount({ ...account, name: result.value.name });
-      rememberBrowserProfile({ name: result.value.name });
+    try {
+      const result = await updateAttendeeNameFn({ data: { name } });
+      setMessage(result.ok ? "Preferred name updated." : result.error);
+      if (result.ok && result.value.name && account) {
+        setAccount({ ...account, name: result.value.name });
+        rememberBrowserProfile({ name: result.value.name });
+      }
+    } catch {
+      setMessage("The preferred name could not be updated. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function addEmail(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setMessage("");
-    const result = await requestAttendeeAccessFn({
-      data: { email: newEmail, purpose: "add-email", returnTo: "/my" },
-    });
-    if (!result.ok && result.status === 403) setEmailStepUpRequired(true);
-    setMessage(result.ok ? "Check the new address and verify it within 15 minutes." : result.error);
-    setBusy(false);
+    try {
+      const result = await requestAttendeeAccessFn({
+        data: { email: newEmail, purpose: "add-email", returnTo: "/my" },
+      });
+      if (!result.ok && result.status === 403) setEmailStepUpRequired(true);
+      setMessage(
+        result.ok ? "Check the new address and verify it within 15 minutes." : result.error,
+      );
+    } catch {
+      setMessage("The verification email could not be sent. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function signOut() {
@@ -223,58 +254,73 @@ export function MyAccountPage({
 
   async function cancelOperation(kind: "assignment" | "transfer" | "return", operationId: string) {
     setBusy(true);
-    const result = await cancelTicketOperationFn({ data: { kind, operationId } });
-    if (!result.ok) setMessage(result.error);
-    else {
-      setMessage("Invitation cancelled.");
-      setAccount((current) => {
-        if (!current) return current;
-        const key =
-          kind === "assignment"
-            ? "outgoingAssignments"
-            : kind === "transfer"
-              ? "outgoingTransfers"
-              : "returnRequests";
-        return {
-          ...current,
-          ticketOperations: {
-            ...current.ticketOperations,
-            [key]: current.ticketOperations[key].map((item) =>
-              item.id === operationId ? { ...item, status: "cancelled" } : item,
-            ),
-          },
-        };
-      });
+    setMessage("");
+    try {
+      const result = await cancelTicketOperationFn({ data: { kind, operationId } });
+      if (!result.ok) setMessage(result.error);
+      else {
+        setMessage(kind === "return" ? "Return request cancelled." : "Invitation cancelled.");
+        setAccount((current) => {
+          if (!current) return current;
+          const key =
+            kind === "assignment"
+              ? "outgoingAssignments"
+              : kind === "transfer"
+                ? "outgoingTransfers"
+                : "returnRequests";
+          return {
+            ...current,
+            ticketOperations: {
+              ...current.ticketOperations,
+              [key]: current.ticketOperations[key].map((item) =>
+                item.id === operationId ? { ...item, status: "cancelled" } : item,
+              ),
+            },
+          };
+        });
+      }
+    } catch {
+      setMessage("That ticket action could not be cancelled. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function resendOperation(kind: "assignment" | "transfer", operationId: string) {
     setBusy(true);
-    const result = await resendTicketOperationFn({ data: { kind, operationId } });
-    if (!result.ok) setMessage(result.error);
-    else {
-      setMessage("Invitation resent.");
-      setAccount((current) => {
-        if (!current || !result.value.expiresAt) return current;
-        const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
-        return {
-          ...current,
-          ticketOperations: {
-            ...current.ticketOperations,
-            [key]: current.ticketOperations[key].map((item) =>
-              item.id === operationId ? { ...item, expiresAt: result.value.expiresAt } : item,
-            ),
-          },
-        };
-      });
+    setMessage("");
+    try {
+      const result = await resendTicketOperationFn({ data: { kind, operationId } });
+      if (!result.ok) setMessage(result.error);
+      else {
+        setMessage("Invitation resent.");
+        setAccount((current) => {
+          if (!current || !result.value.expiresAt) return current;
+          const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
+          return {
+            ...current,
+            ticketOperations: {
+              ...current.ticketOperations,
+              [key]: current.ticketOperations[key].map((item) =>
+                item.id === operationId ? { ...item, expiresAt: result.value.expiresAt } : item,
+              ),
+            },
+          };
+        });
+      }
+    } catch {
+      setMessage("The invitation could not be resent. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   return (
     <main id="main" className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14">
-      <Link to="/" className="font-mono text-micro theme-muted hover:text-foreground">
+      <Link
+        to="/"
+        className="inline-flex min-h-11 items-center font-mono text-micro theme-muted hover:text-foreground"
+      >
         ← milk &amp; henny
       </Link>
       <h1 className="mt-10 font-serif text-4xl">account</h1>
@@ -357,7 +403,7 @@ export function MyAccountPage({
                 >
                   <span className="font-serif text-xl">{pitch.title}</span>
                   <span className="shrink-0 font-mono text-micro theme-muted">
-                    {new Date(pitch.updatedAt).toLocaleDateString()} →
+                    {formatAccountDate(pitch.updatedAt)} →
                   </span>
                 </Link>
               </li>
@@ -421,7 +467,7 @@ export function MyAccountPage({
                     {game.outcome ?? game.status}
                     {game.score !== undefined ? ` · ${game.score}` : ""}
                     <br />
-                    {new Date(game.lastPlayedAt).toLocaleDateString()} →
+                    {formatAccountDate(game.lastPlayedAt)} →
                   </p>
                 </GameHistoryLink>
               </li>
@@ -511,7 +557,10 @@ export function MyAccountPage({
                 className="py-4"
               >
                 {grant.href ? (
-                  <a href={grant.href} className="min-h-11 py-3 underline hover:opacity-70">
+                  <a
+                    href={grant.href}
+                    className="inline-flex min-h-11 items-center py-3 underline hover:opacity-70"
+                  >
                     {grant.label.replaceAll("-", " ")}
                   </a>
                 ) : (
@@ -543,7 +592,7 @@ export function MyAccountPage({
             maxLength={120}
             required
             autoComplete="name"
-            className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
+            className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-base sm:text-sm"
           />
           <p className="max-w-md font-mono text-micro leading-relaxed theme-muted">
             Your private full name as you naturally write it. It suggests an editable name in games;
@@ -612,7 +661,7 @@ export function MyAccountPage({
                 onChange={(event) => setNewEmail(event.target.value)}
                 required
                 autoComplete="email"
-                className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-sm"
+                className="min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-base sm:text-sm"
               />
               <EmailAddressNotice email={newEmail} onAcceptSuggestion={setNewEmail} />
               <button
@@ -656,7 +705,7 @@ export function AttendeeOperationRow({
           {label} · {item.eventTitle}
         </p>
         <p className="mt-1 font-mono text-micro theme-muted">
-          {item.status} · expires {new Date(item.expiresAt).toLocaleString()}
+          {item.status} · expires {formatAccountDateTime(item.expiresAt)}
         </p>
       </div>
       {onCancel && item.status === "pending" ? (

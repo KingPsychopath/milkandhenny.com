@@ -1,8 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const deliveredOfficialResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/game-results/outbox.server", () => ({
+  publishOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredOfficialResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-08-30T12:00:00.000Z",
+      payloadHash: "b".repeat(64),
+    }),
+  ),
 }));
 
 import {
@@ -59,6 +78,11 @@ const snapshot: RemoteSyncedSnapshot = {
   commandReceipts: [],
   updatedAt: Date.now(),
 };
+
+afterEach(() => {
+  deliveredOfficialResults.length = 0;
+  vi.useRealTimers();
+});
 
 describe("remote game rooms", () => {
   it("lets a player-created room invite a judge and delivers acknowledged commands once", async () => {
@@ -139,6 +163,87 @@ describe("remote game rooms", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps the full lobby lifetime until renewal is actually needed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-30T10:00:00Z"));
+    const room = await createPairedGameRoom({ creatorRole: "player", setup: headsUpSetup });
+    await syncPairedGamePlayer({
+      roomId: room.roomId,
+      playerToken: room.playerToken,
+      snapshot,
+      lastCommandSequence: 0,
+    });
+    const initialJudgeRead = await readPairedGameJudge({
+      roomId: room.roomId,
+      judgeToken: room.judgeToken,
+      ...judgeLease,
+    });
+    expect(initialJudgeRead.expiresAt).toBe(room.expiresAt);
+
+    vi.advanceTimersByTime(26 * 60_000);
+    const renewed = await readPairedGameJudge({
+      roomId: room.roomId,
+      judgeToken: room.judgeToken,
+      ...judgeLease,
+    });
+    expect(renewed.expiresAt).toBeGreaterThan(room.expiresAt);
+  });
+
+  it("publishes event results once per authoritative revision", async () => {
+    const room = await createPairedGameRoom({
+      creatorRole: "player",
+      setup: headsUpSetup,
+      officialResultChannelId: "gsc_remote_event",
+    });
+    const completed: RemoteSyncedSnapshot = {
+      ...snapshot,
+      phase: "results",
+      currentLabel: null,
+      nextLabel: null,
+      secondsRemaining: null,
+      itemId: null,
+      score: 1,
+      revision: 2,
+    };
+    await syncPairedGamePlayer({
+      roomId: room.roomId,
+      playerToken: room.playerToken,
+      snapshot: completed,
+      lastCommandSequence: 0,
+    });
+    expect(deliveredOfficialResults).toHaveLength(1);
+    expect(deliveredOfficialResults[0]).toMatchObject({
+      channelId: "gsc_remote_event",
+      gameKind: "heads-up",
+      gameInstanceId: room.roomId,
+      resultId: "round:round-1",
+      revision: 2,
+      scope: "round",
+      players: [{ playerId: `player:${room.roomId}`, rawScore: 1, won: true }],
+    });
+
+    await syncPairedGamePlayer({
+      roomId: room.roomId,
+      playerToken: room.playerToken,
+      snapshot: completed,
+      lastCommandSequence: 0,
+    });
+    expect(deliveredOfficialResults).toHaveLength(1);
+
+    await syncPairedGamePlayer({
+      roomId: room.roomId,
+      playerToken: room.playerToken,
+      snapshot: { ...completed, score: 2, revision: 3 },
+      lastCommandSequence: 0,
+    });
+    expect(deliveredOfficialResults).toHaveLength(2);
+    expect(deliveredOfficialResults[1]).toMatchObject({
+      resultId: "round:round-1",
+      revision: 3,
+      players: [{ rawScore: 2 }],
+    });
   });
 
   it("lets a judge-created room transfer setup to the player without transferring device preferences", async () => {

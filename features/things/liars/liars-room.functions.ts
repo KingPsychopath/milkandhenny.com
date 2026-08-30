@@ -133,7 +133,13 @@ function hostAction(value: unknown): LiarsHostAction {
   if (data.type === "player.remove" || data.type === "host.pass")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
   if (data.type === "game.start")
-    return { actionId: id, type: data.type, force: data.force === true };
+    return {
+      actionId: id,
+      type: data.type,
+      removePlayerIds: Array.isArray(data.removePlayerIds)
+        ? data.removePlayerIds.slice(0, 16).map((playerId) => text(playerId, 120))
+        : undefined,
+    };
   if (
     data.type === "phase.extend" ||
     data.type === "phase.pause" ||

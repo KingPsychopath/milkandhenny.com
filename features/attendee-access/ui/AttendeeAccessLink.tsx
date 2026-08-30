@@ -6,7 +6,7 @@ import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGame
 export function AttendeeAccessLink({ authenticated }: { authenticated: boolean }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hiddenSurface =
-    pathname === "/my" || pathname === "/access" || pathname.startsWith("/admin");
+    pathname === "/my" || pathname.startsWith("/access") || pathname.startsWith("/admin");
   const [safeGameScreen, setSafeGameScreen] = useState(false);
   const [nearTop, setNearTop] = useState(true);
   const scrollFrame = useRef<number | null>(null);
@@ -47,6 +47,7 @@ export function AttendeeAccessLink({ authenticated }: { authenticated: boolean }
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
   const style = {
     opacity: nearTop ? 1 : 0,
+    visibility: nearTop ? ("visible" as const) : ("hidden" as const),
     pointerEvents: nearTop ? ("auto" as const) : ("none" as const),
   };
   const className =

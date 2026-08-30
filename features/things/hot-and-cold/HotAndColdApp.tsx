@@ -137,26 +137,42 @@ export function HotAndColdApp({
               </button>
             </GameLaunchChoices>
             {panel === "room" ? (
-              <div className="mt-6 border-t theme-border pt-5">
+              <form
+                className="mt-6 border-t theme-border pt-5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void openRoom();
+                }}
+              >
                 <label className="font-mono text-xs theme-muted">
                   <span className="block pb-2">your name</span>
                   <input
+                    name="name"
                     value={name}
                     autoComplete="name"
+                    enterKeyHint="go"
                     maxLength={24}
-                    onChange={(event) => setName(event.target.value)}
+                    required
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setMessage(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                      event.preventDefault();
+                      void openRoom();
+                    }}
                     className="min-h-12 w-full rounded-full border theme-border bg-transparent px-5 text-base"
                   />
                 </label>
                 <button
-                  type="button"
+                  type="submit"
                   disabled={!name.trim() || busy}
-                  onClick={() => void openRoom()}
                   className="mt-4 min-h-14 w-full rounded-full bg-[var(--foreground)] font-mono text-xs font-bold text-[var(--background)] disabled:opacity-40"
                 >
                   {busy ? "opening…" : "open room"}
                 </button>
-              </div>
+              </form>
             ) : null}
             {panel === "join" ? (
               <div className="mt-6 border-t theme-border pt-5">

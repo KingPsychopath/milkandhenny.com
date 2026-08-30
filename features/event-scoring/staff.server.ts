@@ -140,6 +140,13 @@ export async function createStaffAccess(input: {
 }): Promise<StaffAccess> {
   if (!input.reason.trim()) throw new Error("A reason is required for staff access");
   const permissions = permissionsForPreset(input.preset, input.overrides);
+  const requestedExpiry = input.expiresAt ? new Date(input.expiresAt) : null;
+  if (
+    requestedExpiry &&
+    (!Number.isFinite(requestedExpiry.getTime()) || requestedExpiry <= new Date())
+  ) {
+    throw new Error("Staff access expiry must be in the future");
+  }
   if (input.assignmentType === "station") {
     const token = `staff_${randomBytes(24).toString("base64url")}`;
     const assignment = await createStaffAssignment({
@@ -149,7 +156,7 @@ export async function createStaffAccess(input: {
       token,
       permissions,
       scope: { ...input.scope, rolePreset: input.preset },
-      expiresAt: input.expiresAt,
+      expiresAt: requestedExpiry?.toISOString(),
       rolePreset: input.preset,
       invitationState: "active",
     });
@@ -196,11 +203,7 @@ export async function createStaffAccess(input: {
     recipient,
     "This identity cannot receive new staff permissions. Existing access is unchanged.",
   );
-  const expiresAt = input.expiresAt
-    ? new Date(input.expiresAt)
-    : new Date(Date.now() + 72 * 60 * 60_000);
-  if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date())
-    throw new Error("Staff invitation expiry must be in the future");
+  const expiresAt = requestedExpiry ?? new Date(Date.now() + 72 * 60 * 60_000);
 
   const created = await transaction(async (client) => {
     const invited = await ensurePendingInvitedPerson(client, {

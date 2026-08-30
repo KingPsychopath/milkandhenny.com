@@ -33,6 +33,7 @@ export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFet
 
   const [sessions, setSessions] = useState<TokenSession[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -40,21 +41,19 @@ export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFet
   const refresh = useCallback(async () => {
     if (!isAuthed) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await authFetch("/api/admin/tokens/sessions");
       const data = (await res.json().catch(() => ({}))) as Partial<TokenSessionsResponse> & {
         error?: string;
       };
       if (!res.ok) {
-        // Don't throw in a client hook — it becomes a runtime error overlay.
-        // If the token is missing/expired, `authFetch` will already handle sign-out upstream.
-        setSessions([]);
-        return;
+        throw new Error(data.error ?? "Session list could not be loaded");
       }
       setSessions(Array.isArray(data.sessions) ? (data.sessions as TokenSession[]) : []);
-    } catch {
-      // Network failure or invalid JSON; keep UI stable.
-      setSessions([]);
+    } catch (error) {
+      // Keep the last good snapshot visible while making the stale state explicit.
+      setLoadError(error instanceof Error ? error.message : "Session list could not be loaded");
     } finally {
       setLoading(false);
     }
@@ -93,6 +92,7 @@ export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFet
   return {
     sessions,
     loading,
+    loadError,
     query,
     setQuery,
     showInactive,

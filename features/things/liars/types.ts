@@ -406,7 +406,7 @@ export type LiarsHostAction = MultiplayerAction &
         timings?: Partial<LiarsTimings>;
         roomMode?: LiarsRoomMode;
       }
-    | { type: "game.start"; force?: boolean }
+    | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "phase.extend" }
     | { type: "phase.pause" | "phase.resume" }
     | { type: "player.remove"; playerId: string }

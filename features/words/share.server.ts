@@ -14,7 +14,7 @@ import {
   wordShareKey,
   wordShareSlugsKey,
 } from "./config.server";
-import type { ShareLink } from "./content-types";
+import type { ShareLink, ShareLinkView } from "./content-types";
 
 type AccessTokenPayload = {
   slug: string;
@@ -27,6 +27,14 @@ type AccessTokenPayload = {
 const memoryShares = new Map<string, ShareLink>();
 const memoryShareIndex = new Map<string, Set<string>>();
 const memoryShareSlugs = new Set<string>();
+
+function getShareRedis() {
+  const redis = getRedis();
+  if (!redis && process.env.NODE_ENV === "production") {
+    throw new Error("Word share persistence is unavailable.");
+  }
+  return redis;
+}
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -73,7 +81,7 @@ function shareRecordTtlSeconds(link: ShareLink): number {
 }
 
 async function getShareById(id: string): Promise<ShareLink | null> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   if (redis) {
     const raw = await redis.get<ShareLink | string>(wordShareKey(id));
     if (!raw) return null;
@@ -83,7 +91,7 @@ async function getShareById(id: string): Promise<ShareLink | null> {
 }
 
 async function setShare(link: ShareLink): Promise<void> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   if (redis) {
     await Promise.all([
       redis.set(wordShareKey(link.id), JSON.stringify(link), { ex: shareRecordTtlSeconds(link) }),
@@ -100,7 +108,7 @@ async function setShare(link: ShareLink): Promise<void> {
 }
 
 async function listShareLinks(slug: string): Promise<ShareLink[]> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   if (redis) {
     const ids = (await redis.smembers(wordShareIndexKey(slug))) as string[];
     if (ids.length === 0) return [];
@@ -125,7 +133,7 @@ type ShareCleanupResult = {
 };
 
 async function listTrackedShareSlugs(): Promise<string[]> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   if (redis) {
     const slugs = (await redis.smembers(wordShareSlugsKey())) as string[];
     return slugs.filter((slug) => typeof slug === "string" && !!slug);
@@ -137,7 +145,7 @@ async function cleanupShareLinksForSlug(
   slug: string,
   nowMs = Date.now(),
 ): Promise<ShareCleanupResult> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   const indexKey = wordShareIndexKey(slug);
   let removedExpired = 0;
   let removedRevoked = 0;
@@ -255,7 +263,7 @@ async function revokeShareLink(slug: string, id: string): Promise<boolean> {
 }
 
 async function deleteAllShareLinksForSlug(slug: string): Promise<number> {
-  const redis = getRedis();
+  const redis = getShareRedis();
   const indexKey = wordShareIndexKey(slug);
 
   if (redis) {
@@ -413,6 +421,18 @@ function isShareUsable(link: ShareLink): boolean {
   return new Date(link.expiresAt).getTime() > Date.now();
 }
 
+function toShareLinkView(link: ShareLink): ShareLinkView {
+  return {
+    id: link.id,
+    slug: link.slug,
+    expiresAt: link.expiresAt,
+    pinRequired: link.pinRequired,
+    revokedAt: link.revokedAt,
+    createdAt: link.createdAt,
+    updatedAt: link.updatedAt,
+  };
+}
+
 async function verifyShareForToken(slug: string, rawToken: string): Promise<ShareLink | null> {
   const tokenHash = sha256(rawToken);
   const links = await listShareLinks(slug);
@@ -552,4 +572,5 @@ export {
   verifyShareLinkAccess,
   signWordAccessToken,
   verifyWordAccessToken,
+  toShareLinkView,
 };

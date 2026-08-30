@@ -3,7 +3,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { getPublicLeaderboardFn } from "@/features/event-scoring/public.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
 
-export const Route = createFileRoute("/events/$slug/score")({
+export const Route = createFileRoute("/events/$slug_/score")({
   loader: async ({ params }) => {
     const result = await getPublicLeaderboardFn({ data: { eventSlug: params.slug } });
     if (!result.ok) throw notFound();

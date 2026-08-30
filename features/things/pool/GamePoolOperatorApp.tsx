@@ -14,6 +14,7 @@ export function GamePoolOperatorApp({
 }) {
   const [view, setView] = useState(initialView);
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
     setView(await getGamePoolOperatorViewFn({ data: { token } }));
   }, [token]);
@@ -26,12 +27,17 @@ export function GamePoolOperatorApp({
   });
 
   const control = async (action: "pause" | "resume" | "close" | "close-room", roomId?: string) => {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
     try {
       const next = await controlGamePoolAsOperatorFn({ data: { token, action, roomId } });
       setView(next);
       setMessage(action === "close-room" ? "Room closed to new players." : "Admissions updated.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not update admissions.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -48,16 +54,18 @@ export function GamePoolOperatorApp({
         {view.status === "open" ? (
           <button
             type="button"
+            disabled={busy}
             onClick={() => void control("pause")}
-            className="min-h-11 rounded-full border theme-border px-5 font-mono text-xs"
+            className="min-h-11 rounded-full border theme-border px-5 font-mono text-xs disabled:opacity-50"
           >
             pause joins
           </button>
         ) : view.status === "paused" ? (
           <button
             type="button"
+            disabled={busy}
             onClick={() => void control("resume")}
-            className="min-h-11 rounded-full border theme-border px-5 font-mono text-xs"
+            className="min-h-11 rounded-full border theme-border px-5 font-mono text-xs disabled:opacity-50"
           >
             resume joins
           </button>
@@ -65,8 +73,9 @@ export function GamePoolOperatorApp({
         {view.status !== "closed" ? (
           <button
             type="button"
+            disabled={busy}
             onClick={() => void control("close")}
-            className="min-h-11 px-3 font-mono text-xs underline"
+            className="min-h-11 px-3 font-mono text-xs underline disabled:opacity-50"
           >
             close admissions
           </button>
@@ -89,8 +98,9 @@ export function GamePoolOperatorApp({
             {room.status === "open" && view.status !== "closed" ? (
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => void control("close-room", room.roomId)}
-                className="min-h-11 font-mono text-xs underline"
+                className="min-h-11 font-mono text-xs underline disabled:opacity-50"
               >
                 stop filling
               </button>

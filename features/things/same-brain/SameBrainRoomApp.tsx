@@ -474,15 +474,18 @@ function LobbyPhase({
           title="Start anyway?"
           description={`${notReady.map(({ name }) => name).join(" and ")} ${
             notReady.length === 1 ? "hasn’t" : "haven’t"
-          } confirmed they’re ready. They stay in the game and can answer when they’re back.`}
+          } confirmed they’re ready. Starting now removes them from this game.`}
           cancelLabel="keep waiting"
-          confirmLabel="start anyway"
+          confirmLabel="remove and start"
           pending={false}
           pendingLabel="starting…"
           onCancel={() => setConfirmingStart(false)}
           onConfirm={() => {
             setConfirmingStart(false);
-            void sendHost({ type: "game.start", force: true });
+            void sendHost({
+              type: "game.start",
+              removePlayerIds: notReady.map(({ id }) => id),
+            });
           }}
         />
       ) : null}

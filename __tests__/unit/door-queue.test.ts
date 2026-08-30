@@ -14,6 +14,7 @@ import {
   clearSynced,
   pendingCount,
   recordOfflineScan,
+  restoreDoorOfflineState,
   type DoorOfflineState,
 } from "@/features/tickets/door-queue";
 
@@ -123,6 +124,43 @@ describe("syncing", () => {
     }).state;
 
     expect(pendingCount(clearSynced(state, ["TICKET0000009999"]))).toBe(1);
+  });
+});
+
+describe("reload recovery", () => {
+  it("restores queued admissions against the fresh server manifest", () => {
+    const restored = restoreDoorOfflineState([HASH_A, HASH_B], {
+      admitted: [HASH_A],
+      queue: [{ ticketId: "0123456789ABCDEF", scannedAt: NOW }],
+    });
+
+    expect(restored).toEqual({
+      manifest: [HASH_A, HASH_B],
+      admitted: [HASH_A],
+      queue: [{ ticketId: "0123456789ABCDEF", scannedAt: NOW }],
+    });
+    expect(
+      recordOfflineScan(restored, {
+        ticketId: "0123456789ABCDEF",
+        ticketHash: HASH_A,
+        scannedAt: "2026-09-12T21:00:00.000Z",
+      }).result,
+    ).toBe("already-redeemed-offline");
+  });
+
+  it("drops malformed or duplicated session data", () => {
+    const restored = restoreDoorOfflineState([HASH_A], {
+      admitted: [HASH_A, "not-a-hash", HASH_A],
+      queue: [
+        { ticketId: "0123456789ABCDEF", scannedAt: NOW },
+        { ticketId: "0123456789ABCDEF", scannedAt: NOW },
+        { ticketId: "not-a-ticket", scannedAt: NOW },
+        { ticketId: "0123456789ABCDEG", scannedAt: "not-a-date" },
+      ],
+    });
+
+    expect(restored.admitted).toEqual([HASH_A]);
+    expect(restored.queue).toEqual([{ ticketId: "0123456789ABCDEF", scannedAt: NOW }]);
   });
 });
 

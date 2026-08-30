@@ -6,7 +6,7 @@ import { getStaffScoringPageFn } from "@/features/event-scoring/staff-scoring.fu
 import { StaffScoringPage } from "@/features/event-scoring/ui/StaffScoringPage";
 import { buildSeoHead } from "@/lib/shared/seo";
 
-export const Route = createFileRoute("/events/$slug/staff/$token")({
+export const Route = createFileRoute("/events/$slug_/staff/$token")({
   loader: {
     handler: ({ params }) =>
       getStaffScoringPageFn({ data: { eventSlug: params.slug, token: params.token } }),

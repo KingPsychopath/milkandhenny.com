@@ -352,8 +352,7 @@ function PitchVideoControl({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role="group"
       aria-label={`${selected ? "Selected " : ""}video on slide. Drag to move.`}
       className={`pointer-events-auto absolute touch-none border-2 ${
         selected
@@ -361,46 +360,51 @@ function PitchVideoControl({
           : "border-transparent hover:border-[var(--things-amber)]/60"
       } ${clip.locked ? "cursor-not-allowed" : "cursor-move"}`}
       style={placementStyle(placement)}
-      onPointerDown={(event) => begin(event, "move")}
-      onPointerMove={move}
-      onPointerUp={finish}
-      onPointerCancel={finish}
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect();
-      }}
-      onKeyDown={(event) => {
-        if (
-          clip.locked ||
-          !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
-        ) {
-          return;
-        }
-        event.preventDefault();
-        const amount = event.shiftKey ? 20 : 5;
-        onChange((current) => {
-          const currentPlacement = placementFor(current);
-          return {
-            ...current,
-            videoPlacement: {
-              ...currentPlacement,
-              x: clamp(
-                currentPlacement.x +
-                  (event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0),
-                0,
-                PITCH_SLIDE_STAGE.width - currentPlacement.width,
-              ),
-              y: clamp(
-                currentPlacement.y +
-                  (event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0),
-                0,
-                PITCH_SLIDE_STAGE.height - currentPlacement.height,
-              ),
-            },
-          };
-        });
-      }}
     >
+      <button
+        type="button"
+        aria-label={`${selected ? "Selected " : ""}video on slide. Drag or use arrow keys to move.`}
+        className={`absolute inset-0 h-full w-full touch-none ${clip.locked ? "cursor-not-allowed" : "cursor-move"}`}
+        onPointerDown={(event) => begin(event, "move")}
+        onPointerMove={move}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+        }}
+        onKeyDown={(event) => {
+          if (
+            clip.locked ||
+            !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          const amount = event.shiftKey ? 20 : 5;
+          onChange((current) => {
+            const currentPlacement = placementFor(current);
+            return {
+              ...current,
+              videoPlacement: {
+                ...currentPlacement,
+                x: clamp(
+                  currentPlacement.x +
+                    (event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0),
+                  0,
+                  PITCH_SLIDE_STAGE.width - currentPlacement.width,
+                ),
+                y: clamp(
+                  currentPlacement.y +
+                    (event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0),
+                  0,
+                  PITCH_SLIDE_STAGE.height - currentPlacement.height,
+                ),
+              },
+            };
+          });
+        }}
+      />
       {selected ? (
         <>
           <div className="absolute left-1 top-1 flex max-w-[calc(100%-0.5rem)] flex-wrap gap-1 bg-background/95 p-1 font-mono text-micro text-foreground shadow-sm">
@@ -418,7 +422,7 @@ function PitchVideoControl({
                   },
                 }));
               }}
-              className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
+              className="min-h-11 px-2 hover:opacity-60 disabled:opacity-35"
             >
               centre
             </button>
@@ -439,7 +443,7 @@ function PitchVideoControl({
                   },
                 }));
               }}
-              className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
+              className="min-h-11 px-2 hover:opacity-60 disabled:opacity-35"
             >
               full slide
             </button>
@@ -454,7 +458,7 @@ function PitchVideoControl({
                   fit: current.fit === "cover" ? "contain" : "cover",
                 }));
               }}
-              className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
+              className="min-h-11 px-2 hover:opacity-60 disabled:opacity-35"
             >
               {clip.fit === "cover" ? "show whole" : "fill frame"}
             </button>
@@ -467,7 +471,7 @@ function PitchVideoControl({
                 event.stopPropagation();
                 onReorder("backward");
               }}
-              className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
+              className="min-h-11 px-2 hover:opacity-60 disabled:opacity-35"
             >
               send back
             </button>
@@ -480,7 +484,7 @@ function PitchVideoControl({
                 event.stopPropagation();
                 onReorder("forward");
               }}
-              className="min-h-8 px-2 hover:opacity-60 disabled:opacity-35"
+              className="min-h-11 px-2 hover:opacity-60 disabled:opacity-35"
             >
               bring forward
             </button>
@@ -489,7 +493,7 @@ function PitchVideoControl({
             type="button"
             disabled={clip.locked}
             aria-label="Resize video"
-            className="absolute -bottom-3 -right-3 h-7 w-7 cursor-nwse-resize border-2 border-[var(--things-amber)] bg-background disabled:cursor-not-allowed"
+            className="absolute -bottom-3 -right-3 size-11 cursor-nwse-resize border-2 border-[var(--things-amber)] bg-background disabled:cursor-not-allowed"
             onPointerDown={(event) => begin(event, "resize")}
             onPointerMove={(event) => {
               event.stopPropagation();

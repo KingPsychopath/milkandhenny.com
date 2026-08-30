@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 
 import { getClaimedScoreLinksFn } from "../public.functions";
+import { hasRememberedScoreSession } from "../client-sync";
 import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGameNavigation";
 
 export function ClaimedScoreLinks() {
@@ -19,7 +20,7 @@ export function ClaimedScoreLinks() {
           ? event.detail.safe
           : document.documentElement.dataset.gameSafeNavigation === "true";
       setSafeGameScreen(safe);
-      if ((!game || safe) && localStorage.getItem("mah-has-score-session") === "1") {
+      if ((!game || safe) && hasRememberedScoreSession()) {
         void getClaimedScoreLinksFn()
           .then(setLinks)
           .catch(() => undefined);

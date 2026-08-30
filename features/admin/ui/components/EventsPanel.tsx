@@ -9,6 +9,7 @@ import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
+import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import {
   EVENT_HERO_HEIGHTS,
   EVENT_STATUSES,
@@ -33,6 +34,12 @@ import {
 import type { DoorTicketView } from "@/features/tickets/types";
 import { AdminFormAction } from "./AdminFormAction";
 import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
+import {
+  AdminStatus,
+  adminToneBorderClass,
+  adminToneForStatus,
+  adminToneTextClass,
+} from "./AdminStatus";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
   natural: "natural — the image's own height",
@@ -54,9 +61,14 @@ type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type DraftTicketType = {
   id: string;
   name: string;
+  description: string;
   price: string;
+  currency: string;
   quantity: string;
   perPersonLimit: string;
+  salesStart: string;
+  salesEnd: string;
+  hidden: boolean;
 };
 
 type Draft = {
@@ -97,6 +109,7 @@ type AdminTicket = DoorTicketView & {
   ticketTypeId: string;
   email?: string;
   issuedAt: string;
+  refundedAt?: string;
   amountPaidMinor?: number;
   currency?: string;
   activeExchange?: {
@@ -109,6 +122,12 @@ type AdminTicket = DoorTicketView & {
 
 type TicketListFilter = "all" | "valid" | "checked-in" | "not-checked-in" | "refunded" | "void";
 type TicketListSort = "newest" | "oldest" | "name" | "status";
+type EventOperationsTool = "overview" | "tickets" | "door" | "messages" | "uploads";
+type EventsWorkspaceSelection =
+  | { kind: "operations"; slug: string }
+  | { kind: "edit"; slug: string }
+  | { kind: "create" }
+  | null;
 
 const TICKET_FILTER_OPTIONS = [
   { value: "all", label: "all tickets" },
@@ -157,13 +176,15 @@ function ticketMatchesFilter(ticket: AdminTicket, filter: TicketListFilter) {
   }
 }
 
-function formatTicketIssuedAt(value: string) {
+function formatTicketActivityAt(label: "issued" | "refunded", value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "issue date unavailable";
-  return `issued ${date.toLocaleDateString("en-GB", {
+  if (Number.isNaN(date.getTime())) return `${label} date unavailable`;
+  return `${label} ${date.toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: "Europe/London",
   })}`;
 }
@@ -258,7 +279,20 @@ const EMPTY_DRAFT: Draft = {
   heroHeight: "natural",
   ogImage: "",
   marketingPath: "",
-  ticketTypes: [{ id: "standard", name: "Entry", price: "0", quantity: "50", perPersonLimit: "2" }],
+  ticketTypes: [
+    {
+      id: "standard",
+      name: "Entry",
+      description: "",
+      price: "0",
+      currency: "GBP",
+      quantity: "50",
+      perPersonLimit: "2",
+      salesStart: "",
+      salesEnd: "",
+      hidden: false,
+    },
+  ],
 };
 
 /** `datetime-local` has no zone, so values round-trip through UTC explicitly. */
@@ -311,9 +345,14 @@ function toDraft(event: EventRecord): Draft {
     ticketTypes: event.ticketTypes.map((type) => ({
       id: type.id,
       name: type.name,
+      description: type.description ?? "",
       price: String(type.priceMinor / 100),
+      currency: type.currency,
       quantity: String(type.quantity),
       perPersonLimit: String(type.perPersonLimit),
+      salesStart: toLocalInput(type.salesStart),
+      salesEnd: toLocalInput(type.salesEnd),
+      hidden: type.hidden,
     })),
   };
 }
@@ -329,47 +368,50 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-"),
       name: type.name.trim(),
+      description: type.description.trim() || undefined,
       priceMinor: Math.round((Number.parseFloat(type.price) || 0) * 100),
-      currency: "GBP",
+      currency: type.currency.trim().toUpperCase() || "GBP",
       quantity: Number.parseInt(type.quantity, 10) || 0,
       perPersonLimit: Number.parseInt(type.perPersonLimit, 10) || 1,
-      hidden: false,
+      salesStart: fromLocalInput(type.salesStart),
+      salesEnd: fromLocalInput(type.salesEnd),
+      hidden: type.hidden,
     }));
 
   return {
     slug: draft.slug.trim() || undefined,
     title: draft.title.trim(),
-    tagline: draft.tagline.trim() || undefined,
+    tagline: draft.tagline.trim() || null,
     status: draft.status,
     startsAt: fromLocalInput(draft.startsAt),
-    doorsAt: fromLocalInput(draft.doorsAt),
-    endsAt: fromLocalInput(draft.endsAt),
+    doorsAt: fromLocalInput(draft.doorsAt) ?? null,
+    endsAt: fromLocalInput(draft.endsAt) ?? null,
     timezone: draft.timezone.trim(),
-    area: draft.area.trim() || undefined,
-    venueName: draft.venueName.trim() || undefined,
-    address: draft.address.trim() || undefined,
-    doorCode: draft.doorCode.trim() || undefined,
-    threeWordHint: draft.threeWordHint.trim() || undefined,
-    mapUrl: draft.mapUrl.trim() || undefined,
-    description: draft.description.trim() || undefined,
+    area: draft.area.trim() || null,
+    venueName: draft.venueName.trim() || null,
+    address: draft.address.trim() || null,
+    doorCode: draft.doorCode.trim() || null,
+    threeWordHint: draft.threeWordHint.trim() || null,
+    mapUrl: draft.mapUrl.trim() || null,
+    description: draft.description.trim() || null,
     lineup: draft.lineup
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean),
-    dressCode: draft.dressCode.trim() || undefined,
-    ageLimit: draft.ageLimit.trim() || undefined,
-    houseRules: draft.houseRules.trim() || undefined,
-    transportNote: draft.transportNote.trim() || undefined,
+    dressCode: draft.dressCode.trim() || null,
+    ageLimit: draft.ageLimit.trim() || null,
+    houseRules: draft.houseRules.trim() || null,
+    transportNote: draft.transportNote.trim() || null,
     stepFreeAccess: draft.stepFreeAccess,
-    capacity: draft.capacity ? Number.parseInt(draft.capacity, 10) : undefined,
-    refundPolicy: draft.refundPolicy.trim() || undefined,
-    terms: draft.terms.trim() || undefined,
-    heroImage: draft.heroImage.trim() || undefined,
-    heroImageWidth: draft.heroImageWidth,
-    heroImageHeight: draft.heroImageHeight,
+    capacity: draft.capacity ? Number.parseInt(draft.capacity, 10) : null,
+    refundPolicy: draft.refundPolicy.trim() || null,
+    terms: draft.terms.trim() || null,
+    heroImage: draft.heroImage.trim() || null,
+    heroImageWidth: draft.heroImage.trim() ? draft.heroImageWidth : null,
+    heroImageHeight: draft.heroImage.trim() ? draft.heroImageHeight : null,
     heroHeight: draft.heroHeight,
-    ogImage: draft.ogImage.trim() || undefined,
-    marketingPath: draft.marketingPath.trim() || undefined,
+    ogImage: draft.ogImage.trim() || null,
+    marketingPath: draft.marketingPath.trim() || null,
     ticketTypes,
   };
 }
@@ -380,16 +422,18 @@ function Field({
   onChange,
   type = "text",
   hint,
+  className = "",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   hint?: string;
+  className?: string;
 }) {
   const id = useId();
   return (
-    <div className="admin-form-field block">
+    <div className={`admin-form-field block ${className}`}>
       <label htmlFor={id} className="font-mono text-micro theme-muted tracking-wide">
         {label}
       </label>
@@ -695,9 +739,9 @@ function GuestUploadsSection({
 
       {drop?.live ? (
         <div className="mt-3 rounded-lg border theme-border p-3">
-          <p className="font-mono text-sm text-foreground">
+          <AdminStatus tone="positive" className="font-mono text-sm">
             on · {drop.fileCount} file{drop.fileCount === 1 ? "" : "s"} so far
-          </p>
+          </AdminStatus>
           <p className="font-mono text-micro theme-muted">
             closes{" "}
             {new Date(drop.expiresAt).toLocaleString("en-GB", {
@@ -867,7 +911,7 @@ function GuestRequestsAdmin({
   if (requests === null || pending.length === 0) return null;
 
   return (
-    <div className="mt-4 rounded-lg border border-[var(--things-amber)] p-3">
+    <div className={`mt-4 border-l-2 pl-3 ${adminToneBorderClass("attention")}`}>
       <p className="font-mono text-micro text-foreground">
         {pending.length} guest request{pending.length === 1 ? "" : "s"} from the door
       </p>
@@ -1187,9 +1231,9 @@ function ScannerLinkQr({ token, label }: { token: string; label: string }) {
           </p>
         </>
       ) : (
-        <p className="font-mono text-micro theme-muted">
-          {failed ? "QR failed to render — use copy link instead." : "rendering…"}
-        </p>
+        <AdminStatus tone={failed ? "danger" : "attention"} className="font-mono text-micro">
+          {failed ? "QR failed to render — use copy link instead" : "rendering"}
+        </AdminStatus>
       )}
     </div>
   );
@@ -1526,17 +1570,23 @@ function ScanningSection({
   return (
     <div className="mt-5 space-y-5 border-t theme-border pt-4">
       <div>
-        <p className="font-mono text-micro theme-muted tracking-wide">scanner access</p>
-        <p className="mt-1 font-mono text-micro theme-faint">
-          Make a link per helper, send it over chat — they open it and scan. No PIN needed. Turn a
-          link off and it stops working on their next scan.
-        </p>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h4 className="font-mono text-micro theme-muted tracking-wide">scanner access</h4>
+            <p className="mt-1 font-mono text-micro theme-faint">
+              One private link per helper. They open it on their phone and scan without a PIN.
+            </p>
+          </div>
+          <AdminStatus tone={liveLinks.length > 0 ? "positive" : "neutral"}>
+            {liveLinks.length} active
+          </AdminStatus>
+        </div>
 
         {liveLinks.length > 0 && (
           <ul className="mt-3 divide-y theme-border border-y theme-border">
             {liveLinks.map((link) => (
               <li key={link.token} className="py-2">
-                <div className="flex items-center justify-between gap-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
                     <p className="truncate font-mono text-sm text-foreground">
                       {link.label}
@@ -1546,24 +1596,30 @@ function ScanningSection({
                         </span>
                       )}
                     </p>
-                    <p className="font-mono text-micro theme-muted">
-                      {stationName(link.checkpointId)}
+                    <div className="flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+                      <span>{stationName(link.checkpointId)}</span>
+                      <span aria-hidden="true">·</span>
                       {(() => {
                         const info = devices[link.token];
-                        if (!info || info.count === 0) return " · not opened yet";
-                        return ` · ${info.count} phone${info.count === 1 ? "" : "s"}${
-                          info.lastSeen
-                            ? `, active ${new Date(info.lastSeen).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
-                            : ""
-                        }`;
+                        if (!info || info.count === 0) {
+                          return <AdminStatus tone="attention">not opened yet</AdminStatus>;
+                        }
+                        return (
+                          <AdminStatus tone="positive">
+                            {info.count} phone{info.count === 1 ? "" : "s"}
+                            {info.lastSeen
+                              ? ` · active ${new Date(info.lastSeen).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+                              : ""}
+                          </AdminStatus>
+                        );
                       })()}
-                    </p>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <button
                       type="button"
                       onClick={() => void copyLink(link)}
-                      className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                      className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
                     >
                       {copiedToken === link.token ? "copied ✓" : "copy link"}
                     </button>
@@ -1571,7 +1627,7 @@ function ScanningSection({
                       type="button"
                       onClick={() => toggleQr(link.token)}
                       aria-expanded={qrToken === link.token}
-                      className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                      className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
                     >
                       qr
                     </button>
@@ -1584,7 +1640,7 @@ function ScanningSection({
                           )
                         }
                         aria-expanded={abilitiesOpenFor === link.token}
-                        className="min-h-9 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                        className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
                       >
                         abilities
                       </button>
@@ -1593,7 +1649,7 @@ function ScanningSection({
                       type="button"
                       disabled={busy}
                       onClick={() => void revokeLink(link)}
-                      className="min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="min-h-11 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
                     >
                       turn off
                     </button>
@@ -1644,59 +1700,89 @@ function ScanningSection({
           </p>
         )}
 
-        <form
-          onSubmit={(formEvent) => {
-            formEvent.preventDefault();
-            if (newLinkLabel.trim()) void createLink();
-          }}
-          className="admin-form-row mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
-        >
-          <Field label="who is scanning" value={newLinkLabel} onChange={setNewLinkLabel} />
-          <div className="admin-form-field">
-            <label htmlFor={stationId} className="font-mono text-micro theme-muted tracking-wide">
-              station
-            </label>
-            <AppSelect
-              id={stationId}
-              value={newLinkStation}
-              onValueChange={setNewLinkStation}
-              options={stationOptions}
-              variant="field"
-              className="mt-1 rounded text-sm"
-            />
-          </div>
-          <AdminFormAction>
-            <button
-              type="submit"
-              disabled={busy || !newLinkLabel.trim()}
-              className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-            >
-              create link
-            </button>
-          </AdminFormAction>
-        </form>
+        <section className="mt-4 border-t theme-border pt-3" aria-labelledby="new-scanner-title">
+          <h5 id="new-scanner-title" className="font-mono text-xs text-foreground">
+            create scanner link
+          </h5>
+          <p className="mt-1 font-mono text-micro theme-faint">
+            Choose exactly where this helper works and what they can do. You can turn their link off
+            at any time.
+          </p>
+          <form
+            onSubmit={(formEvent) => {
+              formEvent.preventDefault();
+              if (newLinkLabel.trim()) void createLink();
+            }}
+            className="mt-3 space-y-3"
+          >
+            <div className="admin-form-row grid gap-3 sm:grid-cols-2">
+              <Field
+                label="helper name"
+                value={newLinkLabel}
+                onChange={setNewLinkLabel}
+                hint="Use a name you will recognise when revoking access."
+              />
+              <div className="admin-form-field">
+                <label
+                  htmlFor={stationId}
+                  className="font-mono text-micro theme-muted tracking-wide"
+                >
+                  station
+                </label>
+                <AppSelect
+                  id={stationId}
+                  value={newLinkStation}
+                  onValueChange={setNewLinkStation}
+                  options={stationOptions}
+                  variant="field"
+                  className="mt-1 rounded text-sm"
+                />
+                <span className="mt-1 block font-mono text-micro theme-faint">
+                  Door links check guests in; checkpoints count a specific allowance.
+                </span>
+              </div>
+            </div>
 
-        {newLinkStation === "door" && (
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <span className="font-mono text-micro theme-muted">level:</span>
-            <button
-              type="button"
-              onClick={() => setNewLinkRole("scanner")}
-              aria-pressed={newLinkRole === "scanner"}
-              className={`min-h-9 rounded border px-3 font-mono text-micro ${newLinkRole === "scanner" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
-            >
-              scanner — scans, can request guests
-            </button>
-            <button
-              type="button"
-              onClick={() => setNewLinkRole("manager")}
-              aria-pressed={newLinkRole === "manager"}
-              className={`min-h-9 rounded border px-3 font-mono text-micro ${newLinkRole === "manager" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
-            >
-              manager — adds guests, approves requests
-            </button>
-          </div>
-        )}
+            {newLinkStation === "door" && (
+              <fieldset>
+                <legend className="font-mono text-micro theme-muted tracking-wide">
+                  access level
+                </legend>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewLinkRole("scanner")}
+                    aria-pressed={newLinkRole === "scanner"}
+                    className={`min-h-11 rounded border px-3 font-mono text-micro ${newLinkRole === "scanner" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+                  >
+                    scanner — scans, can request guests
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewLinkRole("manager")}
+                    aria-pressed={newLinkRole === "manager"}
+                    className={`min-h-11 rounded border px-3 font-mono text-micro ${newLinkRole === "manager" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+                  >
+                    manager — adds guests, approves requests
+                  </button>
+                </div>
+              </fieldset>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border-faint pt-3">
+              <p className="font-mono text-micro theme-faint">
+                Send the new link privately over chat or show its QR in person.
+              </p>
+              <button
+                type="submit"
+                disabled={busy || !newLinkLabel.trim()}
+                className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+              >
+                create link
+              </button>
+            </div>
+          </form>
+        </section>
       </div>
 
       <div>
@@ -1867,6 +1953,7 @@ function EventOperations({
   reload,
   confirmAction,
   stepUp,
+  permissions,
 }: {
   event: EventRecord;
   summary: EventTicketSummary;
@@ -1881,7 +1968,9 @@ function EventOperations({
     intent: "danger" | "default";
   }) => Promise<boolean>;
   stepUp: StepUpHelpers;
+  permissions: GlobalAdminPermissionSet;
 }) {
+  const [activeTool, setActiveTool] = useState<EventOperationsTool>("overview");
   const [query, setQuery] = useState("");
   const [ticketFilter, setTicketFilter] = useState<TicketListFilter>("all");
   const [ticketSort, setTicketSort] = useState<TicketListSort>("newest");
@@ -1904,6 +1993,7 @@ function EventOperations({
   } | null>(null);
   const [invitations, setInvitations] = useState<AdminTicketInvitation[]>([]);
   const [invitationsLoaded, setInvitationsLoaded] = useState(false);
+  const [showInvitations, setShowInvitations] = useState(false);
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
 
   const loadInvitations = useCallback(
@@ -1924,18 +2014,22 @@ function EventOperations({
   );
 
   useEffect(() => {
+    if (activeTool !== "tickets") return;
     void loadInvitations().catch((error: unknown) => {
       onError(error instanceof Error ? error.message : "Failed to load ticket invitations");
     });
-  }, [loadInvitations, onError]);
+  }, [activeTool, loadInvitations, onError]);
 
-  const hasPendingInvitation = invitations.some((invitation) => invitation.status === "pending");
+  const pendingInvitationCount = invitations.filter(
+    (invitation) => invitation.status === "pending",
+  ).length;
+  const hasPendingInvitation = pendingInvitationCount > 0;
   const invitationByTicketId = useMemo(
     () => new Map(invitations.map((invitation) => [invitation.ticketId, invitation])),
     [invitations],
   );
   useAdminAutoRefresh({
-    enabled: hasPendingInvitation,
+    enabled: activeTool === "tickets" && hasPendingInvitation,
     cadence: "monitoring",
     identity: `event-ticket-invitations:${event.slug}`,
     refreshOnEnable: false,
@@ -1988,7 +2082,7 @@ function EventOperations({
         action === "cancel-invitation"
           ? `${invitation.holderName}'s invitation and ticket cancelled`
           : result?.emailQueued
-            ? `Fresh invitation sent to ${invitation.recipientEmail}`
+            ? `Reminder email sent to ${invitation.recipientEmail}`
             : `Invitation renewed · email delivery needs attention`,
       );
       await Promise.all([loadInvitations(), reload()]);
@@ -2183,503 +2277,634 @@ function EventOperations({
       return ticketSort === "oldest" ? issuedOrder : -issuedOrder;
     });
   }, [summary.tickets, term, ticketFilter, ticketSort]);
+  const operationTools: Array<{ value: EventOperationsTool; label: string }> = [
+    { value: "overview", label: "overview" },
+    { value: "tickets", label: "tickets" },
+    ...(permissions.manageEvents ? [{ value: "door" as const, label: "door setup" }] : []),
+    ...(permissions.manageCommunications
+      ? [{ value: "messages" as const, label: "messages" }]
+      : []),
+    ...(permissions.manageEvents ? [{ value: "uploads" as const, label: "guest uploads" }] : []),
+  ];
 
   return (
     <div className="mt-4 border-t theme-border pt-4">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-        <div>
-          <p className="font-mono text-micro theme-muted">live tickets</p>
-          <p className="font-mono text-lg text-foreground">
-            {summary.valid}/{capacity}
-          </p>
-          {summary.reserved > 0 && (
-            <p className="font-mono text-micro theme-faint">+{summary.reserved} in checkout</p>
-          )}
-        </div>
-        <div>
-          <p className="font-mono text-micro theme-muted">
-            {overage > 0 ? "over capacity" : "remaining"}
-          </p>
-          <p
-            className={`font-mono text-lg ${
-              overage > 0 ? "text-[var(--things-country-outside)]" : "text-foreground"
+      <nav
+        aria-label={`${event.title} tools`}
+        className="mb-5 flex gap-1 overflow-x-auto border-b theme-border"
+      >
+        {operationTools.map((tool) => (
+          <button
+            key={tool.value}
+            type="button"
+            onClick={() => setActiveTool(tool.value)}
+            aria-current={activeTool === tool.value ? "page" : undefined}
+            className={`min-h-11 shrink-0 border-b-2 px-3 font-mono text-micro transition-opacity hover:opacity-70 ${
+              activeTool === tool.value
+                ? "border-[var(--prose-hashtag)] text-foreground"
+                : "border-transparent theme-muted"
             }`}
           >
-            {overage > 0 ? `+${overage}` : remaining}
-          </p>
-        </div>
-        <div>
-          <p className="font-mono text-micro theme-muted">checked in</p>
-          <p className="font-mono text-lg text-foreground">
-            {summary.redeemed}/{summary.valid}
-          </p>
-        </div>
-        <div>
-          <p className="font-mono text-micro theme-muted">net ticket sales</p>
-          <p className="font-mono text-lg text-foreground">
-            {summary.currency ? formatMoney(summary.netMinor, summary.currency) : "—"}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted">
-        <span>{summary.total} issued lifetime</span>
-        {summary.refunded > 0 && (
-          <button
-            type="button"
-            onClick={() => setTicketFilter("refunded")}
-            aria-pressed={ticketFilter === "refunded"}
-            className="min-h-11 underline decoration-dotted underline-offset-4 hover:text-foreground"
-          >
-            {summary.refunded} refunded · show
+            {tool.label}
           </button>
-        )}
-        {summary.void > 0 && <span>{summary.void} void</span>}
-        {summary.grossMinor !== summary.netMinor && summary.currency && (
-          <span>{formatMoney(summary.grossMinor, summary.currency)} gross</span>
-        )}
-      </div>
+        ))}
+      </nav>
 
-      <GuestRequestsAdmin
-        event={event}
-        authFetch={authFetch}
-        onError={onError}
-        onStatus={onStatus}
-        onDecided={reload}
-        confirmAction={confirmAction}
-      />
+      {activeTool === "overview" && (
+        <div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+            <div>
+              <p className="font-mono text-micro theme-muted">live tickets</p>
+              <p className="font-mono text-lg text-foreground">
+                {summary.valid}/{capacity}
+              </p>
+              {summary.reserved > 0 && (
+                <p className="font-mono text-micro theme-faint">+{summary.reserved} in checkout</p>
+              )}
+            </div>
+            <div>
+              <p className="font-mono text-micro theme-muted">
+                {overage > 0 ? "over capacity" : "remaining"}
+              </p>
+              <p
+                className={`font-mono text-lg ${
+                  overage > 0 ? adminToneTextClass("danger") : "text-foreground"
+                }`}
+              >
+                {overage > 0 ? `+${overage}` : remaining}
+              </p>
+            </div>
+            <div>
+              <p className="font-mono text-micro theme-muted">checked in</p>
+              <p className="font-mono text-lg text-foreground">
+                {summary.redeemed}/{summary.valid}
+              </p>
+            </div>
+            <div>
+              <p className="font-mono text-micro theme-muted">net ticket sales</p>
+              <p className="font-mono text-lg text-foreground">
+                {summary.currency ? formatMoney(summary.netMinor, summary.currency) : "—"}
+              </p>
+            </div>
+          </div>
 
-      <div className="mt-4">
-        <button
-          type="button"
-          onClick={() => setShowAddGuest((current) => !current)}
-          aria-expanded={showAddGuest}
-          className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
-        >
-          {showAddGuest ? "− close" : "+ send someone a ticket"}
-        </button>
-        {showAddGuest && (
-          <AddGuestForm
-            event={event}
-            availability={summary.byType}
-            eventUsed={summary.valid + summary.reserved}
-            authFetch={authFetch}
-            onError={onError}
-            onStatus={onStatus}
-            onIssued={async () => {
-              await Promise.all([reload(), loadInvitations()]);
-            }}
-            confirmAction={confirmAction}
-          />
-        )}
-      </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted">
+            <span>{summary.total} issued lifetime</span>
+            {summary.refunded > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTicketFilter("refunded");
+                  setActiveTool("tickets");
+                }}
+                className="min-h-11 underline decoration-dotted underline-offset-4 hover:text-foreground"
+              >
+                {summary.refunded} refunded · show
+              </button>
+            )}
+            {summary.void > 0 && <span>{summary.void} void</span>}
+            {summary.grossMinor !== summary.netMinor && summary.currency && (
+              <span>{formatMoney(summary.grossMinor, summary.currency)} gross</span>
+            )}
+          </div>
 
-      {invitationsLoaded && invitations.length > 0 && (
-        <section className="mt-5 border-t theme-border pt-4" aria-labelledby="ticket-invites-title">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h4 id="ticket-invites-title" className="font-mono text-xs text-foreground">
-              ticket invitations
-            </h4>
-            <p className="font-mono text-micro theme-faint">
-              {invitations.filter((invitation) => invitation.status === "pending").length} awaiting
-              acceptance · updates automatically
+          {permissions.manageEvents ? (
+            <GuestRequestsAdmin
+              event={event}
+              authFetch={authFetch}
+              onError={onError}
+              onStatus={onStatus}
+              onDecided={reload}
+              confirmAction={confirmAction}
+            />
+          ) : null}
+        </div>
+      )}
+
+      {activeTool === "tickets" && (
+        <div>
+          {permissions.manageTickets ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setShowAddGuest((current) => !current)}
+                aria-expanded={showAddGuest}
+                className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+              >
+                {showAddGuest ? "− close" : "+ send someone a ticket"}
+              </button>
+              {showAddGuest && (
+                <AddGuestForm
+                  event={event}
+                  availability={summary.byType}
+                  eventUsed={summary.valid + summary.reserved}
+                  authFetch={authFetch}
+                  onError={onError}
+                  onStatus={onStatus}
+                  onIssued={async () => {
+                    await Promise.all([reload(), loadInvitations()]);
+                  }}
+                  confirmAction={confirmAction}
+                />
+              )}
+            </div>
+          ) : null}
+
+          {invitationsLoaded && invitations.length > 0 && (
+            <section
+              className="mt-5 border-t theme-border pt-4"
+              aria-labelledby="ticket-invites-title"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 id="ticket-invites-title" className="font-mono text-xs text-foreground">
+                    ticket invitations
+                  </h4>
+                  <AdminStatus
+                    tone={hasPendingInvitation ? "attention" : "neutral"}
+                    className="mt-1 font-mono text-micro"
+                  >
+                    {pendingInvitationCount} awaiting acceptance · updates automatically
+                  </AdminStatus>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInvitations((current) => !current)}
+                  aria-expanded={showInvitations}
+                  aria-controls="ticket-invitations-list"
+                  className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-foreground hover:opacity-70"
+                >
+                  {showInvitations
+                    ? "hide invitations"
+                    : hasPendingInvitation
+                      ? "review and remind"
+                      : "show invitation history"}
+                </button>
+              </div>
+              {showInvitations && (
+                <>
+                  {hasPendingInvitation && (
+                    <p className="mt-3 font-mono text-micro theme-faint">
+                      Send a reminder when someone needs another email. Their previous acceptance
+                      link is replaced by the fresh one.
+                    </p>
+                  )}
+                  <ul
+                    id="ticket-invitations-list"
+                    className="mt-2 divide-y theme-divide"
+                    aria-live="polite"
+                  >
+                    {invitations.map((invitation) => {
+                      const pending = invitation.status === "pending";
+                      const expired = invitation.status === "expired";
+                      const busy = busyInvitationId === invitation.id;
+                      const statusLabel =
+                        invitation.status === "claimed"
+                          ? "accepted"
+                          : invitation.status === "cancelled"
+                            ? "cancelled"
+                            : invitation.status;
+                      return (
+                        <li
+                          key={invitation.id}
+                          className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-foreground">
+                              {invitation.holderName}
+                            </p>
+                            <p className="truncate font-mono text-micro theme-muted">
+                              {invitation.recipientEmail} · {invitation.ticketTypeName}
+                            </p>
+                            <AdminStatus
+                              tone={adminToneForStatus(statusLabel)}
+                              className="mt-1 font-mono text-micro"
+                            >
+                              {statusLabel}
+                              {pending &&
+                                ` · expires ${new Date(invitation.expiresAt).toLocaleDateString(
+                                  "en-GB",
+                                  {
+                                    day: "numeric",
+                                    month: "short",
+                                    timeZone: "Europe/London",
+                                  },
+                                )}`}
+                              {invitation.status === "claimed" &&
+                                invitation.claimedAt &&
+                                ` · ${new Date(invitation.claimedAt).toLocaleDateString("en-GB", {
+                                  day: "numeric",
+                                  month: "short",
+                                  timeZone: "Europe/London",
+                                })}`}
+                            </AdminStatus>
+                          </div>
+                          {permissions.manageTickets && (pending || expired) && (
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void runInvitationAction(invitation, "resend-invitation")
+                                }
+                                className="min-h-11 rounded border theme-border px-3 font-mono text-xs text-foreground hover:opacity-70 disabled:opacity-50"
+                              >
+                                {expired ? "send new invite" : "send reminder"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void runInvitationAction(invitation, "cancel-invitation")
+                                }
+                                className="min-h-11 px-2 font-mono text-xs theme-muted underline decoration-dotted underline-offset-4 hover:opacity-70 disabled:opacity-50"
+                              >
+                                cancel
+                              </button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+            </section>
+          )}
+
+          <label className="mt-5 block">
+            <span className="font-mono text-micro theme-muted">
+              find attendee, email, or ticket
+            </span>
+            <input
+              type="search"
+              value={query}
+              onChange={(inputEvent) => setQuery(inputEvent.target.value)}
+              placeholder="start typing…"
+              className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            />
+          </label>
+
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className="grid gap-1">
+              <span className="font-mono text-micro theme-muted">show</span>
+              <AppSelect
+                value={ticketFilter}
+                onValueChange={(value) => {
+                  if (isTicketListFilter(value)) setTicketFilter(value);
+                }}
+                options={TICKET_FILTER_OPTIONS}
+                ariaLabel="Filter tickets"
+              />
+            </div>
+            <div className="grid gap-1">
+              <span className="font-mono text-micro theme-muted">sort</span>
+              <AppSelect
+                value={ticketSort}
+                onValueChange={(value) => {
+                  if (isTicketListSort(value)) setTicketSort(value);
+                }}
+                options={TICKET_SORT_OPTIONS}
+                ariaLabel="Sort tickets"
+              />
+            </div>
+            <p
+              className="min-h-11 content-center font-mono text-micro theme-faint"
+              aria-live="polite"
+            >
+              {tickets.length} of {summary.total}
             </p>
           </div>
-          <ul className="mt-2 divide-y theme-divide" aria-live="polite">
-            {invitations.map((invitation) => {
-              const pending = invitation.status === "pending";
-              const expired = invitation.status === "expired";
-              const busy = busyInvitationId === invitation.id;
-              const statusLabel =
-                invitation.status === "claimed"
-                  ? "accepted"
-                  : invitation.status === "cancelled"
-                    ? "cancelled"
-                    : invitation.status;
-              return (
-                <li
-                  key={invitation.id}
-                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-foreground">{invitation.holderName}</p>
-                    <p className="truncate font-mono text-micro theme-muted">
-                      {invitation.recipientEmail} · {invitation.ticketTypeName}
-                    </p>
-                    <p className="mt-1 font-mono text-micro theme-faint">
-                      {statusLabel}
-                      {pending &&
-                        ` · expires ${new Date(invitation.expiresAt).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          timeZone: "Europe/London",
-                        })}`}
-                      {invitation.status === "claimed" &&
-                        invitation.claimedAt &&
-                        ` · ${new Date(invitation.claimedAt).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                          timeZone: "Europe/London",
-                        })}`}
-                    </p>
-                  </div>
-                  {(pending || expired) && (
-                    <div className="flex shrink-0 gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void runInvitationAction(invitation, "resend-invitation")}
-                        className="min-h-10 rounded border theme-border px-3 font-mono text-xs text-foreground disabled:opacity-50"
-                      >
-                        {expired ? "send again" : "resend"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void runInvitationAction(invitation, "cancel-invitation")}
-                        className="min-h-10 px-2 font-mono text-xs theme-muted underline decoration-dotted underline-offset-4 disabled:opacity-50"
-                      >
-                        cancel
-                      </button>
+
+          {tickets.length === 0 ? (
+            <p className="py-4 font-mono text-xs theme-faint">
+              {summary.total === 0 ? "no tickets issued yet" : "no tickets match these filters"}
+            </p>
+          ) : (
+            <ul className="mt-2 max-h-96 divide-y theme-border overflow-y-auto border-y theme-border">
+              {tickets.map((ticket) => {
+                const busy = busyTicketId === ticket.id;
+                const isLive = ticket.status === "valid";
+                const paid = (ticket.amountPaidMinor ?? 0) > 0;
+                const ticketInvitation = invitationByTicketId.get(ticket.id);
+                const awaitingAcceptance = ticketInvitation?.status === "pending";
+                return (
+                  <li key={ticket.id} className="py-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm text-foreground">
+                          {ticket.holderName}
+                        </p>
+                        <p className="truncate font-mono text-micro theme-muted">
+                          {ticket.email ?? "no email"} · {ticket.ticketTypeName}
+                          {ticket.kind === "comp" ? " · comp" : ""}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-micro theme-faint">
+                          <span>{ticket.id}</span>
+                          <span aria-hidden="true">·</span>
+                          <AdminStatus
+                            tone={
+                              awaitingAcceptance
+                                ? "attention"
+                                : ticket.status === "valid"
+                                  ? "positive"
+                                  : "neutral"
+                            }
+                          >
+                            {awaitingAcceptance ? "awaiting acceptance" : ticketListStatus(ticket)}
+                          </AdminStatus>
+                          <span>· {formatTicketActivityAt("issued", ticket.issuedAt)}</span>
+                          {ticket.status === "refunded" && ticket.refundedAt && (
+                            <span>· {formatTicketActivityAt("refunded", ticket.refundedAt)}</span>
+                          )}
+                        </div>
+                        {awaitingAcceptance && (
+                          <p className="mt-1 font-mono text-micro theme-muted">
+                            QR withheld until the recipient accepts · use the invitation controls
+                            above
+                          </p>
+                        )}
+                        {ticket.activeExchange && (
+                          <div
+                            role={ticket.activeExchange.errorMessage ? "alert" : "status"}
+                            className={`mt-1 border-l-2 pl-3 font-mono text-micro ${adminToneBorderClass(
+                              ticket.activeExchange.errorMessage ? "danger" : "attention",
+                            )}`}
+                          >
+                            {ticket.activeExchange.errorMessage ??
+                              `change to ${ticket.activeExchange.toTicketTypeName} pending`}
+                          </div>
+                        )}
+                      </div>
+                      {!awaitingAcceptance && (
+                        <a
+                          href={`/ticket/${ticket.id}?preview=1`}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
+                        >
+                          attendee preview ↗
+                        </a>
+                      )}
                     </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {permissions.manageTickets &&
+                        isLive &&
+                        !awaitingAcceptance &&
+                        !ticket.redeemedAt && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void runTicketAction(ticket, "redeem")}
+                            className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70 disabled:opacity-50"
+                          >
+                            check in
+                          </button>
+                        )}
+                      {permissions.manageTickets && isLive && ticket.redeemedAt && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void runTicketAction(ticket, "unredeem")}
+                          className="min-h-11 rounded border theme-border px-3 font-mono text-micro theme-muted hover:opacity-70 disabled:opacity-50"
+                        >
+                          undo check-in
+                        </button>
+                      )}
+                      {permissions.manageTickets &&
+                        isLive &&
+                        !awaitingAcceptance &&
+                        ticket.email && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void runTicketAction(ticket, "resend")}
+                            className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
+                          >
+                            resend email
+                          </button>
+                        )}
+                      {permissions.executeRefunds && isLive && paid && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void runTicketAction(ticket, "refund")}
+                          className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
+                        >
+                          refund order
+                        </button>
+                      )}
+                      {permissions.manageTickets && isLive && !awaitingAcceptance && !paid && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void runTicketAction(ticket, "void")}
+                          className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
+                        >
+                          cancel ticket
+                        </button>
+                      )}
+                      {permissions.manageTickets && !awaitingAcceptance && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setEditingTicket((current) =>
+                              current?.id === ticket.id
+                                ? null
+                                : {
+                                    id: ticket.id,
+                                    name: ticket.holderName,
+                                    email: ticket.email ?? "",
+                                  },
+                            )
+                          }
+                          className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+                        >
+                          edit
+                        </button>
+                      )}
+                      {permissions.manageTickets &&
+                        isLive &&
+                        !awaitingAcceptance &&
+                        !ticket.redeemedAt &&
+                        !ticket.activeExchange &&
+                        event.ticketTypes.length > 1 && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              setExchangingTicket((current) =>
+                                current?.id === ticket.id
+                                  ? null
+                                  : {
+                                      id: ticket.id,
+                                      holderName: ticket.holderName,
+                                      fromTicketTypeId: ticket.ticketTypeId,
+                                      targetTicketTypeId: "",
+                                    },
+                              )
+                            }
+                            className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
+                          >
+                            change type
+                          </button>
+                        )}
+                      {busy && <span className="font-mono text-micro theme-faint">working…</span>}
+                    </div>
+                    {editingTicket?.id === ticket.id && (
+                      <form
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void saveHolder();
+                        }}
+                        className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_1fr_auto]"
+                      >
+                        <Field
+                          label="name"
+                          value={editingTicket.name}
+                          onChange={(value) =>
+                            setEditingTicket((current) =>
+                              current ? { ...current, name: value } : current,
+                            )
+                          }
+                        />
+                        <Field
+                          label="email"
+                          type="email"
+                          value={editingTicket.email}
+                          onChange={(value) =>
+                            setEditingTicket((current) =>
+                              current ? { ...current, email: value } : current,
+                            )
+                          }
+                          hint="blank removes the address"
+                        />
+                        <AdminFormAction>
+                          <button
+                            type="submit"
+                            disabled={busy || !editingTicket.name.trim()}
+                            className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+                          >
+                            save
+                          </button>
+                        </AdminFormAction>
+                      </form>
+                    )}
+                    {exchangingTicket?.id === ticket.id && (
+                      <form
+                        onSubmit={(formEvent) => {
+                          formEvent.preventDefault();
+                          void exchangeTicket();
+                        }}
+                        className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_auto]"
+                      >
+                        <label className="admin-form-field block">
+                          <span className="font-mono text-micro theme-muted tracking-wide">
+                            change to
+                          </span>
+                          <AppSelect
+                            value={exchangingTicket.targetTicketTypeId}
+                            onValueChange={(value) =>
+                              setExchangingTicket((current) =>
+                                current ? { ...current, targetTicketTypeId: value } : current,
+                              )
+                            }
+                            options={[
+                              { value: "", label: "choose a ticket type" },
+                              ...event.ticketTypes
+                                .filter((type) => type.id !== ticket.ticketTypeId)
+                                .map((type) => {
+                                  const soldOut = (summary.byType[type.id]?.remaining ?? 0) === 0;
+                                  return {
+                                    value: type.id,
+                                    label: `${type.name} — ${formatMoney(type.priceMinor, type.currency)}${soldOut ? " (sold out)" : ""}`,
+                                    disabled: soldOut,
+                                  };
+                                }),
+                            ]}
+                            variant="field"
+                            ariaLabel="Change ticket type"
+                            className="mt-1"
+                          />
+                        </label>
+                        <AdminFormAction>
+                          <button
+                            type="submit"
+                            disabled={busy || !exchangingTicket.targetTicketTypeId}
+                            className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
+                          >
+                            review change
+                          </button>
+                        </AdminFormAction>
+                      </form>
+                    )}
+                    {exchangePaymentLink?.ticketId === ticket.id && (
+                      <div className="mt-2 rounded border theme-border p-3">
+                        <p className="font-mono text-micro theme-subtle leading-relaxed">
+                          Send this Stripe link to the purchaser. Their ticket changes only after
+                          the difference is paid.
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-3">
+                          <a
+                            href={exchangePaymentLink.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="min-h-11 content-center font-mono text-micro underline hover:opacity-70"
+                          >
+                            open payment link ↗
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void navigator.clipboard.writeText(exchangePaymentLink.url)
+                            }
+                            className="min-h-11 font-mono text-micro underline hover:opacity-70"
+                          >
+                            copy link
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       )}
 
-      <label className="mt-5 block">
-        <span className="font-mono text-micro theme-muted">find attendee, email, or ticket</span>
-        <input
-          type="search"
-          value={query}
-          onChange={(inputEvent) => setQuery(inputEvent.target.value)}
-          placeholder="start typing…"
-          className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+      {activeTool === "messages" && permissions.manageCommunications ? (
+        <MessageComposer
+          event={event}
+          summary={summary}
+          authFetch={authFetch}
+          onError={onError}
+          onStatus={onStatus}
+          confirmAction={confirmAction}
         />
-      </label>
+      ) : null}
 
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <div className="grid gap-1">
-          <span className="font-mono text-micro theme-muted">show</span>
-          <AppSelect
-            value={ticketFilter}
-            onValueChange={(value) => {
-              if (isTicketListFilter(value)) setTicketFilter(value);
-            }}
-            options={TICKET_FILTER_OPTIONS}
-            ariaLabel="Filter tickets"
-          />
-        </div>
-        <div className="grid gap-1">
-          <span className="font-mono text-micro theme-muted">sort</span>
-          <AppSelect
-            value={ticketSort}
-            onValueChange={(value) => {
-              if (isTicketListSort(value)) setTicketSort(value);
-            }}
-            options={TICKET_SORT_OPTIONS}
-            ariaLabel="Sort tickets"
-          />
-        </div>
-        <p className="min-h-11 content-center font-mono text-micro theme-faint" aria-live="polite">
-          {tickets.length} of {summary.total}
-        </p>
-      </div>
+      {activeTool === "door" && permissions.manageEvents ? (
+        <ScanningSection
+          event={event}
+          authFetch={authFetch}
+          onError={onError}
+          onStatus={onStatus}
+          confirmAction={confirmAction}
+          stepUp={stepUp}
+        />
+      ) : null}
 
-      {tickets.length === 0 ? (
-        <p className="py-4 font-mono text-xs theme-faint">
-          {summary.total === 0 ? "no tickets issued yet" : "no tickets match these filters"}
-        </p>
-      ) : (
-        <ul className="mt-2 max-h-96 divide-y theme-border overflow-y-auto border-y theme-border">
-          {tickets.map((ticket) => {
-            const busy = busyTicketId === ticket.id;
-            const isLive = ticket.status === "valid";
-            const paid = (ticket.amountPaidMinor ?? 0) > 0;
-            const ticketInvitation = invitationByTicketId.get(ticket.id);
-            const awaitingAcceptance = ticketInvitation?.status === "pending";
-            return (
-              <li key={ticket.id} className="py-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm text-foreground">
-                      {ticket.holderName}
-                    </p>
-                    <p className="truncate font-mono text-micro theme-muted">
-                      {ticket.email ?? "no email"} · {ticket.ticketTypeName}
-                      {ticket.kind === "comp" ? " · comp" : ""}
-                    </p>
-                    <p className="mt-0.5 font-mono text-micro theme-faint">
-                      {ticket.id} ·{" "}
-                      {awaitingAcceptance ? "awaiting acceptance" : ticketListStatus(ticket)} ·{" "}
-                      {formatTicketIssuedAt(ticket.issuedAt)}
-                    </p>
-                    {awaitingAcceptance && (
-                      <p className="mt-1 font-mono text-micro text-[var(--prose-hashtag)]">
-                        QR withheld until the recipient accepts · use the invitation controls above
-                      </p>
-                    )}
-                    {ticket.activeExchange && (
-                      <p
-                        role={ticket.activeExchange.errorMessage ? "alert" : "status"}
-                        className="mt-1 font-mono text-micro text-[var(--prose-hashtag)]"
-                      >
-                        {ticket.activeExchange.errorMessage ??
-                          `change to ${ticket.activeExchange.toTicketTypeName} pending`}
-                      </p>
-                    )}
-                  </div>
-                  {!awaitingAcceptance && (
-                    <a
-                      href={`/ticket/${ticket.id}?preview=1`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="shrink-0 font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
-                    >
-                      attendee preview ↗
-                    </a>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {isLive && !awaitingAcceptance && !ticket.redeemedAt && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runTicketAction(ticket, "redeem")}
-                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70 disabled:opacity-50"
-                    >
-                      check in
-                    </button>
-                  )}
-                  {isLive && ticket.redeemedAt && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runTicketAction(ticket, "unredeem")}
-                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro theme-muted hover:opacity-70 disabled:opacity-50"
-                    >
-                      undo check-in
-                    </button>
-                  )}
-                  {isLive && !awaitingAcceptance && ticket.email && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runTicketAction(ticket, "resend")}
-                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
-                    >
-                      resend email
-                    </button>
-                  )}
-                  {isLive && paid && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runTicketAction(ticket, "refund")}
-                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
-                    >
-                      refund order
-                    </button>
-                  )}
-                  {isLive && !awaitingAcceptance && !paid && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void runTicketAction(ticket, "void")}
-                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
-                    >
-                      cancel ticket
-                    </button>
-                  )}
-                  {!awaitingAcceptance && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        setEditingTicket((current) =>
-                          current?.id === ticket.id
-                            ? null
-                            : { id: ticket.id, name: ticket.holderName, email: ticket.email ?? "" },
-                        )
-                      }
-                      className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
-                    >
-                      edit
-                    </button>
-                  )}
-                  {isLive &&
-                    !awaitingAcceptance &&
-                    !ticket.redeemedAt &&
-                    !ticket.activeExchange &&
-                    event.ticketTypes.length > 1 && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          setExchangingTicket((current) =>
-                            current?.id === ticket.id
-                              ? null
-                              : {
-                                  id: ticket.id,
-                                  holderName: ticket.holderName,
-                                  fromTicketTypeId: ticket.ticketTypeId,
-                                  targetTicketTypeId: "",
-                                },
-                          )
-                        }
-                        className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
-                      >
-                        change type
-                      </button>
-                    )}
-                  {busy && <span className="font-mono text-micro theme-faint">working…</span>}
-                </div>
-                {editingTicket?.id === ticket.id && (
-                  <form
-                    onSubmit={(formEvent) => {
-                      formEvent.preventDefault();
-                      void saveHolder();
-                    }}
-                    className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_1fr_auto]"
-                  >
-                    <Field
-                      label="name"
-                      value={editingTicket.name}
-                      onChange={(value) =>
-                        setEditingTicket((current) =>
-                          current ? { ...current, name: value } : current,
-                        )
-                      }
-                    />
-                    <Field
-                      label="email"
-                      type="email"
-                      value={editingTicket.email}
-                      onChange={(value) =>
-                        setEditingTicket((current) =>
-                          current ? { ...current, email: value } : current,
-                        )
-                      }
-                      hint="blank removes the address"
-                    />
-                    <AdminFormAction>
-                      <button
-                        type="submit"
-                        disabled={busy || !editingTicket.name.trim()}
-                        className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-                      >
-                        save
-                      </button>
-                    </AdminFormAction>
-                  </form>
-                )}
-                {exchangingTicket?.id === ticket.id && (
-                  <form
-                    onSubmit={(formEvent) => {
-                      formEvent.preventDefault();
-                      void exchangeTicket();
-                    }}
-                    className="admin-form-row mt-2 grid gap-2 rounded border theme-border p-2 sm:grid-cols-[1fr_auto]"
-                  >
-                    <label className="admin-form-field block">
-                      <span className="font-mono text-micro theme-muted tracking-wide">
-                        change to
-                      </span>
-                      <AppSelect
-                        value={exchangingTicket.targetTicketTypeId}
-                        onValueChange={(value) =>
-                          setExchangingTicket((current) =>
-                            current ? { ...current, targetTicketTypeId: value } : current,
-                          )
-                        }
-                        options={[
-                          { value: "", label: "choose a ticket type" },
-                          ...event.ticketTypes
-                            .filter((type) => type.id !== ticket.ticketTypeId)
-                            .map((type) => {
-                              const soldOut = (summary.byType[type.id]?.remaining ?? 0) === 0;
-                              return {
-                                value: type.id,
-                                label: `${type.name} — ${formatMoney(type.priceMinor, type.currency)}${soldOut ? " (sold out)" : ""}`,
-                                disabled: soldOut,
-                              };
-                            }),
-                        ]}
-                        variant="field"
-                        ariaLabel="Change ticket type"
-                        className="mt-1"
-                      />
-                    </label>
-                    <AdminFormAction>
-                      <button
-                        type="submit"
-                        disabled={busy || !exchangingTicket.targetTicketTypeId}
-                        className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-                      >
-                        review change
-                      </button>
-                    </AdminFormAction>
-                  </form>
-                )}
-                {exchangePaymentLink?.ticketId === ticket.id && (
-                  <div className="mt-2 rounded border theme-border p-3">
-                    <p className="font-mono text-micro theme-subtle leading-relaxed">
-                      Send this Stripe link to the purchaser. Their ticket changes only after the
-                      difference is paid.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-3">
-                      <a
-                        href={exchangePaymentLink.url}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="min-h-11 content-center font-mono text-micro underline hover:opacity-70"
-                      >
-                        open payment link ↗
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => void navigator.clipboard.writeText(exchangePaymentLink.url)}
-                        className="min-h-11 font-mono text-micro underline hover:opacity-70"
-                      >
-                        copy link
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <MessageComposer
-        event={event}
-        summary={summary}
-        authFetch={authFetch}
-        onError={onError}
-        onStatus={onStatus}
-        confirmAction={confirmAction}
-      />
-
-      <ScanningSection
-        event={event}
-        authFetch={authFetch}
-        onError={onError}
-        onStatus={onStatus}
-        confirmAction={confirmAction}
-        stepUp={stepUp}
-      />
-
-      <GuestUploadsSection
-        event={event}
-        authFetch={authFetch}
-        onError={onError}
-        onStatus={onStatus}
-        confirmAction={confirmAction}
-      />
+      {activeTool === "uploads" && permissions.manageEvents ? (
+        <GuestUploadsSection
+          event={event}
+          authFetch={authFetch}
+          onError={onError}
+          onStatus={onStatus}
+          confirmAction={confirmAction}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2691,6 +2916,7 @@ export function EventsPanel({
   ensureStepUpToken,
   withStepUpHeaders,
   initialEventSlug,
+  permissions,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -2700,22 +2926,34 @@ export function EventsPanel({
   >;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
   initialEventSlug?: string;
+  permissions: GlobalAdminPermissionSet;
 }) {
   const statusId = useId();
   const heroHeightId = useId();
   const [events, setEvents] = useState<EventRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [selection, setSelection] = useState<EventsWorkspaceSelection>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [operationsSlug, setOperationsSlug] = useState<string | null>(null);
   const [operations, setOperations] = useState<EventTicketSummary | null>(null);
   const [operationsLoading, setOperationsLoading] = useState(false);
+  const [operationsError, setOperationsError] = useState<string | null>(null);
   const openedTarget = useRef<string | undefined>(undefined);
+  const operationsRequest = useRef(0);
+  const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
   const { confirm, prompt, dialog } = useActionDialog();
+  const editing =
+    selection?.kind === "create" ? "__new__" : selection?.kind === "edit" ? selection.slug : null;
+  const operationsSlug = selection?.kind === "operations" ? selection.slug : null;
+  const selectedEvent =
+    selection?.kind === "edit" || selection?.kind === "operations"
+      ? events.find((event) => event.slug === selection.slug)
+      : null;
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     onError("");
     try {
       const response = await authFetch("/api/admin/events");
@@ -2727,7 +2965,9 @@ export function EventsPanel({
           : [];
       setEvents(list);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to load events");
+      const message = error instanceof Error ? error.message : "Failed to load events";
+      setLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -2736,6 +2976,10 @@ export function EventsPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (selection) workspaceHeadingRef.current?.focus();
+  }, [selection]);
 
   const loadOperations = useCallback(
     async (slug: string) => {
@@ -2746,29 +2990,57 @@ export function EventsPanel({
           ? parseEventTicketSummary(data.tickets)
           : null;
       if (!response.ok || !summary) throw new Error("Failed to load event operations");
-      setOperations(summary);
+      return summary;
     },
     [authFetch],
   );
 
   const toggleOperations = async (slug: string) => {
     if (operationsSlug === slug) {
-      setOperationsSlug(null);
+      operationsRequest.current += 1;
+      setSelection(null);
       setOperations(null);
+      setOperationsError(null);
+      setOperationsLoading(false);
       return;
     }
 
-    setOperationsSlug(slug);
+    setSelection({ kind: "operations", slug });
+    setDraft(null);
     setOperations(null);
+    setOperationsError(null);
     setOperationsLoading(true);
     onError("");
+    const request = ++operationsRequest.current;
     try {
-      await loadOperations(slug);
+      const summary = await loadOperations(slug);
+      if (request === operationsRequest.current) setOperations(summary);
     } catch (error) {
-      setOperationsSlug(null);
-      onError(error instanceof Error ? error.message : "Failed to load event operations");
+      if (request !== operationsRequest.current) return;
+      const message = error instanceof Error ? error.message : "Failed to load event operations";
+      setOperationsError(message);
+      onError(message);
     } finally {
-      setOperationsLoading(false);
+      if (request === operationsRequest.current) setOperationsLoading(false);
+    }
+  };
+
+  const retryOperations = async (slug: string) => {
+    setOperations(null);
+    setOperationsError(null);
+    setOperationsLoading(true);
+    onError("");
+    const request = ++operationsRequest.current;
+    try {
+      const summary = await loadOperations(slug);
+      if (request === operationsRequest.current) setOperations(summary);
+    } catch (error) {
+      if (request !== operationsRequest.current) return;
+      const message = error instanceof Error ? error.message : "Failed to load event operations";
+      setOperationsError(message);
+      onError(message);
+    } finally {
+      if (request === operationsRequest.current) setOperationsLoading(false);
     }
   };
 
@@ -2781,14 +3053,25 @@ export function EventsPanel({
       return;
     }
     openedTarget.current = initialEventSlug;
-    setOperationsSlug(initialEventSlug);
+    setSelection({ kind: "operations", slug: initialEventSlug });
+    setDraft(null);
     setOperations(null);
+    setOperationsError(null);
     setOperationsLoading(true);
+    const request = ++operationsRequest.current;
     void loadOperations(initialEventSlug)
-      .catch((error) =>
-        onError(error instanceof Error ? error.message : "Failed to load event operations"),
-      )
-      .finally(() => setOperationsLoading(false));
+      .then((summary) => {
+        if (request === operationsRequest.current) setOperations(summary);
+      })
+      .catch((error) => {
+        if (request !== operationsRequest.current) return;
+        const message = error instanceof Error ? error.message : "Failed to load event operations";
+        setOperationsError(message);
+        onError(message);
+      })
+      .finally(() => {
+        if (request === operationsRequest.current) setOperationsLoading(false);
+      });
   }, [events, initialEventSlug, loadOperations, onError]);
 
   const save = async () => {
@@ -2838,7 +3121,7 @@ export function EventsPanel({
         throw new Error(message);
       }
       onStatus(isNew ? "Event created" : "Event saved");
-      setEditing(null);
+      setSelection(null);
       setDraft(null);
       await load();
     } catch (error) {
@@ -2870,6 +3153,11 @@ export function EventsPanel({
       });
       if (!response.ok) throw new Error("Failed to delete event");
       onStatus("Event deleted");
+      if (selectedEvent?.slug === event.slug) {
+        setSelection(null);
+        setDraft(null);
+        setOperations(null);
+      }
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to delete event");
@@ -2881,16 +3169,22 @@ export function EventsPanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-xs theme-muted">events</p>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setEditing("__new__");
-              setDraft(EMPTY_DRAFT);
-            }}
-            className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
-          >
-            + new event
-          </button>
+          {permissions.manageEvents ? (
+            <button
+              type="button"
+              onClick={() => {
+                operationsRequest.current += 1;
+                setSelection({ kind: "create" });
+                setDraft(EMPTY_DRAFT);
+                setOperations(null);
+                setOperationsError(null);
+                setOperationsLoading(false);
+              }}
+              className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
+            >
+              + new event
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void load()}
@@ -2902,453 +3196,654 @@ export function EventsPanel({
         </div>
       </div>
 
-      <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
+      {permissions.manageGlobalSettings && !selection ? (
+        <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
+      ) : null}
 
-      {events.length === 0 && !loading && (
-        <p className="font-mono text-xs theme-faint py-4">no events yet</p>
-      )}
+      <div
+        className={
+          selection
+            ? "lg:grid lg:grid-cols-[minmax(15rem,0.7fr)_minmax(0,2fr)] lg:gap-6"
+            : undefined
+        }
+      >
+        <div className={selection ? "hidden min-w-0 lg:block" : "min-w-0"}>
+          {loading && events.length === 0 ? (
+            <p role="status" className="py-4 font-mono text-xs theme-muted">
+              loading events…
+            </p>
+          ) : null}
 
-      <ul className="divide-y theme-border border-y theme-border">
-        {events.map((event) => (
-          <li key={event.slug} className="py-3">
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-              <div className="min-w-0">
-                <p className="font-mono text-sm text-foreground truncate">{event.title}</p>
-                <p className="font-mono text-micro theme-muted mt-0.5">
-                  {event.status} · {formatEventDateTime(event.startsAt, event.timezone)} ·{" "}
-                  {event.ticketTypes.length} ticket type
-                  {event.ticketTypes.length === 1 ? "" : "s"}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
-                <Link
-                  to="/events/$slug"
-                  params={{ slug: event.slug }}
-                  className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:opacity-70"
-                >
-                  view
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void toggleOperations(event.slug)}
-                  aria-expanded={operationsSlug === event.slug}
-                  className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70"
-                >
-                  {operationsSlug === event.slug ? "close" : "manage"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(event.slug);
-                    setDraft(toDraft(event));
-                  }}
-                  className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70"
-                >
-                  edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void remove(event)}
-                  className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70"
-                >
-                  delete
-                </button>
-              </div>
-            </div>
-            {operationsSlug === event.slug &&
-              (operationsLoading ? (
-                <p className="mt-4 font-mono text-xs theme-muted">loading tickets…</p>
-              ) : operations ? (
-                <EventOperations
-                  event={event}
-                  summary={operations}
-                  authFetch={authFetch}
-                  onError={onError}
-                  onStatus={onStatus}
-                  reload={() => loadOperations(event.slug)}
-                  confirmAction={confirm}
-                  stepUp={{ ensureStepUpToken, withStepUpHeaders }}
-                />
-              ) : null)}
-          </li>
-        ))}
-      </ul>
-
-      {draft && (
-        <form
-          onSubmit={(formEvent) => {
-            formEvent.preventDefault();
-            void save();
-          }}
-          className="space-y-4 border theme-border rounded-lg p-4"
-        >
-          <p className="font-mono text-xs theme-muted">
-            {editing === "__new__" ? "new event" : `editing ${editing}`}
-          </p>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field
-              label="title"
-              value={draft.title}
-              onChange={(value) => setDraft({ ...draft, title: value })}
-            />
-            <Field
-              label="slug"
-              value={draft.slug}
-              onChange={(value) => setDraft({ ...draft, slug: value })}
-              hint="blank = from title"
-            />
-            <Field
-              label="tagline"
-              value={draft.tagline}
-              onChange={(value) => setDraft({ ...draft, tagline: value })}
-            />
-            <div>
-              <label htmlFor={statusId} className="font-mono text-micro theme-muted tracking-wide">
-                status
-              </label>
-              <AppSelect
-                id={statusId}
-                value={draft.status}
-                onValueChange={(value) =>
-                  isEventStatus(value) && setDraft({ ...draft, status: value })
-                }
-                options={EVENT_STATUSES.map((status) => ({ value: status, label: status }))}
-                variant="field"
-                className="mt-1 rounded text-sm"
-              />
-            </div>
-            <Field
-              label="starts"
-              type="datetime-local"
-              value={draft.startsAt}
-              onChange={(value) => setDraft({ ...draft, startsAt: value })}
-            />
-            <Field
-              label="doors"
-              type="datetime-local"
-              value={draft.doorsAt}
-              onChange={(value) => setDraft({ ...draft, doorsAt: value })}
-            />
-            <Field
-              label="ends"
-              type="datetime-local"
-              value={draft.endsAt}
-              onChange={(value) => setDraft({ ...draft, endsAt: value })}
-            />
-            <Field
-              label="overall capacity"
-              type="number"
-              value={draft.capacity}
-              onChange={(value) => setDraft({ ...draft, capacity: value })}
-              hint="hard cap across every ticket type"
-            />
-            <Field
-              label="area (public)"
-              value={draft.area}
-              onChange={(value) => setDraft({ ...draft, area: value })}
-              hint="required to publish"
-            />
-            <Field
-              label="timezone"
-              value={draft.timezone}
-              onChange={(value) => setDraft({ ...draft, timezone: value })}
-            />
-            <Field
-              label="venue (ticket holders)"
-              value={draft.venueName}
-              onChange={(value) => setDraft({ ...draft, venueName: value })}
-            />
-            <Field
-              label="address (ticket holders)"
-              value={draft.address}
-              onChange={(value) => setDraft({ ...draft, address: value })}
-            />
-            <Field
-              label="door code"
-              value={draft.doorCode}
-              onChange={(value) => setDraft({ ...draft, doorCode: value })}
-            />
-            <Field
-              label="three-word hint"
-              value={draft.threeWordHint}
-              onChange={(value) => setDraft({ ...draft, threeWordHint: value })}
-            />
-            <Field
-              label="map URL"
-              value={draft.mapUrl}
-              onChange={(value) => setDraft({ ...draft, mapUrl: value })}
-            />
-            <Field
-              label="transport note"
-              value={draft.transportNote}
-              onChange={(value) => setDraft({ ...draft, transportNote: value })}
-            />
-            <Field
-              label="lineup"
-              value={draft.lineup}
-              onChange={(value) => setDraft({ ...draft, lineup: value })}
-              hint="comma separated"
-            />
-            <Field
-              label="age limit"
-              value={draft.ageLimit}
-              onChange={(value) => setDraft({ ...draft, ageLimit: value })}
-            />
-            <Field
-              label="dress code"
-              value={draft.dressCode}
-              onChange={(value) => setDraft({ ...draft, dressCode: value })}
-            />
-            <Field
-              label="hero image URL"
-              value={draft.heroImage}
-              onChange={(value) =>
-                setDraft({
-                  ...draft,
-                  heroImage: value,
-                  heroImageWidth: undefined,
-                  heroImageHeight: undefined,
-                })
-              }
-              hint="shown at the top of the event page"
-            />
-            <div>
-              <label
-                htmlFor={heroHeightId}
-                className="font-mono text-micro theme-muted tracking-wide"
+          {loadError ? (
+            <div
+              role="alert"
+              className="my-3 border-l-2 border-[var(--admin-danger)] py-1 pl-3 font-mono text-xs"
+            >
+              <p className="text-foreground">{loadError}</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                disabled={loading}
+                className="mt-2 min-h-11 theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-50"
               >
-                hero height
-              </label>
-              <AppSelect
-                id={heroHeightId}
-                value={draft.heroHeight}
-                onValueChange={(value) =>
-                  isEventHeroHeight(value) && setDraft({ ...draft, heroHeight: value })
-                }
-                options={EVENT_HERO_HEIGHTS.map((height) => ({
-                  value: height,
-                  label: HERO_HEIGHT_LABELS[height],
-                }))}
-                variant="field"
-                className="mt-1 rounded text-sm"
-              />
-              <p className="mt-1 font-mono text-micro theme-faint">
-                anything but natural crops to a band, so the date and buy button stay above the fold
-              </p>
+                {loading ? "retrying…" : "retry loading events"}
+              </button>
             </div>
-            <Field
-              label="social image URL"
-              value={draft.ogImage}
-              onChange={(value) => setDraft({ ...draft, ogImage: value })}
-              hint="optional; hero is used when blank"
-            />
-            <Field
-              label="marketing story path"
-              value={draft.marketingPath}
-              onChange={(value) => setDraft({ ...draft, marketingPath: value })}
-              hint="e.g. /pitch-night — links this event to its cinematic page"
-            />
-          </div>
+          ) : null}
 
-          {draft.heroImage && (
-            <div className="media-image-placeholder overflow-hidden rounded-lg">
-              <AppImage
-                src={draft.heroImage}
-                alt="Event hero preview"
-                width={draft.heroImageWidth}
-                height={draft.heroImageHeight}
-                reveal
-                onLoad={(event) => {
-                  const { naturalWidth, naturalHeight } = event.currentTarget;
-                  if (naturalWidth <= 0 || naturalHeight <= 0) return;
-                  setDraft((current) =>
-                    current &&
-                    current.heroImage === draft.heroImage &&
-                    (current.heroImageWidth !== naturalWidth ||
-                      current.heroImageHeight !== naturalHeight)
-                      ? {
-                          ...current,
-                          heroImageWidth: naturalWidth,
-                          heroImageHeight: naturalHeight,
+          {events.length === 0 && !loading && !loadError ? (
+            <p className="py-4 font-mono text-xs theme-faint">no events yet</p>
+          ) : null}
+
+          <ul className="divide-y theme-border border-y theme-border">
+            {events.map((event) => (
+              <li
+                key={event.slug}
+                className={`py-3 ${selectedEvent?.slug === event.slug ? "border-l-2 border-[var(--prose-hashtag)] pl-3" : ""}`}
+              >
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm text-foreground truncate">{event.title}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+                      <AdminStatus
+                        tone={
+                          event.status === "published"
+                            ? "positive"
+                            : event.status === "draft" || event.status === "sold-out"
+                              ? "attention"
+                              : "neutral"
                         }
-                      : current,
-                  );
+                      >
+                        {event.status}
+                      </AdminStatus>
+                      <span>
+                        · {formatEventDateTime(event.startsAt, event.timezone)} ·{" "}
+                        {event.ticketTypes.length} ticket type
+                        {event.ticketTypes.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+                    <Link
+                      to="/events/$slug"
+                      params={{ slug: event.slug }}
+                      className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:opacity-70"
+                    >
+                      view
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void toggleOperations(event.slug)}
+                      aria-expanded={operationsSlug === event.slug}
+                      className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold text-[var(--prose-hashtag)] hover:opacity-70"
+                    >
+                      {operationsSlug === event.slug
+                        ? "close"
+                        : permissions.manageEvents ||
+                            permissions.manageTickets ||
+                            permissions.executeRefunds ||
+                            permissions.manageCommunications
+                          ? "tickets & door"
+                          : "inspect"}
+                    </button>
+                    {permissions.manageEvents ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            operationsRequest.current += 1;
+                            setSelection({ kind: "edit", slug: event.slug });
+                            setDraft(toDraft(event));
+                            setOperations(null);
+                            setOperationsError(null);
+                            setOperationsLoading(false);
+                          }}
+                          aria-pressed={selection?.kind === "edit" && selection.slug === event.slug}
+                          className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70"
+                        >
+                          edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void remove(event)}
+                          className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70"
+                        >
+                          delete
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {selection ? (
+          <div
+            className="min-w-0 scroll-mt-6 border-transparent theme-border lg:border-l lg:pl-6"
+            aria-labelledby="event-workspace-title"
+          >
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b theme-border pb-3">
+              <div>
+                <p className="font-mono text-micro theme-muted">
+                  {selection.kind === "operations"
+                    ? "tickets & door"
+                    : selection.kind === "create"
+                      ? "new event"
+                      : "event settings"}
+                </p>
+                <h3
+                  ref={workspaceHeadingRef}
+                  id="event-workspace-title"
+                  tabIndex={-1}
+                  className="mt-1 text-lg text-foreground focus:outline-none"
+                >
+                  {selection.kind === "create"
+                    ? "Create an event"
+                    : (selectedEvent?.title ?? "Event")}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  operationsRequest.current += 1;
+                  setSelection(null);
+                  setDraft(null);
+                  setOperations(null);
+                  setOperationsError(null);
+                  setOperationsLoading(false);
                 }}
-                className={`w-full h-auto rounded-lg ${
-                  draft.heroHeight === "natural"
-                    ? "max-h-64 object-cover"
-                    : heroImageHeightClass(draft.heroHeight)
-                }`}
-              />
-            </div>
-          )}
-
-          <label className="block">
-            <span className="font-mono text-micro theme-muted tracking-wide">
-              description (markdown)
-            </span>
-            <textarea
-              value={draft.description}
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-              rows={5}
-              className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-            />
-          </label>
-
-          <label className="block">
-            <span className="font-mono text-micro theme-muted tracking-wide">house rules</span>
-            <textarea
-              value={draft.houseRules}
-              onChange={(event) => setDraft({ ...draft, houseRules: event.target.value })}
-              rows={3}
-              className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-            />
-          </label>
-
-          <label className="block">
-            <span className="font-mono text-micro theme-muted tracking-wide">refund policy</span>
-            <textarea
-              value={draft.refundPolicy}
-              onChange={(event) => setDraft({ ...draft, refundPolicy: event.target.value })}
-              rows={3}
-              className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-            />
-          </label>
-
-          <label className="block">
-            <span className="font-mono text-micro theme-muted tracking-wide">ticket terms</span>
-            <textarea
-              value={draft.terms}
-              onChange={(event) => setDraft({ ...draft, terms: event.target.value })}
-              rows={4}
-              className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-            />
-            <span className="mt-1 block font-mono text-micro theme-faint">
-              Shown beside checkout; use clear entry, transfer, cancellation, and conduct terms.
-            </span>
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={draft.stepFreeAccess}
-              onChange={(event) => setDraft({ ...draft, stepFreeAccess: event.target.checked })}
-            />
-            <span className="font-mono text-micro theme-muted">step-free access</span>
-          </label>
-
-          <div className="space-y-3">
-            <p className="font-mono text-micro theme-muted tracking-wide">ticket types</p>
-            {draft.ticketTypes.map((type, index) => (
-              <div
-                key={`${type.id}-${index}`}
-                className="admin-form-row grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
+                className="inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted underline underline-offset-4 hover:text-foreground"
               >
-                <Field
-                  label="name"
-                  value={type.name}
-                  onChange={(value) => {
-                    const next = [...draft.ticketTypes];
-                    next[index] = { ...type, name: value };
-                    setDraft({ ...draft, ticketTypes: next });
-                  }}
-                />
-                <Field
-                  label="price £"
-                  value={type.price}
-                  onChange={(value) => {
-                    const next = [...draft.ticketTypes];
-                    next[index] = { ...type, price: value };
-                    setDraft({ ...draft, ticketTypes: next });
-                  }}
-                />
-                <Field
-                  label="quantity"
-                  value={type.quantity}
-                  onChange={(value) => {
-                    const next = [...draft.ticketTypes];
-                    next[index] = { ...type, quantity: value };
-                    setDraft({ ...draft, ticketTypes: next });
-                  }}
-                />
-                <Field
-                  label="per person"
-                  value={type.perPersonLimit}
-                  onChange={(value) => {
-                    const next = [...draft.ticketTypes];
-                    next[index] = { ...type, perPersonLimit: value };
-                    setDraft({ ...draft, ticketTypes: next });
-                  }}
-                />
-                <AdminFormAction>
+                ← back to events
+              </button>
+            </div>
+
+            {operationsSlug && operationsLoading ? (
+              <p role="status" className="py-4 font-mono text-xs theme-muted">
+                loading event tools…
+              </p>
+            ) : null}
+
+            {operationsSlug && operationsError ? (
+              <div
+                role="alert"
+                className="border-l-2 border-[var(--admin-danger)] py-1 pl-3 font-mono text-xs"
+              >
+                <p className="text-foreground">{operationsError}</p>
+                <button
+                  type="button"
+                  onClick={() => void retryOperations(operationsSlug)}
+                  disabled={operationsLoading}
+                  className="mt-2 min-h-11 theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-50"
+                >
+                  {operationsLoading ? "retrying…" : "retry event tools"}
+                </button>
+              </div>
+            ) : null}
+
+            {operationsSlug &&
+            !operationsLoading &&
+            !operationsError &&
+            operations &&
+            selectedEvent ? (
+              <EventOperations
+                key={selectedEvent.slug}
+                event={selectedEvent}
+                summary={operations}
+                authFetch={authFetch}
+                onError={onError}
+                onStatus={onStatus}
+                reload={async () => {
+                  const request = ++operationsRequest.current;
+                  const summary = await loadOperations(selectedEvent.slug);
+                  if (request === operationsRequest.current) setOperations(summary);
+                }}
+                confirmAction={confirm}
+                stepUp={{ ensureStepUpToken, withStepUpHeaders }}
+                permissions={permissions}
+              />
+            ) : null}
+
+            {permissions.manageEvents && draft ? (
+              <form
+                onSubmit={(formEvent) => {
+                  formEvent.preventDefault();
+                  void save();
+                }}
+                className="space-y-4 border theme-border rounded-lg p-4"
+              >
+                <p className="font-mono text-xs theme-muted">
+                  {editing === "__new__" ? "new event" : `editing ${editing}`}
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="title"
+                    value={draft.title}
+                    onChange={(value) => setDraft({ ...draft, title: value })}
+                  />
+                  <Field
+                    label="slug"
+                    value={draft.slug}
+                    onChange={(value) => setDraft({ ...draft, slug: value })}
+                    hint="blank = from title"
+                  />
+                  <Field
+                    label="tagline"
+                    value={draft.tagline}
+                    onChange={(value) => setDraft({ ...draft, tagline: value })}
+                  />
+                  <div>
+                    <label
+                      htmlFor={statusId}
+                      className="font-mono text-micro theme-muted tracking-wide"
+                    >
+                      status
+                    </label>
+                    <AppSelect
+                      id={statusId}
+                      value={draft.status}
+                      onValueChange={(value) =>
+                        isEventStatus(value) && setDraft({ ...draft, status: value })
+                      }
+                      options={EVENT_STATUSES.map((status) => ({ value: status, label: status }))}
+                      variant="field"
+                      className="mt-1 rounded text-sm"
+                    />
+                  </div>
+                  <Field
+                    label="starts"
+                    type="datetime-local"
+                    value={draft.startsAt}
+                    onChange={(value) => setDraft({ ...draft, startsAt: value })}
+                  />
+                  <Field
+                    label="doors"
+                    type="datetime-local"
+                    value={draft.doorsAt}
+                    onChange={(value) => setDraft({ ...draft, doorsAt: value })}
+                  />
+                  <Field
+                    label="ends"
+                    type="datetime-local"
+                    value={draft.endsAt}
+                    onChange={(value) => setDraft({ ...draft, endsAt: value })}
+                  />
+                  <Field
+                    label="overall capacity"
+                    type="number"
+                    value={draft.capacity}
+                    onChange={(value) => setDraft({ ...draft, capacity: value })}
+                    hint="hard cap across every ticket type"
+                  />
+                  <Field
+                    label="area (public)"
+                    value={draft.area}
+                    onChange={(value) => setDraft({ ...draft, area: value })}
+                    hint="required to publish"
+                  />
+                  <Field
+                    label="timezone"
+                    value={draft.timezone}
+                    onChange={(value) => setDraft({ ...draft, timezone: value })}
+                  />
+                  <Field
+                    label="venue (ticket holders)"
+                    value={draft.venueName}
+                    onChange={(value) => setDraft({ ...draft, venueName: value })}
+                  />
+                  <Field
+                    label="address (ticket holders)"
+                    value={draft.address}
+                    onChange={(value) => setDraft({ ...draft, address: value })}
+                  />
+                  <Field
+                    label="door code"
+                    value={draft.doorCode}
+                    onChange={(value) => setDraft({ ...draft, doorCode: value })}
+                  />
+                  <Field
+                    label="three-word hint"
+                    value={draft.threeWordHint}
+                    onChange={(value) => setDraft({ ...draft, threeWordHint: value })}
+                  />
+                  <Field
+                    label="map URL"
+                    value={draft.mapUrl}
+                    onChange={(value) => setDraft({ ...draft, mapUrl: value })}
+                  />
+                  <Field
+                    label="transport note"
+                    value={draft.transportNote}
+                    onChange={(value) => setDraft({ ...draft, transportNote: value })}
+                  />
+                  <Field
+                    label="lineup"
+                    value={draft.lineup}
+                    onChange={(value) => setDraft({ ...draft, lineup: value })}
+                    hint="comma separated"
+                  />
+                  <Field
+                    label="age limit"
+                    value={draft.ageLimit}
+                    onChange={(value) => setDraft({ ...draft, ageLimit: value })}
+                  />
+                  <Field
+                    label="dress code"
+                    value={draft.dressCode}
+                    onChange={(value) => setDraft({ ...draft, dressCode: value })}
+                  />
+                  <Field
+                    label="hero image URL"
+                    value={draft.heroImage}
+                    onChange={(value) =>
+                      setDraft({
+                        ...draft,
+                        heroImage: value,
+                        heroImageWidth: undefined,
+                        heroImageHeight: undefined,
+                      })
+                    }
+                    hint="shown at the top of the event page"
+                  />
+                  <div>
+                    <label
+                      htmlFor={heroHeightId}
+                      className="font-mono text-micro theme-muted tracking-wide"
+                    >
+                      hero height
+                    </label>
+                    <AppSelect
+                      id={heroHeightId}
+                      value={draft.heroHeight}
+                      onValueChange={(value) =>
+                        isEventHeroHeight(value) && setDraft({ ...draft, heroHeight: value })
+                      }
+                      options={EVENT_HERO_HEIGHTS.map((height) => ({
+                        value: height,
+                        label: HERO_HEIGHT_LABELS[height],
+                      }))}
+                      variant="field"
+                      className="mt-1 rounded text-sm"
+                    />
+                    <p className="mt-1 font-mono text-micro theme-faint">
+                      anything but natural crops to a band, so the date and buy button stay above
+                      the fold
+                    </p>
+                  </div>
+                  <Field
+                    label="social image URL"
+                    value={draft.ogImage}
+                    onChange={(value) => setDraft({ ...draft, ogImage: value })}
+                    hint="optional; hero is used when blank"
+                  />
+                  <Field
+                    label="marketing story path"
+                    value={draft.marketingPath}
+                    onChange={(value) => setDraft({ ...draft, marketingPath: value })}
+                    hint="e.g. /pitch-night — links this event to its cinematic page"
+                  />
+                </div>
+
+                {draft.heroImage && (
+                  <div className="media-image-placeholder overflow-hidden rounded-lg">
+                    <AppImage
+                      src={draft.heroImage}
+                      alt="Event hero preview"
+                      width={draft.heroImageWidth}
+                      height={draft.heroImageHeight}
+                      reveal
+                      onLoad={(event) => {
+                        const { naturalWidth, naturalHeight } = event.currentTarget;
+                        if (naturalWidth <= 0 || naturalHeight <= 0) return;
+                        setDraft((current) =>
+                          current &&
+                          current.heroImage === draft.heroImage &&
+                          (current.heroImageWidth !== naturalWidth ||
+                            current.heroImageHeight !== naturalHeight)
+                            ? {
+                                ...current,
+                                heroImageWidth: naturalWidth,
+                                heroImageHeight: naturalHeight,
+                              }
+                            : current,
+                        );
+                      }}
+                      className={`w-full h-auto rounded-lg ${
+                        draft.heroHeight === "natural"
+                          ? "max-h-64 object-cover"
+                          : heroImageHeightClass(draft.heroHeight)
+                      }`}
+                    />
+                  </div>
+                )}
+
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted tracking-wide">
+                    description (markdown)
+                  </span>
+                  <textarea
+                    value={draft.description}
+                    onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+                    rows={5}
+                    className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted tracking-wide">
+                    house rules
+                  </span>
+                  <textarea
+                    value={draft.houseRules}
+                    onChange={(event) => setDraft({ ...draft, houseRules: event.target.value })}
+                    rows={3}
+                    className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted tracking-wide">
+                    refund policy
+                  </span>
+                  <textarea
+                    value={draft.refundPolicy}
+                    onChange={(event) => setDraft({ ...draft, refundPolicy: event.target.value })}
+                    rows={3}
+                    className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted tracking-wide">
+                    ticket terms
+                  </span>
+                  <textarea
+                    value={draft.terms}
+                    onChange={(event) => setDraft({ ...draft, terms: event.target.value })}
+                    rows={4}
+                    className="mt-1 w-full px-3 py-2 font-mono text-sm bg-transparent border theme-border rounded text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  />
+                  <span className="mt-1 block font-mono text-micro theme-faint">
+                    Shown beside checkout; use clear entry, transfer, cancellation, and conduct
+                    terms.
+                  </span>
+                </label>
+
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.stepFreeAccess}
+                    onChange={(event) =>
+                      setDraft({ ...draft, stepFreeAccess: event.target.checked })
+                    }
+                  />
+                  <span className="font-mono text-micro theme-muted">step-free access</span>
+                </label>
+
+                <div className="space-y-3">
+                  <p className="font-mono text-micro theme-muted tracking-wide">ticket types</p>
+                  {draft.ticketTypes.map((type, index) => (
+                    <div
+                      key={`${type.id}-${index}`}
+                      className="admin-form-row grid gap-2 border-t theme-border-faint pt-3 sm:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
+                    >
+                      <Field
+                        label="name"
+                        value={type.name}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, name: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <Field
+                        label="price £"
+                        value={type.price}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, price: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <Field
+                        label="quantity"
+                        value={type.quantity}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, quantity: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <Field
+                        label="per person"
+                        value={type.perPersonLimit}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, perPersonLimit: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <AdminFormAction>
+                        <button
+                          type="button"
+                          disabled={draft.ticketTypes.length === 1}
+                          onClick={() =>
+                            setDraft({
+                              ...draft,
+                              ticketTypes: draft.ticketTypes.filter(
+                                (_, ticketIndex) => ticketIndex !== index,
+                              ),
+                            })
+                          }
+                          className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
+                          title={
+                            draft.ticketTypes.length === 1
+                              ? "An event needs at least one ticket type."
+                              : "Remove this ticket type when the event is saved."
+                          }
+                        >
+                          remove
+                        </button>
+                      </AdminFormAction>
+                      <Field
+                        label="description"
+                        value={type.description}
+                        className="sm:col-span-2"
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, description: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <Field
+                        label="sales open"
+                        type="datetime-local"
+                        value={type.salesStart}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, salesStart: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <Field
+                        label="sales close"
+                        type="datetime-local"
+                        value={type.salesEnd}
+                        onChange={(value) => {
+                          const next = [...draft.ticketTypes];
+                          next[index] = { ...type, salesEnd: value };
+                          setDraft({ ...draft, ticketTypes: next });
+                        }}
+                      />
+                      <label className="flex min-h-11 items-center gap-2 self-end font-mono text-micro theme-muted">
+                        <input
+                          type="checkbox"
+                          checked={type.hidden}
+                          onChange={(event) => {
+                            const next = [...draft.ticketTypes];
+                            next[index] = { ...type, hidden: event.target.checked };
+                            setDraft({ ...draft, ticketTypes: next });
+                          }}
+                        />
+                        hidden from sale
+                      </label>
+                    </div>
+                  ))}
                   <button
                     type="button"
-                    disabled={draft.ticketTypes.length === 1}
                     onClick={() =>
                       setDraft({
                         ...draft,
-                        ticketTypes: draft.ticketTypes.filter(
-                          (_, ticketIndex) => ticketIndex !== index,
-                        ),
+                        ticketTypes: [
+                          ...draft.ticketTypes,
+                          {
+                            id: `type-${draft.ticketTypes.length + 1}`,
+                            name: "",
+                            description: "",
+                            price: "0",
+                            currency: "GBP",
+                            quantity: "50",
+                            perPersonLimit: "2",
+                            salesStart: "",
+                            salesEnd: "",
+                            hidden: false,
+                          },
+                        ],
                       })
                     }
-                    className="min-h-11 px-2 font-mono text-micro text-[var(--prose-hashtag)] hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
-                    title={
-                      draft.ticketTypes.length === 1
-                        ? "An event needs at least one ticket type."
-                        : "Remove this ticket type when the event is saved."
-                    }
+                    className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70"
                   >
-                    remove
+                    + add ticket type
                   </button>
-                </AdminFormAction>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() =>
-                setDraft({
-                  ...draft,
-                  ticketTypes: [
-                    ...draft.ticketTypes,
-                    {
-                      id: `type-${draft.ticketTypes.length + 1}`,
-                      name: "",
-                      price: "0",
-                      quantity: "50",
-                      perPersonLimit: "2",
-                    },
-                  ],
-                })
-              }
-              className="min-h-11 rounded border theme-border px-3 font-mono text-micro font-bold hover:opacity-70"
-            >
-              + add ticket type
-            </button>
-          </div>
+                </div>
 
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="min-h-10 px-4 font-mono text-xs bg-foreground text-background rounded disabled:opacity-50"
-            >
-              {saving ? "saving..." : "save"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(null);
-                setDraft(null);
-              }}
-              className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
-            >
-              cancel
-            </button>
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="min-h-11 px-4 font-mono text-xs bg-foreground text-background rounded disabled:opacity-50"
+                  >
+                    {saving ? "saving..." : "save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelection(null);
+                      setDraft(null);
+                    }}
+                    className="min-h-11 px-2 font-mono text-xs theme-muted hover:text-foreground transition-colors"
+                  >
+                    cancel
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
-        </form>
-      )}
+        ) : null}
+      </div>
 
       {dialog}
     </section>

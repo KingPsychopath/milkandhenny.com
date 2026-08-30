@@ -6,6 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { formatBytes, formatDate } from "../format";
 import { AlbumManagerPanel } from "./AlbumManagerPanel";
+import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type StepUp = () => Promise<
@@ -105,6 +106,7 @@ type WordMediaCleanupResponse = {
 };
 
 type AuditView = "all" | "broken-refs" | "invalid-albums";
+type ContentWorkspace = "albums" | "sharing" | "recent" | "maintenance";
 
 export function ContentPanel({
   authFetch,
@@ -124,16 +126,20 @@ export function ContentPanel({
   onContentChanged: () => void;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
+  const [workspace, setWorkspace] = useState<ContentWorkspace>("albums");
   const [audit, setAudit] = useState<ContentAuditResponse | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditView, setAuditView] = useState<AuditView>("all");
   const [showAllBrokenRefs, setShowAllBrokenRefs] = useState(false);
   const [sharedWords, setSharedWords] = useState<SharedWordSummary[]>([]);
   const [sharedWordsLoading, setSharedWordsLoading] = useState(false);
+  const [sharedWordsLoaded, setSharedWordsLoaded] = useState(false);
+  const [sharedWordsError, setSharedWordsError] = useState<string | null>(null);
   const [sharedWordQuery, setSharedWordQuery] = useState("");
   const [showAllSharedWords, setShowAllSharedWords] = useState(false);
   const [wordMediaOrphans, setWordMediaOrphans] = useState<WordMediaOrphanSummary | null>(null);
   const [wordMediaOrphansLoading, setWordMediaOrphansLoading] = useState(false);
+  const [wordMediaOrphansError, setWordMediaOrphansError] = useState<string | null>(null);
   const [wordMediaCleanupLoading, setWordMediaCleanupLoading] = useState(false);
   const [showAllMediaOrphans, setShowAllMediaOrphans] = useState(false);
   const [sharedWordActionLoading, setSharedWordActionLoading] = useState<string | null>(null);
@@ -153,6 +159,7 @@ export function ContentPanel({
 
   const loadSharedWords = useCallback(async () => {
     setSharedWordsLoading(true);
+    setSharedWordsError(null);
     onError("");
     try {
       const res = await authFetch("/api/admin/word-shares");
@@ -161,8 +168,10 @@ export function ContentPanel({
         throw new Error((data.error as string) || "Failed to load shared pages");
       }
       setSharedWords((data.items as SharedWordSummary[]) ?? []);
+      setSharedWordsLoaded(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load shared pages";
+      setSharedWordsError(msg);
       onError(msg);
     } finally {
       setSharedWordsLoading(false);
@@ -171,6 +180,7 @@ export function ContentPanel({
 
   const loadWordMediaOrphans = useCallback(async () => {
     setWordMediaOrphansLoading(true);
+    setWordMediaOrphansError(null);
     onError("");
     try {
       const res = await authFetch("/api/admin/word-media/orphans?limit=100");
@@ -183,6 +193,7 @@ export function ContentPanel({
       setWordMediaOrphans(data as WordMediaOrphanSummary);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load orphan media stats";
+      setWordMediaOrphansError(msg);
       onError(msg);
     } finally {
       setWordMediaOrphansLoading(false);
@@ -190,12 +201,12 @@ export function ContentPanel({
   }, [authFetch, onError]);
 
   useEffect(() => {
-    void loadSharedWords();
-  }, [loadSharedWords]);
+    if (workspace === "sharing" || workspace === "maintenance") void loadSharedWords();
+  }, [loadSharedWords, workspace]);
 
   useEffect(() => {
-    void loadWordMediaOrphans();
-  }, [loadWordMediaOrphans]);
+    if (workspace === "maintenance") void loadWordMediaOrphans();
+  }, [loadWordMediaOrphans, workspace]);
 
   const runContentAudit = async (refresh = false) => {
     setAuditLoading(true);
@@ -414,7 +425,7 @@ export function ContentPanel({
           </p>
         </div>
         <p className="font-mono text-xs theme-muted mb-2">common actions</p>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Link
             to="/admin/editor"
             search={{ slug: undefined }}
@@ -429,414 +440,566 @@ export function ContentPanel({
           >
             open upload
           </Link>
-          <button
-            type="button"
-            disabled={auditLoading}
-            onClick={() => void runContentAudit()}
-            title="Loads a cached content audit when available to avoid recomputing the full scan."
-            className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
-          >
-            {auditLoading ? "auditing..." : "load audit"}
-          </button>
-          <button
-            type="button"
-            disabled={auditLoading}
-            onClick={() => void runContentAudit(true)}
-            title="Forces a fresh content audit recomputation."
-            className="border theme-border rounded-md px-3 py-2 font-mono text-sm text-left hover:border-[var(--stone-400)] transition-colors disabled:opacity-50"
-          >
-            {auditLoading ? "auditing..." : "fresh audit"}
-          </button>
         </div>
-        {audit ? (
-          <div className="mt-3 border theme-border rounded-md p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-xs theme-muted">
-                last audit: {formatDate(audit.auditedAt)}
-              </p>
-              <a
-                href="#audit-results"
-                className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity"
-              >
-                view results
-              </a>
-            </div>
-            <p className="font-mono text-xs theme-faint mt-2">
-              invalid albums: {audit.albumValidation.invalidCount} · broken refs:{" "}
-              {audit.blogAudit.brokenRefs.length}
-            </p>
-          </div>
-        ) : null}
+        <div
+          className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-y theme-border py-3"
+          role="tablist"
+          aria-label="Content tools"
+        >
+          {(
+            [
+              ["albums", "albums"],
+              ["sharing", "shared pages"],
+              ["recent", "recent content"],
+              ["maintenance", "maintenance"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={workspace === id}
+              aria-controls="content-workspace-panel"
+              onClick={() => setWorkspace(id)}
+              className={`min-h-11 border-b font-mono text-xs hover:opacity-70 ${
+                workspace === id
+                  ? "theme-border-strong text-foreground"
+                  : "border-transparent theme-muted"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <AlbumManagerPanel
-        authFetch={authFetch}
-        ensureStepUpToken={ensureStepUpToken}
-        withStepUpHeaders={withStepUpHeaders}
-        onChanged={onContentChanged}
-      />
-
-      <div id="shared-pages" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-mono text-xs theme-muted">currently shared pages</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={sharedWordPurgeLoading}
-              onClick={() => void handleNukeSharedWords()}
-              className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-              title="Deletes all share link records globally."
-            >
-              {sharedWordPurgeLoading ? "nuking..." : "nuke all"}
-            </button>
-            <button
-              type="button"
-              disabled={sharedWordCleanupLoading}
-              onClick={() => void handlePurgeStaleSharedWords()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Deletes expired/revoked page share records and stale index members."
-            >
-              {sharedWordCleanupLoading ? "purging..." : "purge stale"}
-            </button>
-            <button
-              type="button"
-              disabled={sharedWordsLoading}
-              onClick={() => void loadSharedWords()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Refreshes active page-level share status."
-            >
-              {sharedWordsLoading ? "refreshing..." : "refresh"}
-            </button>
-          </div>
-        </div>
-
-        <input
-          type="text"
-          value={sharedWordQuery}
-          onChange={(e) => {
-            setSharedWordQuery(e.target.value);
-            setShowAllSharedWords(false);
-          }}
-          placeholder="filter by slug, title, or type"
-          className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
-        />
-
-        <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">shared pages</p>
-            <p className="text-lg">{sharedWords.length}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">active links</p>
-            <p className="text-lg">
-              {sharedWords.reduce((sum, word) => sum + word.activeShareCount, 0)}
-            </p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">pin protected</p>
-            <p className="text-lg">
-              {sharedWords.reduce((sum, word) => sum + word.pinProtectedCount, 0)}
-            </p>
-          </div>
-        </div>
-
-        {filteredSharedWords.length === 0 && !sharedWordsLoading ? (
-          <p className="font-mono text-xs theme-muted">No currently shared pages.</p>
+      <div id="content-workspace-panel" role="tabpanel">
+        {workspace === "albums" ? (
+          <AlbumManagerPanel
+            authFetch={authFetch}
+            ensureStepUpToken={ensureStepUpToken}
+            withStepUpHeaders={withStepUpHeaders}
+            onChanged={onContentChanged}
+          />
         ) : null}
 
-        <div className="space-y-2">
-          {visibleSharedWords.map((word) => (
-            <div key={word.slug} className="border theme-border rounded-md p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-sm truncate">{word.title}</p>
-                  <p className="font-mono text-xs theme-muted truncate">
-                    {word.slug} · {word.type} · {word.visibility}
-                  </p>
-                  <p className="font-mono text-micro theme-faint truncate">
-                    {word.activeShareCount} active · {word.pinProtectedCount} pin · next expires{" "}
-                    {formatDate(word.nextExpiryAt)}
+        {workspace === "sharing" ? (
+          <div id="shared-pages" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-mono text-xs theme-muted">currently shared pages</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={sharedWordsLoading}
+                  onClick={() => void loadSharedWords()}
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                  title="Refreshes active page-level share status."
+                >
+                  {sharedWordsLoading ? "refreshing..." : "refresh"}
+                </button>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              value={sharedWordQuery}
+              onChange={(e) => {
+                setSharedWordQuery(e.target.value);
+                setShowAllSharedWords(false);
+              }}
+              placeholder="filter by slug, title, or type"
+              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+            />
+
+            {sharedWordsLoaded && !sharedWordsError ? (
+              <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">shared pages</p>
+                  <p className="text-lg">{sharedWords.length}</p>
+                </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">active links</p>
+                  <p className="text-lg">
+                    {sharedWords.reduce((sum, word) => sum + word.activeShareCount, 0)}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    to="/words/$slug"
-                    params={{ slug: word.slug }}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    title="Open public page view."
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">pin protected</p>
+                  <p className="text-lg">
+                    {sharedWords.reduce((sum, word) => sum + word.pinProtectedCount, 0)}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {sharedWordsLoading || (!sharedWordsLoaded && !sharedWordsError) ? (
+              <p className="font-mono text-xs theme-muted" role="status">
+                Loading shared pages…
+              </p>
+            ) : null}
+            {sharedWordsError ? (
+              <div role="alert">
+                <p className="font-mono text-xs">
+                  <AdminStatus tone="danger">{sharedWordsError}</AdminStatus>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void loadSharedWords()}
+                  className="mt-2 min-h-11 font-mono text-xs underline underline-offset-4 hover:opacity-70"
+                >
+                  try again
+                </button>
+              </div>
+            ) : null}
+            {sharedWordsLoaded &&
+            filteredSharedWords.length === 0 &&
+            !sharedWordsLoading &&
+            !sharedWordsError ? (
+              <p className="font-mono text-xs theme-muted">No currently shared pages.</p>
+            ) : null}
+
+            {sharedWordsLoaded && !sharedWordsError ? (
+              <div className="space-y-2">
+                {visibleSharedWords.map((word) => (
+                  <div key={word.slug} className="border theme-border rounded-md p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono text-sm truncate">{word.title}</p>
+                        <p className="font-mono text-xs theme-muted truncate">
+                          {word.slug} · {word.type} · {word.visibility}
+                        </p>
+                        <p className="font-mono text-micro theme-faint truncate">
+                          <AdminStatus tone="positive">{word.activeShareCount} active</AdminStatus>{" "}
+                          · {word.pinProtectedCount} pin · next expires{" "}
+                          {formatDate(word.nextExpiryAt)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Link
+                          to="/words/$slug"
+                          params={{ slug: word.slug }}
+                          className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                          title="Open public page view."
+                        >
+                          open
+                        </Link>
+                        <Link
+                          to="/admin/editor"
+                          search={{ slug: word.slug }}
+                          className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                          title="Open this word in editor share controls."
+                        >
+                          editor
+                        </Link>
+                        <button
+                          type="button"
+                          disabled={sharedWordActionLoading === word.slug}
+                          onClick={() => void handleRevokeSharedWord(word.slug)}
+                          className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                          title="Revoke all active share links for this page."
+                        >
+                          {sharedWordActionLoading === word.slug ? "revoking..." : "revoke all"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {sharedWordsLoaded && !sharedWordsError && filteredSharedWords.length > 12 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllSharedWords((v) => !v)}
+                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+              >
+                {showAllSharedWords
+                  ? "show fewer shared pages"
+                  : `show all shared pages (${filteredSharedWords.length})`}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {workspace === "maintenance" ? (
+          <>
+            <section
+              className="border-t theme-border pt-6"
+              aria-labelledby="content-maintenance-heading"
+            >
+              <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+                diagnostics
+              </p>
+              <h3
+                id="content-maintenance-heading"
+                className="mt-2 font-serif text-2xl font-semibold"
+              >
+                Content maintenance
+              </h3>
+              <p className="mt-2 max-w-2xl font-mono text-xs leading-relaxed theme-muted">
+                Check references and storage health. Cleanup controls stay collapsed until they are
+                deliberately opened.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={auditLoading}
+                  onClick={() => void runContentAudit()}
+                  title="Loads a cached content audit when available."
+                  className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+                >
+                  {auditLoading ? "auditing…" : "load audit"}
+                </button>
+                <button
+                  type="button"
+                  disabled={auditLoading}
+                  onClick={() => void runContentAudit(true)}
+                  title="Forces a fresh content audit recomputation."
+                  className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+                >
+                  {auditLoading ? "auditing…" : "run fresh audit"}
+                </button>
+              </div>
+              {audit ? (
+                <p className="mt-3 font-mono text-xs theme-muted">
+                  Audited {formatDate(audit.auditedAt)} ·{" "}
+                  <AdminStatus
+                    tone={
+                      audit.albumValidation.invalidCount > 0 ||
+                      audit.blogAudit.brokenRefs.length > 0
+                        ? "danger"
+                        : "positive"
+                    }
                   >
-                    open
-                  </Link>
-                  <Link
-                    to="/admin/editor"
-                    search={{ slug: word.slug }}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    title="Open this word in editor share controls."
-                  >
-                    editor
-                  </Link>
+                    {audit.albumValidation.invalidCount > 0 || audit.blogAudit.brokenRefs.length > 0
+                      ? "issues found"
+                      : "audit clean"}
+                  </AdminStatus>
+                </p>
+              ) : null}
+              <details className="group mt-5 border-y theme-border py-4">
+                <summary className="min-h-11 cursor-pointer list-none py-3 font-mono text-xs text-foreground">
+                  cleanup controls
+                  <span className="float-right theme-muted group-open:hidden">open</span>
+                  <span className="float-right hidden theme-muted group-open:inline">close</span>
+                </summary>
+                <p className="max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+                  These actions delete stale records or stored files. Each action still asks for
+                  confirmation and elevated verification.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    disabled={sharedWordActionLoading === word.slug}
-                    onClick={() => void handleRevokeSharedWord(word.slug)}
-                    className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                    title="Revoke all active share links for this page."
+                    disabled={sharedWordCleanupLoading}
+                    onClick={() => void handlePurgeStaleSharedWords()}
+                    className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
                   >
-                    {sharedWordActionLoading === word.slug ? "revoking..." : "revoke all"}
+                    {sharedWordCleanupLoading ? "removing…" : "remove stale share links"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={wordMediaCleanupLoading || wordMediaOrphansLoading}
+                    onClick={() => void handlePurgeStaleWordMedia()}
+                    className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+                  >
+                    {wordMediaCleanupLoading ? "removing…" : "remove orphan media"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={sharedWordPurgeLoading}
+                    onClick={() => void handleNukeSharedWords()}
+                    className="min-h-11 border theme-border px-3 font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
+                  >
+                    {sharedWordPurgeLoading ? "removing…" : "remove all share links"}
+                  </button>
+                </div>
+              </details>
+            </section>
+
+            <div
+              id="word-media-orphans"
+              className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="font-mono text-xs theme-muted">word media orphans</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={wordMediaOrphansLoading}
+                    onClick={() => void loadWordMediaOrphans()}
+                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+                    title="Scans words/media/ for orphaned slug folders."
+                  >
+                    {wordMediaOrphansLoading ? "refreshing..." : "refresh"}
                   </button>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
 
-        {filteredSharedWords.length > 12 ? (
-          <button
-            type="button"
-            onClick={() => setShowAllSharedWords((v) => !v)}
-            className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-          >
-            {showAllSharedWords
-              ? "show fewer shared pages"
-              : `show all shared pages (${filteredSharedWords.length})`}
-          </button>
-        ) : null}
-      </div>
+              {wordMediaOrphans && !wordMediaOrphans.r2Configured ? (
+                <p className="font-mono text-xs">
+                  <AdminStatus tone="neutral">
+                    R2 is not configured, so orphan media scanning is unavailable.
+                  </AdminStatus>
+                </p>
+              ) : null}
 
-      <div id="word-media-orphans" className="border-t theme-border pt-6 space-y-3 scroll-mt-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-mono text-xs theme-muted">word media orphans</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={wordMediaCleanupLoading || wordMediaOrphansLoading}
-              onClick={() => void handlePurgeStaleWordMedia()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Deletes words/media/{slug}/ folders for slugs that no longer exist as pages."
-            >
-              {wordMediaCleanupLoading ? "purging..." : "purge stale"}
-            </button>
-            <button
-              type="button"
-              disabled={wordMediaOrphansLoading}
-              onClick={() => void loadWordMediaOrphans()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Scans words/media/ for orphaned slug folders."
-            >
-              {wordMediaOrphansLoading ? "refreshing..." : "refresh"}
-            </button>
-          </div>
-        </div>
+              {wordMediaOrphansLoading ? (
+                <p className="font-mono text-xs theme-muted" role="status">
+                  Scanning word media…
+                </p>
+              ) : null}
+              {wordMediaOrphansError ? (
+                <div role="alert">
+                  <p className="font-mono text-xs">
+                    <AdminStatus tone="danger">{wordMediaOrphansError}</AdminStatus>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadWordMediaOrphans()}
+                    className="mt-2 min-h-11 font-mono text-xs underline underline-offset-4 hover:opacity-70"
+                  >
+                    try again
+                  </button>
+                </div>
+              ) : null}
 
-        {wordMediaOrphans && !wordMediaOrphans.r2Configured ? (
-          <p className="font-mono text-xs theme-muted">
-            R2 is not configured, so orphan media scanning is unavailable.
-          </p>
-        ) : null}
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-sm">
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">scanned folders</p>
-            <p className="text-lg">{wordMediaOrphans?.scannedFolders ?? "—"}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">orphan folders</p>
-            <p className="text-lg">{wordMediaOrphans?.orphanFolders ?? "—"}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">orphan objects</p>
-            <p className="text-lg">{wordMediaOrphans?.orphanObjects ?? "—"}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">orphan bytes</p>
-            <p className="text-sm">{formatBytes(wordMediaOrphans?.orphanBytes ?? 0)}</p>
-          </div>
-        </div>
-
-        {wordMediaOrphans && wordMediaOrphans.orphans.length === 0 && !wordMediaOrphansLoading ? (
-          <p className="font-mono text-xs theme-muted">No orphan word-media folders.</p>
-        ) : null}
-
-        {visibleWordMediaOrphans.length > 0 ? (
-          <div className="space-y-2">
-            {visibleWordMediaOrphans.map((folder) => (
-              <div key={folder.slug} className="border theme-border rounded-md p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-mono text-sm truncate">{folder.slug}</p>
-                    <p className="font-mono text-xs theme-muted truncate">
-                      {folder.objectCount} object(s) · {formatBytes(folder.totalBytes)}
-                    </p>
-                  </div>
-                  <p className="font-mono text-micro theme-faint shrink-0">
-                    latest {formatDate(folder.latestModifiedAt)}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-sm">
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">scanned folders</p>
+                  <p className="text-lg">{wordMediaOrphans?.scannedFolders ?? "—"}</p>
+                </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">orphan folders</p>
+                  <p className="text-lg">
+                    {wordMediaOrphans ? (
+                      <AdminStatus
+                        tone={wordMediaOrphans.orphanFolders > 0 ? "attention" : "positive"}
+                      >
+                        {wordMediaOrphans.orphanFolders}
+                      </AdminStatus>
+                    ) : (
+                      "—"
+                    )}
                   </p>
                 </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">orphan objects</p>
+                  <p className="text-lg">{wordMediaOrphans?.orphanObjects ?? "—"}</p>
+                </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">orphan bytes</p>
+                  <p className="text-sm">{formatBytes(wordMediaOrphans?.orphanBytes ?? 0)}</p>
+                </div>
               </div>
-            ))}
-          </div>
-        ) : null}
 
-        {(wordMediaOrphans?.orphans.length ?? 0) > 12 ? (
-          <button
-            type="button"
-            onClick={() => setShowAllMediaOrphans((value) => !value)}
-            className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-          >
-            {showAllMediaOrphans
-              ? "show fewer folders"
-              : `show all folders (${wordMediaOrphans?.orphans.length ?? 0})`}
-          </button>
-        ) : null}
-      </div>
+              {wordMediaOrphans &&
+              wordMediaOrphans.orphans.length === 0 &&
+              !wordMediaOrphansLoading ? (
+                <p className="font-mono text-xs theme-muted">No orphan word-media folders.</p>
+              ) : null}
 
-      {content?.blog.recent?.length ? (
-        <div className="border-t theme-border pt-6">
-          <p className="font-mono text-xs theme-muted mb-2">recent posts</p>
-          <ul className="space-y-1 font-mono text-sm">
-            {content.blog.recent.map((post) => (
-              <li key={post.slug} className="flex items-center justify-between gap-3">
-                <Link
-                  to="/words/$slug"
-                  params={{ slug: post.slug }}
-                  className="truncate hover:opacity-80 transition-opacity"
+              {visibleWordMediaOrphans.length > 0 ? (
+                <div className="space-y-2">
+                  {visibleWordMediaOrphans.map((folder) => (
+                    <div key={folder.slug} className="border theme-border rounded-md p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-sm truncate">{folder.slug}</p>
+                          <p className="font-mono text-xs theme-muted truncate">
+                            {folder.objectCount} object(s) · {formatBytes(folder.totalBytes)}
+                          </p>
+                        </div>
+                        <p className="font-mono text-micro theme-faint shrink-0">
+                          latest {formatDate(folder.latestModifiedAt)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {(wordMediaOrphans?.orphans.length ?? 0) > 12 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllMediaOrphans((value) => !value)}
+                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
                 >
-                  {post.title}
-                </Link>
-                <span className="theme-muted shrink-0">{post.readingTime} min</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {content?.gallery.recent?.length ? (
-        <div className="border-t theme-border pt-6">
-          <p className="font-mono text-xs theme-muted mb-2">recent albums</p>
-          <ul className="space-y-1 font-mono text-sm">
-            {content.gallery.recent.map((album) => (
-              <li key={album.slug} className="flex items-center justify-between gap-3">
-                <Link
-                  to="/pics/$album"
-                  params={{ album: album.slug }}
-                  className="truncate hover:opacity-80 transition-opacity"
-                >
-                  {album.title}
-                </Link>
-                <span className="theme-muted shrink-0">{album.photoCount} photos</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {audit ? (
-        <div
-          id="audit-results"
-          ref={auditResultsRef}
-          className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-xs theme-muted">content audit results</p>
-            <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
-              <button
-                type="button"
-                onClick={() => setAuditView("all")}
-                className={`min-h-10 px-3 py-1 rounded border transition-colors ${
-                  auditView === "all"
-                    ? "theme-border text-[var(--foreground)]"
-                    : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
-                }`}
-              >
-                all
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuditView("broken-refs")}
-                className={`min-h-10 px-3 py-1 rounded border transition-colors ${
-                  auditView === "broken-refs"
-                    ? "theme-border text-[var(--foreground)]"
-                    : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
-                }`}
-              >
-                only missing refs
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuditView("invalid-albums")}
-                className={`min-h-10 px-3 py-1 rounded border transition-colors ${
-                  auditView === "invalid-albums"
-                    ? "theme-border text-[var(--foreground)]"
-                    : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
-                }`}
-              >
-                only invalid albums
-              </button>
+                  {showAllMediaOrphans
+                    ? "show fewer folders"
+                    : `show all folders (${wordMediaOrphans?.orphans.length ?? 0})`}
+                </button>
+              ) : null}
             </div>
-          </div>
-          <p className="font-mono text-xs theme-muted">audited {formatDate(audit.auditedAt)}</p>
+          </>
+        ) : null}
 
-          {auditView !== "broken-refs" ? (
-            <div className="border theme-border rounded-md p-3">
-              <p className="font-mono text-xs theme-muted mb-1">album manifest validation</p>
-              <p className="font-mono text-sm">
-                invalid albums: {audit.albumValidation.invalidCount}
-              </p>
-              {audit.albumValidation.invalidAlbums.length > 0 ? (
-                <ul className="mt-2 space-y-2 font-mono text-xs">
-                  {audit.albumValidation.invalidAlbums.map((album) => (
-                    <li key={album.slug}>
-                      <p className="theme-muted">{album.slug}</p>
-                      <p>{album.errors.join(" · ")}</p>
+        {workspace === "recent" ? (
+          <>
+            {content?.blog.recent?.length ? (
+              <div className="border-t theme-border pt-6">
+                <p className="font-mono text-xs theme-muted mb-2">recent posts</p>
+                <ul className="space-y-1 font-mono text-sm">
+                  {content.blog.recent.map((post) => (
+                    <li key={post.slug} className="flex items-center justify-between gap-3">
+                      <Link
+                        to="/words/$slug"
+                        params={{ slug: post.slug }}
+                        className="truncate hover:opacity-80 transition-opacity"
+                      >
+                        {post.title}
+                      </Link>
+                      <span className="theme-muted shrink-0">{post.readingTime} min</span>
                     </li>
                   ))}
                 </ul>
-              ) : null}
-            </div>
-          ) : null}
+              </div>
+            ) : null}
 
-          {auditView !== "invalid-albums" ? (
-            <div className="border theme-border rounded-md p-3">
-              <p className="font-mono text-xs theme-muted mb-1">words media reference audit</p>
-              <p className="font-mono text-sm">
-                refs checked: {audit.blogAudit.checkedRefs} · broken refs:{" "}
-                {audit.blogAudit.brokenRefs.length}
+            {content?.gallery.recent?.length ? (
+              <div className="border-t theme-border pt-6">
+                <p className="font-mono text-xs theme-muted mb-2">recent albums</p>
+                <ul className="space-y-1 font-mono text-sm">
+                  {content.gallery.recent.map((album) => (
+                    <li key={album.slug} className="flex items-center justify-between gap-3">
+                      <Link
+                        to="/pics/$album"
+                        params={{ album: album.slug }}
+                        className="truncate hover:opacity-80 transition-opacity"
+                      >
+                        {album.title}
+                      </Link>
+                      <span className="theme-muted shrink-0">{album.photoCount} photos</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {!content?.blog.recent?.length && !content?.gallery.recent?.length ? (
+              <p className="border-t theme-border py-8 font-mono text-xs theme-muted">
+                No recent posts or albums are available yet.
               </p>
-              {!audit.blogAudit.r2Configured ? (
-                <p className="font-mono text-xs theme-muted mt-2">{audit.blogAudit.reason}</p>
-              ) : null}
-              {audit.blogAudit.brokenRefs.length > 0 ? (
-                <>
+            ) : null}
+          </>
+        ) : null}
+
+        {workspace === "maintenance" && audit ? (
+          <div
+            id="audit-results"
+            ref={auditResultsRef}
+            className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-xs theme-muted">content audit results</p>
+              <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={() => setAuditView("all")}
+                  className={`min-h-11 px-3 py-1 rounded border transition-colors ${
+                    auditView === "all"
+                      ? "theme-border text-[var(--foreground)]"
+                      : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuditView("broken-refs")}
+                  className={`min-h-11 px-3 py-1 rounded border transition-colors ${
+                    auditView === "broken-refs"
+                      ? "theme-border text-[var(--foreground)]"
+                      : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  only missing refs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuditView("invalid-albums")}
+                  className={`min-h-11 px-3 py-1 rounded border transition-colors ${
+                    auditView === "invalid-albums"
+                      ? "theme-border text-[var(--foreground)]"
+                      : "theme-border-faint theme-muted hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  only invalid albums
+                </button>
+              </div>
+            </div>
+            <p className="font-mono text-xs theme-muted">audited {formatDate(audit.auditedAt)}</p>
+
+            {auditView !== "broken-refs" ? (
+              <div className="border theme-border rounded-md p-3">
+                <p className="font-mono text-xs theme-muted mb-1">album manifest validation</p>
+                <p className="font-mono text-sm">
+                  <AdminStatus
+                    tone={audit.albumValidation.invalidCount > 0 ? "danger" : "positive"}
+                  >
+                    {audit.albumValidation.invalidCount > 0
+                      ? `${audit.albumValidation.invalidCount} invalid albums`
+                      : "all album manifests valid"}
+                  </AdminStatus>
+                </p>
+                {audit.albumValidation.invalidAlbums.length > 0 ? (
                   <ul className="mt-2 space-y-2 font-mono text-xs">
-                    {(showAllBrokenRefs
-                      ? audit.blogAudit.brokenRefs
-                      : audit.blogAudit.brokenRefs.slice(0, 20)
-                    ).map((ref) => (
-                      <li key={`${ref.postSlug}-${ref.line}-${ref.key}`}>
-                        <p className="theme-muted">
-                          {ref.postSlug} line {ref.line}
+                    {audit.albumValidation.invalidAlbums.map((album) => (
+                      <li key={album.slug}>
+                        <p className="theme-muted">{album.slug}</p>
+                        <p>
+                          <AdminStatus tone="danger">{album.errors.join(" · ")}</AdminStatus>
                         </p>
-                        <p className="truncate">{ref.key}</p>
                       </li>
                     ))}
                   </ul>
-                  {audit.blogAudit.brokenRefs.length > 20 ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllBrokenRefs((v) => !v)}
-                      className="mt-2 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    >
-                      {showAllBrokenRefs
-                        ? "show fewer broken refs"
-                        : `show all broken refs (${audit.blogAudit.brokenRefs.length})`}
-                    </button>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+                ) : null}
+              </div>
+            ) : null}
+
+            {auditView !== "invalid-albums" ? (
+              <div className="border theme-border rounded-md p-3">
+                <p className="font-mono text-xs theme-muted mb-1">words media reference audit</p>
+                <p className="font-mono text-sm">
+                  refs checked: {audit.blogAudit.checkedRefs} ·{" "}
+                  <AdminStatus tone={audit.blogAudit.brokenRefs.length > 0 ? "danger" : "positive"}>
+                    {audit.blogAudit.brokenRefs.length} broken refs
+                  </AdminStatus>
+                </p>
+                {!audit.blogAudit.r2Configured ? (
+                  <p className="font-mono text-xs theme-muted mt-2">{audit.blogAudit.reason}</p>
+                ) : null}
+                {audit.blogAudit.brokenRefs.length > 0 ? (
+                  <>
+                    <ul className="mt-2 space-y-2 font-mono text-xs">
+                      {(showAllBrokenRefs
+                        ? audit.blogAudit.brokenRefs
+                        : audit.blogAudit.brokenRefs.slice(0, 20)
+                      ).map((ref) => (
+                        <li key={`${ref.postSlug}-${ref.line}-${ref.key}`}>
+                          <p className="theme-muted">
+                            {ref.postSlug} line {ref.line}
+                          </p>
+                          <p className="truncate">{ref.key}</p>
+                        </li>
+                      ))}
+                    </ul>
+                    {audit.blogAudit.brokenRefs.length > 20 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllBrokenRefs((v) => !v)}
+                        className="mt-2 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                      >
+                        {showAllBrokenRefs
+                          ? "show fewer broken refs"
+                          : `show all broken refs (${audit.blogAudit.brokenRefs.length})`}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {actionDialog}
     </>
   );

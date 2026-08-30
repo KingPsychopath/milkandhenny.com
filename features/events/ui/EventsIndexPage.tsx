@@ -130,7 +130,7 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
   return (
     <div className="flex min-h-dvh flex-col bg-background">
       <header className="max-w-2xl mx-auto px-6 pt-20 pb-10 text-center">
-        <Link to="/" className="inline-block">
+        <Link to="/" className="inline-flex min-h-11 min-w-11 items-center justify-center">
           <h1 className="font-mono text-3xl sm:text-4xl font-bold text-foreground tracking-tighter leading-none">
             {SITE_BRAND}
           </h1>
@@ -157,7 +157,7 @@ export function EventsIndexPage({ upcoming, past }: EventsIndexData) {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="what are you looking for?"
             autoComplete="off"
-            className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
+            className="w-full bg-transparent py-3 pr-12 font-mono text-base sm:text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
           />
           {query ? (
             <button

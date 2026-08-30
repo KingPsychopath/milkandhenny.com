@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { EventScoringClientStore } from "@/features/event-scoring/client-sync-store";
 import {
+  createScoreRequestDeadline,
   isScoreSyncResponse,
   MinimumFetchGap,
   nextRetryDelayMs,
   reconcileSnapshot,
+  rememberScoreSession,
   scoreSnapshotFromResponse,
   shouldRetryScoreResponse,
   type ScoreSnapshot,
@@ -14,6 +16,7 @@ import {
 const NORMAL_REFRESH_MS = 30_000;
 const MINIMUM_FETCH_GAP_MS = 5_000;
 const LEASE_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 function leaseKey(eventSlug: string, participantId: string) {
   return `mah-score-sync:${eventSlug}:${participantId}`;
@@ -50,19 +53,20 @@ export function ScoreSyncStatus({
   snapshotRef.current = snapshot;
   const { eventSlug, participantId } = snapshot;
   useEffect(() => {
-    localStorage.setItem("mah-has-score-session", "1");
+    rememberScoreSession();
     setOnline(navigator.onLine);
     const store = new EventScoringClientStore();
     const initial = snapshotRef.current;
     let current = initial;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let requestDeadline: ReturnType<typeof createScoreRequestDeadline> | undefined;
     let attempts = 0;
     const owner = crypto.randomUUID();
     const key = leaseKey(eventSlug, participantId);
     const gap = new MinimumFetchGap(MINIMUM_FETCH_GAP_MS);
 
-    void store.saveSnapshot(initial);
+    void store.saveSnapshot(initial).catch(() => undefined);
 
     const schedule = (delay = NORMAL_REFRESH_MS) => {
       clearTimeout(timer);
@@ -72,11 +76,15 @@ export function ScoreSyncStatus({
       if (!active || !navigator.onLine || document.visibilityState === "hidden") return;
       if (!force && !gap.canFetch()) return schedule(MINIMUM_FETCH_GAP_MS);
       if (!acquireLease(key, owner)) return schedule(LEASE_MS);
+      if (requestDeadline) return schedule(MINIMUM_FETCH_GAP_MS);
       gap.markFetched();
       let status: number | undefined;
+      const deadline = createScoreRequestDeadline(REQUEST_TIMEOUT_MS);
+      requestDeadline = deadline;
       try {
         const response = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/score`, {
           headers: { accept: "application/json" },
+          signal: deadline.signal,
         });
         status = response.status;
         if (!response.ok) throw new Error(`Score refresh failed (${response.status})`);
@@ -86,7 +94,7 @@ export function ScoreSyncStatus({
         current = reconcileSnapshot(current, incoming);
         attempts = 0;
         setOnline(true);
-        await store.saveSnapshot(current);
+        await store.saveSnapshot(current).catch(() => undefined);
         onSnapshotRef.current?.(current);
         schedule();
       } catch {
@@ -94,6 +102,9 @@ export function ScoreSyncStatus({
         setOnline(navigator.onLine);
         attempts += 1;
         if (shouldRetryScoreResponse(status, attempts)) schedule(nextRetryDelayMs(attempts));
+      } finally {
+        deadline.clear();
+        if (requestDeadline === deadline) requestDeadline = undefined;
       }
     };
     const updateNetwork = () => {
@@ -113,6 +124,7 @@ export function ScoreSyncStatus({
     return () => {
       active = false;
       clearTimeout(timer);
+      requestDeadline?.abort();
       unsubscribe();
       window.removeEventListener("online", updateNetwork);
       window.removeEventListener("offline", updateNetwork);

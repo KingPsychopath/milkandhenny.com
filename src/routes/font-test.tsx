@@ -113,7 +113,7 @@ function FontTestPage() {
         <header className="mb-16">
           <Link
             to="/"
-            className="font-mono text-sm tracking-tight opacity-60 hover:opacity-100 transition-opacity duration-300"
+            className="inline-flex min-h-11 min-w-11 items-center font-mono text-sm tracking-tight opacity-60 hover:opacity-100 transition-opacity duration-300"
           >
             &larr; back home
           </Link>

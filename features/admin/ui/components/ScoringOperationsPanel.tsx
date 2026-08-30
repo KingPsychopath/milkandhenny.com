@@ -1,4 +1,5 @@
 import type { ScoringData } from "./event-scoring-types";
+import { adminToneBorderClass } from "./AdminStatus";
 
 export function ScoringOperationsPanel({ operations }: { operations: ScoringData["operations"] }) {
   const measures = [
@@ -31,7 +32,12 @@ export function ScoringOperationsPanel({ operations }: { operations: ScoringData
       {operations.alerts.length > 0 && (
         <ul className="mt-4 border-y theme-border" aria-label="Scoring alerts">
           {operations.alerts.map((alert) => (
-            <li key={alert.code} className="py-3 font-mono text-xs">
+            <li
+              key={alert.code}
+              className={`border-l-2 py-2 pl-3 font-mono text-xs ${adminToneBorderClass(
+                alert.severity === "critical" ? "danger" : "attention",
+              )}`}
+            >
               {alert.severity}: {alert.message}
             </li>
           ))}

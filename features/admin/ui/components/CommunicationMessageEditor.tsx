@@ -110,7 +110,7 @@ function EditorButton({
       type="button"
       onClick={onClick}
       aria-pressed={pressed}
-      className="min-h-10 rounded border theme-border px-3 font-mono text-xs transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+      className="min-h-11 rounded border theme-border px-3 font-mono text-xs transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
     >
       {children}
     </button>
@@ -211,7 +211,7 @@ export function CommunicationMessageEditor({
           type="button"
           onClick={() => setShowPreview((current) => !current)}
           aria-pressed={showPreview}
-          className="min-h-10 rounded border theme-border px-3 font-mono text-xs transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+          className="min-h-11 rounded border theme-border px-3 font-mono text-xs transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
         >
           {showPreview ? "edit message" : "instant preview"}
         </button>

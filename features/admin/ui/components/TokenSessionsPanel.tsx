@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { TOKEN_SESSION_STATUS, type TokenSessionStatusKey } from "./tokenSessionsStatus";
 import { useTokenSessions } from "../hooks/useTokenSessions";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -30,6 +31,7 @@ export function TokenSessionsPanel(props: {
 
   const {
     loading,
+    loadError,
     query,
     setQuery,
     showInactive,
@@ -85,14 +87,14 @@ export function TokenSessionsPanel(props: {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-mono text-xs theme-muted">
           token sessions{" "}
           {counts.total > 0
             ? `(${counts.usable} usable${showInactive ? ` / ${counts.total} total` : ""})`
             : ""}
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {counts.inactive > 0 ? (
             <button
               type="button"
@@ -100,7 +102,7 @@ export function TokenSessionsPanel(props: {
                 setShowInactive((v) => !v);
                 setShowAll(false);
               }}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+              className="inline-flex min-h-11 items-center font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
               title="Toggle showing revoked/expired/signed-out sessions."
             >
               {showInactive ? "hide inactive" : `show inactive (${counts.inactive})`}
@@ -110,7 +112,7 @@ export function TokenSessionsPanel(props: {
             type="button"
             disabled={loading}
             onClick={() => void refresh()}
-            className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+            className="inline-flex min-h-11 items-center font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
             title="Refreshes the list of issued JWT sessions (by jti)."
           >
             {loading ? "refreshing..." : "refresh"}
@@ -118,7 +120,11 @@ export function TokenSessionsPanel(props: {
         </div>
       </div>
 
+      <label htmlFor="admin-session-filter" className="sr-only">
+        Filter token sessions
+      </label>
       <input
+        id="admin-session-filter"
         type="text"
         value={query}
         onChange={(e) => {
@@ -126,13 +132,29 @@ export function TokenSessionsPanel(props: {
           setShowAll(false);
         }}
         placeholder={`filter ${showInactive ? "sessions" : "usable sessions"} by role, ip, status, jti, user-agent`}
-        className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
+        className="min-h-11 w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
       />
 
+      {loadError ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-y theme-border py-3">
+          <p role="alert">
+            <AdminStatus tone="danger" className="font-mono text-xs">
+              {loadError}. Showing the last successful snapshot.
+            </AdminStatus>
+          </p>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void refresh()}
+            className="inline-flex min-h-11 items-center font-mono text-xs underline disabled:opacity-50"
+          >
+            retry
+          </button>
+        </div>
+      ) : null}
+
       {filtered.length === 0 ? (
-        <p className="font-mono text-xs theme-muted">
-          No sessions found (or Redis not configured).
-        </p>
+        <p className="font-mono text-xs theme-muted">No matching sessions.</p>
       ) : (
         <div className="space-y-2">
           {visible.map((s) => {
@@ -144,21 +166,13 @@ export function TokenSessionsPanel(props: {
             return (
               <details key={s.jti} className="border theme-border rounded-md p-3">
                 <summary
-                  className="cursor-pointer select-none list-none"
+                  className="flex min-h-11 cursor-pointer select-none list-none items-center"
                   title="Tap to expand for full details (jti, full user-agent)."
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-mono text-sm truncate">
-                        <span className="inline-flex items-center gap-2">
-                          <span
-                            aria-hidden="true"
-                            className={`w-1.5 h-1.5 rounded-full ${status.dotClass}`}
-                          />
-                          <span>
-                            {s.role} · {status.label}
-                          </span>
-                        </span>
+                        {s.role} · <AdminStatus tone={status.tone}>{status.label}</AdminStatus>
                       </p>
                       <p className="font-mono text-xs theme-muted truncate">
                         {s.source === "cli"
@@ -196,13 +210,13 @@ export function TokenSessionsPanel(props: {
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <p className="font-mono text-xs theme-muted">
-                      status: <span className="text-[var(--foreground)]">{s.status}</span>
+                      status: <AdminStatus tone={status.tone}>{status.label}</AdminStatus>
                     </p>
                     <button
                       type="button"
                       disabled={s.status !== "active" || revokeLoading === s.jti}
                       onClick={() => void handleRevokeSingleSession(s.jti)}
-                      className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      className="inline-flex min-h-11 items-center font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
                       title="Revokes only this one token session (by jti)."
                     >
                       {revokeLoading === s.jti ? "revoking..." : "revoke"}
@@ -217,7 +231,7 @@ export function TokenSessionsPanel(props: {
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+              className="inline-flex min-h-11 items-center font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
             >
               {showAll ? "show fewer sessions" : `show all sessions (${filtered.length})`}
             </button>

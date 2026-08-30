@@ -15,6 +15,8 @@ import type {
   GamePoolNameVisibility,
 } from "@/features/things/pool/types";
 import { GamePoolSettingsTransfer } from "./GamePoolSettingsTransfer";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
+import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -34,6 +36,7 @@ function editableEntrance(entrance: GamePoolEntrance): GamePoolEntrance {
 
 function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
   const [origin, setOrigin] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const url = origin ? `${origin}/play/${entrance.token}` : "";
   const { dataUrl, failed } = useQrCode(url || null, 320);
@@ -57,7 +60,16 @@ function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
         <button
           type="button"
           disabled={!url}
-          onClick={() => void navigator.clipboard.writeText(url)}
+          onClick={() => {
+            if (!navigator.clipboard) {
+              setCopyMessage("Copy is unavailable. Use the downloaded QR instead.");
+              return;
+            }
+            void navigator.clipboard
+              .writeText(url)
+              .then(() => setCopyMessage("Player link copied."))
+              .catch(() => setCopyMessage("Copy failed. Use the downloaded QR instead."));
+          }}
           className="min-h-11 font-mono text-xs underline disabled:opacity-40"
         >
           copy player link
@@ -72,6 +84,13 @@ function EntranceQr({ entrance }: { entrance: GamePoolEntrance }) {
           </a>
         ) : null}
       </div>
+      {copyMessage ? (
+        <p className="mt-2 font-mono text-xs" role="status">
+          <AdminStatus tone={copyMessage === "Player link copied." ? "positive" : "danger"}>
+            {copyMessage}
+          </AdminStatus>
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -258,7 +277,8 @@ export function GamePoolsPanel({
   onStatus: (message: string) => void;
 }) {
   const [entrances, setEntrances] = useState<GamePoolEntrance[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [game, setGame] = useState<GamePoolGame>("same-brain");
   const [label, setLabel] = useState("");
   const [duration, setDuration] = useState(240);
@@ -269,6 +289,7 @@ export function GamePoolsPanel({
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await authFetch("/api/admin/game-pools");
       const data = (await response.json().catch(() => ({}))) as {
@@ -282,7 +303,9 @@ export function GamePoolsPanel({
         Object.fromEntries(next.map((entrance) => [entrance.id, editableEntrance(entrance)])),
       );
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to load game entrances");
+      const message = error instanceof Error ? error.message : "Failed to load game entrances";
+      setLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -467,6 +490,14 @@ export function GamePoolsPanel({
         Pooled entrances are the fast game-night option: one permanent QR fills and creates rooms
         for you. Use a game’s normal room screen only when you want one QR for one fixed room.
       </p>
+      <div className="mt-4 border-y theme-border py-4" role="note">
+        <p className="font-mono text-xs font-semibold text-foreground">rooms, not event points</p>
+        <p className="mt-1 font-mono text-xs leading-relaxed theme-muted">
+          These QR entrances arrange players into game rooms. They do not attach the game to an
+          event activity or post points to attendee accounts. After a result, staff must record the
+          event points separately from the staff scoring link.
+        </p>
+      </div>
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">
         <label className="font-mono text-xs theme-muted">
           game
@@ -513,7 +544,15 @@ export function GamePoolsPanel({
           className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
         />
       </label>
-      {entrances.length === 0 ? (
+      {loadError ? (
+        <div className="mt-6">
+          <AdminLoadError message={loadError} retry={() => void refresh()} retrying={loading} />
+        </div>
+      ) : loading && entrances.length === 0 ? (
+        <div className="mt-6">
+          <AdminLoading label="Loading game entrances…" />
+        </div>
+      ) : entrances.length === 0 ? (
         <p className="mt-8 font-mono text-xs theme-muted">No game entrances yet.</p>
       ) : (
         <ul className="mt-6 divide-y theme-border">
@@ -526,14 +565,24 @@ export function GamePoolsPanel({
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="font-serif text-xl font-semibold">{entrance.label}</p>
-                    <p className="mt-1 font-mono text-xs theme-muted">
-                      {entrance.game} · {entrance.isDefault ? "public default · " : ""}
-                      {entrance.retiredAt
-                        ? "retired"
-                        : run
-                          ? `${run.status} since ${new Date(run.openedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
-                          : "closed"}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-xs theme-muted">
+                      <span>
+                        {entrance.game}
+                        {entrance.isDefault ? " · public default" : ""}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <AdminStatus
+                        tone={adminToneForStatus(
+                          entrance.retiredAt ? "retired" : (run?.status ?? "closed"),
+                        )}
+                      >
+                        {entrance.retiredAt
+                          ? "retired"
+                          : run
+                            ? `${run.status} since ${new Date(run.openedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
+                            : "closed"}
+                      </AdminStatus>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -604,8 +653,18 @@ export function GamePoolsPanel({
                                 key={room.roomId}
                                 className="flex items-center justify-between gap-3 py-2"
                               >
-                                <span>
-                                  {room.label} · {room.status}
+                                <span className="flex flex-wrap items-center gap-x-2">
+                                  <span>{room.label}</span>
+                                  <span aria-hidden="true">·</span>
+                                  <AdminStatus
+                                    tone={
+                                      room.status === "open" || room.status === "started"
+                                        ? "positive"
+                                        : adminToneForStatus(room.status)
+                                    }
+                                  >
+                                    {room.status}
+                                  </AdminStatus>
                                 </span>
                                 <span className="flex items-center gap-3 theme-muted">
                                   {room.playerCount}/{room.capacity}
@@ -764,9 +823,11 @@ export function GamePoolsPanel({
                     {!entrance.retiredAt ? (
                       <EntranceQr entrance={entrance} />
                     ) : (
-                      <p className="border-t theme-border pt-4 font-mono text-xs theme-muted">
-                        This entrance and its QR code are retired.
-                      </p>
+                      <div className="border-t theme-border pt-4">
+                        <AdminStatus tone="neutral" className="font-mono text-xs">
+                          This entrance and its QR code are retired
+                        </AdminStatus>
+                      </div>
                     )}
                     {!run && !entrance.retiredAt ? (
                       <div className="flex flex-wrap gap-4 border-t theme-border pt-4">

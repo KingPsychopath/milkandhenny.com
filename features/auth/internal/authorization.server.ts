@@ -23,6 +23,7 @@ import {
 } from "./token-session.server";
 import { LOCKOUT_SECONDS, clearStepUpFailures, reserveStepUpAttempt } from "./rate-limit.server";
 import {
+  GLOBAL_ADMIN_PERMISSIONS,
   GLOBAL_ADMIN_ROLE_PRESETS,
   permissionsForGlobalRole,
   type GlobalAdminPermission,
@@ -297,9 +298,11 @@ async function requiredNamedAdminPermission(
 async function activeNamedAdmin(
   request: Request,
   role: AuthRole,
+  requiredPermissionOverride?: GlobalAdminPermission | null,
 ): Promise<{
   personId: string;
   payload: TokenPayload;
+  permissions: GlobalAdminPermissionSet;
 } | null> {
   const [{ getAttendeeSessionForRequest }, { query }] = await Promise.all([
     import("@/features/event-scoring/session.server"),
@@ -326,27 +329,68 @@ async function activeNamedAdmin(
       `,
     [session.personId],
   );
-  const requiredPermission = await requiredNamedAdminPermission(request, role);
-  const grant = grants.find((candidate) => {
-    if (!(candidate.role_preset in GLOBAL_ADMIN_ROLE_PRESETS)) return false;
-    if (!requiredPermission) return true;
-    return permissionsForGlobalRole(
-      candidate.role_preset as GlobalAdminRole,
-      candidate.overrides ?? {},
-    )[requiredPermission];
-  });
-  if (!grant) return null;
+  const validGrants = grants.filter(
+    (candidate): candidate is typeof candidate & { role_preset: GlobalAdminRole } =>
+      candidate.role_preset in GLOBAL_ADMIN_ROLE_PRESETS,
+  );
+  if (!validGrants.length) return null;
+  const permissions = Object.fromEntries(
+    GLOBAL_ADMIN_PERMISSIONS.map((permission) => [
+      permission,
+      validGrants.some(
+        (grant) =>
+          permissionsForGlobalRole(grant.role_preset, grant.overrides ?? {})[permission] === true,
+      ),
+    ]),
+  ) as GlobalAdminPermissionSet;
+  const requiredPermission =
+    requiredPermissionOverride === undefined
+      ? await requiredNamedAdminPermission(request, role)
+      : requiredPermissionOverride;
+  if (requiredPermission && !permissions[requiredPermission]) return null;
   const now = Math.floor(Date.now() / 1000);
   return {
-    personId: grant.person_id,
+    personId: session.personId,
+    permissions,
     payload: {
       role: "admin",
       iat: Math.floor(Date.parse(session.authenticatedAt) / 1000),
       exp: now + 60,
-      jti: grant.person_id,
+      jti: session.personId,
       tv: 0,
     },
   };
+}
+
+export type AdminWorkspaceAccess =
+  | {
+      ok: true;
+      kind: "root" | "named";
+      permissions: GlobalAdminPermissionSet;
+    }
+  | { ok: false; status: 401 | 503; error: string };
+
+/**
+ * Authorises the workspace shell without tying it to one API route permission.
+ * API requests continue through `authenticateRequest`, which applies their
+ * route-specific permission on every call.
+ */
+export async function getAdminWorkspaceAccess(request: Request): Promise<AdminWorkspaceAccess> {
+  const auth = await authenticateRequest(request, "admin");
+  if (auth.ok && !auth.token.startsWith("person:")) {
+    return {
+      ok: true,
+      kind: "root",
+      permissions: permissionsForGlobalRole("owner"),
+    };
+  }
+
+  const namedAdmin = await activeNamedAdmin(request, "admin", null);
+  if (namedAdmin && Object.values(namedAdmin.permissions).some(Boolean)) {
+    return { ok: true, kind: "named", permissions: namedAdmin.permissions };
+  }
+
+  return auth.ok ? { ok: false, status: 401, error: "Unauthorized" } : auth;
 }
 
 /**

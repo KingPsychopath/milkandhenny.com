@@ -1,6 +1,7 @@
 "use client";
 
 import type { SystemCapabilities } from "@/features/system/capabilities";
+import { AdminStatus, adminToneBorderClass, adminToneForStatus } from "./AdminStatus";
 
 type SystemHealthSnapshot = SystemCapabilities & {
   emailOutbox: {
@@ -53,13 +54,17 @@ export function SystemHealthPanel({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const systemTone = adminToneForStatus(snapshot?.status ?? "checking");
+
   return (
     <div id="system-health" className="border-t theme-border pt-6 space-y-6 scroll-mt-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-mono text-xs theme-muted">system health</p>
           <p className="mt-1 font-serif text-2xl font-semibold">
-            {snapshot ? snapshot.status : "Not checked"}
+            <AdminStatus tone={systemTone}>
+              {snapshot ? snapshot.status : "Not checked"}
+            </AdminStatus>
           </p>
           <p className="mt-1 font-mono text-micro theme-faint">
             Core status · checked {checkedAt(snapshot?.timestamp)}. Optional capability limits are
@@ -79,23 +84,25 @@ export function SystemHealthPanel({
       <div className="grid gap-3 sm:grid-cols-2">
         {snapshot?.capabilities.map((capability) => (
           <article key={capability.id} className="rounded-md border theme-border p-3">
-            <div className="flex items-start justify-between gap-3 font-mono">
-              <p className="text-xs theme-muted">{capability.label}</p>
-              <p
-                className={`text-micro ${
-                  capability.status === "available" || capability.status === "disabled"
-                    ? "theme-faint"
-                    : "text-[var(--prose-hashtag)]"
-                }`}
-              >
-                {capability.status}
+            <div
+              className={
+                capability.required && capability.status !== "available"
+                  ? `border-l-2 pl-3 ${adminToneBorderClass(adminToneForStatus(capability.status))}`
+                  : ""
+              }
+            >
+              <div className="flex items-start justify-between gap-3 font-mono">
+                <p className="text-xs theme-muted">{capability.label}</p>
+                <AdminStatus tone={adminToneForStatus(capability.status)} className="text-micro">
+                  {capability.status}
+                </AdminStatus>
+              </div>
+              <p className="mt-2 font-mono text-xs leading-relaxed">{capability.detail}</p>
+              <p className="mt-2 font-mono text-micro theme-faint">
+                {capability.required ? "required" : "optional"}
+                {typeof capability.latencyMs === "number" ? ` · ${capability.latencyMs}ms` : ""}
               </p>
             </div>
-            <p className="mt-2 font-mono text-xs leading-relaxed">{capability.detail}</p>
-            <p className="mt-2 font-mono text-micro theme-faint">
-              {capability.required ? "required" : "optional"}
-              {typeof capability.latencyMs === "number" ? ` · ${capability.latencyMs}ms` : ""}
-            </p>
           </article>
         )) ?? <p className="font-mono text-xs theme-muted">Run a check to inspect services.</p>}
       </div>
@@ -108,9 +115,22 @@ export function SystemHealthPanel({
           <article className="rounded-md border theme-border p-3 font-mono">
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs theme-muted">email</p>
-              <p className="text-micro theme-faint">
-                {snapshot?.emailOutbox.available ? "available" : "unavailable"}
-              </p>
+              <AdminStatus
+                tone={adminToneForStatus(
+                  !snapshot
+                    ? "not checked"
+                    : snapshot.emailOutbox.available
+                      ? "available"
+                      : "unavailable",
+                )}
+                className="text-micro"
+              >
+                {!snapshot
+                  ? "not checked"
+                  : snapshot.emailOutbox.available
+                    ? "available"
+                    : "unavailable"}
+              </AdminStatus>
             </div>
             <p className="mt-2 text-lg">
               {snapshot ? snapshot.emailOutbox.pending + snapshot.emailOutbox.processing : "—"}{" "}
@@ -121,20 +141,35 @@ export function SystemHealthPanel({
               {snapshot?.emailOutbox.processing ?? "—"} sending ·{" "}
               {snapshot?.emailOutbox.accepted ?? "—"} provider accepted ·{" "}
               {snapshot?.emailOutbox.delivered ?? "—"} delivered ·{" "}
-              {snapshot?.emailOutbox.failed ?? "—"} failed
+              {(snapshot?.emailOutbox.failed ?? 0) > 0 ? (
+                <AdminStatus tone="danger">{snapshot?.emailOutbox.failed} failed</AdminStatus>
+              ) : (
+                <span>{snapshot?.emailOutbox.failed ?? "—"} failed</span>
+              )}
             </p>
             {(snapshot?.emailOutbox.awaitingProviderFeedback ?? 0) > 0 ? (
-              <p className="mt-2 text-micro text-[var(--prose-hashtag)]">
+              <AdminStatus tone="attention" className="mt-2 text-micro">
                 {snapshot?.emailOutbox.awaitingProviderFeedback} accepted message
                 {snapshot?.emailOutbox.awaitingProviderFeedback === 1 ? " has" : "s have"} no
                 provider delivery event after 15 minutes.
-              </p>
+              </AdminStatus>
             ) : null}
           </article>
           <article className="rounded-md border theme-border p-3 font-mono">
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs theme-muted">media processing</p>
-              <p className="text-micro theme-faint">
+              <AdminStatus
+                tone={adminToneForStatus(
+                  !snapshot
+                    ? "not checked"
+                    : !snapshot.mediaQueue.available
+                      ? "unavailable"
+                      : snapshot.mediaQueue.enabled
+                        ? "available"
+                        : "disabled",
+                )}
+                className="text-micro"
+              >
                 {!snapshot
                   ? "not checked"
                   : !snapshot.mediaQueue.available
@@ -142,7 +177,7 @@ export function SystemHealthPanel({
                     : snapshot.mediaQueue.enabled
                       ? "available"
                       : "disabled"}
-              </p>
+              </AdminStatus>
             </div>
             <p className="mt-2 text-lg">{snapshot?.mediaQueue.queued ?? "—"} queued</p>
             <p className="mt-1 text-micro theme-faint">
@@ -150,10 +185,18 @@ export function SystemHealthPanel({
               {snapshot?.mediaQueue.permanentFailures ?? "—"} failed · oldest{" "}
               {duration(snapshot?.mediaQueue.backlogAgeMs)}
             </p>
+            {(snapshot?.mediaQueue.permanentFailures ?? 0) > 0 ? (
+              <AdminStatus tone="danger" className="mt-2 text-micro">
+                {snapshot?.mediaQueue.permanentFailures} permanently failed
+              </AdminStatus>
+            ) : null}
             {snapshot?.mediaQueue.reason ? (
-              <p className="mt-2 text-micro text-[var(--prose-hashtag)]">
+              <AdminStatus
+                tone={snapshot.mediaQueue.available ? "neutral" : "danger"}
+                className="mt-2 text-micro"
+              >
                 {snapshot.mediaQueue.reason}
-              </p>
+              </AdminStatus>
             ) : null}
           </article>
         </div>

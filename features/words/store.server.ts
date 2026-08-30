@@ -12,7 +12,12 @@ import { randomUUID } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { WORD_INDEX_KEY, wordContentKey, wordMetaKey } from "./config.server";
 import { deleteAllShareLinksForSlug } from "./share.server";
-import type { NoteMeta, NoteRecord, WordVisibility } from "./content-types";
+import {
+  isWordVisibility,
+  type NoteMeta,
+  type NoteRecord,
+  type WordVisibility,
+} from "./content-types";
 import type { WordType } from "@/features/words/types";
 import { isWordType, normaliseWordType } from "@/features/words/types";
 import { estimateReadingTime } from "@/features/words/reading-time";
@@ -28,6 +33,26 @@ const WORD_MUTATION_LOCK_TTL_MS = 10 * 60 * 1_000;
 const WORD_MUTATION_LOCK_WAIT_MS = 30_000;
 const RELEASE_WORD_LOCK_SCRIPT =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+function allowWordMemoryPersistence(): boolean {
+  return process.env.NODE_ENV !== "production";
+}
+
+function getWordRedis() {
+  const redis = getRedis();
+  if (!redis && !allowWordMemoryPersistence()) {
+    throw new Error("Word metadata persistence is unavailable.");
+  }
+  return redis;
+}
+
+function wordObjectStorageAvailable(): boolean {
+  const configured = isConfigured();
+  if (!configured && !allowWordMemoryPersistence()) {
+    throw new Error("Word content storage is unavailable.");
+  }
+  return configured;
+}
 
 export class WordUpdateConflictError extends Error {
   constructor(readonly currentUpdatedAt: string) {
@@ -54,7 +79,7 @@ async function withMemoryWordMutationLock<T>(slug: string, use: () => Promise<T>
 }
 
 async function withWordMutationLock<T>(slug: string, use: () => Promise<T>): Promise<T> {
-  const redis = getRedis();
+  const redis = getWordRedis();
   if (!redis) return withMemoryWordMutationLock(slug, use);
 
   const key = `${wordMetaKey(slug)}:mutation-lock`;
@@ -189,6 +214,7 @@ function normaliseMarkdownBody(markdown: string, slug: string): string {
 
 function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
   const type = normaliseWordType(meta.type);
+  const visibility = isWordVisibility(meta.visibility) ? meta.visibility : "private";
   const bodyKey =
     typeof meta.bodyKey === "string" && meta.bodyKey.trim()
       ? meta.bodyKey
@@ -199,6 +225,7 @@ function normaliseNoteMeta(meta: NoteMeta): NoteMeta {
     image: normaliseImageRef(meta.image),
     type,
     bodyKey,
+    visibility,
     readingTime:
       Number.isFinite(meta.readingTime) && meta.readingTime > 0
         ? Math.max(1, Math.round(meta.readingTime))
@@ -249,7 +276,7 @@ async function writeNoteContent(
   markdown: string,
   visibility: WordVisibility,
 ): Promise<void> {
-  if (isConfigured()) {
+  if (wordObjectStorageAvailable()) {
     await uploadBuffer(key, Buffer.from(markdown, "utf-8"), "text/markdown; charset=utf-8", {
       scope: storageScopeForVisibility(visibility),
     });
@@ -259,7 +286,7 @@ async function writeNoteContent(
 }
 
 async function readContentByKey(key: string, visibility: WordVisibility): Promise<string | null> {
-  if (isConfigured()) {
+  if (wordObjectStorageAvailable()) {
     try {
       const buf = await downloadBuffer(key, { scope: storageScopeForVisibility(visibility) });
       if (visibility === "private") {
@@ -301,8 +328,9 @@ function parseRawMeta(raw: unknown): NoteMeta | null {
 }
 
 async function deleteNoteContent(keys: string[], scopes: StorageScope[]): Promise<void> {
+  const objectStorageAvailable = wordObjectStorageAvailable();
   for (const key of keys) {
-    if (isConfigured()) {
+    if (objectStorageAvailable) {
       for (const scope of scopes) {
         await deleteObject(key, { scope });
       }
@@ -313,7 +341,7 @@ async function deleteNoteContent(keys: string[], scopes: StorageScope[]): Promis
 }
 
 async function getAllNoteMetas(): Promise<NoteMeta[]> {
-  const redis = getRedis();
+  const redis = getWordRedis();
 
   if (redis) {
     const slugs = (await redis.smembers(WORD_INDEX_KEY)) as string[];
@@ -336,7 +364,7 @@ async function getAllNoteMetas(): Promise<NoteMeta[]> {
 
 async function getWordMeta(slug: string): Promise<NoteMeta | null> {
   if (!isValidWordSlug(slug)) return null;
-  const redis = getRedis();
+  const redis = getWordRedis();
 
   if (redis) {
     const raw = await redis.get<NoteMeta | string>(wordMetaKey(slug));
@@ -383,7 +411,29 @@ async function createWord(input: {
     throw new Error("Invalid slug. Use lowercase letters, numbers, and hyphens.");
   }
   if (!input.title.trim()) throw new Error("Title is required.");
+  if (input.visibility !== undefined && !isWordVisibility(input.visibility)) {
+    throw new Error("Invalid visibility value.");
+  }
 
+  return withWordMutationLock(slug, () => createWordLocked({ ...input, slug }));
+}
+
+async function createWordLocked(input: {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  image?: string;
+  type?: WordType;
+  visibility?: WordVisibility;
+  markdown: string;
+  tags?: string[];
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  bodyKey?: string;
+}): Promise<NoteRecord> {
+  const slug = input.slug;
   const existing = await getWordMeta(slug);
   if (existing) throw new Error(`Note "${slug}" already exists.`);
 
@@ -412,7 +462,7 @@ async function createWord(input: {
     authorRole: "admin",
   };
   await writeNoteContent(meta.bodyKey, normalisedMarkdown, meta.visibility);
-  const redis = getRedis();
+  const redis = getWordRedis();
   if (redis) {
     await redis.set(wordMetaKey(slug), meta);
     await redis.sadd(WORD_INDEX_KEY, slug);
@@ -453,6 +503,12 @@ async function updateWordLocked(
     expectedUpdatedAt?: string;
   },
 ): Promise<NoteRecord | null> {
+  if (input.visibility !== undefined && !isWordVisibility(input.visibility)) {
+    throw new Error("Invalid visibility value.");
+  }
+  if (input.title !== undefined && !input.title.trim()) {
+    throw new Error("Title is required.");
+  }
   const existing = await getWordMeta(slug);
   if (!existing) return null;
   if (input.expectedUpdatedAt && input.expectedUpdatedAt !== existing.updatedAt) {
@@ -550,7 +606,7 @@ async function updateWordLocked(
   if (markdown !== null) {
     await writeNoteContent(nextBodyKey, markdown, nextVisibility);
 
-    if (isConfigured()) {
+    if (wordObjectStorageAvailable()) {
       const nextScope = storageScopeForVisibility(nextVisibility);
       const previousScope = storageScopeForVisibility(existing.visibility);
       if (visibilityChanged) {
@@ -573,7 +629,7 @@ async function updateWordLocked(
     }
   }
 
-  const redis = getRedis();
+  const redis = getWordRedis();
   if (redis) {
     await redis.set(wordMetaKey(slug), meta);
   } else {
@@ -592,11 +648,36 @@ async function updateWordLocked(
   return current ? { meta, markdown: current.markdown } : null;
 }
 
+async function deleteWordMedia(slug: string): Promise<void> {
+  if (!wordObjectStorageAvailable()) return;
+  const prefix = `words/media/${slug}/`;
+  const scopedObjects = await Promise.all(
+    (["public", "private"] as const).map(async (scope) => ({
+      scope,
+      objects: await listObjects(prefix, { scope }),
+    })),
+  );
+  await Promise.all(
+    scopedObjects.map(({ scope, objects }) =>
+      deleteObjects(
+        objects.map((object) => object.key),
+        { scope },
+      ),
+    ),
+  );
+}
+
 async function deleteWord(slug: string): Promise<boolean> {
+  if (!isValidWordSlug(slug)) return false;
+  return withWordMutationLock(slug, () => deleteWordLocked(slug));
+}
+
+async function deleteWordLocked(slug: string): Promise<boolean> {
   const existing = await getWordMeta(slug);
   if (!existing) return false;
+  await deleteWordMedia(slug);
   await deleteNoteContent(candidateContentKeys(existing), ["public", "private"]);
-  const redis = getRedis();
+  const redis = getWordRedis();
   if (redis) {
     await Promise.all([
       redis.del(wordMetaKey(slug)),
@@ -610,18 +691,14 @@ async function deleteWord(slug: string): Promise<boolean> {
   return true;
 }
 
-async function listWords(
-  options: ListWordOptions = {},
-): Promise<{ words: NoteMeta[]; nextCursor: string | null }> {
-  const all = await getAllNoteMetas();
+function filterWordMetas(all: NoteMeta[], options: ListWordOptions): NoteMeta[] {
   const q = options.q?.trim().toLowerCase() ?? "";
   const visibility = options.visibility;
   const type = options.type;
   const tag = options.tag?.trim().toLowerCase() ?? "";
   const includeNonPublic = options.includeNonPublic ?? false;
-  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
 
-  const filtered = all.filter((note) => {
+  return all.filter((note) => {
     if (!includeNonPublic && note.visibility !== "public") return false;
     if (visibility && note.visibility !== visibility) return false;
     if (type && note.type !== type) return false;
@@ -631,6 +708,13 @@ async function listWords(
       `${note.slug} ${note.title} ${note.subtitle ?? ""} ${note.type} ${note.tags.join(" ")} ${note.featured ? "featured" : ""}`.toLowerCase();
     return haystack.includes(q);
   });
+}
+
+async function listWords(
+  options: ListWordOptions = {},
+): Promise<{ words: NoteMeta[]; nextCursor: string | null }> {
+  const filtered = filterWordMetas(await getAllNoteMetas(), options);
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
 
   let start = 0;
   if (options.cursor) {
@@ -642,6 +726,12 @@ async function listWords(
   return { words: page, nextCursor };
 }
 
+async function listAllWords(
+  options: Omit<ListWordOptions, "cursor" | "limit"> = {},
+): Promise<NoteMeta[]> {
+  return filterWordMetas(await getAllNoteMetas(), options);
+}
+
 export {
   isValidWordSlug,
   storageScopeForVisibility,
@@ -651,4 +741,5 @@ export {
   updateWord,
   deleteWord,
   listWords,
+  listAllWords,
 };

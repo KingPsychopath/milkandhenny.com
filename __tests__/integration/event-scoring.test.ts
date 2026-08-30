@@ -26,6 +26,7 @@ import { getEvent, putEvent } from "@/features/events/store.server";
 import { markTicketStatus } from "@/features/tickets/store.server";
 import {
   activateGameScoreBinding,
+  consumeOfficialGameResult,
   createGameScoreBinding,
   ingestOfficialGameResult,
   linkGamePlayer,
@@ -658,6 +659,7 @@ describeWithDatabase("event scoring postgres", () => {
       participantId: participant!.id,
     });
     expect(membership.ok).toBe(true);
+    expect(await participantForTicket("01ARZ3NDEKTSV4RR")).toMatchObject({ teamName: "Amber" });
     await getOrCreateSettings("scoring-night");
     await query(
       `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
@@ -764,7 +766,15 @@ describeWithDatabase("event scoring postgres", () => {
       (await query<{ count: string }>(`select count(*)::text as count from score_game_receipts`))[0]
         ?.count,
     ).toBe("0");
-    expect((await processOfficialGameResult(resultId)).state).toBe("held");
+    // Simulate a worker stopping after ingestion and seeing the durable envelope again.
+    expect(await consumeOfficialGameResult(envelope)).toBe(true);
+    expect(
+      (
+        await query<{ status: string }>(`select status from official_game_results where id = $1`, [
+          resultId,
+        ])
+      )[0]?.status,
+    ).toBe("held");
     expect(
       await changeScoringState({
         eventSlug: "scoring-night",
@@ -815,6 +825,15 @@ describeWithDatabase("event scoring postgres", () => {
       (await processOfficialGameResult(cancellation.ok ? cancellation.value.id : "missing")).state,
     ).toBe("cancelled");
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
+
+    const reopened = await ingestOfficialGameResult(
+      centreEnvelope({ channelId, revision: 5, placement: 1 }),
+    );
+    expect(reopened.ok).toBe(true);
+    expect(
+      (await processOfficialGameResult(reopened.ok ? reopened.value.id : "missing")).state,
+    ).toBe("corrected");
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
     expect(
       await query<{
         revision: number;
@@ -838,6 +857,7 @@ describeWithDatabase("event scoring postgres", () => {
       { revision: 1, status: "processed", points: "7", has_reversal: false },
       { revision: 3, status: "corrected", points: "3", has_reversal: true },
       { revision: 4, status: "cancelled", points: "0", has_reversal: true },
+      { revision: 5, status: "corrected", points: "7", has_reversal: false },
     ]);
 
     const conflicting = await ingestOfficialGameResult(
@@ -861,8 +881,79 @@ describeWithDatabase("event scoring postgres", () => {
       invalidCorrection.ok ? invalidCorrection.value.id : "missing",
     );
     expect(stale.state).toBe("ignored");
-    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(0);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
   });
+
+  it.each(["manual", "scheduled"] as const)(
+    "retries a ready-state official result when scoring becomes live via %s transition",
+    async (transition) => {
+      const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+      const activity = await createActivity({
+        eventSlug: "scoring-night",
+        name: "Ready result",
+        template: "winner",
+        status: "live",
+        rule: {
+          mode: "placement",
+          placementPoints: { "1": 7 },
+          repeat: "once-per-source",
+          requiresCheckIn: false,
+        },
+      });
+      await getOrCreateSettings("scoring-night");
+      await query(
+        `update event_scoring_settings set state = 'ready' where event_slug = 'scoring-night'`,
+      );
+      const binding = await createGameScoreBinding({
+        eventSlug: "scoring-night",
+        activityId: activity.id,
+        gameKind: "centre",
+        acceptedScope: "game",
+      });
+      const channelId = binding.ok ? binding.value.channelId : "missing";
+      expect(await activateGameScoreBinding({ channelId, gameInstanceId: "game-1" })).toEqual({
+        ok: true,
+      });
+      expect(
+        await linkGamePlayer({
+          channelId,
+          gamePlayerId: "player-1",
+          participantId: participant!.id,
+        }),
+      ).toEqual({ ok: true });
+      const ingested = await ingestOfficialGameResult(centreEnvelope({ channelId, revision: 1 }));
+      expect(ingested.ok).toBe(true);
+      expect(
+        await processOfficialGameResult(ingested.ok ? ingested.value.id : "missing"),
+      ).toMatchObject({ state: "held", reason: "Scoring is ready" });
+
+      if (transition === "manual") {
+        expect(
+          await changeScoringState({
+            eventSlug: "scoring-night",
+            state: "live",
+            actorId: "admin-1",
+          }),
+        ).toMatchObject({ ok: true, value: { state: "live" } });
+      } else {
+        await query(
+          `update event_scoring_settings set scheduled_start = now() - interval '1 minute'
+            where event_slug = 'scoring-night'`,
+        );
+        expect(await processScheduledScoringTransitions()).toBe(1);
+      }
+
+      expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
+      expect(
+        (
+          await query<{ status: string }>(
+            `select status from official_game_results where id = $1`,
+            [ingested.ok ? ingested.value.id : "missing"],
+          )
+        )[0]?.status,
+      ).toBe("processed");
+    },
+  );
 
   it("creates event-local placeholders for unclaimed official game players", async () => {
     const ticketParticipant = await participantForTicket("01ARZ3NDEKTSV4RR");

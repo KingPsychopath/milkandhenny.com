@@ -9,6 +9,7 @@ import {
   DEFAULT_EXPIRY_SECONDS,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_FILES,
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store.server";
 import { getMimeType } from "@/features/media/processing.server";
@@ -69,6 +70,15 @@ async function handlePOST(request: Request) {
   const rawFiles = body.files;
   if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return Response.json({ error: "No files provided" }, { status: 400 });
+  }
+  if (rawFiles.length > MAX_TRANSFER_FILES) {
+    return Response.json(
+      { error: `Choose at most ${MAX_TRANSFER_FILES} files per transfer` },
+      { status: 400 },
+    );
+  }
+  if (rawFiles.some((file) => !file || typeof file !== "object" || typeof file.name !== "string")) {
+    return Response.json({ error: "Each file must have a safe filename" }, { status: 400 });
   }
   const files = resolveTransferUploadIds(rawFiles);
   let totalBytes = 0;

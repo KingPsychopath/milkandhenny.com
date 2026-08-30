@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
@@ -17,6 +19,7 @@ import {
   joinDrawCountryRoom,
 } from "@/features/things/draw-country/draw-country-room.server";
 import { createLiarsRoom, joinLiarsRoom } from "@/features/things/liars/liars-room.server";
+import { createHotAndColdRoom } from "@/features/things/hot-and-cold/hot-and-cold-room.server";
 import {
   applySameBrainPlayerAction,
   createSameBrainRoom,
@@ -24,6 +27,8 @@ import {
   readSameBrainSnapshot,
 } from "@/features/things/same-brain/same-brain-room.server";
 import { createTwinRoom, joinTwinRoom } from "@/features/things/twin/twin-room.server";
+import { leavePoolRoom } from "@/features/things/pool/game-adapters.server";
+import type { GamePoolAssignment } from "@/features/things/pool/types";
 
 describe("game-pool managed admission", () => {
   it("requires the server-held invite for Same Brain and Liars", async () => {
@@ -179,5 +184,73 @@ describe("game-pool managed admission", () => {
     expect(first).toMatchObject({ ok: true, accepted: true });
     expect(repeated).toMatchObject({ ok: true, accepted: true });
     expect(repeated.snapshot?.revision).toBe(first.snapshot?.revision);
+  });
+
+  it("removes a released assignment from every authoritative game engine", async () => {
+    const sameBrainRoom = await createSameBrainRoom({ managed: true });
+    const sameBrain = await joinSameBrainRoom({
+      roomId: sameBrainRoom.roomId,
+      joinToken: sameBrainRoom.joinToken,
+      hostToken: sameBrainRoom.hostToken,
+      name: "Same Brain Player",
+      joinId: "pool-leave-same-brain",
+    });
+    const liarsRoom = await createLiarsRoom({
+      managed: true,
+      mode: "mafia",
+      roomMode: "same-room",
+    });
+    const liars = await joinLiarsRoom({
+      roomId: liarsRoom.roomId,
+      joinToken: liarsRoom.joinToken,
+      hostToken: liarsRoom.hostToken,
+      name: "Liars Player",
+      joinId: "pool-leave-liars",
+    });
+    if (!sameBrain.ok || !liars.ok) throw new Error("Could not create social game rooms");
+
+    const centre = await createCentreRoom({
+      managed: true,
+      hostName: "Centre Player",
+      difficulty: 3,
+      delayedRivals: false,
+    });
+    const twin = await createTwinRoom({
+      managed: true,
+      hostName: "Twin Player",
+      handSize: 8,
+    });
+    const hotAndCold = await createHotAndColdRoom({
+      managed: true,
+      hostName: "Hot Player",
+      rounds: 3,
+      guessesPerPlayer: 5,
+      turnSeconds: 30,
+    });
+    const drawCountry = await createDrawCountryRoom({
+      managed: true,
+      hostName: "Draw Player",
+      drawSeconds: 45,
+      roundTotal: 5,
+      recentCountryIds: [],
+    });
+    const assignments: GamePoolAssignment[] = [
+      { game: "same-brain", ...sameBrain },
+      { game: "liars", ...liars },
+      { game: "centre", ...centre },
+      { game: "twin", ...twin },
+      { game: "hot-and-cold", ...hotAndCold },
+      { game: "draw-country", ...drawCountry },
+    ];
+
+    for (const assignment of assignments) {
+      await expect(leavePoolRoom(assignment, randomUUID())).resolves.toMatchObject({
+        accepted: true,
+      });
+      await expect(leavePoolRoom(assignment, randomUUID())).resolves.toMatchObject({
+        accepted: false,
+        errorCode: "room_unavailable",
+      });
+    }
   });
 });

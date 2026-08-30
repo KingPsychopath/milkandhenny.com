@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { AdminScoringActivity, ScoringData } from "./event-scoring-types";
+import { AdminStatus } from "./AdminStatus";
 
 export function ScoringAuditPanel({
   audit,
@@ -179,10 +180,23 @@ export function ScoringAuditPanel({
           </p>
           <ol className="mt-3 divide-y theme-border border-y theme-border">
             {anomalies.map((entry) => (
-              <li key={entry.id} className="py-3 font-mono text-micro">
-                <span>
-                  {entry.signal} · {entry.state}
-                </span>
+              <li
+                key={entry.id}
+                className="flex flex-wrap items-center gap-x-2 py-3 font-mono text-micro"
+              >
+                <span>{entry.signal}</span>
+                <span aria-hidden="true">·</span>
+                <AdminStatus
+                  tone={
+                    entry.state === "resolved"
+                      ? "positive"
+                      : entry.state === "dismissed"
+                        ? "neutral"
+                        : "attention"
+                  }
+                >
+                  {entry.state}
+                </AdminStatus>
                 <span className="ml-3 theme-muted">
                   {entry.assignmentId ?? entry.stationId ?? entry.actorId ?? "system"}
                   {entry.deviceId ? ` · device ${entry.deviceId}` : ""}

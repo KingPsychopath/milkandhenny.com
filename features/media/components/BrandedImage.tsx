@@ -140,8 +140,10 @@ export function BrandedImage({
     const a = document.createElement("a");
     a.href = href;
     a.download = `${photoId}-${activeFormat}.jpg`;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(href);
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(href), 0);
   }, [blob, photoId, activeFormat]);
 
   const handleCopy = useCallback(async () => {
@@ -168,7 +170,7 @@ export function BrandedImage({
           disabled={generating}
           aria-expanded={dropdownOpen}
           aria-haspopup="true"
-          className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-0.5 rounded px-2 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 disabled:opacity-50"
         >
           {generating ? "framing..." : "frame"}
           <svg
@@ -193,7 +195,7 @@ export function BrandedImage({
                 type="button"
                 role="menuitem"
                 onClick={() => handleFormatPick(opt.key)}
-                className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors font-mono text-micro tracking-wide"
+                className="block min-h-11 w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors font-mono text-micro tracking-wide"
               >
                 <span className="theme-muted">{opt.label}</span>
                 <span className="ml-2 theme-faint">{opt.desc}</span>
@@ -208,7 +210,7 @@ export function BrandedImage({
         /* react-doctor-disable-next-line prefer-html-dialog -- useFocusTrap and useEscapeKey provide modal keyboard behavior */
         <div
           ref={previewDialogRef}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/80 p-3 backdrop-blur-sm sm:p-4"
           onClick={handleClose}
           onKeyDown={(event) => {
             if (event.key === "Escape") handleClose();
@@ -219,7 +221,7 @@ export function BrandedImage({
           aria-label="Frame preview"
         >
           <div
-            className="relative flex flex-col items-center gap-4 p-4"
+            className="relative flex max-h-full flex-col items-center gap-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Error state */}
@@ -229,7 +231,7 @@ export function BrandedImage({
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="mt-4 font-mono text-micro text-white/50 hover:text-white transition-colors tracking-wide"
+                  className="mt-4 inline-flex min-h-11 items-center px-3 font-mono text-micro text-white/50 hover:text-white transition-colors tracking-wide"
                 >
                   close
                 </button>
@@ -259,12 +261,12 @@ export function BrandedImage({
                 {/* Frame preview actions
                     Mobile: share (native sheet) + download + close
                     Desktop: copy image + download + close */}
-                <div className="flex items-center gap-6 font-mono text-micro tracking-wide">
+                <div className="flex flex-wrap items-center justify-center gap-2 font-mono text-micro tracking-wide">
                   {isMobile ? (
                     <button
                       type="button"
                       onClick={handleShare}
-                      className="text-white hover:text-amber-400 transition-colors"
+                      className="inline-flex min-h-11 items-center px-3 text-white hover:text-amber-400 transition-colors"
                     >
                       share
                     </button>
@@ -272,7 +274,7 @@ export function BrandedImage({
                     <button
                       type="button"
                       onClick={handleCopy}
-                      className="text-white hover:text-amber-400 transition-colors"
+                      className="inline-flex min-h-11 items-center px-3 text-white hover:text-amber-400 transition-colors"
                     >
                       {copied ? "copied" : "copy image"}
                     </button>
@@ -280,14 +282,14 @@ export function BrandedImage({
                   <button
                     type="button"
                     onClick={handleDownload}
-                    className="text-white hover:text-amber-400 transition-colors"
+                    className="inline-flex min-h-11 items-center px-3 text-white hover:text-amber-400 transition-colors"
                   >
                     download ↓
                   </button>
                   <button
                     type="button"
                     onClick={handleClose}
-                    className="text-white/50 hover:text-white transition-colors"
+                    className="inline-flex min-h-11 items-center px-3 text-white/50 hover:text-white transition-colors"
                   >
                     close
                   </button>

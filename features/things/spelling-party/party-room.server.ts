@@ -33,12 +33,17 @@ export function applyPresenterAction(input: Parameters<typeof engine.applyPresen
     PartyRoomService.use((service) => service.applyPresenterAction(input)),
   ).then(async (result) => {
     await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
-    if (result.ok && result.accepted && input.action.type === "round.start")
-      for (const playerId of input.action.removePlayerIds ?? [])
+    if (result.ok && result.accepted && input.action.type === "round.start") {
+      const remainingPlayerIds = new Set(result.snapshot.players.map(({ id }) => id));
+      const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
+        (playerId) => !remainingPlayerIds.has(playerId),
+      );
+      for (const playerId of removedPlayerIds)
         await publishMultiplayerRoomTermination("spelling-party", input.roomId, {
           reason: "removed",
           playerId,
         }).catch(() => undefined);
+    }
     return result;
   });
 }

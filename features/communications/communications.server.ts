@@ -69,6 +69,10 @@ export type CommunicationLinkMetric = {
   totalClicks: number;
 };
 
+function isMarketingKind(kind: CommunicationKind): boolean {
+  return kind === "newsletter" || kind === "pitch_nudge";
+}
+
 type CandidateRow = { email: string; display_name: string | null; source: string };
 
 function hashEmail(email: string): string {
@@ -389,6 +393,9 @@ export async function saveCommunication(input: {
   if (input.kind === "newsletter" && !["marketing_opted_in", "selected"].includes(input.audience)) {
     throw new Error("Newsletters can only use opted-in contacts");
   }
+  if (input.kind === "pitch_nudge" && !["pitch_owners", "selected"].includes(input.audience)) {
+    throw new Error("Pitch nudges can only use opted-in pitch contacts");
+  }
   const media = validMedia(input.media);
   const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
   if (input.scheduledAt && (!scheduledAt || Number.isNaN(scheduledAt.getTime()))) {
@@ -431,10 +438,9 @@ export async function saveCommunication(input: {
     const event = input.eventSlug ? ((await getEvent(input.eventSlug)) ?? undefined) : undefined;
     const queuedMessages = await Promise.all(
       recipients.map(async (recipient) => {
-        const unsubscribeUrl =
-          input.kind === "newsletter"
-            ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
-            : undefined;
+        const unsubscribeUrl = isMarketingKind(input.kind)
+          ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
+          : undefined;
         const context = { event, recipientName: recipient.displayName ?? undefined };
         const trackingLinks = await prepareCommunicationLinkMap({
           body,
@@ -469,6 +475,7 @@ export async function saveCommunication(input: {
             subject: rendered.subject,
             text: rendered.text,
             html: rendered.html,
+            ...(unsubscribeUrl ? { unsubscribeUrl } : {}),
           },
           notBefore: scheduledAt ?? undefined,
           communicationId: id,

@@ -302,8 +302,10 @@ export async function requestTicketAssignment(input: {
         redeemed_at: Date | null;
         participant_id: string;
         person_id: string | null;
+        event_status: string;
       }>(
         `select t.event_slug,e.title,t.holder_name,t.order_id,t.status,t.redeemed_at,
+                e.status as event_status,
                 p.id as participant_id,p.person_id
            from tickets t join events e on e.slug = t.event_slug
            join event_participants p on p.ticket_id = t.id
@@ -319,6 +321,8 @@ export async function requestTicketAssignment(input: {
       );
       if (!manager.rowCount)
         throw new TicketOperationError(403, "Only an order manager can assign this ticket");
+      if (ticket.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (ticket.status !== "valid" || ticket.redeemed_at)
         throw new TicketOperationError(409, "This ticket can no longer be assigned");
       if (ticket.person_id)
@@ -455,9 +459,10 @@ export async function createAdminTicketInvitation(input: {
         status: string;
         redeemed_at: Date | null;
         person_id: string | null;
+        event_status: string;
       }>(
         `select ticket.event_slug,event.title,ticket.holder_name,ticket.status,ticket.redeemed_at,
-                participant.person_id
+                participant.person_id,event.status as event_status
            from tickets ticket join events event on event.slug = ticket.event_slug
            join event_participants participant on participant.ticket_id = ticket.id
           where ticket.id = $1 and ticket.event_slug = $2
@@ -466,6 +471,8 @@ export async function createAdminTicketInvitation(input: {
       );
       const ticket = selected.rows[0];
       if (!ticket) throw new TicketOperationError(404, "Ticket not found");
+      if (ticket.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (ticket.status !== "valid" || ticket.redeemed_at || ticket.person_id)
         throw new TicketOperationError(409, "This ticket can no longer be invited");
       const invitationId = id("assign");
@@ -655,9 +662,11 @@ export async function resendAdminTicketInvitation(input: {
         holder_name: string;
         recipient_email: string;
         ticket_status: string;
+        event_status: string;
       }>(
         `select assignment.action_link_id,assignment.ticket_id,event.title as event_title,
-                ticket.holder_name,assignment.recipient_email,ticket.status as ticket_status
+                ticket.holder_name,assignment.recipient_email,ticket.status as ticket_status,
+                event.status as event_status
            from ticket_assignments assignment
            join tickets ticket on ticket.id = assignment.ticket_id
            join events event on event.slug = assignment.event_slug
@@ -668,6 +677,8 @@ export async function resendAdminTicketInvitation(input: {
       );
       const invitation = selected.rows[0];
       if (!invitation) throw new TicketOperationError(404, "Pending invitation not found");
+      if (invitation.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (invitation.ticket_status !== "valid")
         throw new TicketOperationError(409, "This ticket is no longer available");
       if (invitation.action_link_id)
@@ -737,9 +748,10 @@ export async function requestTicketTransfer(input: {
         redeemed_at: Date | null;
         participant_id: string;
         person_id: string | null;
+        event_status: string;
       }>(
         `select t.event_slug,e.title,t.holder_name,t.kind,t.status,t.redeemed_at,
-                p.id as participant_id,p.person_id
+                e.status as event_status,p.id as participant_id,p.person_id
            from tickets t join events e on e.slug = t.event_slug
            join event_participants p on p.ticket_id = t.id
           where t.id = $1 for update of t,p`,
@@ -749,6 +761,8 @@ export async function requestTicketTransfer(input: {
       if (!ticket) throw new TicketOperationError(404, "Ticket not found");
       if (ticket.person_id !== input.senderPersonId)
         throw new TicketOperationError(403, "Only the current holder can transfer this ticket");
+      if (ticket.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (ticket.status !== "valid" || ticket.redeemed_at)
         throw new TicketOperationError(409, "This ticket can no longer be transferred");
       const globals = await client.query<{
@@ -966,13 +980,16 @@ export async function requestTransferredTicketReturn(input: {
         holder_email: string | null;
         purchaser_person_id: string;
         purchaser_email: string;
+        event_status: string;
       }>(
         `select ticket.event_slug,ticket.order_id,ticket.holder_name,ticket.amount_paid_minor,
                 ticket.currency,participant.id as participant_id,
                 participant.person_id as holder_person_id,
                 accepted.recipient_email as holder_email,
-                purchaser.person_id as purchaser_person_id,ticket.email as purchaser_email
+                purchaser.person_id as purchaser_person_id,ticket.email as purchaser_email,
+                event.status as event_status
            from tickets ticket
+           join events event on event.slug = ticket.event_slug
            join event_participants participant on participant.ticket_id = ticket.id
            join lateral (
              select person_id from event_order_managers
@@ -991,6 +1008,8 @@ export async function requestTransferredTicketReturn(input: {
       );
       const ticket = selected.rows[0];
       if (!ticket) throw new TicketOperationError(404, "Returnable ticket not found");
+      if (ticket.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (!ticket.holder_person_id || ticket.holder_person_id === ticket.purchaser_person_id)
         throw new TicketOperationError(409, "This ticket does not need another holder's consent");
       const requesterIsHolder = input.requesterPersonId === ticket.holder_person_id;
@@ -1278,12 +1297,14 @@ export async function acceptTicketAction(token: string): Promise<
           person_id: string | null;
           ticket_status: string;
           redeemed_at: Date | null;
+          event_status: string;
         }>(
           `select assignment.ticket_id,assignment.event_slug,assignment.status,assignment.expires_at,
                   participant.id as participant_id,participant.person_id,
-                  ticket.status as ticket_status,ticket.redeemed_at
+                  ticket.status as ticket_status,ticket.redeemed_at,event.status as event_status
              from ticket_assignments assignment
              join tickets ticket on ticket.id = assignment.ticket_id
+             join events event on event.slug = assignment.event_slug
              join event_participants participant on participant.ticket_id = ticket.id
             where assignment.id = $1 for update of assignment,ticket,participant`,
           [link.entityId],
@@ -1293,6 +1314,8 @@ export async function acceptTicketAction(token: string): Promise<
           throw new TicketOperationError(409, "This assignment is no longer available");
         if (assignment.expires_at <= new Date())
           throw new TicketOperationError(410, "This assignment has expired");
+        if (assignment.event_status === "cancelled")
+          throw new TicketOperationError(409, "This event is cancelled");
         if (assignment.ticket_status !== "valid" || assignment.redeemed_at)
           throw new TicketOperationError(409, "This ticket is no longer claimable");
         if (assignment.person_id && assignment.person_id !== person.personId)
@@ -1306,6 +1329,17 @@ export async function acceptTicketAction(token: string): Promise<
           previousPersonId: null,
           source: "assignment",
         });
+        const publicTicketId = generateTicketId();
+        await client.query(
+          `update tickets
+              set access_reference = $2,authority_version = authority_version + 1,
+                  holder_name = coalesce(
+                    (select canonical_name from event_people where id = $3),
+                    holder_name
+                  )
+            where id = $1`,
+          [assignment.ticket_id, publicTicketId, person.personId],
+        );
         await client.query(
           `update ticket_assignments
               set status = 'claimed',claimed_by_person_id = $2,claimed_at = now(),updated_at = now()
@@ -1317,7 +1351,7 @@ export async function acceptTicketAction(token: string): Promise<
           personId: person.personId,
           verifiedEmailHash: link.intendedEmailHash,
           ticketId: assignment.ticket_id,
-          publicTicketId: assignment.ticket_id,
+          publicTicketId,
           eventSlug: assignment.event_slug,
           operationId: link.entityId,
         };
@@ -1334,12 +1368,15 @@ export async function acceptTicketAction(token: string): Promise<
         ticket_status: string;
         kind: string;
         redeemed_at: Date | null;
+        event_status: string;
       }>(
         `select transfer.ticket_id,transfer.event_slug,transfer.sender_person_id,
                 transfer.status,transfer.expires_at,participant.id as participant_id,
-                participant.person_id,ticket.status as ticket_status,ticket.kind,ticket.redeemed_at
+                participant.person_id,ticket.status as ticket_status,ticket.kind,ticket.redeemed_at,
+                event.status as event_status
            from ticket_transfers transfer
            join tickets ticket on ticket.id = transfer.ticket_id
+           join events event on event.slug = transfer.event_slug
            join event_participants participant on participant.ticket_id = ticket.id
           where transfer.id = $1 for update of transfer,ticket,participant`,
         [link.entityId],
@@ -1349,6 +1386,8 @@ export async function acceptTicketAction(token: string): Promise<
         throw new TicketOperationError(409, "This transfer is no longer available");
       if (transfer.expires_at <= new Date())
         throw new TicketOperationError(410, "This transfer has expired");
+      if (transfer.event_status === "cancelled")
+        throw new TicketOperationError(409, "This event is cancelled");
       if (transfer.ticket_status !== "valid" || transfer.redeemed_at)
         throw new TicketOperationError(409, "This ticket can no longer be transferred");
       if (transfer.person_id !== transfer.sender_person_id)

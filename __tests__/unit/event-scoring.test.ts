@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   canAcceptScore,
@@ -16,8 +16,11 @@ import {
   type ScorePool,
 } from "@/features/event-scoring/types";
 import {
+  createScoreRequestDeadline,
+  hasRememberedScoreSession,
   nextRetryDelayMs,
   reconcileSnapshot,
+  rememberScoreSession,
   shouldRetryScoreResponse,
 } from "@/features/event-scoring/client-sync";
 import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
@@ -25,6 +28,34 @@ import { simulateScoreClaim, TEST_SCENARIOS } from "@/features/event-scoring/tes
 import { formatDiscoveryCooldown } from "@/features/event-scoring/ui/useDiscoveryCooldown";
 
 describe("event scoring rules", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps score sync usable when browser marker storage is blocked", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: vi.fn(() => {
+        throw new DOMException("Blocked", "SecurityError");
+      }),
+      setItem: vi.fn(() => {
+        throw new DOMException("Blocked", "SecurityError");
+      }),
+    });
+
+    expect(() => rememberScoreSession()).not.toThrow();
+    expect(hasRememberedScoreSession()).toBe(false);
+  });
+
+  it("aborts a score refresh that exceeds its request deadline", () => {
+    vi.useFakeTimers();
+    const deadline = createScoreRequestDeadline(10_000);
+
+    expect(deadline.signal.aborted).toBe(false);
+    vi.advanceTimersByTime(10_000);
+    expect(deadline.signal.aborted).toBe(true);
+  });
+
   it("keeps scoring off until an explicit live state", () => {
     expect(canAcceptScore({ state: "off" }, "normal")).toBe(false);
     expect(canAcceptScore({ state: "ready" }, "normal")).toBe(false);

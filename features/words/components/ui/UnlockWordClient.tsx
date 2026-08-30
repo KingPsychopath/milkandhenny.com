@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { unlockPrivateWordFn } from "../../reader.functions";
 
@@ -17,7 +17,8 @@ export function UnlockWordClient({ slug, shareToken, initialPinRequired, initial
   const [error, setError] = useState(initialError ?? "");
   const hasShare = shareToken.trim().length > 0;
 
-  async function verifyShareAccess() {
+  async function verifyShareAccess(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!hasShare) return;
     setChecking(true);
     setError("");
@@ -56,7 +57,7 @@ export function UnlockWordClient({ slug, shareToken, initialPinRequired, initial
   }
 
   return (
-    <div className="border theme-border rounded-md p-5 space-y-3">
+    <form onSubmit={verifyShareAccess} className="border theme-border rounded-md p-5 space-y-3">
       <p className="font-mono text-xs tracking-wide uppercase theme-muted">private page</p>
       <p className="font-serif text-lg leading-relaxed text-foreground">
         {pinRequired
@@ -64,29 +65,42 @@ export function UnlockWordClient({ slug, shareToken, initialPinRequired, initial
           : "Use this signed link to unlock access."}
       </p>
       {pinRequired ? (
-        <input
-          type="password"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          placeholder="enter share PIN"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (!checking) void verifyShareAccess();
-            }
-          }}
-          className="w-full bg-transparent border-b theme-border outline-none font-mono text-sm py-2"
-        />
+        <label htmlFor="private-word-pin" className="block">
+          <span className="font-mono text-xs theme-muted">share PIN</span>
+          <input
+            id="private-word-pin"
+            name="pin"
+            type="password"
+            value={pin}
+            onChange={(e) => {
+              setPin(e.target.value);
+              setError("");
+            }}
+            placeholder="enter share PIN"
+            autoComplete="one-time-code"
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "private-word-pin-error" : undefined}
+            className="mt-1 min-h-11 w-full bg-transparent border-b theme-border outline-none font-mono text-base sm:text-sm py-2"
+          />
+        </label>
       ) : null}
-      {error ? <p className="font-mono text-xs text-[var(--prose-hashtag)]">{error}</p> : null}
+      {error ? (
+        <p
+          id="private-word-pin-error"
+          role="alert"
+          aria-live="polite"
+          className="font-mono text-xs text-[var(--prose-hashtag)]"
+        >
+          {error}
+        </p>
+      ) : null}
       <button
-        type="button"
-        onClick={() => void verifyShareAccess()}
+        type="submit"
         disabled={checking || (pinRequired && pin.trim().length === 0)}
-        className="font-mono text-xs px-3 py-2 rounded border theme-border hover:bg-[var(--stone-100)] dark:hover:bg-[var(--stone-900)] transition-colors disabled:opacity-60"
+        className="inline-flex min-h-11 items-center font-mono text-xs px-3 rounded border theme-border hover:bg-[var(--stone-100)] dark:hover:bg-[var(--stone-900)] transition-colors disabled:opacity-60"
       >
         {checking ? "unlocking..." : pinRequired ? "unlock with PIN" : "retry unlock"}
       </button>
-    </div>
+    </form>
   );
 }

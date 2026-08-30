@@ -2,8 +2,12 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
+import { useActionDialog } from "@/hooks/useActionDialog";
 import type { OperationsTab } from "./AdminSectionNav";
 import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
+import { parseSavedInboxViews, type StoredInboxView } from "../admin-inbox-views";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
+import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type StepUp = () => Promise<{ ok: true; token: string } | { ok: false }>;
@@ -28,13 +32,6 @@ type InboxItem = {
 };
 type Administrator = { personId: string; name: string };
 type CaseEditor = { itemId: string; mode: "private-note" | "resolve"; value: string };
-type InboxView = {
-  name: string;
-  status: string;
-  severity: string;
-  category: string;
-  event: string;
-};
 type Person = {
   personId: string;
   canonicalName?: string;
@@ -117,6 +114,7 @@ export function AttendeeOperationsPanel({
   initialPerson,
   onPersonChange,
   inboxOnly = false,
+  availableTabs,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
@@ -130,6 +128,7 @@ export function AttendeeOperationsPanel({
   initialPerson?: string;
   onPersonChange: (personId?: string) => void;
   inboxOnly?: boolean;
+  availableTabs: readonly OperationsTab[];
 }) {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unresolved, setUnresolved] = useState(0);
@@ -140,18 +139,24 @@ export function AttendeeOperationsPanel({
   const [selected, setSelected] = useState<Person>();
   const [selectedContact, setSelectedContact] = useState<PurchaserContact>();
   const [loading, setLoading] = useState(false);
+  const [inboxLoaded, setInboxLoaded] = useState(false);
+  const [inboxLoadError, setInboxLoadError] = useState<string | null>(null);
+  const [peopleLoaded, setPeopleLoaded] = useState(false);
+  const [peopleLoadError, setPeopleLoadError] = useState<string | null>(null);
   const [administrators, setAdministrators] = useState<Administrator[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
-  const [savedViews, setSavedViews] = useState<InboxView[]>([]);
+  const [savedViews, setSavedViews] = useState<StoredInboxView[]>([]);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [inboxBusy, setInboxBusy] = useState<string>();
   const [caseEditor, setCaseEditor] = useState<CaseEditor>();
+  const { prompt, dialog } = useActionDialog();
 
   const loadInbox = useCallback(async () => {
     setLoading(true);
+    setInboxLoadError(null);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set("status", statusFilter);
@@ -173,8 +178,11 @@ export function AttendeeOperationsPanel({
       setUnresolved(body.unresolved ?? 0);
       setUnread(body.unread ?? 0);
       setAdministrators(body.administrators ?? []);
+      setInboxLoaded(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Inbox could not be loaded");
+      const message = error instanceof Error ? error.message : "Inbox could not be loaded";
+      setInboxLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -182,8 +190,9 @@ export function AttendeeOperationsPanel({
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem("attendee-operations-inbox-views");
-      if (stored) setSavedViews(JSON.parse(stored) as InboxView[]);
+      setSavedViews(
+        parseSavedInboxViews(window.localStorage.getItem("attendee-operations-inbox-views")),
+      );
     } catch {
       setSavedViews([]);
     }
@@ -262,8 +271,19 @@ export function AttendeeOperationsPanel({
     window.location.assign(item.deepLink);
   }
 
-  function saveView() {
-    const name = window.prompt("Name this inbox view")?.trim();
+  async function saveView() {
+    const name = (
+      await prompt({
+        eyebrow: "inbox filters",
+        title: "Save this view",
+        description: "The current filters will be kept on this device.",
+        label: "view name",
+        required: true,
+        confirmLabel: "save view",
+        validate: (value) =>
+          value.trim().length > 80 ? "Keep the name under 80 characters." : null,
+      })
+    )?.trim();
     if (!name) return;
     const next = [
       ...savedViews.filter((view) => view.name !== name),
@@ -275,14 +295,19 @@ export function AttendeeOperationsPanel({
         event: eventFilter,
       },
     ];
-    setSavedViews(next);
-    window.localStorage.setItem("attendee-operations-inbox-views", JSON.stringify(next));
-    onStatus("Inbox view saved on this device.");
+    try {
+      window.localStorage.setItem("attendee-operations-inbox-views", JSON.stringify(next));
+      setSavedViews(next);
+      onStatus("Inbox view saved on this device.");
+    } catch {
+      onError("This browser could not save the inbox view.");
+    }
   }
 
   const loadPeople = useCallback(
     async (selectedPersonId?: string, searchText = query) => {
       setLoading(true);
+      setPeopleLoadError(null);
       try {
         const response = await authFetch(
           `/api/admin/operations/people?q=${encodeURIComponent(searchText)}`,
@@ -310,12 +335,15 @@ export function AttendeeOperationsPanel({
                 contact.tickets.some((ticket) => ticket.id === searchText),
               ) ?? nextContacts[0]),
         );
+        setPeopleLoaded(true);
         if (matchingPerson && matchingPerson.personId !== initialPerson) {
           selfNavigationRef.current = matchingPerson.personId;
           onPersonChange(matchingPerson.personId);
         }
       } catch (error) {
-        onError(error instanceof Error ? error.message : "People could not be searched");
+        const message = error instanceof Error ? error.message : "People could not be searched";
+        setPeopleLoadError(message);
+        onError(message);
       } finally {
         setLoading(false);
       }
@@ -361,8 +389,29 @@ export function AttendeeOperationsPanel({
           : action === "restrict"
             ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
             : "allow this person to acquire new tickets and permissions again";
-    if (!window.confirm(`Are you sure you want to ${label}?`)) return;
-    const reason = window.prompt("Reason for the audit log")?.trim();
+    const reason = (
+      await prompt({
+        eyebrow: "identity access",
+        title: `${label.charAt(0).toUpperCase()}${label.slice(1)}?`,
+        description:
+          action === "restore"
+            ? "The person will be able to acquire new tickets and permissions again."
+            : "This takes effect immediately and is recorded in the audit timeline.",
+        label: "reason for the audit log",
+        required: true,
+        confirmLabel:
+          action === "restore"
+            ? "restore access"
+            : action === "sign-out"
+              ? "sign out everywhere"
+              : action === "remove-email"
+                ? "remove sign-in"
+                : "restrict access",
+        intent: action === "restore" ? "default" : "danger",
+        validate: (value) =>
+          value.trim().length < 3 ? "Enter a reason of at least 3 characters." : null,
+      })
+    )?.trim();
     if (!reason) return;
     setIdentityBusy(true);
     try {
@@ -417,7 +466,7 @@ export function AttendeeOperationsPanel({
                   : "People who need an answer"}
           </h2>
         </div>
-        {tab === "inbox" ? (
+        {tab === "inbox" && inboxLoaded && !inboxLoadError ? (
           <p className="font-mono text-xs theme-muted">
             {unresolved} unresolved · {unread} unread for you
           </p>
@@ -425,7 +474,7 @@ export function AttendeeOperationsPanel({
       </div>
       {!inboxOnly ? (
         <div className="mt-4 flex gap-5 border-b theme-border">
-          {(["inbox", "people", "preview"] as const).map((name) => (
+          {availableTabs.map((name) => (
             <button
               key={name}
               type="button"
@@ -436,7 +485,7 @@ export function AttendeeOperationsPanel({
               }`}
             >
               {name === "inbox"
-                ? `needs attention${unresolved ? ` · ${unresolved}` : ""}`
+                ? `needs attention${inboxLoaded && !inboxLoadError && unresolved ? ` · ${unresolved}` : ""}`
                 : name === "people"
                   ? "identity manager"
                   : "attendee preview"}
@@ -490,7 +539,7 @@ export function AttendeeOperationsPanel({
             />
             <button
               type="button"
-              onClick={saveView}
+              onClick={() => void saveView()}
               className="min-h-11 border theme-border px-3 font-mono text-xs"
             >
               save view
@@ -515,10 +564,15 @@ export function AttendeeOperationsPanel({
               ))}
             </div>
           ) : null}
-          {loading && !items.length ? (
-            <p className="font-mono text-xs theme-muted">loading…</p>
-          ) : null}
-          {!loading && !items.length ? (
+          {inboxLoadError ? (
+            <AdminLoadError
+              message={inboxLoadError}
+              retry={() => void loadInbox()}
+              retrying={loading}
+            />
+          ) : !inboxLoaded ? (
+            <AdminLoading label="Loading the operations inbox…" />
+          ) : items.length === 0 ? (
             <p className="border-y theme-border py-5 font-mono text-xs theme-muted">
               Nothing needs attention.
             </p>
@@ -528,12 +582,29 @@ export function AttendeeOperationsPanel({
                 <li key={item.id} className="py-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="max-w-2xl">
-                      <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-                        {item.status}
-                        {item.unread ? " · unread for you" : ""}
-                        {` · ${item.severity} · ${item.category}`}
-                        {item.eventSlug ? ` · ${item.eventSlug}` : ""}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-2 font-mono text-micro uppercase tracking-widest theme-muted">
+                        <AdminStatus
+                          tone={
+                            item.severity === "critical"
+                              ? "danger"
+                              : item.status === "resolved"
+                                ? "positive"
+                                : item.status === "in-progress" ||
+                                    item.unread ||
+                                    item.severity === "warning" ||
+                                    item.severity === "prompt"
+                                  ? "attention"
+                                  : "neutral"
+                          }
+                        >
+                          {item.status}
+                          {item.unread ? " · unread" : ""}
+                        </AdminStatus>
+                        <span>
+                          · {item.severity} · {item.category}
+                        </span>
+                        {item.eventSlug ? <span>· {item.eventSlug}</span> : null}
+                      </div>
                       <h3 className="mt-1 font-serif text-xl">{item.title}</h3>
                       <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
                         {item.body}
@@ -752,120 +823,138 @@ export function AttendeeOperationsPanel({
               search
             </button>
           </form>
-          <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)]">
-            <div className="space-y-6">
-              <section aria-labelledby="identity-records-heading">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3 id="identity-records-heading" className="font-mono text-xs font-bold">
-                    identity records
-                  </h3>
-                  <span className="font-mono text-micro theme-muted">{people.length}</span>
-                </div>
-                <ul className="mt-2 divide-y border-y theme-border">
-                  {people.map((person) => (
-                    <li key={person.personId}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected(person);
-                          setSelectedContact(undefined);
-                          selfNavigationRef.current = person.personId;
-                          onPersonChange(person.personId);
-                        }}
-                        className="min-h-14 w-full py-3 text-left hover:opacity-70"
-                      >
-                        <span className="block font-serif text-lg">
-                          {person.canonicalName ?? "Unnamed person"}
-                        </span>
-                        <span className="font-mono text-micro theme-muted">
-                          {person.verifiedEmails.join(", ") || person.personId} ·{" "}
-                          {person.tickets.length} tickets
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {!people.length ? (
-                    <li className="py-4 font-mono text-xs theme-muted">
-                      No identity record matches.
-                    </li>
-                  ) : null}
-                </ul>
-              </section>
-              <section aria-labelledby="purchaser-contacts-heading">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h3 id="purchaser-contacts-heading" className="font-mono text-xs font-bold">
-                    purchasers not verified yet
-                  </h3>
-                  <span className="font-mono text-micro theme-muted">
-                    {purchaserContacts.length}
-                  </span>
-                </div>
-                <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
-                  Purchase contacts appear immediately. They become identities only after mailbox
-                  verification.
-                </p>
-                <ul className="mt-2 divide-y border-y theme-border">
-                  {purchaserContacts.map((contact) => (
-                    <li key={contact.contactId}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected(undefined);
-                          setSelectedContact(contact);
-                        }}
-                        className="min-h-14 w-full py-3 text-left hover:opacity-70"
-                      >
-                        <span className="block font-serif text-lg">
-                          {contact.name ?? "Ticket purchaser"}
-                        </span>
-                        <span className="font-mono text-micro theme-muted">
-                          {contact.emailHint} · {contact.tickets.length} tickets
-                        </span>
-                        {contact.tickets.some((ticket) => ticket.deliveryNeedsAttention) ? (
-                          <span className="mt-1 block font-mono text-micro font-bold text-[var(--prose-hashtag)]">
-                            email delivery needs attention
-                          </span>
-                        ) : null}
-                      </button>
-                    </li>
-                  ))}
-                  {!purchaserContacts.length ? (
-                    <li className="py-4 font-mono text-xs theme-muted">
-                      No unverified purchaser contact matches.
-                    </li>
-                  ) : null}
-                </ul>
-              </section>
+          {peopleLoadError ? (
+            <div className="mt-5">
+              <AdminLoadError
+                message={peopleLoadError}
+                retry={() => void loadPeople(initialPerson)}
+                retrying={loading}
+              />
             </div>
-            {selected ? (
-              <PersonDrawer
-                person={selected}
-                busy={identityBusy}
-                onManage={manageIdentity}
-                onClose={() => {
-                  setSelected(undefined);
-                  selfNavigationRef.current = "cleared";
-                  onPersonChange(undefined);
-                }}
-              />
-            ) : selectedContact ? (
-              <PurchaserContactDrawer
-                contact={selectedContact}
-                onClose={() => setSelectedContact(undefined)}
-              />
-            ) : (
-              <p className="font-mono text-xs theme-muted">
-                Choose a verified identity for access controls, or a purchaser contact for ticket
-                and delivery context.
-              </p>
-            )}
-          </div>
+          ) : !peopleLoaded ? (
+            <div className="mt-5">
+              <AdminLoading label="Loading people…" />
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,1fr)]">
+              <div className="space-y-6">
+                <section aria-labelledby="identity-records-heading">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 id="identity-records-heading" className="font-mono text-xs font-bold">
+                      identity records
+                    </h3>
+                    <span className="font-mono text-micro theme-muted">{people.length}</span>
+                  </div>
+                  <ul className="mt-2 divide-y border-y theme-border">
+                    {people.map((person) => (
+                      <li key={person.personId}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(person);
+                            setSelectedContact(undefined);
+                            selfNavigationRef.current = person.personId;
+                            onPersonChange(person.personId);
+                          }}
+                          className="min-h-14 w-full py-3 text-left hover:opacity-70"
+                        >
+                          <span className="block font-serif text-lg">
+                            {person.canonicalName ?? "Unnamed person"}
+                          </span>
+                          <span className="font-mono text-micro theme-muted">
+                            {person.verifiedEmails.join(", ") || person.personId} ·{" "}
+                            {person.tickets.length} tickets
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                    {!people.length ? (
+                      <li className="py-4 font-mono text-xs theme-muted">
+                        No identity record matches.
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+                <section aria-labelledby="purchaser-contacts-heading">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 id="purchaser-contacts-heading" className="font-mono text-xs font-bold">
+                      purchasers not verified yet
+                    </h3>
+                    <span className="font-mono text-micro theme-muted">
+                      {purchaserContacts.length}
+                    </span>
+                  </div>
+                  <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                    Purchase contacts appear immediately. They become identities only after mailbox
+                    verification.
+                  </p>
+                  <ul className="mt-2 divide-y border-y theme-border">
+                    {purchaserContacts.map((contact) => (
+                      <li key={contact.contactId}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(undefined);
+                            setSelectedContact(contact);
+                          }}
+                          className="min-h-14 w-full py-3 text-left hover:opacity-70"
+                        >
+                          <span className="block font-serif text-lg">
+                            {contact.name ?? "Ticket purchaser"}
+                          </span>
+                          <span className="font-mono text-micro theme-muted">
+                            {contact.emailHint} · {contact.tickets.length} tickets
+                          </span>
+                          {contact.tickets.some((ticket) => ticket.deliveryNeedsAttention) ? (
+                            <AdminStatus
+                              tone="danger"
+                              className="mt-1 font-mono text-micro font-bold"
+                            >
+                              email delivery needs attention
+                            </AdminStatus>
+                          ) : null}
+                        </button>
+                      </li>
+                    ))}
+                    {!purchaserContacts.length ? (
+                      <li className="py-4 font-mono text-xs theme-muted">
+                        No unverified purchaser contact matches.
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+              </div>
+              {selected ? (
+                <PersonDrawer
+                  person={selected}
+                  busy={identityBusy}
+                  onManage={manageIdentity}
+                  onClose={() => {
+                    setSelected(undefined);
+                    selfNavigationRef.current = "cleared";
+                    onPersonChange(undefined);
+                  }}
+                />
+              ) : selectedContact ? (
+                <PurchaserContactDrawer
+                  contact={selectedContact}
+                  onClose={() => setSelectedContact(undefined)}
+                />
+              ) : (
+                <p className="font-mono text-xs theme-muted">
+                  Choose a verified identity for access controls, or a purchaser contact for ticket
+                  and delivery context.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-5">
           <AttendeePreviewMatrix />
         </div>
       )}
+      {dialog}
     </section>
   );
 }
@@ -890,7 +979,9 @@ function PurchaserContactDrawer({
       <h3 className="mt-2 font-serif text-2xl">{contact.name ?? "Ticket purchaser"}</h3>
       <p className="mt-1 font-mono text-xs theme-muted">{contact.emailHint}</p>
       <div className="mt-5 border-y theme-border py-4">
-        <p className="font-mono text-xs">Not an account yet</p>
+        <AdminStatus tone="attention" className="font-mono text-xs">
+          Not an account yet
+        </AdminStatus>
         <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
           Buying a ticket records the delivery contact but does not prove control of the mailbox.
           After a successful one-time-link sign-in, the verified identity appears here and eligible
@@ -904,15 +995,21 @@ function PurchaserContactDrawer({
             <p className="font-serif text-lg">
               {ticket.eventTitle} · {ticket.holderName}
             </p>
-            <p className="mt-1 font-mono text-micro theme-muted">
-              {ticket.status} · order {ticket.orderId} · purchased{" "}
-              {new Date(ticket.issuedAt).toLocaleString()}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+              <AdminStatus
+                tone={ticket.status === "valid" ? "positive" : adminToneForStatus(ticket.status)}
+              >
+                {ticket.status}
+              </AdminStatus>
+              <span>
+                · order {ticket.orderId} · purchased {new Date(ticket.issuedAt).toLocaleString()}
+              </span>
+            </div>
             {ticket.deliveryNeedsAttention ? (
-              <p className="mt-2 font-mono text-xs font-bold text-[var(--prose-hashtag)]">
+              <AdminStatus tone="danger" className="mt-2 font-mono text-xs font-bold">
                 Email {ticket.deliveryStatus?.replaceAll("-", " ") ?? "failed"} · resolve before
                 sending again
-              </p>
+              </AdminStatus>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-4">
               <Link
@@ -991,7 +1088,18 @@ function PersonDrawer({
                 {person.identities.map((identity) => (
                   <li key={identity.id} className="py-2">
                     <span>{identity.masked}</span>
-                    <span className="ml-2 theme-muted">· {identity.status}</span>
+                    <AdminStatus
+                      tone={
+                        identity.status === "verified"
+                          ? "positive"
+                          : identity.status === "pending"
+                            ? "attention"
+                            : "neutral"
+                      }
+                      className="ml-2"
+                    >
+                      {identity.status}
+                    </AdminStatus>
                     {identity.removedAt ? (
                       <span className="mt-1 block theme-muted">
                         removed {new Date(identity.removedAt).toLocaleString()}
@@ -1027,9 +1135,11 @@ function PersonDrawer({
         <div>
           <dt className="theme-muted">sessions</dt>
           <dd className="mt-1">
-            {person.access.activeSessions} active session
-            {person.access.activeSessions === 1 ? "" : "s"}
-            {recentlyActive ? " · active in the last 5 minutes" : ""}
+            <AdminStatus tone={person.access.activeSessions > 0 ? "positive" : "neutral"}>
+              {person.access.activeSessions} active session
+              {person.access.activeSessions === 1 ? "" : "s"}
+              {recentlyActive ? " · active in the last 5 minutes" : ""}
+            </AdminStatus>
           </dd>
           {person.access.lastSeenAt ? (
             <dd className="mt-1 theme-muted">
@@ -1039,7 +1149,13 @@ function PersonDrawer({
         </div>
         <div>
           <dt className="theme-muted">new tickets and permissions</dt>
-          <dd className="mt-1">{person.access.acquisitionStatus}</dd>
+          <dd className="mt-1">
+            <AdminStatus
+              tone={person.access.acquisitionStatus === "active" ? "positive" : "danger"}
+            >
+              {person.access.acquisitionStatus}
+            </AdminStatus>
+          </dd>
           {person.access.restrictionReason ? (
             <dd className="mt-1 theme-muted">
               restricted{" "}
@@ -1052,8 +1168,12 @@ function PersonDrawer({
         </div>
         <div>
           <dt className="theme-muted">devices / invitations</dt>
-          <dd className="mt-1">
-            {person.staffDevices} staff devices · {person.pendingInvitations} pending
+          <dd className="mt-1 flex flex-wrap items-center gap-x-2">
+            <span>{person.staffDevices} staff devices</span>
+            <span aria-hidden="true">·</span>
+            <AdminStatus tone={person.pendingInvitations > 0 ? "attention" : "neutral"}>
+              {person.pendingInvitations} pending
+            </AdminStatus>
           </dd>
         </div>
       </dl>
@@ -1098,9 +1218,14 @@ function PersonDrawer({
             >
               {ticket.eventTitle} · {ticket.holderName}
             </Link>
-            <p className="mt-1 font-mono text-micro theme-muted">
-              {ticket.status} · order {ticket.orderId}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+              <AdminStatus
+                tone={ticket.status === "valid" ? "positive" : adminToneForStatus(ticket.status)}
+              >
+                {ticket.status}
+              </AdminStatus>
+              <span>· order {ticket.orderId}</span>
+            </div>
             <dl className="mt-3 grid gap-2 font-mono text-micro sm:grid-cols-2">
               <div>
                 <dt className="theme-muted">admission</dt>
@@ -1143,8 +1268,12 @@ function PersonDrawer({
               </div>
               <div>
                 <dt className="theme-muted">communication delivery</dt>
-                <dd>
-                  {ticket.communication.total} sent · {ticket.communication.failed} failed
+                <dd className="flex flex-wrap items-center gap-x-2">
+                  <span>{ticket.communication.total} sent</span>
+                  <span aria-hidden="true">·</span>
+                  <AdminStatus tone={ticket.communication.failed > 0 ? "danger" : "positive"}>
+                    {ticket.communication.failed} failed
+                  </AdminStatus>
                 </dd>
               </div>
               <div>

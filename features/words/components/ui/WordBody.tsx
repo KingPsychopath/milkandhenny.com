@@ -194,6 +194,10 @@ function getBaseComponents(
   images: Record<string, ResponsiveImageData> = {},
 ): Components {
   return {
+    // The page title already owns h1. Editorial markdown starts at h2 even
+    // when an imported document contains a top-level heading.
+    h1: ({ children, node: _node, ...props }) => <h2 {...props}>{children}</h2>,
+
     table: ({ children, node, ...props }) => (
       <WordBodyTable {...props} node={node}>
         {children}

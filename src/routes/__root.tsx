@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
 import { LampToggle } from "@/components/LampToggle";
 import { NavigationProgress } from "@/components/NavigationProgress";
@@ -145,7 +145,7 @@ function NotFound() {
       <div className="text-center max-w-md space-y-8">
         <Link
           to="/"
-          className="font-mono text-sm font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+          className="inline-flex min-h-11 items-center font-mono text-sm font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
         >
           {SITE_BRAND}
         </Link>
@@ -214,10 +214,6 @@ function RootError({ error }: ErrorComponentProps) {
 }
 
 function RecoveryNavigation() {
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => setHydrated(true), []);
-
   const goBack = () => {
     if (window.history.length > 1) {
       window.history.back();
@@ -228,12 +224,7 @@ function RecoveryNavigation() {
 
   return (
     <nav aria-label="Page recovery" className="flex flex-wrap items-center justify-center gap-2">
-      <button
-        type="button"
-        disabled={!hydrated}
-        onClick={goBack}
-        className="mh-action mh-action--quiet disabled:opacity-45"
-      >
+      <button type="button" onClick={goBack} className="mh-action mh-action--quiet">
         ← go back
       </button>
       <Link to="/" className="mh-action mh-action--quiet">

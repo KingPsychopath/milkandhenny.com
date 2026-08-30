@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest, setCookie } from "@tanstack/react-start/server";
 import {
   authenticateRequest,
+  getAdminWorkspaceAccess,
   getLocalDevAdminCookieValue,
   handleVerifyRequest,
   isLocalDevelopment,
@@ -28,8 +29,9 @@ interface Credentials {
 }
 
 export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async () => {
+  const request = getRequest();
   const [auth, attendee] = await Promise.all([
-    authenticateRequest(getRequest(), "admin"),
+    getAdminWorkspaceAccess(request),
     getAttendeeSession(),
   ]);
   const namedAdmin = attendee?.personId
@@ -46,16 +48,22 @@ export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async 
       )
     : null;
   return {
-    auth,
+    isAuthed: auth.ok,
+    permissions: auth.ok ? auth.permissions : null,
+    adminKind: auth.ok ? auth.kind : null,
     localDevBypassAvailable: isLocalDevelopment(),
     namedAdminPasskeyRequired: Boolean(namedAdmin && !auth.ok),
     namedAdminHasPasskey: namedAdmin?.has_passkey ?? false,
   };
 });
 
-export const getAdminEditorAccessFn = createServerFn({ method: "GET" }).handler(() =>
-  authenticateRequest(getRequest(), "admin"),
-);
+export const getAdminEditorAccessFn = createServerFn({ method: "GET" }).handler(async () => {
+  const access = await getAdminWorkspaceAccess(getRequest());
+  if (!access.ok) return access;
+  return access.permissions.manageContent
+    ? { ok: true as const }
+    : { ok: false as const, status: 403 as const, error: "Content access required" };
+});
 
 export const getUploadAccessFn = createServerFn({ method: "GET" }).handler(async () => {
   const request = getRequest();

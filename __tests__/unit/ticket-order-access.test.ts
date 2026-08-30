@@ -53,6 +53,14 @@ describe("ticket order access", () => {
     expect(access.tickets).toHaveLength(3);
     expect(access.orderPosition).toBe(3);
   });
+
+  it("uses the rotated public reference as the order-management credential", () => {
+    const rotated = { ...primary, accessReference: "ABCDEFGHJKMNPQRS" };
+    const access = resolveTicketOrderAccess(rotated, [rotated, second], []);
+
+    expect(access.canManageOrder).toBe(true);
+    expect(access.managerTicketId).toBe("ABCDEFGHJKMNPQRS");
+  });
 });
 
 describe("shareable tickets", () => {

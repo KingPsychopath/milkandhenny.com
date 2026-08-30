@@ -22,7 +22,7 @@ function PrivacyPage() {
       <header className="max-w-2xl mx-auto px-6 pt-12 pb-8">
         <Link
           to="/"
-          className="font-mono text-sm font-bold tracking-tighter hover:opacity-70 transition-opacity"
+          className="inline-flex min-h-11 items-center font-mono text-sm font-bold tracking-tighter hover:opacity-70 transition-opacity"
         >
           {SITE_BRAND}
         </Link>
@@ -90,11 +90,11 @@ function PrivacyPage() {
               Issue reports do not include full session replays, keystrokes, or pointer movement.
               They may include a short list of recent product actions, the page and build, basic
               browser and device details, and an exact product artefact needed to investigate an
-              issue, such as a map drawing. If you add a detail after submitting, that text is saved
-              with the same report. Reports expire automatically: client errors after 14 days, site
-              feedback and operational issues after 30 days, and map-result reports after 90 days. A
-              closed report may remain for up to 30 additional days, within a hard limit of 44, 60,
-              or 120 days from the first report.
+              issue, such as a map drawing. Any description you enter is saved with the same report.
+              Reports expire automatically: client errors after 14 days, site feedback and
+              operational issues after 30 days, and map-result reports after 90 days. A closed
+              report may remain for up to 30 additional days, within a hard limit of 44, 60, or 120
+              days from the first report.
             </p>
           </section>
 

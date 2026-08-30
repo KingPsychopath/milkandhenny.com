@@ -10,6 +10,7 @@ import { WORD_TYPES, getWordTypeLabel } from "@/features/words/types";
 import { wordPathForVisibility } from "@/features/words/routes";
 import { resolveWordContentRef } from "@/features/media/storage";
 import type { NoteMeta, NoteVisibility, WordMediaItem, WordType } from "../types";
+import { AdminStatus, adminToneForStatus } from "../../components/AdminStatus";
 
 function featuredButtonClass(isFeatured: boolean): string {
   return `h-full min-h-11 px-3 rounded border font-mono text-xs transition-colors ${
@@ -265,6 +266,10 @@ export function WordEditSection({
     });
   };
 
+  const autosaveTone = adminToneForStatus(autosaveStatusText);
+  const editStatusTone =
+    autosaveTone === "danger" ? "danger" : hasUnsavedChanges ? "attention" : autosaveTone;
+
   return (
     <div className="border theme-border rounded-md p-4 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -278,14 +283,11 @@ export function WordEditSection({
               {selected.slug}
             </Link>
           </h2>
-          <p
-            className="font-mono text-micro theme-faint"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {autosaveStatusText}
-            {hasUnsavedChanges ? " · unsaved changes" : ""}
+          <p className="font-mono text-micro" role="status" aria-live="polite" aria-atomic="true">
+            <AdminStatus tone={editStatusTone}>
+              {autosaveStatusText}
+              {hasUnsavedChanges ? " · unsaved changes" : ""}
+            </AdminStatus>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -443,77 +445,77 @@ export function WordEditSection({
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "## ")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   h2
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("**")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   bold
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("_")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   italic
                 </button>
                 <button
                   type="button"
                   onClick={() => wrapSelection("`")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   icode
                 </button>
                 <button
                   type="button"
                   onClick={insertLinkFromSelection}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   link
                 </button>
                 <button
                   type="button"
                   onClick={insertMediaFromSelection}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   image
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "- ")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   list
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines((i) => `${i + 1}. `)}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   numbered
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "> ")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   quote
                 </button>
                 <button
                   type="button"
                   onClick={() => prefixSelectedLines(() => "- [ ] ")}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   todo
                 </button>
                 <button
                   type="button"
                   onClick={() => insertTemplate("```\ncode\n```", [4, 8])}
-                  className="min-h-10 px-3 rounded border theme-border font-mono text-xs"
+                  className="min-h-11 px-3 rounded border theme-border font-mono text-xs"
                 >
                   code
                 </button>
@@ -580,13 +582,15 @@ export function WordEditSection({
         <div className="sm:hidden sticky bottom-2 z-10">
           <div className="rounded-md border theme-border bg-[var(--background)]/95 backdrop-blur px-3 py-2 flex items-center gap-2">
             <p
-              className="font-mono text-micro theme-faint flex-1 min-w-0 truncate"
+              className="font-mono text-micro flex-1 min-w-0 truncate"
               role="status"
               aria-live="polite"
               aria-atomic="true"
             >
-              {autosaveStatusText}
-              {hasUnsavedChanges ? " · unsaved" : ""}
+              <AdminStatus tone={editStatusTone}>
+                {autosaveStatusText}
+                {hasUnsavedChanges ? " · unsaved" : ""}
+              </AdminStatus>
             </p>
             <button
               type="button"

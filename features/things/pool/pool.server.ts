@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { getRedis } from "@/lib/platform/redis.server";
+import { log } from "@/lib/platform/logger.server";
 import { query } from "@/lib/platform/postgres.server";
 import { remainingMultiplayerRoomTtlSeconds } from "../shared/room-primitives.server";
 import { publishMultiplayerRoomWake } from "../shared/multiplayer-runtime.server";
@@ -9,6 +10,7 @@ import {
   createPoolRoomAndJoin,
   gamePoolCapacity,
   joinPoolRoom,
+  leavePoolRoom,
 } from "./game-adapters.server";
 import { gamePoolAssignmentReceiptKey, gamePoolRoomSecretKey } from "./pool-keys";
 import {
@@ -155,11 +157,16 @@ async function leaveExistingAssignment(
   return roomId ?? null;
 }
 
-async function readReceipt(runId: string, clientId: string) {
+async function readStoredReceipt(runId: string, clientId: string) {
   const redis = getRedis();
-  const receipt = redis
+  return redis
     ? ((await redis.get<AssignmentReceipt>(gamePoolAssignmentReceiptKey(runId, clientId))) ?? null)
     : null;
+}
+
+async function readReceipt(runId: string, clientId: string) {
+  const redis = getRedis();
+  const receipt = await readStoredReceipt(runId, clientId);
   if (!receipt) return null;
   const rows = await query<{ active: boolean }>(
     `select true as active from game_pool_assignments
@@ -233,6 +240,7 @@ export async function assignGamePoolRoom(input: {
     if (!run) throw new Error("This game is not open.");
     const clientId = validClientId(input.clientId);
     const name = validName(input.name);
+    const previousReceipt = input.moveExisting ? await readStoredReceipt(run.id, clientId) : null;
     const receipt = input.moveExisting ? null : await readReceipt(run.id, clientId);
     if (receipt) return receipt.assignment;
 
@@ -400,6 +408,20 @@ export async function assignGamePoolRoom(input: {
       }
       throw new Error("That room is no longer available.");
     });
+    if (previousReceipt && previousReceipt.assignment.roomId !== assignment.roomId) {
+      await leavePoolRoom(previousReceipt.assignment).catch((error) => {
+        log.error(
+          "things.game-pool",
+          "Moved player could not be removed from the previous game room",
+          {
+            runId: run.id,
+            roomId: previousReceipt.assignment.roomId,
+            playerId: previousReceipt.assignment.playerId,
+          },
+          error,
+        );
+      });
+    }
     await clearAssignmentReceipts(staleReceipts);
     await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
     failed = false;
@@ -415,6 +437,8 @@ export async function releaseGamePoolAssignment(input: { token: string; clientId
   const runId =
     entrance?.run?.id ?? (await findGamePoolRunForClient({ token: input.token, clientId }));
   if (!runId) return { ok: true as const };
+  const receipt = await readStoredReceipt(runId, clientId);
+  if (receipt) await leavePoolRoom(receipt.assignment);
   await withGamePoolAllocation(runId, async (client) => {
     await leaveExistingAssignment(client, runId, clientId);
   });

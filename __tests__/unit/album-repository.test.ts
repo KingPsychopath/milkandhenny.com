@@ -31,8 +31,10 @@ describe("album manifest parsing", () => {
 
   it.each([
     ["wrong object key", { slug: "another-night" }],
+    ["rollover date", { date: "2026-02-31" }],
     ["missing dominant colour", { photos: [{ ...photo, placeholder: {} }] }],
     ["duplicate photo IDs", { photos: [photo, photo] }],
+    ["storage-unsafe photo ID", { cover: "photo..1", photos: [{ ...photo, id: "photo..1" }] }],
     ["missing cover photo", { cover: "absent" }],
     ["empty published album", { cover: "", photos: [] }],
   ])("rejects %s", (_label, override) => {

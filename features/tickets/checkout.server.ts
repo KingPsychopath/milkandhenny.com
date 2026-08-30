@@ -16,6 +16,7 @@ import {
   refundPayment,
   retrievePaymentBalance,
   retrieveSession,
+  type RefundResult,
 } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
 import { formatMoney, ticketTypeSalesState, type EventRecord } from "@/features/events/types";
@@ -35,7 +36,7 @@ import { issueTickets, type TicketOpResult } from "./tickets.server";
 import { sendRefundEmail, sendTicketEmail } from "./email.server";
 import { getCheckoutMinimumMinor, isCheckoutTotalSupported } from "./payment-limits";
 import { assessEmailAddress, normaliseEmail } from "@/lib/shared/email-address";
-import type { TicketRecord } from "./types";
+import { MAX_TICKETS_PER_ORDER, type TicketRecord } from "./types";
 import {
   cancelAwaitingOrderExchanges,
   exchangeRefundTotalForPayment,
@@ -90,9 +91,9 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
     };
   }
 
-  const quantity = Math.round(input.quantity);
-  if (!Number.isFinite(quantity) || quantity < 1) {
-    return { ok: false, status: 400, error: "Choose at least one ticket" };
+  const quantity = input.quantity;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
+    return { ok: false, status: 400, error: `Choose between 1 and ${MAX_TICKETS_PER_ORDER}` };
   }
 
   const event = await getEvent(input.eventSlug);
@@ -1517,12 +1518,27 @@ export async function refundOrder(input: {
     ...exchangePayments,
     { exchangeId: "purchase", paymentIntentId: anchor.payment_ref },
   ];
-  const refunds = [];
+  const refunds: Array<Extract<RefundResult, { ok: true }>> = [];
+  let refundStarted = false;
+  const failRefund = async (error: string): Promise<SelfRefundResult> => {
+    if (refundStarted) {
+      const refundReference =
+        refunds.map((refund) => refund.refundId).join(":") || `partial-refund:${anchor.order_id}`;
+      const pending = await markTicketOrderRefundPending(anchor.order_id, refundReference);
+      log.error("checkout.refund", "Order refund partly completed", {
+        orderId: anchor.order_id,
+        count: pending.length,
+        reason: input.reason,
+      });
+    }
+    return { ok: false, status: 502, error };
+  };
   for (const payment of payments) {
     const balance = await retrievePaymentBalance(payment.paymentIntentId);
     if (!balance) {
-      return { ok: false, status: 502, error: "Could not verify the refundable balance" };
+      return failRefund("Could not verify the refundable balance");
     }
+    refundStarted ||= balance.amountRefundedMinor > 0;
     if (balance.remainingMinor === 0) continue;
     const refund = await refundPayment({
       paymentIntentId: payment.paymentIntentId,
@@ -1530,11 +1546,12 @@ export async function refundOrder(input: {
       reference: `order:${anchor.order_id}:${payment.exchangeId}`,
       metadata: { orderId: anchor.order_id, refundPurpose: "order_refund" },
     });
-    if (!refund.ok) return { ok: false, status: 502, error: refund.error };
+    if (!refund.ok) return failRefund(refund.error);
     if (refund.status === "failed" || refund.status === "canceled") {
-      return { ok: false, status: 502, error: "Stripe could not process the refund" };
+      return failRefund("Stripe could not process the refund");
     }
     refunds.push(refund);
+    refundStarted = true;
   }
 
   const refundReference =

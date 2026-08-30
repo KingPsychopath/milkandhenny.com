@@ -63,6 +63,7 @@ type WordRenderData = {
 };
 
 const cache = new Map<string, Promise<WordRenderData>>();
+const MAX_CACHE_ENTRIES = 256;
 
 async function getWordRenderData(
   slug: string,
@@ -77,6 +78,10 @@ async function getWordRenderData(
     headings: extractHeadings(markdown),
     albums,
   }));
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
   cache.set(key, value);
   return value;
 }

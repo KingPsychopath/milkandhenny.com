@@ -77,14 +77,22 @@ export function isLocalDevelopment(): boolean {
   return process.env.NODE_ENV === "development";
 }
 
-// This value only exists in a local development server process. A random value
-// keeps the convenience cookie scoped to the process that issued it.
-export const LOCAL_DEV_ADMIN_COOKIE_VALUE = isLocalDevelopment()
-  ? randomBytes(32).toString("hex")
-  : null;
+const LOCAL_DEV_ADMIN_COOKIE_VALUE_KEY = Symbol.for(
+  "milkandhenny.auth.local-dev-admin-cookie-value",
+);
 
 export function getLocalDevAdminCookieValue(): string | null {
-  return LOCAL_DEV_ADMIN_COOKIE_VALUE;
+  if (!isLocalDevelopment()) return null;
+
+  const existing: unknown = Reflect.get(globalThis, LOCAL_DEV_ADMIN_COOKIE_VALUE_KEY);
+  if (typeof existing === "string" && existing.length === 64) return existing;
+
+  // Vite can evaluate the same server module in separate SSR/server-function
+  // graphs during development. Process-global state keeps the httpOnly cookie
+  // valid across those graphs while still rotating it on every server restart.
+  const value = randomBytes(32).toString("hex");
+  Reflect.set(globalThis, LOCAL_DEV_ADMIN_COOKIE_VALUE_KEY, value);
+  return value;
 }
 
 export function isLocalDevAdminRequest(request: Request): boolean {

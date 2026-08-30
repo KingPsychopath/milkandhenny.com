@@ -15,6 +15,25 @@ export type EventCancellationResult = {
   holderEmailsQueued: number;
 };
 
+/** Whether this update begins cancellation rather than editing one already completed. */
+export async function eventCancellationPending(
+  eventSlug: string,
+  requestedStatus: unknown,
+): Promise<boolean> {
+  if (requestedStatus !== "cancelled") return false;
+  const rows = await query<{ status: string; completed: boolean }>(
+    `select event.status,
+            exists (
+              select 1 from attendee_operations_audit_events audit
+               where audit.event_slug = event.slug
+                 and audit.action = 'event.cancellation.completed'
+            ) as completed
+       from events event where event.slug = $1`,
+    [eventSlug],
+  );
+  return Boolean(rows[0] && (rows[0].status !== "cancelled" || !rows[0].completed));
+}
+
 export async function runEventCancellation(input: {
   eventSlug: string;
   actorId: string;
@@ -60,6 +79,44 @@ export async function runEventCancellation(input: {
   const event = eventRows[0];
   if (!event || event.status !== "cancelled")
     throw new Error("The event must be cancelled before its cancellation workflow runs");
+
+  await transaction(async (client) => {
+    const assignments = await client.query<{ action_link_id: string | null }>(
+      `update ticket_assignments
+          set status = 'cancelled',cancelled_at = now(),updated_at = now()
+        where event_slug = $1 and status = 'pending'
+        returning action_link_id`,
+      [input.eventSlug],
+    );
+    const transfers = await client.query<{ action_link_id: string | null }>(
+      `update ticket_transfers
+          set status = 'invalidated',invalidated_at = now(),updated_at = now(),
+              invalidation_reason = 'event-cancelled'
+        where event_slug = $1 and status = 'pending'
+        returning action_link_id`,
+      [input.eventSlug],
+    );
+    const returns = await client.query<{ action_link_id: string | null }>(
+      `update ticket_return_requests
+          set status = 'cancelled',resolved_at = now(),updated_at = now(),
+              resolution_reason = 'event-cancelled'
+        where event_slug = $1 and status = 'awaiting-consent'
+        returning action_link_id`,
+      [input.eventSlug],
+    );
+    const linkIds = [...assignments.rows, ...transfers.rows, ...returns.rows]
+      .map(({ action_link_id }) => action_link_id)
+      .filter((id): id is string => Boolean(id));
+    if (linkIds.length > 0) {
+      await client.query(
+        `update attendee_action_links
+            set revoked_at = coalesce(revoked_at, now()),
+                revoke_reason = coalesce(revoke_reason, 'event-cancelled')
+          where id = any($1::text[]) and consumed_at is null`,
+        [linkIds],
+      );
+    }
+  });
 
   let refundedOrders = 0;
   let failedOrders = 0;

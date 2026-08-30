@@ -10,9 +10,14 @@ const PREPARE_SCROLL_RESTORATION =
 
 export const Route = createFileRoute("/pitch-night")({
   loader: async () => {
-    const events = await getEventsIndexFn();
-    const event = events.upcoming.find((candidate) => candidate.marketingPath === "/pitch-night");
-    return { ticketHref: event ? `/events/${encodeURIComponent(event.slug)}` : "/events" };
+    try {
+      const events = await getEventsIndexFn();
+      const event = events.upcoming.find((candidate) => candidate.marketingPath === "/pitch-night");
+      return { ticketHref: event ? `/events/${encodeURIComponent(event.slug)}` : "/events" };
+    } catch (error) {
+      console.error("[pitch-night] Event lookup failed; using the events fallback link", error);
+      return { ticketHref: "/events" };
+    }
   },
   component: PitchNightRoute,
   head: () => ({

@@ -7,7 +7,7 @@ import { query } from "@/lib/platform/postgres.server";
 import { log } from "@/lib/platform/logger.server";
 import { getCookie as getRequestCookie } from "@/lib/http/cookies";
 import { getEvent } from "@/features/events/store.server";
-import { getTicket } from "@/features/tickets/store.server";
+import { getTicketByCurrentReference, getTickets } from "@/features/tickets/store.server";
 import { participantForTicket } from "./store.server";
 import { ATTENDEE_SESSION_COOKIE_NAME } from "./session-cookie";
 
@@ -31,6 +31,7 @@ const ROTATE_LOCKED_SESSION_SCRIPT =
 
 export type AttendeeTicketAccess = {
   ticketId: string;
+  authorityVersion: number;
   eventSlug: string;
   eventId: string;
   participantId: string;
@@ -696,10 +697,10 @@ export async function openAttendeeTicket(input: {
   eventSlug: string;
   mode: AttendeeTicketAccess["mode"];
 }): Promise<{ session: AttendeeSession; ticket: AttendeeTicketAccess } | null> {
-  const ticket = await getTicket(input.ticketId);
+  const ticket = await getTicketByCurrentReference(input.ticketId);
   if (!ticket || ticket.eventSlug !== input.eventSlug || ticket.status !== "valid") return null;
   const event = await getEvent(input.eventSlug);
-  if (!event?.eventId) return null;
+  if (!event?.eventId || event.status === "cancelled") return null;
   const eventId = event.eventId;
   const participant = await participantForTicket(ticket.id);
   if (!participant || participant.eventSlug !== input.eventSlug) return null;
@@ -708,9 +709,10 @@ export async function openAttendeeTicket(input: {
     const current = await readById(initial.id);
     if (!current) throw new Error("Attendee session changed; try again");
     const session = current.session;
-    const existing = session.tickets.find((entry) => entry.ticketId === input.ticketId);
+    const existing = session.tickets.find((entry) => entry.ticketId === ticket.id);
     const access: AttendeeTicketAccess = {
       ticketId: ticket.id,
+      authorityVersion: ticket.authorityVersion ?? 0,
       eventSlug: input.eventSlug,
       eventId,
       participantId: participant.id,
@@ -749,7 +751,10 @@ export async function activeParticipantForEvent(eventSlug: string): Promise<stri
   const [session, event] = await Promise.all([getAttendeeSession(), getEvent(eventSlug)]);
   if (!session || !event?.eventId) return undefined;
   const explicitlyActive = session.activeParticipantByEventId[event.eventId];
-  if (explicitlyActive) return explicitlyActive;
+  if (explicitlyActive) {
+    const opened = await validOpenedTickets(session, eventSlug);
+    if (opened.some((entry) => entry.participantId === explicitlyActive)) return explicitlyActive;
+  }
   if (!session.personId) return undefined;
   const linked = await query<{ id: string }>(
     `select id from event_participants
@@ -765,9 +770,9 @@ export async function ticketPointSelection(ticketId: string): Promise<{
   active: boolean;
   eventHasActive: boolean;
 }> {
-  const ticket = await getTicket(ticketId);
+  const ticket = await getTicketByCurrentReference(ticketId);
   if (!ticket) return { mode: "view-only", active: false, eventHasActive: false };
-  const participant = await participantForTicket(ticketId);
+  const participant = await participantForTicket(ticket.id);
   if (!participant) return { mode: "view-only", active: false, eventHasActive: false };
   const activeParticipantId = await activeParticipantForEvent(ticket.eventSlug);
   const active = activeParticipantId === participant.id;
@@ -780,7 +785,40 @@ export async function ticketPointSelection(ticketId: string): Promise<{
 
 export async function openedTicketsForEvent(eventSlug: string): Promise<AttendeeTicketAccess[]> {
   const session = await getAttendeeSession();
-  return session?.tickets.filter((ticket) => ticket.eventSlug === eventSlug) ?? [];
+  return session ? validOpenedTickets(session, eventSlug) : [];
+}
+
+export async function openedTicketForReference(
+  ticketReference: string,
+  mode?: AttendeeTicketAccess["mode"],
+): Promise<AttendeeTicketAccess | null> {
+  const ticket = await getTicketByCurrentReference(ticketReference);
+  if (!ticket) return null;
+  const opened = await openedTicketsForEvent(ticket.eventSlug);
+  return (
+    opened.find((entry) => entry.ticketId === ticket.id && (!mode || entry.mode === mode)) ?? null
+  );
+}
+
+async function validOpenedTickets(
+  session: AttendeeSession,
+  eventSlug: string,
+): Promise<AttendeeTicketAccess[]> {
+  const event = await getEvent(eventSlug);
+  if (!event || event.status === "cancelled") return [];
+  const opened = session.tickets.filter((ticket) => ticket.eventSlug === eventSlug);
+  if (opened.length === 0) return [];
+  const current = new Map(
+    (await getTickets(opened.map(({ ticketId }) => ticketId))).map((ticket) => [ticket.id, ticket]),
+  );
+  return opened.filter((access) => {
+    const ticket = current.get(access.ticketId);
+    return (
+      ticket?.status === "valid" &&
+      typeof access.authorityVersion === "number" &&
+      access.authorityVersion === (ticket.authorityVersion ?? 0)
+    );
+  });
 }
 
 export async function openedParticipantForEvent(
@@ -788,7 +826,12 @@ export async function openedParticipantForEvent(
   ticketId?: string,
 ): Promise<string | undefined> {
   const tickets = await openedTicketsForEvent(eventSlug);
-  if (ticketId) return tickets.find((ticket) => ticket.ticketId === ticketId)?.participantId;
+  if (ticketId) {
+    const ticket = await getTicketByCurrentReference(ticketId);
+    return ticket
+      ? tickets.find((entry) => entry.ticketId === ticket.id)?.participantId
+      : undefined;
+  }
   return tickets.length === 1 ? tickets[0]?.participantId : undefined;
 }
 

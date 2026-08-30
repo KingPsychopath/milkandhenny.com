@@ -9,6 +9,7 @@ import { copyText } from "@/lib/client/share";
 import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { AlbumPhotoGrid, type PhotoDraft } from "./AlbumPhotoGrid";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type StepUpResult =
   | { ok: true; token: string }
@@ -572,8 +573,26 @@ export function AlbumManagerPanel({
       </div>
 
       <div aria-live="polite" className="min-h-5 font-mono text-xs">
-        {error ? <p className="text-[var(--prose-hashtag)]">{error}</p> : null}
-        {!error && status ? <p className="theme-subtle">{status}</p> : null}
+        {error ? (
+          <p role="alert">
+            <AdminStatus tone="danger">{error}</AdminStatus>
+          </p>
+        ) : null}
+        {!error && status ? (
+          <p role="status">
+            <AdminStatus
+              tone={
+                adminToneForStatus(status) === "neutral"
+                  ? busy
+                    ? "attention"
+                    : "positive"
+                  : adminToneForStatus(status)
+              }
+            >
+              {status}
+            </AdminStatus>
+          </p>
+        ) : null}
       </div>
 
       {createOpen ? (
@@ -660,8 +679,11 @@ export function AlbumManagerPanel({
                 className={`min-h-14 w-full rounded-md border px-3 py-2 text-left font-mono text-xs ${selectedSlug === album.slug ? "theme-border-strong" : "theme-border"}`}
               >
                 <span className="block truncate">{album.title}</span>
-                <span className="mt-1 block truncate theme-subtle">
-                  {album.photos.length} photos · {album.status ?? "published"}
+                <span className="mt-1 flex items-center gap-2 truncate theme-subtle">
+                  <span>{album.photos.length} photos ·</span>
+                  <AdminStatus tone={adminToneForStatus(album.status ?? "published")}>
+                    {album.status ?? "published"}
+                  </AdminStatus>
                 </span>
               </button>
             ))}
@@ -678,6 +700,11 @@ export function AlbumManagerPanel({
                 <div>
                   <p className="font-mono text-micro theme-subtle">/pics/{selectedAlbum.slug}</p>
                   <h3 className="font-serif text-xl">album details</h3>
+                  <p className="mt-1 font-mono text-micro">
+                    <AdminStatus tone={adminToneForStatus(selectedAlbum.status ?? "published")}>
+                      {selectedAlbum.status ?? "published"}
+                    </AdminStatus>
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a
@@ -808,7 +835,11 @@ export function AlbumManagerPanel({
                       style={{ width: `${uploadProgress}%` }}
                     />
                   </div>
-                  <p className="mt-2 font-mono text-micro theme-subtle">{uploadProgress}%</p>
+                  <p className="mt-2 font-mono text-micro">
+                    <AdminStatus tone={uploadProgress >= 100 ? "positive" : "attention"}>
+                      {uploadProgress}% {uploadProgress >= 100 ? "complete" : "processing"}
+                    </AdminStatus>
+                  </p>
                 </div>
               ) : null}
             </div>

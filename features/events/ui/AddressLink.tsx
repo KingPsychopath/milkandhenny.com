@@ -55,7 +55,7 @@ export function AddressLink({
           href={mapSearchUrl(effective, query)}
           target="_blank"
           rel="noreferrer noopener"
-          className="underline decoration-dotted underline-offset-2 hover:opacity-70 transition-opacity"
+          className="inline-flex min-h-11 items-center underline decoration-dotted underline-offset-2 hover:opacity-70 transition-opacity"
         >
           {label}
         </a>
@@ -64,7 +64,7 @@ export function AddressLink({
             type="button"
             onClick={() => setSwitching((open) => !open)}
             aria-expanded={switching}
-            className="shrink-0 font-mono text-micro theme-faint hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 shrink-0 items-center font-mono text-micro theme-faint hover:text-foreground transition-colors"
           >
             {MAP_PROVIDER_LABELS[effective].split(" ")[0].toLowerCase()} ↓
           </button>
@@ -83,7 +83,7 @@ export function AddressLink({
                 setSwitching(false);
               }}
               aria-pressed={effective === option}
-              className={`underline underline-offset-2 transition-opacity hover:opacity-70 ${
+              className={`inline-flex min-h-11 items-center underline underline-offset-2 transition-opacity hover:opacity-70 ${
                 effective === option ? "text-foreground" : ""
               }`}
             >

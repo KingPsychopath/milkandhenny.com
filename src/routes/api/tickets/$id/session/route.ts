@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { openAttendeeTicket, ticketPointSelection } from "@/features/event-scoring/session.server";
-import { getTicket } from "@/features/tickets/store.server";
+import { getTicketByCurrentReference } from "@/features/tickets/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request, ticketId: string) {
@@ -19,7 +19,7 @@ async function handleGET(request: Request, ticketId: string) {
 
 async function handlePOST(request: Request, ticketId: string) {
   try {
-    const ticket = await getTicket(ticketId);
+    const ticket = await getTicketByCurrentReference(ticketId);
     if (!ticket) return Response.json({ error: "Ticket not found" }, { status: 404 });
     const body: unknown = await request.json().catch(() => null);
     const record =

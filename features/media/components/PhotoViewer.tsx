@@ -39,6 +39,7 @@ export function PhotoViewer({
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [downloadProgress, setDownloadProgress] = useState<SingleFileDownloadProgress | null>(null);
   const savingRef = useRef(false);
 
@@ -73,7 +74,8 @@ export function PhotoViewer({
     if (!isTouchDevice) return;
 
     const MAX_SHOWS = 3;
-    const count = parseInt(getStored("swipeHintCount") || "0", 10);
+    const storedCount = Number.parseInt(getStored("swipeHintCount") || "0", 10);
+    const count = Number.isFinite(storedCount) ? storedCount : 0;
     if (count >= MAX_SHOWS) return;
 
     setShowHint(true);
@@ -133,6 +135,7 @@ export function PhotoViewer({
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
+    setDownloadError("");
     setDownloadProgress(null);
     try {
       await downloadFile({
@@ -143,6 +146,7 @@ export function PhotoViewer({
       });
     } catch (err) {
       console.error("Download failed:", err);
+      setDownloadError("Download failed. Check your connection and try again.");
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -206,43 +210,51 @@ export function PhotoViewer({
       </div>
 
       {/* Navigation + download */}
-      <div className="flex items-center justify-between w-full max-w-md font-mono text-xs theme-muted">
-        <div className="flex items-center gap-4">
+      <div className="flex w-full max-w-md flex-wrap items-center justify-between gap-x-4 font-mono text-xs theme-muted">
+        <div className="flex items-center gap-1">
           {prevPhotoId ? (
             <Link
               to="/pics/$album/$photo"
               params={{ album: albumSlug, photo: prevPhotoId }}
-              className="hover:text-foreground transition-colors"
+              className="inline-flex min-h-11 items-center px-2 hover:text-foreground transition-colors"
             >
               ← prev
             </Link>
           ) : (
-            <span className="theme-faint">← prev</span>
+            <span className="inline-flex min-h-11 items-center px-2 theme-faint">← prev</span>
           )}
           {nextPhotoId ? (
             <Link
               to="/pics/$album/$photo"
               params={{ album: albumSlug, photo: nextPhotoId }}
-              className="hover:text-foreground transition-colors"
+              className="inline-flex min-h-11 items-center px-2 hover:text-foreground transition-colors"
             >
               next →
             </Link>
           ) : (
-            <span className="theme-faint">next →</span>
+            <span className="inline-flex min-h-11 items-center px-2 theme-faint">next →</span>
           )}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1">
           {actions}
           <button
             type="button"
             onClick={handleDownload}
             disabled={saving}
-            className="hover:text-foreground transition-colors disabled:opacity-50"
+            className="inline-flex min-h-11 items-center px-2 hover:text-foreground transition-colors disabled:opacity-50"
           >
             {downloadLabel}
           </button>
         </div>
       </div>
+      {downloadError ? (
+        <p
+          role="alert"
+          className="w-full max-w-md font-mono text-micro text-[var(--prose-hashtag)]"
+        >
+          {downloadError}
+        </p>
+      ) : null}
     </div>
   );
 }

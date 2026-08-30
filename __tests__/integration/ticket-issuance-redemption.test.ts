@@ -39,9 +39,20 @@ import {
   updateTicketHolder,
 } from "@/features/tickets/store.server";
 import { participantForTicket } from "@/features/event-scoring/store.server";
-import { buildTicketQrPayload, hashTicketId, signTicketId } from "@/features/tickets/qr.server";
+import {
+  buildTicketQrPayload,
+  generateTicketId,
+  hashTicketId,
+  signTicketId,
+} from "@/features/tickets/qr.server";
 import { refundOrder } from "@/features/tickets/checkout.server";
+import {
+  checkpointScan,
+  undoCheckpointUse,
+  upsertCheckpoint,
+} from "@/features/tickets/checkpoints.server";
 import type { EventRecord } from "@/features/events/types";
+import { query } from "@/lib/platform/postgres.server";
 
 const SLUG = "apartment-life";
 
@@ -190,6 +201,48 @@ describeWithDatabase("tickets (postgres)", () => {
           })
         ).ok,
       ).toBe(false);
+    });
+
+    it("rejects a fractional quantity instead of silently issuing a rounded count", async () => {
+      await seedEvent();
+
+      const result = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Alice",
+        quantity: 1.5,
+        kind: "free",
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        status: 400,
+        error: "Choose between 1 and 10",
+      });
+    });
+
+    it("accepts ten tickets but rejects eleven before issuance", async () => {
+      await seedEvent(20, 20);
+
+      expect(
+        await issueTickets({
+          eventSlug: SLUG,
+          ticketTypeId: "entry",
+          holderName: "Alice",
+          quantity: 11,
+          kind: "free",
+        }),
+      ).toEqual({ ok: false, status: 400, error: "Choose between 1 and 10" });
+
+      const accepted = await issueTickets({
+        eventSlug: SLUG,
+        ticketTypeId: "entry",
+        holderName: "Alice",
+        quantity: 10,
+        kind: "free",
+      });
+      expect(accepted.ok).toBe(true);
+      if (accepted.ok) expect(accepted.value.tickets).toHaveLength(10);
     });
 
     it("enforces the per-person limit", async () => {
@@ -455,6 +508,62 @@ describeWithDatabase("tickets (postgres)", () => {
       expect(outcome.result).toBe("invalid");
     });
 
+    it("uses only the rotated public reference at every door boundary", async () => {
+      await seedEvent();
+      const ticket = await issueOne();
+      const publicId = generateTicketId();
+      await query(`update tickets set access_reference = $2 where id = $1`, [ticket.id, publicId]);
+
+      const summaryTicket = (await getEventTickets(SLUG)).tickets.find(
+        ({ id }) => id === ticket.id,
+      );
+      expect(summaryTicket).toMatchObject({ id: ticket.id, publicId });
+      expect((await buildDoorManifest(SLUG)).hashes).toContain(hashTicketId(publicId));
+      expect((await buildDoorManifest(SLUG)).hashes).not.toContain(hashTicketId(ticket.id));
+
+      expect(
+        (await redeemTicket({ scanned: buildTicketQrPayload(ticket.id), eventSlug: SLUG })).result,
+      ).toBe("invalid");
+      const admitted = await redeemTicket({
+        scanned: buildTicketQrPayload(publicId),
+        eventSlug: SLUG,
+      });
+      expect(admitted).toMatchObject({
+        result: "admitted",
+        ticket: { id: ticket.id, holderName: ticket.holderName },
+      });
+    });
+
+    it("undoes checkpoint use through a rotated public reference", async () => {
+      await seedEvent();
+      const checkpoint = await upsertCheckpoint({
+        eventSlug: SLUG,
+        id: "welcome-drink",
+        name: "Welcome drink",
+        defaultAllowance: 1,
+        allowances: {},
+      });
+      expect(checkpoint.ok).toBe(true);
+      const ticket = await issueOne();
+      const publicId = generateTicketId();
+      await query(`update tickets set access_reference = $2 where id = $1`, [ticket.id, publicId]);
+
+      expect(
+        await checkpointScan({
+          scanned: buildTicketQrPayload(publicId),
+          eventSlug: SLUG,
+          checkpointId: "welcome-drink",
+        }),
+      ).toMatchObject({ result: "consumed", ticket: { ticketId: publicId, used: 1 } });
+      await expect(
+        undoCheckpointUse({
+          eventSlug: SLUG,
+          checkpointId: "welcome-drink",
+          ticketId: publicId,
+        }),
+      ).resolves.toEqual({ ok: true, value: { used: 0 } });
+    });
+
     it("rejects a ticket issued for a different event", async () => {
       await seedEvent();
       const ticket = await issueOne();
@@ -488,7 +597,9 @@ describeWithDatabase("tickets (postgres)", () => {
       const payload = buildTicketQrPayload(ticket.id);
 
       expect((await redeemTicket({ scanned: payload, eventSlug: SLUG })).result).toBe("admitted");
+      expect((await participantForTicket(ticket.id))?.checkedInAt).toBeDefined();
       await unredeemTicket(ticket.id);
+      expect((await participantForTicket(ticket.id))?.checkedInAt).toBeUndefined();
       expect((await redeemTicket({ scanned: payload, eventSlug: SLUG })).result).toBe("admitted");
     });
   });
@@ -535,6 +646,9 @@ describeWithDatabase("tickets (postgres)", () => {
       expect(summary.refunded).toBe(1);
       expect(summary.grossMinor).toBe(4500);
       expect(summary.netMinor).toBe(3000);
+      expect(summary.tickets.find((ticket) => ticket.status === "refunded")?.refundedAt).toEqual(
+        expect.any(String),
+      );
     });
 
     it("voids two when two tickets' worth is refunded", async () => {

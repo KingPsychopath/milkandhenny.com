@@ -174,7 +174,7 @@ export function ActiveRoomNotice() {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((current) => !current)}
-          className="mt-3 font-mono text-xs theme-muted hover:text-foreground"
+          className="mt-3 inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:text-foreground"
         >
           {expanded ? "show fewer rooms" : `show ${available.length - MAX_VISIBLE_ROOMS} more`}
         </button>

@@ -2,6 +2,7 @@
 
 import { AppSelect } from "@/components/AppSelect";
 import type { ShareLink, ShareStateFilter } from "../types";
+import { AdminStatus } from "../../components/AdminStatus";
 
 function isExpiredShare(link: ShareLink): boolean {
   return new Date(link.expiresAt).getTime() <= Date.now();
@@ -68,7 +69,7 @@ export function WordShareSection({
             key={state}
             type="button"
             onClick={() => onShareStateFilterChange(state)}
-            className={`min-h-10 font-mono text-xs px-3 py-1 rounded border transition-colors ${
+            className={`min-h-11 font-mono text-xs px-3 py-1 rounded border transition-colors ${
               shareStateFilter === state
                 ? "border-[var(--foreground)] text-[var(--foreground)]"
                 : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -95,14 +96,18 @@ export function WordShareSection({
                 <p className="font-mono text-micro theme-muted mt-1">
                   expires{" "}
                   {new Date(link.expiresAt).toLocaleString("en-GB", { timeZone: "Europe/London" })}{" "}
-                  · {statusLabel} · {link.pinRequired ? "pin on" : "pin off"}
+                  ·{" "}
+                  <AdminStatus tone={statusLabel === "active" ? "positive" : "neutral"}>
+                    {statusLabel}
+                  </AdminStatus>{" "}
+                  · {link.pinRequired ? "pin on" : "pin off"}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2 font-mono text-xs">
                   {!isRevoked ? (
                     <button
                       type="button"
                       onClick={() => onCopyShareLink(link)}
-                      className="inline-flex min-h-10 items-center px-1 underline"
+                      className="inline-flex min-h-11 items-center px-1 underline"
                     >
                       copy link
                     </button>
@@ -111,7 +116,7 @@ export function WordShareSection({
                     <button
                       type="button"
                       onClick={() => onRotateShare(link)}
-                      className="inline-flex min-h-10 items-center px-1 underline"
+                      className="inline-flex min-h-11 items-center px-1 underline"
                     >
                       {isExpired ? "reissue + extend" : "reissue url"}
                     </button>
@@ -120,7 +125,7 @@ export function WordShareSection({
                     <button
                       type="button"
                       onClick={() => onExtendShare(link)}
-                      className="inline-flex min-h-10 items-center px-1 underline"
+                      className="inline-flex min-h-11 items-center px-1 underline"
                     >
                       extend
                     </button>
@@ -129,7 +134,7 @@ export function WordShareSection({
                     type="button"
                     onClick={() => onToggleSharePin(link)}
                     disabled={!canManagePin}
-                    className="inline-flex min-h-10 items-center px-1 underline disabled:no-underline disabled:opacity-50"
+                    className="inline-flex min-h-11 items-center px-1 underline disabled:no-underline disabled:opacity-50"
                     title={
                       canManagePin ? undefined : "PIN can only be changed while the link is active."
                     }
@@ -140,7 +145,7 @@ export function WordShareSection({
                     <button
                       type="button"
                       onClick={() => onRevokeShare(link)}
-                      className="inline-flex min-h-10 items-center px-1 text-[var(--prose-hashtag)]"
+                      className="inline-flex min-h-11 items-center px-1 text-[var(--prose-hashtag)]"
                     >
                       revoke
                     </button>

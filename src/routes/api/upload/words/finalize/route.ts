@@ -18,6 +18,7 @@ import {
 import {
   MAX_WORD_MEDIA_FILE_BYTES,
   MAX_WORD_MEDIA_FILES,
+  getWordUploadFilenameCandidates,
   incomingMediaPrefixForTarget,
   isRawWordUpload,
   mediaPathForTarget,
@@ -27,6 +28,7 @@ import {
 } from "@/features/words/upload";
 import { getFileKind } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
+import { FILE_KINDS } from "@/features/media/file-kinds";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 import { getWordMediaStorageScope } from "@/features/words/media-storage.server";
 import { wordImageVariantKey } from "@/features/words/image";
@@ -121,7 +123,9 @@ async function handlePOST(request: Request) {
   const storageScope = await getWordMediaStorageScope(target);
   const files = body.files;
   const skipped = Array.isArray(body.skipped)
-    ? body.skipped.filter((s) => typeof s === "string")
+    ? body.skipped
+        .filter((value): value is string => typeof value === "string" && value.length <= 255)
+        .slice(0, MAX_WORD_MEDIA_FILES)
     : [];
 
   if (!Array.isArray(files) || files.length > MAX_WORD_MEDIA_FILES) {
@@ -131,8 +135,14 @@ async function handlePOST(request: Request) {
     return Response.json({ uploaded: [], skipped });
   }
 
+  const destinationNames = new Set<string>();
   for (const file of files) {
-    if (!file || typeof file.original !== "string" || !file.original.trim()) {
+    if (
+      !file ||
+      typeof file.original !== "string" ||
+      !file.original.trim() ||
+      file.original.length > 255
+    ) {
       return Response.json({ error: "Each file must include original" }, { status: 400 });
     }
     if (
@@ -142,6 +152,20 @@ async function handlePOST(request: Request) {
     ) {
       return Response.json({ error: "Each file must include a safe filename" }, { status: 400 });
     }
+    const filenameCandidates = getWordUploadFilenameCandidates(file.original);
+    if (!filenameCandidates.includes(file.filename)) {
+      return Response.json(
+        { error: `Destination filename did not match: ${file.original}` },
+        { status: 400 },
+      );
+    }
+    if (filenameCandidates.some((candidate) => destinationNames.has(candidate))) {
+      return Response.json(
+        { error: `Duplicate destination filename: ${file.filename}` },
+        { status: 400 },
+      );
+    }
+    for (const candidate of filenameCandidates) destinationNames.add(candidate);
     if (
       !file.uploadKey ||
       typeof file.uploadKey !== "string" ||
@@ -154,6 +178,9 @@ async function handlePOST(request: Request) {
     }
     if (file.size > MAX_WORD_MEDIA_FILE_BYTES) {
       return Response.json({ error: `${file.original} is larger than 100 MB` }, { status: 400 });
+    }
+    if (!FILE_KINDS.includes(file.kind)) {
+      return Response.json({ error: `Invalid file kind: ${file.original}` }, { status: 400 });
     }
   }
 

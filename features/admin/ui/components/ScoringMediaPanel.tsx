@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { ScoringAction, ScoringData } from "./event-scoring-types";
+import { AdminStatus } from "./AdminStatus";
 
 export function ScoringMediaPanel({
   data,
@@ -27,14 +28,16 @@ export function ScoringMediaPanel({
         points.
       </p>
       {data.mediaDrop ? (
-        <p className="mt-3 font-mono text-xs">
-          Album expires {new Date(data.mediaDrop.expiresAt).toLocaleString()}.{" "}
+        <div className="mt-3 font-mono text-xs">
+          <AdminStatus tone="positive">
+            Media drop active · expires {new Date(data.mediaDrop.expiresAt).toLocaleString()}
+          </AdminStatus>{" "}
           {data.mediaDrop.uploadPath && (
             <a
               href={data.mediaDrop.uploadPath}
               target="_blank"
               rel="noreferrer"
-              className="underline hover:opacity-70"
+              className="ml-3 underline hover:opacity-70"
             >
               upload through the event media pipeline
             </a>
@@ -47,11 +50,11 @@ export function ScoringMediaPanel({
           >
             open album
           </a>
-        </p>
+        </div>
       ) : (
-        <p className="mt-3 font-mono text-xs theme-muted">
+        <AdminStatus tone="neutral" className="mt-3 font-mono text-xs">
           Enable the event media drop to capture new files.
-        </p>
+        </AdminStatus>
       )}
       <form
         className="mt-4 grid gap-4 sm:grid-cols-3"
@@ -118,8 +121,20 @@ export function ScoringMediaPanel({
           .map((item) => (
             <li key={item.id} className="flex flex-wrap items-center gap-3 py-3 font-mono text-xs">
               <span className="min-w-0 flex-1 truncate">{item.storageRef}</span>
-              <span className="theme-muted">
-                {item.visibility} · {item.consentState}
+              <span className="flex flex-wrap items-center gap-x-2 theme-muted">
+                <span>{item.visibility}</span>
+                <span aria-hidden="true">·</span>
+                <AdminStatus
+                  tone={
+                    item.consentState === "obtained"
+                      ? "positive"
+                      : item.consentState === "requested"
+                        ? "attention"
+                        : "neutral"
+                  }
+                >
+                  consent {item.consentState.replaceAll("-", " ")}
+                </AdminStatus>
               </span>
               <button
                 type="button"

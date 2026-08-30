@@ -90,7 +90,10 @@ export function PitchGallery({
   return (
     <main id="main" className="min-h-screen bg-background">
       <header className="mx-auto max-w-5xl px-6 pb-12 pt-16">
-        <Link to="/things" className="font-mono text-xs theme-muted hover:opacity-60">
+        <Link
+          to="/things"
+          className="inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:opacity-60"
+        >
           ← things
         </Link>
         <div className="mt-14 grid gap-8 md:grid-cols-[1fr_auto] md:items-end">
@@ -215,7 +218,7 @@ export function PitchGallery({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="mt-2 block min-h-10 w-full border-b theme-border-strong bg-transparent text-foreground outline-none sm:w-72"
+              className="mt-2 block min-h-11 w-full border-b theme-border-strong bg-transparent text-base text-foreground outline-none sm:w-72"
               type="search"
             />
           </label>
@@ -230,7 +233,7 @@ export function PitchGallery({
             <button
               type="button"
               onClick={() => setRefreshVersion((current) => current + 1)}
-              className="mt-3 min-h-10 border-b border-current px-3 font-mono text-xs text-[var(--selection-fg)] hover:opacity-60"
+              className="mt-3 min-h-11 border-b border-current px-3 font-mono text-xs text-[var(--selection-fg)] hover:opacity-60"
             >
               try again
             </button>

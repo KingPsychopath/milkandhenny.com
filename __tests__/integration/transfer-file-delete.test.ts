@@ -14,8 +14,6 @@ describe("transfer file delete route", () => {
   });
 
   it("deletes one file and persists the updated transfer", async () => {
-    const saveTransfer = vi.fn().mockResolvedValue(undefined);
-    const deleteTransferData = vi.fn().mockResolvedValue(false);
     const deleteObjects = vi.fn().mockResolvedValue(3);
 
     vi.doMock("@/features/transfers/store.server", () => ({
@@ -63,23 +61,28 @@ describe("transfer file delete route", () => {
         ],
       }),
       validateDeleteToken: vi.fn().mockResolvedValue(true),
-      removeTransferFile: (transfer: { files: unknown[] }) => ({
-        ...transfer,
-        files: [
-          {
-            id: "motion",
-            filename: "photo.mov",
-            kind: "video",
-            size: 20,
-            mimeType: "video/quicktime",
-            storageKey: "transfers/transfer-1/original/photo.mov",
-            previewStatus: "ready",
-          },
-        ],
-        groups: undefined,
+      removeTransferFileAtomic: vi.fn().mockResolvedValue({
+        status: "updated",
+        transfer: {
+          id: "transfer-1",
+          title: "party",
+          createdAt: "2026-03-08T10:00:00.000Z",
+          expiresAt: "2999-03-09T10:00:00.000Z",
+          deleteToken: "token",
+          files: [
+            {
+              id: "motion",
+              filename: "photo.mov",
+              kind: "video",
+              size: 20,
+              storedBytes: 40,
+              mimeType: "video/quicktime",
+              storageKey: "transfers/transfer-1/original/photo.mov",
+              previewStatus: "ready",
+            },
+          ],
+        },
       }),
-      saveTransfer,
-      deleteTransferData,
     }));
     vi.doMock("@/features/transfers/media-state", () => ({
       classifyTransferProcessingRoute: vi.fn().mockReturnValue("local_image"),
@@ -100,7 +103,7 @@ describe("transfer file delete route", () => {
 
     expect(response.status).toBe(200);
     const payload = (await response.json()) as {
-      transfer?: { groups?: unknown };
+      transfer?: { groups?: unknown; files?: Array<Record<string, unknown>> };
     };
     expect(payload).toMatchObject({
       success: true,
@@ -111,6 +114,8 @@ describe("transfer file delete route", () => {
       },
     });
     expect(payload.transfer).not.toHaveProperty("groups");
+    expect(payload.transfer?.files?.[0]).not.toHaveProperty("storageKey");
+    expect(payload.transfer?.files?.[0]).not.toHaveProperty("storedBytes");
     expect(deleteObjects).toHaveBeenCalledWith(
       [
         "transfers/transfer-1/original/photo.jpg",
@@ -119,13 +124,9 @@ describe("transfer file delete route", () => {
       ],
       { scope: "private" },
     );
-    expect(saveTransfer).toHaveBeenCalledOnce();
-    expect(deleteTransferData).not.toHaveBeenCalled();
   });
 
   it("takes down the transfer when the last file is removed", async () => {
-    const deleteTransferData = vi.fn().mockResolvedValue(true);
-
     vi.doMock("@/features/transfers/store.server", () => ({
       getTransfer: vi.fn().mockResolvedValue({
         id: "transfer-1",
@@ -145,13 +146,7 @@ describe("transfer file delete route", () => {
         ],
       }),
       validateDeleteToken: vi.fn().mockResolvedValue(true),
-      removeTransferFile: (transfer: { files: unknown[] }) => ({
-        ...transfer,
-        files: [],
-        groups: undefined,
-      }),
-      saveTransfer: vi.fn(),
-      deleteTransferData,
+      removeTransferFileAtomic: vi.fn().mockResolvedValue({ status: "deleted" }),
     }));
     vi.doMock("@/features/transfers/media-state", () => ({
       classifyTransferProcessingRoute: vi.fn().mockReturnValue("local_image"),
@@ -174,6 +169,5 @@ describe("transfer file delete route", () => {
       dataDeleted: true,
       deletedFileId: "photo",
     });
-    expect(deleteTransferData).toHaveBeenCalledWith("transfer-1");
   });
 });

@@ -4,7 +4,7 @@ import { isConfigured, listObjects } from "@/lib/platform/r2.server";
 import { validateAllAlbums } from "@/features/media/albums.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { getWord, listWords } from "@/features/words/store.server";
+import { getWord, listAllWords } from "@/features/words/store.server";
 import { getRedis } from "@/lib/platform/redis.server";
 
 const WORDS_MEDIA_PREFIX = "words/media/";
@@ -91,9 +91,7 @@ async function handleGET(request: Request) {
 async function computeContentAudit(): Promise<Record<string, unknown>> {
   const albumValidation = await validateAllAlbums();
   const wordSlugs = isWordsEnabled()
-    ? (await listWords({ includeNonPublic: true, type: "blog", limit: 2000 })).words.map(
-        (n) => n.slug,
-      )
+    ? (await listAllWords({ includeNonPublic: true, type: "blog" })).map((n) => n.slug)
     : [];
 
   let blogAudit:

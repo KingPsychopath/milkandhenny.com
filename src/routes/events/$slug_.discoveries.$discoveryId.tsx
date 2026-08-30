@@ -20,7 +20,7 @@ function clueCredential(raw: string): string {
   }
 }
 
-export const Route = createFileRoute("/events/$slug/discoveries/$discoveryId")({
+export const Route = createFileRoute("/events/$slug_/discoveries/$discoveryId")({
   loader: async ({ params }) => {
     const result = await getPublicDiscoveryFn({
       data: { eventSlug: params.slug, discoveryId: params.discoveryId },

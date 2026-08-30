@@ -84,9 +84,9 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
         type="button"
         onClick={handleClick}
         aria-label={label}
-        aria-expanded={dropdownOpen}
-        aria-haspopup="true"
-        className="inline-flex items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-1 -mx-1"
+        aria-expanded={isMobile ? undefined : dropdownOpen}
+        aria-haspopup={isMobile ? undefined : "menu"}
+        className="inline-flex min-h-11 items-center gap-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 rounded px-2 -mx-2 touch-manipulation"
       >
         {copied ? "copied" : "share"}
         {!isMobile && (
@@ -146,7 +146,7 @@ export function Share({ url, title = "", label = "Share", className = "" }: Shar
                 item.action();
                 if (item.label !== "Copy link") setDropdownOpen(false);
               }}
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
+              className="flex min-h-11 w-full items-center px-3 text-left hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors"
             >
               {item.label}
             </button>

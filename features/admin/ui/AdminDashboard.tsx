@@ -1,28 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import type { SystemCapabilities } from "@/features/system/capabilities";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
+import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import { SITE_BRAND } from "@/lib/shared/config";
-import { TokenSessionsPanel } from "./components/TokenSessionsPanel";
-import { ContentPanel } from "./components/ContentPanel";
-import { TransfersPanel } from "./components/TransfersPanel";
-import { ReportsPanel } from "./components/ReportsPanel";
-import { EventsPanel } from "./components/EventsPanel";
-import { EventScoringPanel } from "./components/EventScoringPanel";
-import { PitchesPanel } from "./components/PitchesPanel";
-import { GamePoolsPanel } from "./components/GamePoolsPanel";
-import { HotAndColdReviewPanel } from "./components/HotAndColdReviewPanel";
-import { BestDressedPanel } from "./components/BestDressedPanel";
-import { AdminOverviewPanel } from "./components/AdminOverviewPanel";
-import { SystemHealthPanel } from "./components/SystemHealthPanel";
-import { CommunicationsPanel } from "./components/CommunicationsPanel";
-import { AttendeeOperationsPanel } from "./components/AttendeeOperationsPanel";
-import { AttendeeSettingsPanel } from "./components/AttendeeSettingsPanel";
 import { AdminCommandPalette } from "./components/AdminCommandPalette";
 import {
   AdminSectionNav,
+  OPERATIONS_TABS,
   type AdminDestination,
   type AdminSection,
   type CommunicationsTab,
@@ -32,6 +19,71 @@ import { useAdminAuth } from "@/features/auth/useAdminAuth";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useAdminAutoRefresh } from "./hooks/useAdminAutoRefresh";
 import { formatRemaining } from "./format";
+import { AdminStatus } from "./components/AdminStatus";
+
+const TokenSessionsPanel = lazy(() =>
+  import("./components/TokenSessionsPanel").then((module) => ({
+    default: module.TokenSessionsPanel,
+  })),
+);
+const ContentPanel = lazy(() =>
+  import("./components/ContentPanel").then((module) => ({ default: module.ContentPanel })),
+);
+const TransfersPanel = lazy(() =>
+  import("./components/TransfersPanel").then((module) => ({ default: module.TransfersPanel })),
+);
+const ReportsPanel = lazy(() =>
+  import("./components/ReportsPanel").then((module) => ({ default: module.ReportsPanel })),
+);
+const EventsPanel = lazy(() =>
+  import("./components/EventsPanel").then((module) => ({ default: module.EventsPanel })),
+);
+const EventScoringPanel = lazy(() =>
+  import("./components/EventScoringPanel").then((module) => ({
+    default: module.EventScoringPanel,
+  })),
+);
+const PitchesPanel = lazy(() =>
+  import("./components/PitchesPanel").then((module) => ({ default: module.PitchesPanel })),
+);
+const GamePoolsPanel = lazy(() =>
+  import("./components/GamePoolsPanel").then((module) => ({ default: module.GamePoolsPanel })),
+);
+const HotAndColdReviewPanel = lazy(() =>
+  import("./components/HotAndColdReviewPanel").then((module) => ({
+    default: module.HotAndColdReviewPanel,
+  })),
+);
+const BestDressedPanel = lazy(() =>
+  import("./components/BestDressedPanel").then((module) => ({
+    default: module.BestDressedPanel,
+  })),
+);
+const AdminOverviewPanel = lazy(() =>
+  import("./components/AdminOverviewPanel").then((module) => ({
+    default: module.AdminOverviewPanel,
+  })),
+);
+const SystemHealthPanel = lazy(() =>
+  import("./components/SystemHealthPanel").then((module) => ({
+    default: module.SystemHealthPanel,
+  })),
+);
+const CommunicationsPanel = lazy(() =>
+  import("./components/CommunicationsPanel").then((module) => ({
+    default: module.CommunicationsPanel,
+  })),
+);
+const AttendeeOperationsPanel = lazy(() =>
+  import("./components/AttendeeOperationsPanel").then((module) => ({
+    default: module.AttendeeOperationsPanel,
+  })),
+);
+const AttendeeSettingsPanel = lazy(() =>
+  import("./components/AttendeeSettingsPanel").then((module) => ({
+    default: module.AttendeeSettingsPanel,
+  })),
+);
 
 type BlogSummary = {
   totalPosts: number;
@@ -114,6 +166,8 @@ type SessionRevokeResponse = {
   revoked?: Array<{ role?: string; tokenVersion?: number }>;
 };
 
+type EventWorkspace = "events" | "scoring" | "pitches";
+
 export function AdminDashboard({
   view,
   communicationTab,
@@ -130,6 +184,7 @@ export function AdminDashboard({
   onCommunicationEventChange,
   onOperationsTabChange,
   onOperationsPersonChange,
+  permissions,
 }: {
   view: AdminSection;
   communicationTab: CommunicationsTab;
@@ -146,9 +201,13 @@ export function AdminDashboard({
   onCommunicationEventChange: (eventSlug: string) => void;
   onOperationsTabChange: (tab: OperationsTab) => void;
   onOperationsPersonChange: (personId?: string) => void;
+  permissions: GlobalAdminPermissionSet;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(
+    view === "overview" || view === "content" || view === "system",
+  );
+  const [dashboardLoaded, setDashboardLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [content, setContent] = useState<ContentSummaryResponse | null>(null);
@@ -171,6 +230,7 @@ export function AdminDashboard({
     }>
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const [eventWorkspace, setEventWorkspace] = useState<EventWorkspace>("events");
   const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
   const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
 
@@ -187,28 +247,36 @@ export function AdminDashboard({
     const errors: string[] = [];
     try {
       const [contentResult, debugResult] = await Promise.allSettled([
-        authFetch("/api/admin/content-summary"),
-        authFetch("/api/debug"),
+        permissions.manageContent ? authFetch("/api/admin/content-summary") : Promise.resolve(null),
+        permissions.viewOperations ? authFetch("/api/debug") : Promise.resolve(null),
       ]);
 
-      if (contentResult.status === "fulfilled" && contentResult.value.ok) {
+      if (
+        permissions.manageContent &&
+        contentResult.status === "fulfilled" &&
+        contentResult.value?.ok
+      ) {
         try {
           setContent((await contentResult.value.json()) as ContentSummaryResponse);
         } catch {
           errors.push("The content summary returned an unreadable response.");
         }
-      } else {
+      } else if (permissions.manageContent) {
         errors.push("The content summary could not be loaded.");
       }
 
-      if (debugResult.status === "fulfilled" && debugResult.value.ok) {
+      if (
+        permissions.viewOperations &&
+        debugResult.status === "fulfilled" &&
+        debugResult.value?.ok
+      ) {
         try {
           setDebugData((await debugResult.value.json()) as DebugResponse);
           setSystemRefreshHalted(false);
         } catch {
           errors.push("The system check returned an unreadable response.");
         }
-      } else {
+      } else if (permissions.viewOperations) {
         errors.push("The system check could not be loaded.");
       }
 
@@ -218,12 +286,23 @@ export function AdminDashboard({
       setErrorMessage(msg);
     } finally {
       setLoading(false);
+      setDashboardLoaded(true);
     }
-  }, [authFetch]);
+  }, [authFetch, permissions.manageContent, permissions.viewOperations]);
 
   useEffect(() => {
-    if (view === "overview" || view === "system") void refreshDashboard();
+    if (view === "overview" || view === "content" || view === "system") void refreshDashboard();
   }, [refreshDashboard, view]);
+
+  useEffect(() => {
+    if (targetEvent) setEventWorkspace("events");
+  }, [targetEvent]);
+
+  useEffect(() => {
+    setStatusMessage("");
+    setErrorMessage("");
+    setAttentionOpen(false);
+  }, [view]);
 
   const refreshSystemSnapshot = useCallback(async () => {
     const response = await authFetch("/api/debug");
@@ -270,11 +349,12 @@ export function AdminDashboard({
   }, [authFetch]);
 
   useEffect(() => {
+    if (!permissions.viewOperations) return;
     void refreshOperationsInbox().catch(() => undefined);
-  }, [refreshOperationsInbox]);
+  }, [permissions.viewOperations, refreshOperationsInbox]);
 
   useAdminAutoRefresh({
-    enabled: !inboxRefreshHalted,
+    enabled: permissions.viewOperations && !inboxRefreshHalted,
     cadence: "monitoring",
     identity: "admin-operations-inbox",
     refreshOnEnable: false,
@@ -287,6 +367,24 @@ export function AdminDashboard({
       void refreshOperationsInbox().catch(() => undefined);
     },
     [refreshOperationsInbox],
+  );
+
+  const handleNavigate = useCallback(
+    (destination: AdminDestination) => {
+      setStatusMessage("");
+      setErrorMessage("");
+      onNavigate(destination);
+    },
+    [onNavigate],
+  );
+
+  const handleViewChange = useCallback(
+    (section: AdminSection) => {
+      setStatusMessage("");
+      setErrorMessage("");
+      onViewChange(section);
+    },
+    [onViewChange],
   );
 
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
@@ -365,74 +463,103 @@ export function AdminDashboard({
     }
   };
 
+  const availableEventWorkspaces: Array<{ id: EventWorkspace; label: string }> = [
+    ...(permissions.viewOperations ? [{ id: "events" as const, label: "events & tickets" }] : []),
+    ...(permissions.manageScoring ? [{ id: "scoring" as const, label: "scoring" }] : []),
+    ...(permissions.manageContent ? [{ id: "pitches" as const, label: "pitch night" }] : []),
+  ];
+  const activeEventWorkspace = availableEventWorkspaces.some(
+    (workspace) => workspace.id === eventWorkspace,
+  )
+    ? eventWorkspace
+    : availableEventWorkspaces[0]?.id;
+
   return (
     <div className="mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-8">
-      <header className="mb-10">
-        <div className="flex items-center justify-between gap-4">
-          <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-            private workspace
-          </p>
+      <header className="mb-6">
+        <div className="flex items-center justify-end gap-4">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setAttentionOpen((current) => !current)}
-                aria-expanded={attentionOpen}
-                aria-controls="operations-attention-popover"
-                aria-label={`${operationsUnread} unread admin notification${operationsUnread === 1 ? "" : "s"}`}
-                className="relative inline-flex min-h-11 items-center gap-2 font-mono text-xs theme-muted hover:opacity-70"
-              >
-                <NotificationBell />
-                <span className="hidden sm:inline">notifications</span>
-                {operationsUnread ? <span aria-hidden="true">{operationsUnread}</span> : null}
-              </button>
-              {attentionOpen ? (
-                <section
-                  id="operations-attention-popover"
-                  aria-label="Recent admin notifications"
-                  className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] border theme-border bg-background p-4 shadow-lg"
+            {permissions.viewOperations ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAttentionOpen((current) => !current)}
+                  aria-expanded={attentionOpen}
+                  aria-controls="operations-attention-popover"
+                  aria-label={`${operationsUnread} unread admin notification${operationsUnread === 1 ? "" : "s"}`}
+                  className="relative inline-flex min-h-11 items-center gap-2 font-mono text-xs theme-muted hover:opacity-70"
                 >
-                  <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-                    notifications
-                  </p>
-                  {operationsRecent.length ? (
-                    <ul className="mt-2 divide-y theme-border">
-                      {operationsRecent.map((item) => (
-                        <li key={item.id} className="py-3">
-                          <button
-                            type="button"
-                            onClick={() => void openNotification(item)}
-                            className="block w-full min-h-11 py-1 text-left hover:opacity-70"
-                          >
-                            <span className="block font-serif">{item.title}</span>
-                            <span className="mt-1 block font-mono text-micro theme-muted">
-                              {item.unread ? "unread · " : ""}
-                              {item.status} · {item.severity} · {item.category}
-                            </span>
-                            <span className="mt-1 block font-mono text-micro leading-relaxed theme-faint">
-                              {item.body}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 font-mono text-xs theme-muted">Nothing needs attention.</p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttentionOpen(false);
-                      window.location.assign("/admin?view=overview#notifications");
-                    }}
-                    className="mt-3 min-h-11 font-mono text-xs underline hover:opacity-70"
+                  <NotificationBell />
+                  <span className="hidden sm:inline">notifications</span>
+                  {operationsUnread ? (
+                    <AdminStatus tone="attention" className="font-bold">
+                      {operationsUnread}
+                    </AdminStatus>
+                  ) : null}
+                </button>
+                {attentionOpen ? (
+                  <section
+                    id="operations-attention-popover"
+                    aria-label="Recent admin notifications"
+                    className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-3rem))] border theme-border bg-background p-4 shadow-lg"
                   >
-                    open notification inbox →
-                  </button>
-                </section>
-              ) : null}
-            </div>
-            <AdminCommandPalette onNavigate={onNavigate} />
+                    <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                      notifications
+                    </p>
+                    {operationsRecent.length ? (
+                      <ul className="mt-2 divide-y theme-border">
+                        {operationsRecent.map((item) => (
+                          <li key={item.id} className="py-3">
+                            <button
+                              type="button"
+                              onClick={() => void openNotification(item)}
+                              className="block w-full min-h-11 py-1 text-left hover:opacity-70"
+                            >
+                              <span className="block font-serif">{item.title}</span>
+                              <span className="mt-1 block font-mono text-micro theme-muted">
+                                <AdminStatus
+                                  tone={
+                                    item.severity === "critical"
+                                      ? "danger"
+                                      : item.status === "resolved"
+                                        ? "positive"
+                                        : item.unread ||
+                                            item.severity === "warning" ||
+                                            item.severity === "prompt"
+                                          ? "attention"
+                                          : "neutral"
+                                  }
+                                >
+                                  {item.unread ? "unread · " : ""}
+                                  {item.status} · {item.severity}
+                                </AdminStatus>{" "}
+                                · {item.category}
+                              </span>
+                              <span className="mt-1 block font-mono text-micro leading-relaxed theme-faint">
+                                {item.body}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-3 font-mono text-xs theme-muted">Nothing needs attention.</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttentionOpen(false);
+                        window.location.assign("/admin?view=overview#notifications");
+                      }}
+                      className="mt-3 min-h-11 font-mono text-xs underline hover:opacity-70"
+                    >
+                      open notification inbox →
+                    </button>
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
+            <AdminCommandPalette onNavigate={handleNavigate} permissions={permissions} />
           </div>
         </div>
         <h1 className="mt-2 font-serif text-4xl font-semibold tracking-tight">
@@ -441,192 +568,208 @@ export function AdminDashboard({
           </Link>{" "}
           <span className="theme-muted font-normal">admin</span>
         </h1>
-        <p className="mt-3 max-w-lg font-mono text-xs leading-relaxed theme-muted">
-          Choose a purpose. Each area contains only the information and actions needed for that job.
-        </p>
-        <AdminSectionNav active={view} onChange={onViewChange} />
+        <AdminSectionNav active={view} onChange={handleViewChange} permissions={permissions} />
       </header>
 
       {statusMessage || errorMessage ? (
-        <div className="mb-8 border-y theme-border py-3 font-mono text-xs" aria-live="polite">
-          {statusMessage ? <p role="status">{statusMessage}</p> : null}
+        <div className="mb-4 font-mono text-xs" aria-live="polite">
+          {statusMessage ? (
+            <p role="status">
+              <AdminStatus tone="positive">{statusMessage}</AdminStatus>
+            </p>
+          ) : null}
           {errorMessage ? (
-            <p role="alert" className="text-[var(--prose-hashtag)]">
-              {errorMessage}
+            <p role="alert">
+              <AdminStatus tone="danger">{errorMessage}</AdminStatus>
             </p>
           ) : null}
         </div>
       ) : null}
 
       {view === "events" ? (
-        <section aria-labelledby="events-view-heading" className="space-y-10">
-          <div className="border-b theme-border pb-6">
-            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              live operations
-            </p>
-            <h2
-              id="events-view-heading"
-              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
+        <section aria-label="Events and tickets" className="space-y-10">
+          {availableEventWorkspaces.length > 1 ? (
+            <div
+              className="flex flex-wrap gap-x-5 gap-y-2 border-y theme-border py-3"
+              role="tablist"
+              aria-label="Event workspaces"
             >
-              Events and tickets
-            </h2>
-            <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-              Create events, issue and manage tickets, and make revocable scanner links for each
-              worker.
-            </p>
-          </div>
-          <EventsPanel
-            authFetch={authFetch}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-            ensureStepUpToken={ensureStepUpTokenResult}
-            withStepUpHeaders={withStepUpHeaders}
-            initialEventSlug={targetEvent}
-          />
-          <EventScoringPanel
-            authFetch={authFetch}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-            ensureStepUpToken={ensureStepUpTokenResult}
-            withStepUpHeaders={withStepUpHeaders}
-          />
-          <div className="border-t theme-border pt-8">
-            <PitchesPanel
-              authFetch={authFetch}
-              onError={setErrorMessage}
-              onStatus={setStatusMessage}
-              ensureStepUpToken={ensureStepUpTokenResult}
-              withStepUpHeaders={withStepUpHeaders}
-            />
-          </div>
+              {availableEventWorkspaces.map((workspace) => (
+                <button
+                  key={workspace.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeEventWorkspace === workspace.id}
+                  aria-controls="event-workspace-panel"
+                  onClick={() => setEventWorkspace(workspace.id)}
+                  className={`min-h-11 border-b font-mono text-xs hover:opacity-70 ${
+                    activeEventWorkspace === workspace.id
+                      ? "theme-border-strong text-foreground"
+                      : "border-transparent theme-muted"
+                  }`}
+                >
+                  {workspace.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <PanelBoundary label="event tools">
+            <div id="event-workspace-panel" role="tabpanel">
+              {activeEventWorkspace === "events" && permissions.viewOperations ? (
+                <EventsPanel
+                  authFetch={authFetch}
+                  onError={setErrorMessage}
+                  onStatus={setStatusMessage}
+                  ensureStepUpToken={ensureStepUpTokenResult}
+                  withStepUpHeaders={withStepUpHeaders}
+                  initialEventSlug={targetEvent}
+                  permissions={permissions}
+                />
+              ) : null}
+              {activeEventWorkspace === "scoring" && permissions.manageScoring ? (
+                <EventScoringPanel
+                  authFetch={authFetch}
+                  onError={setErrorMessage}
+                  onStatus={setStatusMessage}
+                  ensureStepUpToken={ensureStepUpTokenResult}
+                  withStepUpHeaders={withStepUpHeaders}
+                />
+              ) : null}
+              {activeEventWorkspace === "pitches" && permissions.manageContent ? (
+                <PitchesPanel
+                  authFetch={authFetch}
+                  onError={setErrorMessage}
+                  onStatus={setStatusMessage}
+                  ensureStepUpToken={ensureStepUpTokenResult}
+                  withStepUpHeaders={withStepUpHeaders}
+                />
+              ) : null}
+            </div>
+          </PanelBoundary>
         </section>
       ) : null}
 
       {view === "communications" ? (
-        <section aria-labelledby="communications-view-heading" className="space-y-10">
-          <div className="border-b theme-border pb-6">
-            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              people and outreach
-            </p>
-            <h2
-              id="communications-view-heading"
-              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
-            >
-              Communications
-            </h2>
-            <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-              Prepare newsletters and useful updates, choose the right people, and schedule them
-              through the durable email outbox.
-            </p>
-          </div>
-          <CommunicationsPanel
-            authFetch={authFetch}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-            communicationTab={communicationTab}
-            communicationEvent={communicationEvent}
-            onCommunicationTabChange={onCommunicationTabChange}
-            onCommunicationEventChange={onCommunicationEventChange}
-            ensureStepUpToken={ensureStepUpTokenResult}
-            withStepUpHeaders={withStepUpHeaders}
-            initialEmailStatus={emailStatus}
-            initialEmailQuery={emailQuery}
-          />
+        <section aria-label="Communications" className="space-y-10">
+          <PanelBoundary label="communications">
+            <CommunicationsPanel
+              authFetch={authFetch}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+              communicationTab={communicationTab}
+              communicationEvent={communicationEvent}
+              onCommunicationTabChange={onCommunicationTabChange}
+              onCommunicationEventChange={onCommunicationEventChange}
+              ensureStepUpToken={ensureStepUpTokenResult}
+              withStepUpHeaders={withStepUpHeaders}
+              initialEmailStatus={emailStatus}
+              initialEmailQuery={emailQuery}
+            />
+          </PanelBoundary>
         </section>
       ) : null}
 
       {view === "games" ? (
-        <section aria-labelledby="games-view-heading" className="space-y-10">
-          <div className="border-b theme-border pb-6">
-            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              game operations
-            </p>
-            <h2
-              id="games-view-heading"
-              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
-            >
-              Games
-            </h2>
-            <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-              Manage shared entrances and inspect the quality evidence behind semantic judging.
-            </p>
-          </div>
-          <GamePoolsPanel
-            authFetch={authFetch}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-          />
-          <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
+        <section aria-label="Games" className="space-y-10">
+          <PanelBoundary label="game operations">
+            <GamePoolsPanel
+              authFetch={authFetch}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+            />
+            <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
+          </PanelBoundary>
         </section>
       ) : null}
 
       {view === "operations" ? (
-        <AttendeeOperationsPanel
-          authFetch={authFetch}
-          onError={setErrorMessage}
-          onStatus={handleAttendeeOperationsStatus}
-          ensureStepUpToken={ensureStepUpTokenResult}
-          withStepUpHeaders={withStepUpHeaders}
-          tab={operationsTab}
-          onTabChange={onOperationsTabChange}
-          initialEvent={targetEvent}
-          initialTicket={targetTicket}
-          initialPerson={targetPerson}
-          onPersonChange={onOperationsPersonChange}
-        />
+        <PanelBoundary label="people and support">
+          <AttendeeOperationsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={handleAttendeeOperationsStatus}
+            ensureStepUpToken={ensureStepUpTokenResult}
+            withStepUpHeaders={withStepUpHeaders}
+            tab={operationsTab}
+            onTabChange={onOperationsTabChange}
+            initialEvent={targetEvent}
+            initialTicket={targetTicket}
+            initialPerson={targetPerson}
+            onPersonChange={onOperationsPersonChange}
+            availableTabs={OPERATIONS_TABS.filter((tab) =>
+              tab === "people" ? permissions.managePeople : permissions.viewOperations,
+            )}
+          />
+        </PanelBoundary>
       ) : null}
 
       {view === "settings" ? (
-        <AttendeeSettingsPanel
-          authFetch={authFetch}
-          onError={setErrorMessage}
-          onStatus={setStatusMessage}
-          ensureStepUpToken={ensureStepUpTokenResult}
-          withStepUpHeaders={withStepUpHeaders}
-        />
+        <PanelBoundary label="access policies">
+          <AttendeeSettingsPanel
+            authFetch={authFetch}
+            onError={setErrorMessage}
+            onStatus={setStatusMessage}
+            ensureStepUpToken={ensureStepUpTokenResult}
+            withStepUpHeaders={withStepUpHeaders}
+          />
+        </PanelBoundary>
       ) : null}
 
       <section className="space-y-10">
         {view === "overview" ? (
           <>
-            <AdminOverviewPanel
-              content={content}
-              system={debugData}
-              loading={loading}
-              unresolvedByCategory={operationsUnresolvedByCategory}
-              onRefresh={() => void Promise.all([refreshDashboard(), refreshOperationsInbox()])}
-              onNavigate={onNavigate}
-            />
-
-            <ReportsPanel
-              authFetch={authFetch}
-              onError={setErrorMessage}
-              onStatus={setStatusMessage}
-            />
-
-            <div className="border-t theme-border pt-8">
-              <AttendeeOperationsPanel
-                authFetch={authFetch}
-                onError={setErrorMessage}
-                onStatus={handleAttendeeOperationsStatus}
-                ensureStepUpToken={ensureStepUpTokenResult}
-                withStepUpHeaders={withStepUpHeaders}
-                tab="inbox"
-                onTabChange={onOperationsTabChange}
-                onPersonChange={onOperationsPersonChange}
-                inboxOnly
+            <PanelBoundary label="overview">
+              <AdminOverviewPanel
+                content={content}
+                system={debugData}
+                loading={loading || !dashboardLoaded}
+                unresolvedByCategory={operationsUnresolvedByCategory}
+                onRefresh={() => void Promise.all([refreshDashboard(), refreshOperationsInbox()])}
+                onNavigate={handleNavigate}
+                permissions={permissions}
               />
-            </div>
+            </PanelBoundary>
+
+            {permissions.viewAudit ? (
+              <PanelBoundary label="reports">
+                <ReportsPanel
+                  authFetch={authFetch}
+                  onError={setErrorMessage}
+                  onStatus={setStatusMessage}
+                />
+              </PanelBoundary>
+            ) : null}
+
+            {permissions.viewOperations ? (
+              <div className="border-t theme-border pt-8">
+                <PanelBoundary label="support inbox">
+                  <AttendeeOperationsPanel
+                    authFetch={authFetch}
+                    onError={setErrorMessage}
+                    onStatus={handleAttendeeOperationsStatus}
+                    ensureStepUpToken={ensureStepUpTokenResult}
+                    withStepUpHeaders={withStepUpHeaders}
+                    tab="inbox"
+                    onTabChange={onOperationsTabChange}
+                    onPersonChange={onOperationsPersonChange}
+                    inboxOnly
+                    availableTabs={["inbox"]}
+                  />
+                </PanelBoundary>
+              </div>
+            ) : null}
           </>
         ) : null}
 
         {view === "system" ? (
           <>
-            <SystemHealthPanel
-              snapshot={debugData}
-              loading={loading}
-              onRefresh={() => void refreshDashboard()}
-            />
+            <PanelBoundary label="system health">
+              <SystemHealthPanel
+                snapshot={debugData}
+                loading={loading || !dashboardLoaded}
+                onRefresh={() => void refreshDashboard()}
+              />
+            </PanelBoundary>
 
             <div className="border-t theme-border pt-6 space-y-3">
               <div className="flex items-center justify-between gap-4">
@@ -643,13 +786,29 @@ export function AdminDashboard({
                         <div className="flex items-center justify-between gap-3">
                           <p className="theme-muted text-xs">{game}</p>
                           <p className="text-xs">
-                            {metrics.activeSockets} active · {metrics.unauthenticatedSockets}{" "}
-                            pending
+                            <AdminStatus tone={metrics.activeSockets > 0 ? "positive" : "neutral"}>
+                              {metrics.activeSockets} active
+                            </AdminStatus>{" "}
+                            · {metrics.unauthenticatedSockets} pending
                           </p>
                         </div>
                         <p className="text-lg">{metrics.operations} operations</p>
                         <p className="theme-faint text-micro">
-                          {metrics.operationFailures} failed · {metrics.rateLimited} rate limited
+                          {metrics.operationFailures > 0 ? (
+                            <AdminStatus tone="danger">
+                              {metrics.operationFailures} failed
+                            </AdminStatus>
+                          ) : (
+                            <span>0 failed</span>
+                          )}{" "}
+                          ·{" "}
+                          {metrics.rateLimited > 0 ? (
+                            <AdminStatus tone="attention">
+                              {metrics.rateLimited} rate limited
+                            </AdminStatus>
+                          ) : (
+                            <span>0 rate limited</span>
+                          )}
                         </p>
                         <p className="theme-faint text-micro">
                           {metrics.connections} socket connections · {metrics.reconnects} reconnects
@@ -673,8 +832,21 @@ export function AdminDashboard({
                     {debugData?.multiplayer.roomLock.acquisitions ?? "—"} acquisitions
                   </p>
                   <p className="theme-faint text-micro">
-                    {debugData?.multiplayer.roomLock.contention ?? "—"} contended ·{" "}
-                    {debugData?.multiplayer.roomLock.failures ?? "—"} failed
+                    {(debugData?.multiplayer.roomLock.contention ?? 0) > 0 ? (
+                      <AdminStatus tone="attention">
+                        {debugData?.multiplayer.roomLock.contention} contended
+                      </AdminStatus>
+                    ) : (
+                      <span>{debugData?.multiplayer.roomLock.contention ?? "—"} contended</span>
+                    )}{" "}
+                    ·{" "}
+                    {(debugData?.multiplayer.roomLock.failures ?? 0) > 0 ? (
+                      <AdminStatus tone="danger">
+                        {debugData?.multiplayer.roomLock.failures} failed
+                      </AdminStatus>
+                    ) : (
+                      <span>{debugData?.multiplayer.roomLock.failures ?? "—"} failed</span>
+                    )}
                   </p>
                   <p className="theme-faint text-micro">
                     wait {debugData?.multiplayer.roomLock.wait.averageMs ?? "—"}ms avg ·{" "}
@@ -685,101 +857,135 @@ export function AdminDashboard({
               <p className="font-mono text-micro theme-faint">
                 Backplane {debugData?.multiplayer.backplane.published ?? "—"} published ·{" "}
                 {debugData?.multiplayer.backplane.received ?? "—"} received ·{" "}
-                {debugData?.multiplayer.backplane.failures ?? "—"} failed. Per-replica counters
-                reset on deploy; Railway logs retain operational history.
+                {(debugData?.multiplayer.backplane.failures ?? 0) > 0 ? (
+                  <AdminStatus tone="danger">
+                    {debugData?.multiplayer.backplane.failures} failed
+                  </AdminStatus>
+                ) : (
+                  <span>{debugData?.multiplayer.backplane.failures ?? "—"} failed</span>
+                )}
+                . Per-replica counters reset on deploy; Railway logs retain operational history.
               </p>
               <p className="font-mono text-micro theme-faint">
                 Pools {debugData?.gamePools.openRuns ?? "—"} open runs ·{" "}
                 {debugData?.gamePools.openRooms ?? "—"} rooms ·{" "}
                 {debugData?.gamePools.activeAssignments ?? "—"} assignments · allocation{" "}
                 {debugData?.gamePools.allocation.averageMs ?? "—"}ms average ·{" "}
-                {debugData?.gamePools.allocation.contention ?? "—"} contended
+                {(debugData?.gamePools.allocation.contention ?? 0) > 0 ? (
+                  <AdminStatus tone="attention">
+                    {debugData?.gamePools.allocation.contention} contended
+                  </AdminStatus>
+                ) : (
+                  <span>{debugData?.gamePools.allocation.contention ?? "—"} contended</span>
+                )}
               </p>
             </div>
 
-            <div className="border-t theme-border pt-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-xs theme-muted">session security</p>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={revokeLoading !== null}
-                    onClick={() => void handleRevokeSessions("admin")}
-                    className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                    title="Invalidates every active admin token immediately."
-                  >
-                    {revokeLoading === "admin" ? "revoking..." : "revoke admin sessions"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={revokeLoading !== null}
-                    onClick={() => void handleRevokeSessions("all")}
-                    className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                    title="Invalidates upload and admin tokens globally."
-                  >
-                    {revokeLoading === "all" ? "revoking..." : "revoke all sessions"}
-                  </button>
+            {permissions.manageGlobalSettings ? (
+              <div className="border-t theme-border pt-6 space-y-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="font-mono text-xs theme-muted">session security</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={revokeLoading !== null}
+                      onClick={() => void handleRevokeSessions("admin")}
+                      className="inline-flex min-h-11 items-center font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      title="Invalidates every active admin token immediately."
+                    >
+                      {revokeLoading === "admin" ? "revoking..." : "revoke admin sessions"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={revokeLoading !== null}
+                      onClick={() => void handleRevokeSessions("all")}
+                      className="inline-flex min-h-11 items-center font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
+                      title="Invalidates upload and admin tokens globally."
+                    >
+                      {revokeLoading === "all" ? "revoking..." : "revoke all sessions"}
+                    </button>
+                  </div>
                 </div>
+                <PanelBoundary label="token sessions">
+                  <TokenSessionsPanel
+                    isAuthed={true}
+                    authFetch={authFetch}
+                    formatRemaining={formatRemaining}
+                    ensureStepUpToken={ensureStepUpToken}
+                    onError={(msg) => setErrorMessage(msg)}
+                    onStatus={(msg) => setStatusMessage(msg)}
+                  />
+                </PanelBoundary>
+                {debugData?.securityWarnings.length ? (
+                  <ul className="space-y-1">
+                    {debugData.securityWarnings.map((warning) => (
+                      <li key={warning} className="font-mono text-xs">
+                        <AdminStatus tone="danger">{warning}</AdminStatus>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="font-mono text-xs theme-muted">
+                    No critical auth-secret warnings detected.
+                  </p>
+                )}
               </div>
-              <TokenSessionsPanel
-                isAuthed={true}
-                authFetch={authFetch}
-                formatRemaining={formatRemaining}
-                ensureStepUpToken={ensureStepUpToken}
-                onError={(msg) => setErrorMessage(msg)}
-                onStatus={(msg) => setStatusMessage(msg)}
-              />
-              {debugData?.securityWarnings.length ? (
-                <ul className="space-y-1">
-                  {debugData.securityWarnings.map((warning) => (
-                    <li key={warning} className="font-mono text-xs text-[var(--prose-hashtag)]">
-                      {warning}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="font-mono text-xs theme-muted">
-                  No critical auth-secret warnings detected.
-                </p>
-              )}
-            </div>
+            ) : null}
           </>
         ) : null}
 
         {view === "content" ? (
-          <ContentPanel
-            authFetch={authFetch}
-            ensureStepUpToken={ensureStepUpTokenResult}
-            withStepUpHeaders={withStepUpHeaders}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-            content={content}
-            onContentChanged={() => void refreshDashboard()}
-          />
+          <PanelBoundary label="content tools">
+            <ContentPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpTokenResult}
+              withStepUpHeaders={withStepUpHeaders}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+              content={content}
+              onContentChanged={() => void refreshDashboard()}
+            />
+          </PanelBoundary>
         ) : null}
 
         {view === "transfers" ? (
-          <TransfersPanel
-            authFetch={authFetch}
-            ensureStepUpToken={ensureStepUpToken}
-            withStepUpHeaders={withStepUpHeaders}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-          />
+          <PanelBoundary label="file delivery">
+            <TransfersPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpToken}
+              withStepUpHeaders={withStepUpHeaders}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+            />
+          </PanelBoundary>
         ) : null}
 
         {view === "best-dressed" ? (
-          <BestDressedPanel
-            authFetch={authFetch}
-            ensureStepUpToken={ensureStepUpToken}
-            onError={setErrorMessage}
-            onStatus={setStatusMessage}
-          />
+          <PanelBoundary label="best dressed voting">
+            <BestDressedPanel
+              authFetch={authFetch}
+              ensureStepUpToken={ensureStepUpToken}
+              onError={setErrorMessage}
+              onStatus={setStatusMessage}
+            />
+          </PanelBoundary>
         ) : null}
       </section>
       {actionDialog}
       {authDialog}
     </div>
+  );
+}
+
+function PanelBoundary({ children, label }: { children: ReactNode; label: string }) {
+  return <Suspense fallback={<PanelFallback label={label} />}>{children}</Suspense>;
+}
+
+function PanelFallback({ label }: { label: string }) {
+  return (
+    <p className="border-y theme-border py-6 font-mono text-xs theme-muted" role="status">
+      loading {label}…
+    </p>
   );
 }
 

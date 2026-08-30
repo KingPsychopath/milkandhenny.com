@@ -19,7 +19,7 @@ function credential(raw: string): string {
   }
 }
 
-export const Route = createFileRoute("/events/$slug/discoveries/")({
+export const Route = createFileRoute("/events/$slug_/discoveries/")({
   loader: ({ params }) => getDiscoveryClaimPageFn({ data: { eventSlug: params.slug } }),
   component: DiscoveriesRoute,
   head: ({ params }) =>

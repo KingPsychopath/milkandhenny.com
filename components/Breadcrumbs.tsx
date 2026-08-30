@@ -34,7 +34,10 @@ export function Breadcrumbs({ items }: Props) {
                   {item.label}
                 </span>
               ) : (
-                <Link to={item.href} className="hover:text-foreground transition-colors">
+                <Link
+                  to={item.href}
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground transition-colors"
+                >
                   {item.label}
                 </Link>
               )}

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { ScoringAction, ScoringData } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 export function ScoringLifecyclePanel({
   data,
@@ -21,6 +22,14 @@ export function ScoringLifecyclePanel({
       <h4 id="scoring-lifecycle-heading" className="font-serif text-xl">
         Schedule and final board
       </h4>
+      <AdminStatus
+        tone={
+          data.settings.state === "frozen" ? "attention" : adminToneForStatus(data.settings.state)
+        }
+        className="mt-2 font-mono text-xs"
+      >
+        scoring {data.settings.state}
+      </AdminStatus>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -75,7 +84,9 @@ export function ScoringLifecyclePanel({
       </form>
       {data.held.length > 0 && (
         <div className="mt-5">
-          <p className="font-mono text-xs">Held actions</p>
+          <AdminStatus tone="attention" className="font-mono text-xs">
+            {data.held.length} held {data.held.length === 1 ? "action" : "actions"}
+          </AdminStatus>
           <ul className="mt-2 divide-y theme-border border-y theme-border">
             {data.held.map((held) => (
               <li key={held.id} className="flex items-center justify-between gap-3 py-2">
@@ -97,7 +108,10 @@ export function ScoringLifecyclePanel({
       {data.heldOfficialResults.length > 0 && (
         <div className="mt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="font-mono text-xs">Held game results</p>
+            <AdminStatus tone="attention" className="font-mono text-xs">
+              {data.heldOfficialResults.length} held game{" "}
+              {data.heldOfficialResults.length === 1 ? "result" : "results"}
+            </AdminStatus>
             <button
               type="button"
               onClick={() => void onAction({ action: "retry-official-results" })}

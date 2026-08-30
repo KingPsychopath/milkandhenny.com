@@ -30,6 +30,55 @@ export type OfflineScanOutcome =
 
 export const EMPTY_DOOR_STATE: DoorOfflineState = { manifest: [], admitted: [], queue: [] };
 
+const MANIFEST_HASH_PATTERN = /^[a-f0-9]{24}$/;
+const TICKET_REFERENCE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{16}$/;
+const MAX_OFFLINE_ADMISSIONS = 5_000;
+
+/**
+ * Restore the reload-safe part of a door shift. The manifest always comes from the current server
+ * response; only admissions and unsynced work are trusted from session storage.
+ */
+export function restoreDoorOfflineState(
+  manifest: readonly string[],
+  stored: unknown,
+): DoorOfflineState {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return { ...EMPTY_DOOR_STATE, manifest };
+  }
+  const value = stored as { admitted?: unknown; queue?: unknown };
+  const admitted = Array.isArray(value.admitted)
+    ? [
+        ...new Set(
+          value.admitted
+            .filter(
+              (entry): entry is string =>
+                typeof entry === "string" && MANIFEST_HASH_PATTERN.test(entry),
+            )
+            .slice(-MAX_OFFLINE_ADMISSIONS),
+        ),
+      ]
+    : [];
+  const queue: QueuedRedemption[] = [];
+  const queued = new Set<string>();
+  if (Array.isArray(value.queue)) {
+    for (const entry of value.queue.slice(-MAX_OFFLINE_ADMISSIONS)) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const candidate = entry as { ticketId?: unknown; scannedAt?: unknown };
+      if (
+        typeof candidate.ticketId !== "string" ||
+        !TICKET_REFERENCE_PATTERN.test(candidate.ticketId) ||
+        typeof candidate.scannedAt !== "string" ||
+        !Number.isFinite(Date.parse(candidate.scannedAt)) ||
+        queued.has(candidate.ticketId)
+      )
+        continue;
+      queued.add(candidate.ticketId);
+      queue.push({ ticketId: candidate.ticketId, scannedAt: candidate.scannedAt });
+    }
+  }
+  return { manifest, admitted, queue };
+}
+
 /**
  * Decide an offline scan.
  *

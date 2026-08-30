@@ -31,6 +31,7 @@ describe("upload transfer presign", () => {
       parseExpiry: () => 3600,
       DEFAULT_EXPIRY_SECONDS: 3600,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
@@ -72,6 +73,7 @@ describe("upload transfer presign", () => {
       parseExpiry: () => 3600,
       DEFAULT_EXPIRY_SECONDS: 3600,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
@@ -108,6 +110,7 @@ describe("upload transfer presign", () => {
       parseExpiry: () => 3600,
       DEFAULT_EXPIRY_SECONDS: 3600,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));
@@ -165,6 +168,7 @@ describe("upload transfer presign", () => {
       parseExpiry: () => 3600,
       DEFAULT_EXPIRY_SECONDS: 3600,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
     }));

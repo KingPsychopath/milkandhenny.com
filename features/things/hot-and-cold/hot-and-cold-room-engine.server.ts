@@ -629,13 +629,30 @@ export async function applyHotAndColdAction(input: {
       return accept();
     }
     if (action.type === "game.start" && room.phase === "lobby") {
-      if (activePlayers(room).length < 2)
-        return reject("action_unavailable", "Two people is the smallest hunt");
-      const unready = multiplayerUnreadyPlayers(activePlayers(room));
-      if (unready.length) {
-        requestMultiplayerReadiness(unready, action.actionId);
+      const active = activePlayers(room);
+      if (active.length < 2) return reject("action_unavailable", "Two people is the smallest hunt");
+      const confirmed = new Set(action.removePlayerIds ?? []);
+      const unready = multiplayerUnreadyPlayers(active);
+      const unconfirmed = unready.filter(
+        ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
+      );
+      if (unconfirmed.length) {
+        requestMultiplayerReadiness(unconfirmed, action.actionId);
         changed(room);
         return reject("players_not_ready", "Some players are not ready");
+      }
+      const remainingPlayers = room.players.filter(
+        (candidate) =>
+          candidate.withdrawn ||
+          multiplayerPlayerReady(candidate) ||
+          candidate.id === player.id ||
+          !confirmed.has(candidate.id),
+      );
+      if (remainingPlayers.filter(({ withdrawn }) => !withdrawn).length < 2)
+        return reject("action_unavailable", "Two ready people are needed to start");
+      if (remainingPlayers.length !== room.players.length) {
+        room.players = remainingPlayers;
+        changed(room);
       }
       startRound(room, 0);
       return accept();

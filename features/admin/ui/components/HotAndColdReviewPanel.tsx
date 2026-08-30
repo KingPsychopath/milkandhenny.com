@@ -4,6 +4,7 @@ import type {
   HotAndColdQualityReport,
   HotAndColdUpcomingReview,
 } from "@/features/things/hot-and-cold/hot-and-cold-review";
+import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -22,9 +23,12 @@ function ReviewDetail({ review }: { review: HotAndColdUpcomingReview }) {
           </p>
           <h4 className="mt-1 font-serif text-2xl font-semibold">{review.target}</h4>
         </div>
-        <p className="font-mono text-xs theme-muted">
+        <AdminStatus
+          tone={review.approved ? "positive" : "attention"}
+          className="font-mono text-xs"
+        >
           {review.approved ? "approved trail" : "approval required"}
-        </p>
+        </AdminStatus>
       </div>
 
       <section aria-labelledby="hot-cold-hints-heading">
@@ -52,11 +56,14 @@ function ReviewDetail({ review }: { review: HotAndColdUpcomingReview }) {
           >
             expected comparisons
           </h5>
-          <p className="font-mono text-xs theme-muted">
+          <AdminStatus
+            tone={failedComparisons.length === 0 ? "positive" : "danger"}
+            className="font-mono text-xs"
+          >
             {failedComparisons.length === 0
               ? "all comparisons pass"
               : `${failedComparisons.length} failed`}
-          </p>
+          </AdminStatus>
         </div>
         {review.comparisons.length > 0 ? (
           <ul className="mt-3 divide-y theme-border border-y theme-border">
@@ -218,17 +225,22 @@ export function HotAndColdReviewPanel({
                 className="mt-2"
               />
             </label>
-            <p className="font-mono text-xs theme-muted">
-              {report.judgingVersion} ·{" "}
-              {report.releaseReady ? "window approved" : "release blocked"}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-2 font-mono text-xs theme-muted">
+              <span>{report.judgingVersion}</span>
+              <span aria-hidden="true">·</span>
+              <AdminStatus tone={report.releaseReady ? "positive" : "danger"}>
+                {report.releaseReady ? "window approved" : "release blocked"}
+              </AdminStatus>
+            </div>
           </div>
           {selected ? <ReviewDetail review={selected} /> : null}
         </>
       ) : loading ? (
         <p className="font-mono text-xs theme-muted">Loading quality evidence…</p>
       ) : (
-        <p className="font-mono text-xs theme-muted">Quality evidence is unavailable.</p>
+        <AdminStatus tone="danger" className="font-mono text-xs">
+          Quality evidence is unavailable
+        </AdminStatus>
       )}
     </section>
   );

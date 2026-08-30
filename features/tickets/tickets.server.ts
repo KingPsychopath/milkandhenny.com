@@ -1,5 +1,5 @@
-import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
+import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import { identityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import {
   CLAIM_RATELIMIT_MAX,
@@ -36,6 +36,7 @@ import {
 import { getTicketCapacitySnapshot } from "./capacity.server";
 import {
   isValidTicketId,
+  MAX_TICKETS_PER_ORDER,
   parseTicketQrPayload,
   type DoorManifest,
   type DoorTicketView,
@@ -57,20 +58,15 @@ export type TicketOpResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; error: string };
 
-const MAX_QUANTITY_PER_CLAIM = 10;
-
-/** Rate limiting stays on Redis: it is ephemeral counting, not durable truth. */
+/** Public ticket actions share the production fail-closed rate limiter. */
 async function rateLimit(key: string, windowSeconds: number, max: number): Promise<boolean> {
-  const redis = getRedis();
-  if (!redis) return true;
-  try {
-    const next = await redis.incr(key);
-    if (next === 1) await redis.expire(key, windowSeconds);
-    return next <= max;
-  } catch {
-    // A rate limiter that fails closed would take the door offline.
-    return true;
-  }
+  const decision = await reserveRateLimit({
+    name: "tickets-public",
+    identity: key,
+    limit: max,
+    windowSeconds,
+  });
+  return decision.allowed;
 }
 
 function findTicketType(event: EventRecord, ticketTypeId: string): TicketType | null {
@@ -134,9 +130,9 @@ export async function issueTickets(
   if (!holderName) return { ok: false, status: 400, error: "A name is required" };
   if (holderName.length > 120) return { ok: false, status: 400, error: "That name is too long" };
 
-  const quantity = Math.round(input.quantity);
-  if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_CLAIM) {
-    return { ok: false, status: 400, error: `Choose between 1 and ${MAX_QUANTITY_PER_CLAIM}` };
+  const quantity = input.quantity;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
+    return { ok: false, status: 400, error: `Choose between 1 and ${MAX_TICKETS_PER_ORDER}` };
   }
 
   if (input.email !== undefined && !isValidEmail(input.email)) {
@@ -367,9 +363,12 @@ export type EventTicketSummary = {
     }
   >;
   tickets: (DoorTicketView & {
+    /** Internal admin identifier is `id`; this is the current scanner authority when rotated. */
+    publicId?: string;
     ticketTypeId: string;
     email?: string;
     issuedAt: string;
+    refundedAt?: string;
     amountPaidMinor?: number;
     currency?: string;
     activeExchange?: {
@@ -466,9 +465,12 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
         ticket,
         (event ? findTicketType(event, ticket.ticketTypeId)?.name : null) ?? "Ticket",
       ),
+      id: ticket.id,
+      publicId: ticket.accessReference,
       ticketTypeId: ticket.ticketTypeId,
       email: ticket.email,
       issuedAt: ticket.issuedAt,
+      refundedAt: ticket.refundedAt,
       amountPaidMinor: ticket.amountPaidMinor,
       currency: ticket.currency,
       activeExchange: activeExchangeByTicket.get(ticket.id),

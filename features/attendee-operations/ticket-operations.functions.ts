@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import { getTicketByCurrentReference } from "@/features/tickets/store.server";
 import {
   cancelPendingTicketOperation,
   cancelTransferredTicketReturn,
@@ -22,16 +23,18 @@ export const sendTicketOperationFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const personId = await attendeePersonId();
     if (!personId) return { ok: false as const, status: 401, error: "Verify your email first" };
+    const ticket = await getTicketByCurrentReference(data.ticketId);
+    if (!ticket) return { ok: false as const, status: 404, error: "Ticket not found" };
     const origin = getBaseUrlForRequest(getRequest());
     return data.action === "assign"
       ? requestTicketAssignment({
-          ticketId: data.ticketId,
+          ticketId: ticket.id,
           purchaserPersonId: personId,
           recipientEmail: data.recipientEmail,
           origin,
         })
       : requestTicketTransfer({
-          ticketId: data.ticketId,
+          ticketId: ticket.id,
           senderPersonId: personId,
           recipientEmail: data.recipientEmail,
           origin,

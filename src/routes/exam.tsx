@@ -1,5 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type FormEvent } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { unlockExamAnswersFn } from "@/features/exam/exam.functions";
+import type { ExamAnswers } from "@/features/exam/types";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -27,12 +29,6 @@ const QUESTIONS = [
       },
     ],
     preamble: "A curve C has the equation:\n\ny = 2x³ − 9x² + 12x − 4",
-    answers: [
-      "(a) dy/dx = 6x² − 18x + 12",
-      "(b) Set 6x² − 18x + 12 = 0 → x² − 3x + 2 = 0 → (x−1)(x−2) = 0\n    x = 1 → y = 2−9+12−4 = 1  ⇒  (1, 1)\n    x = 2 → y = 16−36+24−4 = 0  ⇒  (2, 0)",
-      "(c) d²y/dx² = 12x − 18\n    At x = 1: 12(1)−18 = −6 < 0 → Maximum\n    At x = 2: 12(2)−18 = 6 > 0 → Minimum",
-      "(d) At x = 0: y = −4, gradient = 12\n    Normal gradient = −1/12\n    Equation: y = −(1/12)x − 4",
-    ],
   },
   {
     id: 2,
@@ -58,12 +54,6 @@ const QUESTIONS = [
     ],
     preamble:
       "A factory produces bolts. From historical data, 8% of bolts are defective. A quality inspector selects a random sample of 20 bolts.",
-    answers: [
-      "(a) X ~ B(20, 0.08)\n    Assumptions: independent trials, constant probability of defect.",
-      "(b) P(X = 2) = C(20,2) × (0.08)² × (0.92)¹⁸ = 0.2711 (4 d.p.)",
-      "(c) P(X < 3) = P(0) + P(1) + P(2)\n    = 0.1887 + 0.3282 + 0.2711 = 0.7880 (4 d.p.)",
-      "(d) H₀: p = 0.08   H₁: p > 0.08 (one-tailed)\n    P(X ≥ 5) = 1 − P(X ≤ 4) = 1 − 0.9890 = 0.0110\n    0.0110 < 0.05 → Reject H₀\n    Sufficient evidence at 5% level to support the claim.",
-    ],
   },
   {
     id: 3,
@@ -88,15 +78,8 @@ const QUESTIONS = [
     ],
     preamble:
       "A particle P of mass 4 kg is held at rest on a rough inclined plane that makes an angle of 30° with the horizontal. The coefficient of friction between P and the plane is μ = 0.3. The particle is released from rest.\n\nTake g = 9.8 m s⁻².",
-    answers: [
-      "(a) Weight 4g (39.2 N) vertically downward\n    Normal reaction R perpendicular to plane\n    Friction F acting up the plane",
-      "(b) Resolving ⊥ to plane: R = 4g cos 30° = 33.95 N\n    Friction: F = μR = 0.3 × 33.95 = 10.19 N\n    Resolving ∥ to plane: 4g sin 30° − F = 4a\n    19.6 − 10.19 = 4a → a = 2.35 m s⁻²\n    Component down plane (19.6 N) > Friction (10.19 N) ∴ particle moves.",
-      "(c) v² = u² + 2as = 0 + 2(2.35)(6) = 28.2\n    v = √28.2 = 5.31 m s⁻¹",
-    ],
   },
 ] as const;
-
-const PIN = "2030";
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -116,20 +99,35 @@ export const Route = createFileRoute("/exam")({
 function ExamPage() {
   const [openQ, setOpenQ] = useState<number | null>(null);
   const [pinInput, setPinInput] = useState("");
-  const [showAnswers, setShowAnswers] = useState(false);
-  const [pinError, setPinError] = useState(false);
+  const [answers, setAnswers] = useState<ExamAnswers | null>(null);
+  const [pinStatus, setPinStatus] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   const toggle = useCallback((id: number) => setOpenQ((prev) => (prev === id ? null : id)), []);
 
-  const handlePinSubmit = useCallback(() => {
-    if (pinInput === PIN) {
-      setShowAnswers(true);
-      setPinError(false);
-    } else {
-      setPinError(true);
-      setPinInput("");
-    }
-  }, [pinInput]);
+  const handlePinSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!pinInput.trim() || isUnlocking) return;
+      setIsUnlocking(true);
+      setPinStatus("");
+      try {
+        const result = await unlockExamAnswersFn({ data: { pin: pinInput } });
+        if (result.ok) {
+          setAnswers(result.answers);
+          setPinInput("");
+        } else {
+          setPinStatus(result.error);
+          setPinInput("");
+        }
+      } catch {
+        setPinStatus("The mark scheme could not be unlocked. Try again.");
+      } finally {
+        setIsUnlocking(false);
+      }
+    },
+    [isUnlocking, pinInput],
+  );
 
   const totalMarks = QUESTIONS.reduce((s, q) => s + q.marks, 0);
 
@@ -140,7 +138,7 @@ function ExamPage() {
         <header className="text-center mb-12">
           <Link
             to="/"
-            className="inline-block font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60 theme-muted"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center font-mono text-xs tracking-tighter font-bold mb-6 transition-opacity duration-300 hover:opacity-60 theme-muted"
           >
             {SITE_BRAND}
           </Link>
@@ -212,6 +210,7 @@ function ExamPage() {
                   id={`exam-q-${q.id}-body`}
                   role="region"
                   aria-labelledby={`exam-q-${q.id}-btn`}
+                  aria-hidden={!isOpen}
                   className="transition-all duration-400 ease-in-out overflow-hidden"
                   style={{ maxHeight: isOpen ? 2000 : 0, opacity: isOpen ? 1 : 0 }}
                 >
@@ -237,9 +236,9 @@ function ExamPage() {
                             </p>
 
                             {/* Answer (if unlocked) */}
-                            {showAnswers && q.answers[i] && (
+                            {answers?.[String(q.id)]?.[i] && (
                               <div className="mt-3 p-3 rounded border-l-2 font-mono text-xs leading-relaxed whitespace-pre-line bg-[var(--stone-100)] border-[var(--prose-hashtag)] text-[var(--prose-hashtag)]">
-                                {q.answers[i]}
+                                {answers[String(q.id)][i]}
                               </div>
                             )}
                           </div>
@@ -255,36 +254,50 @@ function ExamPage() {
 
         {/* ── Answer unlock ── */}
         <div className="mt-10 border-t pt-8 text-center theme-border">
-          {showAnswers ? (
+          {answers ? (
             <p className="font-mono text-xs text-[var(--prose-hashtag)]">mark scheme unlocked</p>
           ) : (
-            <div className="inline-flex flex-col items-center gap-3">
-              <p className="font-mono text-xs theme-muted">enter pin to reveal mark scheme</p>
+            <form onSubmit={handlePinSubmit} className="inline-flex flex-col items-center gap-3">
+              <label htmlFor="exam-pin" className="font-mono text-xs theme-muted">
+                enter pin to reveal mark scheme
+              </label>
               <div className="flex gap-2">
                 <input
+                  id="exam-pin"
+                  name="exam-pin"
                   type="password"
-                  maxLength={4}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={64}
                   value={pinInput}
                   onChange={(e) => {
                     setPinInput(e.target.value);
-                    setPinError(false);
+                    setPinStatus("");
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && handlePinSubmit()}
                   placeholder="••••"
-                  className={`font-mono text-center text-sm w-24 px-3 py-2 rounded border outline-none transition-colors duration-300 bg-[var(--stone-100)] text-foreground ${
-                    pinError ? "border-red-500" : "theme-border-strong"
+                  aria-invalid={Boolean(pinStatus)}
+                  aria-describedby={pinStatus ? "exam-pin-status" : undefined}
+                  className={`min-h-11 font-mono text-center text-base sm:text-sm w-28 px-3 py-2 rounded border outline-none transition-colors duration-300 bg-[var(--stone-100)] text-foreground ${
+                    pinStatus ? "border-[var(--status-danger)]" : "theme-border-strong"
                   }`}
                 />
                 <button
-                  type="button"
-                  onClick={handlePinSubmit}
-                  className="font-mono text-xs px-4 py-2 rounded border cursor-pointer transition-opacity duration-300 hover:opacity-70 theme-border-strong bg-[var(--stone-100)] text-foreground"
+                  type="submit"
+                  disabled={isUnlocking || !pinInput.trim()}
+                  className="min-h-11 font-mono text-xs px-4 py-2 rounded border cursor-pointer transition-opacity duration-300 hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-50 theme-border-strong bg-[var(--stone-100)] text-foreground"
                 >
-                  unlock
+                  {isUnlocking ? "unlocking…" : "unlock"}
                 </button>
               </div>
-              {pinError && <p className="font-mono text-xs text-red-500">incorrect pin</p>}
-            </div>
+              <p
+                id="exam-pin-status"
+                role={pinStatus ? "alert" : "status"}
+                aria-live="polite"
+                className="min-h-4 font-mono text-xs text-[var(--status-danger)]"
+              >
+                {pinStatus}
+              </p>
+            </form>
           )}
         </div>
 
@@ -292,7 +305,10 @@ function ExamPage() {
         <footer className="mt-12 text-center font-mono text-xs space-y-3 theme-muted">
           <p>end of questions</p>
           <div className="border-t theme-border pt-4">
-            <Link to="/" className="hover:opacity-60 transition-opacity duration-300">
+            <Link
+              to="/"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center hover:opacity-60 transition-opacity duration-300"
+            >
               ← home
             </Link>
             <p className="mt-2 theme-faint">

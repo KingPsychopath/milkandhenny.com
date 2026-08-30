@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { appendFinalize } from "@/features/transfers/append.server";
 import { resolveDropToken } from "@/features/events/drop.server";
+import { MAX_TRANSFER_TOTAL_BYTES } from "@/features/transfers/store.server";
 
 export const maxDuration = 15;
 export const runtime = "nodejs";
@@ -26,6 +27,7 @@ async function handlePOST(request: Request) {
   return appendFinalize(request, drop.transferId, body.files, {
     maxFiles: GUEST_MAX_FILES,
     maxFileBytes: GUEST_MAX_FILE_BYTES,
+    maxTotalBytes: MAX_TRANSFER_TOTAL_BYTES,
   });
 }
 

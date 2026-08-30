@@ -28,6 +28,9 @@ Principles:
 - **Light mode** uses cream/warm stone (paper-like).
 - **Dark mode** uses deep warm brown (ink-like), not blue-black.
 - **Single accent**: amber is used sparingly to signal meaning (featured/emphasis/affordance), not decoration.
+- **Admin semantic colour**: operational state may use restrained green (healthy/success), amber
+  (waiting/attention), and red (failed/blocked). Keep surrounding surfaces neutral, always pair colour
+  with a written label, and leave inactive or historical states grey.
 - **Avoid "system blue" energy**: links/interactive states should feel quiet; prefer underline/opacity over color swaps.
 
 ### Palette (source of truth: `src/styles/globals.css`)

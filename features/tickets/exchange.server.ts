@@ -100,7 +100,10 @@ async function verifyManager(managerTicketId: string, ticketId: string) {
             target.amount_paid_minor, target.currency, target.status, target.redeemed_at
        from tickets manager
        join tickets target on target.order_id = manager.order_id
-      where manager.id = $1 and manager.parent_ticket_id is null and target.id = $2`,
+      where (manager.access_reference = $1
+             or (manager.access_reference is null and manager.id = $1))
+        and manager.parent_ticket_id is null
+        and (target.id = $2 or target.access_reference = $2)`,
     [managerTicketId, ticketId],
   );
 }
@@ -209,7 +212,10 @@ async function reserveExchange(input: {
                   target.amount_paid_minor, target.currency, target.status, target.redeemed_at
              from tickets manager
              join tickets target on target.order_id = manager.order_id
-            where manager.id = $1 and manager.parent_ticket_id is null and target.id = $2
+            where (manager.access_reference = $1
+                   or (manager.access_reference is null and manager.id = $1))
+              and manager.parent_ticket_id is null
+              and (target.id = $2 or target.access_reference = $2)
             for update of target`
         : `select id, event_slug, order_id, ticket_type_id, holder_name, email, email_hash,
                   parent_ticket_id, payment_ref, amount_paid_minor, currency, status, redeemed_at

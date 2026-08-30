@@ -427,12 +427,12 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={toggleSelectMode}
-            className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
+            className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
           >
             {selectable ? "[ cancel ]" : "[ select ]"}
           </button>
@@ -442,7 +442,7 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
                 type="button"
                 onClick={downloadSelected}
                 disabled={busy}
-                className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
+                className="inline-flex min-h-11 items-center px-2 font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors tracking-wide disabled:opacity-50"
               >
                 {busy ? progressLabel : `[ download ${selected.size} ]`}
               </button>
@@ -450,7 +450,7 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
                 <button
                   type="button"
                   onClick={cancelDownload}
-                  className="font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
+                  className="inline-flex min-h-11 items-center px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors tracking-wide"
                 >
                   [ cancel download ]
                 </button>
@@ -458,14 +458,19 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
             </>
           )}
         </div>
-        <span className="font-mono text-micro theme-muted tracking-wide">
+        <span className="font-mono text-micro theme-muted tracking-wide sm:text-right">
           {selected.size > 0 && selectedTotalBytes !== null
             ? `${selected.size} selected • ${formatBytes(selectedTotalBytes)}`
             : `${photos.length} photos`}
         </span>
       </div>
       {downloadError ? (
-        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">{downloadError}</p>
+        <p
+          role="alert"
+          className="mb-4 font-mono text-micro tracking-wide text-[var(--prose-hashtag)]"
+        >
+          {downloadError}
+        </p>
       ) : null}
       {pendingMultipartDownload ? (
         <div className="mb-4 rounded-sm border theme-border px-3 py-3">
@@ -486,12 +491,12 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
               Total selected: {formatTotalBytes(pendingMultipartDownload.plan.total)}
             </p>
           ) : null}
-          <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
+          <div className="mt-3 flex flex-wrap items-center gap-1 font-mono text-micro tracking-wide">
             <button
               type="button"
               onClick={startMultipartDownload}
               disabled={busy}
-              className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+              className="inline-flex min-h-11 items-center px-2 text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
             >
               [ download in {pendingMultipartDownload.plan.partCount} parts ]
             </button>
@@ -499,7 +504,7 @@ export function AlbumGallery({ albumSlug, albumTitle, photos }: AlbumGalleryProp
               type="button"
               onClick={() => setPendingMultipartDownload(null)}
               disabled={busy}
-              className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+              className="inline-flex min-h-11 items-center px-2 theme-muted hover:text-foreground transition-colors disabled:opacity-50"
             >
               [ dismiss ]
             </button>

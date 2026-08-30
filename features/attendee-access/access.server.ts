@@ -16,7 +16,7 @@ import { describeEmailCapability, sendEmail } from "@/lib/platform/email.server"
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
-import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
+import { generateTicketId, hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
 import { personGameHistory, personGameStats } from "@/features/person-games/history.server";
@@ -498,7 +498,7 @@ export async function claimTicketForPerson(input: {
   verifiedEmailHash: string;
   ticketId: string;
   permittedParticipantId: string;
-}): Promise<AccessResult<{ claimed: true; participantId: string }>> {
+}): Promise<AccessResult<{ claimed: true; participantId: string; publicTicketId: string }>> {
   return transaction(async (client) => {
     const identifier = await client.query<{ id: string }>(
       `select id from event_person_identifiers
@@ -513,9 +513,10 @@ export async function claimTicketForPerson(input: {
       holder_name: string;
       ticket_status: string;
       person_id: string | null;
+      access_reference: string | null;
     }>(
       `select p.id as participant_id, p.event_slug, p.person_id,
-              t.holder_name, t.status as ticket_status
+              t.holder_name, t.status as ticket_status,t.access_reference
          from event_participants p
          join tickets t on t.id = p.ticket_id
         where t.id = $1
@@ -579,7 +580,21 @@ export async function claimTicketForPerson(input: {
         ],
       );
     }
-    return { ok: true, value: { claimed: true, participantId: row.participant_id } };
+    const publicTicketId = claimInserted?.rows[0]
+      ? generateTicketId()
+      : (row.access_reference ?? input.ticketId);
+    if (claimInserted?.rows[0]) {
+      await client.query(
+        `update tickets
+            set access_reference = $2,authority_version = authority_version + 1
+          where id = $1`,
+        [input.ticketId, publicTicketId],
+      );
+    }
+    return {
+      ok: true,
+      value: { claimed: true, participantId: row.participant_id, publicTicketId },
+    };
   });
 }
 
@@ -753,6 +768,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
            from score_postings posting
            join score_transactions score on score.id = posting.transaction_id
           where posting.participant_id = any($1::text[])
+            and score.status = 'accepted'
           order by score.created_at desc limit 200`,
         [participantIds],
       )

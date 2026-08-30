@@ -291,8 +291,8 @@ function TimeFinderDateChip({
       aria-label={`Show everything from ${dateKey}`}
       className={
         isActive
-          ? "mb-2 font-mono text-nano tracking-wide text-foreground"
-          : "mb-2 font-mono text-nano tracking-wide theme-muted hover:text-foreground transition-colors"
+          ? "mb-2 min-h-11 font-mono text-nano tracking-wide text-foreground"
+          : "mb-2 min-h-11 font-mono text-nano tracking-wide theme-muted transition-colors hover:text-foreground"
       }
     >
       <span>[ {formatTimeFinderDateLabel(dateKey)} ]</span>
@@ -353,12 +353,12 @@ function PageControls({
       <p className="font-mono text-nano theme-muted tracking-wide">
         page {page} of {totalPages}
       </p>
-      <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+      <div className="flex flex-wrap items-center gap-1 font-mono text-micro tracking-wide">
         <button
           type="button"
           onClick={() => onPageChange(1)}
           disabled={page <= 1}
-          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+          className="min-h-11 px-2 theme-muted transition-colors hover:text-foreground disabled:opacity-40"
         >
           [ first ]
         </button>
@@ -366,7 +366,7 @@ function PageControls({
           type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+          className="min-h-11 px-2 theme-muted transition-colors hover:text-foreground disabled:opacity-40"
         >
           [ prev ]
         </button>
@@ -374,7 +374,7 @@ function PageControls({
           type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+          className="min-h-11 px-2 theme-muted transition-colors hover:text-foreground disabled:opacity-40"
         >
           [ next ]
         </button>
@@ -382,7 +382,7 @@ function PageControls({
           type="button"
           onClick={() => onPageChange(totalPages)}
           disabled={page >= totalPages}
-          className="theme-muted hover:text-foreground transition-colors disabled:opacity-40"
+          className="min-h-11 px-2 theme-muted transition-colors hover:text-foreground disabled:opacity-40"
         >
           [ last ]
         </button>
@@ -640,10 +640,11 @@ function MultiVisualContent({
         <button
           type="button"
           onClick={() => setActivePanel("primary")}
+          aria-pressed={activePanel === "primary"}
           className={
             activePanel === "primary"
-              ? "px-2 py-1 rounded-sm border border-white/30 text-white"
-              : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
+              ? "min-h-11 rounded-sm border border-white/30 px-3 py-2 text-white"
+              : "min-h-11 rounded-sm border border-white/15 px-3 py-2 text-white/50 transition-colors hover:text-white"
           }
         >
           [{item.type === "live_photo" ? "photo" : "preview"}]
@@ -651,10 +652,11 @@ function MultiVisualContent({
         <button
           type="button"
           onClick={() => setActivePanel("secondary")}
+          aria-pressed={activePanel === "secondary"}
           className={
             activePanel === "secondary"
-              ? "px-2 py-1 rounded-sm border border-white/30 text-white"
-              : "px-2 py-1 rounded-sm border border-white/15 text-white/50 hover:text-white transition-colors"
+              ? "min-h-11 rounded-sm border border-white/30 px-3 py-2 text-white"
+              : "min-h-11 rounded-sm border border-white/15 px-3 py-2 text-white/50 transition-colors hover:text-white"
           }
         >
           [{item.type === "live_photo" ? "motion" : "raw"}]
@@ -724,7 +726,7 @@ function TransferLightbox({
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-4 right-4 z-10 font-mono text-sm text-white/60 hover:text-white transition-colors"
+        className="absolute right-2 top-2 z-10 inline-flex size-11 items-center justify-center font-mono text-sm text-white/60 transition-colors hover:text-white sm:right-4 sm:top-4"
         aria-label="Close"
       >
         ✕
@@ -745,7 +747,7 @@ function TransferLightbox({
               type="button"
               onClick={() => onDownload(item)}
               disabled={saving}
-              className="font-mono text-xs text-amber-500 hover:text-amber-400 transition-colors"
+              className="min-h-11 px-2 font-mono text-xs text-amber-500 transition-colors hover:text-amber-400"
             >
               [ try downloading instead ]
             </button>
@@ -764,12 +766,12 @@ function TransferLightbox({
         className="mt-5 flex w-full max-w-md flex-col gap-3 px-4 sm:mt-4 sm:flex-row sm:items-center sm:justify-between"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-4 font-mono text-xs text-white/50">
+        <div className="flex items-center justify-between gap-2 font-mono text-xs text-white/50">
           <button
             type="button"
             onClick={onPrevious}
             disabled={index === 0}
-            className="hover:text-white transition-colors disabled:text-white/20"
+            className="min-h-11 px-2 transition-colors hover:text-white disabled:text-white/20"
           >
             ← prev
           </button>
@@ -777,12 +779,12 @@ function TransferLightbox({
             type="button"
             onClick={onNext}
             disabled={index >= total - 1}
-            className="hover:text-white transition-colors disabled:text-white/20"
+            className="min-h-11 px-2 transition-colors hover:text-white disabled:text-white/20"
           >
             next →
           </button>
         </div>
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-mono text-micro text-white/30">
             {index + 1} / {total}
           </span>
@@ -791,7 +793,7 @@ function TransferLightbox({
               type="button"
               onClick={() => onDelete(activeFile)}
               disabled={deletingFileId === activeFile.id}
-              className="font-mono text-xs text-red-400/80 hover:text-red-300 disabled:opacity-50"
+              className="min-h-11 px-2 font-mono text-xs text-red-400/80 hover:text-red-300 disabled:opacity-50"
             >
               {deletingFileId === activeFile.id ? "deleting..." : "delete file"}
             </button>
@@ -800,7 +802,7 @@ function TransferLightbox({
             type="button"
             onClick={() => onDownload(item)}
             disabled={saving}
-            className="font-mono text-xs text-white/50 hover:text-white disabled:opacity-50"
+            className="min-h-11 px-2 font-mono text-xs text-white/50 hover:text-white disabled:opacity-50"
           >
             {saving ? "saving..." : item.type === "single" ? "download ↓" : "download pair ↓"}
           </button>
@@ -819,6 +821,7 @@ function TransferLightbox({
         <p
           className="mt-3 max-w-md px-4 text-center font-mono text-nano tracking-wide text-red-300/80"
           onClick={(event) => event.stopPropagation()}
+          role="alert"
         >
           {deleteError}
         </p>
@@ -1911,10 +1914,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 key={key}
                 type="button"
                 onClick={() => handleFilterChange(key)}
+                aria-pressed={isActive}
                 className={
                   isActive
-                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                    ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                    : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
                 }
               >
                 [{label} {count}]
@@ -1930,10 +1934,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               <button
                 type="button"
                 onClick={() => handleLivePhotoModeChange("paired")}
+                aria-pressed={livePhotoMode === "paired"}
                 className={
                   livePhotoMode === "paired"
-                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                    ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                    : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
                 }
               >
                 [paired]
@@ -1941,10 +1946,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               <button
                 type="button"
                 onClick={() => handleLivePhotoModeChange("separate")}
+                aria-pressed={livePhotoMode === "separate"}
                 className={
                   livePhotoMode === "separate"
-                    ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                    : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                    ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                    : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
                 }
               >
                 [separate]
@@ -1955,10 +1961,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           <button
             type="button"
             onClick={() => handleBrowseModeChange("scroll")}
+            aria-pressed={browseMode === "scroll"}
             className={
               browseMode === "scroll"
-                ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
             }
           >
             [scroll]
@@ -1966,10 +1973,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           <button
             type="button"
             onClick={() => handleBrowseModeChange("pages")}
+            aria-pressed={browseMode === "pages"}
             className={
               browseMode === "pages"
-                ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
             }
           >
             [pages]
@@ -1995,7 +2003,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               <button
                 type="button"
                 onClick={() => handleTimeParamChange(null)}
-                className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                className="min-h-11 px-2 font-mono text-micro theme-muted transition-colors hover:text-foreground"
               >
                 [ clear time ]
               </button>
@@ -2027,10 +2035,11 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                         onClick={() => handleTimeParamChange(bucket.param)}
                         title={`${bucket.dateKey} ${bucket.label}`}
                         aria-label={`Show media from ${bucket.dateKey} around ${bucket.label}`}
+                        aria-pressed={isActive}
                         className={
                           isActive
-                            ? "px-2 py-1 rounded-sm border theme-border text-foreground"
-                            : "px-2 py-1 rounded-sm border theme-border theme-muted hover:text-foreground transition-colors"
+                            ? "min-h-11 rounded-sm border px-3 py-2 theme-border text-foreground"
+                            : "min-h-11 rounded-sm border px-3 py-2 theme-border theme-muted transition-colors hover:text-foreground"
                         }
                       >
                         <span>[{bucket.label}]</span>
@@ -2068,13 +2077,13 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               ? `showing ${pageEntries.length} of ${filteredEntries.length} in filter (${currentFiles.length} files • ${formatBytes(totalTransferBytes)} total)`
               : `${filteredEntries.length} ${filteredEntries.length === 1 ? "item" : "items"} in filter • ${formatBytes(totalTransferBytes)}`}
         </span>
-        <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-micro tracking-wide">
           {selectedCount > 0 && (
             <>
               <button
                 type="button"
                 onClick={clearSelection}
-                className="theme-muted hover:text-foreground transition-colors"
+                className="min-h-11 theme-muted transition-colors hover:text-foreground"
               >
                 [ clear ]
               </button>
@@ -2082,7 +2091,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 type="button"
                 onClick={downloadSelected}
                 disabled={busy}
-                className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+                className="min-h-11 text-amber-600 transition-colors hover:text-amber-500 disabled:opacity-50"
               >
                 {busy ? downloadLabel : "[ download selected ]"}
               </button>
@@ -2090,7 +2099,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 <button
                   type="button"
                   onClick={cancelDownload}
-                  className="theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 theme-muted transition-colors hover:text-foreground"
                 >
                   [ cancel download ]
                 </button>
@@ -2101,7 +2110,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             <button
               type="button"
               onClick={selectPage}
-              className="theme-muted hover:text-foreground transition-colors"
+              className="min-h-11 theme-muted transition-colors hover:text-foreground"
             >
               [ select page ]
             </button>
@@ -2110,7 +2119,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             <button
               type="button"
               onClick={selectFiltered}
-              className="theme-muted hover:text-foreground transition-colors"
+              className="min-h-11 theme-muted transition-colors hover:text-foreground"
             >
               {getScopeSelectLabel(activeFilter)}
             </button>
@@ -2119,7 +2128,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             type="button"
             onClick={downloadAll}
             disabled={busy}
-            className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+            className="min-h-11 text-amber-600 transition-colors hover:text-amber-500 disabled:opacity-50"
           >
             {busy ? downloadLabel : "[ download all ]"}
           </button>
@@ -2127,7 +2136,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
             <button
               type="button"
               onClick={cancelDownload}
-              className="theme-muted hover:text-foreground transition-colors"
+              className="min-h-11 theme-muted transition-colors hover:text-foreground"
             >
               [ cancel download ]
             </button>
@@ -2135,7 +2144,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         </div>
       </div>
       {downloadError ? (
-        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">{downloadError}</p>
+        <p className="mb-4 font-mono text-micro tracking-wide text-red-600" role="alert">
+          {downloadError}
+        </p>
       ) : null}
       {pendingMultipartDownload ? (
         <div className="mb-4 rounded-sm border theme-border px-3 py-3">
@@ -2151,12 +2162,12 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               Total selected: {formatTotalBytes(pendingMultipartDownload.plan.total)}
             </p>
           ) : null}
-          <div className="mt-3 flex items-center gap-3 font-mono text-micro tracking-wide">
+          <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-micro tracking-wide">
             <button
               type="button"
               onClick={startMultipartDownload}
               disabled={busy}
-              className="text-amber-600 hover:text-amber-500 transition-colors disabled:opacity-50"
+              className="min-h-11 text-amber-600 transition-colors hover:text-amber-500 disabled:opacity-50"
             >
               [ download in {pendingMultipartDownload.plan.partCount} parts ]
             </button>
@@ -2164,7 +2175,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               type="button"
               onClick={() => setPendingMultipartDownload(null)}
               disabled={busy}
-              className="theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+              className="min-h-11 theme-muted transition-colors hover:text-foreground disabled:opacity-50"
             >
               [ dismiss ]
             </button>
@@ -2180,7 +2191,9 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         </p>
       ) : null}
       {deleteError ? (
-        <p className="mb-4 font-mono text-micro tracking-wide text-red-600">{deleteError}</p>
+        <p className="mb-4 font-mono text-micro tracking-wide text-red-600" role="alert">
+          {deleteError}
+        </p>
       ) : null}
 
       {(visualItems.length > 0 || nonVisualFiles.length > 0) && (
@@ -2191,7 +2204,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                 Showing {visibleVisualFiles.length} of {visualItems.length} visual items to keep
                 this page responsive.
               </p>
-              <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+              <div className="flex flex-wrap items-center gap-3 font-mono text-micro tracking-wide">
                 <button
                   type="button"
                   onClick={() =>
@@ -2199,14 +2212,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                       Math.min(visualItems.length, prev + VISUAL_RENDER_INCREMENT),
                     )
                   }
-                  className="theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 theme-muted transition-colors hover:text-foreground"
                 >
                   [ show {Math.min(VISUAL_RENDER_INCREMENT, hiddenVisualCount)} more ]
                 </button>
                 <button
                   type="button"
                   onClick={() => setVisibleVisualCount(visualItems.length)}
-                  className="text-amber-600 hover:text-amber-500 transition-colors"
+                  className="min-h-11 text-amber-600 transition-colors hover:text-amber-500"
                 >
                   [ show all ]
                 </button>
@@ -2218,7 +2231,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
               <p className="font-mono text-nano theme-muted tracking-wide">
                 Showing {visibleNonVisualFiles.length} of {nonVisualFiles.length} non-visual files.
               </p>
-              <div className="flex items-center gap-3 font-mono text-micro tracking-wide">
+              <div className="flex flex-wrap items-center gap-3 font-mono text-micro tracking-wide">
                 <button
                   type="button"
                   onClick={() =>
@@ -2226,14 +2239,14 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                       Math.min(nonVisualFiles.length, prev + FILE_LIST_RENDER_INCREMENT),
                     )
                   }
-                  className="theme-muted hover:text-foreground transition-colors"
+                  className="min-h-11 theme-muted transition-colors hover:text-foreground"
                 >
                   [ show {Math.min(FILE_LIST_RENDER_INCREMENT, hiddenNonVisualCount)} more ]
                 </button>
                 <button
                   type="button"
                   onClick={() => setVisibleFileListCount(nonVisualFiles.length)}
-                  className="text-amber-600 hover:text-amber-500 transition-colors"
+                  className="min-h-11 text-amber-600 transition-colors hover:text-amber-500"
                 >
                   [ show all ]
                 </button>
@@ -2564,7 +2577,7 @@ function FileCard({
             src={getTransferPrimaryUrl(transferId, file.id)}
             controls
             preload="none"
-            className="w-full mt-2 h-8"
+            className="mt-2 h-11 w-full"
           />
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
@@ -2574,7 +2587,8 @@ function FileCard({
               type="button"
               onClick={onDelete}
               disabled={deleting}
-              className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
+              className="inline-flex size-11 items-center justify-center font-mono text-micro text-red-500/80 transition-colors hover:text-red-400 disabled:opacity-50"
+              aria-label={`Delete ${file.filename}`}
             >
               {deleting ? "..." : "x"}
             </button>
@@ -2582,7 +2596,8 @@ function FileCard({
           <button
             type="button"
             onClick={onDownload}
-            className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
+            className="inline-flex size-11 items-center justify-center font-mono text-micro text-amber-600 transition-colors hover:text-amber-500"
+            aria-label={`Download ${file.filename}`}
           >
             ↓
           </button>
@@ -2604,7 +2619,7 @@ function FileCard({
           {file.mimeType.split("/").pop()} · {formatBytes(file.size)}
         </p>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {onPreview && (
           <button
             type="button"
@@ -2619,7 +2634,7 @@ function FileCard({
             type="button"
             onClick={onDelete}
             disabled={deleting}
-            className="font-mono text-micro text-red-500/80 hover:text-red-400 transition-colors disabled:opacity-50"
+            className="min-h-11 px-2 font-mono text-micro text-red-500/80 transition-colors hover:text-red-400 disabled:opacity-50"
           >
             {deleting ? "[ deleting ]" : "[ delete ]"}
           </button>
@@ -2627,7 +2642,7 @@ function FileCard({
         <button
           type="button"
           onClick={onDownload}
-          className="font-mono text-micro text-amber-600 hover:text-amber-500 transition-colors"
+          className="min-h-11 px-2 font-mono text-micro text-amber-600 transition-colors hover:text-amber-500"
         >
           [ download ]
         </button>

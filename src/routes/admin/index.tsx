@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { SITE_NAME } from "@/lib/shared/config";
-import { AdminDashboard } from "@/features/admin/ui/AdminDashboard";
 import {
+  ADMIN_SECTIONS,
+  OPERATIONS_TABS,
   isAdminSection,
   isCommunicationsTab,
   isOperationsTab,
@@ -11,12 +13,30 @@ import {
   type OperationsTab,
 } from "@/features/admin/ui/components/AdminSectionNav";
 import {
+  canAccessAdminDestination,
+  canAccessAdminSection,
+  canAccessOperationsTab,
+  firstAccessibleAdminSection,
+  firstAccessibleOperationsTab,
+} from "@/features/admin/ui/admin-permissions";
+import {
   getAdminAccessFn,
   signInAdmin,
   signInAdminDevelopment,
 } from "@/features/auth/auth.functions";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { PasskeySignIn } from "@/features/attendee-access/ui/PasskeySignIn";
+import {
+  adminSignInMessage,
+  parseAdminSignInState,
+  type AdminSignInState,
+} from "@/features/admin/ui/admin-auth-state";
+
+const AdminDashboard = lazy(() =>
+  import("@/features/admin/ui/AdminDashboard").then((module) => ({
+    default: module.AdminDashboard,
+  })),
+);
 
 export const Route = createFileRoute("/admin/")({
   validateSearch: (
@@ -31,6 +51,7 @@ export const Route = createFileRoute("/admin/")({
     person?: string;
     emailStatus?: string;
     emailQuery?: string;
+    auth?: AdminSignInState;
   } => ({
     view: isAdminSection(search.view) ? search.view : "overview",
     ...(isCommunicationsTab(search.communicationTab)
@@ -55,6 +76,7 @@ export const Route = createFileRoute("/admin/")({
     ...(typeof search.emailQuery === "string" && search.emailQuery.trim()
       ? { emailQuery: search.emailQuery.trim().slice(0, 200) }
       : {}),
+    ...(parseAdminSignInState(search.auth) ? { auth: parseAdminSignInState(search.auth) } : {}),
   }),
   component: AdminPage,
   loader: {
@@ -75,8 +97,13 @@ export const Route = createFileRoute("/admin/")({
 });
 
 function AdminPage() {
-  const { auth, localDevBypassAvailable, namedAdminPasskeyRequired, namedAdminHasPasskey } =
-    Route.useLoaderData();
+  const {
+    isAuthed,
+    permissions,
+    localDevBypassAvailable,
+    namedAdminPasskeyRequired,
+    namedAdminHasPasskey,
+  } = Route.useLoaderData();
   const {
     view,
     communicationTab,
@@ -87,11 +114,12 @@ function AdminPage() {
     person,
     emailStatus,
     emailQuery,
+    auth: signInState,
   } = Route.useSearch();
+  const signInError = adminSignInMessage(signInState);
   const navigate = Route.useNavigate();
-  const isAuthed = auth.ok;
 
-  if (!isAuthed) {
+  if (!isAuthed || !permissions) {
     return (
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
         <div className="w-full max-w-sm text-center">
@@ -130,10 +158,22 @@ function AdminPage() {
               name="password"
               type="password"
               placeholder="admin password"
-              autoFocus
+              autoFocus={!namedAdminPasskeyRequired}
               required
-              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
+              aria-invalid={signInError ? true : undefined}
+              aria-describedby={signInError ? "admin-sign-in-error" : undefined}
+              className="min-h-11 w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none py-2 text-center font-mono text-base tracking-wider transition-colors placeholder:text-[var(--stone-400)] sm:text-sm"
             />
+
+            {signInError ? (
+              <p
+                id="admin-sign-in-error"
+                role="alert"
+                className="mt-3 font-mono text-xs text-[var(--status-danger)]"
+              >
+                {signInError}
+              </p>
+            ) : null}
 
             <button
               type="submit"
@@ -166,75 +206,105 @@ function AdminPage() {
     );
   }
 
+  const availableView = canAccessAdminSection(view, permissions)
+    ? view
+    : (firstAccessibleAdminSection(
+        ADMIN_SECTIONS.map((section) => section.id),
+        permissions,
+      ) ?? "overview");
+  const requestedOperationsTab = operationsTab ?? (ticket || person || event ? "people" : "inbox");
+  const availableOperationsTab = canAccessOperationsTab(requestedOperationsTab, permissions)
+    ? requestedOperationsTab
+    : (firstAccessibleOperationsTab(OPERATIONS_TABS, permissions) ?? "inbox");
+
   return (
     <main id="main" className="min-h-dvh">
-      <AdminDashboard
-        view={view}
-        communicationTab={communicationTab ?? "event-plan"}
-        communicationEvent={communicationEvent}
-        operationsTab={operationsTab ?? (ticket || person || event ? "people" : "inbox")}
-        targetEvent={event}
-        targetTicket={ticket}
-        targetPerson={person}
-        emailStatus={emailStatus}
-        emailQuery={emailQuery}
-        onNavigate={(destination: AdminDestination) =>
-          void navigate({
-            search: {
-              view: destination.section,
-              communicationTab: destination.communicationTab,
-              operationsTab: destination.operationsTab,
-              event: destination.event,
-              ticket: destination.ticket,
-              person: destination.person,
-              emailStatus: destination.emailStatus,
-              emailQuery: destination.emailQuery,
-            },
-            resetScroll: false,
-          })
-        }
-        onViewChange={(nextView) =>
-          void navigate({ search: { view: nextView }, resetScroll: false })
-        }
-        onCommunicationTabChange={(nextTab) =>
-          void navigate({
-            search: (current) => ({
-              ...current,
-              view: "communications",
-              communicationTab: nextTab,
-            }),
-            resetScroll: false,
-          })
-        }
-        onCommunicationEventChange={(nextEvent) =>
-          void navigate({
-            search: (current) => ({
-              ...current,
-              view: "communications",
-              communicationEvent: nextEvent,
-            }),
-            resetScroll: false,
-          })
-        }
-        onOperationsTabChange={(nextTab) =>
-          void navigate({
-            search: { view: "operations", operationsTab: nextTab },
-            resetScroll: false,
-          })
-        }
-        onOperationsPersonChange={(nextPerson) =>
-          void navigate({
-            search: (current) => ({
-              ...current,
-              view: "operations",
-              operationsTab: "people",
-              person: nextPerson,
-              ticket: undefined,
-            }),
-            resetScroll: false,
-          })
-        }
-      />
+      <Suspense fallback={<AdminDashboardFallback />}>
+        <AdminDashboard
+          view={availableView}
+          communicationTab={communicationTab ?? "event-plan"}
+          communicationEvent={communicationEvent}
+          operationsTab={availableOperationsTab}
+          targetEvent={event}
+          targetTicket={ticket}
+          targetPerson={person}
+          emailStatus={emailStatus}
+          emailQuery={emailQuery}
+          permissions={permissions}
+          onNavigate={(destination: AdminDestination) => {
+            if (!canAccessAdminDestination(destination, permissions)) return;
+            void navigate({
+              search: {
+                view: destination.section,
+                communicationTab: destination.communicationTab,
+                operationsTab: destination.operationsTab,
+                event: destination.event,
+                ticket: destination.ticket,
+                person: destination.person,
+                emailStatus: destination.emailStatus,
+                emailQuery: destination.emailQuery,
+              },
+              resetScroll: false,
+            });
+          }}
+          onViewChange={(nextView) => {
+            if (!canAccessAdminSection(nextView, permissions)) return;
+            void navigate({ search: { view: nextView }, resetScroll: false });
+          }}
+          onCommunicationTabChange={(nextTab) =>
+            void navigate({
+              search: (current) => ({
+                ...current,
+                view: "communications",
+                communicationTab: nextTab,
+              }),
+              resetScroll: false,
+            })
+          }
+          onCommunicationEventChange={(nextEvent) =>
+            void navigate({
+              search: (current) => ({
+                ...current,
+                view: "communications",
+                communicationEvent: nextEvent,
+              }),
+              resetScroll: false,
+            })
+          }
+          onOperationsTabChange={(nextTab) => {
+            if (!canAccessOperationsTab(nextTab, permissions)) return;
+            void navigate({
+              search: { view: "operations", operationsTab: nextTab },
+              resetScroll: false,
+            });
+          }}
+          onOperationsPersonChange={(nextPerson) =>
+            void navigate({
+              search: (current) => ({
+                ...current,
+                view: "operations",
+                operationsTab: "people",
+                person: nextPerson,
+                ticket: undefined,
+              }),
+              resetScroll: false,
+            })
+          }
+        />
+      </Suspense>
     </main>
+  );
+}
+
+function AdminDashboardFallback() {
+  return (
+    <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8" role="status">
+      <h1 className="font-serif text-4xl font-semibold tracking-tight">
+        {SITE_NAME} <span className="font-normal theme-muted">admin</span>
+      </h1>
+      <p className="mt-8 border-y theme-border py-6 font-mono text-xs theme-muted">
+        loading admin workspace…
+      </p>
+    </div>
   );
 }

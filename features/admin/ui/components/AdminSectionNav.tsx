@@ -1,3 +1,6 @@
+import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
+import { canAccessAdminSection } from "../admin-permissions";
+
 export const ADMIN_SECTIONS = [
   {
     id: "overview",
@@ -16,8 +19,8 @@ export const ADMIN_SECTIONS = [
   },
   {
     id: "operations",
-    label: "people & access",
-    description: "Identity manager, sessions, restrictions, tickets, and support cases",
+    label: "people & support",
+    description: "People, ticket history, identity access, and support cases",
   },
   {
     id: "communications",
@@ -46,12 +49,20 @@ export const ADMIN_SECTIONS = [
   },
   {
     id: "settings",
-    label: "settings",
+    label: "access policies",
     description: "Attendee capabilities, event defaults, and administrator access",
   },
 ] as const;
 
-const PRIMARY_ADMIN_SECTIONS = ADMIN_SECTIONS.filter((section) => section.id !== "best-dressed");
+const PRIMARY_ADMIN_SECTION_IDS = [
+  "overview",
+  "content",
+  "events",
+  "operations",
+  "communications",
+  "games",
+] as const;
+const UTILITY_ADMIN_SECTION_IDS = ["transfers", "system", "settings"] as const;
 
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]["id"];
 
@@ -95,28 +106,36 @@ export function isAdminSection(value: unknown): value is AdminSection {
 export function AdminSectionNav({
   active,
   onChange,
+  permissions,
 }: {
   active: AdminSection;
   onChange: (section: AdminSection) => void;
+  permissions: GlobalAdminPermissionSet;
 }) {
-  const current = ADMIN_SECTIONS.find((section) => section.id === active) ?? ADMIN_SECTIONS[0];
+  const availableSections = ADMIN_SECTIONS.filter((section) =>
+    canAccessAdminSection(section.id, permissions),
+  );
+  const current =
+    availableSections.find((section) => section.id === active) ?? availableSections[0];
   const primaryActive = active === "best-dressed" ? "events" : active;
+  const primarySections = ADMIN_SECTIONS.filter(
+    (section) =>
+      PRIMARY_ADMIN_SECTION_IDS.some((id) => id === section.id) &&
+      canAccessAdminSection(section.id, permissions),
+  );
+  const utilitySections = ADMIN_SECTIONS.filter(
+    (section) =>
+      UTILITY_ADMIN_SECTION_IDS.some((id) => id === section.id) &&
+      canAccessAdminSection(section.id, permissions),
+  );
 
   return (
     <div className="mt-8 border-y theme-border">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b theme-border-faint py-3">
-        <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-          workspace
-        </p>
-        <p className="font-mono text-micro theme-faint">
-          Choose a work area, then use its local tools.
-        </p>
-      </div>
       <nav
-        aria-label="Admin sections"
-        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-4 lg:grid-cols-8 sm:px-0"
+        aria-label="Primary admin work areas"
+        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-6"
       >
-        {PRIMARY_ADMIN_SECTIONS.map((section) => {
+        {primarySections.map((section) => {
           const selected = section.id === primaryActive;
           return (
             <button
@@ -139,6 +158,40 @@ export function AdminSectionNav({
           );
         })}
       </nav>
+      {utilitySections.length > 0 ? (
+        <div className="flex items-stretch border-t theme-border-faint">
+          <p className="hidden shrink-0 items-center px-3 font-mono text-micro uppercase tracking-widest theme-faint sm:flex">
+            utilities
+          </p>
+          <nav
+            aria-label="Admin utilities and policies"
+            className="-mx-6 flex min-w-0 flex-1 overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0"
+          >
+            {utilitySections.map((section) => {
+              const selected = section.id === active;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => onChange(section.id)}
+                  aria-current={selected ? "page" : undefined}
+                  className={`relative min-h-11 shrink-0 px-4 py-3 text-left font-mono text-micro transition-opacity sm:px-3 ${
+                    selected ? "font-bold text-[var(--foreground)]" : "theme-muted hover:opacity-70"
+                  }`}
+                >
+                  {section.label}
+                  {selected ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 bottom-0 h-0.5 bg-[var(--prose-hashtag)]"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      ) : null}
       {(active === "events" || active === "best-dressed") && (
         <div className="border-t theme-border-faint py-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -148,7 +201,7 @@ export function AdminSectionNav({
             <nav aria-label="Event tools" className="flex flex-wrap gap-x-4 gap-y-2">
               {(["events", "best-dressed"] as const).map((sectionId) => {
                 const section = ADMIN_SECTIONS.find((item) => item.id === sectionId);
-                if (!section) return null;
+                if (!section || !canAccessAdminSection(section.id, permissions)) return null;
                 const selected = section.id === active;
                 return (
                   <button
@@ -156,7 +209,7 @@ export function AdminSectionNav({
                     type="button"
                     onClick={() => onChange(section.id)}
                     aria-current={selected ? "page" : undefined}
-                    className={`font-mono text-xs underline-offset-4 transition-opacity hover:opacity-70 ${
+                    className={`inline-flex min-h-11 items-center font-mono text-xs underline-offset-4 transition-opacity hover:opacity-70 ${
                       selected ? "font-bold underline" : "theme-muted"
                     }`}
                   >
@@ -168,9 +221,16 @@ export function AdminSectionNav({
           </div>
         </div>
       )}
-      <p className="border-t theme-border-faint py-3 font-mono text-micro theme-muted">
-        {current.description}
-      </p>
+      {current ? (
+        <p
+          className="border-t theme-border-faint py-3 font-mono text-micro theme-muted"
+          aria-live="polite"
+        >
+          <span className="font-bold text-foreground">{current.label}</span>
+          <span aria-hidden="true"> · </span>
+          {current.description}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -91,6 +91,19 @@ export async function getTicket(id: string): Promise<TicketRecord | null> {
   return rows[0] ? toTicket(rows[0]) : null;
 }
 
+/** Resolve only the ticket credential that is currently safe to present publicly. */
+export async function getTicketByCurrentReference(reference: string): Promise<TicketRecord | null> {
+  if (!isValidTicketId(reference)) return null;
+  const rows = await query<TicketRow>(
+    `select * from tickets
+      where access_reference = $1
+         or (access_reference is null and id = $1)
+      limit 1`,
+    [reference],
+  );
+  return rows[0] ? toTicket(rows[0]) : null;
+}
+
 export async function getTickets(ids: string[]): Promise<TicketRecord[]> {
   const safe = ids.filter(isValidTicketId);
   if (safe.length === 0) return [];
@@ -541,11 +554,21 @@ export async function updateTicketOrderEmail(
 /** Staff correction: someone scanned the wrong phone. */
 export async function releaseRedemption(id: string): Promise<void> {
   if (!isValidTicketId(id)) return;
-  await query(
-    `update tickets set redeemed_at = null, redeemed_by = null, redeemed_offline = null
-      where id = $1`,
-    [id],
-  );
+  await transaction(async (client) => {
+    const released = await client.query<{ id: string }>(
+      `update tickets set redeemed_at = null, redeemed_by = null, redeemed_offline = null
+        where id = $1
+        returning id`,
+      [id],
+    );
+    if (released.rows[0])
+      await client.query(
+        `update event_participants
+            set checked_in_at = null, updated_at = now()
+          where ticket_id = $1 and status = 'active'`,
+        [id],
+      );
+  });
 }
 
 /**

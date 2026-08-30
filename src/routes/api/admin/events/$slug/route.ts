@@ -6,7 +6,10 @@ import {
   requireAuth,
   requireAuthWithPayload,
 } from "@/features/auth/auth.server";
-import { runEventCancellation } from "@/features/event-operations/cancellation.server";
+import {
+  eventCancellationPending,
+  runEventCancellation,
+} from "@/features/event-operations/cancellation.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
@@ -53,7 +56,7 @@ async function handlePATCH(request: Request, slug: string) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
     const record = body as Record<string, unknown>;
-    const cancelling = record.status === "cancelled";
+    const cancelling = await eventCancellationPending(slug, record.status);
     if (cancelling) {
       const stepUp = await requireAdminStepUp(request);
       if (stepUp) return stepUp;

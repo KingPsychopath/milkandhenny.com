@@ -147,7 +147,7 @@ export type SameBrainHostAction = MultiplayerAction &
         toggles?: Partial<SameBrainToggles>;
         timings?: Partial<SameBrainTimings>;
       }
-    | { type: "game.start"; force?: boolean }
+    | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "game.skipQuestion" }
     | { type: "phase.extend" }
     | { type: "phase.advance" }

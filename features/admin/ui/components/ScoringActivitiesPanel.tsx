@@ -3,6 +3,7 @@ import { useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES, estimateMaximumIssue } from "@/features/event-scoring/templates";
 import type { AdminScoringActivity, ScoringAction } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 const TEMPLATES = [
   "winner",
@@ -216,7 +217,12 @@ export function ScoringActivitiesPanel({
         {activities.map((activity) => (
           <li key={activity.id} className="flex flex-wrap items-center gap-3 py-3">
             <span className="min-w-0 flex-1 font-serif">{activity.name}</span>
-            <span className="font-mono text-micro theme-muted">{activity.status}</span>
+            <AdminStatus
+              tone={adminToneForStatus(activity.status)}
+              className="font-mono text-micro"
+            >
+              {activity.status}
+            </AdminStatus>
             <button
               type="button"
               onClick={() => void onAction({ action: "copy-activity", activityId: activity.id })}

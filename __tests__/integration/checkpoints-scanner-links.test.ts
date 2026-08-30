@@ -463,6 +463,16 @@ describeWithDatabase("ticket admission operations (postgres)", () => {
       expect(links[0].revokedAt).toBeDefined();
     });
 
+    it("reports a missing event instead of failing at the foreign-key boundary", async () => {
+      await expect(
+        createScannerLink({
+          eventSlug: "missing-event",
+          checkpointId: null,
+          label: "Door helper",
+        }),
+      ).resolves.toEqual({ ok: false, status: 404, error: "Event not found" });
+    });
+
     it("scopes links to an existing checkpoint", async () => {
       const missing = await createScannerLink({
         eventSlug: SLUG,
@@ -481,16 +491,24 @@ describeWithDatabase("ticket admission operations (postgres)", () => {
       expect((await resolveScannerLink(created.value.token))?.checkpointId).toBe("dinner");
     });
 
-    it("expired links stop resolving", async () => {
-      const created = await createScannerLink({
-        eventSlug: SLUG,
-        checkpointId: null,
-        label: "Short shift",
-        expiresAt: new Date(Date.now() - 1000).toISOString(),
-      });
-      expect(created.ok).toBe(true);
-      if (!created.ok) return;
-      expect(await resolveScannerLink(created.value.token)).toBeNull();
+    it("refuses to issue a link that expires at or before now", async () => {
+      for (const expiresAt of [
+        new Date().toISOString(),
+        new Date(Date.now() - 1000).toISOString(),
+      ]) {
+        await expect(
+          createScannerLink({
+            eventSlug: SLUG,
+            checkpointId: null,
+            label: "Short shift",
+            expiresAt,
+          }),
+        ).resolves.toEqual({
+          ok: false,
+          status: 400,
+          error: "Choose an expiry in the future",
+        });
+      }
     });
 
     it("rejects garbage tokens without touching the database", async () => {

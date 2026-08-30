@@ -54,7 +54,7 @@ export function useStaffScoringController(data: PageData, token: string) {
     "not-requested" | "requested" | "obtained" | "declined"
   >(data.photoConsentPolicy === "required" ? "obtained" : "requested");
   const [operation, setOperation] = useState<"admit" | "run" | "award">(
-    data.canAdmit ? "admit" : data.canRun ? "run" : "award",
+    data.canAdmit ? "admit" : data.canRun && data.canAward ? "run" : "award",
   );
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();

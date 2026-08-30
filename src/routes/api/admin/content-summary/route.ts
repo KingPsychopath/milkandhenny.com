@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { getAllAlbums, validateAllAlbums } from "@/features/media/albums.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { listWords } from "@/features/words/store.server";
+import { listAllWords } from "@/features/words/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
@@ -11,13 +11,7 @@ async function handleGET(request: Request) {
 
   try {
     const noteBlogs = isWordsEnabled()
-      ? (
-          await listWords({
-            includeNonPublic: true,
-            type: "blog",
-            limit: 1000,
-          })
-        ).words
+      ? await listAllWords({ includeNonPublic: true, type: "blog" })
       : [];
 
     const posts = noteBlogs

@@ -6,6 +6,8 @@ import { AppSelect } from "@/components/AppSelect";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { AdminReportGroup } from "@/features/reports/types";
 import { copyText } from "@/lib/client/share";
+import { AdminStatus, type AdminStatusTone } from "./AdminStatus";
+import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 import {
   REPORT_POLICIES,
   REPORT_STATUSES,
@@ -17,6 +19,13 @@ type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
 function isReportType(value: unknown): value is ReportType {
   return typeof value === "string" && value in REPORT_POLICIES;
+}
+
+function reportTone(status: ReportStatus, severity: AdminReportGroup["severity"]): AdminStatusTone {
+  if (status === "resolved") return "positive";
+  if (status === "ignored" || status === "duplicate") return "neutral";
+  if (severity === "high") return "danger";
+  return "attention";
 }
 
 function isAdminReportGroup(value: unknown): value is AdminReportGroup {
@@ -132,7 +141,8 @@ export function ReportsPanel({
   onStatus: (message: string) => void;
 }) {
   const [reports, setReports] = useState<AdminReportGroup[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [includeResolved, setIncludeResolved] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
@@ -142,6 +152,7 @@ export function ReportsPanel({
 
   const loadReports = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await authFetch(
         `/api/admin/reports${includeResolved ? "?includeResolved=1" : ""}`,
@@ -156,7 +167,9 @@ export function ReportsPanel({
       setPollingHalted(false);
       setReports(parseReports(data));
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to load reports");
+      const message = error instanceof Error ? error.message : "Failed to load reports";
+      setLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -236,7 +249,18 @@ export function ReportsPanel({
         </div>
       </div>
 
-      {!loading && reports.length === 0 ? (
+      {loadError ? (
+        <AdminLoadError
+          message={loadError}
+          retry={() => {
+            setPollingHalted(false);
+            void loadReports();
+          }}
+          retrying={loading}
+        />
+      ) : loading && reports.length === 0 ? (
+        <AdminLoading label="Loading reports…" />
+      ) : reports.length === 0 ? (
         <p className="font-mono text-xs theme-muted">
           {includeResolved ? "No reports in the retained history." : "No active reports."}
         </p>
@@ -260,8 +284,14 @@ export function ReportsPanel({
                     {formatReportedAt(report.firstReportedAt)}
                   </p>
                 </div>
-                <label className="font-mono text-micro theme-muted">
+                <label className="flex min-h-11 items-center gap-3 font-mono text-micro theme-muted">
                   <span className="sr-only">Report status</span>
+                  <AdminStatus
+                    tone={reportTone(report.status, report.severity)}
+                    className="uppercase"
+                  >
+                    {report.status}
+                  </AdminStatus>
                   <AppSelect
                     value={report.status}
                     disabled={updating === report.id}
@@ -307,14 +337,14 @@ export function ReportsPanel({
                   }
                   placeholder="internal note (optional)"
                   maxLength={1_000}
-                  className="min-h-10 min-w-56 flex-1 border-b theme-border-strong bg-transparent px-1 font-mono text-xs text-foreground outline-none placeholder:theme-muted"
+                  className="min-h-11 min-w-56 flex-1 border-b theme-border-strong bg-transparent px-1 font-mono text-xs text-foreground outline-none placeholder:theme-muted"
                 />
                 {report.status !== "investigating" ? (
                   <button
                     type="button"
                     disabled={updating === report.id}
                     onClick={() => void update(report, "investigating")}
-                    className="min-h-10 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
+                    className="min-h-11 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
                   >
                     investigate
                   </button>
@@ -324,7 +354,7 @@ export function ReportsPanel({
                     type="button"
                     disabled={updating === report.id}
                     onClick={() => void update(report, "resolved")}
-                    className="min-h-10 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
+                    className="min-h-11 px-2 font-mono text-xs theme-muted hover:opacity-60 disabled:opacity-50"
                   >
                     resolve
                   </button>

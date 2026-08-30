@@ -75,7 +75,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
     <main id="main" className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-12">
       <Link
         to="/"
-        className="w-fit font-mono text-micro theme-muted transition-opacity hover:opacity-60"
+        className="inline-flex min-h-11 w-fit items-center font-mono text-micro theme-muted transition-opacity hover:opacity-60"
       >
         milk &amp; henny
       </Link>

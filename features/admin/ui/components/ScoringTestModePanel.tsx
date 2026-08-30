@@ -8,6 +8,7 @@ import {
 } from "@/features/event-scoring/test-mode";
 import { convertRulePoints } from "@/features/event-scoring/types";
 import type { ScoringData } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 export function ScoringTestModePanel({ data }: { data: ScoringData }) {
   const [activityId, setActivityId] = useState(data.activities[0]?.id ?? "");
@@ -60,8 +61,9 @@ export function ScoringTestModePanel({ data }: { data: ScoringData }) {
       </div>
       {result && (
         <div className="mt-4 border-y theme-border py-4" aria-live="polite">
-          <p className="font-serif text-lg">
-            {result.state} · {result.points} points
+          <p className="flex flex-wrap items-center gap-x-2 font-serif text-lg">
+            <AdminStatus tone={adminToneForStatus(result.state)}>{result.state}</AdminStatus>
+            <span>· {result.points} points</span>
           </p>
           <p className="mt-1 font-mono text-xs theme-muted">{result.reason}</p>
           <p className="mt-2 font-mono text-micro theme-subtle">

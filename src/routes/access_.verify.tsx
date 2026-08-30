@@ -103,7 +103,10 @@ function AccessVerificationPage() {
 
   return (
     <main id="main" className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 py-12">
-      <Link to="/" className="w-fit font-mono text-micro theme-muted hover:opacity-60">
+      <Link
+        to="/"
+        className="inline-flex min-h-11 w-fit items-center font-mono text-micro theme-muted hover:opacity-60"
+      >
         milk &amp; henny
       </Link>
       <div className="my-auto py-14">

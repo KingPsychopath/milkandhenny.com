@@ -9,6 +9,7 @@ import type {
   OfficialGameResultScope,
   OfficialResultPlayer,
 } from "@/features/game-results/types";
+import { OFFICIAL_GAME_KINDS } from "@/features/game-results/types";
 import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
 import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { activityCanAccept, convertRulePoints, type ActivityStatus, type ScoreRule } from "./types";
@@ -145,15 +146,71 @@ export type OfficialResultIngestFailure = {
   retryable: boolean;
 };
 
+function resultPlayers(value: unknown): OfficialResultPlayer[] | null {
+  if (!Array.isArray(value)) return null;
+  const players: OfficialResultPlayer[] = [];
+  const playerIds = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return null;
+    const player = entry as Record<string, unknown>;
+    if (
+      typeof player.playerId !== "string" ||
+      player.playerId.length < 1 ||
+      player.playerId.length > 160 ||
+      playerIds.has(player.playerId) ||
+      !["completed", "did-not-finish", "withdrawn", "disqualified"].includes(
+        String(player.outcome),
+      ) ||
+      (player.rawScore !== undefined &&
+        (typeof player.rawScore !== "number" || !Number.isFinite(player.rawScore))) ||
+      (player.placement !== undefined &&
+        (typeof player.placement !== "number" ||
+          !Number.isInteger(player.placement) ||
+          player.placement < 1)) ||
+      (player.durationMs !== undefined &&
+        (typeof player.durationMs !== "number" ||
+          !Number.isFinite(player.durationMs) ||
+          player.durationMs < 0)) ||
+      (player.won !== undefined && typeof player.won !== "boolean")
+    )
+      return null;
+    playerIds.add(player.playerId);
+    players.push(player as OfficialResultPlayer);
+  }
+  return players;
+}
+
+function validEnvelopeIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= 200;
+}
+
+function isValidOfficialGameResultEnvelope(value: unknown): value is OfficialGameResultEnvelope {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const envelope = value as Partial<OfficialGameResultEnvelope>;
+  if (
+    envelope.schemaVersion !== 1 ||
+    !validEnvelopeIdentifier(envelope.channelId) ||
+    !OFFICIAL_GAME_KINDS.includes(envelope.gameKind as OfficialGameKind) ||
+    !validEnvelopeIdentifier(envelope.gameInstanceId) ||
+    !validEnvelopeIdentifier(envelope.resultId) ||
+    !Number.isInteger(envelope.revision) ||
+    (envelope.revision ?? 0) < 1 ||
+    (envelope.operation !== "record" && envelope.operation !== "cancel") ||
+    !["round", "match", "game"].includes(String(envelope.scope)) ||
+    !resultPlayers(envelope.players) ||
+    typeof envelope.committedAt !== "string" ||
+    !Number.isFinite(Date.parse(envelope.committedAt)) ||
+    typeof envelope.payloadHash !== "string" ||
+    !/^[0-9a-f]{64}$/.test(envelope.payloadHash)
+  )
+    return false;
+  return envelope.payloadHash === officialResultPayloadHash(envelope as OfficialGameResultEnvelope);
+}
+
 export async function ingestOfficialGameResult(
   envelope: OfficialGameResultEnvelope,
 ): Promise<{ ok: true; value: { id: string; duplicate: boolean } } | OfficialResultIngestFailure> {
-  if (
-    envelope.schemaVersion !== 1 ||
-    envelope.revision < 1 ||
-    !Number.isFinite(Date.parse(envelope.committedAt)) ||
-    envelope.payloadHash !== officialResultPayloadHash(envelope)
-  ) {
+  if (!isValidOfficialGameResultEnvelope(envelope)) {
     return {
       ok: false,
       status: 400,
@@ -237,40 +294,6 @@ export async function ingestOfficialGameResult(
     );
     return { ok: true, value: { id, duplicate: false } };
   });
-}
-
-function resultPlayers(value: unknown): OfficialResultPlayer[] | null {
-  if (!Array.isArray(value)) return null;
-  const players: OfficialResultPlayer[] = [];
-  const playerIds = new Set<string>();
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object") return null;
-    const player = entry as Record<string, unknown>;
-    if (
-      typeof player.playerId !== "string" ||
-      player.playerId.length < 1 ||
-      player.playerId.length > 160 ||
-      playerIds.has(player.playerId) ||
-      !["completed", "did-not-finish", "withdrawn", "disqualified"].includes(
-        String(player.outcome),
-      ) ||
-      (player.rawScore !== undefined &&
-        (typeof player.rawScore !== "number" || !Number.isFinite(player.rawScore))) ||
-      (player.placement !== undefined &&
-        (typeof player.placement !== "number" ||
-          !Number.isInteger(player.placement) ||
-          player.placement < 1)) ||
-      (player.durationMs !== undefined &&
-        (typeof player.durationMs !== "number" ||
-          !Number.isFinite(player.durationMs) ||
-          player.durationMs < 0)) ||
-      (player.won !== undefined && typeof player.won !== "boolean")
-    )
-      return null;
-    playerIds.add(player.playerId);
-    players.push(player as OfficialResultPlayer);
-  }
-  return players;
 }
 
 async function ensureGamePlayerLinks(
@@ -439,8 +462,14 @@ async function processResult(
     `select receipts.transaction_id
        from score_game_receipts receipts
        join official_game_results prior on prior.id = receipts.official_result_id
+       left join score_transactions reversal
+         on reversal.original_transaction_id = receipts.transaction_id
+        and reversal.source_type = 'reversal'
+        and reversal.status = 'accepted'
       where prior.channel_id = $1 and prior.result_id = $2 and prior.revision < $3
         and receipts.status in ('processed', 'corrected')
+        and receipts.transaction_id is not null
+        and reversal.id is null
       order by prior.revision desc
       limit 1
       for update of receipts`,
@@ -576,7 +605,9 @@ export async function consumeOfficialGameResult(
 ): Promise<boolean> {
   const ingested = await ingestOfficialGameResult(envelope);
   if (!ingested.ok) return !ingested.retryable;
-  if (!ingested.value.duplicate) await processOfficialGameResultSafely(ingested.value.id);
+  // A process can stop after committing ingestion but before settlement. Reprocessing the
+  // durable row on duplicate delivery closes that crash window without duplicating points.
+  await processOfficialGameResultSafely(ingested.value.id);
   return true;
 }
 

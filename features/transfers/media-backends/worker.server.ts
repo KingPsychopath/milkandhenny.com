@@ -7,7 +7,7 @@ import {
   RawPreviewUnavailableError,
   resolveImageProcessingSource,
 } from "@/features/media/processing.server";
-import { downloadBuffer, uploadBuffer } from "@/lib/platform/r2.server";
+import { deleteObjects, downloadBuffer, uploadBuffer } from "@/lib/platform/r2.server";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
@@ -65,9 +65,20 @@ const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
  * Every worker-side state change goes through here so a viewer sees queued →
  * processing → ready without touching the server.
  */
-async function saveAndAnnounceTransferFile(transferId: string, file: TransferFile): Promise<void> {
-  await updateTransferFile(transferId, file);
+async function saveAndAnnounceTransferFile(
+  transferId: string,
+  file: TransferFile,
+): Promise<boolean> {
+  if (!(await updateTransferFile(transferId, file))) return false;
   await publishTransferMediaEvent(transferId, file);
+  return true;
+}
+
+async function cleanupAbandonedWorkerOutputs(job: TransferMediaJob): Promise<void> {
+  const keys = [job.expectedThumbKey, job.expectedFullKey].filter(
+    (key): key is string => typeof key === "string",
+  );
+  if (keys.length > 0) await deleteObjects(keys, { scope: "private" });
 }
 
 /**
@@ -231,7 +242,7 @@ async function processWorkerJob(
     processingRoute: job.processingRoute,
     processingStartedAt: new Date().toISOString(),
   };
-  await saveAndAnnounceTransferFile(job.transferId, processingFile);
+  if (!(await saveAndAnnounceTransferFile(job.transferId, processingFile))) return "skipped";
 
   try {
     // A wedged decode must fail the job rather than hold the only worker slot.
@@ -308,7 +319,10 @@ async function processWorkerJob(
       ...(current.groupId ? { groupId: current.groupId } : {}),
       ...(current.groupRole ? { groupRole: current.groupRole } : {}),
     };
-    await saveAndAnnounceTransferFile(job.transferId, updatedFile);
+    if (!(await saveAndAnnounceTransferFile(job.transferId, updatedFile))) {
+      await cleanupAbandonedWorkerOutputs(job).catch(() => undefined);
+      return "skipped";
+    }
     return "succeeded";
   } catch (error) {
     const errorDetail =
@@ -343,7 +357,10 @@ async function processWorkerJob(
       ...(current.groupRole ? { groupRole: current.groupRole } : {}),
       processingErrorDetail: errorDetail,
     };
-    await saveAndAnnounceTransferFile(job.transferId, failedFile);
+    if (!(await saveAndAnnounceTransferFile(job.transferId, failedFile))) {
+      await cleanupAbandonedWorkerOutputs(job).catch(() => undefined);
+      return "skipped";
+    }
     return "failed";
   }
 }
@@ -410,7 +427,9 @@ async function requeueTransferFile(
     route,
     attempt,
   });
-  return result.file;
+  return file.storedBytes === undefined
+    ? result.file
+    : { ...result.file, storedBytes: file.storedBytes };
 }
 
 /**

@@ -116,7 +116,7 @@ async function repairOrQueueIncompleteFile(
   if (!route) return file;
 
   if (canUseWorkerForRoute(route)) {
-    return (
+    const repaired = (
       await enqueueWorkerJob({
         transferId: transfer.id,
         file: {
@@ -133,10 +133,13 @@ async function repairOrQueueIncompleteFile(
         attempt: (file.retryCount ?? 0) + 1,
       })
     ).file;
+    return file.storedBytes === undefined
+      ? repaired
+      : { ...repaired, storedBytes: file.storedBytes };
   }
 
   try {
-    return (
+    const repaired = (
       await withInlineTimeout(route, () =>
         processTransferObjectLocally(
           {
@@ -155,6 +158,9 @@ async function repairOrQueueIncompleteFile(
         ),
       )
     ).file;
+    return file.storedBytes === undefined
+      ? repaired
+      : { ...repaired, storedBytes: file.storedBytes };
   } catch (error) {
     const detail =
       error instanceof Error

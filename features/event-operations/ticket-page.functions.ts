@@ -133,7 +133,8 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       ...(data.preview ? [] : readManagedTicketOrders()),
       ...verifiedManagedOrders,
     ]);
-    const isPrimaryTicket = access.managerTicketId === ticket.id;
+    const publicTicketId = ticket.accessReference ?? ticket.id;
+    const isPrimaryTicket = access.managerTicketId === publicTicketId;
 
     if (!data.preview) {
       rememberTicketHolder(event.slug);
@@ -160,7 +161,11 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
         : null;
     if (!data.preview) {
       try {
-        await openAttendeeTicket({ ticketId: ticket.id, eventSlug: event.slug, mode: "view-only" });
+        await openAttendeeTicket({
+          ticketId: publicTicketId,
+          eventSlug: event.slug,
+          mode: "view-only",
+        });
       } catch {
         // Ticket rendering must survive an unavailable optional attendee session store.
       }
@@ -173,7 +178,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
             account: null,
             personallyClaimed: false,
           })),
-          ticketPointSelection(ticket.id).catch(() => ({
+          ticketPointSelection(publicTicketId).catch(() => ({
             mode: "view-only" as const,
             active: false,
             eventHasActive: false,

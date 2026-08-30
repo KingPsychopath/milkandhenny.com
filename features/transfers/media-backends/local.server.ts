@@ -246,11 +246,16 @@ async function materializeVideoFromStorage(params: {
 
 function preserveTransferGrouping(
   next: TransferFile,
-  current?: Pick<TransferFile, "groupId" | "groupRole">,
+  current?: Pick<TransferFile, "groupId" | "groupRole" | "storedBytes">,
 ): TransferFile {
-  if (!current?.groupId || !current.groupRole) return next;
+  if (!current) return next;
+  const preserved =
+    next.storedBytes === undefined && current.storedBytes !== undefined
+      ? { ...next, storedBytes: current.storedBytes }
+      : next;
+  if (!current.groupId || !current.groupRole) return preserved;
   return {
-    ...next,
+    ...preserved,
     groupId: current.groupId,
     groupRole: current.groupRole,
   };

@@ -5,7 +5,10 @@ export function BrowserProfileHint() {
   return (
     <p className="font-mono text-micro theme-faint">
       saved on this device after a successful action ·{" "}
-      <Link to="/privacy" className="underline underline-offset-2 hover:opacity-70">
+      <Link
+        to="/privacy"
+        className="inline-flex min-h-11 min-w-11 items-center underline underline-offset-2 hover:opacity-70"
+      >
         clear in privacy
       </Link>
     </p>

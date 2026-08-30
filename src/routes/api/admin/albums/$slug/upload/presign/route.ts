@@ -21,6 +21,7 @@ async function handlePOST(request: Request, slug: string) {
     if (
       message === "Album not found" ||
       message.startsWith("Choose between") ||
+      message.startsWith("An album can contain") ||
       message.includes("larger than") ||
       message.includes("not a supported image") ||
       message.includes("needs a file name")

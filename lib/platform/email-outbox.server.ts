@@ -75,6 +75,18 @@ function isAttachment(value: unknown): value is EmailAttachment {
   );
 }
 
+function isWebUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 2_048 || /[\r\n]/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 function parseMessage(value: unknown): EmailMessage | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
@@ -88,6 +100,7 @@ function parseMessage(value: unknown): EmailMessage | null {
     typeof item.subject !== "string" ||
     typeof item.text !== "string" ||
     (item.html !== undefined && typeof item.html !== "string") ||
+    (item.unsubscribeUrl !== undefined && !isWebUrl(item.unsubscribeUrl)) ||
     (item.attachments !== undefined &&
       (!Array.isArray(item.attachments) || !item.attachments.every(isAttachment)))
   ) {
@@ -99,6 +112,7 @@ function parseMessage(value: unknown): EmailMessage | null {
     subject: item.subject,
     text: item.text,
     ...(typeof item.html === "string" ? { html: item.html } : {}),
+    ...(typeof item.unsubscribeUrl === "string" ? { unsubscribeUrl: item.unsubscribeUrl } : {}),
     ...(Array.isArray(item.attachments) ? { attachments: item.attachments } : {}),
   };
 }

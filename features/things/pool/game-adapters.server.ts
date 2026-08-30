@@ -1,13 +1,22 @@
-import { createCentreRoom, joinCentreRoom } from "../centre/centre-room.server";
+import { applyCentreAction, createCentreRoom, joinCentreRoom } from "../centre/centre-room.server";
 import type { CentreDifficulty } from "../centre/types";
 import {
+  applyDrawCountryAction,
   createDrawCountryRoom,
   joinDrawCountryRoom,
 } from "../draw-country/draw-country-room.server";
-import { createLiarsRoom, joinLiarsRoom } from "../liars/liars-room.server";
-import { createHotAndColdRoom, joinHotAndColdRoom } from "../hot-and-cold/hot-and-cold-room.server";
-import { createSameBrainRoom, joinSameBrainRoom } from "../same-brain/same-brain-room.server";
-import { createTwinRoom, joinTwinRoom } from "../twin/twin-room.server";
+import { applyLiarsPlayerAction, createLiarsRoom, joinLiarsRoom } from "../liars/liars-room.server";
+import {
+  applyHotAndColdAction,
+  createHotAndColdRoom,
+  joinHotAndColdRoom,
+} from "../hot-and-cold/hot-and-cold-room.server";
+import {
+  applySameBrainPlayerAction,
+  createSameBrainRoom,
+  joinSameBrainRoom,
+} from "../same-brain/same-brain-room.server";
+import { applyTwinAction, createTwinRoom, joinTwinRoom } from "../twin/twin-room.server";
 import { GAME_POOL_DEFAULTS } from "./presets";
 import type { GameSettingsDocument } from "../shared/game-settings";
 import type { GamePoolAssignment, GamePoolGame } from "./types";
@@ -33,6 +42,50 @@ function failure(result: { ok: false; error: string; errorCode: string }): never
 
 export function gamePoolCapacity(game: GamePoolGame) {
   return GAME_POOL_DEFAULTS[game].capacity;
+}
+
+/**
+ * Remove a pooled assignment from the game engine that owns its room. The assignment receipt is
+ * server-held, so a browser cannot use this path to choose another player to remove.
+ */
+export async function leavePoolRoom(
+  assignment: GamePoolAssignment,
+  actionId = crypto.randomUUID(),
+) {
+  const identity = {
+    roomId: assignment.roomId,
+    playerId: assignment.playerId,
+    playerToken: assignment.playerToken,
+  };
+  if (assignment.game === "same-brain")
+    return applySameBrainPlayerAction({
+      ...identity,
+      action: { type: "room.leave", actionId },
+    });
+  if (assignment.game === "liars")
+    return applyLiarsPlayerAction({
+      ...identity,
+      action: { type: "room.leave", actionId },
+    });
+  if (assignment.game === "centre")
+    return applyCentreAction({
+      ...identity,
+      action: { type: "player.leave", actionId },
+    });
+  if (assignment.game === "twin")
+    return applyTwinAction({
+      ...identity,
+      action: { type: "player.leave", actionId },
+    });
+  if (assignment.game === "hot-and-cold")
+    return applyHotAndColdAction({
+      ...identity,
+      action: { type: "player.leave", actionId },
+    });
+  return applyDrawCountryAction({
+    ...identity,
+    action: { type: "player.leave", actionId },
+  });
 }
 
 export async function createPoolRoomAndJoin(input: {

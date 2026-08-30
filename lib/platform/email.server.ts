@@ -49,6 +49,8 @@ export type EmailMessage = {
   /** Always required. Ticket mail must survive image blocking and HTML stripping. */
   text: string;
   html?: string;
+  /** Marketing mail only. Used for RFC 8058 one-click unsubscribe headers. */
+  unsubscribeUrl?: string;
   attachments?: EmailAttachment[];
 };
 
@@ -271,6 +273,7 @@ async function sendViaCloudflare(
   message: EmailMessage,
   deliveryKey?: string,
 ): Promise<SendEmailResult> {
+  const headers = emailHeaders(message, deliveryKey);
   const { status, payload } = await postJson(
     `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/email/sending/send`,
     config.apiKey,
@@ -283,7 +286,7 @@ async function sendViaCloudflare(
       ...(message.html ? { html: message.html } : {}),
       // snake_case on REST, unlike the binding's `replyTo`.
       reply_to: config.replyTo,
-      ...(deliveryKey ? { headers: { "X-Milk-Henny-Delivery": deliveryKey } } : {}),
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
       ...(message.attachments?.length
         ? {
             attachments: message.attachments.map((attachment) => ({
@@ -306,6 +309,7 @@ async function sendViaMailpit(
   message: EmailMessage,
   deliveryKey?: string,
 ): Promise<SendEmailResult> {
+  const headers = emailHeaders(message, deliveryKey);
   const response = await fetch(`${config.baseUrl}/api/v1/send`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -316,7 +320,7 @@ async function sendViaMailpit(
       Subject: message.subject,
       Text: message.text,
       ...(message.html ? { HTML: message.html } : {}),
-      ...(deliveryKey ? { Headers: { "X-Milk-Henny-Delivery": deliveryKey } } : {}),
+      ...(Object.keys(headers).length > 0 ? { Headers: headers } : {}),
       ...(message.attachments?.length
         ? {
             Attachments: message.attachments.map((attachment) => ({
@@ -340,6 +344,22 @@ async function sendViaMailpit(
   }
   const id = typeof payload?.ID === "string" && payload.ID.length > 0 ? payload.ID : null;
   return { ok: true, id };
+}
+
+function emailHeaders(message: EmailMessage, deliveryKey?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (deliveryKey) headers["X-Milk-Henny-Delivery"] = deliveryKey;
+  if (!message.unsubscribeUrl) return headers;
+
+  try {
+    const url = new URL(message.unsubscribeUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return headers;
+    headers["List-Unsubscribe"] = `<${url.toString()}>`;
+    headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+  } catch {
+    // Stored messages are validated before delivery; direct callers simply omit unsafe headers.
+  }
+  return headers;
 }
 
 /**

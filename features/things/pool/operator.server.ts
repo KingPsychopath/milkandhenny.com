@@ -27,7 +27,10 @@ interface OperatorRunRow {
 
 async function findOperatorRun(token: string) {
   const rows = await query<OperatorRunRow>(
-    `select run.id, entrance.label, entrance.game, run.status, run.opened_at, run.closes_at
+    `select run.id, entrance.label, entrance.game,
+            case when run.closes_at is not null and run.closes_at <= now()
+                 then 'closed' else run.status end as status,
+            run.opened_at, run.closes_at
      from game_pool_runs run
      join game_pool_entrances entrance on entrance.id = run.entrance_id
      where run.operator_token_hash = $1
@@ -81,12 +84,15 @@ export async function controlGamePoolAsOperator(
 ) {
   const tokenDigest = hashToken(token);
   const runId = await transaction(async (client) => {
-    const result = await client.query<{ id: string; status: string }>(
-      `select id, status from game_pool_runs where operator_token_hash = $1 for update`,
+    const result = await client.query<{ id: string; status: string; closes_at: Date | null }>(
+      `select id, status, closes_at from game_pool_runs where operator_token_hash = $1 for update`,
       [tokenDigest],
     );
     const run = result.rows[0];
     if (!run) throw new Error("This organizer link is not valid.");
+    if (run.closes_at && run.closes_at.getTime() <= Date.now()) {
+      throw new Error("This game night has ended. Ask an admin to open a new run.");
+    }
     if (action === "close-room") {
       if (!roomId) throw new Error("Choose a room.");
       await client.query(

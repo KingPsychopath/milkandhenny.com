@@ -48,7 +48,7 @@ export function PitchMediaTrimDialog({
         event.preventDefault();
         onCancel();
       }}
-      className="m-auto w-[min(42rem,calc(100vw-3rem))] border theme-border bg-background p-0 text-foreground backdrop:bg-foreground/20"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100vw-2rem))] overflow-y-auto border theme-border bg-background p-0 text-foreground backdrop:bg-foreground/20"
     >
       <header className="border-b theme-border px-6 py-5">
         <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
@@ -80,7 +80,7 @@ export function PitchMediaTrimDialog({
                 Math.min(current, sourceDurationMs - nextStart, PITCH_MEDIA_MAX_SECONDS * 1_000),
               );
             }}
-            className="mt-2 block min-h-8 w-full accent-[var(--prose-hashtag)]"
+            className="mt-2 block min-h-11 w-full accent-[var(--prose-hashtag)]"
           />
         </label>
         <label className="block font-mono text-xs theme-muted">
@@ -92,14 +92,14 @@ export function PitchMediaTrimDialog({
             step={100}
             value={durationMs}
             onChange={(event) => setDurationMs(Number(event.target.value))}
-            className="mt-2 block min-h-8 w-full accent-[var(--prose-hashtag)]"
+            className="mt-2 block min-h-11 w-full accent-[var(--prose-hashtag)]"
           />
         </label>
         <p className="font-mono text-micro leading-relaxed theme-muted">
           The original file stays on your device. Only this selected section is optimized and
           uploaded.
         </p>
-        <div className="flex justify-end gap-3 border-t theme-border pt-4">
+        <div className="flex flex-wrap justify-end gap-3 border-t theme-border pt-4">
           <button
             type="button"
             autoFocus

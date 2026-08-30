@@ -35,7 +35,8 @@ import {
   getTicketExchangeManagement,
 } from "@/features/tickets/exchange.server";
 import { getTicket } from "@/features/tickets/store.server";
-import { refundTicket } from "@/features/tickets/checkout.server";
+import { generateTicketId } from "@/features/tickets/qr.server";
+import { refundOrder, refundTicket } from "@/features/tickets/checkout.server";
 import { getEventTickets, issueTickets } from "@/features/tickets/tickets.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
@@ -116,6 +117,47 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
     expect((await getTicket(tickets[0].id))?.ticketTypeId).toBe("entry");
     expect((await getTicket(tickets[1].id))?.ticketTypeId).toBe("balcony");
     expect((await getTicket(tickets[1].id))?.amountPaidMinor).toBe(1000);
+  });
+
+  it("rejects the internal manager id after its public authority rotates", async () => {
+    const [ticket] = await paidOrder();
+    const publicReference = generateTicketId();
+    await query(`update tickets set access_reference = $2 where id = $1`, [
+      ticket.id,
+      publicReference,
+    ]);
+
+    await expect(getTicketExchangeManagement({ managerTicketId: ticket.id })).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: "This link cannot manage that order",
+    });
+    await expect(
+      beginTicketExchange({
+        managerTicketId: ticket.id,
+        ticketId: ticket.id,
+        targetTicketTypeId: "balcony",
+        actorType: "purchaser",
+        origin: "https://milkandhenny.com",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: "This link cannot manage that ticket",
+    });
+
+    await expect(
+      getTicketExchangeManagement({ managerTicketId: publicReference }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      beginTicketExchange({
+        managerTicketId: publicReference,
+        ticketId: ticket.id,
+        targetTicketTypeId: "balcony",
+        actorType: "purchaser",
+        origin: "https://milkandhenny.com",
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { state: "completed" } });
   });
 
   it("keeps tickets and exchange history attached when the event slug changes", async () => {
@@ -433,6 +475,68 @@ describeWithDatabase("ticket exchanges (postgres)", () => {
         errorMessage: "Part of the refund succeeded, but the remainder needs attention",
       }),
     );
+  });
+
+  it("voids an order when one payment refund succeeds before another fails", async () => {
+    const [ticket] = await paidOrder();
+    stripe.createCheckoutSession.mockResolvedValue({
+      id: "cs_exchange_order_refund_123456",
+      url: "https://checkout.stripe.test/session",
+    });
+    const upgrade = await beginTicketExchange({
+      managerTicketId: ticket.id,
+      ticketId: ticket.id,
+      targetTicketTypeId: "vip",
+      actorType: "purchaser",
+      origin: "https://milkandhenny.com",
+    });
+    if (!upgrade.ok) throw new Error(upgrade.error);
+    stripe.retrieveSession.mockResolvedValue({
+      paid: true,
+      paymentIntentId: "pi_upgrade_order_refund",
+      amountMinor: 1000,
+      currency: "gbp",
+      email: "alice@example.com",
+      metadata: { ticketExchangeId: upgrade.value.exchangeId },
+      amountRefundedMinor: 0,
+      disputed: false,
+    });
+    await fulfilTicketExchangeCheckout(
+      "cs_exchange_order_refund_123456",
+      "https://milkandhenny.com",
+    );
+
+    stripe.retrievePaymentBalance.mockResolvedValue({
+      amountMinor: 1000,
+      amountRefundedMinor: 0,
+      remainingMinor: 1000,
+    });
+    stripe.refundPayment
+      .mockResolvedValueOnce({
+        ok: true,
+        refundId: "re_order_partial_succeeded",
+        status: "succeeded",
+        amountMinor: 1000,
+      })
+      .mockResolvedValueOnce({ ok: false, error: "Refund failed at the payment provider" });
+
+    expect(await refundOrder({ ticketId: ticket.id, reason: "admin" })).toEqual({
+      ok: false,
+      status: 502,
+      error: "Refund failed at the payment provider",
+    });
+    expect(await getTicket(ticket.id)).toEqual(
+      expect.objectContaining({
+        status: "void",
+        refundRef: "re_order_partial_succeeded",
+      }),
+    );
+    expect(
+      await queryOne<{ status: string }>(
+        `select status from event_participants where ticket_id = $1`,
+        [ticket.id],
+      ),
+    ).toEqual({ status: "void" });
   });
 
   it("refunds an upgraded ticket across its upgrade and original payments", async () => {

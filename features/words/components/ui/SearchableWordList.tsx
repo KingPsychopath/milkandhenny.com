@@ -43,7 +43,7 @@ function typeChip(type: WordType): string {
 
 export function SearchableWordList({ items }: Props) {
   const [query, setQuery] = useState("");
-  const [activeType, setActiveType] = useState<WordType | "all">("blog");
+  const [activeType, setActiveType] = useState<WordType | "all">("all");
   const [visibleCount, setVisibleCount] = useState(DEFAULT_PAGE_SIZE);
 
   const filtered = useMemo(() => {
@@ -85,7 +85,7 @@ export function SearchableWordList({ items }: Props) {
               key={type}
               type="button"
               onClick={() => handleTypeChange(type)}
-              className={`px-2 py-1 rounded border transition-colors ${
+              className={`min-h-11 px-3 rounded border transition-colors touch-manipulation ${
                 isActive
                   ? "border-[var(--foreground)] text-foreground"
                   : "theme-border theme-muted hover:text-foreground"
@@ -110,7 +110,7 @@ export function SearchableWordList({ items }: Props) {
             placeholder="what are you looking for?"
             autoComplete="off"
             aria-describedby={query ? "search-results-count" : undefined}
-            className="search-input w-full font-mono text-sm theme-muted bg-transparent border-b theme-border py-3 pr-12 transition-colors placeholder:theme-faint [&::-ms-clear]:hidden"
+            className="search-input w-full font-mono text-base sm:text-sm theme-muted bg-transparent border-b theme-border py-3 pr-12 transition-colors placeholder:theme-faint [&::-ms-clear]:hidden"
           />
           {query ? (
             <button
@@ -155,7 +155,7 @@ export function SearchableWordList({ items }: Props) {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="mt-4 font-mono text-xs theme-muted hover:text-foreground transition-colors"
+              className="mt-4 inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:text-foreground transition-colors touch-manipulation"
             >
               clear search
             </button>
@@ -213,7 +213,7 @@ export function SearchableWordList({ items }: Props) {
               <button
                 type="button"
                 onClick={showMore}
-                className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+                className="inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:text-foreground transition-colors touch-manipulation"
               >
                 show more ({filtered.length - visibleCount} remaining)
               </button>

@@ -51,6 +51,7 @@ export function BackToTop() {
       style={{
         transform: show ? "translateY(0)" : "translateY(20px)",
         opacity: show ? 1 : 0,
+        visibility: show ? "visible" : "hidden",
         pointerEvents: show ? "auto" : "none",
       }}
     >

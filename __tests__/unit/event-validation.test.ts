@@ -161,7 +161,7 @@ describe("normaliseEventInput", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("clamps negative prices and quantities rather than storing them", () => {
+  it("rejects a negative price rather than silently making the ticket free", () => {
     const result = normaliseEventInput(
       validInput({
         ticketTypes: [
@@ -176,9 +176,30 @@ describe("normaliseEventInput", () => {
         ],
       }),
     );
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      error: 'Ticket type "Entry" cannot have a negative price',
+    });
+  });
+
+  it("clamps negative quantities and excessive per-person limits", () => {
+    const result = normaliseEventInput(
+      validInput({
+        ticketTypes: [
+          {
+            id: "entry",
+            name: "Entry",
+            priceMinor: 0,
+            currency: "GBP",
+            quantity: -10,
+            perPersonLimit: 999,
+          },
+        ],
+      }),
+    );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.ticketTypes[0].priceMinor).toBe(0);
       expect(result.value.ticketTypes[0].quantity).toBe(0);
       expect(result.value.ticketTypes[0].perPersonLimit).toBe(20);
     }
@@ -199,6 +220,66 @@ describe("normaliseEventInput", () => {
     }
   });
 
+  it("preserves omitted optional fields and clears explicitly empty fields", () => {
+    const existing = normaliseEventInput(
+      validInput({
+        tagline: "Original line",
+        doorsAt: FUTURE,
+        address: "1 Example Road",
+        capacity: 50,
+        heroImage: "/images/event.jpg",
+        marketingPath: "/pitch-night",
+      }),
+    );
+    expect(existing.ok).toBe(true);
+    if (!existing.ok) return;
+
+    const preserved = normaliseEventInput({ title: "Renamed" }, existing.value);
+    expect(preserved.ok && preserved.value).toMatchObject({
+      tagline: "Original line",
+      doorsAt: FUTURE,
+      address: "1 Example Road",
+      capacity: 50,
+      heroImage: "/images/event.jpg",
+      marketingPath: "/pitch-night",
+    });
+
+    const cleared = normaliseEventInput(
+      {
+        tagline: null,
+        doorsAt: null,
+        address: null,
+        capacity: null,
+        heroImage: null,
+        marketingPath: null,
+      },
+      existing.value,
+    );
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) return;
+    expect(cleared.value.tagline).toBeUndefined();
+    expect(cleared.value.doorsAt).toBeUndefined();
+    expect(cleared.value.address).toBeUndefined();
+    expect(cleared.value.capacity).toBeUndefined();
+    expect(cleared.value.heroImage).toBeUndefined();
+    expect(cleared.value.heroImageWidth).toBeUndefined();
+    expect(cleared.value.heroImageHeight).toBeUndefined();
+    expect(cleared.value.marketingPath).toBeUndefined();
+  });
+
+  it("allows edits after cancellation without allowing the event to reopen", () => {
+    const cancelled = normaliseEventInput(validInput({ status: "cancelled" }));
+    expect(cancelled.ok).toBe(true);
+    if (!cancelled.ok) return;
+
+    const edited = normaliseEventInput({ title: "Updated cancellation details" }, cancelled.value);
+    expect(edited.ok && edited.value.status).toBe("cancelled");
+
+    const reopened = normaliseEventInput({ status: "published" }, cancelled.value);
+    expect(reopened.ok).toBe(false);
+    if (!reopened.ok) expect(reopened.error).toMatch(/cannot be reopened/i);
+  });
+
   it("accepts a same-origin marketing story path", () => {
     const result = normaliseEventInput(validInput({ marketingPath: "/pitch-night" }));
     expect(result.ok).toBe(true);
@@ -210,6 +291,15 @@ describe("normaliseEventInput", () => {
       validInput({ marketingPath: "https://tickets.example.com/phish" }),
     );
     expect(result.ok).toBe(false);
+  });
+
+  it("allows web map links and rejects executable link schemes", () => {
+    const safe = normaliseEventInput(validInput({ mapUrl: "https://maps.example/place" }));
+    expect(safe.ok && safe.value.mapUrl).toBe("https://maps.example/place");
+
+    const unsafe = normaliseEventInput(validInput({ mapUrl: "javascript:alert(1)" }));
+    expect(unsafe.ok).toBe(false);
+    if (!unsafe.ok) expect(unsafe.error).toMatch(/http or https/i);
   });
 });
 

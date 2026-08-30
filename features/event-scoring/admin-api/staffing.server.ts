@@ -31,14 +31,20 @@ export const staffingActions: AdminScoringActionHandlers = {
   "assign-team": async ({ eventSlug, body }) => {
     const teamId = stringValue(body.teamId);
     const participantId = stringValue(body.participantId);
+    const startsAt = stringValue(body.startsAt);
     if (!teamId || !participantId)
       return Response.json({ error: "Team and participant are required" }, { status: 400 });
+    if (startsAt && Number.isNaN(Date.parse(startsAt)))
+      return Response.json(
+        { error: "Team assignment start must be a valid time" },
+        { status: 400 },
+      );
     return resultResponse(
       await setTeamMembership({
         eventSlug,
         teamId,
         participantId,
-        startsAt: stringValue(body.startsAt),
+        startsAt,
       }),
       "membership",
       201,

@@ -81,13 +81,13 @@ function WordSlugPage() {
         <div className="flex items-center justify-between gap-8 font-mono text-sm">
           <Link
             to="/words"
-            className="shrink-0 theme-muted hover:text-foreground transition-colors tracking-tight"
+            className="inline-flex min-h-11 shrink-0 items-center theme-muted hover:text-foreground transition-colors tracking-tight"
           >
             ← words
           </Link>
           <Link
             to="/"
-            className="shrink-0 font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+            className="inline-flex min-h-11 shrink-0 items-center font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
             {SITE_BRAND}
           </Link>

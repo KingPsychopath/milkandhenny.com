@@ -8,6 +8,7 @@ import {
   updateGamePoolEntrance,
 } from "@/features/things/pool/store.server";
 import { listGamePoolsForAdmin } from "@/features/things/pool/admin.server";
+import { getGamePoolOperatorView } from "@/features/things/pool/operator.server";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import { getGamePoolPublicView } from "@/features/things/pool/pool.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
@@ -151,6 +152,36 @@ describeWithDatabase("game-pool public defaults (postgres)", () => {
       allow_new_rooms: false,
     });
     expect(rooms[0]).toEqual({ player_count: 3, capacity: 12 });
+  });
+
+  it("stops exposing an elapsed run and allows an admin to open the next one", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "hot-and-cold",
+      label: "Timed entrance",
+      actionId: "expired-pool-entrance",
+    });
+    const expired = await openGamePoolRun(entrance.id, {
+      actionId: "expired-pool-run",
+      durationMinutes: 15,
+    });
+    if (!expired?.run) throw new Error("Could not open the timed test pool");
+
+    await query("update game_pool_runs set closes_at = now() - interval '1 minute' where id = $1", [
+      expired.run.id,
+    ]);
+
+    expect((await listGamePoolEntrances()).find(({ id }) => id === entrance.id)?.run).toBeNull();
+    await expect(getGamePoolOperatorView(expired.operatorToken)).resolves.toMatchObject({
+      found: true,
+      status: "closed",
+    });
+
+    const next = await openGamePoolRun(entrance.id, {
+      actionId: "replacement-pool-run",
+      durationMinutes: 60,
+    });
+    expect(next?.run).toMatchObject({ status: "open" });
+    expect(next?.run?.id).not.toBe(expired.run.id);
   });
 
   it("exposes stable per-run sprite identities without exposing assignment ids", async () => {

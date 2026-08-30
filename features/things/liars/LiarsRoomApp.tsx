@@ -504,15 +504,18 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           title="Start anyway?"
           description={`${notReady.map(({ name }) => name).join(" and ")} ${
             notReady.length === 1 ? "hasn’t" : "haven’t"
-          } confirmed they’re ready. Everyone still gets dealt a role.`}
+          } confirmed they’re ready. Starting now removes them before roles are dealt.`}
           cancelLabel="keep waiting"
-          confirmLabel="deal everyone in"
+          confirmLabel="remove and deal"
           pending={false}
           pendingLabel="starting…"
           onCancel={() => setConfirmingStart(false)}
           onConfirm={() => {
             setConfirmingStart(false);
-            void sendHost({ type: "game.start", force: true });
+            void sendHost({
+              type: "game.start",
+              removePlayerIds: notReady.map(({ id }) => id),
+            });
           }}
         />
       ) : null}

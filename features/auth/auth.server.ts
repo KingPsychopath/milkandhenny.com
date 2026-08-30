@@ -2,11 +2,13 @@
 export {
   authenticateRequest,
   createAdminStepUpToken,
+  getAdminWorkspaceAccess,
   requireAdminStepUp,
   requireAuth,
   requireAuthWithPayload,
   revokeCurrentSession,
 } from "./internal/authorization.server";
+export type { AdminWorkspaceAccess } from "./internal/authorization.server";
 export {
   getLocalDevAdminCookieValue,
   getClientIp,

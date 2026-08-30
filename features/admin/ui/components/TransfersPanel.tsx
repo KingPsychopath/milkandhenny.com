@@ -8,6 +8,8 @@ import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { formatRemaining } from "../format";
 import { UploadAccessPanel } from "./UploadAccessPanel";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
+import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type EnsureStepUpToken = () => Promise<string | null>;
@@ -84,18 +86,13 @@ type TransferCleanupResponse = {
   deletedFiles?: number;
 };
 
-function transferMatchesHealthFilter(
-  transfer: TransferSummary,
-  detail: AdminTransferDetail | null,
+function transferFileMatchesHealthFilter(
+  file: AdminTransferDetail["files"][number],
   filter: TransferHealthFilter,
 ): boolean {
   if (filter === "all") return true;
-  if (!detail || detail.id !== transfer.id) return false;
-  if (filter === "queued") return detail.files.some((file) => file.processingStatus === "queued");
-  if (filter === "processing")
-    return detail.files.some((file) => file.processingStatus === "processing");
-  if (filter === "failed") return detail.files.some((file) => file.processingStatus === "failed");
-  return detail.files.some((file) => file.processingBackend === "worker");
+  if (filter === "worker") return file.processingBackend === "worker";
+  return file.processingStatus === filter;
 }
 
 export function TransfersPanel({
@@ -113,12 +110,17 @@ export function TransfersPanel({
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [transfers, setTransfers] = useState<TransferSummary[]>([]);
-  const [transfersLoading, setTransfersLoading] = useState(false);
+  const [transfersLoading, setTransfersLoading] = useState(true);
+  const [transfersLoadError, setTransfersLoadError] = useState<string | null>(null);
   const [transferMediaStats, setTransferMediaStats] = useState<TransferMediaAdminStats | null>(
     null,
   );
   const [transferDetail, setTransferDetail] = useState<AdminTransferDetail | null>(null);
   const [transferDetailLoading, setTransferDetailLoading] = useState<string | null>(null);
+  const [transferDetailError, setTransferDetailError] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
   const [transferQuery, setTransferQuery] = useState("");
   const [transferHealthFilter, setTransferHealthFilter] = useState<TransferHealthFilter>("all");
   const [showAllTransfers, setShowAllTransfers] = useState(false);
@@ -130,6 +132,7 @@ export function TransfersPanel({
   const [copiedTransferId, setCopiedTransferId] = useState<string | null>(null);
 
   const transfersSectionRef = useRef<HTMLDivElement | null>(null);
+  const transferDetailRef = useRef<HTMLDivElement | null>(null);
   const transferStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setTransferStatus = useCallback((msg: string) => {
@@ -148,6 +151,7 @@ export function TransfersPanel({
 
   const loadTransfers = useCallback(async () => {
     setTransfersLoading(true);
+    setTransfersLoadError(null);
     onError("");
     try {
       const res = await authFetch("/api/admin/transfers");
@@ -159,6 +163,7 @@ export function TransfersPanel({
       setTransferMediaStats((data.media as TransferMediaAdminStats) ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load transfers";
+      setTransfersLoadError(msg);
       onError(msg);
     } finally {
       setTransfersLoading(false);
@@ -191,6 +196,9 @@ export function TransfersPanel({
 
   const handleLoadTransferDetail = async (id: string) => {
     setTransferDetailLoading(id);
+    setTransferDetail(null);
+    setTransferDetailError(null);
+    setTransferHealthFilter("all");
     onError("");
     try {
       const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`);
@@ -199,8 +207,15 @@ export function TransfersPanel({
         throw new Error((data.error as string) || "Failed to load transfer");
       }
       setTransferDetail((data.transfer as AdminTransferDetail) ?? null);
+      requestAnimationFrame(() => {
+        transferDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load transfer";
+      setTransferDetailError({ id, message: msg });
+      requestAnimationFrame(() => {
+        transferDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
       onError(msg);
     } finally {
       setTransferDetailLoading(null);
@@ -237,6 +252,7 @@ export function TransfersPanel({
       const msg = `Deleted transfer "${title}" (${id}).`;
       onStatus(msg);
       setTransferStatus(msg);
+      if (transferDetail?.id === id) setTransferDetail(null);
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete transfer";
@@ -446,14 +462,19 @@ export function TransfersPanel({
 
   const filteredTransfers = useMemo(() => {
     const q = transferQuery.trim().toLowerCase();
-    return transfers.filter((transfer) => {
-      const matchesQuery =
-        !q || transfer.id.toLowerCase().includes(q) || transfer.title.toLowerCase().includes(q);
-      if (!matchesQuery) return false;
-      return transferMatchesHealthFilter(transfer, transferDetail, transferHealthFilter);
-    });
-  }, [transferDetail, transferHealthFilter, transferQuery, transfers]);
+    return transfers.filter(
+      (transfer) =>
+        !q || transfer.id.toLowerCase().includes(q) || transfer.title.toLowerCase().includes(q),
+    );
+  }, [transferQuery, transfers]);
   const visibleTransfers = showAllTransfers ? filteredTransfers : filteredTransfers.slice(0, 15);
+  const visibleTransferFiles = useMemo(
+    () =>
+      transferDetail?.files.filter((file) =>
+        transferFileMatchesHealthFilter(file, transferHealthFilter),
+      ) ?? [],
+    [transferDetail, transferHealthFilter],
+  );
 
   return (
     <>
@@ -474,39 +495,12 @@ export function TransfersPanel({
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={transferNukeLoading}
-              onClick={() => void nukeTransfersAndScroll()}
-              className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-              title="Deletes all transfers and transfer files. Use with care."
-            >
-              {transferNukeLoading ? "nuking..." : "nuke all"}
-            </button>
-            <button
-              type="button"
               disabled={transferActionLoading === "drain"}
               onClick={() => void handleDrainTransferMediaQueue()}
               className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
               title="Refresh queue stats while the worker path is disabled."
             >
               {transferActionLoading === "drain" ? "checking..." : "check queue"}
-            </button>
-            <button
-              type="button"
-              disabled={transferCleanupLoading}
-              onClick={() => void cleanupTransfersAndScroll()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Quick cleanup: removes expired transfer index entries without scanning the whole bucket."
-            >
-              {transferCleanupLoading ? "cleaning..." : "quick cleanup"}
-            </button>
-            <button
-              type="button"
-              disabled={transferDeepCleanupLoading}
-              onClick={() => void deepCleanupTransfersAndScroll()}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-              title="Deep cleanup: scans transfer storage for orphaned prefixes. Use only when needed."
-            >
-              {transferDeepCleanupLoading ? "deep cleaning..." : "deep cleanup"}
             </button>
             <button
               type="button"
@@ -519,6 +513,43 @@ export function TransfersPanel({
             </button>
           </div>
         </div>
+        <details className="border-y theme-border py-2">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center font-mono text-xs theme-muted marker:content-none">
+            maintenance and destructive actions
+          </summary>
+          <div className="border-t theme-border pt-4">
+            <p className="max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+              Cleanup is rarely needed during normal operation. Deep cleanup scans storage; delete
+              all permanently removes every active transfer and file.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                disabled={transferCleanupLoading}
+                onClick={() => void cleanupTransfersAndScroll()}
+                className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+              >
+                {transferCleanupLoading ? "cleaning…" : "quick cleanup"}
+              </button>
+              <button
+                type="button"
+                disabled={transferDeepCleanupLoading}
+                onClick={() => void deepCleanupTransfersAndScroll()}
+                className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+              >
+                {transferDeepCleanupLoading ? "deep cleaning…" : "deep cleanup"}
+              </button>
+              <button
+                type="button"
+                disabled={transferNukeLoading}
+                onClick={() => void nukeTransfersAndScroll()}
+                className="min-h-11 font-mono text-xs text-[var(--status-danger)] underline underline-offset-4 disabled:opacity-50"
+              >
+                {transferNukeLoading ? "deleting all…" : "delete all transfers"}
+              </button>
+            </div>
+          </div>
+        </details>
         <input
           type="text"
           value={transferQuery}
@@ -529,226 +560,313 @@ export function TransfersPanel({
           placeholder="filter transfers by title or id"
           className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-xs py-2 transition-colors placeholder:text-[var(--stone-400)]"
         />
-        <div className="flex flex-wrap gap-2 font-mono text-xs">
-          {(["all", "queued", "processing", "failed", "worker"] as const).map((filter) => (
-            <button
-              key={filter}
-              type="button"
-              onClick={() => setTransferHealthFilter(filter)}
-              className={
-                transferHealthFilter === filter
-                  ? "min-h-10 px-3 py-1 rounded-sm border theme-border text-[var(--foreground)]"
-                  : "min-h-10 px-3 py-1 rounded-sm border theme-border theme-muted hover:text-[var(--foreground)] transition-colors"
-              }
-            >
-              {filter}
-            </button>
-          ))}
-        </div>
-
         {transferStatusMessage ? (
-          <p className="font-mono text-xs text-[var(--prose-hashtag)]">{transferStatusMessage}</p>
-        ) : null}
-
-        <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">active transfers</p>
-            <p className="text-lg">{transfers.length}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">files in transfers</p>
-            <p className="text-lg">{transfers.reduce((sum, t) => sum + t.fileCount, 0)}</p>
-          </div>
-          <div className="border theme-border rounded-md p-3">
-            <p className="theme-muted text-xs">expiring in 24h</p>
-            <p className="text-lg">
-              {
-                transfers.filter((t) => t.remainingSeconds > 0 && t.remainingSeconds <= 86400)
-                  .length
-              }
-            </p>
-          </div>
-        </div>
-        {transferMediaStats ? (
-          <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
-            <div className="border theme-border rounded-md p-3">
-              <p className="theme-muted text-xs">media queue</p>
-              <p className="text-lg">{transferMediaStats.queueLength}</p>
-            </div>
-            <div className="border theme-border rounded-md p-3">
-              <p className="theme-muted text-xs">last heartbeat</p>
-              <p className="text-sm">
-                {transferMediaStats.worker.lastHeartbeatAt
-                  ? new Date(transferMediaStats.worker.lastHeartbeatAt).toLocaleString("en-GB", {
-                      timeZone: "Europe/London",
-                    })
-                  : "—"}
-              </p>
-            </div>
-            <div className="border theme-border rounded-md p-3">
-              <p className="theme-muted text-xs">last processed</p>
-              <p className="text-sm">
-                {transferMediaStats.worker.lastProcessedAt
-                  ? new Date(transferMediaStats.worker.lastProcessedAt).toLocaleString("en-GB", {
-                      timeZone: "Europe/London",
-                    })
-                  : "—"}
-              </p>
-            </div>
-          </div>
-        ) : null}
-        {transferMediaStats?.worker.lastErrorMessage ? (
-          <p className="font-mono text-xs theme-muted">
-            worker error{" "}
-            {transferMediaStats.worker.lastErrorAt
-              ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString("en-GB", { timeZone: "Europe/London" })})`
-              : ""}
-            : {transferMediaStats.worker.lastErrorMessage}
+          <p className="font-mono text-xs" role="status">
+            <AdminStatus tone="positive">{transferStatusMessage}</AdminStatus>
           </p>
         ) : null}
 
-        {filteredTransfers.length === 0 && !transfersLoading ? (
-          <p className="font-mono text-xs theme-muted">No active transfers.</p>
-        ) : null}
-
-        <div className="space-y-2">
-          {visibleTransfers.map((transfer) => (
-            <div key={transfer.id} className="border theme-border rounded-md p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-mono text-sm truncate">{transfer.title || "untitled"}</p>
-                  <p className="font-mono text-xs theme-muted truncate">
-                    {transfer.id} · {transfer.fileCount} files · expires in{" "}
-                    {formatRemaining(transfer.remainingSeconds)} · until{" "}
-                    {new Date(transfer.expiresAt).toLocaleString("en-GB", {
-                      timeZone: "Europe/London",
-                    })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    to="/t/$id"
-                    params={{ id: transfer.id }}
-                    search={{ token: undefined }}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    title="Open the public transfer page."
-                  >
-                    open
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => void copyTransferUrl(transfer.id)}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    title="Copy the public transfer URL."
-                  >
-                    {copiedTransferId === transfer.id ? "copied" : "copy"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleLoadTransferDetail(transfer.id)}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-                    title="Inspect file processing details."
-                  >
-                    {transferDetailLoading === transfer.id ? "loading..." : "details"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferActionLoading === `backfill:${transfer.id}`}
-                    onClick={() => void handleBackfillTransferMedia(transfer.id)}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                    title="Re-check transfer media and retry failed items locally when possible."
-                  >
-                    {transferActionLoading === `backfill:${transfer.id}`
-                      ? "backfilling..."
-                      : "backfill"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferActionLoading === transfer.id}
-                    onClick={() =>
-                      void handleDeleteTransfer(transfer.id, transfer.title || "untitled")
-                    }
-                    className="font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-80 transition-opacity disabled:opacity-50"
-                    title="Delete this transfer now (metadata + R2 files)."
-                  >
-                    {transferActionLoading === transfer.id ? "deleting..." : "delete"}
-                  </button>
-                </div>
+        {transfersLoadError ? (
+          <AdminLoadError
+            message={transfersLoadError}
+            retry={() => void loadTransfers()}
+            retrying={transfersLoading}
+          />
+        ) : transfersLoading && transfers.length === 0 ? (
+          <AdminLoading label="Loading active transfers…" />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">active transfers</p>
+                <p className="text-lg">{transfers.length}</p>
+              </div>
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">files in transfers</p>
+                <p className="text-lg">{transfers.reduce((sum, t) => sum + t.fileCount, 0)}</p>
+              </div>
+              <div className="border theme-border rounded-md p-3">
+                <p className="theme-muted text-xs">expiring in 24h</p>
+                <p className="text-lg">
+                  {
+                    transfers.filter((t) => t.remainingSeconds > 0 && t.remainingSeconds <= 86400)
+                      .length
+                  }
+                </p>
               </div>
             </div>
-          ))}
-        </div>
-        {transferDetail ? (
-          <div className="border theme-border rounded-md p-3 space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-sm">
-                {transferDetail.title || "untitled"}{" "}
-                <span className="theme-muted">· {transferDetail.id}</span>
+            {transferMediaStats ? (
+              <div className="grid grid-cols-1 gap-3 font-mono text-sm sm:grid-cols-3">
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">media queue</p>
+                  <p className="text-lg">
+                    <AdminStatus
+                      tone={transferMediaStats.queueLength > 0 ? "attention" : "positive"}
+                    >
+                      {transferMediaStats.queueLength > 0
+                        ? `${transferMediaStats.queueLength} queued`
+                        : "clear"}
+                    </AdminStatus>
+                  </p>
+                </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">last heartbeat</p>
+                  <p className="text-sm">
+                    {transferMediaStats.worker.lastHeartbeatAt
+                      ? new Date(transferMediaStats.worker.lastHeartbeatAt).toLocaleString(
+                          "en-GB",
+                          {
+                            timeZone: "Europe/London",
+                          },
+                        )
+                      : "—"}
+                  </p>
+                </div>
+                <div className="border theme-border rounded-md p-3">
+                  <p className="theme-muted text-xs">last processed</p>
+                  <p className="text-sm">
+                    {transferMediaStats.worker.lastProcessedAt
+                      ? new Date(transferMediaStats.worker.lastProcessedAt).toLocaleString(
+                          "en-GB",
+                          {
+                            timeZone: "Europe/London",
+                          },
+                        )
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {transferMediaStats?.worker.lastErrorMessage ? (
+              <p className="border-l-2 border-[var(--status-danger)] pl-3 font-mono text-xs">
+                <AdminStatus tone="danger">
+                  worker error{" "}
+                  {transferMediaStats.worker.lastErrorAt
+                    ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString("en-GB", { timeZone: "Europe/London" })})`
+                    : ""}
+                  : {transferMediaStats.worker.lastErrorMessage}
+                </AdminStatus>
               </p>
-              <button
-                type="button"
-                onClick={() => setTransferDetail(null)}
-                className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-              >
-                close
-              </button>
-            </div>
-            <div className="space-y-1">
-              {transferDetail.files.map((file) => (
-                <div
-                  key={`${transferDetail.id}:${file.id}:${file.filename}`}
-                  className="font-mono text-xs theme-muted border theme-border rounded-sm px-2 py-1"
+            ) : null}
+
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.85fr)]">
+              {transferDetailError || transferDetail ? (
+                <aside
+                  ref={transferDetailRef}
+                  aria-label="Selected transfer details"
+                  className="order-1 self-start border-y theme-border py-4 lg:order-2 lg:sticky lg:top-6"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-[var(--foreground)]">{file.filename}</div>
-                      <div className="truncate">
-                        {file.kind} · {file.processingBackend ?? "n/a"} ·{" "}
-                        {file.processingStatus ?? "n/a"}
-                        {file.processingRoute ? ` · ${file.processingRoute}` : ""}
-                        {file.previewSource ? ` · ${file.previewSource}` : ""}
-                        {file.processingErrorCode ? ` · ${file.processingErrorCode}` : ""}
-                      </div>
-                      {file.processingErrorDetail ? (
-                        <div className="mt-1 break-words text-[10px] opacity-80">
-                          {file.processingErrorDetail}
-                        </div>
-                      ) : null}
-                    </div>
-                    {file.processingStatus === "failed" ||
-                    file.processingStatus === "queued" ||
-                    file.processingStatus === "processing" ? (
+                  {transferDetailError ? (
+                    <div>
                       <button
                         type="button"
-                        disabled={transferActionLoading === `retry:${transferDetail.id}:${file.id}`}
-                        onClick={() =>
-                          void handleRetryTransferFile(transferDetail.id, file.id, file.filename)
-                        }
-                        className="shrink-0 font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-                        title="Force this file back through the media pipeline."
+                        onClick={() => setTransferDetailError(null)}
+                        className="mb-3 min-h-11 font-mono text-xs theme-muted underline underline-offset-4 lg:hidden"
                       >
-                        {transferActionLoading === `retry:${transferDetail.id}:${file.id}`
-                          ? "retrying..."
-                          : "retry"}
+                        ← back to transfers
                       </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                      <AdminLoadError
+                        message={transferDetailError.message}
+                        retry={() => void handleLoadTransferDetail(transferDetailError.id)}
+                        retrying={transferDetailLoading === transferDetailError.id}
+                      />
+                    </div>
+                  ) : transferDetail ? (
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="min-w-0 break-words font-mono text-sm">
+                          {transferDetail.title || "untitled"}{" "}
+                          <span className="theme-muted">· {transferDetail.id}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setTransferDetail(null)}
+                          className="min-h-11 shrink-0 font-mono text-xs theme-muted underline underline-offset-4"
+                        >
+                          back to transfers
+                        </button>
+                      </div>
+                      <div
+                        className="flex flex-wrap gap-2 border-t theme-border pt-3 font-mono text-xs"
+                        aria-label="Filter selected transfer files"
+                      >
+                        {(["all", "queued", "processing", "failed", "worker"] as const).map(
+                          (filter) => (
+                            <button
+                              key={filter}
+                              type="button"
+                              onClick={() => setTransferHealthFilter(filter)}
+                              aria-pressed={transferHealthFilter === filter}
+                              className={
+                                transferHealthFilter === filter
+                                  ? "min-h-11 border theme-border-strong px-3 font-mono text-xs"
+                                  : "min-h-11 px-3 font-mono text-xs theme-muted underline underline-offset-4"
+                              }
+                            >
+                              {filter}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {visibleTransferFiles.map((file) => (
+                          <div
+                            key={`${transferDetail.id}:${file.id}:${file.filename}`}
+                            className="border-t theme-border pt-3 font-mono text-xs theme-muted"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="break-words text-[var(--foreground)]">
+                                  {file.filename}
+                                </div>
+                                <div className="mt-1 break-words">
+                                  {file.kind} · {file.processingBackend ?? "n/a"} ·{" "}
+                                  <AdminStatus tone={adminToneForStatus(file.processingStatus)}>
+                                    {file.processingStatus ?? "n/a"}
+                                  </AdminStatus>
+                                  {file.processingRoute ? ` · ${file.processingRoute}` : ""}
+                                  {file.previewSource ? ` · ${file.previewSource}` : ""}
+                                  {file.processingErrorCode ? ` · ${file.processingErrorCode}` : ""}
+                                </div>
+                                {file.processingErrorDetail ? (
+                                  <div className="mt-1 break-words text-[10px]">
+                                    <AdminStatus tone="danger">
+                                      {file.processingErrorDetail}
+                                    </AdminStatus>
+                                  </div>
+                                ) : null}
+                              </div>
+                              {file.processingStatus === "failed" ||
+                              file.processingStatus === "queued" ||
+                              file.processingStatus === "processing" ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    transferActionLoading ===
+                                    `retry:${transferDetail.id}:${file.id}`
+                                  }
+                                  onClick={() =>
+                                    void handleRetryTransferFile(
+                                      transferDetail.id,
+                                      file.id,
+                                      file.filename,
+                                    )
+                                  }
+                                  className="min-h-11 shrink-0 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+                                >
+                                  {transferActionLoading === `retry:${transferDetail.id}:${file.id}`
+                                    ? "retrying…"
+                                    : "retry"}
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {visibleTransferFiles.length === 0 ? (
+                          <p className="border-t theme-border pt-4 font-mono text-xs theme-muted">
+                            No files match this state.
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </aside>
+              ) : (
+                <aside className="order-1 hidden self-start border-y theme-border py-5 font-mono text-xs theme-muted lg:order-2 lg:block">
+                  Choose details on a transfer to inspect its files and processing state.
+                </aside>
+              )}
+
+              <div
+                className={`order-2 space-y-2 lg:order-1 lg:block ${
+                  transferDetailError || transferDetail ? "hidden" : ""
+                }`}
+              >
+                {filteredTransfers.length === 0 ? (
+                  <p className="border-y theme-border py-5 font-mono text-xs theme-muted">
+                    {transfers.length === 0
+                      ? "No active transfers."
+                      : "No transfers match these filters."}
+                  </p>
+                ) : null}
+                {visibleTransfers.map((transfer) => (
+                  <article key={transfer.id} className="border-y theme-border py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-sm">{transfer.title || "untitled"}</p>
+                        <p className="mt-1 break-words font-mono text-xs theme-muted">
+                          {transfer.id} · {transfer.fileCount} files ·{" "}
+                          {transfer.remainingSeconds > 0 && transfer.remainingSeconds <= 86400 ? (
+                            <AdminStatus tone="attention">
+                              expires in {formatRemaining(transfer.remainingSeconds)}
+                            </AdminStatus>
+                          ) : (
+                            <span>expires in {formatRemaining(transfer.remainingSeconds)}</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                        <Link
+                          to="/t/$id"
+                          params={{ id: transfer.id }}
+                          search={{ token: undefined }}
+                          className="inline-flex min-h-11 items-center font-mono text-xs theme-muted underline underline-offset-4"
+                        >
+                          open
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void copyTransferUrl(transfer.id)}
+                          className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4"
+                        >
+                          {copiedTransferId === transfer.id ? "copied" : "copy"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleLoadTransferDetail(transfer.id)}
+                          className="min-h-11 font-mono text-xs underline underline-offset-4"
+                        >
+                          {transferDetailLoading === transfer.id ? "loading…" : "details"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={transferActionLoading === `backfill:${transfer.id}`}
+                          onClick={() => void handleBackfillTransferMedia(transfer.id)}
+                          className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+                        >
+                          {transferActionLoading === `backfill:${transfer.id}`
+                            ? "backfilling…"
+                            : "backfill"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={transferActionLoading === transfer.id}
+                          onClick={() =>
+                            void handleDeleteTransfer(transfer.id, transfer.title || "untitled")
+                          }
+                          className="min-h-11 font-mono text-xs text-[var(--status-danger)] underline underline-offset-4 disabled:opacity-50"
+                        >
+                          {transferActionLoading === transfer.id ? "deleting…" : "delete"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {filteredTransfers.length > 15 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTransfers((v) => !v)}
+                    className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4"
+                  >
+                    {showAllTransfers
+                      ? "show fewer transfers"
+                      : `show all transfers (${filteredTransfers.length})`}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {filteredTransfers.length > 15 ? (
-          <button
-            type="button"
-            onClick={() => setShowAllTransfers((v) => !v)}
-            className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
-          >
-            {showAllTransfers
-              ? "show fewer transfers"
-              : `show all transfers (${filteredTransfers.length})`}
-          </button>
-        ) : null}
+          </>
+        )}
       </div>
       {actionDialog}
     </>

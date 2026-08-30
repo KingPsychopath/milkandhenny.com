@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { ATTENDEE_CAPABILITIES, type CapabilityMap } from "@/features/attendee-operations/types";
 import { AdminAccessSettings } from "./AdminAccessSettings";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type SettingsResponse = {
@@ -58,24 +59,36 @@ export function AttendeeSettingsPanel({
   const [transferOpensAt, setTransferOpensAt] = useState("");
   const [transferClosesAt, setTransferClosesAt] = useState("");
   const [bulkEventSlugs, setBulkEventSlugs] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const response = await authFetch("/api/admin/operations/settings");
-    const body = (await response.json()) as SettingsResponse & { error?: string };
-    if (!response.ok) throw new Error(body.error ?? "Settings could not be loaded");
-    setData(body);
-    setEventSlug((current) => {
-      const next = current || body.events[0]?.slug || "";
-      const policy = body.events.find((event) => event.slug === next)?.policy;
-      setTransferOpensAt(toLocalDateTime(policy?.transferOpensAt));
-      setTransferClosesAt(toLocalDateTime(policy?.transferClosesAt));
-      return next;
-    });
+    setLoadError(null);
+    try {
+      const response = await authFetch("/api/admin/operations/settings");
+      const body = (await response.json().catch(() => ({}))) as Partial<SettingsResponse> & {
+        error?: string;
+      };
+      if (!response.ok || !body.global || !body.impact || !Array.isArray(body.events)) {
+        throw new Error(body.error ?? "Access policies could not be loaded");
+      }
+      const settings = body as SettingsResponse;
+      setData(settings);
+      setEventSlug((current) => {
+        const next = current || settings.events[0]?.slug || "";
+        const policy = settings.events.find((event) => event.slug === next)?.policy;
+        setTransferOpensAt(toLocalDateTime(policy?.transferOpensAt));
+        setTransferClosesAt(toLocalDateTime(policy?.transferClosesAt));
+        return next;
+      });
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Access policies could not be loaded");
+      throw error;
+    }
   }, [authFetch]);
 
   useEffect(() => {
     void load().catch((error) =>
-      onError(error instanceof Error ? error.message : "Settings could not be loaded"),
+      onError(error instanceof Error ? error.message : "Access policies could not be loaded"),
     );
   }, [load, onError]);
 
@@ -84,90 +97,110 @@ export function AttendeeSettingsPanel({
     values: CapabilityMap,
   ) {
     setBusy(true);
-    const step = await ensureStepUpToken();
-    if (!step.ok) {
-      setBusy(false);
-      return;
-    }
-    const response = await authFetch("/api/admin/operations/settings", {
-      method: "PATCH",
-      headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
-      body: JSON.stringify({ scope: "global", section, values, reason }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) onError(body.error ?? "Global settings could not be saved");
-    else {
-      onStatus("Global attendee settings saved.");
+    try {
+      const step = await ensureStepUpToken();
+      if (!step.ok) return;
+      const response = await authFetch("/api/admin/operations/settings", {
+        method: "PATCH",
+        headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
+        body: JSON.stringify({ scope: "global", section, values, reason }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Global access policies could not be saved");
+      onStatus("Global access policies saved.");
       setReason("");
       await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Global access policies could not be saved");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function saveEvent(values: CapabilityMap) {
     const event = data?.events.find((item) => item.slug === eventSlug);
     if (!event) return;
     setBusy(true);
-    const step = await ensureStepUpToken();
-    if (!step.ok) {
-      setBusy(false);
-      return;
-    }
-    const response = await authFetch("/api/admin/operations/settings", {
-      method: "PATCH",
-      headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        scope: "event",
-        eventSlug,
-        capabilities: values,
-        transferOpensAt: transferOpensAt ? new Date(transferOpensAt).toISOString() : null,
-        transferClosesAt: transferClosesAt ? new Date(transferClosesAt).toISOString() : null,
-        reason,
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) onError(body.error ?? "Event settings could not be saved");
-    else {
-      onStatus(`${event.title} settings saved.`);
+    try {
+      const step = await ensureStepUpToken();
+      if (!step.ok) return;
+      const response = await authFetch("/api/admin/operations/settings", {
+        method: "PATCH",
+        headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
+        body: JSON.stringify({
+          scope: "event",
+          eventSlug,
+          capabilities: values,
+          transferOpensAt: transferOpensAt ? new Date(transferOpensAt).toISOString() : null,
+          transferClosesAt: transferClosesAt ? new Date(transferClosesAt).toISOString() : null,
+          reason,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Event access policy could not be saved");
+      onStatus(`${event.title} access policy saved.`);
       setReason("");
       await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Event access policy could not be saved");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function saveBulk() {
     const event = data?.events.find((item) => item.slug === eventSlug);
     if (!event || bulkEventSlugs.length === 0) return;
     setBusy(true);
-    const step = await ensureStepUpToken();
-    if (!step.ok) {
-      setBusy(false);
-      return;
-    }
-    const response = await authFetch("/api/admin/operations/settings", {
-      method: "PATCH",
-      headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
-      body: JSON.stringify({
-        scope: "event-bulk",
-        eventSlugs: bulkEventSlugs,
-        capabilities: event.policy.capabilities,
-        transferOpensAt: event.policy.transferOpensAt ?? null,
-        transferClosesAt: event.policy.transferClosesAt ?? null,
-        reason,
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    if (!response.ok) onError(body.error ?? "Event settings could not be applied");
-    else {
-      onStatus(`Settings applied to ${bulkEventSlugs.length} events.`);
+    try {
+      const step = await ensureStepUpToken();
+      if (!step.ok) return;
+      const response = await authFetch("/api/admin/operations/settings", {
+        method: "PATCH",
+        headers: withStepUpHeaders(step.token, { "content-type": "application/json" }),
+        body: JSON.stringify({
+          scope: "event-bulk",
+          eventSlugs: bulkEventSlugs,
+          capabilities: event.policy.capabilities,
+          transferOpensAt: event.policy.transferOpensAt ?? null,
+          transferClosesAt: event.policy.transferClosesAt ?? null,
+          reason,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Event access policies could not be applied");
+      onStatus(`Access policies applied to ${bulkEventSlugs.length} events.`);
       setReason("");
       setBulkEventSlugs([]);
       await load();
+    } catch (error) {
+      onError(
+        error instanceof Error ? error.message : "Event access policies could not be applied",
+      );
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
-  if (!data) return <p className="font-mono text-xs theme-muted">loading attendee settings…</p>;
+  if (!data)
+    return (
+      <div className="border-y theme-border py-5">
+        <p className="font-mono text-xs" role={loadError ? "alert" : "status"}>
+          <AdminStatus tone={loadError ? "danger" : "attention"}>
+            {loadError ?? "loading access policies…"}
+          </AdminStatus>
+        </p>
+        {loadError ? (
+          <button
+            type="button"
+            onClick={() => void load().catch(() => undefined)}
+            className="mt-3 inline-flex min-h-11 items-center font-mono text-xs underline"
+          >
+            retry
+          </button>
+        ) : null}
+      </div>
+    );
   const selectedEvent = data.events.find((event) => event.slug === eventSlug);
   const selectEvent = (nextSlug: string) => {
     setEventSlug(nextSlug);
@@ -176,10 +209,9 @@ export function AttendeeSettingsPanel({
     setTransferClosesAt(toLocalDateTime(policy?.transferClosesAt));
   };
   return (
-    <section aria-labelledby="attendee-settings-heading">
-      <p className="font-mono text-micro uppercase tracking-widest theme-muted">admin · settings</p>
-      <h2 id="attendee-settings-heading" className="mt-2 font-serif text-3xl">
-        Attendee Operations
+    <section aria-labelledby="access-policies-heading">
+      <h2 id="access-policies-heading" className="font-serif text-3xl">
+        Access policies
       </h2>
       <p className="mt-2 max-w-2xl font-mono text-xs leading-relaxed theme-muted">
         Global availability is the hard ceiling. New-event defaults are copied only when an event
@@ -237,7 +269,10 @@ export function AttendeeSettingsPanel({
           </div>
           {selectedEvent ? (
             <p className="pb-3 font-mono text-micro theme-muted">
-              policy v{selectedEvent.policy.policyVersion}
+              <AdminStatus tone={adminToneForStatus(selectedEvent.status)}>
+                {selectedEvent.status}
+              </AdminStatus>{" "}
+              · policy v{selectedEvent.policy.policyVersion}
             </p>
           ) : null}
         </div>
@@ -295,7 +330,10 @@ export function AttendeeSettingsPanel({
                           )
                         }
                       />
-                      {event.title} · {event.status}
+                      {event.title} ·{" "}
+                      <AdminStatus tone={adminToneForStatus(event.status)}>
+                        {event.status}
+                      </AdminStatus>
                     </label>
                   ))}
               </div>
@@ -360,17 +398,37 @@ function CapabilitySection({
             key={capability}
             className="flex min-h-11 items-center justify-between gap-4 font-mono text-xs"
           >
-            <span>
+            <span className="flex min-w-0 items-center gap-2">
               {LABELS[capability]}
               {effective ? (
-                <span className="ml-2 theme-muted">
-                  · effective {effective[capability] ? "on" : "off"}
-                </span>
+                <AdminStatus tone={effective[capability] ? "positive" : "neutral"}>
+                  effective {effective[capability] ? "on" : "off"}
+                </AdminStatus>
               ) : null}
               {impact?.[capability] ? (
                 <span className="ml-2 theme-muted">· {impact[capability]} event policies</span>
               ) : null}
             </span>
+            <AdminStatus
+              tone={
+                inverted
+                  ? draft[capability]
+                    ? "attention"
+                    : "positive"
+                  : draft[capability]
+                    ? "positive"
+                    : "neutral"
+              }
+              className="ml-auto shrink-0"
+            >
+              {inverted
+                ? draft[capability]
+                  ? "paused"
+                  : "available"
+                : draft[capability]
+                  ? "enabled"
+                  : "off"}
+            </AdminStatus>
             <input
               type="checkbox"
               checked={draft[capability]}

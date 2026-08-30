@@ -115,7 +115,7 @@ function CliAuthPage() {
               autoFocus
               required
               aria-invalid={message ? "true" : undefined}
-              className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)]"
+              className="min-h-11 w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none py-2 text-center font-mono text-base tracking-wider transition-colors placeholder:text-[var(--stone-400)] sm:text-sm"
             />
             <button
               type="submit"

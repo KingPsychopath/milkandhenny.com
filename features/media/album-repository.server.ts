@@ -7,12 +7,11 @@ import {
   uploadBuffer,
 } from "@/lib/platform/r2.server";
 import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
-import type { Album, Photo } from "./albums";
+import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { isValidFocalPreset } from "./focal";
 
 const ALBUM_MANIFEST_PREFIX = "albums/_manifests/";
 const SAFE_ALBUM_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const SAFE_PHOTO_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function isSafeAlbumSlug(slug: string): boolean {
   return SAFE_ALBUM_SLUG.test(slug);
@@ -32,7 +31,7 @@ function isPhotoManifest(value: unknown): value is Photo {
   const photo = value as Partial<Photo>;
   return (
     typeof photo.id === "string" &&
-    SAFE_PHOTO_ID.test(photo.id) &&
+    isSafeAlbumPhotoId(photo.id) &&
     typeof photo.width === "number" &&
     Number.isFinite(photo.width) &&
     photo.width > 0 &&
@@ -76,7 +75,7 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
       (expectedSlug !== undefined && value.slug !== expectedSlug) ||
       typeof value.title !== "string" ||
       typeof value.date !== "string" ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(value.date) ||
+      !isValidAlbumDate(value.date) ||
       !isOptionalString(value.description) ||
       typeof value.cover !== "string" ||
       !Array.isArray(value.photos) ||

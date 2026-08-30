@@ -9,6 +9,7 @@ import {
   getCheckoutMinimumMinor,
   minimumCheckoutQuantity,
 } from "@/features/tickets/payment-limits";
+import { MAX_TICKETS_PER_ORDER } from "@/features/tickets/types";
 import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.functions";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
@@ -96,6 +97,7 @@ export function ClaimTicketForm({
   const unavailable = salesMessage(availability);
   const isPaid = availability.type.priceMinor > 0;
   const maxQuantity = Math.min(
+    MAX_TICKETS_PER_ORDER,
     availability.type.perPersonLimit,
     Math.max(1, availability.remaining),
   );

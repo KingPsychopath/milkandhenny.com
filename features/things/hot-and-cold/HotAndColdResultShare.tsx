@@ -340,7 +340,7 @@ export function HotAndColdShareDock({
             : "copy";
   useEffect(() => {
     const resultElement = document.getElementById(resultId);
-    if (!resultElement) return;
+    if (!resultElement || !("IntersectionObserver" in window)) return;
     const observer = new IntersectionObserver(([entry]) => setShowingResult(entry.isIntersecting), {
       threshold: 0.55,
     });

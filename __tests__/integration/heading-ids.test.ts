@@ -92,4 +92,21 @@ describe("extractHeadings ↔ rehypeSlug contract", () => {
       expect(blogIds).toEqual(rehypeIds);
     });
   }
+
+  it("ignores heading-shaped lines inside fenced code blocks", () => {
+    const markdown = [
+      "## Visible",
+      "",
+      "```md",
+      "# Not a heading",
+      "`````",
+      "",
+      "### Also visible",
+    ].join("\n");
+
+    expect(extractHeadings(markdown)).toEqual([
+      { id: "visible", label: "Visible" },
+      { id: "also-visible", label: "Also visible" },
+    ]);
+  });
 });

@@ -3,6 +3,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { ADMIN_ALERT_CATEGORIES } from "@/features/attendee-operations/alert-categories";
+import { useActionDialog } from "@/hooks/useActionDialog";
+import {
+  AdminStatus,
+  adminToneForStatus,
+  adminToneTextClass,
+  type AdminStatusTone,
+} from "./AdminStatus";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
 type Recipient = {
@@ -30,6 +37,19 @@ type Delivery = {
 
 const CATEGORIES = ["all", ...ADMIN_ALERT_CATEGORIES.map((category) => category.id)] as const;
 
+function deliveryTone(status: string): AdminStatusTone {
+  switch (status.toLowerCase()) {
+    case "bounced":
+    case "complained":
+    case "rejected":
+      return "danger";
+    case "deferred":
+      return "attention";
+    default:
+      return adminToneForStatus(status);
+  }
+}
+
 export function AlertSettings({
   authFetch,
   onError,
@@ -56,17 +76,29 @@ export function AlertSettings({
   const [fallback, setFallback] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { prompt, dialog } = useActionDialog();
 
   const load = useCallback(async () => {
-    const response = await authFetch("/api/admin/operations/alerts");
-    const body = (await response.json().catch(() => ({}))) as {
-      recipients?: Recipient[];
-      deliveries?: Delivery[];
-      error?: string;
-    };
-    if (!response.ok) throw new Error(body.error ?? "Alert settings could not be loaded");
-    setRecipients(body.recipients ?? []);
-    setDeliveries(body.deliveries ?? []);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const response = await authFetch("/api/admin/operations/alerts");
+      const body = (await response.json().catch(() => ({}))) as {
+        recipients?: Recipient[];
+        deliveries?: Delivery[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? "Alert settings could not be loaded");
+      setRecipients(body.recipients ?? []);
+      setDeliveries(body.deliveries ?? []);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Alert settings could not be loaded");
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   }, [authFetch]);
 
   useEffect(() => {
@@ -143,7 +175,19 @@ export function AlertSettings({
   }
 
   async function revoke(recipient: Recipient) {
-    const changeReason = window.prompt(`Why are you removing ${recipient.emailHint}?`)?.trim();
+    const changeReason = (
+      await prompt({
+        eyebrow: "operational alerts",
+        title: `Remove ${recipient.emailHint}?`,
+        description: "This mailbox will stop receiving its configured alerts and digests.",
+        label: "reason for the audit log",
+        required: true,
+        confirmLabel: "remove recipient",
+        intent: "danger",
+        validate: (value) =>
+          value.trim().length < 3 ? "Enter a reason of at least 3 characters." : null,
+      })
+    )?.trim();
     if (!changeReason) return;
     setBusy(true);
     try {
@@ -319,9 +363,14 @@ export function AlertSettings({
           <li key={recipient.id} className="flex flex-wrap items-center gap-3 py-4">
             <div className="min-w-0 flex-1">
               <p className="font-serif">{recipient.emailHint}</p>
-              <p className="mt-1 font-mono text-micro theme-muted">
-                {recipient.cadence} · {recipient.categories.join(", ")} · {recipient.status}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro">
+                <span className="theme-muted">
+                  {recipient.cadence} · {recipient.categories.join(", ")}
+                </span>
+                <AdminStatus tone={adminToneForStatus(recipient.status)}>
+                  {recipient.status}
+                </AdminStatus>
+              </div>
             </div>
             {recipient.status === "active" ? (
               <>
@@ -345,7 +394,27 @@ export function AlertSettings({
             ) : null}
           </li>
         ))}
+        {!loading && !loadError && recipients.length === 0 ? (
+          <li className="py-4 font-mono text-xs theme-muted">No alert recipients configured.</li>
+        ) : null}
       </ul>
+      {loading ? (
+        <p className="mt-3 font-mono text-xs theme-muted" role="status">
+          loading alert recipients…
+        </p>
+      ) : null}
+      {loadError ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3" role="alert">
+          <p className={`font-mono text-xs ${adminToneTextClass("danger")}`}>error · {loadError}</p>
+          <button
+            type="button"
+            onClick={() => void load().catch(() => undefined)}
+            className="inline-flex min-h-11 items-center font-mono text-xs underline"
+          >
+            retry
+          </button>
+        </div>
+      ) : null}
       <details className="mt-6 border-y theme-border py-4">
         <summary className="cursor-pointer font-mono text-xs">
           delivery history and failures
@@ -353,16 +422,29 @@ export function AlertSettings({
         <ul className="mt-3 divide-y theme-border">
           {deliveries.map((delivery) => (
             <li key={delivery.id} className="py-3 font-mono text-micro">
-              <span>
-                {delivery.status} · {delivery.recipientHint} · {delivery.subjectHint}
-              </span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <AdminStatus tone={deliveryTone(delivery.status)}>{delivery.status}</AdminStatus>
+                <span className="theme-muted">
+                  {delivery.recipientHint} · {delivery.subjectHint}
+                </span>
+                <span
+                  className={
+                    delivery.attempts > 1 ? adminToneTextClass("attention") : "theme-faint"
+                  }
+                >
+                  {delivery.attempts} {delivery.attempts === 1 ? "attempt" : "attempts"}
+                </span>
+              </div>
               {delivery.lastError ? (
-                <p className="mt-1 text-balance theme-muted">{delivery.lastError}</p>
+                <p className={`mt-1 text-balance ${adminToneTextClass("danger")}`}>
+                  error · {delivery.lastError}
+                </p>
               ) : null}
             </li>
           ))}
         </ul>
       </details>
+      {dialog}
     </section>
   );
 }

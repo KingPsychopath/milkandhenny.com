@@ -38,6 +38,7 @@ describe("email provider delivery", () => {
           subject: "Your ticket",
           text: "Open your ticket.",
           html: '<img src="cid:ticketqr">',
+          unsubscribeUrl: "https://example.com/api/marketing/unsubscribe/token",
           attachments: [
             {
               content: "cG5n",
@@ -56,7 +57,11 @@ describe("email provider delivery", () => {
     expect(JSON.parse(String(request?.body))).toMatchObject({
       from: { address: "tickets@example.com", name: "milk & henny tickets" },
       reply_to: "reply@example.com",
-      headers: { "X-Milk-Henny-Delivery": "tickets:issued:order-1" },
+      headers: {
+        "X-Milk-Henny-Delivery": "tickets:issued:order-1",
+        "List-Unsubscribe": "<https://example.com/api/marketing/unsubscribe/token>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
       attachments: [
         {
           content: "cG5n",
@@ -188,13 +193,24 @@ describe("email outbox policy", () => {
         to: "person@example.com",
         subject: "Your pitch",
         text: "Open your pitch.",
+        unsubscribeUrl: "https://example.com/api/marketing/unsubscribe/token",
       }),
     ).toEqual({
       channel: "studio",
       to: "person@example.com",
       subject: "Your pitch",
       text: "Open your pitch.",
+      unsubscribeUrl: "https://example.com/api/marketing/unsubscribe/token",
     });
+    expect(
+      __emailOutboxTesting.parseMessage({
+        channel: "studio",
+        to: "person@example.com",
+        subject: "Your pitch",
+        text: "Open your pitch.",
+        unsubscribeUrl: "https://example.com/\r\nBcc: hidden@example.com",
+      }),
+    ).toBeNull();
     expect(
       __emailOutboxTesting.parseMessage({ channel: "studio", to: "person@example.com" }),
     ).toBeNull();

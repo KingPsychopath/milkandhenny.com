@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { query } from "@/lib/platform/postgres.server";
+import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import { isValidEmail } from "@/lib/shared/email-address";
 import {
   SURVEY_QUESTION_TYPES,
@@ -71,6 +72,28 @@ function normaliseSlug(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+const SURVEY_SUBMISSION_LIMIT_PER_NETWORK = 300;
+const SURVEY_SUBMISSION_GLOBAL_LIMIT = 10_000;
+const SURVEY_SUBMISSION_WINDOW_SECONDS = 60 * 60;
+
+/**
+ * Keep public surveys usable on shared event Wi-Fi while bounding anonymous
+ * database writes from one network and across the whole service.
+ */
+export async function reserveSurveySubmission(
+  slug: string,
+  sourceIp: string,
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  const decision = await reserveRateLimit({
+    name: "survey-submit",
+    identity: `${normaliseSlug(slug) || "unknown"}:${sourceIp || "unknown"}`,
+    limit: SURVEY_SUBMISSION_LIMIT_PER_NETWORK,
+    windowSeconds: SURVEY_SUBMISSION_WINDOW_SECONDS,
+    globalLimit: SURVEY_SUBMISSION_GLOBAL_LIMIT,
+  });
+  return { allowed: decision.allowed, retryAfterSeconds: decision.retryAfterSeconds };
 }
 
 export async function listSurveys(): Promise<SurveyRecord[]> {

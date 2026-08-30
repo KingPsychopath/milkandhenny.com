@@ -6,16 +6,16 @@ import {
   deleteAllShareLinksForSlug,
   listTrackedShareSlugs,
 } from "@/features/words/share.server";
-import { listWords } from "@/features/words/store.server";
+import { listAllWords } from "@/features/words/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function collectCleanupSlugs(): Promise<string[]> {
-  const [trackedSlugs, notesResult] = await Promise.all([
+  const [trackedSlugs, notes] = await Promise.all([
     listTrackedShareSlugs(),
-    listWords({ includeNonPublic: true, limit: 2000 }),
+    listAllWords({ includeNonPublic: true }),
   ]);
   const slugs = new Set<string>(trackedSlugs);
-  for (const note of notesResult.words) {
+  for (const note of notes) {
     slugs.add(note.slug);
   }
   return [...slugs].sort();

@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getTransferFileDeleteKeys } from "@/features/transfers/delete";
 import {
-  deleteTransferData,
   getTransfer,
-  removeTransferFile,
-  saveTransfer,
+  removeTransferFileAtomic,
   validateDeleteToken,
 } from "@/features/transfers/store.server";
+import { toPublicTransfer } from "@/features/transfers/public";
 import { deleteObjects, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 
 type RouteContext = {
@@ -43,32 +42,30 @@ async function handleDELETE(request: Request, context: RouteContext) {
     return Response.json({ error: "File not found in transfer" }, { status: 404 });
   }
 
+  const storageConfigured = isTransferStorageConfigured();
+  const keys = storageConfigured ? getTransferFileDeleteKeys(id, file) : [];
   let deletedObjects = 0;
-  if (isTransferStorageConfigured()) {
-    const keys = getTransferFileDeleteKeys(id, file);
+  if (storageConfigured) {
     deletedObjects = keys.length > 0 ? await deleteObjects(keys, { scope: "private" }) : 0;
   }
 
-  const updatedTransfer = removeTransferFile(transfer, fileId);
-  if (updatedTransfer.files.length === 0) {
-    const dataDeleted = await deleteTransferData(id);
-    return Response.json({
-      success: true,
-      deletedObjects,
-      deletedTransfer: true,
-      dataDeleted,
-      deletedFileId: fileId,
-    });
+  const removal = await removeTransferFileAtomic(id, fileId);
+  if (!("transfer" in removal)) {
+    if (removal.status === "deleted") {
+      return Response.json({
+        success: true,
+        deletedObjects,
+        deletedTransfer: true,
+        dataDeleted: true,
+        deletedFileId: fileId,
+      });
+    }
+    return Response.json({ error: "File not found in transfer" }, { status: 404 });
   }
-
-  const remainingTtlSeconds = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
-  );
-  if (remainingTtlSeconds <= 0) {
-    return Response.json({ error: "Transfer has already expired" }, { status: 410 });
+  const publicTransfer = toPublicTransfer(removal.transfer);
+  if (storageConfigured && keys.length > 0) {
+    deletedObjects += await deleteObjects(keys, { scope: "private" });
   }
-
-  await saveTransfer(updatedTransfer, remainingTtlSeconds);
 
   return Response.json({
     success: true,
@@ -76,12 +73,12 @@ async function handleDELETE(request: Request, context: RouteContext) {
     deletedTransfer: false,
     deletedFileId: fileId,
     transfer: {
-      id: updatedTransfer.id,
-      title: updatedTransfer.title,
-      files: updatedTransfer.files,
-      groups: updatedTransfer.groups,
-      createdAt: updatedTransfer.createdAt,
-      expiresAt: updatedTransfer.expiresAt,
+      id: publicTransfer.id,
+      title: publicTransfer.title,
+      files: publicTransfer.files,
+      groups: publicTransfer.groups,
+      createdAt: publicTransfer.createdAt,
+      expiresAt: publicTransfer.expiresAt,
     },
   });
 }

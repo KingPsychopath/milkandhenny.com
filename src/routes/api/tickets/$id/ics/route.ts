@@ -1,9 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getEvent } from "@/features/events/store.server";
-import { buildEventIcs, buildTicketHolderIcsOptions } from "@/features/events/ics";
-import { buildEventUrl, buildTicketUrl } from "@/features/events/routes";
-import { getTicket } from "@/features/tickets/store.server";
+import { getTicketCalendarDocument } from "@/features/tickets/calendar.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -17,27 +14,14 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
  */
 async function handleGET(request: Request, id: string) {
   try {
-    const ticket = await getTicket(id);
-    if (!ticket || ticket.status !== "valid") {
-      return new Response("Not found", { status: 404 });
-    }
-
-    const event = await getEvent(ticket.eventSlug);
-    if (!event) return new Response("Not found", { status: 404 });
-
     const origin = getBaseUrlForRequest(request);
-    const ics = buildEventIcs(
-      event,
-      buildTicketHolderIcsOptions(event, {
-        eventUrl: buildEventUrl(origin, event.slug),
-        ticketUrl: buildTicketUrl(origin, ticket.id),
-      }),
-    );
+    const document = await getTicketCalendarDocument(id, origin);
+    if (!document) return new Response("Not found", { status: 404 });
 
-    return new Response(ics, {
+    return new Response(document.content, {
       headers: {
         "Content-Type": "text/calendar; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${event.slug}.ics"`,
+        "Content-Disposition": `attachment; filename="${document.filename}"`,
         // The ticket id is a bearer token; nothing shared may hold this body.
         "Cache-Control": "private, no-store",
         "X-Robots-Tag": "noindex, nofollow",

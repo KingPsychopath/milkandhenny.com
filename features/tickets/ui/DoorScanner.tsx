@@ -18,11 +18,11 @@ import {
   type ScannerRole,
 } from "../checkpoint-types";
 import {
-  EMPTY_DOOR_STATE,
   applyManifest,
   clearSynced,
   pendingCount,
   recordOfflineScan,
+  restoreDoorOfflineState,
   type DoorOfflineState,
 } from "../door-queue";
 import {
@@ -46,6 +46,16 @@ import {
 
 const MIN_REFRESH_GAP_MS = 15_000;
 const REFRESH_INTERVAL_MS = 60_000;
+const doorShiftStorageKey = (eventSlug: string) => `mah:door-shift:v1:${eventSlug}`;
+
+function readStoredDoorShift(eventSlug: string): unknown {
+  try {
+    const stored = sessionStorage.getItem(doorShiftStorageKey(eventSlug));
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
 
 type Verdict =
   | { kind: "idle" }
@@ -163,7 +173,7 @@ function GuestRequests({
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className="font-mono text-micro theme-muted hover:text-foreground transition-colors"
+          className="inline-flex min-h-11 items-center font-mono text-micro theme-muted hover:text-foreground transition-colors"
         >
           + add guest
         </button>
@@ -171,7 +181,7 @@ function GuestRequests({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="font-mono text-micro text-[var(--things-amber)]"
+            className="inline-flex min-h-11 items-center font-mono text-micro text-[var(--things-amber)]"
           >
             {canApprove ? `${pending.length} to approve` : `${pending.length} pending`}
           </button>
@@ -231,7 +241,7 @@ function GuestRequests({
                             setConfirmingId(request.id);
                           }
                         }}
-                        className={`min-h-9 rounded-lg px-3 font-mono text-micro disabled:opacity-50 ${
+                        className={`min-h-11 rounded-lg px-3 font-mono text-micro disabled:opacity-50 ${
                           confirmingId === request.id
                             ? "bg-[var(--things-green)] text-black"
                             : "bg-foreground text-background"
@@ -243,7 +253,7 @@ function GuestRequests({
                         type="button"
                         disabled={busy}
                         onClick={() => void decide(request.id, false)}
-                        className="min-h-9 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
+                        className="min-h-11 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
                       >
                         decline
                       </button>
@@ -253,7 +263,7 @@ function GuestRequests({
                       type="button"
                       disabled={busy}
                       onClick={() => void cancel(request.id)}
-                      className="shrink-0 min-h-9 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="shrink-0 min-h-11 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
                     >
                       cancel
                     </button>
@@ -323,10 +333,9 @@ export function DoorScanner({
   initialRequests?: GuestRequestRecord[];
 }) {
   const permissions = scannerPermissions ?? ROLE_DEFAULT_PERMISSIONS[scannerRole];
-  const [offline, setOffline] = useState<DoorOfflineState>({
-    ...EMPTY_DOOR_STATE,
-    manifest: initialManifest,
-  });
+  const [offline, setOffline] = useState<DoorOfflineState>(() =>
+    restoreDoorOfflineState(initialManifest, readStoredDoorShift(eventSlug)),
+  );
   const [tickets, setTickets] = useState(initialTickets);
   const [summary, setSummary] = useState(initialSummary);
   const [verdict, setVerdict] = useState<Verdict>({ kind: "idle" });
@@ -345,7 +354,15 @@ export function DoorScanner({
 
   useEffect(() => {
     offlineRef.current = offline;
-  }, [offline]);
+    try {
+      sessionStorage.setItem(
+        doorShiftStorageKey(eventSlug),
+        JSON.stringify({ admitted: offline.admitted, queue: offline.queue }),
+      );
+    } catch {
+      // A private-browsing storage failure must not block the active shift.
+    }
+  }, [eventSlug, offline]);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -368,6 +385,7 @@ export function DoorScanner({
       try {
         const data = await getDoorDataFn({ data: { eventSlug, scannerToken } });
         if (!isCurrent() || !data.authorised) return;
+        if (navigator.onLine) setOnline(true);
         setOffline((state) => applyManifest(state, data.manifestHashes));
         setTickets(data.tickets);
         setSummary(data.summary);
@@ -403,9 +421,15 @@ export function DoorScanner({
             scannerToken,
           },
         });
-        if (result.authorised) synced.push(entry.ticketId);
+        if (!result.authorised) break;
+        if ("unavailable" in result) {
+          setOnline(false);
+          break;
+        }
+        synced.push(entry.ticketId);
       } catch {
         // Leave it queued; the next reconnect retries.
+        setOnline(false);
         break;
       }
     }
@@ -464,71 +488,80 @@ export function DoorScanner({
       setBusy(true);
       try {
         if (navigator.onLine) {
-          const result = await redeemTicketFn({
-            data: { scanned: raw, eventSlug, redeemedBy: "door", scannerToken },
-          });
-
-          if (!result.authorised) {
-            setVerdict({
-              kind: "rejected",
-              title: scannerToken ? "Link no longer active" : "Signed out",
-              detail: scannerToken
-                ? "This scanner link was turned off — ask the organiser for a fresh one."
-                : "Staff session expired — sign in again.",
+          try {
+            const result = await redeemTicketFn({
+              data: { scanned: raw, eventSlug, redeemedBy: "door", scannerToken },
             });
-            return "rejected";
-          }
 
-          const outcome = result.outcome;
-          switch (outcome.result) {
-            case "admitted":
-              setVerdict({
-                kind: "admitted",
-                name: outcome.ticket.holderName,
-                detail: outcome.ticket.ticketTypeName,
-              });
-              setSummary((prev) => ({ ...prev, redeemed: prev.redeemed + 1 }));
-              setTickets((current) =>
-                current.map((entry) =>
-                  entry.id === outcome.ticket.id
-                    ? { ...entry, redeemedAt: new Date().toISOString() }
-                    : entry,
-                ),
-              );
-              break;
-            case "already-redeemed":
-              setVerdict({
-                kind: "already",
-                name: outcome.ticket.holderName,
-                detail: `Already scanned in at ${new Date(outcome.redeemedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`,
-              });
-              break;
-            case "wrong-event":
+            if (!result.authorised) {
               setVerdict({
                 kind: "rejected",
-                title: "Wrong event",
-                detail: "That ticket is for a different night.",
+                title: scannerToken ? "Link no longer active" : "Signed out",
+                detail: scannerToken
+                  ? "This scanner link was turned off — ask the organiser for a fresh one."
+                  : "Staff session expired — sign in again.",
               });
-              break;
-            case "void":
-              setVerdict({
-                kind: "rejected",
-                title: "Not valid",
-                detail: "This ticket was cancelled or refunded.",
-              });
-              break;
-            default:
-              setVerdict({
-                kind: "rejected",
-                title: "No ticket",
-                detail: "Nothing matches that code.",
-              });
+              return "rejected";
+            }
+            if ("unavailable" in result) {
+              setOnline(false);
+            } else {
+              const outcome = result.outcome;
+              switch (outcome.result) {
+                case "admitted":
+                  setVerdict({
+                    kind: "admitted",
+                    name: outcome.ticket.holderName,
+                    detail: outcome.ticket.ticketTypeName,
+                  });
+                  setSummary((prev) => ({ ...prev, redeemed: prev.redeemed + 1 }));
+                  setTickets((current) =>
+                    current.map((entry) =>
+                      entry.id === outcome.ticket.id
+                        ? { ...entry, redeemedAt: new Date().toISOString() }
+                        : entry,
+                    ),
+                  );
+                  break;
+                case "already-redeemed":
+                  setVerdict({
+                    kind: "already",
+                    name: outcome.ticket.holderName,
+                    detail: `Already scanned in at ${new Date(outcome.redeemedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`,
+                  });
+                  break;
+                case "wrong-event":
+                  setVerdict({
+                    kind: "rejected",
+                    title: "Wrong event",
+                    detail: "That ticket is for a different night.",
+                  });
+                  break;
+                case "void":
+                  setVerdict({
+                    kind: "rejected",
+                    title: "Not valid",
+                    detail: "This ticket was cancelled or refunded.",
+                  });
+                  break;
+                default:
+                  setVerdict({
+                    kind: "rejected",
+                    title: "No ticket",
+                    detail: "Nothing matches that code.",
+                  });
+              }
+              return outcome.result === "admitted"
+                ? "admitted"
+                : outcome.result === "already-redeemed"
+                  ? "already"
+                  : "rejected";
+            }
+          } catch {
+            // `navigator.onLine` also means captive portals and broken venue wifi. Fall through to
+            // the downloaded manifest so a transport failure never leaves the door unresponsive.
+            setOnline(false);
           }
-          return outcome.result === "admitted"
-            ? "admitted"
-            : outcome.result === "already-redeemed"
-              ? "already"
-              : "rejected";
         }
 
         // Offline: decide from the manifest and queue the redemption.
@@ -660,7 +693,7 @@ export function DoorScanner({
             type="button"
             onClick={() => setShowOccupancy((current) => !current)}
             aria-expanded={showOccupancy}
-            className="font-mono text-micro theme-muted underline decoration-dotted underline-offset-4 hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 items-center font-mono text-micro theme-muted underline decoration-dotted underline-offset-4 hover:text-foreground transition-colors"
           >
             {summary.redeemed}/{summary.total} in {showOccupancy ? "▴" : "▾"}
           </button>
@@ -853,7 +886,7 @@ export function DoorScanner({
               <button
                 type="button"
                 onClick={() => setPendingGroup(null)}
-                className="min-h-10 font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                className="min-h-11 font-mono text-micro theme-muted hover:text-foreground transition-colors"
               >
                 cancel
               </button>
@@ -930,7 +963,7 @@ export function DoorScanner({
                   type="button"
                   disabled={busy}
                   onClick={() => void handleScan(ticket.id)}
-                  className="shrink-0 min-h-10 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
+                  className="shrink-0 min-h-11 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
                 >
                   let in
                 </button>

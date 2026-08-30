@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { revokeShareLink, updateShareLink } from "@/features/words/share.server";
+import { revokeShareLink, toShareLinkView, updateShareLink } from "@/features/words/share.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type Params = { params: Promise<{ slug: string; id: string }> };
@@ -30,7 +30,10 @@ async function handlePATCH(request: Request, { params }: Params) {
   try {
     const updated = await updateShareLink(slug, id, body);
     if (!updated) return Response.json({ error: "Share link not found" }, { status: 404 });
-    return Response.json(updated);
+    return Response.json({
+      link: toShareLinkView(updated.link),
+      ...(updated.token ? { token: updated.token } : {}),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update share link";
     if (/pin|expired|revoked/i.test(message)) {

@@ -374,6 +374,7 @@ main:has(.heat-result-share) .heat-ledger {
   grid-area: word;
   font: 500 clamp(1.55rem, 7vw, 2.35rem)/1.05 var(--font-serif);
   letter-spacing: -0.025em;
+  transition: filter 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-ledger[data-words-hidden] .heat-word-text,
 .heat-ledger[data-words-hidden] .heat-target strong {
@@ -446,6 +447,9 @@ main:has(.heat-result-share) .heat-ledger {
 .heat-word--burning[data-newest] .heat-word-effect,
 .heat-word--found[data-newest] .heat-word-effect {
   animation: heat-flare 1.15s ease-out;
+}
+.heat-share-visibility-hint {
+  animation: heat-share-visibility-hint 4.2s ease both;
 }
 .heat-ledger-empty {
   min-height: 17rem;
@@ -524,6 +528,7 @@ main:has(.heat-result-share) .heat-ledger {
 }
 .heat-target strong {
   font: 600 2.4rem/1 var(--font-serif);
+  transition: filter 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .heat-target small {
   grid-column: 2;
@@ -1412,6 +1417,21 @@ html[data-heat-page-direction="back"]::view-transition-new(root) {
     transform: translateY(0.25rem);
   }
 }
+@keyframes heat-share-visibility-hint {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.2rem);
+  }
+  12%,
+  78% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.1rem);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   html[data-heat-page-direction]::view-transition-old(root),
   html[data-heat-page-direction]::view-transition-new(root) {
@@ -1420,7 +1440,8 @@ html[data-heat-page-direction="back"]::view-transition-new(root) {
   .heat-source-flame,
   .heat-word[data-newest],
   .heat-word[data-newest] .heat-word-text,
-  .heat-word[data-newest] .heat-word-effect {
+  .heat-word[data-newest] .heat-word-effect,
+  .heat-share-visibility-hint {
     animation: none;
   }
   .heat-guess-receipt {
@@ -1438,7 +1459,9 @@ html[data-heat-page-direction="back"]::view-transition-new(root) {
   .heat-source-flame > span,
   .heat-source-flame > span::before,
   .heat-share-trail li span,
-  .heat-share-dock-pager svg {
+  .heat-share-dock-pager svg,
+  .heat-word-text,
+  .heat-target strong {
     transition: none;
     transition-delay: 0s;
   }

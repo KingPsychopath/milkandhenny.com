@@ -30,7 +30,7 @@ export function SiteFooter({ children, maxWidth = "2xl" }: SiteFooterProps) {
 
 export function SiteFooterBar({ leading, trailing }: SiteFooterBarProps) {
   return (
-    <div className="flex flex-col items-center gap-4 text-center font-mono text-micro tracking-wide theme-muted md:flex-row md:items-center md:justify-between md:text-left">
+    <div className="flex flex-col items-center gap-4 text-center font-mono text-micro tracking-wide theme-muted md:flex-row md:items-center md:justify-between md:text-left [&_a]:inline-flex [&_a]:min-h-11 [&_a]:min-w-11 [&_a]:items-center [&_a]:justify-center">
       <div className="min-w-0 shrink-0">{leading}</div>
       <div className="min-w-0">{trailing}</div>
     </div>
@@ -50,7 +50,7 @@ export function JourneyRail({
   return (
     <nav aria-label={ariaLabel} className="border-t theme-border">
       <div
-        className={`mx-auto flex w-full ${widthClass} flex-col items-center gap-4 px-6 py-8 text-center font-mono text-micro tracking-wide theme-muted md:flex-row md:items-center ${leading ? "md:justify-between md:text-left" : "md:justify-end"} [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center`}
+        className={`mx-auto flex w-full ${widthClass} flex-col items-center gap-4 px-6 py-8 text-center font-mono text-micro tracking-wide theme-muted md:flex-row md:items-center ${leading ? "md:justify-between md:text-left" : "md:justify-end"} [&_a]:inline-flex [&_a]:min-h-11 [&_a]:min-w-11 [&_a]:items-center`}
       >
         {leading ? <div className="min-w-0">{leading}</div> : null}
         {trailing ? <div className="min-w-0">{trailing}</div> : null}

@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo } from "react";
 import { Link } from "@tanstack/react-router";
 import { SelectionToggle } from "@/components/SelectionToggle";
 import { AppImage } from "@/components/AppImage";
@@ -36,30 +36,35 @@ export const PhotoCard = memo(function PhotoCard({
 }: PhotoCardProps) {
   const image = getAlbumImageData(albumSlug, photo);
 
-  const handleSelect = useCallback(
-    (e: React.MouseEvent) => {
-      if (selectable) {
-        e.preventDefault();
-        onSelect?.(photo.id);
-      }
-    },
-    [selectable, onSelect, photo.id],
-  );
-
   const aspectRatio = photo.height / photo.width;
 
   return (
-    <div className="gallery-card group">
-      <Link
-        to="/pics/$album/$photo"
-        params={{ album: albumSlug, photo: photo.id }}
-        className="media-image-placeholder block relative overflow-hidden rounded-sm"
-        style={{
-          paddingBottom: `${aspectRatio * 100}%`,
-          ...imagePlaceholderStyle(photo.placeholder),
-        }}
-        onClick={handleSelect}
-      >
+    <div
+      className="gallery-card group media-image-placeholder relative overflow-hidden rounded-sm"
+      style={{
+        paddingBottom: `${aspectRatio * 100}%`,
+        ...imagePlaceholderStyle(photo.placeholder),
+      }}
+    >
+      {selectable ? (
+        <SelectionToggle
+          selected={!!selected}
+          onToggle={() => onSelect?.(photo.id)}
+          ariaLabel={`${selected ? "Deselect" : "Select"} ${alt}`}
+          fullSurface
+          variant="overlay"
+          className="z-10 cursor-pointer"
+        />
+      ) : (
+        <Link
+          to="/pics/$album/$photo"
+          params={{ album: albumSlug, photo: photo.id }}
+          className="absolute inset-0 z-[1] block"
+          aria-label={`Open ${alt}`}
+        />
+      )}
+
+      <div className="absolute inset-0">
         <AppImage
           src={image.src}
           srcSet={image.srcSet}
@@ -75,18 +80,7 @@ export const PhotoCard = memo(function PhotoCard({
 
         {/* Hover overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
-
-        {/* Selection toggle */}
-        {selectable && (
-          <div className="absolute top-2 right-2 z-10">
-            <SelectionToggle
-              selected={!!selected}
-              onToggle={() => onSelect?.(photo.id)}
-              variant="overlay"
-            />
-          </div>
-        )}
-      </Link>
+      </div>
     </div>
   );
 });

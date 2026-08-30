@@ -16,6 +16,7 @@ import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
+import { AdminStatus, adminToneBorderClass, adminToneForStatus } from "./AdminStatus";
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 
@@ -129,6 +130,7 @@ export function PitchesPanel({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived" | "trash">("all");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
   const [form, setForm] = useState({ title: "", ownerName: "", ownerEmail: "" });
@@ -141,6 +143,7 @@ export function PitchesPanel({
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await authFetch("/api/admin/pitches");
       if (!response.ok) throw new Error("Could not load pitches");
@@ -154,7 +157,9 @@ export function PitchesPanel({
         setModeDraft(body.operationalStatus.adminMode);
       }
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load pitches");
+      const message = error instanceof Error ? error.message : "Could not load pitches";
+      setLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -198,6 +203,11 @@ export function PitchesPanel({
       setPublicationDraft(next.pitch.publishedAt ? "published" : "draft");
       setDeleteConfirmation("");
       setDetailFiles({});
+      requestAnimationFrame(() => {
+        document
+          .getElementById("pitch-manager")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
       void loadPitchFiles(next.assets)
         .then(setDetailFiles)
         .catch(() => setDetailFiles({}));
@@ -399,168 +409,224 @@ export function PitchesPanel({
         <div>
           <p className="font-mono text-xs theme-muted">pitch night studio</p>
           <h2 className="mt-1 font-serif text-2xl text-foreground">
-            {pitches.length} working {pitches.length === 1 ? "pitch" : "pitches"}
+            {detail
+              ? "Pitch control room"
+              : `${pitches.length} working ${pitches.length === 1 ? "pitch" : "pitches"}`}
           </h2>
-          <p className="mt-1 font-mono text-micro theme-muted">
-            {totals.drafts} draft · {totals.published} published · {bytes(totals.bytes)} media
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="font-mono text-xs theme-muted hover:text-foreground disabled:opacity-40"
-        >
-          {loading ? "refreshing…" : "refresh"}
-        </button>
-      </div>
-
-      <div className="mt-6 border-y border-[var(--things-amber)] py-5">
-        <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
-          <div>
-            <label
-              htmlFor="pitch-operational-mode"
-              className="font-mono text-micro uppercase tracking-[0.14em] theme-muted"
-            >
-              studio operating mode
-            </label>
-            <AppSelect
-              id="pitch-operational-mode"
-              value={modeDraft}
-              onValueChange={(value) => {
-                if (isPitchOperationalMode(value)) setModeDraft(value);
-              }}
-              disabled={!operationalStatus || busy === "operational-mode"}
-              ariaLabel="Studio operating mode"
-              variant="field"
-              className="mt-3 md:max-w-xs"
-              options={[
-                { value: "enabled", label: "enabled · all features" },
-                { value: "read-only", label: "read-only · no server saves" },
-                { value: "off", label: "off · stop public and live access" },
-              ]}
-            />
-            <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
-              {operationalStatus?.message ?? "Loading the current mode…"}
-              {operationalStatus && operationalStatus.environmentMode !== "enabled"
-                ? ` The PITCHES_MODE environment value is ${operationalStatus.environmentMode} and is the hard ceiling.`
-                : " Local editor safety copies and downloads still work in read-only mode."}
+          {!detail ? (
+            <p className="mt-1 font-mono text-micro theme-muted">
+              {totals.drafts} draft · {totals.published} published · {bytes(totals.bytes)} media
             </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void updateOperationalMode()}
-            disabled={
-              !operationalStatus ||
-              busy === "operational-mode" ||
-              modeDraft === operationalStatus.adminMode
-            }
-            className="min-h-11 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:opacity-40"
-          >
-            {busy === "operational-mode" ? "applying…" : "apply mode"}
-          </button>
+          ) : null}
         </div>
-      </div>
-
-      <div className="mt-6">
-        <PitchRemindersPanel authFetch={authFetch} onError={onError} onStatus={onStatus} />
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        {(["all", "draft", "published", "archived", "trash"] as const).map((value) => (
+        {!detail ? (
           <button
-            key={value}
             type="button"
-            onClick={() => setFilter(value)}
-            className={`min-h-11 border px-3 font-mono text-xs ${
-              filter === value ? "theme-border-strong text-foreground" : "theme-border theme-muted"
-            }`}
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="min-h-11 font-mono text-xs theme-muted hover:text-foreground disabled:opacity-40"
           >
-            {value}
+            {loading ? "refreshing…" : "refresh"}
           </button>
-        ))}
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="name, email or title"
-          aria-label="Search pitches"
-          className="min-h-11 min-w-56 flex-1 border-b theme-border bg-transparent px-2 font-mono text-xs text-foreground outline-none focus:border-foreground"
-        />
-      </div>
-
-      <div className="mt-5 divide-y theme-border border-y">
-        {visible.map((pitch) => (
-          <article key={pitch.id} className="py-4">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-              <button
-                type="button"
-                onClick={() => void open(pitch)}
-                className="min-w-0 text-left hover:opacity-60"
-              >
-                <span className="block truncate font-serif text-xl text-foreground">
-                  {pitch.title}
-                </span>
-                <span className="mt-1 block font-mono text-micro theme-muted">
-                  {pitch.ownerName} · {pitch.ownerEmail} · {pitch.slideCount} slides ·{" "}
-                  {when(pitch.updatedAt)}
-                </span>
-              </button>
-              <div className="flex items-center gap-2 font-mono text-xs">
-                <span className={pitch.publishedAt ? "text-foreground" : "theme-muted"}>
-                  {pitch.lifecycle === "trashed"
-                    ? `trash · purges ${pitch.purgeAfter ? when(pitch.purgeAfter) : "later"}`
-                    : pitch.lifecycle === "archived"
-                      ? "archived"
-                      : pitch.publishedAt
-                        ? "published"
-                        : "draft"}
-                </span>
-                <button
-                  type="button"
-                  disabled={busy === pitch.id}
-                  onClick={() => void open(pitch)}
-                  aria-label={`Edit ${pitch.title}`}
-                  title="Edit title, owner and state"
-                  className="grid min-h-11 min-w-11 place-items-center theme-muted hover:text-foreground disabled:opacity-40"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                    className="h-4 w-4 fill-none stroke-current"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" />
-                    <path d="m13.5 6.5 4 4" />
-                  </svg>
-                </button>
-                {pitch.lifecycle === "trashed" ? (
-                  <button
-                    type="button"
-                    disabled={busy === pitch.id}
-                    onClick={() => void restoreTrash(pitch.id)}
-                    className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
-                  >
-                    restore
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busy === pitch.id}
-                    onClick={() => void archive(pitch)}
-                    className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
-                  >
-                    {pitch.lifecycle === "archived" ? "restore" : "archive"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </article>
-        ))}
-        {!loading && visible.length === 0 ? (
-          <p className="py-10 text-center font-mono text-xs theme-muted">No pitches here.</p>
         ) : null}
       </div>
+
+      {!detail ? (
+        <>
+          <div className="mt-6 border-y theme-border py-5">
+            <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+              <div>
+                <label
+                  htmlFor="pitch-operational-mode"
+                  className="font-mono text-micro uppercase tracking-[0.14em] theme-muted"
+                >
+                  studio operating mode
+                </label>
+                <AppSelect
+                  id="pitch-operational-mode"
+                  value={modeDraft}
+                  onValueChange={(value) => {
+                    if (isPitchOperationalMode(value)) setModeDraft(value);
+                  }}
+                  disabled={!operationalStatus || busy === "operational-mode"}
+                  ariaLabel="Studio operating mode"
+                  variant="field"
+                  className="mt-3 md:max-w-xs"
+                  options={[
+                    { value: "enabled", label: "enabled · all features" },
+                    { value: "read-only", label: "read-only · no server saves" },
+                    { value: "off", label: "off · stop public and live access" },
+                  ]}
+                />
+                <p className="mt-2 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
+                  {operationalStatus?.message ?? "Loading the current mode…"}
+                  {operationalStatus && operationalStatus.environmentMode !== "enabled"
+                    ? ` The PITCHES_MODE environment value is ${operationalStatus.environmentMode} and is the hard ceiling.`
+                    : " Local editor safety copies and downloads still work in read-only mode."}
+                </p>
+                {operationalStatus ? (
+                  <AdminStatus
+                    tone={
+                      operationalStatus.source === "storage-unavailable" ||
+                      operationalStatus.source === "invalid-environment"
+                        ? "danger"
+                        : operationalStatus.effectiveMode === "enabled"
+                          ? "positive"
+                          : operationalStatus.effectiveMode === "read-only"
+                            ? "attention"
+                            : "neutral"
+                    }
+                    className="mt-3 font-mono text-micro"
+                  >
+                    effective mode {operationalStatus.effectiveMode}
+                  </AdminStatus>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => void updateOperationalMode()}
+                disabled={
+                  !operationalStatus ||
+                  busy === "operational-mode" ||
+                  modeDraft === operationalStatus.adminMode
+                }
+                className="min-h-11 bg-foreground px-5 font-mono text-xs text-background hover:opacity-80 disabled:opacity-40"
+              >
+                {busy === "operational-mode" ? "applying…" : "apply mode"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <PitchRemindersPanel authFetch={authFetch} onError={onError} onStatus={onStatus} />
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            {(["all", "draft", "published", "archived", "trash"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={`min-h-11 border px-3 font-mono text-xs ${
+                  filter === value
+                    ? "theme-border-strong text-foreground"
+                    : "theme-border theme-muted"
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="name, email or title"
+              aria-label="Search pitches"
+              className="min-h-11 min-w-56 flex-1 border-b theme-border bg-transparent px-2 font-mono text-xs text-foreground outline-none focus:border-foreground"
+            />
+          </div>
+
+          <div className="mt-5 divide-y theme-border border-y">
+            {visible.map((pitch) => (
+              <article key={pitch.id} className="py-4">
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => void open(pitch)}
+                    className="min-w-0 text-left hover:opacity-60"
+                  >
+                    <span className="block truncate font-serif text-xl text-foreground">
+                      {pitch.title}
+                    </span>
+                    <span className="mt-1 block font-mono text-micro theme-muted">
+                      {pitch.ownerName} · {pitch.ownerEmail} · {pitch.slideCount} slides ·{" "}
+                      {when(pitch.updatedAt)}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <AdminStatus
+                      tone={
+                        pitch.lifecycle === "trashed" || pitch.lifecycle === "archived"
+                          ? "neutral"
+                          : pitch.publishedAt
+                            ? "positive"
+                            : "attention"
+                      }
+                    >
+                      {pitch.lifecycle === "trashed"
+                        ? `trash · purges ${pitch.purgeAfter ? when(pitch.purgeAfter) : "later"}`
+                        : pitch.lifecycle === "archived"
+                          ? "archived"
+                          : pitch.publishedAt
+                            ? "published"
+                            : "draft"}
+                    </AdminStatus>
+                    <button
+                      type="button"
+                      disabled={busy === pitch.id}
+                      onClick={() => void open(pitch)}
+                      aria-label={`Edit ${pitch.title}`}
+                      title="Edit title, owner and state"
+                      className="grid min-h-11 min-w-11 place-items-center theme-muted hover:text-foreground disabled:opacity-40"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        className="h-4 w-4 fill-none stroke-current"
+                        strokeWidth="1.5"
+                      >
+                        <path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z" />
+                        <path d="m13.5 6.5 4 4" />
+                      </svg>
+                    </button>
+                    {pitch.lifecycle === "trashed" ? (
+                      <button
+                        type="button"
+                        disabled={busy === pitch.id}
+                        onClick={() => void restoreTrash(pitch.id)}
+                        className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
+                      >
+                        restore
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy === pitch.id}
+                        onClick={() => void archive(pitch)}
+                        className="theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-40"
+                      >
+                        {pitch.lifecycle === "archived" ? "restore" : "archive"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+            {loading ? (
+              <p className="py-10 text-center font-mono text-xs theme-muted" role="status">
+                Loading pitches…
+              </p>
+            ) : null}
+            {loadError ? (
+              <div className="py-8 text-center" role="alert">
+                <p className="font-mono text-xs">
+                  <AdminStatus tone="danger">{loadError}</AdminStatus>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  className="mt-3 min-h-11 font-mono text-xs underline underline-offset-4 hover:opacity-70"
+                >
+                  try again
+                </button>
+              </div>
+            ) : null}
+            {!loading && !loadError && visible.length === 0 ? (
+              <p className="py-10 text-center font-mono text-xs theme-muted">No pitches here.</p>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       {detail ? (
         <div className="mt-8 border-y theme-border py-6">
@@ -570,26 +636,29 @@ export function PitchesPanel({
                 pitch control room · version {detail.pitch.draftVersion}
               </p>
               <h3 className="mt-1 font-serif text-2xl text-foreground">{detail.pitch.title}</h3>
-              <p className="mt-1 font-mono text-micro theme-muted">
+              <AdminStatus
+                tone={isTrashed ? "neutral" : detail.pitch.publishedAt ? "positive" : "attention"}
+                className="mt-1 font-mono text-micro"
+              >
                 {isTrashed
                   ? `in Trash · purges ${detail.pitch.purgeAfter ? when(detail.pitch.purgeAfter) : "after the recovery window"}`
                   : detail.pitch.publishedAt
                     ? `sealed ${when(detail.pitch.publishedAt)} · working copy ${when(detail.pitch.updatedAt)}`
                     : `private draft · expires ${when(detail.pitch.draftExpiresAt)}`}
-              </p>
+              </AdminStatus>
             </div>
             <button
               type="button"
               onClick={() => setDetail(undefined)}
-              className="font-mono text-xs theme-muted"
+              className="min-h-11 font-mono text-xs theme-muted hover:text-foreground"
             >
-              close
+              back to pitches
             </button>
           </div>
 
           {unavailableAssetCount > 0 ? (
             <div
-              className="mt-5 border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-4 py-3 font-mono text-xs text-[var(--selection-fg)]"
+              className={`mt-5 border-l-2 pl-4 font-mono text-xs ${adminToneBorderClass("danger")}`}
               role="alert"
             >
               {unavailableAssetCount} stored media file
@@ -721,7 +790,7 @@ export function PitchesPanel({
               <button
                 type="submit"
                 disabled={Boolean(busy)}
-                className="min-h-10 bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
+                className="min-h-11 bg-foreground px-4 font-mono text-xs text-background disabled:opacity-40"
               >
                 save details
               </button>
@@ -729,7 +798,7 @@ export function PitchesPanel({
                 type="button"
                 disabled={isTrashed || Boolean(busy)}
                 onClick={() => void updateDetail("resend-access")}
-                className="min-h-10 border-b theme-border-strong px-2 font-mono text-xs text-foreground disabled:opacity-40"
+                className="min-h-11 border-b theme-border-strong px-2 font-mono text-xs text-foreground disabled:opacity-40"
               >
                 resend private link
               </button>
@@ -779,7 +848,9 @@ export function PitchesPanel({
                 </div>
                 <div>
                   <dt className="theme-muted">owner access</dt>
-                  <dd className="mt-1 text-foreground">paused while in Trash</dd>
+                  <dd className="mt-1">
+                    <AdminStatus tone="attention">paused while in Trash</AdminStatus>
+                  </dd>
                 </div>
               </dl>
               <p className="mt-4 max-w-2xl font-mono text-micro leading-relaxed theme-muted">
@@ -833,8 +904,13 @@ export function PitchesPanel({
                   className="flex flex-wrap justify-between gap-2 py-3 font-mono text-micro"
                 >
                   <span className="min-w-0 truncate text-foreground">{asset.fileName}</span>
-                  <span className="theme-muted">
-                    {asset.kind} · {asset.state} · {asset.availability} · {bytes(asset.bytes)}
+                  <span className="flex flex-wrap items-center gap-x-2 theme-muted">
+                    <span>{asset.kind}</span>
+                    <span aria-hidden="true">·</span>
+                    <AdminStatus tone={adminToneForStatus(`${asset.state} ${asset.availability}`)}>
+                      {asset.state} · {asset.availability}
+                    </AdminStatus>
+                    <span>· {bytes(asset.bytes)}</span>
                   </span>
                 </li>
               ))}
@@ -940,7 +1016,7 @@ export function PitchesPanel({
                 type="button"
                 disabled={busy === "delete" || deleteConfirmation !== detail.pitch.title}
                 onClick={() => void deletePitch()}
-                className="mt-4 min-h-10 border px-4 font-mono text-xs text-foreground theme-border-strong disabled:opacity-30"
+                className="mt-4 min-h-11 border px-4 font-mono text-xs text-foreground theme-border-strong disabled:opacity-30"
               >
                 move pitch to Trash
               </button>

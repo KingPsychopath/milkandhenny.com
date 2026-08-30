@@ -341,10 +341,14 @@ export async function undoCheckpointUse(input: {
   }
 
   const row = await queryOne<{ used: number }>(
-    `update checkpoint_usage
-        set used = greatest(0, used - $4), updated_at = now()
-      where event_slug = $1 and checkpoint_id = $2 and ticket_id = $3
-      returning used`,
+    `update checkpoint_usage usage
+        set used = greatest(0, usage.used - $4), updated_at = now()
+       from tickets ticket
+      where usage.event_slug = $1 and usage.checkpoint_id = $2
+        and usage.ticket_id = ticket.id
+        and ticket.event_slug = $1
+        and (ticket.access_reference = $3 or (ticket.access_reference is null and ticket.id = $3))
+      returning usage.used`,
     [input.eventSlug, input.checkpointId, input.ticketId, units],
   );
   return { ok: true, value: { used: row?.used ?? 0 } };

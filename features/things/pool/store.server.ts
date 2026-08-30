@@ -63,6 +63,7 @@ const ENTRANCE_SELECT = `
     select * from game_pool_runs candidate
     where candidate.entrance_id = e.id
       and candidate.status in ('open', 'paused')
+      and (candidate.closes_at is null or candidate.closes_at > now())
     order by candidate.opened_at desc
     limit 1
   ) r on true
@@ -76,8 +77,15 @@ function publicToken() {
   return `play_${randomBytes(24).toString("base64url")}`;
 }
 
-function operatorToken(entranceId: string, actionId: string) {
-  const secret = process.env.AUTH_SECRET ?? "local-game-pool-operator-secret";
+export function buildGamePoolOperatorToken(entranceId: string, actionId: string) {
+  const configured = process.env.AUTH_SECRET?.trim();
+  if ((!configured || configured.length < 32) && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "AUTH_SECRET must contain at least 32 characters before opening a game-night entrance",
+    );
+  }
+  const secret =
+    configured && configured.length >= 32 ? configured : "local-game-pool-operator-secret";
   return `operate_${createHmac("sha256", secret).update(`${entranceId}:${actionId}`).digest("base64url")}`;
 }
 
@@ -366,6 +374,7 @@ export async function updateGamePoolEntrance(
     const activeRun = await client.query<{ id: string }>(
       `select id from game_pool_runs
        where entrance_id = $1 and status in ('open', 'paused')
+         and (closes_at is null or closes_at > now())
        order by opened_at desc limit 1`,
       [id],
     );
@@ -447,7 +456,7 @@ export async function openGamePoolRun(
 ) {
   const runId = opaqueId("gpr");
   const openingActionId = input.actionId ?? randomBytes(16).toString("base64url");
-  const rawOperatorToken = operatorToken(entranceId, openingActionId);
+  const rawOperatorToken = buildGamePoolOperatorToken(entranceId, openingActionId);
   await transaction(async (client) => {
     const entrance = await client.query<{
       game: GamePoolGame;
@@ -521,6 +530,7 @@ export async function closeGamePoolRoomForAdmin(entranceId: string, roomId: stri
     const run = await client.query<{ id: string }>(
       `select id from game_pool_runs
        where entrance_id = $1 and status in ('open', 'paused')
+         and (closes_at is null or closes_at > now())
        order by opened_at desc limit 1 for update`,
       [entranceId],
     );

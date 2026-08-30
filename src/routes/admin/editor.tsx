@@ -31,9 +31,15 @@ function AdminEditorPage() {
     return (
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
         <div className="text-center space-y-3">
-          <p className="font-mono text-sm theme-muted">admin session required.</p>
-          <Link to="/admin" search={{ view: "overview" }} className="font-mono text-xs underline">
-            go to admin login
+          <p className="font-mono text-sm theme-muted">
+            {auth.status === 403 ? "content access required." : "admin session required."}
+          </p>
+          <Link
+            to="/admin"
+            search={{ view: "overview" }}
+            className="inline-flex min-h-11 items-center font-mono text-xs underline"
+          >
+            {auth.status === 403 ? "return to admin" : "go to admin login"}
           </Link>
         </div>
       </main>

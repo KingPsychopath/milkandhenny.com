@@ -3,6 +3,7 @@ import { startRegistration } from "@simplewebauthn/browser";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { copyText } from "@/lib/client/share";
 import {
   beginPasskeyRegistrationFn,
   finishPasskeyRegistrationFn,
@@ -83,16 +84,21 @@ export function SecuritySettingsPanel({
   async function renamePasskey(passkeyId: string, label: string) {
     setBusy(true);
     setMessage("");
-    const result = await renamePasskeyFn({ data: { passkeyId, label } });
-    if (result.ok) {
-      setPasskeys((current) =>
-        current.map((passkey) => (passkey.id === passkeyId ? result.value.passkey : passkey)),
-      );
-      setMessage("Passkey renamed.");
-    } else {
-      setMessage(result.error);
+    try {
+      const result = await renamePasskeyFn({ data: { passkeyId, label } });
+      if (result.ok) {
+        setPasskeys((current) =>
+          current.map((passkey) => (passkey.id === passkeyId ? result.value.passkey : passkey)),
+        );
+        setMessage("Passkey renamed.");
+      } else {
+        setMessage(result.error);
+      }
+    } catch {
+      setMessage("The passkey could not be renamed. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function removePasskey(passkey: Passkey) {
@@ -109,24 +115,34 @@ export function SecuritySettingsPanel({
     }
     setBusy(true);
     setMessage("");
-    const result = await revokePasskeyFn({ data: { passkeyId: passkey.id } });
-    if (!result.ok) {
-      setMessage(result.error);
+    try {
+      const result = await revokePasskeyFn({ data: { passkeyId: passkey.id } });
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
+      router.clearCache();
+      await router.invalidate();
+    } catch {
+      setMessage("The passkey could not be removed. Check your connection and try again.");
+    } finally {
       setBusy(false);
-      return;
     }
-    await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-    router.clearCache();
-    await router.invalidate();
   }
 
   async function beginTotp() {
     setBusy(true);
     setMessage("");
-    const result = await beginTotpEnrollmentFn();
-    if (result.ok) setEnrollment(result.value);
-    else setMessage(result.error);
-    setBusy(false);
+    try {
+      const result = await beginTotpEnrollmentFn();
+      if (result.ok) setEnrollment(result.value);
+      else setMessage(result.error);
+    } catch {
+      setMessage("Authenticator setup could not start. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function finishTotp(event: FormEvent) {
@@ -134,24 +150,29 @@ export function SecuritySettingsPanel({
     if (!enrollment) return;
     setBusy(true);
     setMessage("");
-    const result = await finishTotpEnrollmentFn({
-      data: { enrollmentId: enrollment.enrollmentId, token: totpCode },
-    });
-    if (result.ok) {
-      setRecoveryCodes(result.value.recoveryCodes);
-      setTotp({
-        enabled: true,
-        label: "Authenticator app",
-        createdAt: new Date().toISOString(),
-        recoveryCodesRemaining: result.value.recoveryCodes.length,
+    try {
+      const result = await finishTotpEnrollmentFn({
+        data: { enrollmentId: enrollment.enrollmentId, token: totpCode },
       });
-      setEnrollment(null);
-      setTotpCode("");
-      setMessage("Authenticator app enabled. Save the recovery codes now.");
-    } else {
-      setMessage(result.error);
+      if (result.ok) {
+        setRecoveryCodes(result.value.recoveryCodes);
+        setTotp({
+          enabled: true,
+          label: "Authenticator app",
+          createdAt: new Date().toISOString(),
+          recoveryCodesRemaining: result.value.recoveryCodes.length,
+        });
+        setEnrollment(null);
+        setTotpCode("");
+        setMessage("Authenticator app enabled. Save the recovery codes now.");
+      } else {
+        setMessage(result.error);
+      }
+    } catch {
+      setMessage("The authenticator code could not be checked. Try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function disableAuthenticator() {
@@ -168,15 +189,20 @@ export function SecuritySettingsPanel({
     }
     setBusy(true);
     setMessage("");
-    const result = await disableTotpFn();
-    if (!result.ok) {
-      setMessage(result.error);
+    try {
+      const result = await disableTotpFn();
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
+      router.clearCache();
+      await router.invalidate();
+    } catch {
+      setMessage("Authenticator MFA could not be disabled. Check your connection and try again.");
+    } finally {
       setBusy(false);
-      return;
     }
-    await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-    router.clearCache();
-    await router.invalidate();
   }
 
   async function replaceRecoveryCodes() {
@@ -193,23 +219,42 @@ export function SecuritySettingsPanel({
     }
     setBusy(true);
     setMessage("");
-    const result = await regenerateRecoveryCodesFn();
-    if (result.ok) {
-      setRecoveryCodes(result.value.recoveryCodes);
-      setTotp((current) => ({
-        ...current,
-        recoveryCodesRemaining: result.value.recoveryCodes.length,
-      }));
-      setMessage("Recovery codes replaced. Save the new set now.");
-    } else {
-      setMessage(result.error);
+    try {
+      const result = await regenerateRecoveryCodesFn();
+      if (result.ok) {
+        setRecoveryCodes(result.value.recoveryCodes);
+        setTotp((current) => ({
+          ...current,
+          recoveryCodesRemaining: result.value.recoveryCodes.length,
+        }));
+        setMessage("Recovery codes replaced. Save the new set now.");
+      } else {
+        setMessage(result.error);
+      }
+    } catch {
+      setMessage("Recovery codes could not be replaced. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function copyRecoveryCodes() {
-    await navigator.clipboard.writeText(recoveryCodes.join("\n"));
-    setMessage("Recovery codes copied. Store them somewhere private.");
+    const copied = await copyText(recoveryCodes.join("\n"));
+    setMessage(
+      copied
+        ? "Recovery codes copied. Store them somewhere private."
+        : "Copy was blocked. Select and save each recovery code manually.",
+    );
+  }
+
+  async function copyEnrollmentSecret() {
+    if (!enrollment) return;
+    const copied = await copyText(enrollment.secret);
+    setMessage(
+      copied
+        ? "Authenticator setup secret copied. Keep it private."
+        : "Copy was blocked. Select the setup secret manually.",
+    );
   }
 
   return (
@@ -262,7 +307,7 @@ export function SecuritySettingsPanel({
                 minLength={1}
                 maxLength={80}
                 required
-                className="mt-2 min-h-11 w-full border theme-border bg-background px-3 font-mono text-sm"
+                className="mt-2 min-h-11 w-full border theme-border bg-background px-3 font-mono text-base sm:text-sm"
               />
             </label>
             <button type="submit" disabled={busy} className="mh-action mh-action--secondary">
@@ -315,6 +360,13 @@ export function SecuritySettingsPanel({
                 enter this secret manually:
               </p>
               <code className="mt-2 block break-all font-mono text-xs">{enrollment.secret}</code>
+              <button
+                type="button"
+                onClick={() => void copyEnrollmentSecret()}
+                className="mh-action mh-action--quiet mt-2"
+              >
+                copy setup secret
+              </button>
               <label htmlFor="enrollment-code" className="mt-5 block font-mono text-xs">
                 six-digit code
               </label>
@@ -330,13 +382,27 @@ export function SecuritySettingsPanel({
                 onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                 className="mt-2 min-h-11 w-full max-w-sm border theme-border bg-background px-3 font-mono text-lg tracking-widest"
               />
-              <button
-                type="submit"
-                disabled={busy || totpCode.length !== 6}
-                className="mh-action mt-4 disabled:opacity-45"
-              >
-                verify and enable
-              </button>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  disabled={busy || totpCode.length !== 6}
+                  className="mh-action disabled:opacity-45"
+                >
+                  verify and enable
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setEnrollment(null);
+                    setTotpCode("");
+                    setMessage("");
+                  }}
+                  className="mh-action mh-action--quiet"
+                >
+                  cancel setup
+                </button>
+              </div>
             </form>
           ) : (
             <button
@@ -413,7 +479,7 @@ function PasskeyRow({
             minLength={1}
             maxLength={80}
             required
-            className="mt-2 min-h-11 w-full border theme-border bg-background px-3 font-mono text-sm text-foreground"
+            className="mt-2 min-h-11 w-full border theme-border bg-background px-3 font-mono text-base text-foreground sm:text-sm"
           />
         </label>
         <button

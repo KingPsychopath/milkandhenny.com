@@ -79,7 +79,7 @@ function SubscribePage() {
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     autoComplete="name"
-                    className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
+                    className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm"
                   />
                 </label>
                 <label htmlFor="subscribe-email" className="block">
@@ -91,7 +91,7 @@ function SubscribePage() {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     autoComplete="email"
-                    className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm"
+                    className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm"
                   />
                 </label>
                 <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />

@@ -471,7 +471,7 @@ export function WordBodyTable({
   const [isCollapsed, setIsCollapsed] = React.useState(() => shouldDefaultToCompact(tableShape));
   const [isFirstColumnPinned, setIsFirstColumnPinned] = React.useState(false);
   const [expandedRows, setExpandedRows] = React.useState<Record<string, boolean>>({});
-  const [copied, setCopied] = React.useState(false);
+  const [copyStatus, setCopyStatus] = React.useState<"" | "copied" | "copy failed">("");
   const [overflowState, setOverflowState] = React.useState<OverflowState>({
     hasHorizontalOverflow: false,
     showOverflowStart: false,
@@ -494,10 +494,10 @@ export function WordBodyTable({
   );
 
   React.useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 1200);
+    if (!copyStatus) return;
+    const timeout = window.setTimeout(() => setCopyStatus(""), 1600);
     return () => window.clearTimeout(timeout);
-  }, [copied]);
+  }, [copyStatus]);
 
   React.useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -544,7 +544,7 @@ export function WordBodyTable({
     const markdown = toMarkdownTable(tableData);
     const fallback = toCsv(tableData).replace(/,/g, "\t");
     const ok = await copyText(markdown || fallback);
-    if (ok) setCopied(true);
+    setCopyStatus(ok ? "copied" : "copy failed");
   }, [getTableData]);
 
   const handleDownloadCsv = React.useCallback(() => {
@@ -574,6 +574,9 @@ export function WordBodyTable({
         </TableRenderContext.Provider>
       </div>
       <div className="prose-table-footer">
+        <span className="sr-only" role="status" aria-live="polite">
+          {copyStatus}
+        </span>
         <div className="prose-table-footer-start">
           <button
             type="button"
@@ -621,10 +624,10 @@ export function WordBodyTable({
             type="button"
             className="prose-table-button prose-table-icon-button"
             onClick={handleCopy}
-            aria-label={copied ? "copied" : "copy"}
-            title={copied ? "copied" : "copy"}
+            aria-label={copyStatus === "copied" ? "copied" : "copy"}
+            title={copyStatus === "copied" ? "copied" : "copy"}
           >
-            {copied ? <CheckIcon /> : <CopyIcon />}
+            {copyStatus === "copied" ? <CheckIcon /> : <CopyIcon />}
           </button>
         </div>
       </div>

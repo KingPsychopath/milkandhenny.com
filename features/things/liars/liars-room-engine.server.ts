@@ -361,8 +361,12 @@ async function withRoom<T>(
     const loaded = await loadRoom(id);
     if (!loaded) return null;
     const before = JSON.stringify(loaded.room);
+    const wasEnding = loaded.room.phase === "ending";
     const result = await use(loaded.room, loaded.keys);
     if (multiplayerRoomStateChanged(before, loaded.room)) await saveRoom(loaded.room, loaded.keys);
+    const envelope = !wasEnding ? liarsOfficialResult(loaded.room) : null;
+    if (envelope)
+      publishOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
     return result;
   }
   const initial = await loadRoom(id);
@@ -1695,18 +1699,39 @@ export async function applyLiarsHostAction(input: {
         );
       const check = liarsValidateLineup(room.mode, room.lineup, room.players.length);
       if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
+      const confirmed = new Set(action.removePlayerIds ?? []);
       const unready = multiplayerUnreadyPlayers(room.players);
-      // Nudge once, then let the host through. Waiting on a phone in somebody's pocket is a worse
-      // failure than starting without them, and the host is the one who can see the room.
-      if (unready.length > 0 && !action.force) {
-        if (requestMultiplayerReadiness(unready, token())) changed(room);
-        const names = unready.map(({ name }) => name).join(", ");
+      const unconfirmed = unready.filter(
+        ({ id, startRequestId }) =>
+          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
+      );
+      if (unconfirmed.length > 0) {
+        if (requestMultiplayerReadiness(unconfirmed, token())) changed(room);
+        const names = unconfirmed.map(({ name }) => name).join(", ");
         return reject(
           view(),
           "players_not_ready",
-          unready.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+          unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
           true,
         );
+      }
+      const remainingPlayers = room.players.filter(
+        (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
+      );
+      if (remainingPlayers.length < LIARS_PLAYER_LIMITS[room.mode].min)
+        return reject(
+          view(),
+          "action_unavailable",
+          `${room.mode} needs ${LIARS_PLAYER_LIMITS[room.mode].min} ready players`,
+          true,
+        );
+      if (remainingPlayers.length !== room.players.length) {
+        room.players = remainingPlayers;
+        room.lineup = room.toggles.firstGame
+          ? liarsFirstGameLineup(room.mode, room.players.length)
+          : liarsDefaultLineup(room.mode, room.players.length);
+        room.lineupCustom = false;
+        changed(room);
       }
       dealGame(room, now);
     } else if (action.type === "phase.extend") {

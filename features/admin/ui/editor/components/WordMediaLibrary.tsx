@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { uploadPresignedObject } from "@/lib/client/presigned-upload";
 import type { WordMediaItem } from "../types";
+import { AdminStatus } from "../../components/AdminStatus";
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 b";
@@ -299,9 +300,15 @@ export function WordMediaLibrary({
           />
           append uploaded snippets to editor
         </label>
-        {uploadStatus ? <p className="font-mono text-micro theme-faint">{uploadStatus}</p> : null}
+        {uploadStatus ? (
+          <p className="font-mono text-micro" role="status">
+            <AdminStatus tone={uploading ? "attention" : "positive"}>{uploadStatus}</AdminStatus>
+          </p>
+        ) : null}
         {uploadError ? (
-          <p className="font-mono text-micro text-[var(--prose-hashtag)]">{uploadError}</p>
+          <p className="font-mono text-micro" role="alert">
+            <AdminStatus tone="danger">{uploadError}</AdminStatus>
+          </p>
         ) : null}
         <input
           ref={fileInputRef}
@@ -320,9 +327,15 @@ export function WordMediaLibrary({
         placeholder="search files or asset id"
         className="min-h-11 w-full bg-transparent border-b theme-border outline-none font-mono text-xs py-2"
       />
-      {mediaLoading ? <p className="font-mono text-xs theme-muted">loading media...</p> : null}
+      {mediaLoading ? (
+        <p className="font-mono text-xs" role="status">
+          <AdminStatus tone="attention">loading media...</AdminStatus>
+        </p>
+      ) : null}
       {mediaError ? (
-        <p className="font-mono text-xs text-[var(--prose-hashtag)]">{mediaError}</p>
+        <p className="font-mono text-xs" role="alert">
+          <AdminStatus tone="danger">{mediaError}</AdminStatus>
+        </p>
       ) : null}
 
       <div className="space-y-2">
@@ -346,7 +359,7 @@ export function WordMediaLibrary({
               <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onPreview(filteredPageMedia, item.key)}
                   title="Preview in-page"
                 >
@@ -356,21 +369,21 @@ export function WordMediaLibrary({
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   title="Open media file in a new tab"
                 >
                   open
                 </a>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onCopySnippet(item.markdown, `media-${item.key}`)}
                 >
                   {mediaCopied === `media-${item.key}` ? "copied" : "copy"}
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onAppendSnippet(item.markdown)}
                 >
                   append
@@ -407,7 +420,7 @@ export function WordMediaLibrary({
               <div className="flex flex-wrap items-center gap-2 font-mono text-micro">
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onPreview(filteredSharedAssets, item.key)}
                   title="Preview in-page"
                 >
@@ -417,21 +430,21 @@ export function WordMediaLibrary({
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   title="Open asset in a new tab"
                 >
                   open
                 </a>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onCopySnippet(item.markdown, `asset-${item.key}`)}
                 >
                   {mediaCopied === `asset-${item.key}` ? "copied" : "copy"}
                 </button>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center px-1 underline"
+                  className="inline-flex min-h-11 items-center px-1 underline"
                   onClick={() => onAppendSnippet(item.markdown)}
                 >
                   append

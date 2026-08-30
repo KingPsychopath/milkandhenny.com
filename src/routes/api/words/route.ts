@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth, requireAuthWithPayload } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { createWord, listWords } from "@/features/words/store.server";
-import type { WordVisibility } from "@/features/words/content-types";
+import { isWordVisibility, type WordVisibility } from "@/features/words/content-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import type { WordType } from "@/features/words/types";
 import { isWordType, normaliseWordType } from "@/features/words/types";
@@ -91,6 +91,9 @@ async function handlePOST(request: Request) {
   const markdown = typeof body.markdown === "string" ? body.markdown : "";
   if (body.type && body.type !== "post" && !isWordType(body.type)) {
     return Response.json({ error: "Invalid type value" }, { status: 400 });
+  }
+  if (body.visibility !== undefined && !isWordVisibility(body.visibility)) {
+    return Response.json({ error: "Invalid visibility value" }, { status: 400 });
   }
 
   if (!slug || !title || !markdown.trim()) {

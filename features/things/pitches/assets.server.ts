@@ -27,14 +27,13 @@ import {
   deletePitchAssetRecord,
   getPitchAsset,
   getReadyPitchAsset,
-  insertPitchAsset,
+  insertPitchAssetWithinLimit,
   listPitchAssets,
   listReadyPitchAssets,
   listStalePendingPitchAssets,
   listUnreferencedPitchAssets,
   markPitchAssetReady,
   ownerCanAccessPitch,
-  pitchAssetBytes,
   type PitchAssetRow,
   type PitchStoreResult,
   toPitchAsset,
@@ -379,28 +378,28 @@ export async function createPitchAssetUpload(input: {
       }
     }
   }
-  const used = await pitchAssetBytes(input.deckId);
-  if (used + input.bytes > PITCH_DECK_ASSET_MAX_BYTES) {
-    return {
-      ok: false,
-      status: 413,
-      error: "This pitch has reached its media allowance",
-    };
-  }
-
   const id = requestedId ?? createPitchAssetId();
   const fileName = safeFileName(input.fileName);
   const objectKey = `pitches/${input.deckId}/${input.kind}/${id}-${fileName}`;
-  const row = await insertPitchAsset({
-    id,
-    deckId: input.deckId,
-    objectKey,
-    fileId: input.fileId,
-    kind: input.kind,
-    fileName,
-    mimeType: input.mimeType,
-    bytes: input.bytes,
-  });
+  const reservation = await insertPitchAssetWithinLimit(
+    {
+      id,
+      deckId: input.deckId,
+      objectKey,
+      fileId: input.fileId,
+      kind: input.kind,
+      fileName,
+      mimeType: input.mimeType,
+      bytes: input.bytes,
+    },
+    PITCH_DECK_ASSET_MAX_BYTES,
+  );
+  if (!reservation.row) {
+    return reservation.reason === "missing"
+      ? { ok: false, status: 404, error: "Pitch not found" }
+      : { ok: false, status: 413, error: "This pitch has reached its media allowance" };
+  }
+  const row = reservation.row;
   try {
     const uploadUrl = await presignPutUrl(objectKey, input.mimeType, 5 * 60, {
       scope: "private",
@@ -422,7 +421,12 @@ export async function finalisePitchAsset(input: {
   }
   const asset = await getPitchAsset(input.deckId, input.assetId);
   const alreadyReady = asset?.state === "ready" ? asset : null;
-  if (alreadyReady) return { ok: true, value: await withSignedUrl(alreadyReady) };
+  if (alreadyReady) {
+    const object = await headObject(alreadyReady.object_key, { scope: "private" });
+    return object.exists
+      ? { ok: true, value: await withSignedUrl(alreadyReady) }
+      : { ok: false, status: 409, error: "That uploaded media is no longer available" };
+  }
 
   const pending = asset?.state === "pending" ? asset : null;
   if (!pending) return { ok: false, status: 404, error: "Upload not found" };
@@ -516,6 +520,18 @@ export async function cleanupUnreferencedPitchAssets(limit = 100): Promise<{
   for (const row of rows) {
     try {
       await deleteObject(row.object_key, { scope: "private" });
+      if (row.kind === "thumbnail") {
+        await deleteObjects(
+          [
+            ...PITCH_THUMBNAIL_WIDTHS.flatMap((width) => [
+              pitchThumbnailKey(row.deck_id, row.id, width, "avif"),
+              pitchThumbnailKey(row.deck_id, row.id, width, "webp"),
+            ]),
+            pitchThumbnailMetadataKey(row.deck_id, row.id),
+          ],
+          { scope: "public" },
+        );
+      }
       await deletePitchAssetRecord(row.id);
       deleted += 1;
     } catch {

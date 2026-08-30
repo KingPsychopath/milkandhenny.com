@@ -35,7 +35,8 @@ import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
  * is directly under it, and the address is right there without scrolling
  * into prose.
  */
-const LINK_CLASS = "font-mono text-xs underline hover:opacity-70 transition-opacity";
+const LINK_CLASS =
+  "inline-flex min-h-11 items-center font-mono text-xs underline hover:opacity-70 transition-opacity";
 
 export function TicketPage({
   ticket,
@@ -106,14 +107,16 @@ export function TicketPage({
   );
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const redeemed = Boolean(ticket.redeemedAt);
-  const invalid = ticket.status !== "valid";
+  const eventCancelled = event.status === "cancelled";
+  const invalid = ticket.status !== "valid" || eventCancelled;
+  const ticketReference = ticket.publicId ?? ticket.id;
   // Self-serve refunds close when doors open; after that it is a conversation.
   const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
   const checkpoints = describeCheckpoints(checkpointNames);
   // The purchaser ticket is the order's credential — see `resolveTicketOrderAccess`.
   // Whoever holds this id gets every sibling QR and the refund button, so it is
   // the one ticket in the order that must not have a "share" next to it.
-  const isManagerTicket = ticket.id === managerTicketId;
+  const isManagerTicket = ticket.id === managerTicketId || ticket.publicId === managerTicketId;
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,7 +140,7 @@ export function TicketPage({
         <Link
           to="/events/$slug"
           params={{ slug: event.slug }}
-          className="font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors"
+          className="inline-flex min-h-11 items-center font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors"
         >
           ← {event.title}
         </Link>
@@ -187,7 +190,7 @@ export function TicketPage({
                       )}
                     </Link>
                     <span className="text-right">
-                      {entry.id === managerTicketId ? (
+                      {entry.id === managerTicketId || entry.publicId === managerTicketId ? (
                         <span className="font-mono text-micro theme-faint">yours</span>
                       ) : entry.status === "valid" && !preview ? (
                         <ShareTicketButton
@@ -214,9 +217,11 @@ export function TicketPage({
             <ManageTickets
               managerTicketId={managerTicketId}
               disabledReason={
-                doorsOpen
-                  ? "Ticket changes closed when doors opened. Message us if something needs correcting."
-                  : undefined
+                eventCancelled
+                  ? "This event is cancelled. Ticket changes are closed while refunds are resolved."
+                  : doorsOpen
+                    ? "Ticket changes closed when doors opened. Message us if something needs correcting."
+                    : undefined
               }
             />
           </div>
@@ -230,8 +235,11 @@ export function TicketPage({
 
         {invalid && (
           <p className="mt-6 px-4 py-3 border theme-border-strong rounded-lg font-mono text-xs text-foreground">
-            This ticket is no longer valid
-            {ticket.status === "refunded" ? " — it was refunded." : "."}
+            {eventCancelled
+              ? "This event has been cancelled. Keep this page for your records and refund updates."
+              : `This ticket is no longer valid${
+                  ticket.status === "refunded" ? " — it was refunded." : "."
+                }`}
           </p>
         )}
 
@@ -395,23 +403,25 @@ export function TicketPage({
           </div>
         </dl>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-5">
-          <a
-            href={ticketIcsPath(ticket.id)}
-            className="font-mono text-xs theme-muted hover:text-foreground transition-colors underline"
-          >
-            add to calendar
-          </a>
-          {!preview && !isManagerTicket && (
-            <ShareTicketButton
-              ticketId={ticket.publicId ?? ticket.id}
-              holderName={ticket.holderName}
-              eventTitle={event.title}
-              className="text-xs"
-              label="share this ticket"
-            />
-          )}
-        </div>
+        {!eventCancelled && (
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-5">
+            <a
+              href={ticketIcsPath(ticketReference)}
+              className="inline-flex min-h-11 items-center font-mono text-xs theme-muted hover:text-foreground transition-colors underline"
+            >
+              add to calendar
+            </a>
+            {!preview && !isManagerTicket && (
+              <ShareTicketButton
+                ticketId={ticketReference}
+                holderName={ticket.holderName}
+                eventTitle={event.title}
+                className="text-xs"
+                label="share this ticket"
+              />
+            )}
+          </div>
+        )}
 
         {score && (
           <section
@@ -429,7 +439,7 @@ export function TicketPage({
                 <Link
                   to="/events/$slug/score"
                   params={{ slug: event.slug }}
-                  className="font-mono text-micro underline hover:opacity-70 transition-opacity"
+                  className="inline-flex min-h-11 items-center font-mono text-micro underline hover:opacity-70 transition-opacity"
                 >
                   leaderboard
                 </Link>
@@ -440,20 +450,20 @@ export function TicketPage({
             <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
               {confirmedScore ?? score.points} points
             </p>
-            {!preview && initialTicketPointSelection ? (
+            {!preview && !eventCancelled && initialTicketPointSelection ? (
               <TicketScoringControl
-                ticketId={ticket.id}
+                ticketId={ticketReference}
                 initialSelection={initialTicketPointSelection}
                 onModeChange={setTicketMode}
               />
             ) : null}
-            {!preview && ticketMode === "scoring" && (
-              <ScoreNotificationNotice ticketId={ticket.id} />
+            {!preview && !eventCancelled && ticketMode === "scoring" && (
+              <ScoreNotificationNotice ticketId={ticketReference} />
             )}
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
-            {!preview && ticketMode === "scoring" && (
+            {!preview && !eventCancelled && ticketMode === "scoring" && (
               <ScorePublicIdentityControls
-                ticketId={ticket.id}
+                ticketId={ticketReference}
                 initialAlias={score.publicAlias}
                 initialMode={score.displayMode}
               />
@@ -471,9 +481,11 @@ export function TicketPage({
             <p className="mt-4 font-mono text-micro theme-muted">
               {preview ? (
                 "preview"
+              ) : eventCancelled ? (
+                "event cancelled"
               ) : (
                 <ScoreSyncStatus
-                  ticketId={ticket.id}
+                  ticketId={ticketReference}
                   snapshot={{
                     eventSlug: event.slug,
                     participantId: score.participantId,
@@ -514,7 +526,7 @@ export function TicketPage({
           </section>
         )}
 
-        {hasDiscoveries && (
+        {hasDiscoveries && !eventCancelled && (
           <section
             aria-labelledby="ticket-clues-heading"
             className="mt-8 border-y theme-border py-4"
@@ -554,9 +566,9 @@ export function TicketPage({
 
         {preview ? (
           previewIdentityControls
-        ) : (
+        ) : eventCancelled ? null : (
           <TicketIdentityControls
-            ticketId={ticket.id}
+            ticketId={ticketReference}
             canManageOrder={canManageOrder}
             initialIdentity={attendeeIdentity ?? { account: null, personallyClaimed: false }}
           />
@@ -572,9 +584,9 @@ export function TicketPage({
           Trouble getting in, or need access help?{" "}
           <a
             href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-              `${event.title} — ticket ${ticket.id}`,
+              `${event.title} — ticket ${ticketReference}`,
             )}`}
-            className="underline hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 items-center underline hover:text-foreground transition-colors"
           >
             {CONTACT_EMAIL}
           </a>
@@ -583,17 +595,19 @@ export function TicketPage({
         {!preview && ticket.kind === "paid" && canManageOrder && managerTicketId && (
           <div className="mt-8 border-t theme-border pt-6">
             <RefundTicketButton
-              ticketId={ticket.id}
+              ticketId={ticketReference}
               amountMinor={ticket.amountPaidMinor}
               currency={ticket.currency}
               disabledReason={
-                invalid
-                  ? "This ticket has already been refunded or voided."
-                  : redeemed
-                    ? "This ticket is already checked in. Message us and we'll review it with the door record."
-                    : doorsOpen
-                      ? "Doors are open, so refunds are no longer self-serve. Message us."
-                      : undefined
+                eventCancelled
+                  ? "This event is cancelled. We will email you about the refund or next steps."
+                  : invalid
+                    ? "This ticket has already been refunded or voided."
+                    : redeemed
+                      ? "This ticket is already checked in. Message us and we'll review it with the door record."
+                      : doorsOpen
+                        ? "Doors are open, so refunds are no longer self-serve. Message us."
+                        : undefined
               }
             />
           </div>

@@ -35,6 +35,6 @@ export function resolveTicketOrderAccess(
     orderSize: sorted.length,
     orderPosition: Math.max(1, orderPosition),
     canManageOrder,
-    managerTicketId: canManageOrder ? primary?.id : undefined,
+    managerTicketId: canManageOrder ? (primary?.accessReference ?? primary?.id) : undefined,
   };
 }

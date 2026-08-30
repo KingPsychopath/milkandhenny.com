@@ -219,6 +219,47 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
     expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
   });
 
+  it("rejects a fractional ticket quantity instead of silently rounding it", async () => {
+    await seedEvent({ quantity: 4 });
+
+    const result = await startCheckout({
+      ...checkoutInput("fractional-checkout-reference"),
+      quantity: 1.5,
+    });
+
+    expect(result).toEqual({ ok: false, status: 400, error: "Choose between 1 and 10" });
+    expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("uses the same ten-ticket boundary as post-payment issuance", async () => {
+    await seedEvent({ quantity: 20, perPersonLimit: 20 });
+
+    expect(
+      await startCheckout({
+        ...checkoutInput("over-checkout-order-limit"),
+        quantity: 11,
+      }),
+    ).toEqual({ ok: false, status: 400, error: "Choose between 1 and 10" });
+    expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
+
+    stripe.createCheckoutSession.mockResolvedValueOnce({
+      id: "cs_capacity_ten_123",
+      url: "https://checkout.stripe.test/ten",
+      expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+    });
+    expect(
+      (
+        await startCheckout({
+          ...checkoutInput("exact-checkout-order-limit"),
+          quantity: 10,
+        })
+      ).ok,
+    ).toBe(true);
+    expect(stripe.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: 10 }),
+    );
+  });
+
   it("counts Checkout holds against event-wide and per-person limits", async () => {
     await seedEvent({ quantity: 10, capacity: 1, perPersonLimit: 1 });
     stripe.createCheckoutSession.mockResolvedValueOnce({

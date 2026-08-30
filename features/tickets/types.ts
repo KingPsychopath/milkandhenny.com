@@ -10,6 +10,9 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export const TICKET_KINDS = ["paid", "free", "comp"] as const;
 export type TicketKind = (typeof TICKET_KINDS)[number];
 
+/** Highest quantity accepted by public checkout and the issuance workflow. */
+export const MAX_TICKETS_PER_ORDER = 10;
+
 export type TicketRecord = {
   id: string;
   /** Rotatable bearer reference used after a transfer; the internal id stays stable. */
@@ -48,8 +51,14 @@ export type TicketRecord = {
   notes?: string;
 };
 
+/** The current bearer reference shown in QR codes and accepted at scan points. */
+export function ticketPublicId(ticket: Pick<TicketRecord, "id" | "accessReference">): string {
+  return ticket.accessReference ?? ticket.id;
+}
+
 /** What the door needs to make a decision, and nothing else. */
 export type DoorTicketView = {
+  /** Stable internal id; public scanner boundaries replace this with the current bearer reference. */
   id: string;
   /** Groups tickets that arrived in one purchase or comp issuance. */
   orderId: string;

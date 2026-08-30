@@ -9,6 +9,7 @@ import {
   getAdminSiteSettingsFn,
   updateAdminSiteSettingsFn,
 } from "@/features/site/site-settings.functions";
+import { AdminStatus } from "./AdminStatus";
 
 const AUTOMATIC = "__automatic__";
 const CUSTOM = "__custom__";
@@ -169,7 +170,14 @@ export function FooterPartyLinkSettings({
       ) : null}
 
       <p className="mt-3 font-mono text-micro theme-muted" aria-live="polite">
-        currently opens <span className="text-foreground">{effectivePath || "loading…"}</span>
+        <AdminStatus tone={effectivePath ? (dirty ? "attention" : "positive") : "attention"}>
+          {effectivePath
+            ? dirty
+              ? "unsaved destination change"
+              : "live destination"
+            : "loading destination"}
+        </AdminStatus>{" "}
+        · currently opens <span className="text-foreground">{effectivePath || "loading…"}</span>
       </p>
     </div>
   );

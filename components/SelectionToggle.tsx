@@ -48,6 +48,10 @@ type SelectionToggleProps = {
   selected: boolean;
   indeterminate?: boolean;
   onToggle: () => void;
+  /** Override the generic selection label when the selected item has a useful name. */
+  ariaLabel?: string;
+  /** Make the whole containing surface the hit target while keeping the visual control compact. */
+  fullSurface?: boolean;
   /** @default "square" */
   shape?: ToggleShape;
   /** @default "sm" */
@@ -69,6 +73,8 @@ export const SelectionToggle = memo(function SelectionToggle({
   selected,
   indeterminate = false,
   onToggle,
+  ariaLabel,
+  fullSurface = false,
   shape = "square",
   size = "sm",
   variant = "overlay",
@@ -87,34 +93,45 @@ export const SelectionToggle = memo(function SelectionToggle({
         e.stopPropagation();
         onToggle();
       }}
+      aria-pressed={indeterminate ? "mixed" : selected}
       aria-label={
-        selected
+        ariaLabel ??
+        (selected
           ? "Deselect"
           : indeterminate
             ? "Partially selected; select all"
-            : "Select for download"
+            : "Select for download")
       }
-      className={`group/toggle flex items-center justify-center ${box} ${rounding} ${border} shrink-0 transition-colors ${
-        active ? "bg-amber-500 border-amber-500 text-white" : unselected
+      className={`group/toggle flex shrink-0 ${
+        fullSurface
+          ? "absolute inset-0 h-full w-full items-start justify-end p-2"
+          : "size-11 items-center justify-center"
       } ${className}`}
     >
-      <svg
-        width={svg}
-        height={svg}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={active ? 3 : 2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={active ? "" : "opacity-0 group-hover/toggle:opacity-100 transition-opacity"}
+      <span
+        aria-hidden="true"
+        className={`flex items-center justify-center ${box} ${rounding} ${border} transition-colors ${
+          active ? "bg-amber-500 border-amber-500 text-white" : unselected
+        }`}
       >
-        {indeterminate && !selected ? (
-          <line x1="5" y1="12" x2="19" y2="12" />
-        ) : (
-          <polyline points="20 6 9 17 4 12" />
-        )}
-      </svg>
+        <svg
+          width={svg}
+          height={svg}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={active ? 3 : 2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={active ? "" : "opacity-0 group-hover/toggle:opacity-100 transition-opacity"}
+        >
+          {indeterminate && !selected ? (
+            <line x1="5" y1="12" x2="19" y2="12" />
+          ) : (
+            <polyline points="20 6 9 17 4 12" />
+          )}
+        </svg>
+      </span>
     </button>
   );
 });

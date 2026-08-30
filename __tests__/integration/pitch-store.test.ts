@@ -8,6 +8,7 @@ import {
   hardDeletePitchDeck,
   hashPitchValue,
   insertPitchAsset,
+  insertPitchAssetWithinLimit,
   issuePitchDeviceAccessForPerson,
   listPitchDecksForPerson,
   normalisePitchEmail,
@@ -117,6 +118,39 @@ describeWithDatabase("pitch storage (postgres)", () => {
 
   beforeEach(async () => {
     await query("truncate pitch_decks restart identity cascade");
+  });
+
+  it("serialises media reservations so concurrent uploads cannot exceed the deck allowance", async () => {
+    const ownerToken = createPitchOwnerToken();
+    const created = await createPitchDeck({
+      createRequestId: "create_asset_limit",
+      ownerName: "Alice",
+      ownerEmail: "alice@example.com",
+      ownerToken,
+      title: "Allowance",
+      document: documentWith([]),
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const reserve = (suffix: string) =>
+      insertPitchAssetWithinLimit(
+        {
+          id: `pa_12345678901234567890${suffix}`,
+          deckId: created.value.deck.id,
+          objectKey: `pitches/${created.value.deck.id}/image/${suffix}.png`,
+          fileId: `file_${suffix}`,
+          kind: "image",
+          fileName: `${suffix}.png`,
+          mimeType: "image/png",
+          bytes: 60,
+        },
+        100,
+      );
+    const results = await Promise.all([reserve("12"), reserve("34")]);
+
+    expect(results.filter((result) => result.row)).toHaveLength(1);
+    expect(results.filter((result) => result.reason === "limit")).toHaveLength(1);
   });
 
   it("creates, saves, merges, publishes, and keeps the public edition sealed", async () => {

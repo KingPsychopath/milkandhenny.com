@@ -44,7 +44,6 @@ export function LampToggle() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const [dark, setDark] = useState(false);
   const [pulled, setPulled] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(true);
   const [tapped, setTapped] = useState(false);
   const lastScrollY = useRef(0);
@@ -91,7 +90,6 @@ export function LampToggle() {
       document.documentElement.setAttribute("data-theme", shouldBeDark ? "dark" : "light");
     };
     apply();
-    setMounted(true);
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, []);
@@ -102,8 +100,6 @@ export function LampToggle() {
    * On leave, restores the user's original preference.
    */
   useEffect(() => {
-    if (!mounted) return;
-
     if (isPhotoPage && !dark) {
       /* Save their current preference so we can restore it */
       savedPref.current = getStored("theme") ?? "system";
@@ -134,7 +130,7 @@ export function LampToggle() {
       document.documentElement.setAttribute("data-theme", shouldBeDark ? "dark" : "light");
       savedPref.current = null;
     }
-  }, [dark, isPhotoPage, mounted]);
+  }, [dark, isPhotoPage]);
 
   /** Hide lamp when scrolling down past threshold, show when near top */
   useEffect(() => {
@@ -174,7 +170,7 @@ export function LampToggle() {
     setStored("theme", next ? "dark" : "light");
   }, [dark, isPhotoPage]);
 
-  if (!mounted || hidden || isThingsGame) return null;
+  if (hidden || isThingsGame) return null;
 
   const shown = isThingsIndex || visible;
 
@@ -187,6 +183,7 @@ export function LampToggle() {
       style={{
         transform: shown ? "translateY(0)" : "translateY(-90px)",
         opacity: shown ? 1 : 0,
+        visibility: shown ? "visible" : "hidden",
         pointerEvents: shown ? "auto" : "none",
       }}
     >
@@ -198,7 +195,7 @@ export function LampToggle() {
 
       {/* Bulb / pull handle */}
       <div className="lamp-bulb" style={{ opacity: tapped ? 1 : undefined }}>
-        {dark ? (
+        <span className="lamp-icon lamp-icon--moon" aria-hidden="true">
           <svg
             width="16"
             height="16"
@@ -211,7 +208,8 @@ export function LampToggle() {
           >
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
-        ) : (
+        </span>
+        <span className="lamp-icon lamp-icon--sun" aria-hidden="true">
           <svg
             width="16"
             height="16"
@@ -232,7 +230,7 @@ export function LampToggle() {
             <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
             <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
           </svg>
-        )}
+        </span>
       </div>
     </button>
   );

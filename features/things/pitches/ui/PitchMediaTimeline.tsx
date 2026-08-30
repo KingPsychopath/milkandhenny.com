@@ -479,7 +479,7 @@ export function PitchMediaTimeline({
           step={SNAP_MS}
           value={Math.min(playheadMs, slide.durationMs)}
           onChange={(event) => onScrub(Number(event.target.value))}
-          className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)]"
+          className="mt-1 block min-h-11 w-full accent-[var(--prose-hashtag)]"
         />
       </label>
 
@@ -707,7 +707,7 @@ export function PitchMediaTimeline({
                     true,
                   )
                 }
-                className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
+                className="mt-1 block min-h-11 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
@@ -731,7 +731,7 @@ export function PitchMediaTimeline({
                     true,
                   )
                 }
-                className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
+                className="mt-1 block min-h-11 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
               />
             </label>
             <label className="font-mono text-micro theme-muted">
@@ -761,7 +761,7 @@ export function PitchMediaTimeline({
                     true,
                   )
                 }
-                className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
+                className="mt-1 block min-h-11 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
               />
             </label>
             {selected.kind === "audio" ? (
@@ -781,7 +781,7 @@ export function PitchMediaTimeline({
                       volume: Number(event.target.value),
                     }))
                   }
-                  className="mt-1 block min-h-8 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
+                  className="mt-1 block min-h-11 w-full accent-[var(--prose-hashtag)] disabled:opacity-35"
                 />
               </label>
             ) : null}

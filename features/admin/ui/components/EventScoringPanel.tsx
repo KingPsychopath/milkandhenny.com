@@ -12,13 +12,31 @@ import { ScoringIdentityPanel } from "./ScoringIdentityPanel";
 import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import { ScoringTestModePanel } from "./ScoringTestModePanel";
 import { ScoringOperationsPanel } from "./ScoringOperationsPanel";
+import { ScoringTeamsPanel } from "./ScoringTeamsPanel";
 import type { ScoringData } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type StepUp = () => Promise<
   { ok: true; token: string } | { ok: false; cancelled?: true; error?: string }
 >;
 type StepUpHeaders = (token: string, extra?: Record<string, string>) => Record<string, string>;
+
+type ScoringWorkspace = "setup" | "content" | "live" | "media" | "review" | "people" | "pools";
+
+const SCORING_WORKSPACES: Array<{
+  id: ScoringWorkspace;
+  label: string;
+  description: string;
+}> = [
+  { id: "setup", label: "setup", description: "Activities and event lifecycle" },
+  { id: "content", label: "discoveries", description: "Discoveries and print packs" },
+  { id: "live", label: "live desk", description: "Test mode and live operations" },
+  { id: "media", label: "media", description: "Scoring media and assets" },
+  { id: "review", label: "review", description: "Audit, anomalies, and corrections" },
+  { id: "people", label: "people", description: "Identity, teams, and staff" },
+  { id: "pools", label: "pools", description: "Prize and item pools" },
+];
 
 export function EventScoringPanel({
   authFetch,
@@ -36,6 +54,8 @@ export function EventScoringPanel({
   const [eventSlug, setEventSlug] = useState("");
   const [data, setData] = useState<ScoringData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [workspace, setWorkspace] = useState<ScoringWorkspace>("setup");
 
   async function load(showBusy = true, auditFilter?: Record<string, string>) {
     if (!eventSlug.trim()) {
@@ -43,6 +63,7 @@ export function EventScoringPanel({
       return;
     }
     if (showBusy) setBusy(true);
+    setLoadError(null);
     onError("");
     try {
       const query = new URLSearchParams(auditFilter).toString();
@@ -52,7 +73,9 @@ export function EventScoringPanel({
       if (!response.ok) throw new Error("Could not load scoring settings");
       setData((await response.json()) as ScoringData);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load scoring settings");
+      const message = error instanceof Error ? error.message : "Could not load scoring settings";
+      setLoadError(message);
+      onError(message);
     } finally {
       if (showBusy) setBusy(false);
     }
@@ -194,11 +217,41 @@ export function EventScoringPanel({
           </button>
         </form>
       </div>
+      {loadError ? (
+        <div className="mt-5 border-y theme-border py-4" role="alert">
+          <p className="font-mono text-xs">
+            <AdminStatus tone="danger">{loadError}</AdminStatus>
+          </p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={busy}
+            className="mt-3 min-h-11 font-mono text-xs underline underline-offset-4 hover:opacity-70 disabled:opacity-40"
+          >
+            try again
+          </button>
+        </div>
+      ) : null}
+      {busy && !data && !loadError ? (
+        <p className="mt-5 font-mono text-xs theme-muted" role="status">
+          Loading scoring controls…
+        </p>
+      ) : null}
       {data && (
         <div className="mt-6 space-y-5">
           <div className="flex flex-wrap items-center gap-3 border-y theme-border py-4">
             <span className="font-mono text-xs">
-              state: <strong>{data.settings.state}</strong>
+              state:{" "}
+              <AdminStatus
+                tone={
+                  data.settings.state === "frozen"
+                    ? "attention"
+                    : adminToneForStatus(data.settings.state)
+                }
+                className="font-bold"
+              >
+                {data.settings.state}
+              </AdminStatus>
             </span>
             {(["ready", "live", "frozen", "closed"] as const).map((state) => (
               <button
@@ -229,46 +282,110 @@ export function EventScoringPanel({
               {data.held.length + data.heldOfficialResults.length}
             </p>
           </div>
-          <ScoringActivitiesPanel
-            activities={data.activities}
-            personalTemplates={data.personalTemplates}
-            onAction={performAction}
-          />
-          <ScoringLifecyclePanel data={data} onAction={performAction} />
-          <ScoringDiscoveriesPanel
-            activities={data.activities}
-            discoveries={data.discoveries}
-            onAction={performAction}
-          />
-          <ScoringPrintStudioPanel
-            discoveryCount={data.discoveries.length}
-            onDownload={downloadPrint}
-          />
-          <ScoringTestModePanel data={data} />
-          <ScoringOperationsPanel operations={data.operations} />
-          <ScoringMediaPanel data={data} onAction={performAction} />
-          <ScoringAuditPanel
-            audit={data.audit}
-            anomalies={data.anomalies}
-            activities={data.activities}
-            onFilter={async (filter) => load(false, filter)}
-            onExport={downloadExport}
-          />
-          <ScoringIdentityPanel merges={data.merges} onAction={performAction} />
-          <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
-          <ScoringCorrectionsPanel
-            eventSlug={eventSlug.trim()}
-            state={data.settings.state}
-            activities={data.activities}
-            authFetch={authFetch}
-            onAction={performAction}
-          />
-          <ScoringStaffPanel
-            eventSlug={eventSlug.trim()}
-            activities={data.activities}
-            staff={data.staff}
-            onAction={performAction}
-          />
+          <div className="border-y theme-border py-4">
+            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+              scoring workspace
+            </p>
+            <div
+              className="mt-3 flex flex-wrap gap-x-5 gap-y-2"
+              role="tablist"
+              aria-label="Scoring tools"
+            >
+              {SCORING_WORKSPACES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={workspace === item.id}
+                  aria-controls="scoring-workspace-panel"
+                  onClick={() => setWorkspace(item.id)}
+                  className={`min-h-11 border-b font-mono text-xs transition-opacity hover:opacity-70 ${
+                    workspace === item.id
+                      ? "theme-border-strong text-foreground"
+                      : "border-transparent theme-muted"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 font-mono text-micro theme-muted">
+              {SCORING_WORKSPACES.find((item) => item.id === workspace)?.description}
+            </p>
+          </div>
+
+          <div id="scoring-workspace-panel" role="tabpanel" className="space-y-5">
+            {workspace === "setup" ? (
+              <>
+                <ScoringActivitiesPanel
+                  activities={data.activities}
+                  personalTemplates={data.personalTemplates}
+                  onAction={performAction}
+                />
+                <ScoringLifecyclePanel data={data} onAction={performAction} />
+              </>
+            ) : null}
+            {workspace === "content" ? (
+              <>
+                <ScoringDiscoveriesPanel
+                  activities={data.activities}
+                  discoveries={data.discoveries}
+                  onAction={performAction}
+                />
+                <ScoringPrintStudioPanel
+                  discoveryCount={data.discoveries.length}
+                  onDownload={downloadPrint}
+                />
+              </>
+            ) : null}
+            {workspace === "live" ? (
+              <>
+                <ScoringTestModePanel data={data} />
+                <ScoringOperationsPanel operations={data.operations} />
+              </>
+            ) : null}
+            {workspace === "media" ? (
+              <ScoringMediaPanel data={data} onAction={performAction} />
+            ) : null}
+            {workspace === "review" ? (
+              <>
+                <ScoringAuditPanel
+                  audit={data.audit}
+                  anomalies={data.anomalies}
+                  activities={data.activities}
+                  onFilter={async (filter) => load(false, filter)}
+                  onExport={downloadExport}
+                />
+                <ScoringCorrectionsPanel
+                  eventSlug={eventSlug.trim()}
+                  state={data.settings.state}
+                  activities={data.activities}
+                  authFetch={authFetch}
+                  onAction={performAction}
+                />
+              </>
+            ) : null}
+            {workspace === "people" ? (
+              <>
+                <ScoringIdentityPanel merges={data.merges} onAction={performAction} />
+                <ScoringTeamsPanel
+                  eventSlug={eventSlug.trim()}
+                  teams={data.teams}
+                  authFetch={authFetch}
+                  onAction={performAction}
+                />
+                <ScoringStaffPanel
+                  eventSlug={eventSlug.trim()}
+                  activities={data.activities}
+                  staff={data.staff}
+                  onAction={performAction}
+                />
+              </>
+            ) : null}
+            {workspace === "pools" ? (
+              <ScoringPoolsPanel pools={data.pools} onAction={performAction} />
+            ) : null}
+          </div>
         </div>
       )}
     </section>

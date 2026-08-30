@@ -3,6 +3,7 @@ import { AppSelect } from "@/components/AppSelect";
 import type { Album, Photo } from "@/features/media/albums";
 import { FOCAL_PRESETS, focalPresetToObjectPosition } from "@/features/media/focal";
 import { imagePlaceholderStyle } from "@/features/media/image";
+import { AdminStatus } from "./AdminStatus";
 
 interface PhotoDraft {
   title: string;
@@ -228,7 +229,7 @@ export function AlbumPhotoGrid({
                 </label>
                 {isCover ? (
                   <span className="absolute right-2 top-2 rounded bg-background/90 px-2 py-1 font-mono text-micro">
-                    cover
+                    <AdminStatus tone="positive">cover</AdminStatus>
                   </span>
                 ) : null}
                 <span className="absolute bottom-2 left-2 rounded bg-background/90 px-2 py-1 font-mono text-micro">

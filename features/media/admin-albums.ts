@@ -15,13 +15,14 @@ import {
   VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
 } from "@/lib/shared/media-cache";
 import {
+  albumManifestKey,
   deleteAlbumManifest,
   isSafeAlbumSlug,
   listAlbumManifests,
   readAlbumManifest,
   writeAlbumManifest,
 } from "./album-repository.server";
-import type { Album, Photo } from "./albums";
+import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { focalPresetToPercent, isValidFocalPreset } from "./focal";
 import {
   isProcessableImage,
@@ -32,7 +33,6 @@ import {
   type OgOverlay,
 } from "./processing.server";
 
-const SAFE_PHOTO_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const MAX_ALBUM_FILES = 200;
 const MAX_ALBUM_FILE_BYTES = 100 * 1024 * 1024;
 
@@ -69,7 +69,13 @@ interface PhotoMetadataInput {
 }
 
 function isSafePhotoId(photoId: string): boolean {
-  return SAFE_PHOTO_ID.test(photoId);
+  return isSafeAlbumPhotoId(photoId);
+}
+
+function cleanAlbumDate(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const clean = value.trim();
+  return isValidAlbumDate(clean) ? clean : undefined;
 }
 
 function cleanText(value: unknown, max: number): string | undefined {
@@ -94,7 +100,8 @@ function normalisePhotoId(filename: string): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[-_.]+|[-_.]+$/g, "")
     .slice(0, 100);
   return clean || `photo-${randomUUID().slice(0, 8)}`;
 }
@@ -178,10 +185,10 @@ async function createAdminAlbum(
 ): Promise<AdminAlbum> {
   const slug = typeof input.slug === "string" ? normaliseSlug(input.slug) : "";
   const title = cleanText(input.title, 160);
-  const date = cleanText(input.date, 10);
+  const date = cleanAlbumDate(input.date);
   if (!slug || !isSafeAlbumSlug(slug)) throw new Error("Enter a valid album slug");
   if (!title) throw new Error("Album title is required");
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Album date is required");
+  if (!date) throw new Error("Album date is required");
   if (await readAlbumManifest(slug)) throw new Error("An album with this slug already exists");
 
   const album = await writeAlbumManifest({
@@ -200,9 +207,9 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
   const album = await readAlbumManifest(slug);
   if (!album) throw new Error("Album not found");
   const title = input.title === undefined ? album.title : cleanText(input.title, 160);
-  const date = input.date === undefined ? album.date : cleanText(input.date, 10);
+  const date = input.date === undefined ? album.date : cleanAlbumDate(input.date);
   if (!title) throw new Error("Album title is required");
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Enter a valid album date");
+  if (!date) throw new Error("Enter a valid album date");
   const status = input.status === undefined ? album.status : input.status;
   if (status !== undefined && status !== "draft" && status !== "published") {
     throw new Error("Invalid album status");
@@ -224,11 +231,25 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
   const titleChanged = title !== album.title;
 
   if (titleChanged) await regenerateAlbumOg(next);
-  if (willPublish && (titleChanged || !wasPublished)) await publishAlbumAssets(next);
+  if (wasPublished && !willPublish) {
+    await unpublishAlbumAssets(album);
+    try {
+      return toAdminAlbum(await writeAlbumManifest(next));
+    } catch (error) {
+      await publishAlbumAssets(album).catch(() => undefined);
+      throw error;
+    }
+  }
 
-  const updated = await writeAlbumManifest(next);
-  if (wasPublished && !willPublish) await unpublishAlbumAssets(updated);
-  return toAdminAlbum(updated);
+  if (willPublish && (titleChanged || !wasPublished)) await publishAlbumAssets(next);
+  try {
+    return toAdminAlbum(await writeAlbumManifest(next));
+  } catch (error) {
+    if (!wasPublished && willPublish) {
+      await unpublishAlbumAssets(next).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 async function reorderAlbumPhotos(slug: string, photoIds: string[]): Promise<AdminAlbum> {
@@ -301,6 +322,8 @@ async function deleteAlbumPhotos(
 ): Promise<{ album: AdminAlbum; deletedKeys: number }> {
   const album = await readAlbumManifest(slug);
   if (!album) throw new Error("Album not found");
+  const publishedSnapshot =
+    album.status !== "draft" ? { ...album, photos: [...album.photos] } : null;
   const ids = new Set(photoIds);
   const deleting = album.photos.filter((photo) => ids.has(photo.id));
   if (!deleting.length) throw new Error("No matching photos found");
@@ -309,11 +332,15 @@ async function deleteAlbumPhotos(
   album.photos = album.photos.filter((photo) => !ids.has(photo.id));
   if (ids.has(album.cover)) album.cover = album.photos[0]?.id ?? "";
   if (!album.photos.length) album.status = "draft";
-  const updated = await writeAlbumManifest(album);
-  const [deletedPrivate, deletedPublic] = await Promise.all([
-    deleteObjects(privateKeys, { scope: "private" }),
-    deleteObjects(publicKeys, { scope: "public" }),
-  ]);
+  const deletedPublic = await deleteObjects(publicKeys, { scope: "public" });
+  let updated: Album;
+  try {
+    updated = await writeAlbumManifest(album);
+  } catch (error) {
+    if (publishedSnapshot) await publishAlbumAssets(publishedSnapshot).catch(() => undefined);
+    throw error;
+  }
+  const deletedPrivate = await deleteObjects(privateKeys, { scope: "private" });
   const deletedKeys = deletedPrivate + deletedPublic;
   return { album: toAdminAlbum(updated), deletedKeys };
 }
@@ -340,17 +367,16 @@ async function deleteAlbum(
     listObjects(`albums/${slug}/`, { scope: "private" }),
     listObjects(`albums/${slug}/`, { scope: "public" }),
   ]);
+  const manifestKey = albumManifestKey(slug);
+  const deletedPublic = await deleteObjects(
+    publicObjects.map((object) => object.key),
+    { scope: "public" },
+  );
   if (album) await deleteAlbumManifest(slug);
-  const [deletedPrivate, deletedPublic] = await Promise.all([
-    deleteObjects(
-      privateObjects.map((object) => object.key),
-      { scope: "private" },
-    ),
-    deleteObjects(
-      publicObjects.map((object) => object.key),
-      { scope: "public" },
-    ),
-  ]);
+  const deletedPrivate = await deleteObjects(
+    privateObjects.map((object) => object.key).filter((key) => key !== manifestKey),
+    { scope: "private" },
+  );
   const deletedFiles = deletedPrivate + deletedPublic;
   return { deletedFiles, deletedManifest: album !== null };
 }
@@ -363,6 +389,20 @@ async function prepareAlbumUploads(
   if (!album) throw new Error("Album not found");
   if (!files.length || files.length > MAX_ALBUM_FILES) {
     throw new Error(`Choose between 1 and ${MAX_ALBUM_FILES} images`);
+  }
+  if (album.photos.length + files.length > MAX_ALBUM_FILES) {
+    throw new Error(`An album can contain at most ${MAX_ALBUM_FILES} images`);
+  }
+  if (
+    files.some(
+      (file) =>
+        !file ||
+        typeof file.name !== "string" ||
+        typeof file.size !== "number" ||
+        (file.type !== undefined && typeof file.type !== "string"),
+    )
+  ) {
+    throw new Error("Each upload needs a file name and size");
   }
   const reserved = new Set(album.photos.map((photo) => photo.id));
 
@@ -384,7 +424,7 @@ async function prepareAlbumUploads(
           .toLowerCase()
           .replace(/[^.a-z0-9]/g, "") || ".jpg";
       const uploadKey = `incoming/albums/${slug}/${randomUUID()}${extension}`;
-      const contentType = file.type.startsWith("image/") ? file.type : "application/octet-stream";
+      const contentType = file.type?.startsWith("image/") ? file.type : "application/octet-stream";
       return {
         original: file.name,
         photoId,
@@ -467,10 +507,15 @@ async function finalizeAlbumUploads(
   if (!files.length || files.length > MAX_ALBUM_FILES) {
     throw new Error(`Choose between 1 and ${MAX_ALBUM_FILES} images`);
   }
+  if (album.photos.length + files.length > MAX_ALBUM_FILES) {
+    throw new Error(`An album can contain at most ${MAX_ALBUM_FILES} images`);
+  }
   const incomingIds = new Set<string>();
   const existingIds = new Set(album.photos.map((photo) => photo.id));
   for (const file of files) {
     if (
+      !file ||
+      typeof file !== "object" ||
       typeof file.original !== "string" ||
       typeof file.photoId !== "string" ||
       typeof file.uploadKey !== "string" ||
@@ -490,17 +535,28 @@ async function finalizeAlbumUploads(
     const added = await mapConcurrent(files, 2, (file) => processAlbumUpload(album, file));
     const latest = await readAlbumManifest(slug);
     if (!latest) throw new Error("Album not found");
+    if (latest.photos.length + added.length > MAX_ALBUM_FILES) {
+      throw new Error(`An album can contain at most ${MAX_ALBUM_FILES} images`);
+    }
     const latestIds = new Set(latest.photos.map((photo) => photo.id));
     if (added.some((photo) => latestIds.has(photo.id))) {
       throw new Error("A photo with the same ID was added during processing");
     }
     const wasPublished = latest.status !== "draft";
+    const previousPublishedAlbum = wasPublished ? { ...latest, photos: [...latest.photos] } : null;
     latest.photos.push(...added);
     if (!latest.cover && added[0]) latest.cover = added[0].id;
     latest.status = "draft";
-    const updated = await writeAlbumManifest(latest);
-    if (wasPublished) await unpublishAlbumAssets(updated);
-    return { album: toAdminAlbum(updated), added };
+    if (previousPublishedAlbum) await unpublishAlbumAssets(previousPublishedAlbum);
+    try {
+      const updated = await writeAlbumManifest(latest);
+      return { album: toAdminAlbum(updated), added };
+    } catch (error) {
+      if (previousPublishedAlbum) {
+        await publishAlbumAssets(previousPublishedAlbum).catch(() => undefined);
+      }
+      throw error;
+    }
   } finally {
     await deleteObjects(
       files.map((file) => file.uploadKey),
@@ -517,8 +573,10 @@ export {
   finalizeAlbumUploads,
   isSafeAlbumSlug,
   isSafePhotoId,
+  isValidAlbumDate,
   listAdminAlbums,
   normaliseSlug,
+  normalisePhotoId,
   prepareAlbumUploads,
   reorderAlbumPhotos,
   setAlbumCover,

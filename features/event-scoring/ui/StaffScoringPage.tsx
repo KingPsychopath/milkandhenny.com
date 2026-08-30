@@ -89,24 +89,29 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         <p className="mt-2 font-mono text-xs theme-muted">{data.label}</p>
       </header>
 
-      {(data.canAdmit || data.canRun || data.canAward) && (
-        <nav aria-label="Staff operation" className="mt-8 flex gap-3 border-y theme-border py-3">
-          <button
-            type="button"
-            onClick={() => setOperation("admit")}
-            aria-pressed={operation === "admit"}
-            className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
-          >
-            Admit guests
-          </button>
-          {data.canRun && (
+      {(data.canAdmit || data.canAward) && (
+        <nav
+          aria-label="Staff operation"
+          className="mt-8 flex flex-wrap gap-3 border-y theme-border py-3"
+        >
+          {data.canAdmit && (
+            <button
+              type="button"
+              onClick={() => setOperation("admit")}
+              aria-pressed={operation === "admit"}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+            >
+              Admit guests
+            </button>
+          )}
+          {data.canRun && data.canAward && (
             <button
               type="button"
               onClick={() => setOperation("run")}
               aria-pressed={operation === "run"}
               className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
             >
-              Run an activity
+              Choose activity
             </button>
           )}
           {data.canAward && (
@@ -122,13 +127,14 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         </nav>
       )}
 
-      {operation === "run" && data.canRun && (
+      {operation === "run" && data.canRun && data.canAward && (
         <section aria-labelledby="run-heading" className="mt-10 border-t theme-border pt-7">
           <h2 id="run-heading" className="font-serif text-2xl">
-            Run an activity
+            Choose an activity result
           </h2>
           <p className="mt-2 font-mono text-xs theme-muted">
-            Choose the result you are recording. Scanning starts only after you choose.
+            This page records a completed result; it does not launch the game. Start the game from
+            its game-night QR or organiser page, then choose the matching activity here.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {[...data.activities]
@@ -150,9 +156,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                 >
                   <span className="block font-serif text-lg">{entry.name}</span>
                   <span className="mt-1 block font-mono text-micro theme-muted">
-                    {data.pinnedActivityIds.includes(entry.id)
-                      ? "pinned quick award"
-                      : "record result"}
+                    {data.pinnedActivityIds.includes(entry.id) ? "pinned result" : "record result"}
                   </span>
                 </button>
               ))}

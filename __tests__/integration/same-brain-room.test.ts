@@ -370,6 +370,38 @@ describe("same brain room", () => {
     if (!late.ok) expect(late.errorCode).toBe("game_started");
   });
 
+  it("starts without only the explicitly confirmed absent players", async () => {
+    const created = await room(["Abel", "Maya", "Daniel", "Priya"]);
+    const absent = created.seats[3];
+    await act(created.roomId, absent, { type: "readiness.set", ready: false });
+    const blocked = await host(created.roomId, created.hostToken, { type: "game.start" });
+    expect(blocked.accepted).toBe(false);
+
+    const started = await host(created.roomId, created.hostToken, {
+      type: "game.start",
+      removePlayerIds: [absent.playerId],
+    });
+    expect(started.accepted).toBe(true);
+    expect(started.snapshot?.phase).toBe("prompt");
+    expect(started.snapshot?.players.some(({ id }) => id === absent.playerId)).toBe(false);
+  });
+
+  it("does not remove anyone when too few ready players would remain", async () => {
+    const created = await room(["Abel", "Maya", "Daniel"]);
+    const absent = created.seats[2];
+    await act(created.roomId, absent, { type: "readiness.set", ready: false });
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const rejected = await host(created.roomId, created.hostToken, {
+      type: "game.start",
+      removePlayerIds: [absent.playerId],
+    });
+    expect(rejected.accepted).toBe(false);
+    if (!rejected.accepted) expect(rejected.errorCode).toBe("not_enough_players");
+    const unchanged = await read(created.roomId, created.seats[0]);
+    expect(unchanged.phase).toBe("lobby");
+    expect(unchanged.players).toHaveLength(3);
+  });
+
   /**
    * Two waits, not one. The room can only start the clock on a missing host once a poll has noticed
    * they are missing, so the claim window opens a minute after that observation rather than a minute

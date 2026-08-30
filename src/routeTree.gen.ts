@@ -104,8 +104,8 @@ import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/w
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
-import { Route as EventsSlugScoreRouteImport } from './routes/events/$slug/score'
 import { Route as EventsSlugBoughtRouteImport } from './routes/events/$slug_.bought'
+import { Route as EventsSlugScoreRouteImport } from './routes/events/$slug_.score'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
 import { Route as ThingsCentreRoomIdRouteImport } from './routes/things.centre_.$roomId'
@@ -171,9 +171,9 @@ import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upl
 import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
-import { Route as EventsSlugDiscoveriesIndexRouteImport } from './routes/events/$slug/discoveries/index'
-import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug/discoveries/$discoveryId'
-import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug/staff/$token'
+import { Route as EventsSlugDiscoveriesIndexRouteImport } from './routes/events/$slug_.discoveries.index'
+import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug_.discoveries.$discoveryId'
+import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug_.staff.$token'
 import { Route as ThingsHotAndColdDailyPuzzleRouteImport } from './routes/things.hot-and-cold_.daily_.$puzzle'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
@@ -705,14 +705,14 @@ const ApiWordsSlugRouteRoute = ApiWordsSlugRouteRouteImport.update({
   path: '/$slug',
   getParentRoute: () => ApiWordsRouteRoute,
 } as any)
-const EventsSlugScoreRoute = EventsSlugScoreRouteImport.update({
-  id: '/score',
-  path: '/score',
-  getParentRoute: () => EventsSlugRoute,
-} as any)
 const EventsSlugBoughtRoute = EventsSlugBoughtRouteImport.update({
   id: '/events/$slug_/bought',
   path: '/events/$slug/bought',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventsSlugScoreRoute = EventsSlugScoreRouteImport.update({
+  id: '/events/$slug_/score',
+  path: '/events/$slug/score',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PicsAlbumIndexRoute = PicsAlbumIndexRouteImport.update({
@@ -1074,20 +1074,20 @@ const ApiWordsShareVerifyRouteRoute =
   } as any)
 const EventsSlugDiscoveriesIndexRoute =
   EventsSlugDiscoveriesIndexRouteImport.update({
-    id: '/discoveries/',
-    path: '/discoveries/',
-    getParentRoute: () => EventsSlugRoute,
+    id: '/events/$slug_/discoveries/',
+    path: '/events/$slug/discoveries/',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const EventsSlugDiscoveriesDiscoveryIdRoute =
   EventsSlugDiscoveriesDiscoveryIdRouteImport.update({
-    id: '/discoveries/$discoveryId',
-    path: '/discoveries/$discoveryId',
-    getParentRoute: () => EventsSlugRoute,
+    id: '/events/$slug_/discoveries/$discoveryId',
+    path: '/events/$slug/discoveries/$discoveryId',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const EventsSlugStaffTokenRoute = EventsSlugStaffTokenRouteImport.update({
-  id: '/staff/$token',
-  path: '/staff/$token',
-  getParentRoute: () => EventsSlugRoute,
+  id: '/events/$slug_/staff/$token',
+  path: '/events/$slug/staff/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ThingsHotAndColdDailyPuzzleRoute =
   ThingsHotAndColdDailyPuzzleRouteImport.update({
@@ -1323,7 +1323,7 @@ export interface FileRoutesByFullPath {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRouteWithChildren
+  '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1389,8 +1389,8 @@ export interface FileRoutesByFullPath {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
-  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
@@ -1524,7 +1524,7 @@ export interface FileRoutesByTo {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRouteWithChildren
+  '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1590,8 +1590,8 @@ export interface FileRoutesByTo {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
-  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre/dev': typeof ThingsCentreDevRoute
@@ -1726,7 +1726,7 @@ export interface FileRoutesById {
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
   '/drop/$token': typeof DropTokenRoute
-  '/events/$slug': typeof EventsSlugRouteWithChildren
+  '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
   '/scan/$token': typeof ScanTokenRoute
@@ -1792,8 +1792,8 @@ export interface FileRoutesById {
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
-  '/events/$slug/score': typeof EventsSlugScoreRoute
   '/events/$slug_/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug_/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
   '/things/centre_/dev': typeof ThingsCentreDevRoute
@@ -1859,15 +1859,15 @@ export interface FileRoutesById {
   '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
-  '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
-  '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/events/$slug_/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  '/events/$slug_/staff/$token': typeof EventsSlugStaffTokenRoute
   '/things/hot-and-cold_/daily_/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
   '/things/spelling-party_/$roomId_/present': typeof ThingsSpellingPartyRoomIdPresentRoute
-  '/events/$slug/discoveries/': typeof EventsSlugDiscoveriesIndexRoute
+  '/events/$slug_/discoveries/': typeof EventsSlugDiscoveriesIndexRoute
   '/api/admin/albums/$slug/cover': typeof ApiAdminAlbumsSlugCoverRouteRoute
   '/api/admin/albums/$slug/order': typeof ApiAdminAlbumsSlugOrderRouteRoute
   '/api/admin/albums/$slug/photos': typeof ApiAdminAlbumsSlugPhotosRouteRouteWithChildren
@@ -1995,8 +1995,8 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
-    | '/events/$slug/score'
     | '/events/$slug/bought'
+    | '/events/$slug/score'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
@@ -2196,8 +2196,8 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
-    | '/events/$slug/score'
     | '/events/$slug/bought'
+    | '/events/$slug/score'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
     | '/things/centre/dev'
@@ -2397,8 +2397,8 @@ export interface FileRouteTypes {
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
-    | '/events/$slug/score'
     | '/events/$slug_/bought'
+    | '/events/$slug_/score'
     | '/pics/$album/$photo'
     | '/things/centre_/$roomId'
     | '/things/centre_/dev'
@@ -2464,15 +2464,15 @@ export interface FileRouteTypes {
     | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
-    | '/events/$slug/discoveries/$discoveryId'
-    | '/events/$slug/staff/$token'
+    | '/events/$slug_/discoveries/$discoveryId'
+    | '/events/$slug_/staff/$token'
     | '/things/hot-and-cold_/daily_/$puzzle'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
     | '/things/pitches_/remote_/$roomId'
     | '/things/spelling-party_/$roomId_/present'
-    | '/events/$slug/discoveries/'
+    | '/events/$slug_/discoveries/'
     | '/api/admin/albums/$slug/cover'
     | '/api/admin/albums/$slug/order'
     | '/api/admin/albums/$slug/photos'
@@ -2533,7 +2533,7 @@ export interface RootRouteChildren {
   AdminCliAuthRoute: typeof AdminCliAuthRoute
   AdminEditorRoute: typeof AdminEditorRoute
   DropTokenRoute: typeof DropTokenRoute
-  EventsSlugRoute: typeof EventsSlugRouteWithChildren
+  EventsSlugRoute: typeof EventsSlugRoute
   OrganizeTokenRoute: typeof OrganizeTokenRoute
   PlayTokenRoute: typeof PlayTokenRoute
   ScanTokenRoute: typeof ScanTokenRoute
@@ -2588,6 +2588,7 @@ export interface RootRouteChildren {
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
   EventsSlugBoughtRoute: typeof EventsSlugBoughtRoute
+  EventsSlugScoreRoute: typeof EventsSlugScoreRoute
   PicsAlbumPhotoRoute: typeof PicsAlbumPhotoRoute
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
   ApiAdminCliAuthExchangeRouteRoute: typeof ApiAdminCliAuthExchangeRouteRoute
@@ -2612,6 +2613,9 @@ export interface RootRouteChildren {
   ApiUploadWordsFinalizeRouteRoute: typeof ApiUploadWordsFinalizeRouteRoute
   ApiUploadWordsPresignRouteRoute: typeof ApiUploadWordsPresignRouteRoute
   ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
+  EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
+  EventsSlugStaffTokenRoute: typeof EventsSlugStaffTokenRoute
+  EventsSlugDiscoveriesIndexRoute: typeof EventsSlugDiscoveriesIndexRoute
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   ApiEventsSlugDiscoveriesClaimRouteRoute: typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   ApiEventsSlugGameResultsClaimRouteRoute: typeof ApiEventsSlugGameResultsClaimRouteRoute
@@ -3287,18 +3291,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWordsSlugRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
     }
-    '/events/$slug/score': {
-      id: '/events/$slug/score'
-      path: '/score'
-      fullPath: '/events/$slug/score'
-      preLoaderRoute: typeof EventsSlugScoreRouteImport
-      parentRoute: typeof EventsSlugRoute
-    }
     '/events/$slug_/bought': {
       id: '/events/$slug_/bought'
       path: '/events/$slug/bought'
       fullPath: '/events/$slug/bought'
       preLoaderRoute: typeof EventsSlugBoughtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$slug_/score': {
+      id: '/events/$slug_/score'
+      path: '/events/$slug/score'
+      fullPath: '/events/$slug/score'
+      preLoaderRoute: typeof EventsSlugScoreRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pics/$album/': {
@@ -3756,26 +3760,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWordsShareVerifyRouteRouteImport
       parentRoute: typeof ApiWordsRouteRoute
     }
-    '/events/$slug/discoveries/': {
-      id: '/events/$slug/discoveries/'
-      path: '/discoveries'
+    '/events/$slug_/discoveries/': {
+      id: '/events/$slug_/discoveries/'
+      path: '/events/$slug/discoveries'
       fullPath: '/events/$slug/discoveries/'
       preLoaderRoute: typeof EventsSlugDiscoveriesIndexRouteImport
-      parentRoute: typeof EventsSlugRoute
+      parentRoute: typeof rootRouteImport
     }
-    '/events/$slug/discoveries/$discoveryId': {
-      id: '/events/$slug/discoveries/$discoveryId'
-      path: '/discoveries/$discoveryId'
+    '/events/$slug_/discoveries/$discoveryId': {
+      id: '/events/$slug_/discoveries/$discoveryId'
+      path: '/events/$slug/discoveries/$discoveryId'
       fullPath: '/events/$slug/discoveries/$discoveryId'
       preLoaderRoute: typeof EventsSlugDiscoveriesDiscoveryIdRouteImport
-      parentRoute: typeof EventsSlugRoute
+      parentRoute: typeof rootRouteImport
     }
-    '/events/$slug/staff/$token': {
-      id: '/events/$slug/staff/$token'
-      path: '/staff/$token'
+    '/events/$slug_/staff/$token': {
+      id: '/events/$slug_/staff/$token'
+      path: '/events/$slug/staff/$token'
       fullPath: '/events/$slug/staff/$token'
       preLoaderRoute: typeof EventsSlugStaffTokenRouteImport
-      parentRoute: typeof EventsSlugRoute
+      parentRoute: typeof rootRouteImport
     }
     '/things/hot-and-cold_/daily_/$puzzle': {
       id: '/things/hot-and-cold_/daily_/$puzzle'
@@ -4167,24 +4171,6 @@ const ApiWordsRouteRouteWithChildren = ApiWordsRouteRoute._addFileChildren(
   ApiWordsRouteRouteChildren,
 )
 
-interface EventsSlugRouteChildren {
-  EventsSlugScoreRoute: typeof EventsSlugScoreRoute
-  EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
-  EventsSlugStaffTokenRoute: typeof EventsSlugStaffTokenRoute
-  EventsSlugDiscoveriesIndexRoute: typeof EventsSlugDiscoveriesIndexRoute
-}
-
-const EventsSlugRouteChildren: EventsSlugRouteChildren = {
-  EventsSlugScoreRoute: EventsSlugScoreRoute,
-  EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
-  EventsSlugStaffTokenRoute: EventsSlugStaffTokenRoute,
-  EventsSlugDiscoveriesIndexRoute: EventsSlugDiscoveriesIndexRoute,
-}
-
-const EventsSlugRouteWithChildren = EventsSlugRoute._addFileChildren(
-  EventsSlugRouteChildren,
-)
-
 interface ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteChildren {
   ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute: typeof ApiAdminAlbumsSlugPhotosPhotoIdMediaRouteRoute
 }
@@ -4471,7 +4457,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCliAuthRoute: AdminCliAuthRoute,
   AdminEditorRoute: AdminEditorRoute,
   DropTokenRoute: DropTokenRoute,
-  EventsSlugRoute: EventsSlugRouteWithChildren,
+  EventsSlugRoute: EventsSlugRoute,
   OrganizeTokenRoute: OrganizeTokenRoute,
   PlayTokenRoute: PlayTokenRoute,
   ScanTokenRoute: ScanTokenRoute,
@@ -4532,6 +4518,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,
   EventsSlugBoughtRoute: EventsSlugBoughtRoute,
+  EventsSlugScoreRoute: EventsSlugScoreRoute,
   PicsAlbumPhotoRoute: PicsAlbumPhotoRoute,
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
   ApiAdminCliAuthExchangeRouteRoute: ApiAdminCliAuthExchangeRouteRoute,
@@ -4558,6 +4545,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiUploadWordsFinalizeRouteRoute: ApiUploadWordsFinalizeRouteRoute,
   ApiUploadWordsPresignRouteRoute: ApiUploadWordsPresignRouteRoute,
   ApiUploadWordsTargetsRouteRoute: ApiUploadWordsTargetsRouteRoute,
+  EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
+  EventsSlugStaffTokenRoute: EventsSlugStaffTokenRoute,
+  EventsSlugDiscoveriesIndexRoute: EventsSlugDiscoveriesIndexRoute,
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute:
     ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren,
   ApiEventsSlugDiscoveriesClaimRouteRoute:

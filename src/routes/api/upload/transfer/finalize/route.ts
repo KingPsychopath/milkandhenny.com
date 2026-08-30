@@ -4,8 +4,10 @@ import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
   createTransfer,
   MAX_EXPIRY_SECONDS,
+  MAX_TRANSFER_FILES,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
+  normaliseTransferTitle,
 } from "@/features/transfers/store.server";
 import {
   applyTransferAssetGroups,
@@ -76,6 +78,15 @@ async function handlePOST(request: Request) {
   }
   if (!Array.isArray(rawFiles) || rawFiles.length === 0) {
     return Response.json({ error: "No files provided" }, { status: 400 });
+  }
+  if (rawFiles.length > MAX_TRANSFER_FILES) {
+    return Response.json(
+      { error: `Choose at most ${MAX_TRANSFER_FILES} files per transfer` },
+      { status: 400 },
+    );
+  }
+  if (rawFiles.some((file) => !file || typeof file !== "object" || typeof file.name !== "string")) {
+    return Response.json({ error: "Each file must have a safe filename" }, { status: 400 });
   }
   const files = resolveTransferUploadIds(rawFiles);
   let totalBytes = 0;
@@ -215,9 +226,13 @@ async function handlePOST(request: Request) {
       );
     }
 
-    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) =>
-      processUploadedFile(file, transferId),
-    );
+    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
+      const result = await processUploadedFile(file, transferId);
+      return {
+        ...result,
+        file: { ...result.file, storedBytes: file.size + (file.originalSize ?? 0) },
+      };
+    });
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
 
     for (const result of results) {
@@ -239,7 +254,7 @@ async function handlePOST(request: Request) {
 
     const transfer = {
       id: transferId,
-      title: title || "untitled",
+      title: normaliseTransferTitle(title),
       files: groupedTransfer.files,
       groups: groupedTransfer.groups,
       createdAt: now.toISOString(),
@@ -258,7 +273,7 @@ async function handlePOST(request: Request) {
       adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId, deleteToken),
       transfer: {
         id: transferId,
-        title: title || "untitled",
+        title: normaliseTransferTitle(title),
         fileCount: groupedTransfer.files.length,
         expiresAt: expiresAt.toISOString(),
       },

@@ -1,15 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { openedTicketForReference } from "@/features/event-scoring/session.server";
 import { updateParticipantPublicIdentity } from "@/features/event-scoring/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handlePOST(request: Request, ticketId: string) {
   try {
-    const session = await getAttendeeSession();
-    const access = session?.tickets.find(
-      (entry) => entry.ticketId === ticketId && entry.mode === "scoring",
-    );
+    const access = await openedTicketForReference(ticketId, "scoring");
     if (!access)
       return Response.json({ error: "Choose this as your ticket first" }, { status: 403 });
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

@@ -14,6 +14,7 @@ import {
   deleteWord,
   getWord,
   getWordMeta,
+  listAllWords,
   listWords,
   updateWord,
 } from "@/features/words/store.server";
@@ -131,12 +132,12 @@ async function revokeWordShare(slug: string, id: string) {
 
 async function collectShareSlugs(slug?: string): Promise<string[]> {
   if (slug) return [slug];
-  const [tracked, notesResult] = await Promise.all([
+  const [tracked, notes] = await Promise.all([
     listTrackedShareSlugs(),
-    listWords({ includeNonPublic: true, limit: 2000 }),
+    listAllWords({ includeNonPublic: true }),
   ]);
   const slugs = new Set<string>(tracked);
-  for (const note of notesResult.words) {
+  for (const note of notes) {
     slugs.add(note.slug);
   }
   return [...slugs].sort();

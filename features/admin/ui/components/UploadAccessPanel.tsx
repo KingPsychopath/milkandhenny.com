@@ -7,6 +7,7 @@ import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { UploadAccessDurationMinutes } from "@/features/auth/upload-access.server";
+import { AdminStatus, adminToneBorderClass } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type EnsureStepUpToken = () => Promise<string | null>;
@@ -181,33 +182,39 @@ export function UploadAccessPanel({
             cannot use admin tools or upload words media.
           </p>
         </div>
-        <span className="font-mono text-xs theme-muted" role="status">
-          {loading ? "checking…" : status?.active ? "open" : "closed"}
+        <span className="font-mono text-xs" role="status">
+          <AdminStatus tone={loading ? "attention" : status?.active ? "positive" : "neutral"}>
+            {loading ? "checking…" : status?.active ? "open" : "closed"}
+          </AdminStatus>
         </span>
       </div>
 
       {status?.active ? (
-        <div className="mt-5 border theme-border rounded-md p-4">
-          <p className="font-mono text-sm">guest access is open</p>
-          <p className="mt-1 font-mono text-xs theme-muted">
-            closes {formatDate(status.expiresAt)} · anyone with the normal page can upload
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void copyUploadPage()}
-              className="min-h-10 rounded border theme-border-strong px-3 font-mono text-xs hover:opacity-70"
-            >
-              {copied ? "copied ✓" : "copy /upload"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void close()}
-              className="min-h-10 rounded px-3 font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
-            >
-              close and revoke all
-            </button>
+        <div className="mt-5 rounded-md border theme-border p-4">
+          <div className={`border-l-2 pl-3 ${adminToneBorderClass("positive")}`}>
+            <p className="font-mono text-sm">
+              <AdminStatus tone="positive">guest access is open</AdminStatus>
+            </p>
+            <p className="mt-1 font-mono text-xs theme-muted">
+              closes {formatDate(status.expiresAt)} · anyone with the normal page can upload
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void copyUploadPage()}
+                className="min-h-11 rounded border theme-border-strong px-3 font-mono text-xs hover:opacity-70"
+              >
+                {copied ? "copied ✓" : "copy /upload"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void close()}
+                className="min-h-11 rounded px-3 font-mono text-xs text-[var(--prose-hashtag)] hover:opacity-70 disabled:opacity-50"
+              >
+                close and revoke all
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -234,7 +241,7 @@ export function UploadAccessPanel({
             type="button"
             disabled={busy || loading}
             onClick={() => void open()}
-            className="min-h-10 rounded bg-foreground px-4 font-mono text-xs text-background hover:opacity-90 disabled:opacity-50"
+            className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background hover:opacity-90 disabled:opacity-50"
           >
             {busy ? "opening…" : "open uploads"}
           </button>

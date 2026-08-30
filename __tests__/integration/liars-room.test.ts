@@ -1,8 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const deliveredOfficialResults = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/lib/platform/logger.server", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock("@/features/game-results/outbox.server", () => ({
+  publishOfficialResultsAfterCommit: vi.fn((queued: Array<{ envelope: Record<string, unknown> }>) =>
+    deliveredOfficialResults.push(...queued.map(({ envelope }) => envelope)),
+  ),
+  persistRoomWithOfficialResults: vi.fn(),
+  sealOfficialGameResult: vi.fn(
+    (input: { channelId: string; revision: number; result: Record<string, unknown> }) => ({
+      ...input.result,
+      schemaVersion: 1,
+      channelId: input.channelId,
+      revision: input.revision,
+      operation: "record",
+      committedAt: "2026-08-30T12:00:00.000Z",
+      payloadHash: "a".repeat(64),
+    }),
+  ),
 }));
 
 import {
@@ -27,7 +46,10 @@ import type {
   LiarsSnapshot,
 } from "../../features/things/liars/types";
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  deliveredOfficialResults.length = 0;
+  vi.useRealTimers();
+});
 
 let actionCounter = 0;
 const nextActionId = () => `action-${(actionCounter += 1)}`;
@@ -38,8 +60,18 @@ interface Seat {
   name: string;
 }
 
-async function room(mode: LiarsMode, names: string[], toggles?: Record<string, boolean>) {
-  const created = await createLiarsRoom({ mode, roomMode: "same-room", toggles });
+async function room(
+  mode: LiarsMode,
+  names: string[],
+  toggles?: Record<string, boolean>,
+  officialResultChannelId?: string,
+) {
+  const created = await createLiarsRoom({
+    mode,
+    roomMode: "same-room",
+    toggles,
+    officialResultChannelId,
+  });
   const seats: Seat[] = [];
   for (const name of names) {
     const joined = await joinLiarsRoom({
@@ -126,6 +158,32 @@ async function startedGame(names = NAMES.slice(0, 9)) {
   expect(started.accepted).toBe(true);
   return created;
 }
+
+describe("liars rooms — official results", () => {
+  it("publishes each event-linked game once with a replay-safe result id", async () => {
+    const created = await room("imposter", NAMES.slice(0, 6), undefined, "gsc_liars_event");
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    await host(created.roomId, created.hostToken, { type: "game.end" });
+
+    expect(deliveredOfficialResults).toHaveLength(1);
+    expect(deliveredOfficialResults[0]).toMatchObject({
+      channelId: "gsc_liars_event",
+      gameKind: "liars",
+      gameInstanceId: created.roomId,
+      resultId: "game:1",
+      scope: "game",
+    });
+    expect(JSON.stringify(deliveredOfficialResults[0])).not.toContain("Maya");
+
+    await view(created.roomId, created.seats[0]);
+    expect(deliveredOfficialResults).toHaveLength(1);
+
+    await host(created.roomId, created.hostToken, { type: "game.replay" });
+    await host(created.roomId, created.hostToken, { type: "game.end" });
+    expect(deliveredOfficialResults).toHaveLength(2);
+    expect(deliveredOfficialResults[1]).toMatchObject({ resultId: "game:2" });
+  });
+});
 
 describe("liars rooms — secrecy", () => {
   it("never leaks another player's role, the mafia roster, or the word", async () => {
@@ -1627,30 +1685,38 @@ describe("liars readiness", () => {
   });
 
   it("lets the host start without the stragglers", async () => {
-    const created = await room("mafia", NAMES.slice(0, 5));
+    const created = await room("mafia", NAMES.slice(0, 6));
     await act(created.roomId, created.seats[3], { type: "readiness.set", ready: false });
 
     const blocked = await host(created.roomId, created.hostToken, { type: "game.start" });
     expect(blocked.accepted).toBe(false);
 
     // Waiting on a phone in somebody's pocket is a worse failure than starting without them.
-    const forced = await host(created.roomId, created.hostToken, {
+    const started = await host(created.roomId, created.hostToken, {
       type: "game.start",
-      force: true,
+      removePlayerIds: [created.seats[3].playerId],
     });
-    expect(forced.accepted).toBe(true);
-    expect(forced.snapshot!.phase).toBe("deal");
-    expect(forced.snapshot!.players).toHaveLength(5);
+    expect(started.accepted).toBe(true);
+    expect(started.snapshot!.phase).toBe("deal");
+    expect(started.snapshot!.players).toHaveLength(5);
+    expect(started.snapshot!.players.some(({ id }) => id === created.seats[3].playerId)).toBe(
+      false,
+    );
   });
 
-  it("still refuses to start below the minimum, force or not", async () => {
-    const created = await room("mafia", NAMES.slice(0, 4));
-    const forced = await host(created.roomId, created.hostToken, {
+  it("keeps the room intact when removing stragglers would go below the minimum", async () => {
+    const created = await room("mafia", NAMES.slice(0, 5));
+    await act(created.roomId, created.seats[3], { type: "readiness.set", ready: false });
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+    const rejected = await host(created.roomId, created.hostToken, {
       type: "game.start",
-      force: true,
+      removePlayerIds: [created.seats[3].playerId],
     });
-    expect(forced.accepted).toBe(false);
-    if (!forced.accepted && "error" in forced) expect(forced.error).toContain("5");
+    expect(rejected.accepted).toBe(false);
+    if (!rejected.accepted && "error" in rejected) expect(rejected.error).toContain("5 ready");
+    const unchanged = await view(created.roomId, created.seats[0]);
+    expect(unchanged.phase).toBe("lobby");
+    expect(unchanged.players).toHaveLength(5);
   });
 });
 

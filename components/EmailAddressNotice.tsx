@@ -68,7 +68,7 @@ export function EmailAddressNotice({
         <button
           type="button"
           onClick={() => onAcceptSuggestion(suggestion)}
-          className="font-bold underline underline-offset-2"
+          className="inline-flex min-h-11 items-center font-bold underline underline-offset-2"
         >
           use {suggestion}
         </button>

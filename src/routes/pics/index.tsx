@@ -51,7 +51,7 @@ function PicsPage() {
         <div className="flex items-center justify-center font-mono text-sm">
           <Link
             to="/"
-            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+            className="inline-flex min-h-11 items-center px-2 font-bold tracking-tighter text-foreground transition-opacity hover:opacity-70"
           >
             {SITE_BRAND}
           </Link>

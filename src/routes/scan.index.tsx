@@ -60,7 +60,7 @@ function ScanIndexRoute() {
                   <Link
                     to="/scan/$token"
                     params={{ token: scanner.token }}
-                    className="min-h-10 rounded-lg bg-foreground px-4 py-2.5 font-mono text-micro text-background"
+                    className="inline-flex min-h-11 items-center rounded-lg bg-foreground px-4 py-2.5 font-mono text-micro text-background"
                   >
                     open
                   </Link>
@@ -70,7 +70,7 @@ function ScanIndexRoute() {
                       forgetScanner(scanner.token);
                       setScanners(readRememberedScanners());
                     }}
-                    className="min-h-10 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                    className="min-h-11 min-w-11 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors"
                   >
                     forget
                   </button>

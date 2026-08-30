@@ -1,6 +1,7 @@
 "use client";
 
 import type { NoteMeta } from "../types";
+import { AdminStatus } from "../../components/AdminStatus";
 
 type EditorResultsListProps = {
   notes: NoteMeta[];
@@ -42,11 +43,28 @@ export function EditorResultsList({
             <p className="font-mono text-xs">{note.slug}</p>
             <p className="font-serif text-sm leading-tight mt-1">{note.title}</p>
             <p className="font-mono text-micro theme-muted mt-1">
-              {note.type} · {note.visibility}
+              {note.type} ·{" "}
+              <AdminStatus
+                tone={
+                  note.visibility === "public"
+                    ? "positive"
+                    : note.visibility === "unlisted"
+                      ? "attention"
+                      : "neutral"
+                }
+              >
+                {note.visibility}
+              </AdminStatus>
               {note.featured ? " · featured" : ""}
-              {(activeShareCountBySlug[note.slug] ?? 0) > 0
-                ? ` · shared (${activeShareCountBySlug[note.slug]})`
-                : ""}
+              {(activeShareCountBySlug[note.slug] ?? 0) > 0 ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <AdminStatus tone="positive">
+                    shared ({activeShareCountBySlug[note.slug]})
+                  </AdminStatus>
+                </>
+              ) : null}
             </p>
             {note.tags.length > 0 ? (
               <p className="font-mono text-micro theme-faint mt-1">#{note.tags.join(" #")}</p>

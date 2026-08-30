@@ -41,30 +41,45 @@ function UploadPage() {
           <h1 className="font-mono font-bold tracking-tighter text-lg">milk & henny</h1>
           <p className="font-mono text-sm theme-muted mt-1 mb-8">upload</p>
 
+          <label htmlFor="upload-passphrase" className="sr-only">
+            Upload passphrase
+          </label>
           <input
+            id="upload-passphrase"
             name="pin"
             type="password"
             placeholder="enter upload passphrase"
             autoFocus
             required
-            className={`w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm text-center py-2 tracking-wider transition-colors placeholder:text-[var(--stone-400)] ${
+            aria-invalid={authFailed || undefined}
+            aria-describedby={authFailed ? "upload-auth-error" : undefined}
+            className={`min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 text-center font-mono text-base tracking-wider outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)] ${
               authFailed ? "border-[var(--prose-hashtag)]" : ""
             }`}
           />
 
           {authFailed ? (
-            <p className="font-mono text-xs mt-3 text-[var(--prose-hashtag)]">invalid passphrase</p>
+            <p
+              id="upload-auth-error"
+              className="mt-3 font-mono text-xs text-[var(--prose-hashtag)]"
+              role="alert"
+            >
+              invalid passphrase
+            </p>
           ) : null}
 
           <button
             type="submit"
-            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity"
+            className="mt-6 min-h-11 w-full rounded-md bg-[var(--foreground)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] transition-opacity hover:opacity-90"
           >
             unlock
           </button>
 
           <p className="mt-8 font-mono text-xs theme-muted">
-            <Link to="/" className="hover:text-[var(--foreground)] transition-colors">
+            <Link
+              to="/"
+              className="inline-flex min-h-11 items-center px-2 transition-colors hover:text-[var(--foreground)]"
+            >
               ← home
             </Link>
           </p>

@@ -28,7 +28,7 @@ function WordsPage() {
         <div className="flex items-center justify-center font-mono text-sm">
           <Link
             to="/"
-            className="font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
+            className="inline-flex min-h-11 items-center font-bold text-foreground tracking-tighter hover:opacity-70 transition-opacity"
           >
             {SITE_BRAND}
           </Link>

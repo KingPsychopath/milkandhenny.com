@@ -8,8 +8,11 @@ import type { GuessSubmissionResult } from "../shared/guess-submission";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
+import { GameActionDialog } from "../shared/GameActionDialog";
+import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { applyHotAndColdActionFn, joinHotAndColdRoomFn } from "./hot-and-cold.functions";
 import { buildHotAndColdInviteUrl } from "./hot-and-cold-invite";
+import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { heatStreaks } from "./hot-and-cold-rules";
 import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
@@ -144,9 +147,20 @@ export function HotAndColdRoomApp({
   const haptics = useWebHaptics();
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
-  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
+  const [confirmingStart, setConfirmingStart] = useState(false);
   const snapshot = live.snapshot;
   const turnIdentity = `${snapshot?.phase ?? "loading"}:${snapshot?.round?.id ?? ""}:${snapshot?.round?.currentPlayerId ?? ""}`;
+  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility(
+    `room:${snapshot?.round?.id ?? "waiting"}`,
+  );
+  useEffect(() => {
+    if (!snapshot) return;
+    writeExpiringLocalValue(
+      hotAndColdBrowserKeys.playerSession(credentials.roomId),
+      { ...credentials, expiresAt: snapshot.expiresAt, snapshot },
+      snapshot.expiresAt,
+    );
+  }, [credentials, snapshot]);
   const invite =
     typeof location === "undefined"
       ? ""
@@ -204,8 +218,8 @@ export function HotAndColdRoomApp({
     return result.errorCode === "duplicate_guess" ? "discarded" : "retryable";
   };
   const leave = async () => {
-    await send({ type: "player.leave" });
-    onLeave();
+    const result = await send({ type: "player.leave" });
+    if (result.accepted) onLeave();
   };
   if (!snapshot)
     return (
@@ -215,6 +229,7 @@ export function HotAndColdRoomApp({
     );
   const me = snapshot.players.find(({ id }) => id === credentials.playerId);
   const current = snapshot.players.find(({ id }) => id === snapshot.round?.currentPlayerId);
+  const notReady = snapshot.players.filter(({ ready, withdrawn }) => !withdrawn && !ready);
   const myTurn = snapshot.phase === "playing" && current?.id === credentials.playerId;
   const guesses = (snapshot.round?.guesses ?? []).map((guess) => ({
     ...guess,
@@ -367,7 +382,17 @@ export function HotAndColdRoomApp({
           {snapshot.canControl ? (
             <button
               type="button"
-              onClick={() => void send({ type: "game.start" })}
+              onClick={() =>
+                void send({ type: "game.start" }).then((result) => {
+                  if (
+                    !result.accepted &&
+                    result.errorCode === "players_not_ready" &&
+                    notReady.length > 0
+                  ) {
+                    setConfirmingStart(true);
+                  }
+                })
+              }
               className="mt-8 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-7 font-mono text-sm font-bold text-black"
             >
               start the hunt
@@ -379,6 +404,26 @@ export function HotAndColdRoomApp({
             <p role="status" className="mt-4 font-mono text-xs text-[var(--things-amber)]">
               {message}
             </p>
+          ) : null}
+          {confirmingStart ? (
+            <GameActionDialog
+              tone="light"
+              eyebrow="players not ready"
+              title="Start anyway?"
+              description={`${notReady.map(({ name }) => name).join(" and ")} ${
+                notReady.length === 1 ? "hasn’t" : "haven’t"
+              } confirmed they’re ready. Starting now removes them from this hunt.`}
+              cancelLabel="keep waiting"
+              confirmLabel="remove and start"
+              onCancel={() => setConfirmingStart(false)}
+              onConfirm={() => {
+                setConfirmingStart(false);
+                void send({
+                  type: "game.start",
+                  removePlayerIds: notReady.map(({ id }) => id),
+                });
+              }}
+            />
           ) : null}
         </main>
       </div>
@@ -448,7 +493,9 @@ export function HotAndColdRoomApp({
           round {snapshot.round?.number}/{snapshot.round?.total} · {live.connectionState}
         </span>
         <span className="flex items-center justify-self-end gap-1">
-          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
+          {snapshot.phase === "reveal" ? (
+            <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
+          ) : null}
           {snapshot.phase === "playing" && !me?.gaveUp ? (
             <GiveUpControl
               tone="dark"

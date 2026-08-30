@@ -1,10 +1,15 @@
 import { formatBytes } from "@/lib/shared/format";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
+import { headObject, presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import { getMimeType } from "@/features/media/processing.server";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
-import { getTransfer, saveTransfer } from "./store.server";
+import {
+  appendTransferFiles,
+  getTransfer,
+  MAX_TRANSFER_FILES,
+  updateTransferGrouping,
+} from "./store.server";
 import {
   applyTransferAssetGroups,
   isSafeTransferFilename,
@@ -41,6 +46,8 @@ export type AppendLimits = {
   maxFiles?: number;
   /** Per-file byte cap below the hard single-PUT limit. */
   maxFileBytes?: number;
+  /** Total live bytes after this batch is recorded. */
+  maxTotalBytes?: number;
 };
 
 type Prepared =
@@ -70,9 +77,18 @@ async function prepare(
   if (limits.maxFiles && rawFiles.length > limits.maxFiles) {
     return reject(`Upload at most ${limits.maxFiles} files at a time`);
   }
+  if (rawFiles.length > MAX_TRANSFER_FILES) {
+    return reject(`Upload at most ${MAX_TRANSFER_FILES} files at a time`);
+  }
+  if (rawFiles.some((file) => !file || typeof file !== "object" || typeof file.name !== "string")) {
+    return reject("Each file must have a safe filename");
+  }
 
   const transfer = await getTransfer(transferId);
   if (!transfer) return reject("Transfer not found or expired", 404);
+  if (transfer.files.length + rawFiles.length > MAX_TRANSFER_FILES) {
+    return reject(`A transfer can contain at most ${MAX_TRANSFER_FILES} files`, 409);
+  }
 
   const remainingTtlSeconds = Math.floor(
     (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
@@ -85,7 +101,6 @@ async function prepare(
   );
 
   const maxBytes = Math.min(limits.maxFileBytes ?? MAX_SINGLE_PUT_BYTES, MAX_SINGLE_PUT_BYTES);
-  const existingNames = new Set(transfer.files.map((f) => f.filename));
   const existingArchivedNames = new Set(
     transfer.files.flatMap((f) =>
       [f.filename, f.originalFilename].filter(
@@ -122,7 +137,7 @@ async function prepare(
     if (seenNames.has(file.name)) {
       return reject(`Duplicate filename in upload selection: ${file.name}`);
     }
-    if (existingNames.has(file.name)) {
+    if (existingArchivedNames.has(file.name)) {
       return reject(`Filename already exists in transfer: ${file.name}`);
     }
     seenNames.add(file.name);
@@ -137,6 +152,23 @@ async function prepare(
         return reject(`Archived filename already exists in transfer: ${file.originalName}`);
       }
       seenArchivedNames.add(file.originalName);
+    }
+  }
+
+  if (limits.maxTotalBytes) {
+    const existingBytes = transfer.files.reduce(
+      (total, file) => total + (file.storedBytes ?? file.size),
+      0,
+    );
+    const incomingBytes = files.reduce(
+      (total, file) => total + file.size + (file.originalSize ?? 0),
+      0,
+    );
+    if (existingBytes + incomingBytes > limits.maxTotalBytes) {
+      return reject(
+        `This transfer has reached its ${formatBytes(limits.maxTotalBytes)} limit`,
+        409,
+      );
     }
   }
 
@@ -215,12 +247,40 @@ export async function appendFinalize(
 ): Promise<Response> {
   const prepared = await prepare(transferId, rawFiles, limits);
   if (!prepared.ok) return prepared.response;
-  const { files, transfer, remainingTtlSeconds } = prepared;
+  const { files, transfer } = prepared;
 
   try {
-    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) =>
-      processUploadedFile(file, transferId),
-    );
+    const uploadedObjects = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
+      const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
+      const archivedKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+      const [primary, archived] = await Promise.all([
+        headObject(primaryKey, { scope: "private" }),
+        archivedKey ? headObject(archivedKey, { scope: "private" }) : Promise.resolve(null),
+      ]);
+      return { file, primary, archived };
+    });
+    for (const { file, primary, archived } of uploadedObjects) {
+      if (!primary.exists || primary.size !== file.size) {
+        return Response.json(
+          { error: `Uploaded object size does not match the reservation for ${file.name}` },
+          { status: 409 },
+        );
+      }
+      if (file.originalName && (!archived?.exists || archived.size !== file.originalSize)) {
+        return Response.json(
+          { error: `Archived original size does not match the reservation for ${file.name}` },
+          { status: 409 },
+        );
+      }
+    }
+
+    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
+      const result = await processUploadedFile(file, transferId);
+      return {
+        ...result,
+        file: { ...result.file, storedBytes: file.size + (file.originalSize ?? 0) },
+      };
+    });
     const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
     for (const result of results) {
       const k = result.file.kind;
@@ -231,14 +291,38 @@ export async function appendFinalize(
       else counts.other++;
     }
 
-    const mergedFiles = sortTransferFiles([...transfer.files, ...results.map((r) => r.file)]);
-    const groupedTransfer = applyTransferAssetGroups(mergedFiles);
-    const updatedTransfer = {
-      ...transfer,
-      files: groupedTransfer.files,
-      groups: groupedTransfer.groups,
-    };
-    await saveTransfer(updatedTransfer, remainingTtlSeconds);
+    const appended = await appendTransferFiles(
+      transferId,
+      results.map((result) => result.file),
+      { maxFiles: MAX_TRANSFER_FILES, maxTotalBytes: limits.maxTotalBytes },
+    );
+    if (!("transfer" in appended)) {
+      if (appended.status === "missing") {
+        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
+      }
+      if (appended.status === "limit") {
+        return Response.json(
+          { error: "That upload would exceed this transfer's limits" },
+          { status: 409 },
+        );
+      }
+      return Response.json(
+        { error: "One of those filenames was added while this upload was finishing" },
+        { status: 409 },
+      );
+    }
+
+    let latest = appended.transfer;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const grouped = applyTransferAssetGroups(sortTransferFiles(latest.files));
+      if (await updateTransferGrouping(transferId, grouped.files, grouped.groups)) break;
+      const refreshed = await getTransfer(transferId);
+      if (!refreshed) {
+        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
+      }
+      latest = refreshed;
+    }
+    const updatedTransfer = (await getTransfer(transferId)) ?? latest;
 
     const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
     const processingCounts = buildTransferProcessingCounts(results.map((r) => r.file));
@@ -249,7 +333,7 @@ export async function appendFinalize(
       transfer: {
         id: transferId,
         title: transfer.title,
-        fileCount: groupedTransfer.files.length,
+        fileCount: updatedTransfer.files.length,
         expiresAt: transfer.expiresAt,
       },
       addedCount: results.length,

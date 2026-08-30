@@ -33,6 +33,7 @@ import { recordScannerDevice, resolveScannerLink } from "./scanner-links.server"
 import { listTicketsForEvent } from "./store.server";
 import { getDoorDataFn } from "./tickets.functions";
 import type { DoorDataResult } from "./tickets.functions";
+import { ticketPublicId } from "./types";
 
 /**
  * Server functions for the shared-link scanner page.
@@ -161,7 +162,7 @@ export const getScannerPageFn = createServerFn({ method: "GET" })
     const tickets: CheckpointDirectoryTicket[] = eventTickets
       .filter((ticket) => ticket.status === "valid")
       .map((ticket) => ({
-        id: ticket.id,
+        id: ticketPublicId(ticket),
         holderName: ticket.holderName,
         ticketTypeName: typeNames.get(ticket.ticketTypeId) ?? "Ticket",
         allowance: checkpointAllowanceFor(checkpoint, ticket.ticketTypeId),

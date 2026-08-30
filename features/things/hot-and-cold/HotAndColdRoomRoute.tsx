@@ -5,6 +5,10 @@ import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HotAndColdRoomApp, JoinHotAndColdRoom } from "./HotAndColdRoomApp";
 import type { HotAndColdCredentials } from "./types";
+import {
+  releaseGamePoolMembership,
+  useGamePoolRoomBackNavigation,
+} from "../pool/pool-session.client";
 
 export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
   const key = hotAndColdBrowserKeys.playerSession(roomId);
@@ -22,6 +26,11 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (credentials) writeExpiringLocalValue(key, credentials, credentials.expiresAt);
   }, [credentials, key]);
+  useGamePoolRoomBackNavigation({
+    enabled: Boolean(credentials?.snapshot.managed),
+    game: "hot-and-cold",
+    roomId,
+  });
   if (credentials === undefined || joinToken === undefined)
     return (
       <div className="hot-and-cold grid min-h-svh place-items-center font-mono text-xs">
@@ -33,9 +42,14 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
   return (
     <HotAndColdRoomApp
       credentials={credentials}
-      onLeave={() => {
+      onLeave={async () => {
         localStorage.removeItem(key);
-        setCredentials(null);
+        try {
+          const entrance = await releaseGamePoolMembership("hot-and-cold", roomId);
+          window.location.assign(entrance ?? "/things/hot-and-cold");
+        } catch {
+          setCredentials(null);
+        }
       }}
     />
   );

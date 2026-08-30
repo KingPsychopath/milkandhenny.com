@@ -66,7 +66,7 @@ export async function getScoring(eventSlug: string): Promise<ScoringSettings> {
 }
 
 export async function processScheduledScoringTransitions(now = new Date()): Promise<number> {
-  return transaction(async (client) => {
+  const transitions = await transaction(async (client) => {
     const changed = await client.query<{
       event_slug: string;
       from_state: ScoringState;
@@ -109,8 +109,14 @@ export async function processScheduledScoringTransitions(now = new Date()): Prom
         ],
       );
     }
-    return changed.rows.length;
+    return changed.rows;
   });
+  for (const transition of transitions) {
+    if (transition.from_state !== "live" && transition.to_state === "live") {
+      await retryHeldOfficialGameResultsForEvent(transition.event_slug);
+    }
+  }
+  return transitions.length;
 }
 
 export async function changeScoringState(input: {
@@ -141,7 +147,7 @@ export async function changeScoringState(input: {
       JSON.stringify({ from: current.state, to: input.state, reason: input.reason ?? null }),
     ],
   );
-  if (current.state === "frozen" && input.state === "live") {
+  if (current.state !== "live" && input.state === "live") {
     await retryHeldOfficialGameResultsForEvent(input.eventSlug);
   }
   return { ok: true, value: next };

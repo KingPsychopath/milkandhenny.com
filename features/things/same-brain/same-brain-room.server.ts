@@ -63,6 +63,24 @@ export function applySameBrainHostAction(
         playerId: input.action.playerId,
       }).catch(() => undefined);
     }
+    if (result.accepted && input.action.type === "game.start") {
+      const remainingPlayerIds = new Set(result.snapshot.players.map(({ id }) => id));
+      const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
+        (playerId) => !remainingPlayerIds.has(playerId),
+      );
+      if (removedPlayerIds.length > 0) {
+        await markGamePoolPlayersRemoved({
+          roomId: input.roomId,
+          playerIds: removedPlayerIds,
+          actionId: input.action.actionId,
+        }).catch(() => undefined);
+        for (const playerId of removedPlayerIds)
+          await publishMultiplayerRoomTermination("same-brain", input.roomId, {
+            reason: "removed",
+            playerId,
+          }).catch(() => undefined);
+      }
+    }
     return result;
   });
 }

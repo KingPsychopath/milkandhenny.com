@@ -9,6 +9,7 @@ import {
   type PitchReminderTemplate,
 } from "@/features/things/pitches/types";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -198,13 +199,13 @@ export function PitchRemindersPanel({
       <div className="mt-6 grid gap-6 border-y theme-border-faint py-5 lg:grid-cols-[1fr_auto]">
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs">
-            <span className={snapshot?.settings.enabled ? "text-foreground" : "theme-muted"}>
+            <AdminStatus tone={snapshot?.settings.enabled ? "positive" : "neutral"}>
               automatic nudges {snapshot?.settings.enabled ? "on" : "off"}
-            </span>
+            </AdminStatus>
             <span className="theme-faint">·</span>
-            <span className="theme-muted">
+            <AdminStatus tone={(snapshot?.eligibleCount ?? 0) > 0 ? "attention" : "neutral"}>
               {snapshot?.eligibleCount ?? 0} ready for the next daily run
-            </span>
+            </AdminStatus>
           </div>
           <p className="mt-2 font-mono text-micro theme-muted">
             {snapshot?.nextEligibleAt
@@ -214,7 +215,12 @@ export function PitchRemindersPanel({
         </div>
         <div className="font-mono text-micro theme-muted lg:text-right">
           <p>last run {when(snapshot?.settings.lastRunAt ?? null)}</p>
-          <p className="mt-1">{snapshot?.candidates.length ?? 0} active unfinished pitches</p>
+          <AdminStatus
+            tone={(snapshot?.candidates.length ?? 0) > 0 ? "attention" : "neutral"}
+            className="mt-1"
+          >
+            {snapshot?.candidates.length ?? 0} active unfinished pitches
+          </AdminStatus>
         </div>
       </div>
 
@@ -367,15 +373,17 @@ export function PitchRemindersPanel({
                   {when(candidate.updatedAt)}
                 </span>
               </span>
-              <span className="shrink-0 text-right font-mono text-micro theme-muted">
-                <span className={candidate.automaticEligible ? "block text-foreground" : "block"}>
+              <span className="shrink-0 text-right font-mono text-micro">
+                <AdminStatus tone="attention" className="justify-end">
                   {candidate.automaticEligible
                     ? "ready automatically"
                     : candidate.automaticCount >= (snapshot?.settings.maxAutomatic ?? 3)
                       ? "automatic limit reached"
                       : `next ${when(candidate.nextEligibleAt)}`}
+                </AdminStatus>
+                <span className="mt-1 block theme-muted">
+                  last nudge {when(candidate.lastSentAt)}
                 </span>
-                <span className="mt-1 block">last nudge {when(candidate.lastSentAt)}</span>
               </span>
             </label>
           ))}
@@ -398,13 +406,9 @@ export function PitchRemindersPanel({
                 key={item.id}
                 className="flex flex-wrap items-center justify-between gap-2 py-3 font-mono text-micro"
               >
-                <span
-                  className={
-                    item.action === "failed" ? "text-[var(--prose-hashtag)]" : "theme-muted"
-                  }
-                >
+                <AdminStatus tone={item.action === "failed" ? "danger" : "attention"}>
                   {item.action} · {item.title} · {item.ownerEmail}
-                </span>
+                </AdminStatus>
                 <span className="theme-faint">
                   {item.template ? TEMPLATE_LABELS[item.template] : ""} · {when(item.createdAt)}
                 </span>

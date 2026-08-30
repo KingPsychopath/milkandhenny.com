@@ -3,6 +3,14 @@
 import { Link } from "@tanstack/react-router";
 
 import type { SystemCapabilities } from "@/features/system/capabilities";
+import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
+import { canAccessAdminDestination } from "../admin-permissions";
+import {
+  AdminStatus,
+  adminToneBorderClass,
+  adminToneForStatus,
+  type AdminStatusTone,
+} from "./AdminStatus";
 import type { AdminDestination } from "./AdminSectionNav";
 
 type ContentSnapshot = {
@@ -197,6 +205,11 @@ function formatCheckedAt(value: string | undefined): string {
   });
 }
 
+function attentionTone(item: AttentionItem): AdminStatusTone {
+  const tone = adminToneForStatus(item.title);
+  return tone === "neutral" ? "attention" : tone;
+}
+
 export function AdminOverviewPanel({
   content,
   system,
@@ -204,6 +217,7 @@ export function AdminOverviewPanel({
   unresolvedByCategory,
   onRefresh,
   onNavigate,
+  permissions,
 }: {
   content: ContentSnapshot | null;
   system: OperationsSnapshot | null;
@@ -211,148 +225,180 @@ export function AdminOverviewPanel({
   unresolvedByCategory: Record<string, number>;
   onRefresh: () => void;
   onNavigate: (destination: AdminDestination) => void;
+  permissions: GlobalAdminPermissionSet;
 }) {
-  const attention = getAdminAttentionItems(content, system, unresolvedByCategory);
-  const status = system?.status ?? "checking";
+  const attention = getAdminAttentionItems(content, system, unresolvedByCategory).filter((item) =>
+    canAccessAdminDestination(item.destination, permissions),
+  );
+  const status = system?.status ?? (loading ? "checking" : "unavailable");
+  const overviewTone = attention.length > 0 ? "attention" : adminToneForStatus(status);
+  const overviewAlertClass =
+    system && overviewTone !== "positive" && overviewTone !== "neutral"
+      ? `border-l-2 pl-4 ${adminToneBorderClass(overviewTone)}`
+      : "";
 
   return (
     <div className="space-y-6">
       <section aria-labelledby="control-room-heading" className="border-y theme-border py-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              control room
-            </p>
-            <h2 id="control-room-heading" className="mt-2 font-serif text-3xl font-semibold">
-              {attention.length > 0
-                ? `${attention.length} ${attention.length === 1 ? "item" : "items"} to review`
-                : "Everything looks clear"}
-            </h2>
-            <p className="mt-2 font-mono text-xs theme-muted">
-              System {status} · checked {formatCheckedAt(system?.timestamp)}
-            </p>
+        <div className={overviewAlertClass}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+                control room
+              </p>
+              <h2 id="control-room-heading" className="mt-2 font-serif text-3xl font-semibold">
+                {!system
+                  ? loading
+                    ? "Checking the workspace"
+                    : "System status unavailable"
+                  : attention.length > 0
+                    ? `${attention.length} ${attention.length === 1 ? "item" : "items"} to review`
+                    : "Everything looks clear"}
+              </h2>
+              <p className="mt-2 font-mono text-xs theme-muted">
+                <AdminStatus tone={adminToneForStatus(status)}>system {status}</AdminStatus>
+                <span> · checked {formatCheckedAt(system?.timestamp)}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onRefresh}
+              className="min-h-11 shrink-0 font-mono text-xs theme-muted transition-opacity hover:opacity-70 disabled:opacity-50"
+              aria-label="Refresh control room status"
+            >
+              {loading ? "checking..." : "refresh"}
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={onRefresh}
-            className="min-h-11 shrink-0 font-mono text-xs theme-muted transition-opacity hover:opacity-70 disabled:opacity-50"
-            aria-label="Refresh control room status"
-          >
-            {loading ? "checking..." : "refresh"}
-          </button>
-        </div>
 
-        {attention.length > 0 ? (
-          <ol className="mt-5 space-y-2">
-            {attention.map((item) => (
-              <li key={item.id} className="border-t theme-border pt-3 first:border-t-0 first:pt-0">
-                <button
-                  type="button"
-                  onClick={() => onNavigate(item.destination)}
-                  className="group w-full min-h-11 text-left"
+          {attention.length > 0 ? (
+            <ol className="mt-5 space-y-2">
+              {attention.map((item) => (
+                <li
+                  key={item.id}
+                  className="border-t theme-border pt-3 first:border-t-0 first:pt-0"
                 >
-                  <span className="font-mono text-sm text-[var(--prose-hashtag)]">
-                    {item.title}
-                  </span>
-                  <span className="mt-1 block font-mono text-xs leading-relaxed theme-muted">
-                    {item.detail}
-                  </span>
-                  <span className="mt-1 block font-mono text-micro theme-faint transition-opacity group-hover:opacity-70">
-                    {item.actionLabel} →
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : system ? (
-          <p className="mt-5 font-mono text-xs leading-relaxed theme-muted">
-            Required services responded, delivery queues are moving, and no content or security
-            warnings need action.
-          </p>
-        ) : (
-          <p className="mt-5 font-mono text-xs theme-muted" role="status">
-            Checking services and queues…
-          </p>
-        )}
-      </section>
-
-      <section aria-labelledby="common-actions-heading">
-        <h2 id="common-actions-heading" className="font-mono text-sm font-bold">
-          common actions
-        </h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <Link
-            to="/admin/editor"
-            search={{ slug: undefined }}
-            className="min-h-24 border-y theme-border px-1 py-4 transition-opacity hover:opacity-70"
-          >
-            <span className="font-mono text-xs font-bold">write or edit</span>
-            <span className="mt-2 block font-mono text-micro theme-muted">
-              words, media, and sharing
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={() => onNavigate({ section: "events" })}
-            className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
-          >
-            <span className="font-mono text-xs font-bold">run an event</span>
-            <span className="mt-2 block font-mono text-micro theme-muted">
-              tickets, scanners, and pitches
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate({ section: "transfers" })}
-            className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
-          >
-            <span className="font-mono text-xs font-bold">manage transfers</span>
-            <span className="mt-2 block font-mono text-micro theme-muted">
-              drops and media processing
-            </span>
-          </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(item.destination)}
+                    className="group w-full min-h-11 text-left"
+                  >
+                    <AdminStatus tone={attentionTone(item)} className="font-mono text-sm">
+                      {item.title}
+                    </AdminStatus>
+                    <span className="mt-1 block font-mono text-xs leading-relaxed theme-muted">
+                      {item.detail}
+                    </span>
+                    <span className="mt-1 block font-mono text-micro theme-faint transition-opacity group-hover:opacity-70">
+                      {item.actionLabel} →
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          ) : system ? (
+            <p className="mt-5 font-mono text-xs leading-relaxed theme-muted">
+              Required services responded, delivery queues are moving, and no content or security
+              warnings need action.
+            </p>
+          ) : loading ? (
+            <p className="mt-5 font-mono text-xs theme-muted" role="status">
+              Checking services and queues…
+            </p>
+          ) : (
+            <p className="mt-5 font-mono text-xs leading-relaxed theme-muted">
+              No system snapshot is available. Refresh to try the service and queue checks again.
+            </p>
+          )}
         </div>
       </section>
 
-      <section aria-labelledby="site-snapshot-heading">
-        <h2 id="site-snapshot-heading" className="font-mono text-sm font-bold">
-          site snapshot
-        </h2>
-        <dl className="mt-3 grid grid-cols-2 gap-3 font-mono text-sm sm:grid-cols-3">
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">words</dt>
-            <dd className="text-lg">{content?.blog.totalPosts ?? "—"}</dd>
+      {permissions.manageContent || permissions.viewOperations ? (
+        <section aria-labelledby="common-actions-heading">
+          <h2 id="common-actions-heading" className="font-mono text-sm font-bold">
+            common actions
+          </h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {permissions.manageContent ? (
+              <Link
+                to="/admin/editor"
+                search={{ slug: undefined }}
+                className="min-h-24 border-y theme-border px-1 py-4 transition-opacity hover:opacity-70"
+              >
+                <span className="font-mono text-xs font-bold">write or edit</span>
+                <span className="mt-2 block font-mono text-micro theme-muted">
+                  words, media, and sharing
+                </span>
+              </Link>
+            ) : null}
+            {permissions.viewOperations ? (
+              <button
+                type="button"
+                onClick={() => onNavigate({ section: "events" })}
+                className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
+              >
+                <span className="font-mono text-xs font-bold">run an event</span>
+                <span className="mt-2 block font-mono text-micro theme-muted">
+                  tickets, scanners, and pitches
+                </span>
+              </button>
+            ) : null}
+            {permissions.manageContent ? (
+              <button
+                type="button"
+                onClick={() => onNavigate({ section: "transfers" })}
+                className="min-h-24 border-y theme-border px-1 py-4 text-left transition-opacity hover:opacity-70"
+              >
+                <span className="font-mono text-xs font-bold">manage transfers</span>
+                <span className="mt-2 block font-mono text-micro theme-muted">
+                  drops and media processing
+                </span>
+              </button>
+            ) : null}
           </div>
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">albums</dt>
-            <dd className="text-lg">{content?.gallery.totalAlbums ?? "—"}</dd>
-          </div>
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">photos</dt>
-            <dd className="text-lg">{content?.gallery.totalPhotos ?? "—"}</dd>
-          </div>
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">latest word</dt>
-            <dd>{formatDate(content?.blog.latestPostDate)}</dd>
-          </div>
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">latest album</dt>
-            <dd>{formatDate(content?.gallery.latestAlbumDate)}</dd>
-          </div>
-          <div className="rounded-md border theme-border p-3">
-            <dt className="theme-muted text-xs">hero images</dt>
-            <dd className="text-lg">{content?.blog.postsWithImages ?? "—"}</dd>
-          </div>
-        </dl>
-        <button
-          type="button"
-          onClick={() => onNavigate({ section: "content" })}
-          className="mt-3 min-h-11 font-mono text-xs theme-muted transition-opacity hover:opacity-70"
-        >
-          open full content detail
-        </button>
-      </section>
+        </section>
+      ) : null}
+
+      {permissions.manageContent ? (
+        <section aria-labelledby="site-snapshot-heading">
+          <h2 id="site-snapshot-heading" className="font-mono text-sm font-bold">
+            site snapshot
+          </h2>
+          <dl className="mt-3 grid grid-cols-2 gap-3 font-mono text-sm sm:grid-cols-3">
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">words</dt>
+              <dd className="text-lg">{content?.blog.totalPosts ?? "—"}</dd>
+            </div>
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">albums</dt>
+              <dd className="text-lg">{content?.gallery.totalAlbums ?? "—"}</dd>
+            </div>
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">photos</dt>
+              <dd className="text-lg">{content?.gallery.totalPhotos ?? "—"}</dd>
+            </div>
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">latest word</dt>
+              <dd>{formatDate(content?.blog.latestPostDate)}</dd>
+            </div>
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">latest album</dt>
+              <dd>{formatDate(content?.gallery.latestAlbumDate)}</dd>
+            </div>
+            <div className="rounded-md border theme-border p-3">
+              <dt className="theme-muted text-xs">hero images</dt>
+              <dd className="text-lg">{content?.blog.postsWithImages ?? "—"}</dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            onClick={() => onNavigate({ section: "content" })}
+            className="mt-3 min-h-11 font-mono text-xs theme-muted transition-opacity hover:opacity-70"
+          >
+            open full content detail
+          </button>
+        </section>
+      ) : null}
     </div>
   );
 }

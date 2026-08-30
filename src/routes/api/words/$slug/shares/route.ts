@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { createShareLink, listShareLinks } from "@/features/words/share.server";
+import { createShareLink, listShareLinks, toShareLinkView } from "@/features/words/share.server";
 import { getWordMeta } from "@/features/words/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -17,7 +17,7 @@ async function handleGET(request: Request, { params }: Params) {
   const { slug } = await params;
   try {
     const links = await listShareLinks(slug);
-    return Response.json({ links });
+    return Response.json({ links: links.map(toShareLinkView) });
   } catch (error) {
     return apiErrorFromRequest(request, "words.share.list", "Failed to list share links", error, {
       slug,
@@ -52,7 +52,7 @@ async function handlePOST(request: Request, { params }: Params) {
       pinRequired: body.pinRequired,
       pin: body.pin,
     });
-    return Response.json({ link, token }, { status: 201 });
+    return Response.json({ link: toShareLinkView(link), token }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create share link";
     if (/pin|required/i.test(message)) {

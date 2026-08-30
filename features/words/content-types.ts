@@ -1,7 +1,12 @@
 import type { WordType } from "@/features/words/types";
 
-export type WordVisibility = "public" | "unlisted" | "private";
+export const WORD_VISIBILITIES = ["public", "unlisted", "private"] as const;
+export type WordVisibility = (typeof WORD_VISIBILITIES)[number];
 export type NoteVisibility = WordVisibility;
+
+export function isWordVisibility(value: unknown): value is WordVisibility {
+  return typeof value === "string" && WORD_VISIBILITIES.includes(value as WordVisibility);
+}
 
 export interface WordMeta {
   slug: string;
@@ -34,6 +39,11 @@ export interface ShareLink {
   updatedAt: string;
   createdByRole: "admin";
 }
+
+export type ShareLinkView = Omit<
+  ShareLink,
+  "tokenHash" | "pinHash" | "pinUpdatedAt" | "createdByRole"
+>;
 
 export interface WordRecord {
   meta: WordMeta;

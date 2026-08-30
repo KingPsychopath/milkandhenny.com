@@ -2,19 +2,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { cleanupShareLinksForSlug, listTrackedShareSlugs } from "@/features/words/share.server";
-import { listWords } from "@/features/words/store.server";
+import { listAllWords } from "@/features/words/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
 export const dynamic = "force-dynamic";
 
 async function collectCleanupSlugs(): Promise<string[]> {
-  const [trackedSlugs, wordsResult] = await Promise.all([
+  const [trackedSlugs, words] = await Promise.all([
     listTrackedShareSlugs(),
-    listWords({ includeNonPublic: true, limit: 2000 }),
+    listAllWords({ includeNonPublic: true }),
   ]);
   const slugs = new Set<string>(trackedSlugs);
-  for (const word of wordsResult.words) {
+  for (const word of words) {
     slugs.add(word.slug);
   }
   return [...slugs].sort();

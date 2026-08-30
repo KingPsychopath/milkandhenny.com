@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   dequeueTransferMediaJobs,
+  deleteObjects,
   enqueueTransferMediaJob,
   getTransfer,
   getTransferMediaQueueLength,
@@ -11,6 +12,7 @@ const {
   uploadBuffer,
 } = vi.hoisted(() => ({
   dequeueTransferMediaJobs: vi.fn(),
+  deleteObjects: vi.fn(),
   enqueueTransferMediaJob: vi.fn(),
   getTransfer: vi.fn(),
   getTransferMediaQueueLength: vi.fn(),
@@ -21,6 +23,7 @@ const {
 }));
 
 vi.mock("@/lib/platform/r2.server", () => ({
+  deleteObjects,
   downloadBuffer: vi.fn().mockResolvedValue(Buffer.from("raw")),
   uploadBuffer,
 }));
@@ -107,6 +110,8 @@ vi.mock("@/features/transfers/media-backends/local.server", () => ({
 describe("worker media processing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    updateTransferFile.mockResolvedValue(true);
+    deleteObjects.mockResolvedValue(2);
     getTransferMediaQueueLength.mockResolvedValue(0);
   });
 
@@ -222,6 +227,73 @@ describe("worker media processing", () => {
       expect.objectContaining({ id: "photo-2", processingStatus: "worker_done" }),
     );
     expect(result.succeeded).toBe(1);
+  });
+
+  it("cleans generated variants when the file is deleted during processing", async () => {
+    const { runTransferMediaJobs } =
+      await import("@/features/transfers/media-backends/worker.server");
+    const expectedThumbKey = "transfers/transfer-1/thumb/photo-2.webp";
+    const expectedFullKey = "transfers/transfer-1/full/photo-2.webp";
+
+    dequeueTransferMediaJobs.mockResolvedValue([
+      {
+        transferId: "transfer-1",
+        mediaId: "photo-2",
+        file: {
+          name: "photo.jpg",
+          mediaId: "photo-2",
+          size: 512,
+          type: "image/x-adobe-dng",
+          originalName: "photo.dng",
+        },
+        storageKey: "transfers/transfer-1/originals/photo.dng",
+        expectedThumbKey,
+        expectedFullKey,
+        mimeType: "image/x-adobe-dng",
+        processingRoute: "worker_raw",
+        attempt: 1,
+        enqueuedAt: new Date().toISOString(),
+      },
+    ]);
+    getTransfer.mockResolvedValue({
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "photo-2",
+          filename: "photo.jpg",
+          kind: "image",
+          size: 512,
+          mimeType: "image/x-adobe-dng",
+          storageKey: "transfers/transfer-1/originals/photo.dng",
+          previewStatus: "original_only",
+          processingStatus: "queued",
+          processingRoute: "worker_raw",
+        },
+      ],
+    });
+    resolveImageProcessingSource.mockResolvedValue({
+      buffer: Buffer.from("decoded"),
+      takenAt: null,
+    });
+    processImageVariants.mockResolvedValue({
+      thumb: { buffer: Buffer.from("thumb"), contentType: "image/webp" },
+      full: { buffer: Buffer.from("full"), contentType: "image/webp" },
+      width: 3000,
+      height: 2000,
+      takenAt: null,
+    });
+    updateTransferFile.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    const result = await runTransferMediaJobs(1);
+
+    expect(deleteObjects).toHaveBeenCalledWith([expectedThumbKey, expectedFullKey], {
+      scope: "private",
+    });
+    expect(result).toMatchObject({ succeeded: 0, skipped: 1 });
   });
 
   it("marks stale exhausted files as failed instead of leaving them queued", async () => {

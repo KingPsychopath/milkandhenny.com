@@ -20,6 +20,12 @@ export type AdminScoringPool = {
   available: number;
 };
 
+export type AdminScoringTeam = {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+};
+
 export type AdminStaffDevice = {
   deviceId: string;
   lastSeenAt: string;
@@ -66,6 +72,7 @@ export type ScoringData = {
     alerts: Array<{ code: string; severity: "warning" | "critical"; message: string }>;
   };
   pools: AdminScoringPool[];
+  teams: AdminScoringTeam[];
   held: { id: string; sourceType: string; createdAt: string }[];
   heldOfficialResults: Array<{
     id: string;

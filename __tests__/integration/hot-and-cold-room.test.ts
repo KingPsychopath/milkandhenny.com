@@ -103,4 +103,69 @@ describe("Hot and Cold room", () => {
     expect(result.snapshot?.round?.currentPlayerId).toBe(host.playerId);
     expect(result.snapshot?.players.find(({ id }) => id === guest.playerId)?.gaveUp).toBe(true);
   });
+
+  it("starts without only the explicitly confirmed absent players", async () => {
+    const host = await roomEngine.createHotAndColdRoom({ hostName: "Eli" });
+    const readyGuest = await roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Flo" });
+    const absent = await roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Gia" });
+    if (!readyGuest.ok || !absent.ok) throw new Error("Could not join the test room");
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: absent.playerId,
+      playerToken: absent.playerToken,
+      action: { type: "readiness.set", actionId: "absent", ready: false },
+    });
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: { type: "game.start", actionId: "nudge-absent" },
+    });
+
+    const started = await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: {
+        type: "game.start",
+        actionId: "remove-absent",
+        removePlayerIds: [absent.playerId],
+      },
+    });
+
+    expect(started).toMatchObject({ ok: true, accepted: true });
+    expect(started.snapshot?.players.some(({ id }) => id === absent.playerId)).toBe(false);
+  });
+
+  it("keeps the lobby intact when removing an absent player would go below the minimum", async () => {
+    const host = await roomEngine.createHotAndColdRoom({ hostName: "Hal" });
+    const absent = await roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Ivy" });
+    if (!absent.ok) throw new Error("Could not join the test room");
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: absent.playerId,
+      playerToken: absent.playerToken,
+      action: { type: "readiness.set", actionId: "absent-two", ready: false },
+    });
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: { type: "game.start", actionId: "nudge-two" },
+    });
+    const rejected = await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: {
+        type: "game.start",
+        actionId: "remove-two",
+        removePlayerIds: [absent.playerId],
+      },
+    });
+
+    expect(rejected).toMatchObject({ ok: true, accepted: false });
+    expect(rejected.snapshot).toMatchObject({ phase: "lobby" });
+    expect(rejected.snapshot?.players).toHaveLength(2);
+  });
 });

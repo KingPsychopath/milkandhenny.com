@@ -6,6 +6,8 @@ import {
   GLOBAL_ADMIN_ROLE_PRESETS,
   type GlobalAdminRole,
 } from "@/features/attendee-operations/types";
+import { useActionDialog } from "@/hooks/useActionDialog";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 const ADMIN_ROLE_PRESETS = Object.keys(GLOBAL_ADMIN_ROLE_PRESETS) as GlobalAdminRole[];
 
@@ -42,15 +44,27 @@ export function AdminAccessSettings({
   const [expiresAt, setExpiresAt] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { prompt, dialog } = useActionDialog();
 
   const load = useCallback(async () => {
-    const response = await authFetch("/api/admin/operations/access");
-    const body = (await response.json().catch(() => ({}))) as {
-      grants?: Grant[];
-      error?: string;
-    };
-    if (!response.ok) throw new Error(body.error ?? "Admin access could not be loaded");
-    setGrants(body.grants ?? []);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const response = await authFetch("/api/admin/operations/access");
+      const body = (await response.json().catch(() => ({}))) as {
+        grants?: Grant[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error ?? "Admin access could not be loaded");
+      setGrants(body.grants ?? []);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Admin access could not be loaded");
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   }, [authFetch]);
 
   useEffect(() => {
@@ -99,9 +113,20 @@ export function AdminAccessSettings({
   }
 
   async function revoke(grant: Grant) {
-    const revocationReason = window
-      .prompt(`Why are you revoking ${grant.emailHint ?? grant.name ?? "this grant"}?`)
-      ?.trim();
+    const revocationReason = (
+      await prompt({
+        eyebrow: "administrator access",
+        title: `Revoke ${grant.name ?? grant.emailHint ?? "this administrator"}?`,
+        description:
+          "Their administrator authority ends immediately. Existing audit history remains.",
+        label: "reason for the audit log",
+        required: true,
+        confirmLabel: "revoke access",
+        intent: "danger",
+        validate: (value) =>
+          value.trim().length < 3 ? "Enter a reason of at least 3 characters." : null,
+      })
+    )?.trim();
     if (!revocationReason) return;
     setBusy(true);
     try {
@@ -201,7 +226,8 @@ export function AdminAccessSettings({
             <div className="min-w-0 flex-1">
               <p className="font-serif">{grant.name ?? grant.emailHint ?? "Unnamed person"}</p>
               <p className="mt-1 font-mono text-micro theme-muted">
-                {grant.rolePreset} · {grant.status}
+                {grant.rolePreset} ·{" "}
+                <AdminStatus tone={adminToneForStatus(grant.status)}>{grant.status}</AdminStatus>
                 {grant.emailHint ? ` · ${grant.emailHint}` : ""}
               </p>
             </div>
@@ -217,7 +243,30 @@ export function AdminAccessSettings({
             ) : null}
           </li>
         ))}
+        {!loading && !loadError && grants.length === 0 ? (
+          <li className="py-4 font-mono text-xs theme-muted">No named administrators yet.</li>
+        ) : null}
       </ul>
+      {loading ? (
+        <p className="mt-3 font-mono text-xs theme-muted" role="status">
+          loading administrator access…
+        </p>
+      ) : null}
+      {loadError ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3" role="alert">
+          <p className="font-mono text-xs">
+            <AdminStatus tone="danger">{loadError}</AdminStatus>
+          </p>
+          <button
+            type="button"
+            onClick={() => void load().catch(() => undefined)}
+            className="inline-flex min-h-11 items-center font-mono text-xs underline"
+          >
+            retry
+          </button>
+        </div>
+      ) : null}
+      {dialog}
     </section>
   );
 }

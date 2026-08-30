@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listShareLinks, revokeShareLink } from "@/features/words/share.server";
-import { listWords } from "@/features/words/store.server";
+import { listAllWords } from "@/features/words/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import type { WordType } from "@/features/words/types";
 import type { WordVisibility } from "@/features/words/content-types";
@@ -23,9 +23,8 @@ function isLinkActive(link: { revokedAt?: string; expiresAt: string }): boolean 
 }
 
 async function buildSharedWordSummaries(): Promise<SharedWordSummary[]> {
-  const { words } = await listWords({
+  const words = await listAllWords({
     includeNonPublic: true,
-    limit: 2000,
   });
 
   const summaries = await Promise.all(

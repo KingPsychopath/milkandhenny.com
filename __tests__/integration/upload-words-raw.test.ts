@@ -310,6 +310,37 @@ describe("words raw upload handling", () => {
     );
   });
 
+  it("rejects a final destination that does not match the reserved filename", async () => {
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),
+    }));
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      isConfigured: () => true,
+    }));
+
+    const { POST } = await import("@/src/routes/api/upload/words/finalize/route");
+    const response = await POST(
+      makeRequest("/api/upload/words/finalize", {
+        slug: "launch-notes",
+        files: [
+          {
+            original: "Programme.pdf",
+            filename: "different.pdf",
+            uploadKey: "incoming/words/media/launch-notes/tmp-programme.pdf",
+            kind: "file",
+            size: 42,
+            overwrote: false,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Destination filename did not match: Programme.pdf",
+    });
+  });
+
   it("treats raw uploads as colliding with existing webp names during presign", async () => {
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({ error: null }),

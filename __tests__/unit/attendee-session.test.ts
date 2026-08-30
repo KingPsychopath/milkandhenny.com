@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
   personLookupGates: [] as Array<{ started: () => void; wait: Promise<void> }>,
   getCalls: 0,
   expireCalls: 0,
+  ticketAccessReferences: new Map<string, string>(),
+  ticketAuthorityVersions: new Map<string, number>(),
 }));
 
 const PERSON_SESSION = "01890f3e-7b1a-7cc2-b5c3-3f8b6a4d2190";
@@ -99,10 +101,31 @@ vi.mock("@/features/events/store.server", () => ({
 }));
 
 vi.mock("@/features/tickets/store.server", () => ({
-  getTicket: async (id: string) =>
-    id === "01ARZ3NDEKTSV4RS" || id === "01ARZ3NDEKTSV4RT"
-      ? { id, eventSlug: "session-night", status: "valid" }
-      : null,
+  getTicketByCurrentReference: async (reference: string) => {
+    const id = ["01ARZ3NDEKTSV4RS", "01ARZ3NDEKTSV4RT"].find((candidate) => {
+      const publicReference = state.ticketAccessReferences.get(candidate);
+      return publicReference ? publicReference === reference : candidate === reference;
+    });
+    return id
+      ? {
+          id,
+          accessReference: state.ticketAccessReferences.get(id),
+          authorityVersion: state.ticketAuthorityVersions.get(id) ?? 0,
+          eventSlug: "session-night",
+          status: "valid",
+        }
+      : null;
+  },
+  getTickets: async (ids: string[]) =>
+    ids
+      .filter((id) => id === "01ARZ3NDEKTSV4RS" || id === "01ARZ3NDEKTSV4RT")
+      .map((id) => ({
+        id,
+        accessReference: state.ticketAccessReferences.get(id),
+        authorityVersion: state.ticketAuthorityVersions.get(id) ?? 0,
+        eventSlug: "session-night",
+        status: "valid",
+      })),
 }));
 
 vi.mock("@/features/event-scoring/store.server", () => ({
@@ -124,6 +147,7 @@ import {
   getAttendeeSession,
   getAttendeeSessionForRequest,
   openAttendeeTicket,
+  openedTicketsForEvent,
   revokeAttendeeSessionsForPerson,
   signOutAttendeeSession,
   ticketPointSelection,
@@ -138,6 +162,8 @@ describe("attendee session authentication", () => {
     state.personLookupGates = [];
     state.getCalls = 0;
     state.expireCalls = 0;
+    state.ticketAccessReferences.clear();
+    state.ticketAuthorityVersions.clear();
   });
 
   it("reads an active session with one command and no expiry write", async () => {
@@ -278,6 +304,36 @@ describe("attendee session authentication", () => {
         expect.objectContaining({ ticketId: "01ARZ3NDEKTSV4RT", mode: "scoring" }),
       ]),
     );
+  });
+
+  it("revokes anonymous ticket authority when a transfer rotates the public reference", async () => {
+    const internalId = "01ARZ3NDEKTSV4RS";
+    const rotatedReference = "01ARZ3NDEKTSV4RU";
+    await openAttendeeTicket({
+      ticketId: internalId,
+      eventSlug: "session-night",
+      mode: "scoring",
+    });
+
+    state.ticketAccessReferences.set(internalId, rotatedReference);
+    state.ticketAuthorityVersions.set(internalId, 1);
+
+    await expect(openedTicketsForEvent("session-night")).resolves.toEqual([]);
+    await expect(activeParticipantForEvent("session-night")).resolves.toBeUndefined();
+    await expect(
+      openAttendeeTicket({
+        ticketId: internalId,
+        eventSlug: "session-night",
+        mode: "scoring",
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      openAttendeeTicket({
+        ticketId: rotatedReference,
+        eventSlug: "session-night",
+        mode: "scoring",
+      }),
+    ).resolves.toMatchObject({ ticket: { ticketId: internalId, authorityVersion: 1 } });
   });
 
   it("uses a signed-in person's first claimed event place until they choose another", async () => {

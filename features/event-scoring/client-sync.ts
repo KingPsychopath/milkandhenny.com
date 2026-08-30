@@ -16,6 +16,41 @@ export type PendingScoreCommand = ClientCommand & {
   lastError?: string;
 };
 
+const SCORE_SESSION_MARKER = "mah-has-score-session";
+
+export function rememberScoreSession(): void {
+  try {
+    localStorage.setItem(SCORE_SESSION_MARKER, "1");
+  } catch {
+    // Storage is an optimization; confirmed scores still refresh from the server.
+  }
+}
+
+export function hasRememberedScoreSession(): boolean {
+  try {
+    return localStorage.getItem(SCORE_SESSION_MARKER) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function createScoreRequestDeadline(timeoutMs: number): {
+  signal: AbortSignal;
+  abort: () => void;
+  clear: () => void;
+} {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  return {
+    signal: controller.signal,
+    abort: () => {
+      clearTimeout(timeout);
+      controller.abort();
+    },
+    clear: () => clearTimeout(timeout),
+  };
+}
+
 export function makeScoreCommand(input: {
   eventSlug: string;
   participantId: string;

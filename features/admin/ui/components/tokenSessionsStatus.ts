@@ -1,8 +1,10 @@
+import type { AdminStatusTone } from "./AdminStatus";
+
 export const TOKEN_SESSION_STATUS = {
-  active: { label: "usable", dotClass: "bg-[var(--foreground)]" },
-  revoked: { label: "revoked", dotClass: "bg-[var(--prose-hashtag)]" },
-  invalidated: { label: "signed out", dotClass: "bg-[var(--stone-400)]" },
-  expired: { label: "expired", dotClass: "bg-[var(--stone-400)]" },
-} as const;
+  active: { label: "usable", tone: "positive" },
+  revoked: { label: "revoked", tone: "neutral" },
+  invalidated: { label: "signed out", tone: "neutral" },
+  expired: { label: "expired", tone: "neutral" },
+} as const satisfies Record<string, { label: string; tone: AdminStatusTone }>;
 
 export type TokenSessionStatusKey = keyof typeof TOKEN_SESSION_STATUS;

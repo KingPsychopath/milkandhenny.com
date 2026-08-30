@@ -7,8 +7,10 @@ import type { CountryScore } from "@/features/things/draw-country/types";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
   decayedReportWeight,
+  MIN_USER_REPORT_DETAIL_LENGTH,
   REPORT_POLICIES,
   REPORT_STATUSES,
+  reportRequiresUserDetail,
   type ReportSeverity,
   type ReportStatus,
   type ReportType,
@@ -37,7 +39,6 @@ const RATE_LIMIT_MAX = 8;
 const MAX_ADMIN_REPORTS = 500;
 const MAX_TRAIL_ITEMS = 12;
 const MAX_REPORT_NOTE_LENGTH = 1_000;
-const MIN_USER_NOTE_LENGTH = 3;
 const MAX_USER_DETAILS_PER_GROUP = 8;
 const MAX_REPORT_RETENTION_SECONDS =
   Math.max(
@@ -485,24 +486,54 @@ function buildUploadReport(payload: unknown, diagnostics: DiagnosticContext): Us
   };
 }
 
+function addUserNoteToDraft(report: UserReportDraft, userNote: string): UserReportDraft {
+  switch (report.type) {
+    case "client_error":
+      return { ...report, context: { ...report.context, userNote } };
+    case "site_feedback":
+      return { ...report, context: { ...report.context, userNote } };
+    case "draw_country_result_issue":
+      return { ...report, context: { ...report.context, userNote } };
+    case "things_room_issue":
+      return { ...report, context: { ...report.context, userNote } };
+    case "pitch_issue":
+      return { ...report, context: { ...report.context, userNote } };
+    case "upload_issue":
+      return { ...report, context: { ...report.context, userNote } };
+  }
+}
+
 function buildReport(value: unknown, request: Request): UserReportDraft {
   const data = inputRecord(value);
   if (!isReportType(data.type)) throw new ReportValidationError("Unknown report type");
+  const userNote = noteValue(data.userNote);
+  if (userNote && userNote.length < MIN_USER_REPORT_DETAIL_LENGTH)
+    throw new ReportValidationError("Add a little more detail");
+  if (reportRequiresUserDetail(data.type) && !userNote)
+    throw new ReportValidationError("Add a little more detail");
   const diagnostics = buildDiagnostics(data.diagnostics, request);
+  let report: UserReportDraft;
   switch (data.type) {
     case "client_error":
-      return buildClientErrorReport(data.payload, diagnostics);
+      report = buildClientErrorReport(data.payload, diagnostics);
+      break;
     case "site_feedback":
-      return buildSiteFeedbackReport(data.payload, diagnostics);
+      report = buildSiteFeedbackReport(data.payload, diagnostics);
+      break;
     case "draw_country_result_issue":
-      return buildDrawCountryReport(data.payload, diagnostics);
+      report = buildDrawCountryReport(data.payload, diagnostics);
+      break;
     case "things_room_issue":
-      return buildThingsRoomReport(data.payload, diagnostics);
+      report = buildThingsRoomReport(data.payload, diagnostics);
+      break;
     case "pitch_issue":
-      return buildPitchReport(data.payload, diagnostics);
+      report = buildPitchReport(data.payload, diagnostics);
+      break;
     case "upload_issue":
-      return buildUploadReport(data.payload, diagnostics);
+      report = buildUploadReport(data.payload, diagnostics);
+      break;
   }
+  return userNote ? addUserNoteToDraft(report, userNote) : report;
 }
 
 type Reservation = { reserved: true } | { reserved: false; value?: string };
@@ -549,8 +580,12 @@ async function enforceSubmissionLimits(
   request: Request,
 ): Promise<{ duplicateKey: string | null; reportId?: string }> {
   const fingerprint = requestFingerprint(request);
+  const detailFingerprint = report.context.userNote
+    ? createHash("sha256").update(report.context.userNote).digest("hex").slice(0, 16)
+    : "no-detail";
   const duplicateWindowSeconds = REPORT_POLICIES[report.type].duplicateWindowHours * 60 * 60;
-  const duplicateKey = `${REPORT_DUPLICATE_PREFIX}${fingerprint}:${report.type}:${report.subjectKey}`;
+  // A second explanation is new evidence even when the structured subject is identical.
+  const duplicateKey = `${REPORT_DUPLICATE_PREFIX}${fingerprint}:${report.type}:${report.subjectKey}:${detailFingerprint}`;
   const rateKey = `${REPORT_RATE_LIMIT_PREFIX}${fingerprint}`;
   const duplicate = await reserve(duplicateKey, duplicateWindowSeconds);
   if (!duplicate.reserved) {
@@ -685,6 +720,7 @@ export async function submitUserReport(value: unknown, request: Request) {
       id: randomUUID(),
       createdAt: now,
       updatedAt: now,
+      ...(report.context.userNote ? { userNoteAddedAt: now } : {}),
       status: "new" as const,
     } satisfies UserReportRecord;
     const followUpToken = reportFollowUpToken(record.id);
@@ -822,7 +858,7 @@ export async function appendUserReportNote(value: unknown) {
   const reportId = requiredText(data, "reportId", 100);
   const followUpToken = requiredText(data, "followUpToken", 200);
   const userNote = noteValue(data.userNote);
-  if (!userNote || userNote.length < MIN_USER_NOTE_LENGTH)
+  if (!userNote || userNote.length < MIN_USER_REPORT_DETAIL_LENGTH)
     throw new ReportValidationError("Add a little more detail");
   if (!tokensMatch(reportFollowUpToken(reportId), followUpToken))
     throw new ReportFollowUpError("Report unavailable");

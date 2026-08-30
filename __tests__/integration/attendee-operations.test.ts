@@ -154,6 +154,10 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
     expect(await inspectTicketAction(oldToken)).toBeNull();
     const accepted = await acceptTicketAction(latestActionToken());
     expect(accepted.ok && accepted.value.purpose).toBe("ticket-assignment");
+    expect(accepted.ok && accepted.value.publicTicketId).not.toBe(firstTicket.id);
+    expect((await getTicket(firstTicket.id))?.accessReference).toBe(
+      accepted.ok ? accepted.value.publicTicketId : undefined,
+    );
 
     const secondTicket = await ticket("Assignment two");
     const cancelledRequest = await requestTicketAssignment({
@@ -185,6 +189,39 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
     );
     expect(await expireTicketOperations()).toEqual({ assignments: 1, transfers: 0, returns: 0 });
     expect((await ticketOperationsForPerson(BUYER)).outgoingAssignments).toHaveLength(3);
+  });
+
+  it("blocks new and pending ticket handoffs when the event is cancelled", async () => {
+    const pendingTicket = await ticket("Pending cancellation");
+    const pending = await requestTicketAssignment({
+      ticketId: pendingTicket.id,
+      purchaserPersonId: BUYER,
+      recipientEmail: "guest@example.com",
+      origin: "https://milkandhenny.com",
+    });
+    if (!pending.ok) throw new Error(pending.error);
+    const pendingToken = latestActionToken();
+    const anotherTicket = await ticket("After cancellation");
+
+    await query(`update events set status = 'cancelled' where slug = $1`, [SLUG]);
+
+    await expect(acceptTicketAction(pendingToken)).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: "This event is cancelled",
+    });
+    await expect(
+      requestTicketAssignment({
+        ticketId: anotherTicket.id,
+        purchaserPersonId: BUYER,
+        recipientEmail: "late@example.com",
+        origin: "https://milkandhenny.com",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: "This event is cancelled",
+    });
   });
 
   it("rotates accepted transfers and completes two-party refund consent", async () => {

@@ -137,6 +137,10 @@
   --prose-pre-fg: oklch(0.918 0.006 70.7);
   --selection-bg: oklch(0.965 0.058 95.28);
   --selection-fg: oklch(0.45 0.134 47.6);
+  /* Semantic admin colour: reserved for outcomes and operational state, never decoration. */
+  --status-positive: oklch(0.45 0.12 151);
+  --status-attention: oklch(0.55 0.16 62);
+  --status-danger: oklch(0.5 0.19 27);
   --things-night: oklch(0.17 0.015 56.42);
   --things-amber: oklch(0.82 0.16 79);
   --things-heat-red: oklch(0.58 0.2 29);
@@ -188,6 +192,9 @@
   --prose-pre-fg: oklch(0.856 0.01 70.7);
   --selection-bg: oklch(0.28 0.075 47.6);
   --selection-fg: oklch(0.828 0.165 86.05);
+  --status-positive: oklch(0.76 0.15 151);
+  --status-attention: oklch(0.79 0.14 79);
+  --status-danger: oklch(0.72 0.16 27);
   --things-heat-red: oklch(0.67 0.19 29);
   --things-frost: oklch(0.76 0.075 225);
   --liars-dead: oklch(0.62 0.22 27);
@@ -1839,6 +1846,7 @@
     right: 24px;
     z-index: 50;
     display: flex;
+    min-width: 44px;
     flex-direction: column;
     align-items: center;
     cursor: pointer;
@@ -1876,6 +1884,19 @@
       opacity 0.4s ease;
   }
 
+  .lamp-icon {
+    display: flex;
+  }
+
+  .lamp-icon--moon,
+  [data-theme="dark"] .lamp-icon--sun {
+    display: none;
+  }
+
+  [data-theme="dark"] .lamp-icon--moon {
+    display: flex;
+  }
+
   .lamp-toggle:hover .lamp-bulb,
   .lamp-toggle--things .lamp-bulb {
     border-color: var(--foreground);
@@ -1911,8 +1932,8 @@
     bottom: 28px;
     right: 24px;
     z-index: 50;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: 1.5px solid var(--stone-300);
     background: var(--background);
@@ -1943,8 +1964,8 @@
     .back-to-top {
       right: 16px;
       bottom: 20px;
-      width: 32px;
-      height: 32px;
+      width: 44px;
+      height: 44px;
     }
   }
 }

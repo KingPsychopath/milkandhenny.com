@@ -17,6 +17,13 @@ import {
   EMAIL_OUTBOX_STATUSES,
   EMAIL_SOURCES,
 } from "@/lib/shared/email-operations";
+import {
+  AdminStatus,
+  adminToneBorderClass,
+  adminToneForStatus,
+  adminToneTextClass,
+  type AdminStatusTone,
+} from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type StepUpResult = { ok: true; token: string } | { ok: false; cancelled?: true; error?: string };
@@ -42,6 +49,35 @@ function stateLabel(entry: EmailLedgerPage["entries"][number]): string {
   if (entry.status === "accepted") return "provider accepted";
   if (entry.status === "processing") return "sending";
   return entry.status;
+}
+
+function emailEntryTone(entry: EmailLedgerPage["entries"][number]): AdminStatusTone {
+  switch (entry.deliveryStatus) {
+    case "delivered":
+      return "positive";
+    case "deferred":
+      return "attention";
+    case "bounced":
+    case "failed":
+    case "rejected":
+    case "complained":
+      return "danger";
+    default:
+      return adminToneForStatus(entry.status);
+  }
+}
+
+function feedbackTone(status: EmailLedgerPage["overview"]["feedbackHealth"]): AdminStatusTone {
+  switch (status) {
+    case "healthy":
+      return "positive";
+    case "waiting":
+      return "attention";
+    case "stale":
+      return "danger";
+    case "disabled":
+      return "neutral";
+  }
 }
 
 function hasRecentUnsettledEmail(
@@ -404,13 +440,18 @@ export function EmailOperationsPanel({
         </div>
       </div>
 
-      <p className="font-mono text-micro theme-faint" role="status">
-        {pollingHalted
-          ? "automatic delivery updates paused after an access error · use refresh delivery"
-          : deliveryIsActive
-            ? "delivery status updates automatically while recent messages settle"
-            : "automatic updates pause after delivery settles or 15 minutes · manual refresh remains available"}
-      </p>
+      <div role="status">
+        <AdminStatus
+          tone={pollingHalted ? "danger" : deliveryIsActive ? "attention" : "neutral"}
+          className="font-mono text-micro"
+        >
+          {pollingHalted
+            ? "automatic delivery updates paused after an access error · use refresh delivery"
+            : deliveryIsActive
+              ? "delivery status updates automatically while recent messages settle"
+              : "automatic updates pause after delivery settles or 15 minutes · manual refresh remains available"}
+        </AdminStatus>
+      </div>
 
       {overview ? (
         <>
@@ -418,26 +459,48 @@ export function EmailOperationsPanel({
             <div>
               <dt className="theme-faint">queued</dt>
               <dd className="mt-1 text-lg">
-                {overview.counts.pending + overview.counts.processing}
+                <AdminStatus
+                  tone={
+                    overview.counts.pending + overview.counts.processing > 0
+                      ? "attention"
+                      : "neutral"
+                  }
+                >
+                  {overview.counts.pending + overview.counts.processing}
+                </AdminStatus>
               </dd>
             </div>
             <div>
               <dt className="theme-faint">provider accepted</dt>
-              <dd className="mt-1 text-lg">{overview.counts.accepted}</dd>
+              <dd className="mt-1 text-lg">
+                <AdminStatus tone={overview.counts.accepted > 0 ? "positive" : "neutral"}>
+                  {overview.counts.accepted}
+                </AdminStatus>
+              </dd>
             </div>
             <div>
               <dt className="theme-faint">confirmed delivered</dt>
-              <dd className="mt-1 text-lg">{overview.delivered}</dd>
+              <dd className="mt-1 text-lg">
+                <AdminStatus tone={overview.delivered > 0 ? "positive" : "neutral"}>
+                  {overview.delivered}
+                </AdminStatus>
+              </dd>
             </div>
             <div>
               <dt className="theme-faint">failed</dt>
-              <dd className="mt-1 text-lg">{overview.counts.failed}</dd>
+              <dd className="mt-1 text-lg">
+                <AdminStatus tone={overview.counts.failed > 0 ? "danger" : "neutral"}>
+                  {overview.counts.failed}
+                </AdminStatus>
+              </dd>
             </div>
           </dl>
           <div
-            className={`border-l-2 pl-4 font-mono text-xs leading-relaxed ${overview.feedbackHealth === "stale" ? "border-[var(--prose-hashtag)]" : "theme-border"}`}
+            className={`border-l-2 pl-4 font-mono text-xs leading-relaxed ${adminToneBorderClass(feedbackTone(overview.feedbackHealth))}`}
           >
-            <p className="font-bold">Delivery signals: {overview.feedbackHealth}</p>
+            <AdminStatus tone={feedbackTone(overview.feedbackHealth)} className="font-bold">
+              Delivery signals: {overview.feedbackHealth}
+            </AdminStatus>
             <p className="mt-1 theme-muted">
               {overview.feedbackHealth === "stale"
                 ? `${overview.awaitingProviderFeedback} provider-accepted message${overview.awaitingProviderFeedback === 1 ? " has" : "s have"} no delivery event after 15 minutes. Check the provider event relay.`
@@ -614,15 +677,19 @@ export function EmailOperationsPanel({
                     {dateTime(entry.createdAt)}
                   </p>
                 </div>
-                <p className="font-mono text-xs font-bold">{stateLabel(entry)}</p>
+                <AdminStatus tone={emailEntryTone(entry)} className="font-mono text-xs font-bold">
+                  {stateLabel(entry)}
+                </AdminStatus>
               </div>
 
               {suppression ? (
-                <div className="mt-4 border-l-2 border-[var(--prose-hashtag)] pl-4 font-mono text-xs">
-                  <p className="font-bold">
+                <div
+                  className={`mt-4 border-l-2 pl-4 font-mono text-xs ${adminToneBorderClass("danger")}`}
+                >
+                  <AdminStatus tone="danger" className="font-bold">
                     Delivery blocked after{" "}
                     {suppression.reason === "bounced" ? "a bounce" : "a complaint"}
-                  </p>
+                  </AdminStatus>
                   <p className="mt-1 theme-muted">
                     {suppression.recipientHint ?? "This recipient"} will not be emailed again until
                     this block is resolved. Removing a block alone never sends mail.
@@ -699,79 +766,112 @@ export function EmailOperationsPanel({
                     : `${thread.length} delivery attempts and controls`}
                 </summary>
                 <div className="divide-y theme-border-faint border-t theme-border-faint">
-                  {thread.map((attempt) => (
-                    <div key={attempt.id} className="py-4 first:pt-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="theme-muted">
-                          {attempt.kind.replaceAll("-", " ")} · {dateTime(attempt.createdAt)}
-                        </p>
-                        <p className="font-bold">{stateLabel(attempt)}</p>
+                  {thread.map((attempt) => {
+                    const tone = emailEntryTone(attempt);
+                    return (
+                      <div key={attempt.id} className="py-4 first:pt-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="theme-muted">
+                            {attempt.kind.replaceAll("-", " ")} · {dateTime(attempt.createdAt)}
+                          </p>
+                          <AdminStatus tone={tone} className="font-bold">
+                            {stateLabel(attempt)}
+                          </AdminStatus>
+                        </div>
+                        <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <dt className="theme-faint">provider attempts</dt>
+                            <dd
+                              className={
+                                attempt.attempts > 1
+                                  ? adminToneTextClass("attention")
+                                  : "theme-muted"
+                              }
+                            >
+                              {attempt.attempts}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="theme-faint">next attempt</dt>
+                            <dd
+                              className={
+                                attempt.status === "pending"
+                                  ? adminToneTextClass("attention")
+                                  : "theme-muted"
+                              }
+                            >
+                              {attempt.status === "pending" ? dateTime(attempt.nextAttemptAt) : "—"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="theme-faint">provider accepted</dt>
+                            <dd
+                              className={
+                                attempt.acceptedAt ? adminToneTextClass("positive") : "theme-muted"
+                              }
+                            >
+                              {dateTime(attempt.acceptedAt)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="theme-faint">confirmed delivered</dt>
+                            <dd
+                              className={
+                                attempt.deliveredAt ? adminToneTextClass("positive") : "theme-muted"
+                              }
+                            >
+                              {dateTime(attempt.deliveredAt)}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="theme-faint">order / ticket</dt>
+                            <dd>{attempt.context.orderId ?? attempt.context.ticketId ?? "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="theme-faint">ledger expires</dt>
+                            <dd>{dateTime(attempt.retainUntil)}</dd>
+                          </div>
+                        </dl>
+                        {attempt.lastError ? (
+                          <p className={`mt-3 ${adminToneTextClass("danger")}`}>
+                            error · {attempt.lastError}
+                          </p>
+                        ) : null}
+                        <div className="mt-2 flex flex-wrap gap-4">
+                          {attempt.canRetry ? (
+                            <button
+                              type="button"
+                              disabled={busy !== null}
+                              onClick={() => void act(attempt.id, "retry")}
+                              className="min-h-11 underline underline-offset-4 disabled:opacity-50"
+                            >
+                              retry queued attempt now
+                            </button>
+                          ) : null}
+                          {attempt.canResend && !attempt.suppression ? (
+                            <button
+                              type="button"
+                              disabled={busy !== null}
+                              onClick={() => void act(attempt.id, "resend")}
+                              className="min-h-11 underline underline-offset-4 disabled:opacity-50"
+                            >
+                              queue one fresh copy
+                            </button>
+                          ) : null}
+                          {attempt.canCancel ? (
+                            <button
+                              type="button"
+                              disabled={busy !== null}
+                              onClick={() => void act(attempt.id, "cancel")}
+                              className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
+                            >
+                              cancel queued attempt
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
-                      <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-                        <div>
-                          <dt className="theme-faint">provider attempts</dt>
-                          <dd>{attempt.attempts}</dd>
-                        </div>
-                        <div>
-                          <dt className="theme-faint">next attempt</dt>
-                          <dd>
-                            {attempt.status === "pending" ? dateTime(attempt.nextAttemptAt) : "—"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="theme-faint">provider accepted</dt>
-                          <dd>{dateTime(attempt.acceptedAt)}</dd>
-                        </div>
-                        <div>
-                          <dt className="theme-faint">confirmed delivered</dt>
-                          <dd>{dateTime(attempt.deliveredAt)}</dd>
-                        </div>
-                        <div>
-                          <dt className="theme-faint">order / ticket</dt>
-                          <dd>{attempt.context.orderId ?? attempt.context.ticketId ?? "—"}</dd>
-                        </div>
-                        <div>
-                          <dt className="theme-faint">ledger expires</dt>
-                          <dd>{dateTime(attempt.retainUntil)}</dd>
-                        </div>
-                      </dl>
-                      {attempt.lastError ? (
-                        <p className="mt-3 text-[var(--prose-hashtag)]">{attempt.lastError}</p>
-                      ) : null}
-                      <div className="mt-2 flex flex-wrap gap-4">
-                        {attempt.canRetry ? (
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => void act(attempt.id, "retry")}
-                            className="min-h-11 underline underline-offset-4 disabled:opacity-50"
-                          >
-                            retry queued attempt now
-                          </button>
-                        ) : null}
-                        {attempt.canResend && !attempt.suppression ? (
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => void act(attempt.id, "resend")}
-                            className="min-h-11 underline underline-offset-4 disabled:opacity-50"
-                          >
-                            queue one fresh copy
-                          </button>
-                        ) : null}
-                        {attempt.canCancel ? (
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => void act(attempt.id, "cancel")}
-                            className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
-                          >
-                            cancel queued attempt
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </details>
             </article>
@@ -830,9 +930,10 @@ export function EmailOperationsPanel({
                 key={item.recipientHash}
                 className="flex flex-wrap items-center justify-between gap-3 py-3 font-mono text-xs"
               >
-                <span>
-                  {item.recipientHint ?? "masked recipient"} · {item.reason} ·{" "}
-                  {dateTime(item.lastOccurredAt)}
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>{item.recipientHint ?? "masked recipient"}</span>
+                  <AdminStatus tone="danger">{item.reason}</AdminStatus>
+                  <span className="theme-muted">{dateTime(item.lastOccurredAt)}</span>
                 </span>
                 <button
                   type="button"

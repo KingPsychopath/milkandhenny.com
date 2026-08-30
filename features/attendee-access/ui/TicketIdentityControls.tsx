@@ -40,6 +40,9 @@ export function TicketIdentityControls({
         personallyClaimed: true,
         anotherClaimedTicketName: undefined,
       }));
+      if (result.value.publicTicketId !== ticketId) {
+        window.location.replace(`/ticket/${encodeURIComponent(result.value.publicTicketId)}`);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "This ticket could not be claimed");
     } finally {

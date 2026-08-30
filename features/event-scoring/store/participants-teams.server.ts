@@ -6,12 +6,15 @@ export async function createTeam(input: {
   eventSlug: string;
   name: string;
 }): Promise<ScoreStoreResult<ScoreTeam>> {
-  if (!input.name.trim()) return { ok: false, status: 400, error: "Name the team" };
+  const name = input.name.trim();
+  if (!name) return { ok: false, status: 400, error: "Name the team" };
+  if (name.length > 120)
+    return { ok: false, status: 400, error: "Use 120 characters or fewer for a team name" };
   const row = await queryOne<{ id: string; event_slug: string; name: string; status: string }>(
     `insert into score_teams (id, event_slug, name)
      values ($1,$2,$3)
      returning id, event_slug, name, status`,
-    [id("team"), input.eventSlug, input.name.trim()],
+    [id("team"), input.eventSlug, name],
   );
   if (!row) return { ok: false, status: 500, error: "Team could not be created" };
   return {
@@ -44,6 +47,8 @@ export async function setTeamMembership(input: {
   participantId: string;
   startsAt?: string;
 }): Promise<ScoreStoreResult<ScoreTeamMembership>> {
+  if (input.startsAt && Number.isNaN(Date.parse(input.startsAt)))
+    return { ok: false, status: 400, error: "Team assignment start must be a valid time" };
   try {
     return await transaction(async (client) => {
       const participant = await client.query<{ id: string }>(
@@ -57,7 +62,7 @@ export async function setTeamMembership(input: {
       if (!participant.rows[0] || !team.rows[0])
         return { ok: false, status: 404, error: "Team or participant not found" };
       const startsAt =
-        input.startsAt ??
+        (input.startsAt ? new Date(input.startsAt).toISOString() : undefined) ??
         (
           await client.query<{ starts_at: Date }>(`select clock_timestamp() as starts_at`)
         ).rows[0]!.starts_at.toISOString();
@@ -139,7 +144,7 @@ export async function participantForTicket(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id
+            tm.team_id, tm.team_name
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
@@ -165,7 +170,7 @@ export async function getParticipant(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id
+            tm.team_id, tm.team_name
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
@@ -191,7 +196,7 @@ export async function listLeaderboardParticipants(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id
+            tm.team_id, tm.team_name
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
@@ -278,6 +283,7 @@ export async function searchEventParticipants(
     ticketSuffix?: string;
     balance: number;
     checkedIn: boolean;
+    teamName?: string;
     email?: string;
   }>
 > {
@@ -291,15 +297,25 @@ export async function searchEventParticipants(
     ticket_id: string | null;
     balance: number;
     checked_in_at: Date | null;
+    team_name: string | null;
     email: string | null;
   }>(
     `select participants.id, participants.generated_alias, participants.chosen_alias,
             participants.display_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
-            participants.checked_in_at, tickets.email
+            participants.checked_in_at, team.team_name, tickets.email
        from event_participants participants
        left join score_projections projections on projections.participant_id = participants.id
        left join tickets on tickets.id = participants.ticket_id
+       left join lateral (
+         select score_teams.name as team_name
+           from score_team_memberships membership
+           join score_teams on score_teams.id = membership.team_id
+          where membership.participant_id = participants.id
+            and membership.starts_at <= now()
+            and (membership.ends_at is null or membership.ends_at > now())
+          order by membership.starts_at desc limit 1
+       ) team on true
       where participants.event_slug = $1
         and participants.status = 'active'
         and (
@@ -324,6 +340,7 @@ export async function searchEventParticipants(
     ticketSuffix: row.ticket_id?.slice(-8),
     balance: row.balance,
     checkedIn: row.checked_in_at !== null,
+    teamName: row.team_name ?? undefined,
     email: includeEmail ? (row.email ?? undefined) : undefined,
   }));
 }

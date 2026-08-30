@@ -5,6 +5,16 @@ const DATABASE_VERSION = 1;
 const SNAPSHOTS = "snapshots";
 const COMMANDS = "commands";
 
+function createSyncChannel(): BroadcastChannel | undefined {
+  try {
+    return typeof BroadcastChannel === "undefined"
+      ? undefined
+      : new BroadcastChannel("event-scoring-sync");
+  } catch {
+    return undefined;
+  }
+}
+
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result), { once: true });
@@ -34,10 +44,7 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 export class EventScoringClientStore {
   private database?: Promise<IDBDatabase>;
-  private readonly channel =
-    typeof BroadcastChannel === "undefined"
-      ? undefined
-      : new BroadcastChannel("event-scoring-sync");
+  private readonly channel = createSyncChannel();
 
   private open(): Promise<IDBDatabase> {
     if (this.database) return this.database;
@@ -115,7 +122,7 @@ export class EventScoringClientStore {
   }
 
   close(): void {
-    void this.database?.then((database) => database.close());
+    void this.database?.then((database) => database.close()).catch(() => undefined);
     this.channel?.close();
   }
 }

@@ -38,6 +38,20 @@ function trimmed(value: unknown, max: number): string | undefined {
   return clean.slice(0, max);
 }
 
+function hasOwn(input: EventInput, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+/** Omission preserves a PATCH field; an explicit null or blank clears it. */
+function optionalText(
+  input: EventInput,
+  key: string,
+  max: number,
+  existing: string | undefined,
+): string | undefined {
+  return hasOwn(input, key) ? trimmed(input[key], max) : existing;
+}
+
 function isValidInstant(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
@@ -59,6 +73,14 @@ function normaliseInstant(value: unknown): string | undefined {
   return new Date(value).toISOString();
 }
 
+function optionalInstant(
+  input: EventInput,
+  key: string,
+  existing: string | undefined,
+): string | undefined {
+  return hasOwn(input, key) ? normaliseInstant(input[key]) : existing;
+}
+
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
@@ -72,6 +94,17 @@ function marketingPath(value: unknown): string | undefined {
     : undefined;
 }
 
+function externalHttpUrl(value: unknown): string | undefined {
+  const candidate = trimmed(value, 500);
+  if (!candidate) return undefined;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function normaliseTicketType(input: unknown, index: number): EventOpResult<TicketType> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { ok: false, status: 400, error: `Ticket type ${index + 1} is malformed` };
@@ -81,9 +114,12 @@ function normaliseTicketType(input: unknown, index: number): EventOpResult<Ticke
   const name = trimmed(raw.name, 80);
   if (!name) return { ok: false, status: 400, error: `Ticket type ${index + 1} needs a name` };
 
+  if (typeof raw.priceMinor === "number" && Number.isFinite(raw.priceMinor) && raw.priceMinor < 0) {
+    return { ok: false, status: 400, error: `Ticket type "${name}" cannot have a negative price` };
+  }
   const priceMinor =
     typeof raw.priceMinor === "number" && Number.isFinite(raw.priceMinor)
-      ? Math.max(0, Math.round(raw.priceMinor))
+      ? Math.round(raw.priceMinor)
       : 0;
 
   const quantity =
@@ -182,21 +218,24 @@ export function normaliseEventInput(
       error: "Marketing story path must be a local path beginning with /",
     };
   }
+  if (typeof input.mapUrl === "string" && input.mapUrl.trim() && !externalHttpUrl(input.mapUrl)) {
+    return { ok: false, status: 400, error: "Map link must be an http or https URL" };
+  }
 
-  const startsAt = normaliseInstant(input.startsAt) ?? existing?.startsAt;
+  const startsAt = optionalInstant(input, "startsAt", existing?.startsAt);
   if (!startsAt) return { ok: false, status: 400, error: "A valid start time is required" };
 
-  const endsAt = normaliseInstant(input.endsAt) ?? existing?.endsAt;
+  const endsAt = optionalInstant(input, "endsAt", existing?.endsAt);
   if (endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
     return { ok: false, status: 400, error: "End time must be after the start time" };
   }
 
-  const doorsAt = normaliseInstant(input.doorsAt) ?? existing?.doorsAt;
+  const doorsAt = optionalInstant(input, "doorsAt", existing?.doorsAt);
   if (doorsAt && Date.parse(doorsAt) > Date.parse(startsAt)) {
     return { ok: false, status: 400, error: "Doors must open no later than the start time" };
   }
 
-  const lastEntryAt = normaliseInstant(input.lastEntryAt) ?? existing?.lastEntryAt;
+  const lastEntryAt = optionalInstant(input, "lastEntryAt", existing?.lastEntryAt);
   if (lastEntryAt && Date.parse(lastEntryAt) < Date.parse(startsAt)) {
     return { ok: false, status: 400, error: "Last entry cannot be before the start time" };
   }
@@ -209,6 +248,9 @@ export function normaliseEventInput(
   const status: EventStatus = isEventStatus(input.status)
     ? input.status
     : (existing?.status ?? "draft");
+  if (existing?.status === "cancelled" && status !== "cancelled") {
+    return { ok: false, status: 409, error: "A cancelled event cannot be reopened" };
+  }
 
   const rawTicketTypes = Array.isArray(input.ticketTypes)
     ? input.ticketTypes
@@ -236,7 +278,7 @@ export function normaliseEventInput(
         .slice(0, MAX_LINEUP)
     : (existing?.lineup ?? []);
 
-  const capacityInput = input.capacity ?? existing?.capacity;
+  const capacityInput = hasOwn(input, "capacity") ? input.capacity : existing?.capacity;
   const capacity =
     typeof capacityInput === "number" && Number.isFinite(capacityInput) && capacityInput > 0
       ? Math.round(capacityInput)
@@ -247,7 +289,8 @@ export function normaliseEventInput(
     if (ticketTypes.length === 0) {
       return { ok: false, status: 400, error: "Add at least one ticket type before publishing" };
     }
-    if (!trimmed(input.area, 120) && !existing?.area) {
+    const area = optionalText(input, "area", 120, existing?.area);
+    if (!area) {
       return {
         ok: false,
         status: 400,
@@ -257,7 +300,8 @@ export function normaliseEventInput(
   }
 
   const now = new Date().toISOString();
-  const heroImage = trimmed(input.heroImage, 500) ?? existing?.heroImage;
+  const heroImage = optionalText(input, "heroImage", 500, existing?.heroImage);
+  const mapUrl = hasOwn(input, "mapUrl") ? externalHttpUrl(input.mapUrl) : existing?.mapUrl;
   const keepHeroDimensions = heroImage === existing?.heroImage;
 
   return {
@@ -265,27 +309,27 @@ export function normaliseEventInput(
     value: {
       slug,
       title,
-      tagline: trimmed(input.tagline, MAX_TAGLINE) ?? existing?.tagline,
+      tagline: optionalText(input, "tagline", MAX_TAGLINE, existing?.tagline),
       status,
       startsAt,
       endsAt,
       doorsAt,
       lastEntryAt,
       timezone: timezoneInput,
-      area: trimmed(input.area, 120) ?? existing?.area,
-      venueName: trimmed(input.venueName, 140) ?? existing?.venueName,
-      address: trimmed(input.address, MAX_SHORT_TEXT) ?? existing?.address,
-      doorCode: trimmed(input.doorCode, 60) ?? existing?.doorCode,
-      threeWordHint: trimmed(input.threeWordHint, 80) ?? existing?.threeWordHint,
-      mapUrl: trimmed(input.mapUrl, 500) ?? existing?.mapUrl,
+      area: optionalText(input, "area", 120, existing?.area),
+      venueName: optionalText(input, "venueName", 140, existing?.venueName),
+      address: optionalText(input, "address", MAX_SHORT_TEXT, existing?.address),
+      doorCode: optionalText(input, "doorCode", 60, existing?.doorCode),
+      threeWordHint: optionalText(input, "threeWordHint", 80, existing?.threeWordHint),
+      mapUrl,
       stepFreeAccess:
         typeof input.stepFreeAccess === "boolean" ? input.stepFreeAccess : existing?.stepFreeAccess,
-      transportNote: trimmed(input.transportNote, MAX_SHORT_TEXT) ?? existing?.transportNote,
-      description: trimmed(input.description, MAX_TEXT) ?? existing?.description,
+      transportNote: optionalText(input, "transportNote", MAX_SHORT_TEXT, existing?.transportNote),
+      description: optionalText(input, "description", MAX_TEXT, existing?.description),
       lineup,
-      dressCode: trimmed(input.dressCode, 140) ?? existing?.dressCode,
-      ageLimit: trimmed(input.ageLimit, 60) ?? existing?.ageLimit,
-      houseRules: trimmed(input.houseRules, MAX_TEXT) ?? existing?.houseRules,
+      dressCode: optionalText(input, "dressCode", 140, existing?.dressCode),
+      ageLimit: optionalText(input, "ageLimit", 60, existing?.ageLimit),
+      houseRules: optionalText(input, "houseRules", MAX_TEXT, existing?.houseRules),
       heroImage,
       heroImageWidth:
         positiveInteger(input.heroImageWidth) ??
@@ -294,22 +338,24 @@ export function normaliseEventInput(
         positiveInteger(input.heroImageHeight) ??
         (keepHeroDimensions ? existing?.heroImageHeight : undefined),
       heroHeight: isEventHeroHeight(input.heroHeight) ? input.heroHeight : existing?.heroHeight,
-      ogImage: trimmed(input.ogImage, 500) ?? existing?.ogImage,
-      marketingPath: marketingPath(input.marketingPath) ?? existing?.marketingPath,
+      ogImage: optionalText(input, "ogImage", 500, existing?.ogImage),
+      marketingPath: hasOwn(input, "marketingPath")
+        ? marketingPath(input.marketingPath)
+        : existing?.marketingPath,
       ticketTypes,
       capacity,
       waitlistEnabled:
         typeof input.waitlistEnabled === "boolean"
           ? input.waitlistEnabled
           : (existing?.waitlistEnabled ?? false),
-      refundPolicy: trimmed(input.refundPolicy, MAX_TEXT) ?? existing?.refundPolicy,
+      refundPolicy: optionalText(input, "refundPolicy", MAX_TEXT, existing?.refundPolicy),
       transferable:
         typeof input.transferable === "boolean"
           ? input.transferable
           : (existing?.transferable ?? false),
-      terms: trimmed(input.terms, MAX_TEXT) ?? existing?.terms,
-      checkInOpensAt: normaliseInstant(input.checkInOpensAt) ?? existing?.checkInOpensAt,
-      staffNotes: trimmed(input.staffNotes, MAX_TEXT) ?? existing?.staffNotes,
+      terms: optionalText(input, "terms", MAX_TEXT, existing?.terms),
+      checkInOpensAt: optionalInstant(input, "checkInOpensAt", existing?.checkInOpensAt),
+      staffNotes: optionalText(input, "staffNotes", MAX_TEXT, existing?.staffNotes),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     },

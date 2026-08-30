@@ -102,7 +102,7 @@ export function MediaPreviewModal({
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-4 right-4 z-10 font-mono text-sm text-white/70 hover:text-white transition-colors"
+        className="absolute top-4 right-4 z-10 inline-flex size-11 items-center justify-center font-mono text-sm text-white/70 hover:text-white transition-colors"
         aria-label="Close media preview"
       >
         ✕
@@ -155,7 +155,7 @@ export function MediaPreviewModal({
                 <button
                   type="button"
                   onClick={showPrev}
-                  className="hover:text-white transition-colors"
+                  className="inline-flex min-h-11 items-center hover:text-white transition-colors"
                 >
                   ← prev
                 </button>
@@ -164,7 +164,7 @@ export function MediaPreviewModal({
                 <button
                   type="button"
                   onClick={showNext}
-                  className="hover:text-white transition-colors"
+                  className="inline-flex min-h-11 items-center hover:text-white transition-colors"
                 >
                   next →
                 </button>
@@ -182,7 +182,7 @@ export function MediaPreviewModal({
             href={current.url}
             target="_blank"
             rel="noreferrer"
-            className="hover:text-white transition-colors"
+            className="inline-flex min-h-11 items-center hover:text-white transition-colors"
           >
             open ↗
           </a>

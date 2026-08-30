@@ -105,7 +105,10 @@ function ThingsRoute() {
     <div className="min-h-screen bg-background">
       <header className="relative max-w-2xl mx-auto px-6 pt-16 pb-10">
         <nav aria-label="Breadcrumb" className="font-mono text-xs theme-muted">
-          <Link to="/" className="hover:text-foreground transition-colors">
+          <Link
+            to="/"
+            className="inline-flex min-h-11 items-center hover:text-foreground transition-colors"
+          >
             {SITE_BRAND}
           </Link>
           <span aria-hidden="true"> / </span>
@@ -133,7 +136,7 @@ function ThingsRoute() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="what do you feel like playing?"
                 autoComplete="off"
-                className="w-full bg-transparent py-3 pr-12 font-mono text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
+                className="w-full bg-transparent py-3 pr-12 font-mono text-base sm:text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
               />
               {query ? (
                 <button
@@ -190,7 +193,7 @@ function ThingsRoute() {
             <button
               type="button"
               onClick={() => setQuery("")}
-              className="mt-4 font-mono text-xs theme-muted hover:text-foreground"
+              className="mt-4 inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:text-foreground"
             >
               show everything
             </button>

@@ -14,6 +14,7 @@ import { useMediaPreviewState } from "./hooks/useMediaPreviewState";
 import { buildWordShareUrl } from "@/features/words/routes";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useAdminAuth } from "@/features/auth/useAdminAuth";
+import { AdminStatus, adminToneBorderClass } from "../components/AdminStatus";
 import { copyText } from "@/lib/client/share";
 import type {
   NoteMeta,
@@ -1072,9 +1073,22 @@ export function EditorAdminClient() {
       </header>
 
       {(status || error) && (
-        <div className="mb-4 font-mono text-xs space-y-1">
-          {status ? <p className="text-[var(--prose-hashtag)]">{status}</p> : null}
-          {error ? <p className="text-[var(--prose-hashtag)]">{error}</p> : null}
+        <div
+          className={`mb-4 space-y-1 border-l-2 pl-3 font-mono text-xs ${adminToneBorderClass(
+            error ? "danger" : "positive",
+          )}`}
+          aria-live="polite"
+        >
+          {status ? (
+            <p role="status">
+              <AdminStatus tone="positive">{status}</AdminStatus>
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert">
+              <AdminStatus tone="danger">{error}</AdminStatus>
+            </p>
+          ) : null}
         </div>
       )}
 

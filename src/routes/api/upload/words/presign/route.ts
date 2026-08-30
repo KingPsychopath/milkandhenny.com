@@ -102,7 +102,7 @@ async function handlePOST(request: Request) {
   }
 
   for (const file of files) {
-    if (!file || typeof file.name !== "string" || !file.name.trim()) {
+    if (!file || typeof file.name !== "string" || !file.name.trim() || file.name.length > 255) {
       return Response.json({ error: "Each file must include a name" }, { status: 400 });
     }
     if (!Number.isFinite(file.size) || file.size < 0) {

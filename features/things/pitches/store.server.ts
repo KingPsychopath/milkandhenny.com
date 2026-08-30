@@ -1112,6 +1112,57 @@ export async function insertPitchAsset(input: {
   return rows[0];
 }
 
+export async function insertPitchAssetWithinLimit(
+  input: {
+    id: string;
+    deckId: string;
+    objectKey: string;
+    fileId?: string;
+    kind: PitchAssetKind;
+    fileName: string;
+    mimeType: string;
+    bytes: number;
+  },
+  maximumDeckBytes: number,
+): Promise<{ row: PitchAssetRow | null; reason?: "missing" | "limit" }> {
+  return transaction(async (client) => {
+    const deck = await client.query<{ id: string }>(
+      `select id from pitch_decks where id = $1 and lifecycle = 'active' for update`,
+      [input.deckId],
+    );
+    if (!deck.rows[0]) return { row: null, reason: "missing" as const };
+
+    const usage = await client.query<{ bytes: string }>(
+      `select coalesce(sum(bytes),0)::text as bytes
+         from pitch_assets
+        where deck_id = $1
+          and (state = 'ready' or created_at > now() - interval '1 hour')`,
+      [input.deckId],
+    );
+    if (integer(usage.rows[0]?.bytes) + input.bytes > maximumDeckBytes) {
+      return { row: null, reason: "limit" as const };
+    }
+
+    const inserted = await client.query<PitchAssetRow>(
+      `insert into pitch_assets (
+         id, deck_id, object_key, file_id, kind, file_name, mime_type, bytes
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8)
+       returning *`,
+      [
+        input.id,
+        input.deckId,
+        input.objectKey,
+        input.fileId ?? null,
+        input.kind,
+        input.fileName,
+        input.mimeType,
+        input.bytes,
+      ],
+    );
+    return { row: inserted.rows[0] };
+  });
+}
+
 export async function markPitchAssetReady(assetId: string): Promise<PitchAssetRow | null> {
   return queryOne<PitchAssetRow>(
     `update pitch_assets

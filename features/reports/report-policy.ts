@@ -10,9 +10,12 @@ export type ReportStatus = (typeof REPORT_STATUSES)[number];
 export type ReportSource = "user" | "automatic";
 export type ReportSeverity = "low" | "medium" | "high";
 
+export const MIN_USER_REPORT_DETAIL_LENGTH = 3;
+
 export const REPORT_POLICIES = {
   client_error: {
     label: "unexpected error",
+    userDetail: "optional",
     halfLifeDays: 1,
     retentionDays: 14,
     resolvedRetentionDays: 30,
@@ -20,6 +23,7 @@ export const REPORT_POLICIES = {
   },
   site_feedback: {
     label: "site feedback",
+    userDetail: "required",
     halfLifeDays: 2,
     retentionDays: 30,
     resolvedRetentionDays: 30,
@@ -27,6 +31,7 @@ export const REPORT_POLICIES = {
   },
   draw_country_result_issue: {
     label: "draw country result",
+    userDetail: "optional",
     halfLifeDays: 7,
     retentionDays: 90,
     resolvedRetentionDays: 30,
@@ -34,6 +39,7 @@ export const REPORT_POLICIES = {
   },
   things_room_issue: {
     label: "game room issue",
+    userDetail: "required",
     halfLifeDays: 3,
     retentionDays: 30,
     resolvedRetentionDays: 30,
@@ -41,6 +47,7 @@ export const REPORT_POLICIES = {
   },
   pitch_issue: {
     label: "pitch issue",
+    userDetail: "required",
     halfLifeDays: 3,
     retentionDays: 30,
     resolvedRetentionDays: 30,
@@ -48,6 +55,7 @@ export const REPORT_POLICIES = {
   },
   upload_issue: {
     label: "upload issue",
+    userDetail: "required",
     halfLifeDays: 2,
     retentionDays: 30,
     resolvedRetentionDays: 30,
@@ -56,6 +64,10 @@ export const REPORT_POLICIES = {
 } as const;
 
 export type ReportType = keyof typeof REPORT_POLICIES;
+
+export function reportRequiresUserDetail(type: ReportType) {
+  return REPORT_POLICIES[type].userDetail === "required";
+}
 
 export function decayedReportWeight(type: ReportType, createdAt: string, nowMs = Date.now()) {
   const createdAtMs = new Date(createdAt).getTime();

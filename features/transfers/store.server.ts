@@ -20,6 +20,8 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
  */
 const MAX_TRANSFER_FILE_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 const MAX_TRANSFER_TOTAL_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
+const MAX_TRANSFER_FILES = 500;
+const MAX_TRANSFER_TITLE_LENGTH = 160;
 
 /* ─── ID Generation ─── */
 
@@ -33,6 +35,16 @@ function generateTransferId(): string {
 /** Generate a delete token (22 chars, URL-safe) */
 function generateDeleteToken(): string {
   return randomBytes(16).toString("base64url");
+}
+
+function normaliseTransferTitle(value: unknown): string {
+  if (typeof value !== "string") return "untitled";
+  const title = value
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_TRANSFER_TITLE_LENGTH);
+  return title || "untitled";
 }
 
 /* ─── Expiry Parsing ─── */
@@ -163,7 +175,7 @@ async function updateTransferFile(transferId: string, file: TransferFile): Promi
   const key = `${TRANSFER_PREFIX}${transferId}`;
   if (redis) {
     const updated = await redis.eval<string[], number>(
-      "local raw = redis.call('get', KEYS[1]); if not raw then return 0 end; local transfer = cjson.decode(raw); for i, current in ipairs(transfer.files) do if current.id == ARGV[1] then transfer.files[i] = cjson.decode(ARGV[2]); redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return 1 end end; return 0",
+      "local raw = redis.call('get', KEYS[1]); if not raw then return 0 end; local transfer = cjson.decode(raw); for i, current in ipairs(transfer.files) do if current.id == ARGV[1] then local replacement = cjson.decode(ARGV[2]); if not replacement.storedBytes and current.storedBytes then replacement.storedBytes = current.storedBytes end; transfer.files[i] = replacement; redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return 1 end end; return 0",
       [key],
       [file.id, JSON.stringify(file)],
     );
@@ -175,8 +187,116 @@ async function updateTransferFile(transferId: string, file: TransferFile): Promi
   const fileIndex = transfer.files.findIndex((candidate) => candidate.id === file.id);
   if (fileIndex === -1) return false;
   const files = [...transfer.files];
-  files[fileIndex] = file;
+  const current = files[fileIndex];
+  files[fileIndex] =
+    file.storedBytes === undefined && current?.storedBytes !== undefined
+      ? { ...file, storedBytes: current.storedBytes }
+      : file;
   memoryTransfers.set(key, { ...transfer, files });
+  return true;
+}
+
+type AppendTransferFilesResult =
+  | { status: "updated"; transfer: TransferData }
+  | { status: "missing" | "conflict" | "limit" };
+
+type AppendTransferFilesLimits = {
+  maxFiles?: number;
+  maxTotalBytes?: number;
+};
+
+/** Append metadata without replacing worker updates or files added by another request. */
+async function appendTransferFiles(
+  transferId: string,
+  files: TransferFile[],
+  limits: AppendTransferFilesLimits = {},
+): Promise<AppendTransferFilesResult> {
+  const redis = requireTransferRedis();
+  const key = `${TRANSFER_PREFIX}${transferId}`;
+  if (redis) {
+    const result = await redis.eval<string[], string>(
+      "local raw = redis.call('get', KEYS[1]); if not raw then return '__missing__' end; local transfer = cjson.decode(raw); local incoming = cjson.decode(ARGV[1]); local maxFiles = tonumber(ARGV[2]); local maxBytes = tonumber(ARGV[3]); if maxFiles > 0 and #transfer.files + #incoming > maxFiles then return '__limit__' end; local occupied = {}; local ids = {}; local bytes = 0; for _, current in ipairs(transfer.files) do ids[current.id] = true; occupied[current.filename] = true; if current.originalFilename then occupied[current.originalFilename] = true end; bytes = bytes + (current.storedBytes or current.size or 0) end; for _, added in ipairs(incoming) do if ids[added.id] or occupied[added.filename] or (added.originalFilename and occupied[added.originalFilename]) then return '__conflict__' end; ids[added.id] = true; occupied[added.filename] = true; if added.originalFilename then occupied[added.originalFilename] = true end; bytes = bytes + (added.storedBytes or added.size or 0) end; if maxBytes > 0 and bytes > maxBytes then return '__limit__' end; for _, added in ipairs(incoming) do table.insert(transfer.files, added) end; redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return cjson.encode(transfer)",
+      [key],
+      [JSON.stringify(files), String(limits.maxFiles ?? 0), String(limits.maxTotalBytes ?? 0)],
+    );
+    if (result === "__missing__") return { status: "missing" };
+    if (result === "__conflict__") return { status: "conflict" };
+    if (result === "__limit__") return { status: "limit" };
+    return { status: "updated", transfer: JSON.parse(result) as TransferData };
+  }
+
+  const transfer = memoryTransfers.get(key);
+  if (!transfer) return { status: "missing" };
+  const ids = new Set(transfer.files.map((file) => file.id));
+  const names = new Set(
+    transfer.files.flatMap((file) =>
+      [file.filename, file.originalFilename].filter(
+        (name): name is string => typeof name === "string",
+      ),
+    ),
+  );
+  for (const file of files) {
+    if (ids.has(file.id) || names.has(file.filename) || names.has(file.originalFilename ?? "")) {
+      return { status: "conflict" };
+    }
+    ids.add(file.id);
+    names.add(file.filename);
+    if (file.originalFilename) names.add(file.originalFilename);
+  }
+  if (limits.maxFiles && transfer.files.length + files.length > limits.maxFiles) {
+    return { status: "limit" };
+  }
+  if (limits.maxTotalBytes) {
+    const bytes = [...transfer.files, ...files].reduce(
+      (total, file) => total + (file.storedBytes ?? file.size),
+      0,
+    );
+    if (bytes > limits.maxTotalBytes) return { status: "limit" };
+  }
+  const updated = { ...transfer, files: [...transfer.files, ...files] };
+  memoryTransfers.set(key, updated);
+  return { status: "updated", transfer: updated };
+}
+
+/** Reorder and regroup a stable file set while preserving each file's latest processing fields. */
+async function updateTransferGrouping(
+  transferId: string,
+  files: TransferFile[],
+  groups: AssetGroup[] | undefined,
+): Promise<boolean> {
+  const redis = requireTransferRedis();
+  const key = `${TRANSFER_PREFIX}${transferId}`;
+  if (redis) {
+    const updated = await redis.eval<string[], number>(
+      "local raw = redis.call('get', KEYS[1]); if not raw then return 0 end; local transfer = cjson.decode(raw); local desired = cjson.decode(ARGV[1]); if #transfer.files ~= #desired then return 0 end; local currentById = {}; for _, current in ipairs(transfer.files) do currentById[current.id] = current end; local ordered = {}; for _, target in ipairs(desired) do local current = currentById[target.id]; if not current then return 0 end; current.groupId = nil; current.groupRole = nil; if target.groupId then current.groupId = target.groupId end; if target.groupRole then current.groupRole = target.groupRole end; table.insert(ordered, current) end; transfer.files = ordered; local groups = cjson.decode(ARGV[2]); if #groups > 0 then transfer.groups = groups else transfer.groups = nil end; redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return 1",
+      [key],
+      [
+        JSON.stringify(
+          files.map((file) => ({
+            id: file.id,
+            groupId: file.groupId,
+            groupRole: file.groupRole,
+          })),
+        ),
+        JSON.stringify(groups ?? []),
+      ],
+    );
+    return updated === 1;
+  }
+
+  const transfer = memoryTransfers.get(key);
+  if (!transfer || transfer.files.length !== files.length) return false;
+  const currentById = new Map(transfer.files.map((file) => [file.id, file]));
+  if (files.some((file) => !currentById.has(file.id))) return false;
+  const updatedFiles = files.map((file) => {
+    const current = { ...currentById.get(file.id)! };
+    delete current.groupId;
+    delete current.groupRole;
+    if (file.groupId) current.groupId = file.groupId;
+    if (file.groupRole) current.groupRole = file.groupRole;
+    return current;
+  });
+  memoryTransfers.set(key, { ...transfer, files: updatedFiles, groups });
   return true;
 }
 
@@ -230,6 +350,43 @@ function removeTransferFile(data: TransferData, fileId: string): TransferData {
     ...next,
     files: next.files.filter((file) => file.id !== fileId),
   };
+}
+
+type RemoveTransferFileResult =
+  | { status: "updated"; transfer: TransferData }
+  | { status: "deleted" }
+  | { status: "missing" | "file-missing" };
+
+/** Remove one file against the latest value so sibling updates cannot be resurrected. */
+async function removeTransferFileAtomic(
+  transferId: string,
+  fileId: string,
+): Promise<RemoveTransferFileResult> {
+  const redis = requireTransferRedis();
+  const key = `${TRANSFER_PREFIX}${transferId}`;
+  if (redis) {
+    const result = await redis.eval<string[], string>(
+      "local raw = redis.call('get', KEYS[1]); if not raw then return '__missing__' end; local transfer = cjson.decode(raw); local found = false; local files = {}; for _, file in ipairs(transfer.files) do if file.id == ARGV[1] then found = true else table.insert(files, file) end end; if not found then return '__file_missing__' end; transfer.files = files; local clear = {}; local groups = {}; for _, group in ipairs(transfer.groups or {}) do local touched = false; local members = {}; for _, member in ipairs(group.members or {}) do if member.fileId == ARGV[1] then touched = true else table.insert(members, member) end end; if touched then if #members >= 2 then group.members = members; table.insert(groups, group) else for _, member in ipairs(members) do clear[member.fileId] = true end end else table.insert(groups, group) end end; for _, file in ipairs(transfer.files) do if clear[file.id] then file.groupId = nil; file.groupRole = nil end end; if #groups > 0 then transfer.groups = groups else transfer.groups = nil end; if #transfer.files == 0 then redis.call('del', KEYS[1]); redis.call('srem', KEYS[2], ARGV[2]); return '__deleted__' end; redis.call('set', KEYS[1], cjson.encode(transfer), 'KEEPTTL'); return cjson.encode(transfer)",
+      [key, TRANSFER_INDEX_KEY],
+      [fileId, transferId],
+    );
+    if (result === "__missing__") return { status: "missing" };
+    if (result === "__file_missing__") return { status: "file-missing" };
+    if (result === "__deleted__") return { status: "deleted" };
+    return { status: "updated", transfer: JSON.parse(result) as TransferData };
+  }
+
+  const transfer = memoryTransfers.get(key);
+  if (!transfer) return { status: "missing" };
+  if (!transfer.files.some((file) => file.id === fileId)) return { status: "file-missing" };
+  const updated = removeTransferFile(transfer, fileId);
+  if (updated.files.length === 0) {
+    memoryTransfers.delete(key);
+    memoryIndex.delete(transferId);
+    return { status: "deleted" };
+  }
+  memoryTransfers.set(key, updated);
+  return { status: "updated", transfer: updated };
 }
 
 /** Get a transfer by ID. Returns null if expired or not found. */
@@ -377,12 +534,15 @@ async function validateDeleteToken(id: string, token: string): Promise<boolean> 
 export {
   saveTransfer,
   updateTransferFile,
+  appendTransferFiles,
+  updateTransferGrouping,
   createTransfer,
   getTransfer,
   listTransfers,
   listTransferData,
   deleteTransferData,
   removeTransferFile,
+  removeTransferFileAtomic,
   removeTransferFileFromGroups,
   validateDeleteToken,
   generateTransferId,
@@ -392,7 +552,10 @@ export {
   DEFAULT_EXPIRY_SECONDS,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_FILES,
+  MAX_TRANSFER_TITLE_LENGTH,
   MAX_TRANSFER_TOTAL_BYTES,
+  normaliseTransferTitle,
   FILE_KINDS,
 };
 

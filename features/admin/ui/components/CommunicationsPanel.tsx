@@ -17,6 +17,13 @@ import {
   type CommunicationMediaDraft,
   type CommunicationPreviewValues,
 } from "./CommunicationMessageEditor";
+import {
+  AdminStatus,
+  adminToneForStatus,
+  adminToneTextClass,
+  type AdminStatusTone,
+} from "./AdminStatus";
+import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type Kind = "newsletter" | "event_update" | "pitch_nudge" | "event_service" | "feedback";
@@ -270,21 +277,27 @@ function consentLabel(contact: Contact): string {
   return `${decision} · ${consentSourceLabel(contact.marketingConsentSource)} · ${dateLabel(contact.marketingConsentAt)}${copyVersion}`;
 }
 
-function engagementLabel(delivery: DeliveryCounts, links: LinkMetric[]): string {
+function DeliveryMetrics({ delivery, links }: { delivery: DeliveryCounts; links: LinkMetric[] }) {
   const clicked = links.reduce((total, link) => total + link.uniqueRecipients, 0);
-  const parts = [
-    `accepted ${delivery.accepted}`,
-    `delivered ${delivery.delivered}`,
-    `clicked ${clicked}`,
-  ];
-  if (delivery.deferred) parts.push(`deferred ${delivery.deferred}`);
-  if (delivery.failed || delivery.bounced || delivery.rejected || delivery.complained) {
-    parts.push(
-      `needs attention ${delivery.failed + delivery.bounced + delivery.rejected + delivery.complained}`,
-    );
-  }
-  if (delivery.skipped) parts.push(`skipped ${delivery.skipped}`);
-  return parts.join(" · ");
+  const issues = delivery.failed + delivery.bounced + delivery.rejected + delivery.complained;
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-1">
+      <span className={delivery.accepted ? adminToneTextClass("positive") : "theme-muted"}>
+        accepted {delivery.accepted}
+      </span>
+      <span className={delivery.delivered ? adminToneTextClass("positive") : "theme-muted"}>
+        delivered {delivery.delivered}
+      </span>
+      <span className="theme-muted">clicked {clicked}</span>
+      {delivery.deferred ? (
+        <span className={adminToneTextClass("attention")}>deferred {delivery.deferred}</span>
+      ) : null}
+      {issues ? (
+        <span className={adminToneTextClass("danger")}>needs attention {issues}</span>
+      ) : null}
+      {delivery.skipped ? <span className="theme-muted">skipped {delivery.skipped}</span> : null}
+    </span>
+  );
 }
 
 function deliveryStatusLabel(row: StageDelivery): string {
@@ -296,6 +309,26 @@ function deliveryStatusLabel(row: StageDelivery): string {
   if (row.deliveryStatus === "deferred") return "deferred · retrying";
   if (row.deliveryStatus === "skipped") return "skipped";
   return row.deliveryStatus;
+}
+
+function deliveryStatusTone(row: StageDelivery): AdminStatusTone {
+  switch (row.deliveryStatus) {
+    case "delivered":
+    case "accepted":
+      return "positive";
+    case "queued":
+    case "deferred":
+      return "attention";
+    case "failed":
+    case "bounced":
+    case "rejected":
+    case "complained":
+      return "danger";
+    case "skipped":
+      return "neutral";
+    default:
+      return adminToneForStatus(row.outboxStatus ?? row.deliveryStatus);
+  }
 }
 
 function stageDeliveryStateLabel(stage: Stage): string {
@@ -311,6 +344,38 @@ function stageDeliveryStateLabel(stage: Stage): string {
     default:
       return stage.deliveryState;
   }
+}
+
+function stageTone(stage: Stage): AdminStatusTone {
+  if (
+    stage.deliveryState === "complete with issues" ||
+    (stage.lastError && stage.lastError !== "send window passed")
+  ) {
+    return "danger";
+  }
+  if (stageNeedsManualSendDecision(stage)) return "attention";
+  if (stage.deliveryState === "preparing") return "attention";
+  return adminToneForStatus(stage.deliveryState || stage.status);
+}
+
+function stageAudienceTone(stage: Stage): AdminStatusTone {
+  const issues =
+    stage.delivery.failed +
+    stage.delivery.bounced +
+    stage.delivery.rejected +
+    stage.delivery.complained;
+  if (issues > 0) return "danger";
+  if (stage.missingRecipientCount > 0 || stage.delivery.queued > 0 || stage.delivery.deferred > 0) {
+    return "attention";
+  }
+  if (
+    (stage.audienceCount > 0 && stage.receivedCount >= stage.audienceCount) ||
+    stage.delivery.accepted > 0 ||
+    stage.delivery.delivered > 0
+  ) {
+    return "positive";
+  }
+  return "neutral";
 }
 
 function stageHasRecentUnsettledDelivery(
@@ -451,7 +516,7 @@ function Button({
       onClick={onClick}
       disabled={disabled}
       aria-expanded={ariaExpanded}
-      className={`min-h-10 rounded border px-4 font-mono text-xs transition-opacity hover:opacity-70 disabled:cursor-wait disabled:opacity-45 ${primary ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
+      className={`min-h-11 rounded border px-4 font-mono text-xs transition-opacity hover:opacity-70 disabled:cursor-wait disabled:opacity-45 ${primary ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
     >
       {children}
     </button>
@@ -494,6 +559,8 @@ export function CommunicationsPanel({
   const [email, setEmail] = useState<EmailCapability>({ provider: null, mailpitUrl: null });
   const [localTab, setLocalTab] = useState<CommunicationsTab>(communicationTab);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [planRefreshHalted, setPlanRefreshHalted] = useState(false);
   const [localSelectedEvent, setLocalSelectedEvent] = useState(
@@ -573,6 +640,7 @@ export function CommunicationsPanel({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await authFetch("/api/admin/communications");
       const data = (await response.json().catch(() => ({}))) as {
@@ -594,8 +662,11 @@ export function CommunicationsPanel({
       setSurveys(data.surveys || []);
       setEmail(data.email || { provider: null, mailpitUrl: null });
       setPlanRefreshHalted(false);
+      setHasLoaded(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load communications");
+      const message = error instanceof Error ? error.message : "Could not load communications";
+      setLoadError(message);
+      onError(message);
     } finally {
       setLoading(false);
     }
@@ -1105,216 +1176,247 @@ export function CommunicationsPanel({
           ];
 
   return (
-    <div className="space-y-10">
-      <section
-        aria-labelledby="communications-summary-heading"
-        className="border-y theme-border py-6"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-5">
+    <div className="space-y-6">
+      <section aria-label="Communications status" className="border-y theme-border py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              communications control
+              communications snapshot
             </p>
-            <h2
-              id="communications-summary-heading"
-              className="mt-2 font-serif text-3xl font-semibold tracking-tight"
-            >
-              A quiet place to send the right thing
-            </h2>
-            <p className="mt-3 max-w-2xl font-serif text-lg leading-relaxed theme-muted">
-              Event plans, reusable templates, feedback, and people in one view. Ticket emails
-              remain automatic service messages; marketing stays opt-in.
+            <p className="mt-1 max-w-2xl font-mono text-xs leading-relaxed theme-muted">
+              Ticket service messages stay automatic; optional marketing follows recorded consent.
             </p>
           </div>
           <Button onClick={() => void load()} disabled={loading}>
-            {loading ? "loading…" : "refresh"}
+            {loading ? "refreshing…" : "refresh"}
           </Button>
         </div>
-        <dl className="mt-7 grid gap-4 border-t theme-border pt-5 font-mono text-xs sm:grid-cols-4">
-          <div>
-            <dt className="theme-faint">marketing opt-ins</dt>
-            <dd className="mt-1 text-lg">{optedInCount}</dd>
+        {loadError ? (
+          <div className="mt-4">
+            <AdminLoadError message={loadError} retry={() => void load()} retrying={loading} />
           </div>
-          <div>
-            <dt className="theme-faint">scheduled stages</dt>
-            <dd className="mt-1 text-lg">{scheduledCount}</dd>
+        ) : loading && !hasLoaded ? (
+          <div className="mt-4">
+            <AdminLoading label="Loading communications…" />
           </div>
-          <div>
-            <dt className="theme-faint">next send</dt>
-            <dd className="mt-1">{dateLabel(nextSend)}</dd>
-          </div>
-          <div>
-            <dt className="theme-faint">email signals</dt>
-            <dd className="mt-1">
-              {email.deliveryEventsConfigured ? "delivery" : "delivery off"} ·{" "}
-              {email.linkTrackingConfigured ? "clicks" : "clicks off"}
-            </dd>
-          </div>
-        </dl>
-        {email.provider === "mailpit" && email.mailpitUrl ? (
-          <div className="mt-5 border-t theme-border pt-4 font-mono text-xs theme-muted">
-            <span className="font-bold text-foreground">local capture</span>
-            <span className="mx-2 theme-faint">·</span>
-            Emails stay on this machine.{" "}
-            <a
-              href={email.mailpitUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-4 transition-opacity hover:opacity-70"
-            >
-              open the local inbox
-            </a>
-          </div>
-        ) : null}
+        ) : (
+          <>
+            <dl className="mt-4 grid gap-4 border-t theme-border pt-4 font-mono text-xs sm:grid-cols-4">
+              <div>
+                <dt className="theme-faint">marketing opt-ins</dt>
+                <dd className="mt-1 text-lg">
+                  <AdminStatus tone={optedInCount > 0 ? "positive" : "neutral"}>
+                    {optedInCount}
+                  </AdminStatus>
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-faint">scheduled stages</dt>
+                <dd className="mt-1 text-lg">
+                  <AdminStatus tone={scheduledCount > 0 ? "attention" : "neutral"}>
+                    {scheduledCount}
+                  </AdminStatus>
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-faint">next send</dt>
+                <dd className="mt-1">
+                  <AdminStatus tone={nextSend ? "attention" : "neutral"}>
+                    {dateLabel(nextSend)}
+                  </AdminStatus>
+                </dd>
+              </div>
+              <div>
+                <dt className="theme-faint">email signals</dt>
+                <dd className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  <AdminStatus tone={email.deliveryEventsConfigured ? "positive" : "neutral"}>
+                    {email.deliveryEventsConfigured ? "delivery on" : "delivery off"}
+                  </AdminStatus>
+                  <AdminStatus tone={email.linkTrackingConfigured ? "positive" : "neutral"}>
+                    {email.linkTrackingConfigured ? "clicks on" : "clicks off"}
+                  </AdminStatus>
+                </dd>
+              </div>
+            </dl>
+            {email.provider === "mailpit" && email.mailpitUrl ? (
+              <div className="mt-4 border-t theme-border pt-4 font-mono text-xs theme-muted">
+                <span className="font-bold text-foreground">local capture</span>
+                <span className="mx-2 theme-faint">·</span>
+                Emails stay on this machine.{" "}
+                <a
+                  href={email.mailpitUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-4 transition-opacity hover:opacity-70"
+                >
+                  open the local inbox
+                </a>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
-      <nav
-        aria-label="Communications tools"
-        className="flex flex-wrap gap-x-5 gap-y-3 border-b theme-border pb-3 font-mono text-xs"
-      >
-        {COMMUNICATION_TABS.map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => setTab(item)}
-            className={`underline-offset-4 transition-opacity hover:opacity-70 ${tab === item ? "font-bold underline" : "theme-muted"}`}
+      {hasLoaded && !loadError ? (
+        <>
+          <nav
+            aria-label="Communications tools"
+            className="flex flex-wrap gap-x-5 gap-y-3 border-b theme-border pb-3 font-mono text-xs"
           >
-            {item === "event-plan" ? "event plan" : item}
-          </button>
-        ))}
-      </nav>
-      {tab === "event-plan" ? (
-        <EventPlanView
-          events={events}
-          selectedEvent={selectedEvent}
-          setSelectedEvent={setSelectedEvent}
-          activePlan={activePlan}
-          preparePlan={preparePlan}
-          planAction={planAction}
-          busy={busy}
-          editingStage={editingStage}
-          stageDraft={stageDraft}
-          setStageDraft={setStageDraft}
-          openStage={openStage}
-          saveStage={saveStage}
-          resetStageTemplate={resetStageTemplate}
-          setEditingStage={setEditingStage}
-          stageRecipients={stageRecipients}
-          stageDeliveries={stageDeliveries}
-          viewStageRecipients={viewStageRecipients}
-          previewStageEmail={previewStageEmail}
-          stagePreview={stagePreview}
-          setStagePreview={setStagePreview}
-          testEmail={testEmail}
-          setTestEmail={setTestEmail}
-          sendTestPlan={sendTestPlan}
-          sendStageNow={sendStageNow}
-          sendStageToMissingRecipients={sendStageToMissingRecipients}
-          deliveryAutoRefreshing={planDeliveryIsActive && !planRefreshHalted}
-          deliveryAutoRefreshHalted={planRefreshHalted}
-          deliveryEventsConfigured={email.deliveryEventsConfigured === true}
-        />
-      ) : null}
-      {tab === "compose" ? (
-        <ComposeView
-          events={events}
-          kind={kind}
-          setKind={setKind}
-          audience={audience}
-          setAudience={setAudience}
-          audienceOptions={audienceOptions}
-          composeEvent={composeEvent}
-          setComposeEvent={setComposeEvent}
-          subject={subject}
-          setSubject={setSubject}
-          body={body}
-          setBody={setBody}
-          mediaUrl={mediaUrl}
-          setMediaUrl={setMediaUrl}
-          mediaKind={mediaKind}
-          setMediaKind={setMediaKind}
-          mediaAlt={mediaAlt}
-          setMediaAlt={setMediaAlt}
-          posterUrl={posterUrl}
-          setPosterUrl={setPosterUrl}
-          scheduledAt={scheduledAt}
-          setScheduledAt={setScheduledAt}
-          contacts={filteredContacts}
-          selected={selected}
-          setSelected={setSelected}
-          contactQuery={contactQuery}
-          setContactQuery={setContactQuery}
-          save={save}
-          preview={preview}
-          previewHtml={previewHtml}
-          busy={busy}
-          messages={messages}
-          previewValues={previewValuesForEvent(events.find((event) => event.slug === composeEvent))}
-        />
-      ) : null}
-      {tab === "delivery" ? (
-        <div className="space-y-10">
-          <EmailOperationsPanel
-            authFetch={authFetch}
-            onError={onError}
-            onStatus={onStatus}
-            ensureStepUpToken={ensureStepUpToken}
-            withStepUpHeaders={withStepUpHeaders}
-            initialStatus={initialEmailStatus}
-            initialQuery={initialEmailQuery}
-          />
-          <AlertSettings
-            authFetch={authFetch}
-            onError={onError}
-            onStatus={onStatus}
-            ensureStepUpToken={ensureStepUpToken}
-            withStepUpHeaders={withStepUpHeaders}
-          />
-        </div>
-      ) : null}
-      {tab === "templates" ? (
-        <TemplatesView
-          templates={templates}
-          draft={templateDraft}
-          setDraft={setTemplateDraft}
-          save={saveTemplate}
-          archive={archiveTemplate}
-          useTemplate={useTemplate}
-          busy={busy}
-        />
-      ) : null}
-      {tab === "feedback" ? (
-        <FeedbackView
-          surveys={surveys}
-          events={events}
-          draft={surveyDraft}
-          setDraft={setSurveyDraft}
-          save={saveSurveyDraft}
-          newSurvey={newSurvey}
-          loadResponses={loadResponses}
-          selectedSurvey={selectedSurvey}
-          responses={responses}
-          busy={busy}
-        />
-      ) : null}
-      {tab === "people" ? (
-        <PeopleView
-          contacts={contacts}
-          setPreference={async (contact, optedIn) => {
-            try {
-              await post({ action: "set-preference", emailHash: contact.emailHash, optedIn });
-              setContacts((current) =>
-                current.map((item) =>
-                  item.emailHash === contact.emailHash
-                    ? { ...item, marketingOptedIn: optedIn }
-                    : item,
-                ),
-              );
-              onStatus(`${contact.email} ${optedIn ? "can receive marketing" : "is opted out"}.`);
-            } catch (error) {
-              onError(error instanceof Error ? error.message : "Could not update permission");
-            }
-          }}
-        />
+            {COMMUNICATION_TABS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setTab(item)}
+                aria-current={tab === item ? "page" : undefined}
+                className={`min-h-11 underline-offset-4 transition-opacity hover:opacity-70 ${tab === item ? "font-bold underline" : "theme-muted"}`}
+              >
+                {item === "event-plan"
+                  ? "event plan"
+                  : item === "people"
+                    ? "audience & consent"
+                    : item}
+              </button>
+            ))}
+          </nav>
+          {tab === "event-plan" ? (
+            <EventPlanView
+              events={events}
+              selectedEvent={selectedEvent}
+              setSelectedEvent={setSelectedEvent}
+              activePlan={activePlan}
+              preparePlan={preparePlan}
+              planAction={planAction}
+              busy={busy}
+              editingStage={editingStage}
+              stageDraft={stageDraft}
+              setStageDraft={setStageDraft}
+              openStage={openStage}
+              saveStage={saveStage}
+              resetStageTemplate={resetStageTemplate}
+              setEditingStage={setEditingStage}
+              stageRecipients={stageRecipients}
+              stageDeliveries={stageDeliveries}
+              viewStageRecipients={viewStageRecipients}
+              previewStageEmail={previewStageEmail}
+              stagePreview={stagePreview}
+              setStagePreview={setStagePreview}
+              testEmail={testEmail}
+              setTestEmail={setTestEmail}
+              sendTestPlan={sendTestPlan}
+              sendStageNow={sendStageNow}
+              sendStageToMissingRecipients={sendStageToMissingRecipients}
+              deliveryAutoRefreshing={planDeliveryIsActive && !planRefreshHalted}
+              deliveryAutoRefreshHalted={planRefreshHalted}
+              deliveryEventsConfigured={email.deliveryEventsConfigured === true}
+            />
+          ) : null}
+          {tab === "compose" ? (
+            <ComposeView
+              events={events}
+              kind={kind}
+              setKind={setKind}
+              audience={audience}
+              setAudience={setAudience}
+              audienceOptions={audienceOptions}
+              composeEvent={composeEvent}
+              setComposeEvent={setComposeEvent}
+              subject={subject}
+              setSubject={setSubject}
+              body={body}
+              setBody={setBody}
+              mediaUrl={mediaUrl}
+              setMediaUrl={setMediaUrl}
+              mediaKind={mediaKind}
+              setMediaKind={setMediaKind}
+              mediaAlt={mediaAlt}
+              setMediaAlt={setMediaAlt}
+              posterUrl={posterUrl}
+              setPosterUrl={setPosterUrl}
+              scheduledAt={scheduledAt}
+              setScheduledAt={setScheduledAt}
+              contacts={filteredContacts}
+              selected={selected}
+              setSelected={setSelected}
+              contactQuery={contactQuery}
+              setContactQuery={setContactQuery}
+              save={save}
+              preview={preview}
+              previewHtml={previewHtml}
+              busy={busy}
+              messages={messages}
+              previewValues={previewValuesForEvent(
+                events.find((event) => event.slug === composeEvent),
+              )}
+            />
+          ) : null}
+          {tab === "delivery" ? (
+            <div className="space-y-10">
+              <EmailOperationsPanel
+                authFetch={authFetch}
+                onError={onError}
+                onStatus={onStatus}
+                ensureStepUpToken={ensureStepUpToken}
+                withStepUpHeaders={withStepUpHeaders}
+                initialStatus={initialEmailStatus}
+                initialQuery={initialEmailQuery}
+              />
+              <AlertSettings
+                authFetch={authFetch}
+                onError={onError}
+                onStatus={onStatus}
+                ensureStepUpToken={ensureStepUpToken}
+                withStepUpHeaders={withStepUpHeaders}
+              />
+            </div>
+          ) : null}
+          {tab === "templates" ? (
+            <TemplatesView
+              templates={templates}
+              draft={templateDraft}
+              setDraft={setTemplateDraft}
+              save={saveTemplate}
+              archive={archiveTemplate}
+              useTemplate={useTemplate}
+              busy={busy}
+            />
+          ) : null}
+          {tab === "feedback" ? (
+            <FeedbackView
+              surveys={surveys}
+              events={events}
+              draft={surveyDraft}
+              setDraft={setSurveyDraft}
+              save={saveSurveyDraft}
+              newSurvey={newSurvey}
+              loadResponses={loadResponses}
+              selectedSurvey={selectedSurvey}
+              responses={responses}
+              busy={busy}
+            />
+          ) : null}
+          {tab === "people" ? (
+            <PeopleView
+              contacts={contacts}
+              setPreference={async (contact, optedIn) => {
+                try {
+                  await post({ action: "set-preference", emailHash: contact.emailHash, optedIn });
+                  setContacts((current) =>
+                    current.map((item) =>
+                      item.emailHash === contact.emailHash
+                        ? { ...item, marketingOptedIn: optedIn }
+                        : item,
+                    ),
+                  );
+                  onStatus(
+                    `${contact.email} ${optedIn ? "can receive marketing" : "is opted out"}.`,
+                  );
+                } catch (error) {
+                  onError(error instanceof Error ? error.message : "Could not update permission");
+                }
+              }}
+            />
+          ) : null}
+        </>
       ) : null}
       {dialog}
     </div>
@@ -1434,19 +1536,37 @@ function EventPlanView(props: {
           <div className="flex flex-wrap items-center justify-between gap-4 border-y theme-border py-5">
             <div>
               <p className="font-serif text-2xl">{activePlan.name}</p>
-              <p className="mt-1 font-mono text-xs theme-muted">
-                {activePlan.status} · five thoughtful stages · no duplicate ticket confirmation
-                {pausedFutureStages
-                  ? ` · ${pausedFutureStages} future stage${pausedFutureStages === 1 ? "" : "s"} paused`
-                  : ""}
-              </p>
-              <p className="mt-2 font-mono text-micro theme-faint" role="status">
-                {deliveryAutoRefreshHalted
-                  ? "automatic delivery updates paused after an access error · use refresh"
-                  : deliveryAutoRefreshing
-                    ? "delivery status updates automatically while messages settle"
-                    : "automatic updates pause after delivery settles or 15 minutes · refresh remains available"}
-              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                <AdminStatus tone={adminToneForStatus(activePlan.status)}>
+                  {activePlan.status}
+                </AdminStatus>
+                <span className="theme-muted">
+                  five thoughtful stages · no duplicate ticket confirmation
+                </span>
+                {pausedFutureStages ? (
+                  <AdminStatus tone="attention">
+                    {pausedFutureStages} future stage{pausedFutureStages === 1 ? "" : "s"} paused
+                  </AdminStatus>
+                ) : null}
+              </div>
+              <div className="mt-2" role="status">
+                <AdminStatus
+                  tone={
+                    deliveryAutoRefreshHalted
+                      ? "danger"
+                      : deliveryAutoRefreshing
+                        ? "attention"
+                        : "neutral"
+                  }
+                  className="font-mono text-micro"
+                >
+                  {deliveryAutoRefreshHalted
+                    ? "automatic delivery updates paused after an access error · use refresh"
+                    : deliveryAutoRefreshing
+                      ? "delivery status updates automatically while messages settle"
+                      : "automatic updates pause after delivery settles or 15 minutes · refresh remains available"}
+                </AdminStatus>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {pausedFutureStages ? (
@@ -1503,35 +1623,46 @@ function EventPlanView(props: {
                       {stage.label}
                     </p>
                     <h4 className="mt-2 font-serif text-2xl">{stage.subject}</h4>
-                    <p className="mt-2 font-mono text-xs theme-muted">
-                      {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"} ·{" "}
-                      {stageNeedsManualSendDecision(stage)
-                        ? "overdue — waiting for your decision"
-                        : stageDeliveryStateLabel(stage)}{" "}
-                      ·{" "}
-                      {stage.recipientCount
-                        ? `${stage.recipientCount} recipients`
-                        : "recipient count at fan-out"}
-                    </p>
-                    <p className="mt-2 font-mono text-xs text-foreground">
-                      {deliveryEventsConfigured
-                        ? `delivered to ${stage.receivedCount} of ${stage.audienceCount} current attendees`
-                        : `sent to ${stage.audienceCount - stage.missingRecipientCount} of ${stage.audienceCount} current attendees · delivery confirmation unavailable`}
-                      {stage.missingRecipientCount
-                        ? ` · ${stage.missingRecipientCount} not yet sent`
-                        : ""}
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                      <span className="theme-muted">
+                        {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"}
+                      </span>
+                      <AdminStatus tone={stageTone(stage)}>
+                        {stageNeedsManualSendDecision(stage)
+                          ? "overdue — waiting for your decision"
+                          : stageDeliveryStateLabel(stage)}
+                      </AdminStatus>
+                      <span className="theme-muted">
+                        {stage.recipientCount
+                          ? `${stage.recipientCount} recipients`
+                          : "recipient count at fan-out"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                      <AdminStatus tone={stageAudienceTone(stage)}>
+                        {deliveryEventsConfigured
+                          ? `delivered to ${stage.receivedCount} of ${stage.audienceCount} current attendees`
+                          : `sent to ${stage.audienceCount - stage.missingRecipientCount} of ${stage.audienceCount} current attendees · delivery confirmation unavailable`}
+                      </AdminStatus>
+                      {stage.missingRecipientCount ? (
+                        <AdminStatus tone="attention">
+                          {stage.missingRecipientCount} not yet sent
+                        </AdminStatus>
+                      ) : null}
+                    </div>
                     {stageNeedsManualSendDecision(stage) ? (
                       <p className="mt-2 font-mono text-micro theme-faint">
                         This did not send automatically. Send it now, or edit the time first.
                       </p>
                     ) : null}
-                    <p className="mt-2 font-mono text-micro theme-faint">
-                      {engagementLabel(stage.delivery, stage.linkClicks)}
-                      {linkMetricsLabel(stage.linkClicks)
-                        ? ` · ${linkMetricsLabel(stage.linkClicks)}`
-                        : ""}
-                    </p>
+                    <div className="mt-2 font-mono text-micro">
+                      <DeliveryMetrics delivery={stage.delivery} links={stage.linkClicks} />
+                      {linkMetricsLabel(stage.linkClicks) ? (
+                        <span className="mt-1 block theme-muted">
+                          {linkMetricsLabel(stage.linkClicks)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                     <Button
@@ -1593,9 +1724,12 @@ function EventPlanView(props: {
                         send to {stage.missingRecipientCount} missing
                       </Button>
                     ) : (
-                      <span className="self-center font-mono text-micro theme-faint">
+                      <AdminStatus
+                        tone={stageAudienceTone(stage)}
+                        className="self-center font-mono text-micro"
+                      >
                         {stageAudienceStatusLabel(stage, deliveryEventsConfigured)}
-                      </span>
+                      </AdminStatus>
                     )}
                   </div>
                 </div>
@@ -1642,12 +1776,15 @@ function EventPlanView(props: {
                               {delivery.displayName || "unnamed"} · {delivery.email}
                             </p>
                             {delivery.lastError ? (
-                              <p className="mt-1 break-words text-[var(--prose-hashtag)]">
-                                {delivery.lastError}
+                              <p className={`mt-1 break-words ${adminToneTextClass("danger")}`}>
+                                error · {delivery.lastError}
                               </p>
                             ) : null}
                           </div>
-                          <p className="theme-muted sm:text-right">
+                          <AdminStatus
+                            tone={deliveryStatusTone(delivery)}
+                            className="sm:justify-end sm:text-right"
+                          >
                             {deliveryStatusLabel(delivery)}
                             {delivery.attempts
                               ? ` · ${delivery.attempts} attempt${delivery.attempts === 1 ? "" : "s"}`
@@ -1657,7 +1794,7 @@ function EventPlanView(props: {
                               delivery.outboxStatus === "pending")
                               ? ` · next retry ${dateLabel(delivery.nextAttemptAt)}`
                               : ""}
-                          </p>
+                          </AdminStatus>
                         </div>
                       ))}
                     </div>
@@ -1971,14 +2108,21 @@ function ComposeView(props: {
                     <p className="mt-1 font-mono text-micro theme-muted">
                       {KIND_LABELS[message.kind]} · {message.recipientCount} people
                     </p>
-                    <p className="mt-2 font-mono text-micro theme-faint">
-                      {engagementLabel(message.delivery, message.linkClicks)}
-                      {linkMetricsLabel(message.linkClicks)
-                        ? ` · ${linkMetricsLabel(message.linkClicks)}`
-                        : ""}
-                    </p>
+                    <div className="mt-2 font-mono text-micro">
+                      <DeliveryMetrics delivery={message.delivery} links={message.linkClicks} />
+                      {linkMetricsLabel(message.linkClicks) ? (
+                        <span className="mt-1 block theme-muted">
+                          {linkMetricsLabel(message.linkClicks)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-                  <p className="font-mono text-xs theme-muted">{message.status}</p>
+                  <AdminStatus
+                    tone={adminToneForStatus(message.status)}
+                    className="font-mono text-xs"
+                  >
+                    {message.status}
+                  </AdminStatus>
                 </div>
                 <p className="mt-2 font-mono text-xs theme-faint">
                   {dateLabel(message.scheduledAt)}
@@ -2119,9 +2263,11 @@ function TemplatesView(props: {
             ) : null}
           </div>
           {savedAt ? (
-            <p className="font-mono text-xs text-[var(--prose-hashtag)]" role="status">
-              saved · ready to use in compose or a future event plan
-            </p>
+            <div role="status">
+              <AdminStatus tone="positive" className="font-mono text-xs">
+                saved · ready to use in compose or a future event plan
+              </AdminStatus>
+            </div>
           ) : null}
           <Field
             label="template name"
@@ -2246,9 +2392,12 @@ function FeedbackView(props: {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-serif text-xl">{survey.title}</p>
-                      <p className="mt-1 font-mono text-micro theme-muted">
-                        {survey.responseCount} responses · {survey.status}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro">
+                        <span className="theme-muted">{survey.responseCount} responses</span>
+                        <AdminStatus tone={adminToneForStatus(survey.status)}>
+                          {survey.status}
+                        </AdminStatus>
+                      </div>
                     </div>
                     <span className="font-mono text-micro theme-muted">view →</span>
                   </div>
@@ -2470,10 +2619,10 @@ function PeopleView({
     <section aria-labelledby="people-heading" className="space-y-7">
       <div>
         <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-          people and consent
+          audience &amp; consent
         </p>
         <h3 id="people-heading" className="mt-2 font-serif text-3xl tracking-tight">
-          Know who can receive what
+          Marketing permissions
         </h3>
         <p className="mt-3 max-w-2xl font-serif text-lg leading-relaxed theme-muted">
           Event service messages are separate. This switch controls optional marketing only.
@@ -2492,7 +2641,12 @@ function PeopleView({
               <p className="mt-1 font-mono text-micro theme-faint">
                 {contact.sources.join(" · ") || "source unknown"}
               </p>
-              <p className="mt-1 font-mono text-micro theme-faint">{consentLabel(contact)}</p>
+              <AdminStatus
+                tone={contact.marketingOptedIn ? "positive" : "neutral"}
+                className="mt-1 font-mono text-micro"
+              >
+                {consentLabel(contact)}
+              </AdminStatus>
             </div>
             <button
               type="button"

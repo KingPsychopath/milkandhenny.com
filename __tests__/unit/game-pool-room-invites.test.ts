@@ -10,6 +10,7 @@ const fakes = vi.hoisted(() => ({
     receipts: [],
   })),
   joinPoolRoom: vi.fn(),
+  leavePoolRoom: vi.fn(),
   postgresQuery: vi.fn(),
   publishWake: vi.fn(),
   redis: {
@@ -29,6 +30,7 @@ vi.mock("@/features/things/pool/game-adapters.server", () => ({
   createPoolRoomAndJoin: fakes.createPoolRoomAndJoin,
   gamePoolCapacity: vi.fn(() => 12),
   joinPoolRoom: fakes.joinPoolRoom,
+  leavePoolRoom: fakes.leavePoolRoom,
 }));
 vi.mock("@/features/things/pool/membership.server", () => ({
   clearAssignmentReceipts: fakes.clearAssignmentReceipts,
@@ -99,7 +101,7 @@ vi.mock("@/features/things/pool/store.server", () => ({
 }));
 
 import { gamePoolRoomInvitePath } from "@/features/things/pool/pool-session.client";
-import { assignGamePoolRoom } from "@/features/things/pool/pool.server";
+import { assignGamePoolRoom, releaseGamePoolAssignment } from "@/features/things/pool/pool.server";
 
 describe("game-pool room invites", () => {
   beforeEach(() => {
@@ -110,6 +112,7 @@ describe("game-pool room invites", () => {
       key.includes(":assignment:") ? null : "room-join-token",
     );
     fakes.redis.set.mockResolvedValue("OK");
+    fakes.leavePoolRoom.mockResolvedValue({ ok: true, accepted: true });
     fakes.clientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("select status, closes_at"))
         return {
@@ -180,6 +183,16 @@ describe("game-pool room invites", () => {
 
   it("replaces an active assignment only when the caller explicitly moves", async () => {
     const calls: string[] = [];
+    const previousAssignment = {
+      game: "same-brain" as const,
+      roomId: "OLD123",
+      expiresAt: Date.now() + 60_000,
+      playerId: "old_player",
+      playerToken: "old_player_token",
+    };
+    fakes.redis.get.mockImplementation(async (key: string) =>
+      key.includes(":assignment:") ? { assignment: previousAssignment } : "room-join-token",
+    );
     fakes.clientQuery.mockImplementation(async (sql: string) => {
       calls.push(sql);
       if (sql.includes("select status, closes_at"))
@@ -240,5 +253,35 @@ describe("game-pool room invites", () => {
     expect(fakes.joinPoolRoom).toHaveBeenCalledWith(
       expect.objectContaining({ roomId: "NEW123", name: "Ada" }),
     );
+    expect(fakes.leavePoolRoom).toHaveBeenCalledWith(previousAssignment);
+  });
+
+  it("leaves the authoritative room before releasing its pool assignment", async () => {
+    const assignment = {
+      game: "same-brain" as const,
+      roomId: "ABCDEFG",
+      expiresAt: Date.now() + 60_000,
+      playerId: "player_test",
+      playerToken: "player_token_test",
+    };
+    fakes.redis.get.mockResolvedValue({ assignment });
+    fakes.clientQuery.mockImplementation(async (sql: string) =>
+      sql.includes("set status = 'left'")
+        ? { rows: [{ room_id: assignment.roomId }], rowCount: 1 }
+        : { rows: [], rowCount: 1 },
+    );
+
+    await expect(
+      releaseGamePoolAssignment({
+        token: "play_test-token-with-enough-characters",
+        clientId: "client_test_1234",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(fakes.leavePoolRoom).toHaveBeenCalledWith(assignment);
+    expect(fakes.clientQuery).toHaveBeenCalledWith(expect.stringContaining("set status = 'left'"), [
+      "gpr_test",
+      "client_test_1234",
+    ]);
   });
 });

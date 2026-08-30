@@ -35,12 +35,16 @@ export function HotAndColdArchive({ history }: { history: HotAndColdArchiveEntry
   const [expanded, setExpanded] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   useEffect(() => {
-    const recovered: Record<number, string> = {};
-    for (const { judgingVersion, puzzle } of history) {
-      const saved = recoverDailyHotAndColdState(localStorage, puzzle, judgingVersion);
-      if (saved?.state.target) recovered[puzzle] = saved.state.target;
+    try {
+      const recovered: Record<number, string> = {};
+      for (const { judgingVersion, puzzle } of history) {
+        const saved = recoverDailyHotAndColdState(localStorage, puzzle, judgingVersion);
+        if (saved?.state.target) recovered[puzzle] = saved.state.target;
+      }
+      setAnswers(recovered);
+    } catch {
+      setAnswers({});
     }
-    setAnswers(recovered);
   }, [history]);
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }),

@@ -1067,11 +1067,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       </header>
 
       {/* Mode toggle */}
-      <div className="flex gap-6 mb-8">
+      <div className="mb-8 flex flex-wrap gap-x-6 gap-y-1">
         <button
           type="button"
           onClick={() => switchMode("transfer")}
-          className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
+          aria-pressed={mode === "transfer"}
+          className={`inline-flex min-h-11 items-center border-b-2 pb-1 font-mono text-sm lowercase tracking-wide transition-colors ${
             mode === "transfer"
               ? "border-[var(--foreground)]"
               : "border-transparent theme-muted hover:text-[var(--foreground)]"
@@ -1083,7 +1084,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <button
             type="button"
             onClick={() => switchMode("words")}
-            className={`font-mono text-sm lowercase tracking-wide pb-1 border-b-2 transition-colors ${
+            aria-pressed={mode === "words"}
+            className={`inline-flex min-h-11 items-center border-b-2 pb-1 font-mono text-sm lowercase tracking-wide transition-colors ${
               mode === "words"
                 ? "border-[var(--foreground)]"
                 : "border-transparent theme-muted hover:text-[var(--foreground)]"
@@ -1114,11 +1116,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             </p>
           ) : null}
           {isAdmin ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setTransferAction("create")}
-                className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                aria-pressed={transferAction === "create"}
+                className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
                   transferAction === "create"
                     ? "border-[var(--foreground)] text-[var(--foreground)]"
                     : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -1129,7 +1132,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
               <button
                 type="button"
                 onClick={() => setTransferAction("append")}
-                className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+                aria-pressed={transferAction === "append"}
+                className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
                   transferAction === "append"
                     ? "border-[var(--foreground)] text-[var(--foreground)]"
                     : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -1154,7 +1158,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                 value={appendTransferId}
                 onChange={(e) => setAppendTransferId(e.target.value)}
                 placeholder="velvet-moon-candle"
-                className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+                className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
               />
               <p className="font-mono text-micro theme-faint mt-1">
                 admin only · appends files without changing expiry
@@ -1174,8 +1178,9 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  maxLength={160}
                   placeholder="valentine's day photos"
-                  className="w-full bg-transparent border-b border-[var(--stone-200)] focus:border-[var(--foreground)] outline-none font-mono text-sm py-2 transition-colors placeholder:text-[var(--stone-400)]"
+                  className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
                 />
                 <p className="font-mono text-micro theme-faint mt-1">
                   optional · a single file uses its filename by default
@@ -1205,11 +1210,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         </div>
       ) : (
         <div className="space-y-4 mb-6">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setWordsScope("word")}
-              className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+              aria-pressed={wordsScope === "word"}
+              className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
                 wordsScope === "word"
                   ? "border-[var(--foreground)] text-[var(--foreground)]"
                   : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -1220,7 +1226,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             <button
               type="button"
               onClick={() => setWordsScope("asset")}
-              className={`font-mono text-xs px-2 py-1 rounded border transition-colors ${
+              aria-pressed={wordsScope === "asset"}
+              className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
                 wordsScope === "asset"
                   ? "border-[var(--foreground)] text-[var(--foreground)]"
                   : "theme-border theme-muted hover:text-[var(--foreground)]"
@@ -1273,7 +1280,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             {targetsLoading ? (
               <p className="font-mono text-micro theme-faint mt-1">loading suggestions...</p>
             ) : (
-              <div className="mt-1 flex items-center gap-3">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <p className="font-mono text-micro theme-faint">
                   {wordsScope === "word"
                     ? `${wordSlugSuggestions.length} slug suggestion${wordSlugSuggestions.length === 1 ? "" : "s"}`
@@ -1285,14 +1292,17 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                     setTargetsError("");
                     setTargetsResolved(false);
                   }}
-                  className="font-mono text-micro theme-muted hover:text-[var(--foreground)] transition-colors"
+                  className="min-h-11 font-mono text-micro theme-muted transition-colors hover:text-[var(--foreground)]"
                 >
                   reload suggestions
                 </button>
               </div>
             )}
             {targetsError ? (
-              <p className="font-mono text-micro mt-1 text-amber-700 dark:text-amber-500/90">
+              <p
+                className="mt-1 font-mono text-micro text-amber-700 dark:text-amber-500/90"
+                role="alert"
+              >
                 {targetsError}
               </p>
             ) : null}
@@ -1300,7 +1310,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <button
             type="button"
             onClick={() => setForce(!force)}
-            className="flex items-center gap-2.5 cursor-pointer group"
+            aria-pressed={force}
+            className="group flex min-h-11 cursor-pointer items-center gap-2.5 text-left"
           >
             <span
               className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
@@ -1373,7 +1384,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       {/* File list */}
       {files.length > 0 && (
         <div className="mt-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="font-mono text-xs theme-muted">
               {files.length} file{files.length !== 1 ? "s" : ""} · {formatBytes(totalFileSize)}
               {mode === "transfer" && <span className="theme-faint"> (direct to R2)</span>}
@@ -1382,7 +1393,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             <button
               type="button"
               onClick={clearAll}
-              className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+              className="min-h-11 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
             >
               clear all
             </button>
@@ -1402,7 +1413,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   <button
                     type="button"
                     onClick={() => removeFile(file)}
-                    className="theme-muted hover:text-[var(--foreground)] transition-colors text-sm leading-none"
+                    className="inline-flex size-11 items-center justify-center text-sm leading-none theme-muted transition-colors hover:text-[var(--foreground)]"
                     aria-label={`Remove ${file.name}`}
                   >
                     ×
@@ -1417,7 +1428,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             type="button"
             onClick={handleUpload}
             disabled={uploading || files.length === 0}
-            className="mt-6 w-full bg-[var(--foreground)] text-[var(--background)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
+            className="mt-6 min-h-11 w-full rounded-md bg-[var(--foreground)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-30"
           >
             {uploading && uploadProgress
               ? `${getUploadProgressLabel(uploadProgress)}...`
@@ -1469,7 +1480,9 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
       {/* Error */}
       {uploadError && (
-        <p className="font-mono text-xs mt-4 text-[var(--prose-hashtag)]">{uploadError}</p>
+        <p className="mt-4 font-mono text-xs text-[var(--prose-hashtag)]" role="alert">
+          {uploadError}
+        </p>
       )}
       <ReportIssueButton
         type="upload_issue"
@@ -1505,7 +1518,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   <button
                     type="button"
                     onClick={() => copyToClipboard(transferResult.shareUrl, "share")}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                    className="min-h-11 shrink-0 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
                   >
                     {copied === "share" ? "copied" : "copy"}
                   </button>
@@ -1526,7 +1539,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   <button
                     type="button"
                     onClick={() => copyToClipboard(transferResult.adminUrl, "admin")}
-                    className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                    className="min-h-11 shrink-0 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
                   >
                     {copied === "admin" ? "copied" : "copy"}
                   </button>
@@ -1567,7 +1580,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <button
             type="button"
             onClick={clearAll}
-            className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
+            className="mt-6 min-h-11 w-full rounded-md border border-[var(--stone-200)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--foreground)] transition-colors hover:border-[var(--stone-400)]"
           >
             upload more
           </button>
@@ -1604,7 +1617,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                       <button
                         type="button"
                         onClick={() => copyToClipboard(file.markdown, file.filename)}
-                        className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors shrink-0"
+                        className="min-h-11 shrink-0 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
                       >
                         {copied === file.filename ? "copied" : "copy"}
                       </button>
@@ -1626,7 +1639,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                       "all-markdown",
                     )
                   }
-                  className="font-mono text-xs theme-muted hover:text-[var(--foreground)] transition-colors"
+                  className="min-h-11 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
                 >
                   {copied === "all-markdown" ? "copied all" : "copy all markdown"}
                 </button>
@@ -1646,7 +1659,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <button
             type="button"
             onClick={clearAll}
-            className="mt-6 w-full border border-[var(--stone-200)] text-[var(--foreground)] font-mono text-sm lowercase tracking-wide py-2.5 rounded-md hover:border-[var(--stone-400)] transition-colors"
+            className="mt-6 min-h-11 w-full rounded-md border border-[var(--stone-200)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--foreground)] transition-colors hover:border-[var(--stone-400)]"
           >
             upload more
           </button>

@@ -184,6 +184,7 @@ export type UserReportEnvelope = {
     type: Type;
     payload: ReportInputByType[Type];
     diagnostics?: ReportDiagnosticsInput;
+    userNote?: string;
   };
 }[ReportType];
 

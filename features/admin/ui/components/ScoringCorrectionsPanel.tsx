@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import type { AdminScoringActivity, ScoringAction } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type Participant = { id: string; displayName?: string; publicAlias: string; balance: number };
 
@@ -71,6 +72,12 @@ export function ScoringCorrectionsPanel({
       <h4 id="score-corrections-heading" className="font-serif text-xl">
         Penalties and corrections
       </h4>
+      <AdminStatus
+        tone={state === "frozen" ? "attention" : adminToneForStatus(state)}
+        className="mt-2 font-mono text-xs"
+      >
+        scoring {state}
+      </AdminStatus>
       <form onSubmit={(event) => void search(event)} className="mt-4 flex gap-2">
         <label htmlFor="admin-score-participant" className="sr-only">
           Participant name, alias, or ticket suffix

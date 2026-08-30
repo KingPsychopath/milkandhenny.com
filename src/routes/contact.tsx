@@ -20,7 +20,7 @@ function ContactPage() {
       <header className="max-w-2xl mx-auto px-6 pt-12 pb-8">
         <Link
           to="/"
-          className="font-mono text-sm font-bold tracking-tighter hover:opacity-70 transition-opacity"
+          className="inline-flex min-h-11 items-center font-mono text-sm font-bold tracking-tighter hover:opacity-70 transition-opacity"
         >
           {SITE_BRAND}
         </Link>

@@ -40,8 +40,11 @@ describe("upload transfer finalize", () => {
     vi.doMock("@/features/transfers/store.server", () => ({
       createTransfer,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+      normaliseTransferTitle: (value: unknown) =>
+        typeof value === "string" && value.trim() ? value.trim() : "untitled",
     }));
     vi.doMock("@/features/transfers/upload-reservation.server", () => ({
       deleteTransferUploadReservation: vi.fn().mockResolvedValue(undefined),
@@ -122,8 +125,11 @@ describe("upload transfer finalize", () => {
     vi.doMock("@/features/transfers/store.server", () => ({
       createTransfer: vi.fn(),
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
       MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
       MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+      normaliseTransferTitle: (value: unknown) =>
+        typeof value === "string" && value.trim() ? value.trim() : "untitled",
     }));
     vi.doMock("@/features/transfers/upload.server", () => ({
       applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),

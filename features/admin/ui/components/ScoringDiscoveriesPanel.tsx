@@ -3,6 +3,7 @@ import { useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES } from "@/features/event-scoring/templates";
 import type { AdminScoringActivity, ScoringAction, ScoringData } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 const METHODS = ["qr", "code", "word", "phrase", "collected-clues"] as const;
 const POINT_MODES = [
@@ -376,12 +377,16 @@ export function ScoringDiscoveriesPanel({
         {discoveries.map((discovery) => (
           <li key={discovery.id} className="flex flex-wrap items-center gap-3 py-3">
             <span className="min-w-0 flex-1 font-serif">{discovery.name}</span>
-            <span className="font-mono text-micro theme-muted">
-              {discovery.method} · {discovery.status}
+            <span className="flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+              <span>{discovery.method}</span>
+              <span aria-hidden="true">·</span>
+              <AdminStatus tone={adminToneForStatus(discovery.status)}>
+                {discovery.status}
+              </AdminStatus>
               {discovery.rule.claimFrequency === "cooldown" &&
-              typeof discovery.rule.cooldownSeconds === "number"
-                ? ` · repeats every ${Math.ceil(discovery.rule.cooldownSeconds / 60)} min`
-                : ""}
+              typeof discovery.rule.cooldownSeconds === "number" ? (
+                <span>· repeats every {Math.ceil(discovery.rule.cooldownSeconds / 60)} min</span>
+              ) : null}
             </span>
             {discovery.method !== "collected-clues" && (
               <button
@@ -519,8 +524,12 @@ export function ScoringDiscoveriesPanel({
             run test
           </button>
           {testResult && (
-            <p className="font-mono text-xs theme-muted sm:col-span-2" role="status">
-              {testResult}
+            <p className="font-mono text-xs sm:col-span-2" role="status">
+              <AdminStatus
+                tone={testResult.startsWith("Credential is valid") ? "positive" : "danger"}
+              >
+                {testResult}
+              </AdminStatus>
             </p>
           )}
         </form>

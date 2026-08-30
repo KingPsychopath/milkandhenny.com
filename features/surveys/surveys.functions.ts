@@ -1,12 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { getRequest } from "@tanstack/react-start/server";
-import { authenticateRequest } from "@/features/auth/auth.server";
+import { authenticateRequest, getClientIp } from "@/features/auth/auth.server";
 import {
   getSurvey,
   listSurveyResponses,
   listSurveys,
   saveSurvey,
+  reserveSurveySubmission,
   submitSurvey,
   type SurveyRecord,
 } from "./surveys.server";
@@ -24,7 +25,13 @@ export const submitSurveyFn = createServerFn({ method: "POST" })
       answers: Record<string, unknown>;
     }) => data,
   )
-  .handler(async ({ data }) => submitSurvey(data));
+  .handler(async ({ data }) => {
+    const limit = await reserveSurveySubmission(data.slug, getClientIp(getRequest()));
+    if (!limit.allowed) {
+      throw new Error("Too many survey responses from this network. Try again in a little while.");
+    }
+    return submitSurvey(data);
+  });
 
 export const getAdminSurveysFn = createServerFn({ method: "GET" }).handler(async () => {
   const auth = await authenticateRequest(getRequest(), "admin");

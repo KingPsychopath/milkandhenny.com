@@ -865,16 +865,35 @@ export async function applySameBrainHostAction(input: {
           "not_enough_players",
           `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`,
         );
-      // A player who has not confirmed gets buzzed; the host must explicitly start anyway.
+      // A player who has not confirmed gets buzzed. The second request names exactly who the host
+      // saw as absent, and the same locked mutation rechecks that list before removing anyone.
+      const confirmed = new Set(action.removePlayerIds ?? []);
       const unready = multiplayerUnreadyPlayers(room.players);
-      if (unready.length > 0 && !action.force) {
-        if (requestMultiplayerReadiness(unready, action.actionId, now)) changed(room);
-        const names = unready.map(({ name }) => name).join(", ");
+      const unconfirmed = unready.filter(
+        ({ id, startRequestId }) =>
+          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
+      );
+      if (unconfirmed.length > 0) {
+        if (requestMultiplayerReadiness(unconfirmed, action.actionId, now)) changed(room);
+        const names = unconfirmed.map(({ name }) => name).join(", ");
         return reject(
           view(),
           "players_not_ready",
-          unready.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+          unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
         );
+      }
+      const remainingPlayers = room.players.filter(
+        (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
+      );
+      if (remainingPlayers.length < SAME_BRAIN_PLAYER_LIMITS.min)
+        return reject(
+          view(),
+          "not_enough_players",
+          `${SAME_BRAIN_PLAYER_LIMITS.min} ready people are needed to start`,
+        );
+      if (remainingPlayers.length !== room.players.length) {
+        room.players = remainingPlayers;
+        changed(room);
       }
       room.round = 0;
       room.history = [];

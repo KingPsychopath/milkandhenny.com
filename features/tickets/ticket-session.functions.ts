@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { openAttendeeTicket } from "@/features/event-scoring/session.server";
-import { getTicket } from "./store.server";
+import { getTicketByCurrentReference } from "./store.server";
 
 export const useTicketForScoringFn = createServerFn({ method: "POST" })
   .validator((data: { ticketId: string }) => data)
   .handler(async ({ data }) => {
-    const ticket = await getTicket(data.ticketId);
+    const ticket = await getTicketByCurrentReference(data.ticketId);
     if (!ticket) return { ok: false as const, status: 404, error: "Ticket not found" };
     const result = await openAttendeeTicket({
       ticketId: data.ticketId,

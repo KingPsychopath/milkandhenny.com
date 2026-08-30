@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { chromium, devices, expect, test, webkit } from "@playwright/test";
 import { Pool } from "pg";
 
@@ -121,6 +123,58 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
   await inAppContext.close();
   await browser.close();
   await pool.end();
+});
+
+test("renders score, discovery, and staff links outside the public event page", async ({
+  page,
+}) => {
+  const suffix = Date.now().toString(36);
+  const eventSlug = `score-routes-${suffix}`;
+  const token = `staff-route-${suffix}`;
+  const pool = new Pool({ connectionString: databaseUrl });
+
+  await pool.query(
+    `insert into events (slug, title, status, starts_at, timezone)
+     values ($1, 'Route audit event', 'published', now(), 'Europe/London')`,
+    [eventSlug],
+  );
+  await pool.query(
+    `insert into event_scoring_settings (event_slug, state, leaderboard_visibility)
+     values ($1, 'ready', 'hidden')`,
+    [eventSlug],
+  );
+  await pool.query(
+    `insert into score_staff_assignments
+       (id,event_slug,label,assignment_type,token_hash,permissions,scope,status,expires_at,
+        role_preset,invitation_state)
+     values ($1,$2,'Route audit station','station',$3,$4::jsonb,$5::jsonb,'active',
+       now() + interval '1 day','points-marshal','active')`,
+    [
+      `staff-route-${suffix}`,
+      eventSlug,
+      createHash("sha256").update(token).digest("hex"),
+      JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
+      JSON.stringify({ activityIds: [], rolePreset: "points-marshal" }),
+    ],
+  );
+
+  try {
+    await page.goto(`/events/${eventSlug}/score`);
+    await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
+
+    await page.goto(`/events/${eventSlug}/discoveries`);
+    await expect(page.getByRole("heading", { name: "Find a clue" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
+
+    await page.goto(`/events/${eventSlug}/staff/${token}`);
+    await expect(page.getByRole("heading", { name: "Route audit event" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Award points" })).toBeVisible();
+    await expect(page.getByText("No assigned activity is accepting results.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
+  } finally {
+    await pool.end();
+  }
 });
 
 function boxesOverlap(

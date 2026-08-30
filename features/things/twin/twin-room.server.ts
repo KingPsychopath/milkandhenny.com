@@ -54,12 +54,16 @@ export function applyTwinAction(input: Parameters<typeof engine.applyTwinAction>
         }).catch(() => undefined);
       }
       if (result.ok && result.accepted && input.action.type === "game.start") {
+        const remainingPlayerIds = new Set(result.snapshot.players.map(({ id }) => id));
+        const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
+          (playerId) => !remainingPlayerIds.has(playerId),
+        );
         await markGamePoolPlayersRemoved({
           roomId: input.roomId,
-          playerIds: input.action.removePlayerIds ?? [],
+          playerIds: removedPlayerIds,
           actionId: input.action.actionId ?? crypto.randomUUID(),
         }).catch(() => undefined);
-        for (const playerId of input.action.removePlayerIds ?? [])
+        for (const playerId of removedPlayerIds)
           await publishMultiplayerRoomTermination("twin", input.roomId, {
             reason: "removed",
             playerId,

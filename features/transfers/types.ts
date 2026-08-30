@@ -26,6 +26,8 @@ type TransferFile = {
   filename: string;
   kind: FileKind;
   size: number;
+  /** Primary plus separately archived original bytes used for transfer quotas. */
+  storedBytes?: number;
   mimeType: string;
   storageKey: string;
   originalStorageKey?: string;

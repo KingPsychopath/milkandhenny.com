@@ -14,6 +14,7 @@ vi.mock("@/lib/platform/redis.server", () => ({
 }));
 
 import {
+  appendTransferFiles,
   saveTransfer,
   getTransfer,
   deleteTransferData,
@@ -21,6 +22,9 @@ import {
   validateDeleteToken,
   generateTransferId,
   generateDeleteToken,
+  normaliseTransferTitle,
+  updateTransferFile,
+  updateTransferGrouping,
 } from "@/features/transfers/store.server";
 import type { TransferData } from "@/features/transfers/types";
 
@@ -147,6 +151,99 @@ describe("transfers (in-memory fallback)", () => {
     expect(updated.files.find((file) => file.id === "still")).toMatchObject({ id: "still" });
     expect(updated.files.find((file) => file.id === "still")).not.toHaveProperty("groupId");
     expect(updated.files.find((file) => file.id === "still")).not.toHaveProperty("groupRole");
+  });
+
+  it("appends and regroups without overwriting a concurrent worker update", async () => {
+    const transfer = makeTransfer();
+    await saveTransfer(transfer, 3600);
+    const appended = await appendTransferFiles(transfer.id, [
+      {
+        id: "motion-1",
+        filename: "motion.mov",
+        kind: "video",
+        size: 2048,
+        storedBytes: 4096,
+        mimeType: "video/quicktime",
+        storageKey: `transfers/${transfer.id}/originals/motion.mov`,
+      },
+    ]);
+    expect(appended.status).toBe("updated");
+    if (appended.status !== "updated") return;
+
+    await updateTransferFile(transfer.id, {
+      ...transfer.files[0],
+      processingStatus: "worker_done",
+      previewStatus: "ready",
+    });
+    await updateTransferGrouping(
+      transfer.id,
+      appended.transfer.files.map((file) =>
+        file.id === "motion-1" ? { ...file, groupId: "live-1", groupRole: "motion" } : file,
+      ),
+      undefined,
+    );
+
+    expect(await getTransfer(transfer.id)).toMatchObject({
+      files: [
+        expect.objectContaining({
+          id: "photo-1",
+          processingStatus: "worker_done",
+          previewStatus: "ready",
+        }),
+        expect.objectContaining({ id: "motion-1", groupId: "live-1" }),
+      ],
+    });
+    expect((await getTransfer(transfer.id))?.files[1]?.storedBytes).toBe(4096);
+  });
+
+  it("enforces append limits atomically and reserves archived filenames", async () => {
+    const transfer = makeTransfer({
+      files: [
+        {
+          ...makeTransfer().files[0],
+          storedBytes: 900,
+          originalFilename: "camera-original.tiff",
+        },
+      ],
+    });
+    await saveTransfer(transfer, 3600);
+
+    await expect(
+      appendTransferFiles(
+        transfer.id,
+        [
+          {
+            id: "second",
+            filename: "second.jpg",
+            kind: "image",
+            size: 200,
+            storedBytes: 200,
+            mimeType: "image/jpeg",
+            storageKey: `transfers/${transfer.id}/originals/second.jpg`,
+          },
+        ],
+        { maxFiles: 2, maxTotalBytes: 1_000 },
+      ),
+    ).resolves.toEqual({ status: "limit" });
+
+    await expect(
+      appendTransferFiles(transfer.id, [
+        {
+          id: "collision",
+          filename: "camera-original.tiff",
+          kind: "image",
+          size: 10,
+          mimeType: "image/tiff",
+          storageKey: `transfers/${transfer.id}/originals/camera-original.tiff`,
+        },
+      ]),
+    ).resolves.toEqual({ status: "conflict" });
+  });
+
+  it("normalises untrusted transfer titles to a bounded single line", () => {
+    expect(normaliseTransferTitle({ title: "not a string" })).toBe("untitled");
+    expect(normaliseTransferTitle("  party\n\tphotos  ")).toBe("party photos");
+    expect(normaliseTransferTitle("x".repeat(300))).toHaveLength(160);
   });
 
   it("generateTransferId returns a 128-bit base64url capability id", () => {

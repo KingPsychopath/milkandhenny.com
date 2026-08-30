@@ -9,7 +9,7 @@ import { extractMarkdownImageRefs } from "./image";
 import { loadWordImageData } from "./image.server";
 import { canReadWordInServerContext, isWordsEnabled } from "./reader.server";
 import { signWordAccessToken, verifyShareLinkAccess, wordAccessCookieName } from "./share.server";
-import { getWord, getWordMeta, listWords } from "./store.server";
+import { getWord, getWordMeta, listAllWords } from "./store.server";
 import type { WordType } from "./types";
 import type { WordListSummary } from "./components/ui/SearchableWordList";
 
@@ -56,9 +56,7 @@ async function verifyAndRememberWordShare(input: { slug: string; token: string; 
 }
 
 export const getWordsPageFn = createServerFn({ method: "GET" }).handler(async () => {
-  const noteItems = isWordsEnabled()
-    ? (await listWords({ includeNonPublic: false, limit: 1000 })).words
-    : [];
+  const noteItems = isWordsEnabled() ? await listAllWords({ includeNonPublic: false }) : [];
 
   const allItems: WordListSummary[] = noteItems.map((note) => ({
     slug: note.slug,
@@ -95,7 +93,7 @@ export const getWordPageFn = createServerFn({ method: "GET" })
     const note = await getWord(slug);
     if (!note) throw notFound();
 
-    const publishedWords = (await listWords({ includeNonPublic: false, limit: 1000 })).words
+    const publishedWords = (await listAllWords({ includeNonPublic: false }))
       .map((word) => ({
         slug: word.slug,
         title: word.title,

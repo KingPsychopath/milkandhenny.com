@@ -23,10 +23,40 @@ import {
   formatTicketQrPayload,
   isValidTicketId,
   parseTicketQrPayload,
+  ticketPublicId,
 } from "@/features/tickets/types";
 import { assessEmailAddress, isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
+import { projectRedeemOutcomeForScanner } from "@/features/tickets/scanner-boundary";
 
 describe("ticket ids", () => {
+  it("uses a rotated bearer reference at scanner boundaries", () => {
+    const id = "0123456789ABCDEF";
+    expect(ticketPublicId({ id, accessReference: "0A1B2C3D4E5F6G7H" })).toBe("0A1B2C3D4E5F6G7H");
+    expect(ticketPublicId({ id })).toBe(id);
+  });
+
+  it("projects the scanned bearer reference only at the public scanner boundary", () => {
+    const internalId = "0123456789ABCDEF";
+    const publicId = "0A1B2C3D4E5F6G7H";
+    const outcome = {
+      result: "admitted" as const,
+      ticket: {
+        id: internalId,
+        orderId: "order-1",
+        holderName: "Alice",
+        ticketTypeName: "Entry",
+        kind: "free" as const,
+        status: "valid" as const,
+        isPlusOne: false,
+      },
+    };
+
+    expect(projectRedeemOutcomeForScanner(outcome, publicId)).toMatchObject({
+      ticket: { id: publicId },
+    });
+    expect(outcome.ticket.id).toBe(internalId);
+  });
+
   it("generates ids over the unambiguous alphabet", () => {
     for (let index = 0; index < 200; index += 1) {
       const id = generateTicketId();

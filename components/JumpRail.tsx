@@ -107,6 +107,7 @@ export function JumpRail({ items, ariaLabel }: JumpRailProps) {
               className="font-mono text-[11px] leading-tight h-auto py-1.5 px-3 text-left rounded-md transition-colors hover:bg-stone-200/80 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-inset whitespace-nowrap overflow-hidden text-ellipsis min-h-[44px] flex items-center"
               style={{ color: "var(--foreground)" }}
               title={label}
+              tabIndex={open ? 0 : -1}
             >
               {label.length > LABEL_CAP ? `${label.slice(0, LABEL_CAP)}…` : label}
             </button>

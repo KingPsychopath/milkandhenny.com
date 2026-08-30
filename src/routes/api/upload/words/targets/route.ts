@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { listWords } from "@/features/words/store.server";
+import { listAllWords } from "@/features/words/store.server";
 import { isConfigured, listPrefixes } from "@/lib/platform/r2.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -47,11 +47,11 @@ async function handleGET(request: Request) {
 
     if (isWordsEnabled()) {
       const noteResult = await withTimeout(
-        listWords({ includeNonPublic: true, limit: 500 }),
+        listAllWords({ includeNonPublic: true }),
         NOTES_TARGETS_TIMEOUT_MS,
       );
       if (noteResult) {
-        for (const note of noteResult.words) {
+        for (const note of noteResult) {
           slugSet.add(note.slug);
         }
       }

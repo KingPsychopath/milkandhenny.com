@@ -28,6 +28,7 @@ import {
 import { rememberTicketHolder } from "./holder-cookie.server";
 import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveScannerLink } from "./scanner-links.server";
+import { projectRedeemOutcomeForScanner } from "./scanner-boundary";
 import { getTicket } from "./store.server";
 import { isValidScannerToken } from "./checkpoint-types";
 import {
@@ -206,7 +207,10 @@ export const resendTicketsFn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export type DoorRedeemResult = { authorised: false } | { authorised: true; outcome: RedeemOutcome };
+export type DoorRedeemResult =
+  | { authorised: false }
+  | { authorised: true; outcome: RedeemOutcome }
+  | { authorised: true; unavailable: true };
 
 /**
  * A door action is allowed by a live scanner link for that event's door.
@@ -251,8 +255,11 @@ export const redeemTicketFn = createServerFn({ method: "POST" })
       }),
     );
 
-    if (!result.ok) return { authorised: true, outcome: { result: "invalid" } };
-    return { authorised: true, outcome: result.value };
+    if (!result.ok) return { authorised: true, unavailable: true };
+    return {
+      authorised: true,
+      outcome: projectRedeemOutcomeForScanner(result.value, data.scanned),
+    };
   });
 
 export type DoorDataResult =
@@ -295,7 +302,10 @@ export const getDoorDataFn = createServerFn({ method: "GET" })
       manifestHashes: manifest.hashes,
       generatedAt: manifest.generatedAt,
       summary: { total: summary.valid, redeemed: summary.redeemed },
-      tickets: summary.tickets.map(({ email: _email, ...rest }) => rest),
+      tickets: summary.tickets.map(({ email: _email, publicId, ...rest }) => ({
+        ...rest,
+        id: publicId ?? rest.id,
+      })),
     };
   });
 
@@ -388,13 +398,13 @@ export const getCheckoutOutcomeFn = createServerFn({ method: "GET" })
       state: "complete",
       event: toTicketHolderEvent(event),
       tickets: tickets.map((ticket) => ({
-        id: ticket.id,
+        id: ticket.accessReference ?? ticket.id,
         holderName: ticket.holderName,
         qrPayload: buildTicketQrPayload(ticket.accessReference ?? ticket.id),
         status: ticket.status,
         redeemedAt: ticket.redeemedAt,
       })),
-      managerTicketId: primary.id,
+      managerTicketId: primary.accessReference ?? primary.id,
       email: outcome.email,
       amountMinor: outcome.amountMinor,
       currency: outcome.currency,
@@ -441,7 +451,7 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
       return { ok: false, error: "Verify your email before requesting this ticket return" };
     if (!managesOrder) {
       const requested = await requestTransferredTicketReturn({
-        ticketId: data.ticketId,
+        ticketId: ticket.id,
         requesterPersonId: attendeePersonId!,
         origin: getBaseUrlForRequest(getRequest()),
       });

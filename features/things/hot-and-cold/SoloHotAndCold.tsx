@@ -58,7 +58,9 @@ export function SoloHotAndCold({
   const [showHow, setShowHow] = useState(false);
   const [community, setCommunity] = useState<HotAndColdCommunityStats | null>(null);
   const [communityLoaded, setCommunityLoaded] = useState(false);
-  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
+  const { wordsHidden, toggleWords } = useHotAndColdWordVisibility(
+    `daily:${puzzle}:${state.runId ?? "pending"}`,
+  );
   const storageKey = hotAndColdBrowserKeys.daily(puzzle, judgingVersion);
   useEffect(() => {
     let cancelled = false;
@@ -337,7 +339,7 @@ export function SoloHotAndCold({
         </button>
         <span>daily #{puzzle}</span>
         <span className="flex items-center justify-self-end gap-1">
-          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
+          {done ? <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} /> : null}
           <button
             type="button"
             className="min-h-11 font-mono text-micro underline decoration-transparent underline-offset-4 transition-opacity hover:opacity-60 hover:decoration-current"

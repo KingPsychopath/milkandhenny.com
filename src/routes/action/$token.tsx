@@ -37,51 +37,60 @@ function TicketActionPage() {
   async function accept() {
     setBusy("accept");
     setMessage("");
-    const result = await acceptAttendeeActionFn({ data: { token } });
-    if (!result.ok) {
-      setMessage(result.error);
+    try {
+      const result = await acceptAttendeeActionFn({ data: { token } });
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      if (result.value.mfaRequired) {
+        setDestination(result.value.destination);
+        setMessage("Action confirmed. Finish the authenticator check to continue signing in.");
+      } else if ("purpose" in result.value && result.value.purpose === "admin-invitation") {
+        setDestination(result.value.destination);
+        setMessage("Admin access activated. It is now attached to your verified identity.");
+      } else if ("purpose" in result.value && result.value.purpose === "staff-invitation") {
+        setDestination(result.value.destination);
+        setMessage("Staff access activated. It is now attached to your verified identity.");
+      } else if ("publicTicketId" in result.value) {
+        setDestination(result.value.destination);
+        setMessage(
+          result.value.purpose === "ticket-transfer"
+            ? "Transfer accepted. The previous ticket link and QR have been replaced."
+            : "Ticket claimed. It is now saved in You.",
+        );
+      } else if ("state" in result.value) {
+        setDestination(result.value.destination);
+        setMessage(
+          result.value.state === "pending"
+            ? "Consent recorded. The refund is processing to the purchaser’s original payment method."
+            : "Consent recorded. The ticket was refunded to the purchaser’s original payment method.",
+        );
+      }
+    } catch {
+      setMessage("We could not complete that action. Check your connection and try again.");
+    } finally {
       setBusy(null);
-      return;
     }
-    if (result.value.mfaRequired) {
-      setDestination(result.value.destination);
-      setMessage("Action confirmed. Finish the authenticator check to continue signing in.");
-    } else if ("purpose" in result.value && result.value.purpose === "admin-invitation") {
-      setDestination(result.value.destination);
-      setMessage("Admin access activated. It is now attached to your verified identity.");
-    } else if ("purpose" in result.value && result.value.purpose === "staff-invitation") {
-      setDestination(result.value.destination);
-      setMessage("Staff access activated. It is now attached to your verified identity.");
-    } else if ("publicTicketId" in result.value) {
-      setDestination(result.value.destination);
-      setMessage(
-        result.value.purpose === "ticket-transfer"
-          ? "Transfer accepted. The previous ticket link and QR have been replaced."
-          : "Ticket claimed. It is now saved in You.",
-      );
-    } else if ("state" in result.value) {
-      setDestination(result.value.destination);
-      setMessage(
-        result.value.state === "pending"
-          ? "Consent recorded. The refund is processing to the purchaser’s original payment method."
-          : "Consent recorded. The ticket was refunded to the purchaser’s original payment method.",
-      );
-    }
-    setBusy(null);
   }
 
   async function decline() {
     setBusy("decline");
     setMessage("");
-    const result = await declineAttendeeActionFn({ data: { token } });
-    setMessage(
-      result.ok
-        ? isRefundConsent
-          ? "Refund consent declined. The ticket remains with its current holder."
-          : "Transfer declined. The current holder keeps the ticket."
-        : result.error,
-    );
-    setBusy(null);
+    try {
+      const result = await declineAttendeeActionFn({ data: { token } });
+      setMessage(
+        result.ok
+          ? isRefundConsent
+            ? "Refund consent declined. The ticket remains with its current holder."
+            : "Transfer declined. The current holder keeps the ticket."
+          : result.error,
+      );
+    } catch {
+      setMessage("We could not decline that action. Check your connection and try again.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   const unavailable = !preview || preview.state !== "available";
@@ -100,7 +109,10 @@ function TicketActionPage() {
 
   return (
     <main id="main" className="mx-auto min-h-screen w-full max-w-2xl px-6 py-14">
-      <Link to="/" className="font-mono text-micro theme-muted hover:opacity-70">
+      <Link
+        to="/"
+        className="inline-flex min-h-11 items-center font-mono text-micro theme-muted hover:opacity-70"
+      >
         ← milk &amp; henny
       </Link>
       <p className="mt-10 font-mono text-micro uppercase tracking-widest theme-muted">
@@ -153,10 +165,14 @@ function TicketActionPage() {
               <dt className="theme-muted">invited email</dt>
               <dd className="mt-1">{preview.intendedEmailHint}</dd>
             </div>
-            <div>
-              <dt className="theme-muted">expires</dt>
-              <dd className="mt-1">{preview.expiresAt}</dd>
-            </div>
+            {preview.expiresAt ? (
+              <div>
+                <dt className="theme-muted">expires</dt>
+                <dd className="mt-1">
+                  <time dateTime={preview.expiresAt}>{formatActionExpiry(preview.expiresAt)}</time>
+                </dd>
+              </div>
+            ) : null}
           </dl>
           <p className="mt-5 max-w-lg font-mono text-xs leading-relaxed theme-muted">
             {isAccess
@@ -205,7 +221,7 @@ function TicketActionPage() {
           href={destination}
           className="mt-4 inline-flex min-h-11 items-center font-mono text-xs underline hover:opacity-70"
         >
-          open ticket →
+          continue →
         </a>
       ) : null}
       <p className="mt-10 font-mono text-micro leading-relaxed theme-faint">
@@ -214,6 +230,19 @@ function TicketActionPage() {
       </p>
     </main>
   );
+}
+
+function formatActionExpiry(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
 }
 
 function SafeActionState({ title, children }: { title: string; children: React.ReactNode }) {

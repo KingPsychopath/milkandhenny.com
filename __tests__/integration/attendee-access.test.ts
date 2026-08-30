@@ -11,9 +11,16 @@ import {
   verifyAttendeeAccess,
 } from "@/features/attendee-access/access.server";
 import { removePersonEmail } from "@/features/attendee-operations/identity-manager.server";
-import { participantForTicket } from "@/features/event-scoring/store.server";
+import {
+  acceptHeldScore,
+  createActivity,
+  getOrCreateSettings,
+  participantForTicket,
+  recordScore,
+} from "@/features/event-scoring/store.server";
 import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
 import { hashEmail } from "@/features/tickets/qr.server";
+import { getTicket } from "@/features/tickets/store.server";
 import { query } from "@/lib/platform/postgres.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
@@ -239,6 +246,11 @@ describeWithDatabase("attendee person access", () => {
       }),
     ]);
     expect([guestClaim.ok, rivalClaim.ok].filter(Boolean)).toHaveLength(1);
+    const winningClaim = [guestClaim, rivalClaim].find((result) => result.ok);
+    expect(winningClaim?.ok && winningClaim.value.publicTicketId).not.toBe(CHILD);
+    expect((await getTicket(CHILD))?.accessReference).toBe(
+      winningClaim?.ok ? winningClaim.value.publicTicketId : undefined,
+    );
     expect([guestClaim, rivalClaim].find((result) => !result.ok)).toMatchObject({
       ok: false,
       status: 409,
@@ -269,6 +281,61 @@ describeWithDatabase("attendee person access", () => {
         )[0]?.count,
       ).toBe("1");
     }
+  });
+
+  it("keeps held postings out of account history until they change the confirmed balance", async () => {
+    const person = await createVerifiedPerson("person_score_owner", "score-owner@example.com");
+    const participant = await participantForTicket(SPARE);
+    expect(
+      await claimTicketForPerson({
+        personId: person.personId,
+        verifiedEmailHash: person.emailHash,
+        ticketId: SPARE,
+        permittedParticipantId: participant!.id,
+      }),
+    ).toMatchObject({ ok: true });
+    await getOrCreateSettings(EVENT);
+    await query(`update event_scoring_settings set state = 'frozen' where event_slug = $1`, [
+      EVENT,
+    ]);
+    const activity = await createActivity({
+      eventSlug: EVENT,
+      name: "Held account score",
+      template: "free-form",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 5, repeat: "repeat", requiresCheckIn: false },
+    });
+    const held = await recordScore({
+      eventSlug: EVENT,
+      activityId: activity.id,
+      sourceType: "manual",
+      sourceId: "held-account-score",
+      idempotencyKey: "held-account-score",
+      reasonCode: "other",
+      actorType: "admin",
+      postings: [{ participantId: participant!.id, points: 5 }],
+    });
+    expect(held).toMatchObject({ ok: true, value: { status: "held" } });
+    expect((await attendeeAccount(person.personId))?.tickets).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: SPARE, points: 0, scoreHistory: [] })]),
+    );
+
+    await query(`update event_scoring_settings set state = 'live' where event_slug = $1`, [EVENT]);
+    expect(
+      await acceptHeldScore(EVENT, held.ok ? held.value.id : "missing", {
+        actorType: "admin",
+        actorId: "admin-1",
+      }),
+    ).toMatchObject({ ok: true, value: { status: "accepted" } });
+    expect((await attendeeAccount(person.personId))?.tickets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: SPARE,
+          points: 5,
+          scoreHistory: [expect.objectContaining({ points: 5 })],
+        }),
+      ]),
+    );
   });
 
   it("allows a mistaken unused claim to be released but protects event history", async () => {

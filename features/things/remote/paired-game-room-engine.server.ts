@@ -12,7 +12,6 @@ import {
   remainingMultiplayerRoomTtlSeconds,
 } from "../shared/room-primitives.server";
 import {
-  MULTIPLAYER_PRESENCE_LEASE_SECONDS,
   MULTIPLAYER_ROOM_ID_PATTERN,
   multiplayerLobbyExpiresAt,
   multiplayerPresenceLeaseExpiresAt,
@@ -94,11 +93,7 @@ function remotePersistentKeys(keys: RemoteRedisKeys) {
 
 async function renewPairedGameRoom(context: RoomContext, now = Date.now()) {
   const remaining = context.meta.expiresAt - now;
-  if (
-    remaining > REMOTE_ROOM_RENEWAL_WINDOW_MS &&
-    remaining <= MULTIPLAYER_PRESENCE_LEASE_SECONDS * 1_000
-  )
-    return;
+  if (remaining > REMOTE_ROOM_RENEWAL_WINDOW_MS) return;
   const expiresAt = multiplayerPresenceLeaseExpiresAt(now);
   context.meta.expiresAt = expiresAt;
   const redis = getRedis();
@@ -411,15 +406,33 @@ export async function syncPairedGamePlayer(input: {
     room.commands = room.commands.filter(
       (command) => now - command.createdAt <= COMMAND_MAX_AGE_MS,
     );
-    if (
+    const previousSnapshot = room.snapshot;
+    const shouldStoreSnapshot =
       !room.snapshot ||
       room.snapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
-      input.snapshot.revision >= room.snapshot.revision
-    ) {
+      input.snapshot.revision >= room.snapshot.revision;
+    if (shouldStoreSnapshot) {
       logSnapshotTransitions(room.snapshot, input.snapshot);
       room.snapshot = { ...input.snapshot, updatedAt: now };
     }
     room.playerSeenAt = now;
+    const officialResultChannelId = meta.officialResultChannelId;
+    const shouldPublishOfficial =
+      shouldStoreSnapshot &&
+      input.snapshot.phase === "results" &&
+      officialResultChannelId !== undefined &&
+      (!previousSnapshot ||
+        previousSnapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
+        input.snapshot.revision > previousSnapshot.revision);
+    if (shouldPublishOfficial && officialResultChannelId) {
+      const envelope = pairedGameOfficialResult({
+        roomId: input.roomId,
+        channelId: officialResultChannelId,
+        snapshot: input.snapshot,
+      });
+      if (envelope)
+        publishOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
+    }
     return {
       ok: true,
       commands: room.commands.filter((command) => command.sequence > input.lastCommandSequence),

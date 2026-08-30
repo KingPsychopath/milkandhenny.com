@@ -214,6 +214,7 @@ function didTransferFileChange(
     filename?: string;
     kind?: string;
     size?: number;
+    storedBytes?: number;
     mimeType?: string;
     storageKey?: string;
     originalStorageKey?: string;
@@ -242,6 +243,7 @@ function didTransferFileChange(
     filename?: string;
     kind?: string;
     size?: number;
+    storedBytes?: number;
     mimeType?: string;
     storageKey?: string;
     originalStorageKey?: string;
@@ -271,6 +273,7 @@ function didTransferFileChange(
     before.filename !== after.filename ||
     before.kind !== after.kind ||
     before.size !== after.size ||
+    before.storedBytes !== after.storedBytes ||
     before.mimeType !== after.mimeType ||
     before.storageKey !== after.storageKey ||
     before.originalStorageKey !== after.originalStorageKey ||

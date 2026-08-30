@@ -1,12 +1,15 @@
 import { useState } from "react";
 
+import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
+import { useQrCode } from "@/hooks/useQrCode";
 import type {
   AdminScoringActivity,
   AdminStaffAssignment,
   ScoringAction,
 } from "./event-scoring-types";
+import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 const PRESETS = [
   "door-scanner",
@@ -73,7 +76,9 @@ export function ScoringStaffPanel({
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [issuedUrl, setIssuedUrl] = useState("");
   const [issuedMessage, setIssuedMessage] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
   const [reason, setReason] = useState("");
+  const { dataUrl: issuedQr, failed: issuedQrFailed } = useQrCode(issuedUrl || null, 320);
 
   async function create(event: React.FormEvent) {
     event.preventDefault();
@@ -115,6 +120,7 @@ export function ScoringStaffPanel({
         `${window.location.origin}/events/${encodeURIComponent(eventSlug)}/staff/${assignment.token}`,
       );
       setIssuedMessage("Copy this station link now. It is shown once.");
+      setCopyMessage("");
     } else {
       setIssuedUrl("");
       setIssuedMessage("The personal invitation was queued for the verified email.");
@@ -278,15 +284,68 @@ export function ScoringStaffPanel({
       </form>
       {issuedMessage ? (
         <div className="mt-5 border-y theme-border py-4" role="status">
-          <p className="font-mono text-xs">{issuedMessage}</p>
+          <AdminStatus tone={issuedUrl ? "attention" : "positive"} className="font-mono text-xs">
+            {issuedMessage}
+          </AdminStatus>
           {issuedUrl ? (
-            <input
-              aria-label="New station access link"
-              readOnly
-              value={issuedUrl}
-              onFocus={(event) => event.currentTarget.select()}
-              className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3 font-mono text-xs"
-            />
+            <div>
+              <input
+                aria-label="New station access link"
+                readOnly
+                value={issuedUrl}
+                onFocus={(event) => event.currentTarget.select()}
+                className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3 font-mono text-xs"
+              />
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!navigator.clipboard) {
+                      setCopyMessage("Copy is unavailable. Select the link above instead.");
+                      return;
+                    }
+                    void navigator.clipboard
+                      .writeText(issuedUrl)
+                      .then(() => setCopyMessage("Station link copied."))
+                      .catch(() => setCopyMessage("Copy failed. Select the link above instead."));
+                  }}
+                  className="min-h-11 border theme-border px-4 font-mono text-xs underline"
+                >
+                  copy station link
+                </button>
+                {issuedQr ? (
+                  <a
+                    href={issuedQr}
+                    download={`${eventSlug}-staff-station-qr.png`}
+                    className="inline-flex min-h-11 items-center font-mono text-xs underline"
+                  >
+                    download QR
+                  </a>
+                ) : null}
+              </div>
+              {copyMessage ? (
+                <p className="mt-2 font-mono text-xs">
+                  <AdminStatus
+                    tone={copyMessage === "Station link copied." ? "positive" : "danger"}
+                  >
+                    {copyMessage}
+                  </AdminStatus>
+                </p>
+              ) : null}
+              {issuedQr ? (
+                <AppImage
+                  src={issuedQr}
+                  alt="QR code for the new staff scoring station"
+                  width={320}
+                  height={320}
+                  className="mt-4 size-48 bg-white p-1"
+                />
+              ) : issuedQrFailed ? (
+                <AdminStatus tone="danger" className="mt-3 font-mono text-xs">
+                  QR generation failed. Copy the station link instead
+                </AdminStatus>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -295,12 +354,19 @@ export function ScoringStaffPanel({
           <li key={assignment.id} className="py-4">
             <div className="flex flex-wrap items-center gap-3">
               <span className="min-w-0 flex-1 font-serif">{assignment.label}</span>
-              <span className="font-mono text-micro theme-muted">
-                {String(assignment.scope.rolePreset ?? assignment.assignmentType).replaceAll(
-                  "-",
-                  " ",
-                )}{" "}
-                · {assignment.invitationState ?? assignment.status}
+              <span className="flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+                <span>
+                  {String(assignment.scope.rolePreset ?? assignment.assignmentType).replaceAll(
+                    "-",
+                    " ",
+                  )}
+                </span>
+                <span aria-hidden="true">·</span>
+                <AdminStatus
+                  tone={adminToneForStatus(assignment.invitationState ?? assignment.status)}
+                >
+                  {assignment.invitationState ?? assignment.status}
+                </AdminStatus>
                 {assignment.personId ? ` · person ${assignment.personId.slice(-6)}` : ""}
               </span>
               {assignment.status === "active" && (

@@ -14,9 +14,32 @@ import {
   sealOfficialGameResult,
   subscribeOfficialResultWake,
 } from "@/features/game-results/outbox.server";
+import { ingestOfficialGameResult } from "@/features/event-scoring/games.server";
 import { pairedGameOfficialResult } from "@/features/things/remote/paired-game-room-engine.server";
 
 describe("official game result outbox", () => {
+  it("permanently rejects a malformed durable envelope instead of throwing forever", async () => {
+    const malformed = {
+      schemaVersion: 1,
+      channelId: "gsc_test",
+      gameKind: "centre",
+      gameInstanceId: "ROOM",
+      resultId: "game:1",
+      revision: 1,
+      operation: "record",
+      scope: "game",
+      players: null,
+      committedAt: "2026-08-08T12:00:00.000Z",
+      payloadHash: "0".repeat(64),
+    };
+
+    await expect(ingestOfficialGameResult(malformed as never)).resolves.toMatchObject({
+      ok: false,
+      status: 400,
+      retryable: false,
+    });
+  });
+
   it("accepts only a paired server result for Heads Up and Spelling Bee", () => {
     const envelope = pairedGameOfficialResult({
       roomId: "ROOM",

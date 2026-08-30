@@ -4,7 +4,7 @@ import {
   listObjects,
   type StorageScope,
 } from "@/lib/platform/r2.server";
-import { listWords, storageScopeForVisibility } from "@/features/words/store.server";
+import { listAllWords, storageScopeForVisibility } from "@/features/words/store.server";
 
 type FolderAggregate = {
   scope: StorageScope;
@@ -65,25 +65,10 @@ function compareLatest(a: string | null, b: string | null): number {
 
 async function listAllWordScopes(): Promise<Map<string, StorageScope>> {
   const scopes = new Map<string, StorageScope>();
-  let cursor: string | undefined;
-  let loops = 0;
-
-  while (loops < 5000) {
-    const page = await listWords({
-      includeNonPublic: true,
-      limit: 100,
-      cursor,
-    });
-    for (const note of page.words) {
-      scopes.set(note.slug, storageScopeForVisibility(note.visibility));
-    }
-    if (!page.nextCursor || page.nextCursor === cursor) {
-      break;
-    }
-    cursor = page.nextCursor;
-    loops += 1;
+  const words = await listAllWords({ includeNonPublic: true });
+  for (const note of words) {
+    scopes.set(note.slug, storageScopeForVisibility(note.visibility));
   }
-
   return scopes;
 }
 

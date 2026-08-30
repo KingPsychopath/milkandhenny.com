@@ -5,6 +5,7 @@ import { Link } from "@tanstack/react-router";
 
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -202,11 +203,14 @@ export function BestDressedPanel({
             <h3 id="voting-window-heading" className="font-mono text-sm font-bold">
               voting window
             </h3>
-            <p className="mt-1 font-mono text-xs theme-muted">
+            <AdminStatus
+              tone={windowState?.isOpen ? "positive" : "neutral"}
+              className="mt-1 font-mono text-xs"
+            >
               {windowState?.isOpen
                 ? `open until ${formatWindow(windowState.openUntil)}`
                 : "closed · a code is required"}
-            </p>
+            </AdminStatus>
           </div>
           <label className="block">
             <span className="font-mono text-micro theme-muted">minutes</span>
