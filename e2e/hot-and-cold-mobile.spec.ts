@@ -108,6 +108,14 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
 
     const hideKeyboard = page.getByRole("button", { name: "Hide keyboard" });
     await expect(hideKeyboard).toBeVisible();
+    await expect(page.locator(".heat-composer")).toHaveCSS("background-image", "none");
+    const composerBounds = await page.locator(".heat-composer-inner").boundingBox();
+    const controlBounds = await page.locator(".heat-composer-controls").boundingBox();
+    expect(composerBounds).not.toBeNull();
+    expect(controlBounds).not.toBeNull();
+    expect((controlBounds?.x ?? 0) + (controlBounds?.width ?? 0)).toBeLessThanOrEqual(
+      (composerBounds?.x ?? 0) + (composerBounds?.width ?? 0) + 1,
+    );
     await hideKeyboard.click();
     await expect(input).not.toBeFocused();
     await expect(game).not.toHaveAttribute("data-heat-keyboard", "");
