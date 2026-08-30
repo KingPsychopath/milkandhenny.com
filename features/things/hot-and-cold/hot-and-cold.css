@@ -1065,19 +1065,20 @@ main:has(.heat-result-share) .heat-ledger {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--stone-200) 72%, transparent);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background) 80%, transparent);
+  background: transparent;
   padding: 0 0.75rem;
-  box-shadow: 0 0.35rem 1.1rem color-mix(in srgb, var(--foreground) 8%, transparent);
-  -webkit-backdrop-filter: blur(0.75rem);
-  backdrop-filter: blur(0.75rem);
+  box-shadow: none;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .heat-composer-status[data-receipt] {
   border-color: var(--stone-300);
   background: color-mix(in srgb, var(--background) 92%, transparent);
+  box-shadow: 0 0.35rem 1.1rem color-mix(in srgb, var(--foreground) 8%, transparent);
+  -webkit-backdrop-filter: blur(0.75rem);
+  backdrop-filter: blur(0.75rem);
 }
 .heat-composer-guidance {
   min-width: 0;
