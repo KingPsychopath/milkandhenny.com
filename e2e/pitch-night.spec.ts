@@ -23,9 +23,10 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   expect(deckId).toBeTruthy();
 
   const editorTitle = page.locator('input[aria-label="Pitch title"]');
+  const saveStatus = page.getByRole("status", { name: /Deck save status:/ });
   await expect(editorTitle).toBeVisible();
   await editorTitle.fill(editedTitle);
-  await expect(page.getByText("saved", { exact: true })).not.toBeVisible();
+  await expect(saveStatus).not.toContainText("saved to server");
   await page.getByLabel("Current slide name").fill("Opening claim");
   await page.locator('label:has(input[data-testid="toolbar-text"])').click();
   const drawingCanvas = page.locator(".pitch-excalidraw canvas.interactive");
@@ -35,18 +36,20 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "+ slide" }).click();
   await page.getByLabel("Current slide name").fill("Closing proof");
-  await expect(page.getByText("saved", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(saveStatus).toContainText("saved to server", { timeout: 15_000 });
 
   await page.reload();
   await expect(editorTitle).toHaveValue(editedTitle);
   await expect(page.getByRole("button", { name: /Closing proof/ })).toBeVisible();
-  await expect(page.getByText("saved", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(saveStatus).toContainText("saved to server", { timeout: 15_000 });
 
   await page.getByRole("button", { name: "publish + seal" }).click();
   const publishDialog = page.getByRole("dialog", { name: "Publish and seal this edition?" });
   await expect(publishDialog).toBeVisible();
   await publishDialog.getByRole("button", { name: "publish and seal" }).click();
-  await expect(page.getByRole("status")).toContainText("Published", { timeout: 20_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Published edition" })).toBeVisible({
+    timeout: 20_000,
+  });
 
   await page.goto(`/things/pitches/${deckId}`);
   await expect(page.getByRole("heading", { name: editedTitle })).toBeVisible();
