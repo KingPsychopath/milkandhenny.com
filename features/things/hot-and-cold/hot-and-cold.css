@@ -1069,6 +1069,9 @@ main:has(.heat-result-share) .heat-ledger {
   background: transparent;
   touch-action: pan-y;
 }
+.hot-and-cold[data-heat-keyboard] .heat-composer {
+  bottom: var(--heat-visual-bottom, 0);
+}
 .heat-composer-inner {
   width: min(100%, 40rem);
   margin: auto;

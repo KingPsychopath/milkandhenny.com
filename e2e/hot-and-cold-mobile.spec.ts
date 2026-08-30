@@ -87,6 +87,7 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
         return Math.round(Math.abs(hottest.y - (status.y + status.height)));
       })
       .toBeLessThanOrEqual(3);
+    await expect(game).toHaveCSS("--heat-visual-bottom", "0px");
     await page.waitForTimeout(150);
 
     const alignedScrollY = await page.evaluate(() => window.scrollY);
@@ -119,6 +120,55 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
     await hideKeyboard.click();
     await expect(input).not.toBeFocused();
     await expect(game).not.toHaveAttribute("data-heat-keyboard", "");
+    await page.evaluate(() => {
+      if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 844 },
+        offsetTop: { configurable: true, value: 0 },
+      });
+      window.visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(initialScrollY);
+
+    await page.evaluate(() => window.scrollTo({ top: 160, behavior: "auto" }));
+    const readingScrollY = await page.evaluate(() => window.scrollY);
+    expect(readingScrollY).toBeGreaterThan(100);
+    await input.click();
+    await page.evaluate(() => {
+      if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 420 },
+        offsetTop: { configurable: true, value: 0 },
+      });
+      window.visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await expect(game).toHaveAttribute("data-heat-keyboard", "");
+    await expect(game).toHaveCSS("--heat-visual-bottom", "424px");
+    await expect
+      .poll(async () => {
+        const bounds = await page.locator(".heat-composer").boundingBox();
+        return Math.round((bounds?.y ?? Number.POSITIVE_INFINITY) + (bounds?.height ?? 0));
+      })
+      .toBeLessThanOrEqual(420);
+    await expect
+      .poll(async () => {
+        const status = await keyboardStatus.boundingBox();
+        const hottest = await hottestGuess.boundingBox();
+        if (!status || !hottest) return Number.POSITIVE_INFINITY;
+        return Math.round(Math.abs(hottest.y - (status.y + status.height)));
+      })
+      .toBeLessThanOrEqual(3);
+
+    await hideKeyboard.click();
+    await page.evaluate(() => {
+      if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: 844 },
+        offsetTop: { configurable: true, value: 0 },
+      });
+      window.visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(readingScrollY);
   } finally {
     releaseFirstScore();
   }

@@ -150,8 +150,11 @@ export function GuessComposer({
 
     let frame = 0;
     let alignTimer: ReturnType<typeof setTimeout> | null = null;
+    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
     let keyboardWasOpen = false;
     let alignedForSession = false;
+    let restorePending = false;
+    let readingPosition: number | null = null;
     let expandedHeight = Math.max(
       window.innerHeight,
       document.documentElement.clientHeight,
@@ -161,7 +164,46 @@ export function GuessComposer({
       game.removeAttribute("data-heat-keyboard");
       game.style.removeProperty("--heat-layout-height");
       game.style.removeProperty("--heat-visual-top");
+      game.style.removeProperty("--heat-visual-bottom");
       game.style.removeProperty("--heat-keyboard-spacer");
+    };
+    const rememberReadingPosition = () => {
+      if (keyboardWasOpen || restorePending || readingPosition !== null) return;
+      readingPosition = window.scrollY + Math.max(0, visualViewport.offsetTop);
+    };
+    const cancelRestore = () => {
+      if (restoreTimer) clearTimeout(restoreTimer);
+      restoreTimer = null;
+      restorePending = false;
+    };
+    const scheduleRestore = () => {
+      if (!restorePending || readingPosition === null) return;
+      if (restoreTimer) clearTimeout(restoreTimer);
+      // Wait for Safari's final VisualViewport resize so its own keyboard pan
+      // cannot overwrite the reading position we put back.
+      restoreTimer = setTimeout(() => {
+        restoreTimer = null;
+        if (!restorePending || readingPosition === null) return;
+        const top = readingPosition;
+        readingPosition = null;
+        restorePending = false;
+        requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
+      }, 140);
+    };
+    const closeKeyboardSession = (viewportContracted: boolean, preserveReadingPosition = false) => {
+      const shouldRestore =
+        readingPosition !== null && (keyboardWasOpen || viewportContracted || restorePending);
+      keyboardWasOpen = false;
+      alignedForSession = false;
+      if (alignTimer) clearTimeout(alignTimer);
+      alignTimer = null;
+      clearKeyboardLayout();
+      if (!shouldRestore) {
+        if (!preserveReadingPosition) readingPosition = null;
+        return;
+      }
+      restorePending = true;
+      scheduleRestore();
     };
     const alignHottestGuess = () => {
       alignTimer = null;
@@ -180,27 +222,22 @@ export function GuessComposer({
         document.documentElement.clientHeight,
         visualViewport.height + visualViewport.offsetTop,
       );
+      const keyboardLayoutHeight = Math.max(expandedHeight, layoutHeight);
+      const keyboardDepth = keyboardLayoutHeight - visualViewport.height;
+      const viewportContracted =
+        visualViewport.scale < 1.1 &&
+        keyboardDepth > Math.max(120, Math.round(keyboardLayoutHeight * 0.18));
       const focused = document.activeElement === inputElement;
       if (!focused) {
         expandedHeight = Math.max(expandedHeight, layoutHeight);
-        keyboardWasOpen = false;
-        alignedForSession = false;
-        if (alignTimer) clearTimeout(alignTimer);
-        clearKeyboardLayout();
+        closeKeyboardSession(viewportContracted);
         return;
       }
-      const keyboardLayoutHeight = Math.max(expandedHeight, layoutHeight);
-      const keyboardDepth = keyboardLayoutHeight - visualViewport.height;
-      const keyboardOpen =
-        visualViewport.scale < 1.1 &&
-        keyboardDepth > Math.max(120, Math.round(keyboardLayoutHeight * 0.18));
-      if (!keyboardOpen) {
-        keyboardWasOpen = false;
-        alignedForSession = false;
-        if (alignTimer) clearTimeout(alignTimer);
-        clearKeyboardLayout();
+      if (!viewportContracted) {
+        closeKeyboardSession(false, true);
         return;
       }
+      if (restorePending) cancelRestore();
       if (!keyboardWasOpen) {
         keyboardWasOpen = true;
         alignedForSession = false;
@@ -208,6 +245,10 @@ export function GuessComposer({
       game.setAttribute("data-heat-keyboard", "");
       game.style.setProperty("--heat-layout-height", `${keyboardLayoutHeight}px`);
       game.style.setProperty("--heat-visual-top", `${Math.max(0, visualViewport.offsetTop)}px`);
+      game.style.setProperty(
+        "--heat-visual-bottom",
+        `${Math.max(0, keyboardLayoutHeight - visualViewport.offsetTop - visualViewport.height)}px`,
+      );
       if (!alignedForSession) {
         game.style.setProperty(
           "--heat-keyboard-spacer",
@@ -222,6 +263,8 @@ export function GuessComposer({
       frame = requestAnimationFrame(measure);
     };
 
+    inputElement.addEventListener("pointerdown", rememberReadingPosition);
+    inputElement.addEventListener("focus", rememberReadingPosition);
     inputElement.addEventListener("focus", scheduleMeasure);
     inputElement.addEventListener("blur", scheduleMeasure);
     visualViewport.addEventListener("resize", scheduleMeasure);
@@ -231,6 +274,9 @@ export function GuessComposer({
     return () => {
       cancelAnimationFrame(frame);
       if (alignTimer) clearTimeout(alignTimer);
+      if (restoreTimer) clearTimeout(restoreTimer);
+      inputElement.removeEventListener("pointerdown", rememberReadingPosition);
+      inputElement.removeEventListener("focus", rememberReadingPosition);
       inputElement.removeEventListener("focus", scheduleMeasure);
       inputElement.removeEventListener("blur", scheduleMeasure);
       visualViewport.removeEventListener("resize", scheduleMeasure);
