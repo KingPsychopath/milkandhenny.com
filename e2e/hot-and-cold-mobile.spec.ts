@@ -35,6 +35,7 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     const guessButton = page.getByRole("button", { name: "guess", exact: true });
     const composer = page.locator(".heat-composer");
     const ledger = page.locator(".heat-ledger");
+    const status = page.locator("#hot-and-cold-guess-message");
     await expect(input).toBeVisible();
     await expect(composer).toHaveCSS("position", "relative");
     await expect(guessButton).toBeEnabled();
@@ -58,7 +59,7 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
       )
       .toBe(true);
 
-    await input.fill("table");
+    await input.pressSequentially("table");
     await input.press("Enter");
     await page.evaluate(() => {
       const field = document.querySelector<HTMLInputElement>("#hot-and-cold-guess");
@@ -80,13 +81,20 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(input).not.toHaveAttribute("readonly", "");
     await expect(guessButton).toHaveText("guess");
     await expect(guessButton).toBeEnabled();
-    const status = page.locator("#hot-and-cold-guess-message");
     await expect(status).toHaveText("lower is hotter");
     await expect(status).toHaveAttribute("data-status", "guidance");
     await expect(status).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(status).toHaveCSS("box-shadow", "none");
 
+    await input.pressSequentially("table");
+    await input.press("Enter");
+    await expect(status).toHaveText("already waiting to score");
+    await expect(status).toHaveAttribute("data-status", "error");
+    await expect(input).toHaveValue("");
+    await expect(input).not.toHaveAttribute("aria-invalid", "true");
+
     await input.fill("music");
+    await expect(status).toHaveText("lower is hotter");
     await input.press("Enter");
     await expect(input).toHaveValue("");
     await expect(guessButton).toHaveText("guess");
@@ -118,7 +126,15 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
       /already guessed · #[\d,]+/,
     );
     await expect(status).toHaveAttribute("data-status", "error");
-    await expect(input).toHaveValue("table");
+    await expect(input).toHaveValue("");
+    await expect(input).not.toHaveAttribute("aria-invalid", "true");
+
+    const rejectedWord = "zzzxqvnotaword";
+    await input.fill(rejectedWord);
+    await input.press("Enter");
+    await expect(status).toHaveText("not in our word list", { timeout: 30_000 });
+    await expect(input).toHaveValue(rejectedWord);
+    await expect(input).toHaveAttribute("aria-invalid", "true");
     await expect
       .poll(() =>
         input.evaluate((field) => {
@@ -126,9 +142,16 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
           return [textInput.selectionStart, textInput.selectionEnd];
         }),
       )
-      .toEqual([0, 5]);
+      .toEqual([0, rejectedWord.length]);
     await input.press("Backspace");
     await expect(input).toHaveValue("");
+
+    await input.fill("two words");
+    await input.press("Enter");
+    await expect(status).toHaveText("one word at a time");
+    await expect(input).toHaveValue("two words");
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+
     await input.fill("chair");
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
     await input.fill("");

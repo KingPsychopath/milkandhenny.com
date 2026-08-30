@@ -4,6 +4,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
+import type { GuessSubmissionResult } from "../shared/guess-submission";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { PlayerReadyControl } from "../shared/PlayerReadyControl";
@@ -16,8 +17,16 @@ import { GuessComposer } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibilityControl";
 import { useHotAndColdRoom } from "./useHotAndColdRoom";
-import type { HotAndColdAction, HotAndColdCredentials } from "./types";
+import type { HotAndColdAction, HotAndColdActionResult, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
+
+type HotAndColdSendErrorCode =
+  | Extract<HotAndColdActionResult, { accepted: false }>["errorCode"]
+  | "network_error";
+
+type HotAndColdSendResult =
+  | { accepted: true }
+  | { accepted: false; errorCode: HotAndColdSendErrorCode };
 
 export function JoinHotAndColdRoom({
   roomId,
@@ -161,7 +170,9 @@ export function HotAndColdRoomApp({
   useEffect(() => {
     setMessage(null);
   }, [turnIdentity]);
-  const send = async (action: MultiplayerActionInput<HotAndColdAction>) => {
+  const send = async (
+    action: MultiplayerActionInput<HotAndColdAction>,
+  ): Promise<HotAndColdSendResult> => {
     try {
       const result = await applyHotAndColdActionFn({
         data: {
@@ -173,12 +184,24 @@ export function HotAndColdRoomApp({
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       live.notify();
-      if (!result.accepted) setMessage(result.error);
-      return result.accepted;
+      if (!result.accepted) {
+        setMessage(result.error);
+        return { accepted: false, errorCode: result.errorCode };
+      }
+      return { accepted: true };
     } catch {
       setMessage("Could not reach the room");
-      return false;
+      return { accepted: false, errorCode: "network_error" };
     }
+  };
+  const submitGuess = async (word: string): Promise<GuessSubmissionResult> => {
+    const result = await send({
+      type: "guess.submit",
+      word,
+      roundId: snapshot?.round?.id ?? "",
+    });
+    if (result.accepted) return "accepted";
+    return result.errorCode === "duplicate_guess" ? "discarded" : "retryable";
   };
   const leave = async () => {
     await send({ type: "player.leave" });
@@ -431,7 +454,14 @@ export function HotAndColdRoomApp({
               tone="dark"
               title="Leave this round?"
               description="Your turns will stop. You can watch the shared ledger until the next word."
-              onGiveUp={() => send({ type: "round.giveUp", roundId: snapshot.round?.id ?? "" })}
+              onGiveUp={async () =>
+                (
+                  await send({
+                    type: "round.giveUp",
+                    roundId: snapshot.round?.id ?? "",
+                  })
+                ).accepted
+              }
               className="min-h-11 font-mono text-micro theme-faint"
             />
           ) : null}
@@ -473,9 +503,7 @@ export function HotAndColdRoomApp({
                   : `${snapshot.guessesPerPlayer - (me?.turnsUsed ?? 0)} guesses left`
                 : `watching ${current?.name ?? "the room"}`
             }
-            onGuess={(word) =>
-              send({ type: "guess.submit", word, roundId: snapshot.round?.id ?? "" })
-            }
+            onGuess={submitGuess}
             onMessageClear={() => setMessage(null)}
             actions={
               myTurn ? (

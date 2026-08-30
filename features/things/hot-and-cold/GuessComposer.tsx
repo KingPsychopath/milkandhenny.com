@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useWebHaptics } from "web-haptics/react";
+import type { GuessSubmissionResult } from "../shared/guess-submission";
 
 const RECEIPT_DURATION_MS = 1_600;
 
@@ -30,7 +31,7 @@ export function GuessComposer({
   disabled?: boolean;
   message?: string | null;
   receipt?: GuessReceipt | null;
-  onGuess: (word: string) => Promise<boolean>;
+  onGuess: (word: string) => Promise<GuessSubmissionResult>;
   onMessageClear?: () => void;
   actions?: ReactNode;
   continuous?: boolean;
@@ -59,9 +60,7 @@ export function GuessComposer({
   disabledRef.current = disabled;
   onGuessRef.current = onGuess;
   wordRef.current = word;
-  const reject = (nextMessage?: string) => {
-    setRejected(true);
-    if (nextMessage) setLocalMessage(nextMessage);
+  const nudge = () => {
     void haptics.trigger("nudge");
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     input.current?.animate(
@@ -76,6 +75,11 @@ export function GuessComposer({
       { duration: 380, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
     );
   };
+  const reject = (nextMessage?: string) => {
+    setRejected(true);
+    if (nextMessage) setLocalMessage(nextMessage);
+    nudge();
+  };
   const drainQueue = async () => {
     if (processing.current) return;
     processing.current = true;
@@ -84,16 +88,17 @@ export function GuessComposer({
       const submittedWord = queue.current.shift();
       if (!submittedWord) continue;
       activeWord.current = submittedWord;
-      let accepted = false;
+      let result: GuessSubmissionResult = "retryable";
       try {
-        accepted = await onGuessRef.current(submittedWord);
+        result = await onGuessRef.current(submittedWord);
       } catch {
-        accepted = false;
+        result = "retryable";
       }
       activeWord.current = null;
       if (!mounted.current) return;
-      if (!accepted) {
-        if (queue.current.length === 0 && !wordRef.current) {
+      if (result !== "accepted") {
+        const playerMovedOn = queue.current.length > 0 || Boolean(wordRef.current);
+        if (result === "retryable" && !playerMovedOn) {
           wordRef.current = submittedWord;
           setWord(submittedWord);
           reject();
@@ -101,7 +106,7 @@ export function GuessComposer({
             if (document.activeElement === input.current && wordRef.current === submittedWord)
               input.current?.select();
           });
-        } else void haptics.trigger("nudge");
+        } else nudge();
       }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
@@ -132,7 +137,15 @@ export function GuessComposer({
       activeWord.current?.toLocaleLowerCase() === queuedWord ||
       queue.current.some((pending) => pending.toLocaleLowerCase() === queuedWord)
     ) {
-      reject("already waiting to score");
+      pendingKeyboardCommit.current = {
+        word: queuedWord,
+        expiresAt: Date.now() + 750,
+      };
+      wordRef.current = "";
+      setWord("");
+      setRejected(false);
+      setLocalMessage("already waiting to score");
+      nudge();
       return;
     }
     pendingKeyboardCommit.current = {

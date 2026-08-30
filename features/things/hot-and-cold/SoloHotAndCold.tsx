@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
+import type { GuessSubmissionResult } from "../shared/guess-submission";
 import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
 import { GuessComposer, type GuessReceipt } from "./GuessComposer";
@@ -163,12 +164,12 @@ export function SoloHotAndCold({
       })),
     [state.guesses],
   );
-  const guess = async (raw: string) => {
+  const guess = async (raw: string): Promise<GuessSubmissionResult> => {
     const word = raw.toLowerCase();
     const existing = state.guesses.find((item) => item.word === word);
     if (existing) {
       setMessage(`already guessed · #${existing.rank.toLocaleString()}`);
-      return false;
+      return "discarded";
     }
     try {
       const result = await scoreDailyHotAndColdGuessFn({
@@ -176,12 +177,12 @@ export function SoloHotAndCold({
       });
       if (!result.ok) {
         setMessage("not in our word list");
-        return false;
+        return "retryable";
       }
       const canonicalExisting = state.guesses.find((item) => item.word === result.word);
       if (canonicalExisting) {
         setMessage(`already guessed · #${canonicalExisting.rank.toLocaleString()}`);
-        return false;
+        return "discarded";
       }
       const next = {
         word: result.word,
@@ -207,7 +208,7 @@ export function SoloHotAndCold({
       void haptics.trigger(
         result.rank === 0 ? "success" : result.rank < 500 ? "warning" : "selection",
       );
-      return true;
+      return "accepted";
     } catch (error) {
       const reason = error instanceof Error ? error.message.toLowerCase() : "";
       setMessage(
@@ -217,7 +218,7 @@ export function SoloHotAndCold({
             ? "not in our word list"
             : "couldn’t score that — try again",
       );
-      return false;
+      return "retryable";
     }
   };
   const requestHint = async () => {
