@@ -1005,7 +1005,7 @@ main:has(.heat-result-share) .heat-ledger {
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
-  animation: heat-receipt 2.8s ease both;
+  animation: heat-receipt 1.6s ease both;
 }
 .heat-composer-inner {
   width: min(100%, 40rem);
@@ -1058,33 +1058,32 @@ main:has(.heat-result-share) .heat-ledger {
   color: var(--stone-500);
 }
 .heat-composer-status {
-  display: inline-flex;
+  display: inline-grid;
   flex: 1 1 auto;
   align-items: center;
   min-height: 2.75rem;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  padding: 0 0.75rem;
-  box-shadow: none;
+  padding: 0 0 0 1.25rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.heat-composer-status[data-receipt] {
-  border-color: var(--stone-300);
-  background: color-mix(in srgb, var(--background) 92%, transparent);
-  box-shadow: 0 0.35rem 1.1rem color-mix(in srgb, var(--foreground) 8%, transparent);
-  -webkit-backdrop-filter: blur(0.75rem);
-  backdrop-filter: blur(0.75rem);
+.heat-composer-status > span {
+  grid-area: 1/1;
+}
+.heat-composer-status[data-status="error"] {
+  color: color-mix(in srgb, var(--heat-red) 82%, var(--foreground));
+  font-weight: 600;
 }
 .heat-composer-guidance {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: heat-status-return 0.18s ease-out both;
+  animation: heat-status-return 0.15s ease-out both;
+}
+.heat-composer-guidance-outgoing {
+  animation: heat-status-guidance-exit 0.15s ease-in both;
 }
 .heat-composer-controls {
   display: flex;
@@ -1177,16 +1176,37 @@ main:has(.heat-result-share) .heat-ledger {
 @keyframes heat-receipt {
   0% {
     opacity: 0;
-    transform: translateY(0.28rem);
+    transform: translateY(0.35rem);
   }
-  12%,
-  82% {
+  10%,
+  90% {
     opacity: 1;
     transform: none;
   }
   to {
     opacity: 0;
-    transform: translateY(-0.12rem);
+    transform: translateY(-0.25rem);
+  }
+}
+@keyframes heat-receipt-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+}
+@keyframes heat-status-guidance-exit {
+  to {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+}
+@keyframes heat-status-fade-out {
+  to {
+    opacity: 0;
   }
 }
 @keyframes heat-status-return {
@@ -1355,11 +1375,16 @@ main:has(.heat-result-share) .heat-ledger {
 }
 @media (prefers-reduced-motion: reduce) {
   .heat-source-flame,
-  .heat-guess-receipt,
   .heat-word[data-newest],
   .heat-word[data-newest] .heat-word-text,
   .heat-word[data-newest] .heat-word-effect {
     animation: none;
+  }
+  .heat-guess-receipt {
+    animation-name: heat-receipt-fade;
+  }
+  .heat-composer-guidance-outgoing {
+    animation-name: heat-status-fade-out;
   }
   .heat-source-flame,
   .heat-gauge-progress,

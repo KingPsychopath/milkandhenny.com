@@ -82,7 +82,7 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(guessButton).toBeEnabled();
     const status = page.locator("#hot-and-cold-guess-message");
     await expect(status).toHaveText("lower is hotter");
-    await expect(status).not.toHaveAttribute("data-receipt", "");
+    await expect(status).toHaveAttribute("data-status", "guidance");
     await expect(status).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await expect(status).toHaveCSS("box-shadow", "none");
 
@@ -102,18 +102,22 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(receipt).toContainText(/table · #[\d,]+/);
     await expect(receipt).toContainText("hottest");
     await expect(receipt).toHaveCSS("position", "static");
-    await expect(status).toHaveAttribute("data-receipt", "");
+    await expect(receipt).toHaveCSS("animation-duration", "1.6s");
+    await expect(status).toHaveAttribute("data-status", "receipt");
+    await expect(status).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(status).toHaveCSS("box-shadow", "none");
     await expect(status).toContainText(/table · #[\d,]+/);
-    await expect(receipt).toContainText(/music · #[\d,]+/, { timeout: 5_000 });
-    await expect(receipt).toHaveCount(0, { timeout: 5_000 });
+    await expect(receipt).toContainText(/music · #[\d,]+/, { timeout: 2_500 });
+    await expect(receipt).toHaveCount(0, { timeout: 3_000 });
     await expect(status).toHaveText("lower is hotter");
-    await expect(status).not.toHaveAttribute("data-receipt", "");
+    await expect(status).toHaveAttribute("data-status", "guidance");
 
     await input.fill("table");
     await input.press("Enter");
     await expect(page.locator("#hot-and-cold-guess-message")).toContainText(
       /already guessed · #[\d,]+/,
     );
+    await expect(status).toHaveAttribute("data-status", "error");
     await expect(input).toHaveValue("table");
     await expect
       .poll(() =>

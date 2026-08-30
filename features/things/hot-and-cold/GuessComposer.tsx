@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useWebHaptics } from "web-haptics/react";
 
+const RECEIPT_DURATION_MS = 1_600;
+
 function localGuessError(word: string) {
   const trimmed = word.trim();
   if (trimmed.length < 2) return "try at least two letters";
@@ -195,11 +197,12 @@ export function GuessComposer({
       const nextReceipt = receiptQueue.current.shift() ?? null;
       visibleReceiptRef.current = nextReceipt;
       setVisibleReceipt(nextReceipt);
-    }, 2_800);
+    }, RECEIPT_DURATION_MS);
     return () => clearTimeout(timer);
   }, [visibleReceipt]);
   const actionableMessage = localMessage ?? message;
   const displayedReceipt = actionableMessage ? null : visibleReceipt;
+  const statusMessage = actionableMessage ?? turnLabel ?? "lower is hotter";
   return (
     <form
       className="heat-composer"
@@ -280,18 +283,24 @@ export function GuessComposer({
           <output
             id="hot-and-cold-guess-message"
             className="heat-composer-status"
-            data-receipt={displayedReceipt ? "" : undefined}
+            data-status={displayedReceipt ? "receipt" : actionableMessage ? "error" : "guidance"}
             aria-live="polite"
             aria-atomic="true"
           >
             {displayedReceipt ? (
-              <span key={displayedReceipt.id} className="heat-guess-receipt">
-                {displayedReceipt.label}
-              </span>
+              <>
+                <span
+                  aria-hidden="true"
+                  className="heat-composer-guidance heat-composer-guidance-outgoing"
+                >
+                  {statusMessage}
+                </span>
+                <span key={displayedReceipt.id} className="heat-guess-receipt">
+                  {displayedReceipt.label}
+                </span>
+              </>
             ) : (
-              <span className="heat-composer-guidance">
-                {actionableMessage ?? turnLabel ?? "lower is hotter"}
-              </span>
+              <span className="heat-composer-guidance">{statusMessage}</span>
             )}
           </output>
           <div className="heat-composer-controls">
