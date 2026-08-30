@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
+import { hasPitchDocumentContent } from "../document-content";
 import type { PublicPitchDeckDetail } from "../types";
 import { ExcalidrawSurface } from "./ExcalidrawSurface";
 import { loadPitchFiles } from "./files.client";
@@ -10,7 +11,67 @@ import { PitchVideoLayer, usePitchMediaPlayback } from "./PitchMediaPlayback";
 import { PitchMediaAvailabilityNotice } from "./PitchMediaAvailabilityNotice";
 import { usePitchMediaClock } from "./usePitchMediaClock";
 
-export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
+function PitchViewerHeader({ pitch }: { pitch: PublicPitchDeckDetail }) {
+  return (
+    <header className="flex flex-wrap items-center gap-4 border-b theme-border px-4 py-3">
+      <Link to="/things/pitches" className="font-mono text-xs theme-muted hover:opacity-60">
+        ← pitch wall
+      </Link>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate font-serif text-xl text-foreground">{pitch.title}</h1>
+        <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
+          by {pitch.ownerName} · sealed edition {pitch.editionNumber}
+        </p>
+      </div>
+      <Link
+        to="/things/pitches/new"
+        className="font-mono text-xs text-foreground underline underline-offset-4 hover:opacity-60"
+      >
+        make yours
+      </Link>
+    </header>
+  );
+}
+
+function EmptyPitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
+  const firstSlide = pitch.document.slides.find((slide) => !slide.deletedAt);
+  return (
+    <main id="main" className="flex min-h-svh flex-col bg-background">
+      <PitchViewerHeader pitch={pitch} />
+      <section className="flex flex-1 items-center justify-center px-6 py-16 text-center">
+        <div className="max-w-md">
+          <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">
+            sealed edition {pitch.editionNumber}
+          </p>
+          <h2 className="mt-3 font-serif text-3xl text-foreground">This edition is empty.</h2>
+          <p className="mt-4 font-serif text-lg leading-relaxed theme-subtle">
+            There is no visible slide content here. The maker can add something in the studio and
+            publish a new edition.
+          </p>
+        </div>
+      </section>
+      <footer className="flex justify-center border-t theme-border px-4 py-3">
+        <ReportIssueButton
+          type="pitch_issue"
+          payload={{
+            surface: "viewer",
+            deckId: pitch.id,
+            slideId: firstSlide?.id,
+            slideIndex: 0,
+            operation: "view",
+            status: "empty-published-document",
+            retryable: false,
+          }}
+          label="report this empty pitch"
+          detailsPlacement="inline"
+          className="mt-0"
+        />
+      </footer>
+    </main>
+  );
+}
+
+function PitchCanvasViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   const slides = useMemo(
     () => pitch.document.slides.filter((slide) => !slide.deletedAt),
     [pitch.document],
@@ -56,24 +117,8 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
   }, [slides.length]);
 
   return (
-    <main id="main" className="flex min-h-screen flex-col bg-background">
-      <header className="flex flex-wrap items-center gap-4 border-b theme-border px-4 py-3">
-        <Link to="/things/pitches" className="font-mono text-xs theme-muted hover:opacity-60">
-          ← pitch wall
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate font-serif text-xl text-foreground">{pitch.title}</h1>
-          <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
-            by {pitch.ownerName} · sealed edition {pitch.editionNumber}
-          </p>
-        </div>
-        <Link
-          to="/things/pitches/new"
-          className="font-mono text-xs text-foreground underline underline-offset-4 hover:opacity-60"
-        >
-          make yours
-        </Link>
-      </header>
+    <main id="main" className="flex min-h-svh flex-col bg-background">
+      <PitchViewerHeader pitch={pitch} />
       <section className="relative min-h-[60vh] flex-1">
         <PitchMediaAvailabilityNotice
           slides={[slide]}
@@ -153,4 +198,9 @@ export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
       </footer>
     </main>
   );
+}
+
+export function PitchViewer({ pitch }: { pitch: PublicPitchDeckDetail }) {
+  if (!hasPitchDocumentContent(pitch.document)) return <EmptyPitchViewer pitch={pitch} />;
+  return <PitchCanvasViewer pitch={pitch} />;
 }

@@ -6,6 +6,7 @@ import {
   reconcileLocalPitchDraft,
   type LocalPitchDraft,
 } from "@/features/things/pitches/browser-store.client";
+import { hasPitchDocumentContent } from "@/features/things/pitches/document-content";
 import {
   PITCH_DOCUMENT_SCHEMA_VERSION,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
@@ -53,6 +54,25 @@ describe("pitch documents", () => {
       ok: false,
       error: "The deck contains an invalid slide",
     });
+  });
+
+  it("treats legacy placeholder marks as an empty pitch", () => {
+    const deletedText = {
+      ...element("deleted_text", 1, 1),
+      type: "text",
+      text: "",
+      isDeleted: true,
+    } as ExcalidrawElement;
+    const unfinishedStroke = {
+      ...element("unfinished_stroke", 1, 1),
+      type: "freedraw",
+      points: [[0, 0]],
+      width: 0,
+      height: 0,
+    } as ExcalidrawElement;
+
+    expect(hasPitchDocumentContent(documentWith([deletedText, unfinishedStroke]))).toBe(false);
+    expect(hasPitchDocumentContent(documentWith([element("visible_rectangle", 1, 1)]))).toBe(true);
   });
 
   it("upgrades schema-one audio cues without mutating the stored document", () => {
