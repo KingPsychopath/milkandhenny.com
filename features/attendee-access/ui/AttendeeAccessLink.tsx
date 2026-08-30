@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 
 import { SAFE_GAME_NAVIGATION_EVENT } from "@/features/things/shared/useSafeGameNavigation";
@@ -8,8 +8,6 @@ export function AttendeeAccessLink({ authenticated }: { authenticated: boolean }
   const hiddenSurface =
     pathname === "/my" || pathname.startsWith("/access") || pathname.startsWith("/admin");
   const [safeGameScreen, setSafeGameScreen] = useState(false);
-  const [nearTop, setNearTop] = useState(true);
-  const scrollFrame = useRef<number | null>(null);
 
   useEffect(() => {
     if (hiddenSurface) return;
@@ -25,39 +23,16 @@ export function AttendeeAccessLink({ authenticated }: { authenticated: boolean }
     return () => window.removeEventListener(SAFE_GAME_NAVIGATION_EVENT, update);
   }, [hiddenSurface, pathname]);
 
-  useEffect(() => {
-    if (hiddenSurface) return;
-    const update = () => {
-      if (scrollFrame.current !== null) return;
-      scrollFrame.current = requestAnimationFrame(() => {
-        setNearTop(window.scrollY < 80);
-        scrollFrame.current = null;
-      });
-    };
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", update);
-      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
-      scrollFrame.current = null;
-    };
-  }, [hiddenSurface, pathname]);
-
   if (hiddenSurface) return null;
   if (pathname.startsWith("/things/") && !safeGameScreen) return null;
-  const style = {
-    opacity: nearTop ? 1 : 0,
-    visibility: nearTop ? ("visible" as const) : ("hidden" as const),
-    pointerEvents: nearTop ? ("auto" as const) : ("none" as const),
-  };
   const className =
     "mh-action mh-action--quiet fixed left-4 top-2 z-30 theme-muted sm:left-auto sm:right-20";
   return authenticated ? (
-    <Link to="/my" style={style} className={className}>
+    <Link to="/my" className={className}>
       account
     </Link>
   ) : (
-    <Link to="/access" search={{ returnTo: "/my" }} style={style} className={className}>
+    <Link to="/access" search={{ returnTo: "/my" }} className={className}>
       account
     </Link>
   );
