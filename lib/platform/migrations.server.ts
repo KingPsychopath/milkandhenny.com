@@ -3460,6 +3460,56 @@ const MIGRATIONS: Migration[] = [
         where lease_until is null;
     `,
   },
+  {
+    id: "0074_family_feud_group_claims",
+    sql: `
+      alter table event_game_score_bindings
+        drop constraint event_game_score_bindings_game_kind_check;
+      alter table event_game_score_bindings
+        add constraint event_game_score_bindings_game_kind_check check (game_kind in (
+          'centre', 'twin', 'draw-country', 'same-brain', 'spelling-party',
+          'liars', 'pitches', 'heads-up', 'spelling-bee', 'icebreaker', 'family-feud'
+        ));
+
+      create table game_result_group_claim_sessions (
+        id                   text primary key,
+        official_result_id   text not null references official_game_results (id) on delete restrict,
+        event_slug           text not null references events (slug) on delete restrict,
+        group_key            text not null check (char_length(group_key) between 1 and 80),
+        group_name           text not null check (char_length(group_name) between 1 and 80),
+        game_player_prefix   text not null check (char_length(game_player_prefix) between 1 and 120),
+        token_hash           text not null unique check (char_length(token_hash) = 64),
+        maximum_claims       integer not null check (maximum_claims between 1 and 100),
+        status               text not null default 'active'
+                             check (status in ('active', 'closed', 'expired')),
+        expires_at           timestamptz not null,
+        created_at           timestamptz not null default now(),
+        updated_at           timestamptz not null default now(),
+        unique (official_result_id, group_key)
+      );
+
+      create index game_result_group_claim_sessions_active_idx
+        on game_result_group_claim_sessions (event_slug, status, expires_at);
+
+      create table game_result_group_claims (
+        id                    text primary key,
+        session_id            text not null references game_result_group_claim_sessions (id) on delete restrict,
+        official_result_id    text not null references official_game_results (id) on delete restrict,
+        source_participant_id text not null references event_participants (id) on delete restrict,
+        target_participant_id text not null references event_participants (id) on delete restrict,
+        state                 text not null check (state in ('pending', 'accepted', 'failed')),
+        points_awarded        integer,
+        failure_reason        text,
+        created_at            timestamptz not null default now(),
+        accepted_at           timestamptz,
+        unique (official_result_id, source_participant_id),
+        unique (official_result_id, target_participant_id)
+      );
+
+      create index game_result_group_claims_session_idx
+        on game_result_group_claims (session_id, state, created_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

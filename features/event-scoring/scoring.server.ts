@@ -802,62 +802,78 @@ export async function mergeParticipants(input: {
     return { ok: false, status: 400, error: "A merge needs evidence and a reason" };
   if (input.sourceParticipantId === input.targetParticipantId)
     return { ok: false, status: 400, error: "Choose two different participants" };
-  return transaction(async (client) => {
-    await lockScoringProjection(client, input.eventSlug);
-    const rows = await client.query<{
-      id: string;
-      event_slug: string;
-      person_id: string | null;
-      status: string;
-    }>(
-      `select id, event_slug, person_id, status from event_participants
+  return transaction((client) => mergeParticipantsInTransaction(client, input));
+}
+
+export async function mergeParticipantsInTransaction(
+  client: PoolClient,
+  input: {
+    eventSlug: string;
+    sourceParticipantId: string;
+    targetParticipantId: string;
+    actorId: string;
+    reason: string;
+    evidence: string[];
+  },
+): Promise<ScoringOperationResult<void>> {
+  if (!input.reason.trim() || input.evidence.length === 0)
+    return { ok: false, status: 400, error: "A merge needs evidence and a reason" };
+  if (input.sourceParticipantId === input.targetParticipantId)
+    return { ok: false, status: 400, error: "Choose two different participants" };
+  await lockScoringProjection(client, input.eventSlug);
+  const rows = await client.query<{
+    id: string;
+    event_slug: string;
+    person_id: string | null;
+    status: string;
+  }>(
+    `select id, event_slug, person_id, status from event_participants
           where id = any($1::text[])
           order by id
           for update`,
-      [[input.sourceParticipantId, input.targetParticipantId]],
-    );
-    if (rows.rows.length !== 2 || rows.rows.some((row) => row.event_slug !== input.eventSlug)) {
-      return { ok: false, status: 404, error: "Participants not found" };
-    }
-    if (rows.rows.some((row) => row.status !== "active")) {
-      return { ok: false, status: 409, error: "Only active participants can be merged" };
-    }
-    await client.query(
-      `insert into event_participant_merges
+    [[input.sourceParticipantId, input.targetParticipantId]],
+  );
+  if (rows.rows.length !== 2 || rows.rows.some((row) => row.event_slug !== input.eventSlug)) {
+    return { ok: false, status: 404, error: "Participants not found" };
+  }
+  if (rows.rows.some((row) => row.status !== "active")) {
+    return { ok: false, status: 409, error: "Only active participants can be merged" };
+  }
+  await client.query(
+    `insert into event_participant_merges
           (id, event_slug, source_participant_id, target_participant_id, actor_id, evidence, reason)
          values ($1,$2,$3,$4,$5,$6::jsonb,$7)`,
-      [
-        id("merge"),
-        input.eventSlug,
-        input.sourceParticipantId,
-        input.targetParticipantId,
-        input.actorId,
-        JSON.stringify(input.evidence),
-        input.reason,
-      ],
-    );
-    await client.query(
-      `update event_participants set status = 'merged', updated_at = now() where id = $1`,
-      [input.sourceParticipantId],
-    );
-    await rebuildMergedProjections(client, input.eventSlug);
-    await client.query(
-      `insert into score_audit_events
+    [
+      id("merge"),
+      input.eventSlug,
+      input.sourceParticipantId,
+      input.targetParticipantId,
+      input.actorId,
+      JSON.stringify(input.evidence),
+      input.reason,
+    ],
+  );
+  await client.query(
+    `update event_participants set status = 'merged', updated_at = now() where id = $1`,
+    [input.sourceParticipantId],
+  );
+  await rebuildMergedProjections(client, input.eventSlug);
+  await client.query(
+    `insert into score_audit_events
           (event_slug, action, actor_type, actor_id, entity_type, entity_id, metadata)
          values ($1,'identity.participants.merged','admin',$2,'participant',$3,$4::jsonb)`,
-      [
-        input.eventSlug,
-        input.actorId,
-        input.sourceParticipantId,
-        JSON.stringify({
-          target: input.targetParticipantId,
-          evidence: input.evidence,
-          reason: input.reason,
-        }),
-      ],
-    );
-    return { ok: true, value: undefined };
-  });
+    [
+      input.eventSlug,
+      input.actorId,
+      input.sourceParticipantId,
+      JSON.stringify({
+        target: input.targetParticipantId,
+        evidence: input.evidence,
+        reason: input.reason,
+      }),
+    ],
+  );
+  return { ok: true, value: undefined };
 }
 
 export async function reverseParticipantMerge(input: {

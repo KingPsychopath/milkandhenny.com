@@ -8,6 +8,7 @@ import { SameBrainRoomService } from "../same-brain/same-brain-room-service.serv
 import { TwinRoomService } from "../twin/twin-room-service.server";
 import { CentreRoomService } from "../centre/centre-room-service.server";
 import { HotAndColdRoomService } from "../hot-and-cold/hot-and-cold-room-service.server";
+import { FamilyFeudRoomService } from "../family-feud/family-feud-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
 import { gameRealtimeChannel } from "./multiplayer-keys";
@@ -24,6 +25,7 @@ const multiplayerLayer = Layer.mergeAll(
   TwinRoomService.layer,
   CentreRoomService.layer,
   HotAndColdRoomService.layer,
+  FamilyFeudRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
 );
 
@@ -84,7 +86,8 @@ type MultiplayerServices =
   | SameBrainRoomService
   | TwinRoomService
   | CentreRoomService
-  | HotAndColdRoomService;
+  | HotAndColdRoomService
+  | FamilyFeudRoomService;
 
 function currentMultiplayerRuntime() {
   return runtimeHolder[RUNTIME_KEY] as

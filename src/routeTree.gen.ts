@@ -50,6 +50,7 @@ import { Route as SurveysSlugRouteImport } from './routes/surveys.$slug'
 import { Route as TIdRouteImport } from './routes/t/$id'
 import { Route as ThingsCentreRouteImport } from './routes/things.centre'
 import { Route as ThingsDrawCountryRouteImport } from './routes/things.draw-country'
+import { Route as ThingsFamilyFeudRouteImport } from './routes/things.family-feud'
 import { Route as ThingsHeadsUpRouteImport } from './routes/things.heads-up'
 import { Route as ThingsHotAndColdRouteImport } from './routes/things.hot-and-cold'
 import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker'
@@ -105,6 +106,7 @@ import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
 import { Route as ApiWordsSlugRouteRouteImport } from './routes/api/words/$slug/route'
 import { Route as EventsSlugBoughtRouteImport } from './routes/events/$slug_.bought'
+import { Route as EventsSlugGameResultClaimRouteImport } from './routes/events/$slug_.game-result-claim'
 import { Route as EventsSlugScoreRouteImport } from './routes/events/$slug_.score'
 import { Route as PicsAlbumIndexRouteImport } from './routes/pics/$album/index'
 import { Route as PicsAlbumPhotoRouteImport } from './routes/pics/$album/$photo'
@@ -174,6 +176,9 @@ import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words
 import { Route as EventsSlugDiscoveriesIndexRouteImport } from './routes/events/$slug_.discoveries.index'
 import { Route as EventsSlugDiscoveriesDiscoveryIdRouteImport } from './routes/events/$slug_.discoveries.$discoveryId'
 import { Route as EventsSlugStaffTokenRouteImport } from './routes/events/$slug_.staff.$token'
+import { Route as ThingsFamilyFeudRoomIdBuzzerRouteImport } from './routes/things.family-feud_.$roomId_.buzzer'
+import { Route as ThingsFamilyFeudRoomIdControlRouteImport } from './routes/things.family-feud_.$roomId_.control'
+import { Route as ThingsFamilyFeudRoomIdPresentRouteImport } from './routes/things.family-feud_.$roomId_.present'
 import { Route as ThingsHotAndColdDailyPuzzleRouteImport } from './routes/things.hot-and-cold_.daily_.$puzzle'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
@@ -194,6 +199,7 @@ import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api
 import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/route'
 import { Route as ApiEventsSlugDiscoveriesClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/claim/route'
 import { Route as ApiEventsSlugGameResultsClaimRouteRouteImport } from './routes/api/events/$slug/game-results/claim/route'
+import { Route as ApiEventsSlugGameResultsGroupClaimsRouteRouteImport } from './routes/api/events/$slug/game-results/group-claims/route'
 import { Route as ApiTicketsIdScoreNotificationsRouteRouteImport } from './routes/api/tickets/$id/score/notifications/route'
 import { Route as ApiTicketsIdScoreProfileRouteRouteImport } from './routes/api/tickets/$id/score/profile/route'
 import { Route as ApiTransfersIdFilesFileIdRouteRouteImport } from './routes/api/transfers/$id/files/$fileId/route'
@@ -412,6 +418,11 @@ const ThingsCentreRoute = ThingsCentreRouteImport.update({
 const ThingsDrawCountryRoute = ThingsDrawCountryRouteImport.update({
   id: '/draw-country',
   path: '/draw-country',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsFamilyFeudRoute = ThingsFamilyFeudRouteImport.update({
+  id: '/family-feud',
+  path: '/family-feud',
   getParentRoute: () => ThingsRoute,
 } as any)
 const ThingsHeadsUpRoute = ThingsHeadsUpRouteImport.update({
@@ -710,6 +721,12 @@ const EventsSlugBoughtRoute = EventsSlugBoughtRouteImport.update({
   path: '/events/$slug/bought',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsSlugGameResultClaimRoute =
+  EventsSlugGameResultClaimRouteImport.update({
+    id: '/events/$slug_/game-result-claim',
+    path: '/events/$slug/game-result-claim',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const EventsSlugScoreRoute = EventsSlugScoreRouteImport.update({
   id: '/events/$slug_/score',
   path: '/events/$slug/score',
@@ -1089,6 +1106,24 @@ const EventsSlugStaffTokenRoute = EventsSlugStaffTokenRouteImport.update({
   path: '/events/$slug/staff/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ThingsFamilyFeudRoomIdBuzzerRoute =
+  ThingsFamilyFeudRoomIdBuzzerRouteImport.update({
+    id: '/family-feud_/$roomId_/buzzer',
+    path: '/family-feud/$roomId/buzzer',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsFamilyFeudRoomIdControlRoute =
+  ThingsFamilyFeudRoomIdControlRouteImport.update({
+    id: '/family-feud_/$roomId_/control',
+    path: '/family-feud/$roomId/control',
+    getParentRoute: () => ThingsRoute,
+  } as any)
+const ThingsFamilyFeudRoomIdPresentRoute =
+  ThingsFamilyFeudRoomIdPresentRouteImport.update({
+    id: '/family-feud_/$roomId_/present',
+    path: '/family-feud/$roomId/present',
+    getParentRoute: () => ThingsRoute,
+  } as any)
 const ThingsHotAndColdDailyPuzzleRoute =
   ThingsHotAndColdDailyPuzzleRouteImport.update({
     id: '/hot-and-cold_/daily_/$puzzle',
@@ -1206,6 +1241,12 @@ const ApiEventsSlugGameResultsClaimRouteRoute =
   ApiEventsSlugGameResultsClaimRouteRouteImport.update({
     id: '/api/events/$slug/game-results/claim',
     path: '/api/events/$slug/game-results/claim',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiEventsSlugGameResultsGroupClaimsRouteRoute =
+  ApiEventsSlugGameResultsGroupClaimsRouteRouteImport.update({
+    id: '/api/events/$slug/game-results/group-claims',
+    path: '/api/events/$slug/game-results/group-claims',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiTicketsIdScoreNotificationsRouteRoute =
@@ -1331,6 +1372,7 @@ export interface FileRoutesByFullPath {
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
+  '/things/family-feud': typeof ThingsFamilyFeudRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/hot-and-cold': typeof ThingsHotAndColdRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -1390,6 +1432,7 @@ export interface FileRoutesByFullPath {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug/game-result-claim': typeof EventsSlugGameResultClaimRoute
   '/events/$slug/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1458,6 +1501,9 @@ export interface FileRoutesByFullPath {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/family-feud/$roomId/buzzer': typeof ThingsFamilyFeudRoomIdBuzzerRoute
+  '/things/family-feud/$roomId/control': typeof ThingsFamilyFeudRoomIdControlRoute
+  '/things/family-feud/$roomId/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
@@ -1479,6 +1525,7 @@ export interface FileRoutesByFullPath {
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
+  '/api/events/$slug/game-results/group-claims': typeof ApiEventsSlugGameResultsGroupClaimsRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1532,6 +1579,7 @@ export interface FileRoutesByTo {
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
+  '/things/family-feud': typeof ThingsFamilyFeudRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/hot-and-cold': typeof ThingsHotAndColdRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -1591,6 +1639,7 @@ export interface FileRoutesByTo {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/events/$slug/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug/game-result-claim': typeof EventsSlugGameResultClaimRoute
   '/events/$slug/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1659,6 +1708,9 @@ export interface FileRoutesByTo {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/family-feud/$roomId/buzzer': typeof ThingsFamilyFeudRoomIdBuzzerRoute
+  '/things/family-feud/$roomId/control': typeof ThingsFamilyFeudRoomIdControlRoute
+  '/things/family-feud/$roomId/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
@@ -1680,6 +1732,7 @@ export interface FileRoutesByTo {
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
+  '/api/events/$slug/game-results/group-claims': typeof ApiEventsSlugGameResultsGroupClaimsRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1734,6 +1787,7 @@ export interface FileRoutesById {
   '/t/$id': typeof TIdRoute
   '/things/centre': typeof ThingsCentreRoute
   '/things/draw-country': typeof ThingsDrawCountryRoute
+  '/things/family-feud': typeof ThingsFamilyFeudRoute
   '/things/heads-up': typeof ThingsHeadsUpRoute
   '/things/hot-and-cold': typeof ThingsHotAndColdRoute
   '/things/icebreaker': typeof ThingsIcebreakerRoute
@@ -1793,6 +1847,7 @@ export interface FileRoutesById {
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
   '/api/words/$slug': typeof ApiWordsSlugRouteRouteWithChildren
   '/events/$slug_/bought': typeof EventsSlugBoughtRoute
+  '/events/$slug_/game-result-claim': typeof EventsSlugGameResultClaimRoute
   '/events/$slug_/score': typeof EventsSlugScoreRoute
   '/pics/$album/$photo': typeof PicsAlbumPhotoRoute
   '/things/centre_/$roomId': typeof ThingsCentreRoomIdRoute
@@ -1861,6 +1916,9 @@ export interface FileRoutesById {
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug_/discoveries/$discoveryId': typeof EventsSlugDiscoveriesDiscoveryIdRoute
   '/events/$slug_/staff/$token': typeof EventsSlugStaffTokenRoute
+  '/things/family-feud_/$roomId_/buzzer': typeof ThingsFamilyFeudRoomIdBuzzerRoute
+  '/things/family-feud_/$roomId_/control': typeof ThingsFamilyFeudRoomIdControlRoute
+  '/things/family-feud_/$roomId_/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold_/daily_/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
@@ -1882,6 +1940,7 @@ export interface FileRoutesById {
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   '/api/events/$slug/game-results/claim': typeof ApiEventsSlugGameResultsClaimRouteRoute
+  '/api/events/$slug/game-results/group-claims': typeof ApiEventsSlugGameResultsGroupClaimsRouteRoute
   '/api/tickets/$id/score/notifications': typeof ApiTicketsIdScoreNotificationsRouteRoute
   '/api/tickets/$id/score/profile': typeof ApiTicketsIdScoreProfileRouteRoute
   '/api/transfers/$id/files/$fileId': typeof ApiTransfersIdFilesFileIdRouteRoute
@@ -1937,6 +1996,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
+    | '/things/family-feud'
     | '/things/heads-up'
     | '/things/hot-and-cold'
     | '/things/icebreaker'
@@ -1996,6 +2056,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/events/$slug/bought'
+    | '/events/$slug/game-result-claim'
     | '/events/$slug/score'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
@@ -2064,6 +2125,9 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
     | '/events/$slug/staff/$token'
+    | '/things/family-feud/$roomId/buzzer'
+    | '/things/family-feud/$roomId/control'
+    | '/things/family-feud/$roomId/present'
     | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
@@ -2085,6 +2149,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
+    | '/api/events/$slug/game-results/group-claims'
     | '/api/tickets/$id/score/notifications'
     | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
@@ -2138,6 +2203,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
+    | '/things/family-feud'
     | '/things/heads-up'
     | '/things/hot-and-cold'
     | '/things/icebreaker'
@@ -2197,6 +2263,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/events/$slug/bought'
+    | '/events/$slug/game-result-claim'
     | '/events/$slug/score'
     | '/pics/$album/$photo'
     | '/things/centre/$roomId'
@@ -2265,6 +2332,9 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug/discoveries/$discoveryId'
     | '/events/$slug/staff/$token'
+    | '/things/family-feud/$roomId/buzzer'
+    | '/things/family-feud/$roomId/control'
+    | '/things/family-feud/$roomId/present'
     | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
     | '/things/pitches/$deckId/edit'
@@ -2286,6 +2356,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
+    | '/api/events/$slug/game-results/group-claims'
     | '/api/tickets/$id/score/notifications'
     | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
@@ -2339,6 +2410,7 @@ export interface FileRouteTypes {
     | '/t/$id'
     | '/things/centre'
     | '/things/draw-country'
+    | '/things/family-feud'
     | '/things/heads-up'
     | '/things/hot-and-cold'
     | '/things/icebreaker'
@@ -2398,6 +2470,7 @@ export interface FileRouteTypes {
     | '/api/upload/verify-pin'
     | '/api/words/$slug'
     | '/events/$slug_/bought'
+    | '/events/$slug_/game-result-claim'
     | '/events/$slug_/score'
     | '/pics/$album/$photo'
     | '/things/centre_/$roomId'
@@ -2466,6 +2539,9 @@ export interface FileRouteTypes {
     | '/api/words/share/verify'
     | '/events/$slug_/discoveries/$discoveryId'
     | '/events/$slug_/staff/$token'
+    | '/things/family-feud_/$roomId_/buzzer'
+    | '/things/family-feud_/$roomId_/control'
+    | '/things/family-feud_/$roomId_/present'
     | '/things/hot-and-cold_/daily_/$puzzle'
     | '/things/liars_/$roomId_/present'
     | '/things/pitches_/$deckId_/edit'
@@ -2487,6 +2563,7 @@ export interface FileRouteTypes {
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
     | '/api/events/$slug/game-results/claim'
+    | '/api/events/$slug/game-results/group-claims'
     | '/api/tickets/$id/score/notifications'
     | '/api/tickets/$id/score/profile'
     | '/api/transfers/$id/files/$fileId'
@@ -2588,6 +2665,7 @@ export interface RootRouteChildren {
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
   EventsSlugBoughtRoute: typeof EventsSlugBoughtRoute
+  EventsSlugGameResultClaimRoute: typeof EventsSlugGameResultClaimRoute
   EventsSlugScoreRoute: typeof EventsSlugScoreRoute
   PicsAlbumPhotoRoute: typeof PicsAlbumPhotoRoute
   PicsAlbumIndexRoute: typeof PicsAlbumIndexRoute
@@ -2619,6 +2697,7 @@ export interface RootRouteChildren {
   ApiEventsSlugDiscoveriesDiscoveryIdRouteRoute: typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   ApiEventsSlugDiscoveriesClaimRouteRoute: typeof ApiEventsSlugDiscoveriesClaimRouteRoute
   ApiEventsSlugGameResultsClaimRouteRoute: typeof ApiEventsSlugGameResultsClaimRouteRoute
+  ApiEventsSlugGameResultsGroupClaimsRouteRoute: typeof ApiEventsSlugGameResultsGroupClaimsRouteRoute
   ApiUploadTransferAppendFinalizeRouteRoute: typeof ApiUploadTransferAppendFinalizeRouteRoute
   ApiUploadTransferAppendPresignRouteRoute: typeof ApiUploadTransferAppendPresignRouteRoute
   ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute: typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
@@ -2911,6 +2990,13 @@ declare module '@tanstack/react-router' {
       path: '/draw-country'
       fullPath: '/things/draw-country'
       preLoaderRoute: typeof ThingsDrawCountryRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/family-feud': {
+      id: '/things/family-feud'
+      path: '/family-feud'
+      fullPath: '/things/family-feud'
+      preLoaderRoute: typeof ThingsFamilyFeudRouteImport
       parentRoute: typeof ThingsRoute
     }
     '/things/heads-up': {
@@ -3296,6 +3382,13 @@ declare module '@tanstack/react-router' {
       path: '/events/$slug/bought'
       fullPath: '/events/$slug/bought'
       preLoaderRoute: typeof EventsSlugBoughtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$slug_/game-result-claim': {
+      id: '/events/$slug_/game-result-claim'
+      path: '/events/$slug/game-result-claim'
+      fullPath: '/events/$slug/game-result-claim'
+      preLoaderRoute: typeof EventsSlugGameResultClaimRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$slug_/score': {
@@ -3781,6 +3874,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsSlugStaffTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/things/family-feud_/$roomId_/buzzer': {
+      id: '/things/family-feud_/$roomId_/buzzer'
+      path: '/family-feud/$roomId/buzzer'
+      fullPath: '/things/family-feud/$roomId/buzzer'
+      preLoaderRoute: typeof ThingsFamilyFeudRoomIdBuzzerRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/family-feud_/$roomId_/control': {
+      id: '/things/family-feud_/$roomId_/control'
+      path: '/family-feud/$roomId/control'
+      fullPath: '/things/family-feud/$roomId/control'
+      preLoaderRoute: typeof ThingsFamilyFeudRoomIdControlRouteImport
+      parentRoute: typeof ThingsRoute
+    }
+    '/things/family-feud_/$roomId_/present': {
+      id: '/things/family-feud_/$roomId_/present'
+      path: '/family-feud/$roomId/present'
+      fullPath: '/things/family-feud/$roomId/present'
+      preLoaderRoute: typeof ThingsFamilyFeudRoomIdPresentRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/hot-and-cold_/daily_/$puzzle': {
       id: '/things/hot-and-cold_/daily_/$puzzle'
       path: '/hot-and-cold/daily/$puzzle'
@@ -3921,6 +4035,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsSlugGameResultsClaimRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/events/$slug/game-results/group-claims': {
+      id: '/api/events/$slug/game-results/group-claims'
+      path: '/api/events/$slug/game-results/group-claims'
+      fullPath: '/api/events/$slug/game-results/group-claims'
+      preLoaderRoute: typeof ApiEventsSlugGameResultsGroupClaimsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/tickets/$id/score/notifications': {
       id: '/api/tickets/$id/score/notifications'
       path: '/notifications'
@@ -4025,6 +4146,7 @@ declare module '@tanstack/react-router' {
 interface ThingsRouteChildren {
   ThingsCentreRoute: typeof ThingsCentreRoute
   ThingsDrawCountryRoute: typeof ThingsDrawCountryRoute
+  ThingsFamilyFeudRoute: typeof ThingsFamilyFeudRoute
   ThingsHeadsUpRoute: typeof ThingsHeadsUpRoute
   ThingsHotAndColdRoute: typeof ThingsHotAndColdRoute
   ThingsIcebreakerRoute: typeof ThingsIcebreakerRoute
@@ -4058,6 +4180,9 @@ interface ThingsRouteChildren {
   ThingsTwinDevRoute: typeof ThingsTwinDevRoute
   ThingsTwinOneScreenRoute: typeof ThingsTwinOneScreenRoute
   ThingsTwinSoloRoute: typeof ThingsTwinSoloRoute
+  ThingsFamilyFeudRoomIdBuzzerRoute: typeof ThingsFamilyFeudRoomIdBuzzerRoute
+  ThingsFamilyFeudRoomIdControlRoute: typeof ThingsFamilyFeudRoomIdControlRoute
+  ThingsFamilyFeudRoomIdPresentRoute: typeof ThingsFamilyFeudRoomIdPresentRoute
   ThingsHotAndColdDailyPuzzleRoute: typeof ThingsHotAndColdDailyPuzzleRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
@@ -4069,6 +4194,7 @@ interface ThingsRouteChildren {
 const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsCentreRoute: ThingsCentreRoute,
   ThingsDrawCountryRoute: ThingsDrawCountryRoute,
+  ThingsFamilyFeudRoute: ThingsFamilyFeudRoute,
   ThingsHeadsUpRoute: ThingsHeadsUpRoute,
   ThingsHotAndColdRoute: ThingsHotAndColdRoute,
   ThingsIcebreakerRoute: ThingsIcebreakerRoute,
@@ -4102,6 +4228,9 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsTwinDevRoute: ThingsTwinDevRoute,
   ThingsTwinOneScreenRoute: ThingsTwinOneScreenRoute,
   ThingsTwinSoloRoute: ThingsTwinSoloRoute,
+  ThingsFamilyFeudRoomIdBuzzerRoute: ThingsFamilyFeudRoomIdBuzzerRoute,
+  ThingsFamilyFeudRoomIdControlRoute: ThingsFamilyFeudRoomIdControlRoute,
+  ThingsFamilyFeudRoomIdPresentRoute: ThingsFamilyFeudRoomIdPresentRoute,
   ThingsHotAndColdDailyPuzzleRoute: ThingsHotAndColdDailyPuzzleRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
@@ -4518,6 +4647,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,
   EventsSlugBoughtRoute: EventsSlugBoughtRoute,
+  EventsSlugGameResultClaimRoute: EventsSlugGameResultClaimRoute,
   EventsSlugScoreRoute: EventsSlugScoreRoute,
   PicsAlbumPhotoRoute: PicsAlbumPhotoRoute,
   PicsAlbumIndexRoute: PicsAlbumIndexRoute,
@@ -4554,6 +4684,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiEventsSlugDiscoveriesClaimRouteRoute,
   ApiEventsSlugGameResultsClaimRouteRoute:
     ApiEventsSlugGameResultsClaimRouteRoute,
+  ApiEventsSlugGameResultsGroupClaimsRouteRoute:
+    ApiEventsSlugGameResultsGroupClaimsRouteRoute,
   ApiUploadTransferAppendFinalizeRouteRoute:
     ApiUploadTransferAppendFinalizeRouteRoute,
   ApiUploadTransferAppendPresignRouteRoute:

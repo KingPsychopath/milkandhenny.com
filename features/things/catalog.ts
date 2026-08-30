@@ -11,7 +11,8 @@ export interface Thing {
     | "same-brain"
     | "twin"
     | "centre"
-    | "hot-and-cold";
+    | "hot-and-cold"
+    | "family-feud";
   name: string;
   description: string;
   eyebrow: string;
@@ -25,7 +26,8 @@ export interface Thing {
     | "/things/same-brain"
     | "/things/twin"
     | "/things/centre"
-    | "/things/hot-and-cold";
+    | "/things/hot-and-cold"
+    | "/things/family-feud";
   status: "ready";
   mark:
     | { kind: "symbol"; value: string }
@@ -34,6 +36,16 @@ export interface Thing {
 }
 
 export const THINGS = [
+  {
+    slug: "family-feud",
+    name: "Family Feud",
+    description: "Two teams, ten answers, and one host running the room from their phone.",
+    eyebrow: "team game · 2–40 people",
+    href: "/things/family-feud",
+    status: "ready",
+    mark: { kind: "symbol", value: "10" },
+    offline: null,
+  },
   {
     slug: "hot-and-cold",
     name: "hot and cold",

@@ -18,6 +18,11 @@ import type {
   LiarsTimings,
   LiarsToggles,
 } from "@/features/things/liars/types";
+import { createFamilyFeudRoom } from "@/features/things/family-feud/family-feud-room.server";
+import type {
+  FamilyFeudCustomDeckInput,
+  FamilyFeudTeamId,
+} from "@/features/things/family-feud/types";
 import { query } from "@/lib/platform/postgres.server";
 import {
   activateGameScoreBinding,
@@ -45,6 +50,52 @@ async function closeBinding(channelId: string, reason: string) {
       where bindings.channel_id = $1`,
     [channelId, JSON.stringify({ reason })],
   );
+}
+
+export async function launchEventFamilyFeudGame(input: {
+  eventSlug: string;
+  activityId: string;
+  deckId?: string;
+  customDeck?: FamilyFeudCustomDeckInput;
+  rounds?: number;
+  mainSeconds?: number;
+  stealSeconds?: number;
+  firstTeamId?: FamilyFeudTeamId;
+  teams: Array<{ name?: string; playerCount?: number }>;
+}) {
+  const binding = await createGameScoreBinding({
+    eventSlug: input.eventSlug,
+    activityId: input.activityId,
+    gameKind: "family-feud",
+    acceptedScope: "game",
+  });
+  if (!binding.ok) return binding;
+  const channelId = binding.value.channelId;
+  try {
+    const room = await createFamilyFeudRoom({
+      deckId: input.deckId,
+      customDeck: input.customDeck,
+      rounds: input.rounds,
+      mainSeconds: input.mainSeconds,
+      stealSeconds: input.stealSeconds,
+      firstTeamId: input.firstTeamId,
+      teams: input.teams,
+      officialResultChannelId: channelId,
+    });
+    const activated = await activateGameScoreBinding({
+      channelId,
+      gameInstanceId: room.roomId,
+    });
+    if (!activated.ok) {
+      await closeBinding(channelId, activated.error);
+      return activated;
+    }
+    return { ok: true as const, value: room };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Family Feud launch failed";
+    await closeBinding(channelId, message);
+    throw error;
+  }
 }
 
 export async function launchEventCentreGame(input: {
