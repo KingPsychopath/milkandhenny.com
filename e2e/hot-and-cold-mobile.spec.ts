@@ -87,6 +87,8 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     const receipt = page.locator(".heat-guess-receipt");
     await expect(receipt).toContainText(/table · #[\d,]+/);
     await expect(receipt).toContainText("hottest");
+    await expect(receipt).toHaveCSS("position", "static");
+    await expect(page.locator("#hot-and-cold-guess-message")).toContainText(/table · #[\d,]+/);
     await expect(receipt).toContainText(/music · #[\d,]+/, { timeout: 5_000 });
     await expect(receipt).toHaveCount(0, { timeout: 5_000 });
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
@@ -100,10 +102,24 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
     await input.fill("");
 
-    await page.getByRole("button", { name: "hint", exact: true }).click();
-    await expect(receipt).toContainText(/hint · .+ · #[\d,]+/, { timeout: 30_000 });
+    const hintButton = page.getByRole("button", { name: "hint", exact: true });
+    const giveUpButton = page.getByRole("button", { name: "give up", exact: true });
+    await expect(giveUpButton).toHaveCount(0);
+    for (let hint = 0; hint < 3; hint += 1) {
+      await hintButton.click();
+      await expect(receipt).toContainText(/hint · .+ · #[\d,]+/, { timeout: 30_000 });
+      await expect(page.locator("#hot-and-cold-guess-message")).toContainText(
+        /hint · .+ · #[\d,]+/,
+      );
+      await expect(receipt).toHaveCount(0, { timeout: 5_000 });
+    }
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
-    await expect(receipt).toHaveCount(0, { timeout: 5_000 });
+    await expect(hintButton).toHaveCount(0);
+    await expect(giveUpButton).toBeVisible();
+    await giveUpButton.click();
+    await expect(page.getByRole("dialog", { name: "Reveal this word?" })).toBeVisible();
+    await page.getByRole("button", { name: "keep playing", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Reveal this word?" })).toHaveCount(0);
 
     await page.evaluate(() => {
       if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");

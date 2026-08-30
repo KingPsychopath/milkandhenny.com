@@ -179,6 +179,8 @@ export function GuessComposer({
     }, 2_800);
     return () => clearTimeout(timer);
   }, [visibleReceipt]);
+  const actionableMessage = localMessage ?? message;
+  const displayedReceipt = actionableMessage ? null : visibleReceipt;
   return (
     <form
       className="heat-composer"
@@ -187,16 +189,6 @@ export function GuessComposer({
         submit();
       }}
     >
-      {visibleReceipt ? (
-        <output
-          key={visibleReceipt.id}
-          className="heat-guess-receipt"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {visibleReceipt.label}
-        </output>
-      ) : null}
       <div className="heat-composer-inner">
         <label className="sr-only" htmlFor="hot-and-cold-guess">
           Guess a word
@@ -253,9 +245,23 @@ export function GuessComposer({
           guess
         </button>
         <div className="heat-composer-tools">
-          <span id="hot-and-cold-guess-message" aria-live="polite" aria-atomic="true">
-            {localMessage ?? message ?? turnLabel ?? "lower is hotter"}
-          </span>
+          <output
+            id="hot-and-cold-guess-message"
+            className="heat-composer-status"
+            data-receipt={displayedReceipt ? "" : undefined}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {displayedReceipt ? (
+              <span key={displayedReceipt.id} className="heat-guess-receipt">
+                {displayedReceipt.label}
+              </span>
+            ) : (
+              <span className="heat-composer-guidance">
+                {actionableMessage ?? turnLabel ?? "lower is hotter"}
+              </span>
+            )}
+          </output>
           <div className="heat-composer-controls">
             <button
               type="button"

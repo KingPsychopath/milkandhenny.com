@@ -378,22 +378,24 @@ export function SoloHotAndCold({
             onGuess={guess}
             onMessageClear={() => setMessage(null)}
             actions={
-              <>
+              state.hintsUsed < 3 ? (
                 <button
                   type="button"
-                  disabled={state.hintsUsed >= 3}
+                  className="heat-progressive-action"
                   onClick={() => void requestHint()}
                 >
-                  {state.hintsUsed >= 3 ? "hints used" : "hint"}
+                  hint
                 </button>
+              ) : (
                 <GiveUpControl
                   tone="dark"
+                  className="heat-progressive-action"
                   title="Reveal this word?"
                   description="The word will appear at the top of your ledger. You cannot continue this hunt."
                   errorMessage="Couldn’t reveal the word. Try again."
                   onGiveUp={giveUp}
                 />
-              </>
+              )
             }
           />
         ) : null}
