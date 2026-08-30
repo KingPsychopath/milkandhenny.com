@@ -338,7 +338,7 @@ export function SoloHotAndCold({
           </button>
         </span>
       </header>
-      <main id="main" className="mx-auto w-full max-w-2xl px-5">
+      <main id="main" className="heat-game-main mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
           <HeatGauge
             band={done ? "found" : (hottest?.band ?? "frozen")}
@@ -347,6 +347,9 @@ export function SoloHotAndCold({
             solved={done && !state.gaveUp}
           />
           <p>
+            {hottest ? (
+              <span className="heat-source-keyboard-summary">{hottest.word} · </span>
+            ) : null}
             {done
               ? state.gaveUp
                 ? "revealed"
@@ -430,6 +433,7 @@ export function SoloHotAndCold({
       </main>
       {!done ? (
         <GuessComposer
+          continuous
           message={message}
           onGuess={guess}
           actions={

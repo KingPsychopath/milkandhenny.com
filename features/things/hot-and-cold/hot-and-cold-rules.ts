@@ -62,6 +62,15 @@ export function orderGuesses<T extends { rank: number; sequence: number }>(guess
   );
 }
 
+export function offscreenGuessDirection(
+  row: Readonly<{ top: number; bottom: number }>,
+  visibleArea: Readonly<{ top: number; bottom: number }>,
+): "above" | "below" | null {
+  if (row.bottom <= visibleArea.top) return "above";
+  if (row.top >= visibleArea.bottom) return "below";
+  return null;
+}
+
 export function heatStreaks(
   guesses: ReadonlyArray<{ rank: number; sequence: number; hint?: boolean }>,
 ) {

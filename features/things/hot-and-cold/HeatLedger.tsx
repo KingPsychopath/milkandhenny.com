@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { heatBand, orderGuesses } from "./hot-and-cold-rules";
+import { heatBand, offscreenGuessDirection, orderGuesses } from "./hot-and-cold-rules";
 import type { HeatBand } from "./hot-and-cold-rules";
 
 export interface LedgerGuess {
@@ -38,7 +38,10 @@ export function HeatLedger({
   const ledger = useRef<HTMLOListElement>(null);
   const positions = useRef(new Map<string, number>());
   const updateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [offscreenUpdate, setOffscreenUpdate] = useState<string | null>(null);
+  const [offscreenUpdate, setOffscreenUpdate] = useState<{
+    guessId: string;
+    label: string;
+  } | null>(null);
   const ordered = orderGuesses(guesses);
   const newestGuess = newestId ? guesses.find(({ id }) => id === newestId) : undefined;
   const newestRank = newestGuess?.rank;
@@ -85,18 +88,39 @@ export function HeatLedger({
     const composerTop = document
       .querySelector<HTMLElement>(".heat-composer")
       ?.getBoundingClientRect().top;
-    const visibleTop = Math.max(0, sourceBottom ?? 0);
-    const visibleBottom = Math.min(window.innerHeight, composerTop ?? window.innerHeight);
-    if (rowBounds.bottom > visibleTop && rowBounds.top < visibleBottom) return;
+    const viewportTop = window.visualViewport?.offsetTop ?? 0;
+    const viewportBottom = viewportTop + (window.visualViewport?.height ?? window.innerHeight);
+    const visibleTop = Math.max(viewportTop, sourceBottom ?? viewportTop);
+    const visibleBottom = Math.min(viewportBottom, composerTop ?? viewportBottom);
+    const direction = offscreenGuessDirection(
+      { top: rowBounds.top, bottom: rowBounds.bottom },
+      { top: visibleTop, bottom: visibleBottom },
+    );
+    if (!direction) return;
 
     const rank = `#${newestRank.toLocaleString()}`;
-    const direction = rowBounds.bottom <= visibleTop ? "above" : "below";
-    setOffscreenUpdate(`${wordsHidden ? rank : `${newestWord} · ${rank}`} · added ${direction}`);
+    setOffscreenUpdate({
+      guessId: newestId,
+      label: `${wordsHidden ? rank : `${newestWord} · ${rank}`} · added ${direction}`,
+    });
     updateTimer.current = setTimeout(() => setOffscreenUpdate(null), 2_800);
     return () => {
       if (updateTimer.current) clearTimeout(updateTimer.current);
     };
   }, [newestId, newestRank, newestWord, wordsHidden]);
+  const showOffscreenGuess = () => {
+    if (!offscreenUpdate || !ledger.current) return;
+    const row = ledger.current.querySelector<HTMLElement>(
+      `[data-guess-id="${CSS.escape(offscreenUpdate.guessId)}"]`,
+    );
+    if (!row) return;
+    row.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "center",
+    });
+    if (updateTimer.current) clearTimeout(updateTimer.current);
+    setOffscreenUpdate(null);
+  };
 
   const showRevealedTarget = Boolean(target && !ordered.some(({ rank }) => rank === 0));
   if (ordered.length === 0 && !showRevealedTarget)
@@ -161,9 +185,18 @@ export function HeatLedger({
         })}
       </ol>
       {offscreenUpdate ? (
-        <p className="heat-ledger-update" role="status">
-          {offscreenUpdate}
-        </p>
+        <button
+          type="button"
+          className="heat-ledger-update"
+          aria-label={`${offscreenUpdate.label}. Show in ledger`}
+          aria-live="polite"
+          aria-atomic="true"
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={showOffscreenGuess}
+        >
+          <span>{offscreenUpdate.label}</span>
+          <strong aria-hidden="true">show</strong>
+        </button>
       ) : null}
     </>
   );

@@ -67,30 +67,53 @@ export function JoinHotAndColdRoom({
       <main id="main" className="mx-auto flex min-h-[75svh] max-w-lg flex-col justify-center px-5">
         <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">room {roomId}</p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">join the hunt</h1>
-        <label className="mt-9 block font-mono text-xs theme-muted">
-          <span className="block pb-2">your name</span>
-          <input
-            autoFocus={loaded && !name}
-            value={name}
-            maxLength={24}
-            autoComplete="name"
-            onChange={(event) => setName(event.target.value)}
-            className="min-h-14 w-full border-b theme-border bg-transparent font-serif text-3xl outline-none"
-          />
-        </label>
-        <button
-          type="button"
-          disabled={!name.trim() || joining}
-          onClick={() => void join()}
-          className="mt-9 min-h-16 rounded-full bg-[var(--things-amber)] px-7 font-mono text-sm font-bold text-black disabled:opacity-40"
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void join();
+          }}
         >
-          {joining ? "joining…" : "join room"}
-        </button>
-        {message ? (
-          <p role="alert" className="mt-4 font-mono text-xs text-[var(--things-amber)]">
-            {message}
-          </p>
-        ) : null}
+          <label className="mt-9 block font-mono text-xs theme-muted">
+            <span className="block pb-2">your name</span>
+            <input
+              autoFocus={loaded && !name}
+              name="name"
+              value={name}
+              maxLength={24}
+              autoComplete="name"
+              enterKeyHint="go"
+              required
+              aria-invalid={Boolean(message) || undefined}
+              aria-describedby={message ? "hot-and-cold-join-message" : undefined}
+              onChange={(event) => {
+                setName(event.target.value);
+                setMessage(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                void join();
+              }}
+              className="min-h-14 w-full border-b theme-border bg-transparent font-serif text-3xl"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!name.trim() || joining}
+            className="mt-9 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-7 font-mono text-sm font-bold text-black disabled:opacity-40"
+          >
+            {joining ? "joining…" : "join room"}
+          </button>
+          {message ? (
+            <p
+              id="hot-and-cold-join-message"
+              role="alert"
+              className="mt-4 font-mono text-xs text-[var(--things-amber)]"
+            >
+              {message}
+            </p>
+          ) : null}
+        </form>
       </main>
     </div>
   );
@@ -398,7 +421,7 @@ export function HotAndColdRoomApp({
           ) : null}
         </span>
       </header>
-      <main id="main" className="mx-auto max-w-2xl px-5">
+      <main id="main" className="heat-game-main mx-auto max-w-2xl px-5">
         <div className="heat-source">
           <HeatGauge
             band={snapshot.round?.exact ? "found" : (hottest?.band ?? "frozen")}
@@ -407,6 +430,9 @@ export function HotAndColdRoomApp({
             solved={Boolean(snapshot.round?.exact)}
           />
           <p>
+            {hottest ? (
+              <span className="heat-source-keyboard-summary">{hottest.word} · </span>
+            ) : null}
             {snapshot.phase === "reveal"
               ? snapshot.round?.exact
                 ? "found"
