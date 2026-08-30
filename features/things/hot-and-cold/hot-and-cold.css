@@ -813,6 +813,21 @@ main:has(.heat-result-share) .heat-ledger {
   padding: 1.5rem max(1rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom))
     max(1rem, env(safe-area-inset-left));
   background: linear-gradient(transparent, var(--background) 24%);
+  view-transition-name: heat-share-dock;
+}
+html[data-heat-page-direction]::view-transition-old(root) {
+  animation: 90ms ease-out both heat-page-fade-out;
+}
+html[data-heat-page-direction="forward"]::view-transition-new(root) {
+  animation: 180ms cubic-bezier(0.16, 1, 0.3, 1) both heat-page-arrive-forward;
+}
+html[data-heat-page-direction="back"]::view-transition-new(root) {
+  animation: 180ms cubic-bezier(0.16, 1, 0.3, 1) both heat-page-arrive-back;
+}
+::view-transition-old(heat-share-dock),
+::view-transition-new(heat-share-dock) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 .heat-share-dock-inner {
   display: grid;
@@ -1153,6 +1168,23 @@ main:has(.heat-result-share) .heat-ledger {
     filter: none;
   }
 }
+@keyframes heat-page-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes heat-page-arrive-forward {
+  from {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+}
+@keyframes heat-page-arrive-back {
+  from {
+    opacity: 0;
+    transform: translateY(-0.45rem);
+  }
+}
 @keyframes heat-shiver {
   25% {
     transform: translateX(-0.12rem);
@@ -1378,6 +1410,10 @@ main:has(.heat-result-share) .heat-ledger {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  html[data-heat-page-direction]::view-transition-old(root),
+  html[data-heat-page-direction]::view-transition-new(root) {
+    animation: none;
+  }
   .heat-source-flame,
   .heat-word[data-newest],
   .heat-word[data-newest] .heat-word-text,

@@ -216,14 +216,25 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     const resultPager = page.getByRole("button", { name: "See your result" });
     await expect(resultPager).toBeVisible({ timeout: 30_000 });
     await page.evaluate(() => {
-      const browserWindow = window as Window & { __heatPageScrollCalls?: number };
+      const browserWindow = window as Window & {
+        __heatPageScrollCalls?: number;
+        __heatPageTransitionCalls?: number;
+      };
       const originalScrollTo = window.scrollTo.bind(window);
       browserWindow.__heatPageScrollCalls = 0;
+      browserWindow.__heatPageTransitionCalls = 0;
       window.scrollTo = ((optionsOrX: ScrollToOptions | number, y?: number) => {
         browserWindow.__heatPageScrollCalls = (browserWindow.__heatPageScrollCalls ?? 0) + 1;
         if (typeof optionsOrX === "number") originalScrollTo(optionsOrX, y ?? 0);
         else originalScrollTo(optionsOrX);
       }) as typeof window.scrollTo;
+      const originalStartViewTransition = document.startViewTransition?.bind(document);
+      if (originalStartViewTransition)
+        document.startViewTransition = ((update: () => void | Promise<void>) => {
+          browserWindow.__heatPageTransitionCalls =
+            (browserWindow.__heatPageTransitionCalls ?? 0) + 1;
+          return originalStartViewTransition(update);
+        }) as typeof document.startViewTransition;
     });
     await resultPager.click();
     await page.waitForTimeout(700);
@@ -231,6 +242,14 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
       .poll(() =>
         page.evaluate(
           () => (window as Window & { __heatPageScrollCalls?: number }).__heatPageScrollCalls,
+        ),
+      )
+      .toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { __heatPageTransitionCalls?: number }).__heatPageTransitionCalls,
         ),
       )
       .toBe(1);

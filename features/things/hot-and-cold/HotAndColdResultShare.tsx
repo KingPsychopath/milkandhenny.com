@@ -319,6 +319,7 @@ export function HotAndColdShareDock({
   sharePath?: string;
 }) {
   const [showingResult, setShowingResult] = useState(false);
+  const pageTransition = useRef<ViewTransition | null>(null);
   const { nativeShare, result, share, status } = useHotAndColdResultShare(
     label,
     guesses,
@@ -346,14 +347,50 @@ export function HotAndColdShareDock({
     observer.observe(resultElement);
     return () => observer.disconnect();
   }, [resultId]);
+  useEffect(
+    () => () => {
+      pageTransition.current?.skipTransition();
+      delete document.documentElement.dataset.heatPageDirection;
+    },
+    [],
+  );
 
   const jumpPage = () => {
     const target = document.getElementById(showingResult ? "main" : resultId);
     if (!target) return;
+    const movingToResult = !showingResult;
     const targetY = showingResult
       ? 0
       : target.getBoundingClientRect().top + window.scrollY - 6 * 16;
-    window.scrollTo({ top: targetY, behavior: "instant" });
+    const jump = () => window.scrollTo({ top: targetY, behavior: "instant" });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion || !document.startViewTransition) {
+      jump();
+      if (reducedMotion) return;
+      const arrival = movingToResult
+        ? target
+        : (target.querySelector<HTMLElement>(".heat-source") ?? target);
+      arrival.animate(
+        [
+          {
+            opacity: 0.72,
+            transform: `translateY(${movingToResult ? "0.45rem" : "-0.45rem"})`,
+          },
+          { opacity: 1, transform: "translateY(0)" },
+        ],
+        { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+      );
+      return;
+    }
+    pageTransition.current?.skipTransition();
+    document.documentElement.dataset.heatPageDirection = movingToResult ? "forward" : "back";
+    const transition = document.startViewTransition(jump);
+    pageTransition.current = transition;
+    void transition.finished.finally(() => {
+      if (pageTransition.current !== transition) return;
+      pageTransition.current = null;
+      delete document.documentElement.dataset.heatPageDirection;
+    });
   };
 
   return (
