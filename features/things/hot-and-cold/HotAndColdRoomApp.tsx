@@ -493,9 +493,7 @@ export function HotAndColdRoomApp({
           round {snapshot.round?.number}/{snapshot.round?.total} · {live.connectionState}
         </span>
         <span className="flex items-center justify-self-end gap-1">
-          {snapshot.phase === "reveal" ? (
-            <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
-          ) : null}
+          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
           {snapshot.phase === "playing" && !me?.gaveUp ? (
             <GiveUpControl
               tone="dark"

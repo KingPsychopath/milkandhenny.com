@@ -339,7 +339,7 @@ export function SoloHotAndCold({
         </button>
         <span>daily #{puzzle}</span>
         <span className="flex items-center justify-self-end gap-1">
-          {done ? <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} /> : null}
+          <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />
           <button
             type="button"
             className="min-h-11 font-mono text-micro underline decoration-transparent underline-offset-4 transition-opacity hover:opacity-60 hover:decoration-current"

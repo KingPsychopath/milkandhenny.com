@@ -183,7 +183,6 @@ export function LampToggle() {
       style={{
         transform: shown ? "translateY(0)" : "translateY(-90px)",
         opacity: shown ? 1 : 0,
-        visibility: shown ? "visible" : "hidden",
         pointerEvents: shown ? "auto" : "none",
       }}
     >

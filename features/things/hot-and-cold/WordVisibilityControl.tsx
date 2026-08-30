@@ -36,7 +36,7 @@ export function WordVisibilityControl({
     return () => window.clearTimeout(timer);
   }, []);
 
-  const label = wordsHidden ? "show all words" : "hide all words for sharing";
+  const label = wordsHidden ? "show words" : "hide words";
   return (
     <span className="relative inline-flex">
       <button
