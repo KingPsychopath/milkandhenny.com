@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { HeatGauge } from "./HeatGauge";
@@ -40,6 +40,7 @@ export function SoloHotAndCold({
   onExit: () => void;
 }) {
   const haptics = useWebHaptics();
+  const keyboardSurface = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<DailyState>({
     puzzle,
     guesses: [],
@@ -319,7 +320,7 @@ export function SoloHotAndCold({
     null,
   );
   return (
-    <div className="hot-and-cold min-h-svh">
+    <div ref={keyboardSurface} className="hot-and-cold min-h-svh">
       <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={onExit}>
           ← hot and cold
@@ -434,6 +435,7 @@ export function SoloHotAndCold({
       {!done ? (
         <GuessComposer
           continuous
+          keyboardSurfaceRef={keyboardSurface}
           message={message}
           onGuess={guess}
           actions={

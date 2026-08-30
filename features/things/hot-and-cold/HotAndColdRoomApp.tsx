@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
@@ -133,6 +133,7 @@ export function HotAndColdRoomApp({
     initialSnapshot: credentials.snapshot,
   });
   const haptics = useWebHaptics();
+  const keyboardSurface = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
@@ -400,7 +401,7 @@ export function HotAndColdRoomApp({
     ? Math.max(0, Math.ceil((snapshot.round.turnEndsAt - snapshot.serverNow) / 1_000))
     : null;
   return (
-    <div className="hot-and-cold min-h-svh">
+    <div ref={keyboardSurface} className="hot-and-cold min-h-svh">
       <header className="mx-auto grid max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={() => void leave()}>
           ← leave
@@ -488,6 +489,7 @@ export function HotAndColdRoomApp({
         <>
           <GuessComposer
             disabled={!myTurn || me?.gaveUp}
+            keyboardSurfaceRef={keyboardSurface}
             message={message}
             turnLabel={
               myTurn

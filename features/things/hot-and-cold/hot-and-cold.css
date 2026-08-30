@@ -252,12 +252,12 @@ main:has(.heat-result-share) .heat-source {
 .heat-source-keyboard-summary {
   display: none;
 }
-.hot-and-cold[data-heat-keyboard] .heat-game-main {
-  min-height: var(--heat-layout-height, 100svh);
-  padding-top: var(--heat-keyboard-spacer, 0);
+.hot-and-cold[data-mobile-keyboard] .heat-game-main {
+  min-height: var(--mobile-keyboard-layout-height, 100svh);
+  padding-top: var(--mobile-keyboard-viewport-top, 0);
 }
-.hot-and-cold[data-heat-keyboard] .heat-source {
-  top: var(--heat-visual-top, 0);
+.hot-and-cold[data-mobile-keyboard] .heat-source {
+  top: var(--mobile-keyboard-viewport-top, 0);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -275,19 +275,19 @@ main:has(.heat-result-share) .heat-source {
   text-align: left;
   backdrop-filter: blur(0.9rem);
 }
-.hot-and-cold[data-heat-keyboard] .heat-source-flame {
+.hot-and-cold[data-mobile-keyboard] .heat-source-flame {
   width: 3rem;
   height: 3rem;
   margin: 0;
 }
-.hot-and-cold[data-heat-keyboard] .heat-source p {
+.hot-and-cold[data-mobile-keyboard] .heat-source p {
   min-width: 0;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hot-and-cold[data-heat-keyboard] .heat-source-keyboard-summary {
+.hot-and-cold[data-mobile-keyboard] .heat-source-keyboard-summary {
   display: inline;
   font: 600 0.9rem/1 var(--font-serif);
   letter-spacing: -0.01em;
@@ -1069,8 +1069,8 @@ main:has(.heat-result-share) .heat-ledger {
   background: transparent;
   touch-action: pan-y;
 }
-.hot-and-cold[data-heat-keyboard] .heat-composer {
-  bottom: var(--heat-visual-bottom, 0);
+.hot-and-cold[data-mobile-keyboard] .heat-composer {
+  bottom: var(--mobile-keyboard-dock-offset, 0);
 }
 .heat-composer-inner {
   width: min(100%, 40rem);
@@ -1149,7 +1149,7 @@ main:has(.heat-result-share) .heat-ledger {
   min-height: 2.75rem;
   white-space: nowrap;
 }
-.hot-and-cold[data-heat-keyboard] .heat-keyboard-dismiss {
+.hot-and-cold[data-mobile-keyboard] .heat-keyboard-dismiss {
   display: inline-flex;
   align-items: center;
 }

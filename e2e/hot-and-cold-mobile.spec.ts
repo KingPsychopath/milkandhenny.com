@@ -72,7 +72,7 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
       window.visualViewport.dispatchEvent(new Event("resize"));
     });
     const game = page.locator(".hot-and-cold").first();
-    await expect(game).toHaveAttribute("data-heat-keyboard", "");
+    await expect(game).toHaveAttribute("data-mobile-keyboard", "");
     const keyboardStatus = page.locator(".heat-source");
     const hottestGuess = page.locator(".heat-ledger > li").first();
     await expect(page.locator(".heat-source-keyboard-summary")).toBeVisible();
@@ -87,7 +87,7 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
         return Math.round(Math.abs(hottest.y - (status.y + status.height)));
       })
       .toBeLessThanOrEqual(3);
-    await expect(game).toHaveCSS("--heat-visual-bottom", "0px");
+    await expect(game).toHaveCSS("--mobile-keyboard-dock-offset", "0px");
     await page.waitForTimeout(150);
 
     const alignedScrollY = await page.evaluate(() => window.scrollY);
@@ -119,7 +119,7 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
     );
     await hideKeyboard.click();
     await expect(input).not.toBeFocused();
-    await expect(game).not.toHaveAttribute("data-heat-keyboard", "");
+    await expect(game).not.toHaveAttribute("data-mobile-keyboard", "");
     await page.evaluate(() => {
       if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");
       Object.defineProperties(window.visualViewport, {
@@ -142,8 +142,8 @@ test("keeps the keyboard flow open while daily guesses score", async ({ page }) 
       });
       window.visualViewport.dispatchEvent(new Event("resize"));
     });
-    await expect(game).toHaveAttribute("data-heat-keyboard", "");
-    await expect(game).toHaveCSS("--heat-visual-bottom", "424px");
+    await expect(game).toHaveAttribute("data-mobile-keyboard", "");
+    await expect(game).toHaveCSS("--mobile-keyboard-dock-offset", "424px");
     await expect
       .poll(async () => {
         const bounds = await page.locator(".heat-composer").boundingBox();

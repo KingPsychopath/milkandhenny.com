@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useWebHaptics } from "web-haptics/react";
+import { useMobileKeyboardSession } from "@/hooks/useMobileKeyboardSession";
 
 function localGuessError(word: string) {
   const trimmed = word.trim();
@@ -16,6 +17,7 @@ export function GuessComposer({
   onGuess,
   actions,
   continuous = false,
+  keyboardSurfaceRef,
   turnLabel,
 }: {
   disabled?: boolean;
@@ -23,6 +25,7 @@ export function GuessComposer({
   onGuess: (word: string) => Promise<boolean>;
   actions?: ReactNode;
   continuous?: boolean;
+  keyboardSurfaceRef: RefObject<HTMLDivElement | null>;
   turnLabel?: string;
 }) {
   const haptics = useWebHaptics();
@@ -41,6 +44,20 @@ export function GuessComposer({
   const retainFocusUntil = useRef(0);
   const disabledRef = useRef(disabled);
   const onGuessRef = useRef(onGuess);
+  const { dismissKeyboard } = useMobileKeyboardSession({
+    dockRef: composer,
+    inputRef: input,
+    restoreScrollOnClose: true,
+    surfaceRef: keyboardSurfaceRef,
+    onSessionOpen: ({ input: activeInput, surface }) => {
+      if (document.activeElement !== activeInput) return;
+      const source = surface.querySelector<HTMLElement>(".heat-source");
+      const hottest = surface.querySelector<HTMLElement>(".heat-ledger > li:first-child");
+      if (!source || !hottest) return;
+      const delta = hottest.getBoundingClientRect().top - source.getBoundingClientRect().bottom;
+      if (Math.abs(delta) > 2) window.scrollBy({ top: delta, behavior: "auto" });
+    },
+  });
   disabledRef.current = disabled;
   onGuessRef.current = onGuess;
   wordRef.current = word;
@@ -143,149 +160,6 @@ export function GuessComposer({
     return () => document.removeEventListener("pointerdown", allowIntentionalBlur, true);
   }, [continuous]);
   useEffect(() => {
-    const visualViewport = window.visualViewport;
-    const inputElement = input.current;
-    const game = composer.current?.closest<HTMLElement>(".hot-and-cold");
-    if (!visualViewport || !inputElement || !game || navigator.maxTouchPoints === 0) return;
-
-    let frame = 0;
-    let alignTimer: ReturnType<typeof setTimeout> | null = null;
-    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
-    let keyboardWasOpen = false;
-    let alignedForSession = false;
-    let restorePending = false;
-    let readingPosition: number | null = null;
-    let expandedHeight = Math.max(
-      window.innerHeight,
-      document.documentElement.clientHeight,
-      visualViewport.height + visualViewport.offsetTop,
-    );
-    const clearKeyboardLayout = () => {
-      game.removeAttribute("data-heat-keyboard");
-      game.style.removeProperty("--heat-layout-height");
-      game.style.removeProperty("--heat-visual-top");
-      game.style.removeProperty("--heat-visual-bottom");
-      game.style.removeProperty("--heat-keyboard-spacer");
-    };
-    const rememberReadingPosition = () => {
-      if (keyboardWasOpen || restorePending || readingPosition !== null) return;
-      readingPosition = window.scrollY + Math.max(0, visualViewport.offsetTop);
-    };
-    const cancelRestore = () => {
-      if (restoreTimer) clearTimeout(restoreTimer);
-      restoreTimer = null;
-      restorePending = false;
-    };
-    const scheduleRestore = () => {
-      if (!restorePending || readingPosition === null) return;
-      if (restoreTimer) clearTimeout(restoreTimer);
-      // Wait for Safari's final VisualViewport resize so its own keyboard pan
-      // cannot overwrite the reading position we put back.
-      restoreTimer = setTimeout(() => {
-        restoreTimer = null;
-        if (!restorePending || readingPosition === null) return;
-        const top = readingPosition;
-        readingPosition = null;
-        restorePending = false;
-        requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
-      }, 140);
-    };
-    const closeKeyboardSession = (viewportContracted: boolean, preserveReadingPosition = false) => {
-      const shouldRestore =
-        readingPosition !== null && (keyboardWasOpen || viewportContracted || restorePending);
-      keyboardWasOpen = false;
-      alignedForSession = false;
-      if (alignTimer) clearTimeout(alignTimer);
-      alignTimer = null;
-      clearKeyboardLayout();
-      if (!shouldRestore) {
-        if (!preserveReadingPosition) readingPosition = null;
-        return;
-      }
-      restorePending = true;
-      scheduleRestore();
-    };
-    const alignHottestGuess = () => {
-      alignTimer = null;
-      if (document.activeElement !== inputElement) return;
-      const source = game.querySelector<HTMLElement>(".heat-source");
-      const hottest = game.querySelector<HTMLElement>(".heat-ledger > li:first-child");
-      if (!source || !hottest) return;
-      alignedForSession = true;
-      const delta = hottest.getBoundingClientRect().top - source.getBoundingClientRect().bottom;
-      if (Math.abs(delta) > 2) window.scrollBy({ top: delta, behavior: "auto" });
-    };
-    const measure = () => {
-      frame = 0;
-      const layoutHeight = Math.max(
-        window.innerHeight,
-        document.documentElement.clientHeight,
-        visualViewport.height + visualViewport.offsetTop,
-      );
-      const keyboardLayoutHeight = Math.max(expandedHeight, layoutHeight);
-      const keyboardDepth = keyboardLayoutHeight - visualViewport.height;
-      const viewportContracted =
-        visualViewport.scale < 1.1 &&
-        keyboardDepth > Math.max(120, Math.round(keyboardLayoutHeight * 0.18));
-      const focused = document.activeElement === inputElement;
-      if (!focused) {
-        expandedHeight = Math.max(expandedHeight, layoutHeight);
-        closeKeyboardSession(viewportContracted);
-        return;
-      }
-      if (!viewportContracted) {
-        closeKeyboardSession(false, true);
-        return;
-      }
-      if (restorePending) cancelRestore();
-      if (!keyboardWasOpen) {
-        keyboardWasOpen = true;
-        alignedForSession = false;
-      }
-      game.setAttribute("data-heat-keyboard", "");
-      game.style.setProperty("--heat-layout-height", `${keyboardLayoutHeight}px`);
-      game.style.setProperty("--heat-visual-top", `${Math.max(0, visualViewport.offsetTop)}px`);
-      game.style.setProperty(
-        "--heat-visual-bottom",
-        `${Math.max(0, keyboardLayoutHeight - visualViewport.offsetTop - visualViewport.height)}px`,
-      );
-      if (!alignedForSession) {
-        game.style.setProperty(
-          "--heat-keyboard-spacer",
-          `${Math.max(0, visualViewport.offsetTop)}px`,
-        );
-        if (alignTimer) clearTimeout(alignTimer);
-        alignTimer = setTimeout(alignHottestGuess, 90);
-      }
-    };
-    const scheduleMeasure = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
-    };
-
-    inputElement.addEventListener("pointerdown", rememberReadingPosition);
-    inputElement.addEventListener("focus", rememberReadingPosition);
-    inputElement.addEventListener("focus", scheduleMeasure);
-    inputElement.addEventListener("blur", scheduleMeasure);
-    visualViewport.addEventListener("resize", scheduleMeasure);
-    visualViewport.addEventListener("scroll", scheduleMeasure);
-    window.addEventListener("resize", scheduleMeasure);
-    scheduleMeasure();
-    return () => {
-      cancelAnimationFrame(frame);
-      if (alignTimer) clearTimeout(alignTimer);
-      if (restoreTimer) clearTimeout(restoreTimer);
-      inputElement.removeEventListener("pointerdown", rememberReadingPosition);
-      inputElement.removeEventListener("focus", rememberReadingPosition);
-      inputElement.removeEventListener("focus", scheduleMeasure);
-      inputElement.removeEventListener("blur", scheduleMeasure);
-      visualViewport.removeEventListener("resize", scheduleMeasure);
-      visualViewport.removeEventListener("scroll", scheduleMeasure);
-      window.removeEventListener("resize", scheduleMeasure);
-      clearKeyboardLayout();
-    };
-  }, []);
-  useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -350,7 +224,7 @@ export function GuessComposer({
             setLocalMessage(null);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Escape") input.current?.blur();
+            if (event.key === "Escape") dismissKeyboard();
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               submit();
@@ -387,7 +261,7 @@ export function GuessComposer({
               }}
               onClick={() => {
                 retainFocusUntil.current = 0;
-                input.current?.blur();
+                dismissKeyboard();
               }}
             >
               hide keys
