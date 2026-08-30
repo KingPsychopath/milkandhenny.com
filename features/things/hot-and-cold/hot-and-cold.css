@@ -256,6 +256,10 @@ main:has(.heat-result-share) .heat-source {
   text-transform: none;
   color: var(--foreground);
 }
+.hot-and-cold[data-words-hidden] .heat-source-hottest-word {
+  filter: blur(0.42rem);
+  user-select: none;
+}
 .heat-ledger {
   list-style: none;
   margin: 0;

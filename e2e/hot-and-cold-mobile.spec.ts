@@ -36,6 +36,7 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     const composer = page.locator(".heat-composer");
     const ledger = page.locator(".heat-ledger");
     const status = page.locator("#hot-and-cold-guess-message");
+    const game = page.locator(".hot-and-cold").first();
     await expect(input).toBeVisible();
     await expect(composer).toHaveCSS("position", "relative");
     await expect(guessButton).toBeEnabled();
@@ -120,6 +121,16 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(status).toHaveText("lower is hotter");
     await expect(status).toHaveAttribute("data-status", "guidance");
 
+    const hottestWord = page.locator(".heat-source-hottest-word");
+    await expect(hottestWord).toBeVisible();
+    await page.getByRole("button", { name: "hide words" }).click();
+    await expect(game).toHaveAttribute("data-words-hidden", "true");
+    await expect(ledger).toHaveAttribute("data-words-hidden", "true");
+    await expect(hottestWord).toHaveCSS("filter", /blur/);
+    await page.getByRole("button", { name: "show words" }).click();
+    await expect(game).not.toHaveAttribute("data-words-hidden", "true");
+    await expect(hottestWord).toHaveCSS("filter", "none");
+
     await input.fill("table");
     await input.press("Enter");
     await expect(page.locator("#hot-and-cold-guess-message")).toContainText(
@@ -188,7 +199,6 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
       });
       window.visualViewport.dispatchEvent(new Event("resize"));
     });
-    const game = page.locator(".hot-and-cold").first();
     await expect(game).not.toHaveAttribute("data-mobile-keyboard", "");
     await expect(game).not.toHaveAttribute("style", /mobile-keyboard/);
     await expect(page.locator(".heat-source-hottest-word")).toBeVisible();

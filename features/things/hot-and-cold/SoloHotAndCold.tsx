@@ -330,7 +330,7 @@ export function SoloHotAndCold({
     null,
   );
   return (
-    <div className="hot-and-cold min-h-svh">
+    <div className="hot-and-cold min-h-svh" data-words-hidden={wordsHidden || undefined}>
       <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={onExit}>
           ← hot and cold
