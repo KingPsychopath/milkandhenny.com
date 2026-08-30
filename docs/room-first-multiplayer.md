@@ -428,6 +428,8 @@ MUST include this profile in its feature documentation or implementation plan:
 - Event-scoring dependency: none
 - Reconnection behaviour:
 - Deliberate exceptions:
+- Harness level:
+- Dev route and default scenario:
 - Playtest status: unvalidated | promising | validated | regressed
 ```
 
@@ -436,7 +438,29 @@ exception fields for each mode.
 
 ---
 
-## 13. Review gate
+## 13. One-person operability
+
+Every multiplayer mode MUST be testable by one developer or agent before a
+group playtest. That means mounting the real presenter, MC, team, player, judge,
+and spectator surfaces together; choosing any one role to control; simulating
+the remaining seats; opening deterministic lifecycle scenarios; shortening or
+stepping time; and capturing/restoring an interesting room state.
+
+This infrastructure is centralized as a development harness and composed with a
+game-owned adapter. It does not centralize game rules or replace production
+surfaces with mock panels. Paired and room multiplayer modes must reach Level 3
+of the [one-person multiplayer testing standard](./multiplayer-testing.md);
+event-critical secret, buzzer, adjudication, and presenter games should reach
+Level 4.
+
+Harness success proves reproducibility, role projections, controls, and
+resilience. It cannot prove that conversation, tension, inclusion, or laughter
+works with real people. Real-device testing and first-time-group playtests remain
+separate release evidence.
+
+---
+
+## 14. Review gate
 
 Before implementation or approval, answer all of these:
 
@@ -469,6 +493,10 @@ Before implementation or approval, answer all of these:
 - Can the match finish if event scoring is unavailable?
 - Is the game result neutral and the reward decision external?
 - Are deliberate exceptions written down rather than hidden?
+- Can one tester launch every real role, automate the remaining seats, open
+  named scenarios, and restore an exported state?
+- Are harness routes and privileged scenario operations unavailable in
+  production?
 - Has the fun claim been worded as a hypothesis until observed playtests pass?
 
 Any “no” is a design issue to resolve or a documented exception to test. A

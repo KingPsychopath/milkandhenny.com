@@ -112,6 +112,7 @@ Never create a utility class that collides with a Tailwind name (the codebase ha
 | TypeScript, safety, module boundaries           | `.cursor/rules/engineering-core.mdc`|
 | Testing strategy                                | `.cursor/rules/testing.mdc`         |
 | Co-located multiplayer, game fun, device balance | `docs/room-first-multiplayer.md`    |
+| Multiplayer scenarios, dev harnesses, solo QA    | `docs/multiplayer-testing.md`       |
 
 Note that `react-nextjs.mdc` is named for a framework this project no longer uses; the React and boundary guidance in it still applies.
 

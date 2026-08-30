@@ -136,6 +136,21 @@ The runtime is built lazily once per Node process and disposed by a Nitro shutdo
 
 Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded Redis lease, while Paired Game commands use action IDs and atomic Redis claims.
 
+### Multiplayer development harnesses
+
+Every synchronized game must be operable by one tester through the contract in
+[multiplayer-testing.md](./multiplayer-testing.md). A shared development shell may own virtual
+device frames, viewport presets, bots, time/failure controls, capture storage, scenario selection,
+pop-outs, and audit exports. Each game supplies an adapter that creates valid rooms, lists its real
+roles and production surfaces, defines deterministic scenarios and legal bot actions, and
+captures/restores its own authoritative state.
+
+The harness does not create a second game engine and does not hand omniscient state to production
+role components. Presenter, host, team, and player panels receive the same credentials and redacted
+projections they receive on separate devices. Privileged inspection remains visibly separate. Dev
+routes and scenario mutation boundaries fail closed outside development/test; `noindex` alone is
+not an access boundary.
+
 ## Persistence
 
 Two stores, split by what each is good at.

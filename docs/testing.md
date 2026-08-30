@@ -81,6 +81,12 @@ required breakpoints. See [navigation.md](./navigation.md) for the contract.
 Do not add a browser test for every component or route. Manual visual review is
 better for layout and typography changes.
 
+Multiplayer games also need a development harness that lets one person operate
+every real role surface, launch deterministic scenarios, simulate other seats,
+and inspect reconnect/privacy behaviour. The harness complements focused
+browser tests and does not replace real-device or group playtests. See
+[multiplayer-testing.md](./multiplayer-testing.md) for the canonical contract.
+
 ## What we do not test directly
 
 Do not add low-value tests for:

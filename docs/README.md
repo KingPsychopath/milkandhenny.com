@@ -24,3 +24,4 @@ This folder holds deeper reference docs. Pick by topic:
 | [testing.md](./testing.md)                                             | Testing strategy — unit vs integration vs E2E, what we test and why                                    |
 | [room-first-multiplayer.md](./room-first-multiplayer.md)               | Canonical standard for multiplayer fun, flow, device topology, shared screens, hosts, and phones       |
 | [room-first-multiplayer-audit.md](./room-first-multiplayer-audit.md)   | Dated audit of shipped room games plus the target design for the planned survey-board game             |
+| [multiplayer-testing.md](./multiplayer-testing.md)                     | One-person multiplayer QA — real role panels, bots, scenarios, captures, clocks, and failure testing   |
