@@ -11,6 +11,7 @@ const jobs = [
   { path: "/api/cron/cleanup-pitches" },
   { path: "/api/cron/cleanup-game-pools" },
   { path: "/api/cron/process-official-game-results", method: "POST" },
+  { path: "/api/cron/send-operations-digests", method: "POST" },
   { path: "/api/cron/cleanup-communication-links" },
   { path: "/api/cron/cleanup-email" },
   { path: "/api/cron/cleanup-attendee-access" },

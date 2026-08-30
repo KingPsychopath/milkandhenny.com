@@ -3433,6 +3433,33 @@ const MIGRATIONS: Migration[] = [
         add primary key (run_id,judging_version);
     `,
   },
+  {
+    id: "0073_application_scheduled_jobs",
+    sql: `
+      create table application_scheduled_jobs (
+        job_key           text primary key,
+        next_run_at       timestamptz not null default now(),
+        lease_token       uuid,
+        lease_until       timestamptz,
+        last_started_at   timestamptz,
+        last_succeeded_at timestamptz,
+        last_failed_at    timestamptz,
+        last_duration_ms  integer,
+        last_error        text,
+        attempt_count     bigint not null default 0,
+        failure_count     bigint not null default 0,
+        updated_at        timestamptz not null default now(),
+        check ((lease_token is null) = (lease_until is null)),
+        check (last_duration_ms is null or last_duration_ms >= 0),
+        check (attempt_count >= 0),
+        check (failure_count >= 0)
+      );
+
+      create index application_scheduled_jobs_due_idx
+        on application_scheduled_jobs (next_run_at)
+        where lease_until is null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

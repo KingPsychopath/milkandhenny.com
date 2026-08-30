@@ -1101,6 +1101,23 @@ async function claimStageForImmediateSend(stageId: string): Promise<ClaimedCommu
 
 async function claimDueStages(): Promise<ClaimedCommunicationStage[]> {
   return transaction(async (client) => {
+    // A process can stop after claiming a stage but before every recipient is
+    // queued. Delivery rows and outbox idempotency make replay safe, so return
+    // abandoned fan-outs to the claimable set instead of leaving them wedged.
+    await client.query(
+      `update communication_plan_stages stage
+          set status = case
+                when exists (
+                  select 1 from communication_stage_deliveries delivery
+                   where delivery.stage_id = stage.id
+                ) then 'queued'
+                else 'scheduled'
+              end,
+              last_error = 'fan-out interrupted; retrying',
+              updated_at = now()
+        where status = 'fanout'
+          and updated_at < now() - interval '15 minutes'`,
+    );
     await client.query(
       `update communication_plan_stages
           set status = 'complete', last_error = 'send window passed', updated_at = now()
@@ -1155,29 +1172,29 @@ async function fanOutClaimedStages(
     const surveyUrl = surveyRow[0]
       ? buildAppUrl(origin, `/surveys/${surveyRow[0].slug}`)
       : undefined;
-    let recipientCount = 0;
     let stageQueued = 0;
     for (const recipient of recipients) {
       if (await shouldSkipStageForRecipient(stage, plan, recipient, event)) {
-        const skipped = await query<{ email_hash: string }>(
+        await query<{ email_hash: string }>(
           `insert into communication_stage_deliveries (stage_id, email_hash, email, status)
            values ($1,$2,$3,'skipped')
            on conflict (stage_id, email_hash) do nothing
            returning email_hash`,
           [stage.id, recipient.emailHash, recipient.email],
         );
-        if (skipped[0]) recipientCount += 1;
         continue;
       }
       const inserted = await query<{ email_hash: string }>(
         `insert into communication_stage_deliveries (stage_id, email_hash, email)
          values ($1,$2,$3)
-         on conflict (stage_id, email_hash) do nothing
+         on conflict (stage_id, email_hash) do update
+           set email = excluded.email, updated_at = now()
+         where communication_stage_deliveries.status = 'queued'
+           and communication_stage_deliveries.outbox_id is null
          returning email_hash`,
         [stage.id, recipient.emailHash, recipient.email],
       );
       if (!inserted[0]) continue;
-      recipientCount += 1;
       const context: CommunicationEmailContext = {
         event,
         surveyUrl,
@@ -1235,13 +1252,30 @@ async function fanOutClaimedStages(
     }
     await query(
       `update communication_plan_stages
-          set status = case when $3 > 0 then 'queued' else status end,
-              recipient_count = recipient_count + $2,
-              queued_count = queued_count + $3,
-              queued_at = coalesce(queued_at, now()),
+          set status = case
+                when exists (
+                  select 1 from communication_stage_deliveries delivery
+                   where delivery.stage_id = communication_plan_stages.id
+                ) then 'queued'
+                else 'complete'
+              end,
+              recipient_count = (
+                select count(*) from communication_stage_deliveries delivery
+                 where delivery.stage_id = communication_plan_stages.id
+              ),
+              queued_count = (
+                select count(*) from communication_stage_deliveries delivery
+                 where delivery.stage_id = communication_plan_stages.id
+                   and delivery.outbox_id is not null
+              ),
+              queued_at = case
+                when $2 > 0 then coalesce(queued_at, now())
+                else queued_at
+              end,
+              last_error = null,
               updated_at = now()
         where id = $1`,
-      [stage.id, recipientCount, stageQueued],
+      [stage.id, stageQueued],
     );
   }
   return queued;

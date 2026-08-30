@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
+import { runEmailDeliveryScheduledJob } from "@/features/system/scheduled-jobs.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { drainEmailOutbox } from "@/lib/platform/email-outbox.server";
-import { expandDueCommunicationStages } from "@/features/communications/communication-plans.server";
 import { log } from "@/lib/platform/logger.server";
 
 async function handlePOST(request: Request) {
@@ -12,15 +11,22 @@ async function handlePOST(request: Request) {
   const startedAt = Date.now();
   const requestId = request.headers.get("x-request-id") ?? null;
   try {
-    const staged = await expandDueCommunicationStages(request);
-    const handled = await drainEmailOutbox();
+    const outcome = await runEmailDeliveryScheduledJob(true);
+    const { staged, handled } = outcome.ran ? outcome.value : { staged: 0, handled: 0 };
     log.info("cron.deliver-email", "Email outbox drain finished", {
       staged,
       handled,
+      skipped: !outcome.ran,
       requestId,
       durationMs: Date.now() - startedAt,
     });
-    return Response.json({ success: true, staged, handled, timestamp: new Date().toISOString() });
+    return Response.json({
+      success: true,
+      staged,
+      handled,
+      skipped: !outcome.ran,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     return apiErrorFromRequest(request, "cron.deliver-email", "Email delivery failed", error, {
       requestId,

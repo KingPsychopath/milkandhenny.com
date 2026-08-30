@@ -1,12 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
-import {
-  consumeOfficialGameResult,
-  processPendingOfficialGameResults,
-} from "@/features/event-scoring/games.server";
-import { processScheduledScoringTransitions } from "@/features/event-scoring/scoring.server";
-import { drainOfficialGameResultOutbox } from "@/features/game-results/outbox.server";
+import { runEventScoringScheduledJob } from "@/features/system/scheduled-jobs.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -15,19 +10,21 @@ async function handlePOST(request: Request) {
   if (authError) return authError;
   const startedAt = Date.now();
   try {
-    const [outbox, result, scoringTransitions] = await Promise.all([
-      drainOfficialGameResultOutbox(consumeOfficialGameResult),
-      processPendingOfficialGameResults(),
-      processScheduledScoringTransitions(),
-    ]);
+    const outcome = await runEventScoringScheduledJob(true);
+    if (!outcome.ran) {
+      return Response.json({ success: true, skipped: true, timestamp: new Date().toISOString() });
+    }
+    const { outbox, result, scoringTransitions } = outcome.value;
     log.info("cron.official-game-results", "Official game results processed", {
       ...result,
       outbox,
       scoringTransitions,
+      skipped: false,
       durationMs: Date.now() - startedAt,
     });
     return Response.json({
       success: true,
+      skipped: false,
       outbox,
       scoringTransitions,
       ...result,

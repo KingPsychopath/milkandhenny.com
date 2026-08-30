@@ -49,7 +49,9 @@ The canonical production origin is `https://milkandhenny.com`. Cloudflare redire
 
 The `maintenance` service uses `ops/` as its Railway root directory. Its
 `ops/railway.toml` builds the small maintenance image and schedules it for
-`03:15 UTC` daily.
+`03:15 UTC` daily. Product-time scheduling runs inside the web service with
+durable Postgres leases; this daily service is a housekeeping and recovery
+backstop rather than the source of timing correctness.
 
 ### Safe Railway release
 

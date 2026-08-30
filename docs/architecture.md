@@ -222,7 +222,16 @@ See [media-worker.md](./media-worker.md).
 
 ## Maintenance
 
-Cleanup workflows remain authenticated HTTP use cases. `ops/run-maintenance.mjs` calls them sequentially, emits structured results, and exits non-zero on failure. Any scheduler can execute it; scheduling is not embedded in application code.
+Product-time workflows are scheduled by the web application after database migrations finish. A
+Postgres lease per job makes this safe across deploy overlap, restarts, and multiple replicas; a
+stale lease is recoverable after a crashed process. The central scheduler owns communication
+fan-out, email retry wake-ups, scheduled scoring transitions, official-result recovery, Pitch
+reminders, and operations digests.
+
+Cleanup workflows remain authenticated HTTP use cases. `ops/run-maintenance.mjs` calls them
+sequentially, emits structured results, and exits non-zero on failure. Railway's daily maintenance
+service is an independent housekeeping and recovery backstop, not the clock for user-visible
+product behavior.
 
 ## Health
 

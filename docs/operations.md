@@ -8,11 +8,14 @@ Run once per day:
 APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
 ```
 
-The runner drains the transactional-email outbox, applies email retention, then calls transfer
-cleanup, Pitch Night cleanup, expired word-share cleanup, orphaned word-media cleanup, and media
-reconciliation. The web process also drains email immediately when a message is queued, with a
-one-minute retry backstop; maintenance is its independent backstop. Each job emits one structured
-result, and the runner exits non-zero if any job fails.
+The web process owns user-visible timed work through durable Postgres job leases: communication
+fan-out, email delivery, scoring transitions and result recovery, Pitch reminders, and operations
+digests. Every replica can recover the work, but only one lease holder runs a job at a time.
+
+The daily runner drains the transactional-email outbox, applies email retention, then calls
+transfer cleanup, Pitch Night cleanup, expired word-share cleanup, orphaned word-media cleanup, and
+media reconciliation. It is the independent housekeeping and recovery backstop. Each job emits one
+structured result, and the runner exits non-zero if any job fails.
 
 ## Capability checks
 

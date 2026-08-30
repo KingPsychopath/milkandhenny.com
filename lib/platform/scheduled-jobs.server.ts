@@ -1,0 +1,193 @@
+import { randomUUID } from "node:crypto";
+import type { QueryResultRow } from "pg";
+
+import { log } from "./logger.server";
+import { query, transaction } from "./postgres.server";
+
+interface ScheduledJobRow extends QueryResultRow {
+  job_key: string;
+  next_run_at: Date | string;
+  lease_until: Date | string | null;
+  last_started_at: Date | string | null;
+  last_succeeded_at: Date | string | null;
+  last_failed_at: Date | string | null;
+  last_duration_ms: number | null;
+  last_error: string | null;
+  attempt_count: string | number;
+  failure_count: string | number;
+}
+
+interface RunScheduledJobOptions<T> {
+  jobKey: string;
+  intervalMs: number;
+  retryMs: number;
+  leaseMs: number;
+  force?: boolean;
+  run: () => Promise<T>;
+}
+
+export type ScheduledJobRun<T> = { ran: false } | { ran: true; durationMs: number; value: T };
+
+export interface ScheduledJobSnapshot {
+  jobKey: string;
+  nextRunAt: string;
+  leaseUntil: string | null;
+  lastStartedAt: string | null;
+  lastSucceededAt: string | null;
+  lastFailedAt: string | null;
+  lastDurationMs: number | null;
+  lastError: string | null;
+  attemptCount: number;
+  failureCount: number;
+}
+
+function positiveMilliseconds(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive whole number of milliseconds`);
+  }
+  return value;
+}
+
+function safeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 1_000);
+}
+
+function iso(value: Date | string | null): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
+
+async function claimScheduledJob(input: {
+  jobKey: string;
+  leaseToken: string;
+  leaseMs: number;
+  force: boolean;
+}): Promise<boolean> {
+  return transaction(async (client) => {
+    await client.query(
+      `insert into application_scheduled_jobs (job_key, next_run_at)
+       values ($1, now())
+       on conflict (job_key) do nothing`,
+      [input.jobKey],
+    );
+    const claimed = await client.query<{ job_key: string }>(
+      `update application_scheduled_jobs
+          set lease_token = $2,
+              lease_until = now() + make_interval(secs => $3::double precision / 1000),
+              last_started_at = now(),
+              attempt_count = attempt_count + 1,
+              updated_at = now()
+        where job_key = $1
+          and ($4::boolean or next_run_at <= now())
+          and (lease_until is null or lease_until <= now())
+      returning job_key`,
+      [input.jobKey, input.leaseToken, input.leaseMs, input.force],
+    );
+    return claimed.rowCount === 1;
+  });
+}
+
+async function finishScheduledJob(input: {
+  jobKey: string;
+  leaseToken: string;
+  delayMs: number;
+  durationMs: number;
+  error?: string;
+}): Promise<void> {
+  const failed = input.error !== undefined;
+  const updated = await query<{ job_key: string }>(
+    `update application_scheduled_jobs
+        set next_run_at = now() + make_interval(secs => $3::double precision / 1000),
+            lease_token = null,
+            lease_until = null,
+            last_succeeded_at = case when $5::boolean then last_succeeded_at else now() end,
+            last_failed_at = case when $5::boolean then now() else last_failed_at end,
+            last_duration_ms = $4,
+            last_error = $6,
+            failure_count = failure_count + case when $5::boolean then 1 else 0 end,
+            updated_at = now()
+      where job_key = $1 and lease_token = $2
+    returning job_key`,
+    [input.jobKey, input.leaseToken, input.delayMs, input.durationMs, failed, input.error ?? null],
+  );
+  if (!updated[0]) {
+    throw new Error(`Scheduled job ${input.jobKey} lost its lease before completion`);
+  }
+}
+
+/**
+ * Claim and run one durable application job.
+ *
+ * The database lease makes every web replica a safe scheduler candidate. A
+ * crashed process is retried after the lease, while deploy overlap and normal
+ * multi-replica operation still produce one active runner.
+ */
+export async function runLeasedScheduledJob<T>(
+  options: RunScheduledJobOptions<T>,
+): Promise<ScheduledJobRun<T>> {
+  const intervalMs = positiveMilliseconds(options.intervalMs, "Scheduled job interval");
+  const retryMs = positiveMilliseconds(options.retryMs, "Scheduled job retry delay");
+  const leaseMs = positiveMilliseconds(options.leaseMs, "Scheduled job lease");
+  const leaseToken = randomUUID();
+  const claimed = await claimScheduledJob({
+    jobKey: options.jobKey,
+    leaseToken,
+    leaseMs,
+    force: options.force === true,
+  });
+  if (!claimed) return { ran: false };
+
+  const startedAt = Date.now();
+  try {
+    const value = await options.run();
+    const durationMs = Date.now() - startedAt;
+    await finishScheduledJob({
+      jobKey: options.jobKey,
+      leaseToken,
+      delayMs: intervalMs,
+      durationMs,
+    });
+    return { ran: true, durationMs, value };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const message = safeError(error);
+    try {
+      await finishScheduledJob({
+        jobKey: options.jobKey,
+        leaseToken,
+        delayMs: retryMs,
+        durationMs,
+        error: message,
+      });
+    } catch (finishError) {
+      log.error(
+        "scheduler.lease",
+        "Could not record scheduled job failure",
+        { jobKey: options.jobKey },
+        finishError,
+      );
+    }
+    throw error;
+  }
+}
+
+export async function describeScheduledJobs(): Promise<ScheduledJobSnapshot[]> {
+  const rows = await query<ScheduledJobRow>(
+    `select job_key, next_run_at, lease_until, last_started_at, last_succeeded_at,
+            last_failed_at, last_duration_ms, last_error, attempt_count, failure_count
+       from application_scheduled_jobs
+      order by job_key`,
+  );
+  return rows.map((row) => ({
+    jobKey: row.job_key,
+    nextRunAt: iso(row.next_run_at) ?? new Date(0).toISOString(),
+    leaseUntil: iso(row.lease_until),
+    lastStartedAt: iso(row.last_started_at),
+    lastSucceededAt: iso(row.last_succeeded_at),
+    lastFailedAt: iso(row.last_failed_at),
+    lastDurationMs: row.last_duration_ms,
+    lastError: row.last_error,
+    attemptCount: Number(row.attempt_count) || 0,
+    failureCount: Number(row.failure_count) || 0,
+  }));
+}

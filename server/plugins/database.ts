@@ -5,6 +5,10 @@ import { closePool, isDatabaseConfigured } from "@/lib/platform/postgres.server"
 import { runMigrations } from "@/lib/platform/migrations.server";
 import { startEmailOutboxWorker, stopEmailOutboxWorker } from "@/lib/platform/email-outbox.server";
 import {
+  startApplicationScheduler,
+  stopApplicationScheduler,
+} from "@/features/system/scheduled-jobs.server";
+import {
   markDatabaseFailed,
   markDatabaseMigrationsStarted,
   markDatabaseReady,
@@ -36,6 +40,7 @@ export default definePlugin(async (nitroApp) => {
       }
       markDatabaseReady(result.pitchDocuments);
       startEmailOutboxWorker();
+      startApplicationScheduler();
     } catch (error) {
       markDatabaseFailed(error);
       log.error("postgres.migrate", "Migrations failed on boot", {}, error);
@@ -45,6 +50,7 @@ export default definePlugin(async (nitroApp) => {
   }
 
   nitroApp.hooks.hook("close", async () => {
+    await stopApplicationScheduler();
     await stopEmailOutboxWorker();
     await closePool();
     log.info("postgres", "Connection pool closed");
