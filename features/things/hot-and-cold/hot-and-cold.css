@@ -1090,11 +1090,6 @@ main:has(.heat-result-share) .heat-ledger {
   align-items: start;
   gap: 0.45rem;
 }
-.heat-keyboard-dismiss {
-  display: none;
-  min-height: 2.75rem;
-  white-space: nowrap;
-}
 .heat-composer-actions {
   display: flex;
   align-items: start;
@@ -1105,23 +1100,25 @@ main:has(.heat-result-share) .heat-ledger {
   border: 0;
 }
 .heat-composer-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 2.75rem;
   min-width: 2.75rem;
+  border: 0;
+  background: transparent;
+  padding-inline: 0.7rem;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
   white-space: nowrap;
+  transition: opacity 0.2s ease;
 }
 .heat-composer-actions .heat-progressive-action {
   width: 5rem;
 }
-.heat-keyboard-dismiss,
-.heat-composer-actions button {
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--stone-200) 72%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--background) 80%, transparent);
-  padding-inline: 0.7rem;
-  box-shadow: 0 0.35rem 1.1rem color-mix(in srgb, var(--foreground) 8%, transparent);
-  -webkit-backdrop-filter: blur(0.75rem);
-  backdrop-filter: blur(0.75rem);
+.heat-composer-actions button:hover {
+  opacity: 0.6;
 }
 .heat-composer-actions button:disabled {
   opacity: 0.42;
@@ -1136,15 +1133,8 @@ main:has(.heat-result-share) .heat-ledger {
   .heat-composer-controls {
     gap: 0.35rem;
   }
-  .heat-keyboard-dismiss,
   .heat-composer-actions button {
     padding-inline: 0.6rem;
-  }
-}
-@media (hover: none) and (pointer: coarse) {
-  .heat-composer:focus-within .heat-keyboard-dismiss {
-    display: inline-flex;
-    align-items: center;
   }
 }
 @keyframes heat-arrive {

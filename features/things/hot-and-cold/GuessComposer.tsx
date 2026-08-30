@@ -44,12 +44,14 @@ export function GuessComposer({
   const receiptQueue = useRef<GuessReceipt[]>([]);
   const queuedReceiptIds = useRef(new Set<string>());
   const input = useRef<HTMLInputElement>(null);
+  const submitButton = useRef<HTMLButtonElement>(null);
   const wordRef = useRef(word);
   const activeWord = useRef<string | null>(null);
   const queue = useRef<string[]>([]);
   const processing = useRef(false);
   const mounted = useRef(true);
   const retainFocusUntil = useRef(0);
+  const pendingKeyboardCommit = useRef<{ word: string; expiresAt: number } | null>(null);
   const disabledRef = useRef(disabled);
   const onGuessRef = useRef(onGuess);
   disabledRef.current = disabled;
@@ -93,6 +95,10 @@ export function GuessComposer({
           wordRef.current = submittedWord;
           setWord(submittedWord);
           reject();
+          requestAnimationFrame(() => {
+            if (document.activeElement === input.current && wordRef.current === submittedWord)
+              input.current?.select();
+          });
         } else void haptics.trigger("nudge");
       }
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -127,6 +133,10 @@ export function GuessComposer({
       reject("already waiting to score");
       return;
     }
+    pendingKeyboardCommit.current = {
+      word: queuedWord,
+      expiresAt: Date.now() + 750,
+    };
     queue.current.push(submittedWord);
     wordRef.current = "";
     setWord("");
@@ -140,11 +150,20 @@ export function GuessComposer({
   }, [disabled]);
   useEffect(() => {
     if (!continuous) return;
-    const allowIntentionalBlur = () => {
+    const dismissKeyboardOutsideGuessing = (event: PointerEvent) => {
+      if (navigator.maxTouchPoints === 0 || document.activeElement !== input.current) return;
+      const target = event.target;
+      if (
+        !(target instanceof Node) ||
+        target === input.current ||
+        submitButton.current?.contains(target)
+      )
+        return;
       retainFocusUntil.current = 0;
+      input.current?.blur();
     };
-    document.addEventListener("pointerdown", allowIntentionalBlur, true);
-    return () => document.removeEventListener("pointerdown", allowIntentionalBlur, true);
+    document.addEventListener("pointerdown", dismissKeyboardOutsideGuessing, true);
+    return () => document.removeEventListener("pointerdown", dismissKeyboardOutsideGuessing, true);
   }, [continuous]);
   useEffect(() => {
     mounted.current = true;
@@ -221,8 +240,20 @@ export function GuessComposer({
             event.currentTarget.focus({ preventScroll: true });
           }}
           onChange={(event) => {
-            wordRef.current = event.target.value;
-            setWord(event.target.value);
+            const nextWord = event.target.value;
+            const pendingCommit = pendingKeyboardCommit.current;
+            if (
+              pendingCommit &&
+              Date.now() <= pendingCommit.expiresAt &&
+              !wordRef.current &&
+              (!nextWord.trim() || nextWord.trim().toLocaleLowerCase() === pendingCommit.word)
+            ) {
+              event.currentTarget.value = "";
+              return;
+            }
+            pendingKeyboardCommit.current = null;
+            wordRef.current = nextWord;
+            setWord(nextWord);
             setRejected(false);
             setLocalMessage(null);
             onMessageClear?.();
@@ -236,6 +267,7 @@ export function GuessComposer({
           }}
         />
         <button
+          ref={submitButton}
           type="submit"
           disabled={disabled || (!continuous && busy)}
           onPointerDown={(event) => {
@@ -263,21 +295,6 @@ export function GuessComposer({
             )}
           </output>
           <div className="heat-composer-controls">
-            <button
-              type="button"
-              className="heat-keyboard-dismiss"
-              aria-label="Hide keyboard"
-              onPointerDown={(event) => {
-                retainFocusUntil.current = 0;
-                event.preventDefault();
-              }}
-              onClick={() => {
-                retainFocusUntil.current = 0;
-                input.current?.blur();
-              }}
-            >
-              hide keys
-            </button>
             {actions ? (
               <fieldset className="heat-composer-actions" disabled={busy && !continuous}>
                 <legend className="sr-only">Game actions</legend>

@@ -60,6 +60,16 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
 
     await input.fill("table");
     await input.press("Enter");
+    await page.evaluate(() => {
+      const field = document.querySelector<HTMLInputElement>("#hot-and-cold-guess");
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (!field || !valueSetter) throw new Error("Guess input unavailable");
+      valueSetter.call(field, " ");
+      field.dispatchEvent(
+        new InputEvent("input", { bubbles: true, data: " ", inputType: "insertText" }),
+      );
+    });
+    await expect(input).toHaveValue("");
     await expect.poll(() => firstScoreRequestSeen).toBe(true);
     await page.evaluate(() => {
       document.querySelector<HTMLInputElement>("#hot-and-cold-guess")?.blur();
@@ -98,6 +108,17 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(page.locator("#hot-and-cold-guess-message")).toContainText(
       /already guessed · #[\d,]+/,
     );
+    await expect(input).toHaveValue("table");
+    await expect
+      .poll(() =>
+        input.evaluate((field) => {
+          const textInput = field as HTMLInputElement;
+          return [textInput.selectionStart, textInput.selectionEnd];
+        }),
+      )
+      .toEqual([0, 5]);
+    await input.press("Backspace");
+    await expect(input).toHaveValue("");
     await input.fill("chair");
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
     await input.fill("");
@@ -105,6 +126,10 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     const hintButton = page.getByRole("button", { name: "hint", exact: true });
     const giveUpButton = page.getByRole("button", { name: "give up", exact: true });
     await expect(giveUpButton).toHaveCount(0);
+    await expect(hintButton).toHaveCSS("width", "80px");
+    await expect(hintButton).toHaveCSS("border-top-style", "none");
+    await expect(hintButton).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(hintButton).toHaveCSS("box-shadow", "none");
     for (let hint = 0; hint < 3; hint += 1) {
       await hintButton.click();
       await expect(receipt).toContainText(/hint · .+ · #[\d,]+/, { timeout: 30_000 });
@@ -116,6 +141,7 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
     await expect(hintButton).toHaveCount(0);
     await expect(giveUpButton).toBeVisible();
+    await expect(giveUpButton).toHaveCSS("width", "80px");
     await giveUpButton.click();
     await expect(page.getByRole("dialog", { name: "Reveal this word?" })).toBeVisible();
     await page.getByRole("button", { name: "keep playing", exact: true }).click();
@@ -135,9 +161,10 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(page.locator(".heat-source-hottest-word")).toBeVisible();
     await expect(ledger).toBeVisible();
 
-    const hideKeyboard = page.getByRole("button", { name: "Hide keyboard" });
-    await expect(hideKeyboard).toBeVisible();
-    await hideKeyboard.click();
+    await expect(page.getByRole("button", { name: "Hide keyboard" })).toHaveCount(0);
+    await input.click();
+    await expect(input).toBeFocused();
+    await page.locator(".heat-source").click();
     await expect(input).not.toBeFocused();
   } finally {
     releaseFirstScore();
