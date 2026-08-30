@@ -209,6 +209,32 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(input).toBeFocused();
     await page.locator(".heat-source").click();
     await expect(input).not.toBeFocused();
+
+    await giveUpButton.click();
+    const revealDialog = page.getByRole("dialog", { name: "Reveal this word?" });
+    await revealDialog.getByRole("button", { name: "give up", exact: true }).click();
+    const resultPager = page.getByRole("button", { name: "See your result" });
+    await expect(resultPager).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => {
+      const browserWindow = window as Window & { __heatPageScrollCalls?: number };
+      const originalScrollTo = window.scrollTo.bind(window);
+      browserWindow.__heatPageScrollCalls = 0;
+      window.scrollTo = ((optionsOrX: ScrollToOptions | number, y?: number) => {
+        browserWindow.__heatPageScrollCalls = (browserWindow.__heatPageScrollCalls ?? 0) + 1;
+        if (typeof optionsOrX === "number") originalScrollTo(optionsOrX, y ?? 0);
+        else originalScrollTo(optionsOrX);
+      }) as typeof window.scrollTo;
+    });
+    await resultPager.click();
+    await page.waitForTimeout(700);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as Window & { __heatPageScrollCalls?: number }).__heatPageScrollCalls,
+        ),
+      )
+      .toBe(1);
+    await expect(page.getByRole("button", { name: "Back to your guesses" })).toBeVisible();
   } finally {
     releaseFirstScore();
   }

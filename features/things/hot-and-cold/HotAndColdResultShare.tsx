@@ -319,7 +319,6 @@ export function HotAndColdShareDock({
   sharePath?: string;
 }) {
   const [showingResult, setShowingResult] = useState(false);
-  const scrollAnimation = useRef<number | null>(null);
   const { nativeShare, result, share, status } = useHotAndColdResultShare(
     label,
     guesses,
@@ -347,40 +346,14 @@ export function HotAndColdShareDock({
     observer.observe(resultElement);
     return () => observer.disconnect();
   }, [resultId]);
-  useEffect(
-    () => () => {
-      if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
-    },
-    [],
-  );
 
   const jumpPage = () => {
     const target = document.getElementById(showingResult ? "main" : resultId);
     if (!target) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const targetY = showingResult
       ? 0
       : target.getBoundingClientRect().top + window.scrollY - 6 * 16;
-    if (reducedMotion) {
-      window.scrollTo({ top: targetY });
-      return;
-    }
-    if (scrollAnimation.current !== null) cancelAnimationFrame(scrollAnimation.current);
-    const startY = window.scrollY;
-    const distance = targetY - startY;
-    const duration = Math.min(650, Math.max(380, Math.abs(distance) * 0.32));
-    const startedAt = performance.now();
-    const animate = (now: number) => {
-      const elapsed = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - (1 - elapsed) ** 5;
-      window.scrollTo({ top: startY + distance * eased });
-      if (elapsed < 1) scrollAnimation.current = requestAnimationFrame(animate);
-      else {
-        window.scrollTo({ top: targetY });
-        scrollAnimation.current = null;
-      }
-    };
-    scrollAnimation.current = requestAnimationFrame(animate);
+    window.scrollTo({ top: targetY, behavior: "instant" });
   };
 
   return (
