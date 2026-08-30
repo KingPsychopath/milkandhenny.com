@@ -12,7 +12,9 @@ A TanStack Start + Nitro application served as a plain Node server. Writing, pho
 
 It is a **modular monolith**, deliberately provider-neutral: it runs from the included Dockerfile on Railway, a VPS, or anywhere else that supplies a port and environment variables. No hosting-provider APIs are imported by application code.
 
-Read [`docs/architecture.md`](./docs/architecture.md) before making structural changes.
+Read [`docs/architecture.md`](./docs/architecture.md) before making structural changes. Read
+[`docs/room-first-multiplayer.md`](./docs/room-first-multiplayer.md) before creating or materially
+changing a co-located multiplayer mode.
 
 ---
 
@@ -109,6 +111,7 @@ Never create a utility class that collides with a Tailwind name (the codebase ha
 | File moves, renames, codemods                   | `.cursor/rules/file-ops.mdc`        |
 | TypeScript, safety, module boundaries           | `.cursor/rules/engineering-core.mdc`|
 | Testing strategy                                | `.cursor/rules/testing.mdc`         |
+| Co-located multiplayer, game fun, device balance | `docs/room-first-multiplayer.md`    |
 
 Note that `react-nextjs.mdc` is named for a framework this project no longer uses; the React and boundary guidance in it still applies.
 

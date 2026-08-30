@@ -116,6 +116,20 @@ PairedGameRoom                 PartyRoom
 
 `PairedGameRoom` names the reusable two-device authority model used by remote judging. `PartyRoom` stays scoped to the `spelling-party` feature and does not pretend to be a universal party-game abstraction. New room models compose the shared capabilities they require instead of inheriting from one generic room class.
 
+The runtime model does not imply that every participant should connect a device. Each co-located
+mode declares its own device topology and attention profile under the canonical
+[room-first multiplayer design standard](./room-first-multiplayer.md). Shared infrastructure may
+provide presenter synchronization, host pairing, private snapshots, readiness, reconnection, and
+official results; the game engine still owns the phase rhythm, rules, teams, secrets, score,
+correction policy, inactive-player role, and social fun premise. A personal device needs a game
+reason—private information, simultaneous input, identity, team control, or accessibility—not merely
+an available room primitive.
+
+A completed game publishes a neutral result such as participants or teams, raw score, placement,
+winner, and match ID. Event participation points, eligibility, rewards, claims, and reversals belong
+to the event layer and cannot be required for the match to finish. This keeps room play usable
+without forcing every person to scan in and prevents event policy from becoming game truth.
+
 Shared-room games with simultaneous starts compose the multiplayer readiness policy. Players join ready, may opt out while the lobby is open, and receive a persisted, rate-limited start request when a host tries to begin. Starting with unready players requires a second explicit action naming those players; the game engine rechecks the same players atomically before removing them. Solo games and paired-device authority flows do not use lobby readiness.
 
 The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.

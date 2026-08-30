@@ -22,3 +22,5 @@ This folder holds deeper reference docs. Pick by topic:
 | [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md)   | Step-by-step Cloudflare WAF rate limiting setup                                                        |
 | [service-worker-cache-recovery.md](./service-worker-cache-recovery.md) | Manual recovery when Cloudflare unexpectedly caches `/sw.js`                                           |
 | [testing.md](./testing.md)                                             | Testing strategy — unit vs integration vs E2E, what we test and why                                    |
+| [room-first-multiplayer.md](./room-first-multiplayer.md)               | Canonical standard for multiplayer fun, flow, device topology, shared screens, hosts, and phones       |
+| [room-first-multiplayer-audit.md](./room-first-multiplayer-audit.md)   | Dated audit of shipped room games plus the target design for the planned survey-board game             |
