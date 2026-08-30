@@ -217,10 +217,12 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(resultPager).toBeVisible({ timeout: 30_000 });
     await page.evaluate(() => {
       const browserWindow = window as Window & {
+        __heatDockGroupAnimations?: number;
         __heatPageScrollCalls?: number;
         __heatPageTransitionCalls?: number;
       };
       const originalScrollTo = window.scrollTo.bind(window);
+      browserWindow.__heatDockGroupAnimations = -1;
       browserWindow.__heatPageScrollCalls = 0;
       browserWindow.__heatPageTransitionCalls = 0;
       window.scrollTo = ((optionsOrX: ScrollToOptions | number, y?: number) => {
@@ -233,7 +235,17 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
         document.startViewTransition = ((update: () => void | Promise<void>) => {
           browserWindow.__heatPageTransitionCalls =
             (browserWindow.__heatPageTransitionCalls ?? 0) + 1;
-          return originalStartViewTransition(update);
+          const transition = originalStartViewTransition(update);
+          void transition.ready.then(() => {
+            browserWindow.__heatDockGroupAnimations = document
+              .getAnimations()
+              .filter(
+                (animation) =>
+                  (animation.effect as KeyframeEffect | null)?.pseudoElement ===
+                  "::view-transition-group(heat-share-dock)",
+              ).length;
+          });
+          return transition;
         }) as typeof document.startViewTransition;
     });
     await resultPager.click();
@@ -253,6 +265,14 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
         ),
       )
       .toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { __heatDockGroupAnimations?: number }).__heatDockGroupAnimations,
+        ),
+      )
+      .toBe(0);
     await expect(page.getByRole("button", { name: "Back to your guesses" })).toBeVisible();
   } finally {
     releaseFirstScore();

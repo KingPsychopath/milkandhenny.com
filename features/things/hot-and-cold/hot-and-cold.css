@@ -824,6 +824,9 @@ html[data-heat-page-direction="forward"]::view-transition-new(root) {
 html[data-heat-page-direction="back"]::view-transition-new(root) {
   animation: 180ms cubic-bezier(0.16, 1, 0.3, 1) both heat-page-arrive-back;
 }
+::view-transition-group(heat-share-dock) {
+  animation: none;
+}
 ::view-transition-old(heat-share-dock),
 ::view-transition-new(heat-share-dock) {
   animation: none;
