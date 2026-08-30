@@ -1,7 +1,8 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
-import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
+import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
+import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 import { PostListItem } from "@/features/words/components/PostListItem";
 import { getHomePageFn } from "@/features/site/home.functions";
 
@@ -20,12 +21,33 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const { posts, hasMore, footerPartyPath } = Route.useLoaderData();
+  const websiteSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: absoluteUrl("/"),
+    publisher: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: absoluteUrl("/"),
+      logo: absoluteUrl("/icon-512.png"),
+      sameAs: [
+        "https://twitter.com/milkandh3nny",
+        "https://instagram.com/milkandhenny",
+        "https://tiktok.com/@milkandhenny",
+      ],
+    },
+  };
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonForHtml(websiteSchema) }}
+      />
       {/* Masthead — site banner */}
       <header className="max-w-2xl mx-auto px-6 pt-20 pb-16 text-center">
-        <Link to="/" className="inline-block">
+        <Link to="/" className="inline-flex min-h-11 items-center">
           <h1 className="font-mono text-[2.5rem] sm:text-6xl font-bold text-foreground tracking-tighter leading-none">
             {SITE_BRAND}
           </h1>
@@ -37,16 +59,28 @@ function Home() {
           a <span className="highlight-selection">social commentary</span> on social commentary
         </p>
         <nav className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-mono text-xs tracking-wide">
-          <Link to="/pics" className="theme-muted hover:text-foreground transition-colors">
+          <Link
+            to="/pics"
+            className="inline-flex min-h-11 items-center theme-muted hover:text-foreground transition-colors"
+          >
             [pics]
           </Link>
-          <Link to="/words" className="theme-muted hover:text-foreground transition-colors">
+          <Link
+            to="/words"
+            className="inline-flex min-h-11 items-center theme-muted hover:text-foreground transition-colors"
+          >
             [words]
           </Link>
-          <Link to="/things" className="theme-muted hover:text-foreground transition-colors">
+          <Link
+            to="/things"
+            className="inline-flex min-h-11 items-center theme-muted hover:text-foreground transition-colors"
+          >
             [things] +
           </Link>
-          <Link to="/events" className="theme-muted hover:text-foreground transition-colors">
+          <Link
+            to="/events"
+            className="inline-flex min-h-11 items-center theme-muted hover:text-foreground transition-colors"
+          >
             [events]
           </Link>
         </nav>
@@ -76,7 +110,7 @@ function Home() {
           <p className="pt-6">
             <Link
               to="/words"
-              className="font-mono text-xs theme-muted hover:text-foreground transition-colors"
+              className="inline-flex min-h-11 items-center font-mono text-xs theme-muted hover:text-foreground transition-colors"
             >
               all posts →
             </Link>
@@ -129,7 +163,7 @@ function Home() {
             href="https://twitter.com/milkandh3nny"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground transition-colors"
           >
             twitter
           </a>
@@ -138,7 +172,7 @@ function Home() {
             href="https://instagram.com/milkandhenny"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground transition-colors"
           >
             instagram
           </a>
@@ -147,7 +181,7 @@ function Home() {
             href="https://tiktok.com/@milkandhenny"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground transition-colors"
           >
             tiktok
           </a>

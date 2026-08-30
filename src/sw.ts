@@ -212,7 +212,9 @@ async function removeIncompleteThingCaches() {
 async function cacheResource(cache: Cache, url: string, slug: OfflineThingSlug) {
   const request = new Request(url, {
     cache: "reload",
-    credentials: "same-origin",
+    // Offline entry points and assets are public. Omitting credentials keeps
+    // a signed-in browser from persisting a cookie-personalized response.
+    credentials: "omit",
     redirect: "follow",
   });
   const response = await fetch(request);

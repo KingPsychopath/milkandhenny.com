@@ -10,6 +10,7 @@ const STATIC_ROOT_IMAGE_PATHS = [
   "/MAHtext.svg",
   "/apple-icon.png",
   "/email-logo.png",
+  "/favicon.ico",
   "/favicon-mono-mh.svg",
   "/file.svg",
   "/globe.svg",

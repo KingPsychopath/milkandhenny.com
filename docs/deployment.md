@@ -25,7 +25,7 @@ Use two R2 buckets:
 
 Disable the private bucket's `r2.dev` URL as well as custom domains. Enable caching only on the public bucket's custom domain. A published file can be downloaded or cached by a visitor, so unpublishing stops future discovery and origin reads but cannot recall copies that already left the service.
 
-The R2 API token must have object read/write access to both buckets. Never connect the private bucket to a public hostname.
+Use separate R2 API tokens scoped to the public and private buckets. Never connect the private bucket to a public hostname.
 
 Apply the checked-in policies with an authenticated Wrangler profile:
 
@@ -37,6 +37,8 @@ pnpm exec wrangler r2 bucket lifecycle set milkandhenny-private --file ops/r2/li
 ```
 
 The public policy is browser read-only and supports published media plus ranged reads. Every browser upload stages in the private bucket, whose policy supports presigned PUTs, ranged reads, and authorised downloads. The private bucket expires abandoned word and album staging objects after one day. Transfer expiry also belongs there because transfer objects are never published. When adding another browser origin or signed request header, update the relevant policy and apply it explicitly.
+
+The checked-in CORS policies are production policies and intentionally contain only the canonical apex and redirecting `www` origin. Do not add preview hosts or localhost origins to the production buckets. Use separate development buckets and policies when local browser-to-storage access is required.
 
 ## Railway
 

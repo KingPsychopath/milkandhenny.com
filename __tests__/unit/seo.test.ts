@@ -12,8 +12,6 @@ describe("SEO metadata", () => {
       image: "/media/launch-night.webp",
       imageAlt: "Launch night",
       type: "article",
-      robots: "noindex, nofollow",
-      referrer: "no-referrer",
       publishedTime: "2026-08-26T12:00:00.000Z",
       modifiedTime: "2026-08-26T13:00:00.000Z",
     });
@@ -23,8 +21,7 @@ describe("SEO metadata", () => {
     ]);
     expect(head.meta).toContainEqual({ property: "og:site_name", content: SITE_NAME });
     expect(head.meta).toContainEqual({ property: "og:image:type", content: "image/webp" });
-    expect(head.meta).toContainEqual({ name: "robots", content: "noindex, nofollow" });
-    expect(head.meta).toContainEqual({ name: "referrer", content: "no-referrer" });
+    expect(head.meta).toContainEqual({ name: "robots", content: "index, follow" });
     expect(head.meta).toContainEqual({
       property: "article:published_time",
       content: "2026-08-26T12:00:00.000Z",
@@ -37,6 +34,24 @@ describe("SEO metadata", () => {
     const description = head.meta.find((entry) => "name" in entry && entry.name === "description");
     expect(title && "title" in title ? title.title.length : 0).toBe(70);
     expect(description && "content" in description ? description.content.length : 0).toBe(160);
+  });
+
+  it("does not repeat private capability URLs in canonical or social metadata", () => {
+    const head = buildSeoHead({
+      title: "Private room",
+      description: "A private room.",
+      path: "/play/secret-token",
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
+    });
+
+    expect(head.links).toEqual([]);
+    expect(head.meta).toContainEqual({ name: "robots", content: "noindex, nofollow" });
+    expect(head.meta).toContainEqual({ name: "referrer", content: "no-referrer" });
+    expect(head.meta.some((entry) => "property" in entry && entry.property === "og:url")).toBe(
+      false,
+    );
+    expect(head.meta.some((entry) => "name" in entry && entry.name === "twitter:card")).toBe(false);
   });
 
   it("uses safe defaults for invalid URLs and standard image formats", () => {

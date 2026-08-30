@@ -14,6 +14,7 @@ export const Route = createFileRoute("/surveys/$slug")({
       title: loaderData ? `${loaderData.title} — ${SITE_BRAND}` : `Survey — ${SITE_BRAND}`,
       description: loaderData?.intro || "A small question from Milk & Henny.",
       path: `/surveys/${loaderData?.slug ?? "survey"}`,
+      robots: loaderData?.status === "open" ? "index, follow" : "noindex, nofollow",
     }),
   component: SurveyPage,
 });
@@ -130,19 +131,24 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
               <label className="block">
                 <span className="font-mono text-micro theme-muted">name (optional)</span>
                 <input
+                  name="respondentName"
                   value={respondentName}
                   onChange={(event) => setRespondentName(event.target.value)}
-                  className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                  autoComplete="name"
+                  className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                 />
               </label>
               <div>
                 <label className="block">
                   <span className="font-mono text-micro theme-muted">email (optional)</span>
                   <input
+                    name="respondentEmail"
                     type="email"
                     value={respondentEmail}
                     onChange={(event) => setRespondentEmail(event.target.value)}
-                    className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                    autoComplete="email"
+                    inputMode="email"
+                    className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                   />
                 </label>
                 <EmailAddressNotice
@@ -298,10 +304,13 @@ function QuestionField({
           <input
             id={id}
             type="email"
+            name={question.id}
             value={email}
             onChange={(event) => onChange(event.target.value)}
             required={question.required}
-            className="mt-4 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            autoComplete="email"
+            inputMode="email"
+            className="mt-4 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
           />
         </label>
         <EmailAddressNotice email={email} onAcceptSuggestion={onChange} />

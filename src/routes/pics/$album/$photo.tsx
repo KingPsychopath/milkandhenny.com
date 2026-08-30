@@ -30,7 +30,7 @@ export const Route = createFileRoute("/pics/$album/$photo")({
     const photo = album.photos[photoIndex];
     const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
     return buildSeoHead({
-      title: `${photo.id} — ${album.title} — ${SITE_NAME}`,
+      title: `${photo.title ?? `Photo ${photoIndex + 1}`} — ${album.title} — ${SITE_NAME}`,
       description,
       path: `/pics/${album.slug}/${photo.id}`,
       image: getOgUrl(album.slug, photo.id, photo.version),

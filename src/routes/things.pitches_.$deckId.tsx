@@ -30,6 +30,7 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
       path: `/things/pitches/${params.deckId}`,
       image: thumbnail?.src || OG_IMAGES.pitchStudio,
       imageAlt: `${title} — a sealed pitch from Milk & Henny`,
+      robots: loaderData?.pitch ? "index, follow" : "noindex, nofollow",
     });
   },
 });

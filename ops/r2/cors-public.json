@@ -2,19 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": [
-          "https://milkandhenny.com",
-          "https://www.milkandhenny.com",
-          "https://web-production-dc63f.up.railway.app",
-          "http://localhost:3000",
-          "http://localhost:5199",
-          "http://localhost:5299",
-          "http://localhost:5399",
-          "http://127.0.0.1:3000",
-          "http://127.0.0.1:5199",
-          "http://127.0.0.1:5299",
-          "http://127.0.0.1:5399"
-        ],
+        "origins": ["https://milkandhenny.com", "https://www.milkandhenny.com"],
         "methods": ["GET", "HEAD"],
         "headers": ["Range"]
       },

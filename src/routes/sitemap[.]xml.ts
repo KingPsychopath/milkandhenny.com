@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { listEvents } from "@/features/events/store.server";
 import { getAllAlbums } from "@/features/media/albums.server";
 import { getOgUrl, resolveWordContentRef } from "@/features/media/storage";
+import { listSurveys } from "@/features/surveys/surveys.server";
 import { listPublicPitchDecks } from "@/features/things/pitches/store.server";
 import { getPitchOperationalStatus } from "@/features/things/pitches/operational.server";
+import { previousHotAndColdPuzzles } from "@/features/things/hot-and-cold/hot-and-cold-words.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { listWords } from "@/features/words/store.server";
 import { hasMediaPublicUrl } from "@/lib/shared/config";
@@ -115,6 +117,9 @@ export const Route = createFileRoute("/sitemap.xml")({
 
         // An events outage should degrade the sitemap, not fail it.
         const publicEvents = await listEvents({ limit: 500 }).catch(() => []);
+        const publicSurveys = await listSurveys()
+          .then((surveys) => surveys.filter((survey) => survey.status === "open"))
+          .catch(() => []);
         const pitchStatus = await getPitchOperationalStatus();
         const publicPitches = pitchStatus.canRead
           ? await listPublicPitchDecks(undefined, 100)
@@ -123,10 +128,12 @@ export const Route = createFileRoute("/sitemap.xml")({
           : [];
         const albums = await getAllAlbums().catch(() => []);
         const includeMediaImages = hasMediaPublicUrl();
+        const hotAndColdArchive = previousHotAndColdPuzzles();
 
         const latestWordsUpdate = latestDate(publicWords.map((word) => word.updatedAt));
         const latestEventsUpdate = latestDate(publicEvents.map((event) => event.updatedAt));
         const latestPitchUpdate = latestDate(publicPitches.map((pitch) => pitch.updatedAt));
+        const latestSurveyUpdate = latestDate(publicSurveys.map((survey) => survey.updatedAt));
         const latestAlbumDate = latestDate(
           albums.flatMap((album) => [album.date, ...album.photos.map((photo) => photo.takenAt)]),
         );
@@ -138,6 +145,7 @@ export const Route = createFileRoute("/sitemap.xml")({
               latestWordsUpdate,
               latestEventsUpdate,
               latestPitchUpdate,
+              latestSurveyUpdate,
               latestAlbumDate,
             ]),
             changeFrequency: "weekly",
@@ -164,6 +172,7 @@ export const Route = createFileRoute("/sitemap.xml")({
             "centre",
             "draw-country",
             "heads-up",
+            "hot-and-cold",
             "icebreaker",
             "liars",
             "pitches",
@@ -176,6 +185,25 @@ export const Route = createFileRoute("/sitemap.xml")({
             changeFrequency: "monthly" as const,
             priority: 0.7,
           })),
+          ...[
+            "/things/centre/solo",
+            "/things/draw-country/solo",
+            "/things/hot-and-cold/daily",
+            "/things/liars/phone",
+            "/things/same-brain/solo",
+            "/things/twin/one-screen",
+            "/things/twin/solo",
+          ].map((path) => ({
+            url: absoluteUrl(path),
+            changeFrequency: "monthly" as const,
+            priority: 0.6,
+          })),
+          ...hotAndColdArchive.map((entry) => ({
+            url: absoluteUrl(`/things/hot-and-cold/daily/${entry.puzzle}`),
+            lastModified: parseDate(entry.date),
+            changeFrequency: "yearly" as const,
+            priority: 0.4,
+          })),
           {
             url: absoluteUrl("/pitch-night"),
             changeFrequency: "weekly",
@@ -186,6 +214,11 @@ export const Route = createFileRoute("/sitemap.xml")({
             lastModified: latestEventsUpdate,
             changeFrequency: "weekly",
             priority: 0.9,
+          },
+          {
+            url: absoluteUrl("/subscribe"),
+            changeFrequency: "yearly",
+            priority: 0.4,
           },
           {
             url: absoluteUrl("/contact"),
@@ -207,6 +240,12 @@ export const Route = createFileRoute("/sitemap.xml")({
               event.title,
               event.tagline ?? event.description,
             ),
+          })),
+          ...publicSurveys.map((survey) => ({
+            url: absoluteUrl("/surveys/" + survey.slug),
+            lastModified: parseDate(survey.updatedAt),
+            changeFrequency: "monthly" as const,
+            priority: 0.5,
           })),
           ...publicWords.map((word) => {
             const heroImage =

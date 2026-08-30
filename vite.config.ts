@@ -6,7 +6,12 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 import { getRuntimeCommitSha } from "./lib/platform/runtime-metadata.server";
-import { STATIC_IMAGE_CACHE_CONTROL, STATIC_ROOT_IMAGE_PATHS } from "./lib/shared/media-cache";
+import {
+  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  STATIC_IMAGE_CACHE_CONTROL,
+  STATIC_ROOT_IMAGE_PATHS,
+  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+} from "./lib/shared/media-cache";
 
 const buildId = getRuntimeCommitSha() ?? `local-${new Date().toISOString()}`;
 
@@ -37,6 +42,20 @@ export default defineConfig({
         websocket: true,
       },
       routeRules: {
+        "/_build/**": {
+          headers: {
+            "Cache-Control": VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+            "Cross-Origin-Resource-Policy": "same-site",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+        "/assets/**": {
+          headers: {
+            "Cache-Control": VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+            "Cross-Origin-Resource-Policy": "same-site",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
         "/sw.js": {
           headers: {
             "Cache-Control": "no-cache, max-age=0, must-revalidate",
@@ -67,7 +86,14 @@ export default defineConfig({
         },
         "/excalidraw/fonts/**": {
           headers: {
-            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cache-Control": STATIC_IMAGE_CACHE_CONTROL,
+            "Cross-Origin-Resource-Policy": "same-site",
+            "X-Content-Type-Options": "nosniff",
+          },
+        },
+        "/media/**": {
+          headers: {
+            "Cache-Control": MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
             "Cross-Origin-Resource-Policy": "same-site",
             "X-Content-Type-Options": "nosniff",
           },

@@ -22,6 +22,7 @@ import { Route as MyRouteImport } from './routes/my'
 import { Route as PartyRouteImport } from './routes/party'
 import { Route as PitchNightRouteImport } from './routes/pitch-night'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as ThingsRouteImport } from './routes/things'
@@ -271,6 +272,11 @@ const PitchNightRoute = PitchNightRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -1301,6 +1307,7 @@ export interface FileRoutesByFullPath {
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
@@ -1501,6 +1508,7 @@ export interface FileRoutesByTo {
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
@@ -1702,6 +1710,7 @@ export interface FileRoutesById {
   '/party': typeof PartyRoute
   '/pitch-night': typeof PitchNightRoute
   '/privacy': typeof PrivacyRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
@@ -1904,6 +1913,7 @@ export interface FileRouteTypes {
     | '/party'
     | '/pitch-night'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/subscribe'
     | '/things'
@@ -2104,6 +2114,7 @@ export interface FileRouteTypes {
     | '/party'
     | '/pitch-night'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/subscribe'
     | '/things'
@@ -2304,6 +2315,7 @@ export interface FileRouteTypes {
     | '/party'
     | '/pitch-night'
     | '/privacy'
+    | '/robots.txt'
     | '/sitemap.xml'
     | '/subscribe'
     | '/things'
@@ -2505,6 +2517,7 @@ export interface RootRouteChildren {
   PartyRoute: typeof PartyRoute
   PitchNightRoute: typeof PitchNightRoute
   PrivacyRoute: typeof PrivacyRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   SubscribeRoute: typeof SubscribeRoute
   ThingsRoute: typeof ThingsRouteWithChildren
@@ -2698,6 +2711,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -4435,6 +4455,7 @@ const rootRouteChildren: RootRouteChildren = {
   PartyRoute: PartyRoute,
   PitchNightRoute: PitchNightRoute,
   PrivacyRoute: PrivacyRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   SubscribeRoute: SubscribeRoute,
   ThingsRoute: ThingsRouteWithChildren,

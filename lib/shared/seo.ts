@@ -71,17 +71,25 @@ function imageTypeForUrl(url: string): string {
 function buildSeoMeta(options: SeoOptions): SeoMetaDescriptor[] {
   const title = normaliseText(options.title, 70);
   const description = normaliseText(options.description, 160);
-  const url = absoluteUrl(options.path);
-  const image = absoluteUrl(options.image ?? OG_IMAGES.default);
-  const imageAlt = normaliseText(options.imageAlt ?? `${SITE_NAME} — ${title}`, 200);
-  const type = options.type ?? "website";
   const robots = options.robots ?? "index, follow";
-
-  return [
+  const baseMeta: SeoMetaDescriptor[] = [
     { title },
     { name: "description", content: description },
     { name: "robots", content: robots },
     ...(options.referrer ? [{ name: "referrer", content: options.referrer }] : []),
+  ];
+
+  // Capability and private routes opt out of indexing. They should not repeat
+  // their credential-bearing URL in canonical or social metadata either.
+  if (robots.startsWith("noindex")) return baseMeta;
+
+  const url = absoluteUrl(options.path);
+  const image = absoluteUrl(options.image ?? OG_IMAGES.default);
+  const imageAlt = normaliseText(options.imageAlt ?? `${SITE_NAME} — ${title}`, 200);
+  const type = options.type ?? "website";
+
+  return [
+    ...baseMeta,
     { property: "og:title", content: title },
     { property: "og:description", content: description },
     { property: "og:url", content: url },
@@ -108,9 +116,10 @@ function buildSeoMeta(options: SeoOptions): SeoMetaDescriptor[] {
 }
 
 function buildSeoHead(options: SeoOptions) {
+  const isIndexable = (options.robots ?? "index, follow") === "index, follow";
   return {
     meta: buildSeoMeta(options),
-    links: [{ rel: "canonical", href: absoluteUrl(options.path) }],
+    links: isIndexable ? [{ rel: "canonical", href: absoluteUrl(options.path) }] : [],
   };
 }
 

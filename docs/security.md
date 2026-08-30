@@ -157,13 +157,13 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 
 ## Transfer Security
 
-- **Memorable word URLs**: 3-word hyphenated IDs (e.g. `velvet-moon-candle`), ~2.2M combos
+- **View IDs**: 22-char base64url values generated from 128 random bits
 - **Delete tokens**: 22-char base64url (16 bytes), never exposed to recipients
 - **Presigned URLs**: time-limited (15 min), scoped to a single R2 key, generated server-side only for authenticated uploaders
 - **Admin-only takedown**: only the uploader can delete (CLI or admin URL)
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
 - **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
-- **CDN caching**: a reverse proxy/CDN may cache transfer pages for 60 seconds when configured
+- **Cache isolation**: transfer pages and protected media are always `private, no-store`; only intentionally published public media is cacheable
 
 ---
 
@@ -247,7 +247,7 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 5. **Redeploy**
 6. Test: `pnpm cli transfers list`
 
-**Downtime:** Transfer pages return errors during rotation (~30s). CDN-cached transfer pages keep serving for up to 60s.
+**Downtime:** Transfer pages return errors during rotation (~30s). Their `private, no-store` policy prevents a CDN from serving a stale capability response during the window.
 
 **Data at risk:** The Redis token grants read/write to vote and transfer metadata (not files — those are in R2).
 
