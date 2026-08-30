@@ -3,7 +3,7 @@ import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import { HeatGauge } from "./HeatGauge";
 import { HeatLedger } from "./HeatLedger";
-import { GuessComposer } from "./GuessComposer";
+import { GuessComposer, type GuessReceipt } from "./GuessComposer";
 import { HotAndColdResultShare, HotAndColdShareDock } from "./HotAndColdResultShare";
 import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibilityControl";
 import { recoverDailyHotAndColdState } from "./hot-and-cold-daily-recovery";
@@ -52,6 +52,7 @@ export function SoloHotAndCold({
   });
   const [recovered, setRecovered] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<GuessReceipt | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const [showHow, setShowHow] = useState(false);
   const [community, setCommunity] = useState<HotAndColdCommunityStats | null>(null);
@@ -61,6 +62,8 @@ export function SoloHotAndCold({
   useEffect(() => {
     let cancelled = false;
     setRecovered(false);
+    setMessage(null);
+    setReceipt(null);
     setCommunity(null);
     setCommunityLoaded(false);
     const fresh = (): DailyState => ({
@@ -127,7 +130,10 @@ export function SoloHotAndCold({
           runId: recovered.state.runId ?? next.runId,
           resultRecorded: false,
         });
-        setMessage(`saved guesses restored · judging ${judgingVersion}`);
+        setReceipt({
+          id: `recovery:${puzzle}:${judgingVersion}`,
+          label: `saved guesses restored · judging ${judgingVersion}`,
+        });
       } catch {
         if (!cancelled) setState(fresh());
       } finally {
@@ -191,6 +197,13 @@ export function SoloHotAndCold({
       }));
       setNewest(`${next.sequence}:${next.word}`);
       setMessage(null);
+      if (next.rank !== 0) {
+        const wasHottest = state.guesses.every(({ rank }) => next.rank < rank);
+        setReceipt({
+          id: `${next.sequence}:${next.word}`,
+          label: `${next.word} · #${next.rank.toLocaleString()}${wasHottest ? " · hottest" : ""}`,
+        });
+      }
       void haptics.trigger(
         result.rank === 0 ? "success" : result.rank < 500 ? "warning" : "selection",
       );
@@ -231,7 +244,11 @@ export function SoloHotAndCold({
         hintsUsed: current.hintsUsed + 1,
       }));
       setNewest(`${next.sequence}:${next.word}`);
-      setMessage(`hint · #${next.rank.toLocaleString()}`);
+      setMessage(null);
+      setReceipt({
+        id: `${next.sequence}:${next.word}`,
+        label: `hint · ${next.word} · #${next.rank.toLocaleString()}`,
+      });
       void haptics.trigger("selection");
     } catch {
       setMessage("couldn’t get a hint — try again");
@@ -311,16 +328,6 @@ export function SoloHotAndCold({
     (best, guess) => (!best || guess.rank < best.rank ? guess : best),
     null,
   );
-  const newestGuess = newest ? ledger.find(({ id }) => id === newest) : null;
-  const receipt =
-    newestGuess?.mine && newestGuess.rank !== 0
-      ? {
-          id: newestGuess.id,
-          label: `${newestGuess.word} · #${newestGuess.rank.toLocaleString()}${
-            newestGuess.id === hottest?.id ? " · hottest" : ""
-          }`,
-        }
-      : null;
   return (
     <div className="hot-and-cold min-h-svh">
       <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
@@ -369,6 +376,7 @@ export function SoloHotAndCold({
             message={message}
             receipt={receipt}
             onGuess={guess}
+            onMessageClear={() => setMessage(null)}
             actions={
               <>
                 <button

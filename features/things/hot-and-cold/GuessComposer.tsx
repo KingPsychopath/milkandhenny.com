@@ -20,6 +20,7 @@ export function GuessComposer({
   message,
   receipt,
   onGuess,
+  onMessageClear,
   actions,
   continuous = false,
   turnLabel,
@@ -28,6 +29,7 @@ export function GuessComposer({
   message?: string | null;
   receipt?: GuessReceipt | null;
   onGuess: (word: string) => Promise<boolean>;
+  onMessageClear?: () => void;
   actions?: ReactNode;
   continuous?: boolean;
   turnLabel?: string;
@@ -231,6 +233,7 @@ export function GuessComposer({
             setWord(event.target.value);
             setRejected(false);
             setLocalMessage(null);
+            onMessageClear?.();
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") input.current?.blur();

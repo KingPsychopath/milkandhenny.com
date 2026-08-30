@@ -91,6 +91,20 @@ test("keeps rapid daily guessing stable in the native document flow", async ({ p
     await expect(receipt).toHaveCount(0, { timeout: 5_000 });
     await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
 
+    await input.fill("table");
+    await input.press("Enter");
+    await expect(page.locator("#hot-and-cold-guess-message")).toContainText(
+      /already guessed · #[\d,]+/,
+    );
+    await input.fill("chair");
+    await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
+    await input.fill("");
+
+    await page.getByRole("button", { name: "hint", exact: true }).click();
+    await expect(receipt).toContainText(/hint · .+ · #[\d,]+/, { timeout: 30_000 });
+    await expect(page.locator("#hot-and-cold-guess-message")).toHaveText("lower is hotter");
+    await expect(receipt).toHaveCount(0, { timeout: 5_000 });
+
     await page.evaluate(() => {
       if (!window.visualViewport) throw new Error("Visual Viewport API unavailable");
       Object.defineProperties(window.visualViewport, {

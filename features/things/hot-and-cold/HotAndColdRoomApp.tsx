@@ -137,6 +137,7 @@ export function HotAndColdRoomApp({
   const [newest, setNewest] = useState<string | null>(null);
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility();
   const snapshot = live.snapshot;
+  const turnIdentity = `${snapshot?.phase ?? "loading"}:${snapshot?.round?.id ?? ""}:${snapshot?.round?.currentPlayerId ?? ""}`;
   const invite =
     typeof location === "undefined"
       ? ""
@@ -157,6 +158,9 @@ export function HotAndColdRoomApp({
       );
     }
   }, [credentials.playerId, haptics, latestId, snapshot?.round?.guesses]);
+  useEffect(() => {
+    setMessage(null);
+  }, [turnIdentity]);
   const send = async (action: MultiplayerActionInput<HotAndColdAction>) => {
     try {
       const result = await applyHotAndColdActionFn({
@@ -472,6 +476,7 @@ export function HotAndColdRoomApp({
             onGuess={(word) =>
               send({ type: "guess.submit", word, roundId: snapshot.round?.id ?? "" })
             }
+            onMessageClear={() => setMessage(null)}
             actions={
               myTurn ? (
                 <button
