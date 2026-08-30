@@ -448,10 +448,13 @@ stepping time; and capturing/restoring an interesting room state.
 
 This infrastructure is centralized as a development harness and composed with a
 game-owned adapter. It does not centralize game rules or replace production
-surfaces with mock panels. Paired and room multiplayer modes must reach Level 3
-of the [one-person multiplayer testing standard](./multiplayer-testing.md);
-event-critical secret, buzzer, adjudication, and presenter games should reach
-Level 4.
+surfaces with mock panels. Every paired and room multiplayer mode must reach
+Level 2 of the
+[one-person multiplayer testing standard](./multiplayer-testing.md), including
+one automated journey with an isolated browser profile per physical-device
+role. Stateful, role-heavy, timed, or difficult-to-reproduce rooms must reach
+Level 3. Event-critical secret, buzzer, adjudication, and presenter games should
+reach Level 4.
 
 Harness success proves reproducibility, role projections, controls, and
 resilience. It cannot prove that conversation, tension, inclusion, or laughter

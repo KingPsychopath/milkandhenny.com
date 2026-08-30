@@ -1,5 +1,6 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { SameBrainDevHarness } from "@/features/things/same-brain/SameBrainDevHarness";
+import { requireDevelopmentRoute } from "@/features/things/shared/development-route";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -9,9 +10,7 @@ import { buildSeoHead } from "@/lib/shared/seo";
  * reveals side by side — which no arrangement of real phones makes convenient.
  */
 export const Route = createFileRoute("/things/same-brain_/dev")({
-  beforeLoad: () => {
-    if (!import.meta.env.DEV) throw notFound();
-  },
+  beforeLoad: requireDevelopmentRoute,
   component: SameBrainDevRoute,
   head: () =>
     buildSeoHead({

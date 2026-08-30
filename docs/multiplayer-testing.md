@@ -87,11 +87,20 @@ These levels describe development readiness, not game quality.
 Minimum release expectations:
 
 - a purely local, single-device game MUST reach Level 1;
-- a paired-device or room multiplayer mode MUST reach Level 3;
+- every paired-device or room multiplayer mode MUST reach Level 2 with genuinely
+  isolated role sessions in at least one automated journey;
+- a mode MUST reach Level 3 when it has three or more distinct roles, hidden
+  state across several phases, host adjudication, a timed state machine, or a
+  match that is expensive to reconstruct manually;
 - an event-critical game involving secrets, buzzers, adjudication, or a public
   presenter SHOULD reach Level 4 before being treated as a headline experience;
 - no multiplayer mode may ship at Level 0 merely because integration tests can
   call its engine.
+
+Use the lowest level that controls the real risk. A two-phone pairing with one
+decision does not need a versioned whole-match replay system. A ten-minute
+social-deduction room does. Teams SHOULD record the reason when they require a
+level above or below these triggers.
 
 ---
 
@@ -159,11 +168,19 @@ Each panel MUST:
   current phase;
 - support focus/solo, grid, and return-to-grid;
 - support remount/refresh without recreating the whole room;
-- offer **Pop out** so the surface can run in a real independent browser window;
+- offer **Pop out** so the surface can run in its own viewport window;
 - provide phone portrait, phone landscape, tablet, and presenter 16:9 viewport
   presets without changing product CSS;
 - expose stable harness metadata such as role, seat, phase, and scenario for
   browser automation and agent inspection.
+
+An in-page grid and ordinary pop-out windows are fast visual tools, not session
+isolation: same-origin windows normally share cookies and local storage.
+Critical multi-role browser journeys MUST create a separate browser context or
+profile per physical device role. At least one journey for every paired/room
+mode verifies independent identity, authority, private projection, refresh, and
+reconciliation. The reusable Playwright helper in
+`e2e/support/multiplayer.ts` is the browser boundary for this repository.
 
 The shared presenter may be mirrored on more than one display, but those mirrors
 consume the same public projection. They do not become additional authorities.
@@ -453,30 +470,28 @@ Audit date: 30 August 2026
 This inventory records current development support, not implementation quality.
 Unfinished worktrees are excluded.
 
-| Game or mode                           | Current level         | Existing strengths                                                                                                          | Material gap                                                                                |
-| -------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Liars room                             | 3                     | Real player panels, named scenarios, fast timings, capture/restore, JSON import/export, scenario integration tests          | Presenter/MC workspace, bots, pop-outs, and failure controls are incomplete                 |
-| Same Brain room                        | 3                     | Real player panels, answer-bearing scenarios, fast timings, capture/restore, JSON import/export, scenario integration tests | No presenter surface; limited bot/failure and pop-out support                               |
-| Twin room                              | 2–3                   | Real player panels, bots, timing controls, deterministic scenarios, one-screen preview                                      | No capture/restore or audit export; incomplete failure controls                             |
-| Centre                                 | 1                     | Deterministic maze generator, seed/difficulty/player controls, verified solution preview                                    | Harness does not run the multiplayer room, real role surfaces, bots, or lifecycle scenarios |
-| Hot and Cold room                      | 0                     | Engine integration coverage exists                                                                                          | No one-person multi-surface harness, scenarios, bots, or state capture                      |
-| Draw the Country room                  | 0                     | Engine and scoring tests exist                                                                                              | No presenter/player workspace, drawing fixtures, scenarios, or capture                      |
-| Type Together / Spelling Party         | 0                     | Engine/content integration tests exist                                                                                      | No presenter/player harness, simulated answers, fast room, or capture                       |
-| Heads Up and Spelling Bee paired judge | 0                     | Production pairing/reconciliation paths exist                                                                               | No two-surface player/judge harness or scripted judge/player                                |
-| Icebreaker pairing                     | 0                     | Local pairing logic and production screens exist                                                                            | No two-person pairing workspace or deterministic encounter fixtures                         |
-| Pitch Night presentation               | 1                     | Rehearsal/preview and a production presenter/controller flow exist                                                          | No canonical presenter/host multi-surface scenario harness or capture bundle                |
-| Single-device modes                    | 1 where deterministic | Direct manual play is possible without friends                                                                              | Default fixtures and reusable state capture are inconsistent                                |
+| Game or mode                           | Current level         | Existing strengths                                                                                                                           | Material gap                                                                                |
+| -------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Liars room                             | 3                     | Real player panels, named scenarios, fast timings, capture/restore, JSON import/export, scenario integration tests                           | Presenter/MC workspace, bots, pop-outs, and failure controls are incomplete                 |
+| Same Brain room                        | 3                     | Real player panels, answer-bearing scenarios, fast timings, capture/restore, scenario integration tests, isolated three-role browser journey | No presenter surface; limited bot/failure and pop-out support                               |
+| Twin room                              | 2–3                   | Real player panels, bots, timing controls, deterministic scenarios, one-screen preview                                                       | No capture/restore or audit export; incomplete failure controls                             |
+| Centre                                 | 1                     | Deterministic maze generator, seed/difficulty/player controls, verified solution preview                                                     | Harness does not run the multiplayer room, real role surfaces, bots, or lifecycle scenarios |
+| Hot and Cold room                      | 0                     | Engine integration coverage exists                                                                                                           | No one-person multi-surface harness, scenarios, bots, or state capture                      |
+| Draw the Country room                  | 0                     | Engine and scoring tests exist                                                                                                               | No presenter/player workspace, drawing fixtures, scenarios, or capture                      |
+| Type Together / Spelling Party         | 0                     | Engine/content integration tests exist                                                                                                       | No presenter/player harness, simulated answers, fast room, or capture                       |
+| Heads Up and Spelling Bee paired judge | 0                     | Production pairing/reconciliation paths exist                                                                                                | No two-surface player/judge harness or scripted judge/player                                |
+| Icebreaker pairing                     | 0                     | Local pairing logic and production screens exist                                                                                             | No two-person pairing workspace or deterministic encounter fixtures                         |
+| Pitch Night presentation               | 1                     | Rehearsal/preview and a production presenter/controller flow exist                                                                           | No canonical presenter/host multi-surface scenario harness or capture bundle                |
+| Single-device modes                    | 1 where deterministic | Direct manual play is possible without friends                                                                                               | Default fixtures and reusable state capture are inconsistent                                |
 
-Two route-boundary gaps require correction when the shared shell is introduced:
-
-- Liars and Same Brain correctly return not-found outside development.
-- Twin and Centre currently mark their dev pages `noindex` but do not apply the
-  same development-only route guard. `noindex` is not an access boundary.
+All four current dev-harness routes now share the same development-only guard.
+Liars and Same Brain also retain their render-time defence. `noindex` remains
+metadata rather than an access boundary.
 
 The recommended migration order is:
 
-1. extract the common panel workspace, capture storage, route guard, and stable
-   metadata from Liars/Same Brain;
+1. extract the common panel workspace, capture storage, and stable metadata from
+   Liars/Same Brain; reuse the isolated-browser helper for critical journeys;
 2. adopt Twin’s bot-seat model and bring Twin capture/failure support to Level
    3–4;
 3. convert Centre from a generator viewer into a real room adapter while keeping
@@ -495,13 +510,15 @@ A multiplayer mode is testable by one person when:
 - one documented dev route launches a default representative table;
 - every production role can be viewed together and popped out independently;
 - the tester can own any role and automate the rest;
+- at least one browser journey gives each physical-device role independent
+  cookies and storage rather than relying only on panels or pop-outs;
 - the game can be driven through a complete match without waiting on production
   timings;
 - named deterministic scenarios cover its phases, authority, recovery, privacy,
   and finish;
 - every scenario is backed by an integration test;
-- an exact runtime position can be captured, restored under a new room, and
-  exported/imported locally;
+- when Level 3 is required, an exact runtime position can be captured, restored
+  under a new room, and exported/imported locally;
 - one surface can refresh, disconnect, reconnect, or fail without restarting the
   entire harness;
 - role panels never receive secrets they would not receive in production;

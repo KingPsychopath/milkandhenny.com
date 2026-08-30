@@ -109,7 +109,10 @@ export function JoinLiarsRoom({
                   maxLength={LIARS_MAX_NAME_LENGTH}
                   required
                   autoComplete="name"
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    setEditingName(true);
+                    setName(event.target.value);
+                  }}
                   className="min-h-14 w-full border-b border-white/25 bg-transparent font-serif text-3xl text-white outline-none focus-visible:border-[var(--things-amber)]"
                 />
               </label>

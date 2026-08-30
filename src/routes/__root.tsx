@@ -69,6 +69,7 @@ export const Route = createRootRoute({
 function RootComponent() {
   const { authenticated } = Route.useLoaderData();
   useEffect(() => {
+    document.documentElement.setAttribute("data-app-hydrated", "");
     const onError = (event: ErrorEvent) => {
       recordDiagnosticAction("window.error", {
         name: event.error instanceof Error ? event.error.name : "Error",
@@ -86,6 +87,7 @@ function RootComponent() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
     return () => {
+      document.documentElement.removeAttribute("data-app-hydrated");
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
     };

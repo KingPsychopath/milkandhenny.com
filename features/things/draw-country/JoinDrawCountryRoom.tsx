@@ -112,6 +112,7 @@ export function JoinDrawCountryRoom({
                 autoComplete="name"
                 enterKeyHint="go"
                 onChange={(event) => {
+                  setEditingName(true);
                   setName(event.target.value);
                   setMessage(null);
                 }}

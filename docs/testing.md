@@ -5,15 +5,15 @@ assert every React wrapper or third-party SDK call.
 
 ## Commands
 
-| Command                 | Use                                                   | Needs services                        |
-| ----------------------- | ----------------------------------------------------- | ------------------------------------- |
-| `pnpm check`            | Format, type, and lint checks                         | No                                    |
-| `pnpm test:unit`        | Fast pure-logic tests                                 | No                                    |
-| `pnpm test:integration` | Multi-module and persistence flows                    | Some suites use Postgres              |
-| `pnpm test`             | All Vitest tests                                      | Postgres suites skip without Postgres |
-| `pnpm test:coverage`    | All Vitest tests with the release coverage gate       | Postgres suites skip without Postgres |
-| `pnpm test:e2e`         | Browser-level pitch flow in `e2e/pitch-night.spec.ts` | Postgres, S3 test server, Chromium    |
-| `pnpm verify:release`   | Full local release gate                               | Postgres, S3 test server, Chromium    |
+| Command                 | Use                                             | Needs services                        |
+| ----------------------- | ----------------------------------------------- | ------------------------------------- |
+| `pnpm check`            | Format, type, and lint checks                   | No                                    |
+| `pnpm test:unit`        | Fast pure-logic tests                           | No                                    |
+| `pnpm test:integration` | Multi-module and persistence flows              | Some suites use Postgres              |
+| `pnpm test`             | All Vitest tests                                | Postgres suites skip without Postgres |
+| `pnpm test:coverage`    | All Vitest tests with the release coverage gate | Postgres suites skip without Postgres |
+| `pnpm test:e2e`         | Critical pitch and multiplayer browser journeys | Postgres, S3 test server, Chromium    |
+| `pnpm verify:release`   | Full local release gate                         | Postgres, S3 test server, Chromium    |
 
 CI provides Postgres, installs Chromium, runs the full coverage suite, runs the
 browser flow, and builds the production bundle. A local Vitest run probes
@@ -56,14 +56,17 @@ Vitest workers cannot reset one another's schema.
 
 Browser tests live in `e2e/` and use Playwright. Keep these flows few and
 high-value because they are slower and more sensitive to infrastructure. The
-current flow covers creating, saving, publishing, presenting, and remotely
-controlling a pitch, including admin unlock.
+current journeys cover creating, saving, publishing, presenting, and remotely
+controlling a pitch, plus isolated host/player identity, authority, privacy,
+refresh, and reveal in a multiplayer room.
 
 Add a browser test when a failure would be hard to see from server tests alone:
 
 - a critical navigation or authentication flow;
 - a payment, ticket, or staff operation;
 - a multi-step interaction where browser state matters;
+- a multiplayer role boundary that depends on separate cookies or local
+  storage;
 - an offline or retry behaviour that must be observed by a user.
 
 For navigation changes, verify the product rule rather than only the URL text:
