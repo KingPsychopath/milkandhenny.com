@@ -3241,7 +3241,13 @@ export function EventsPanel({
                 key={event.slug}
                 className={`py-3 ${selectedEvent?.slug === event.slug ? "border-l-2 border-[var(--prose-hashtag)] pl-3" : ""}`}
               >
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                <div
+                  className={
+                    selection
+                      ? "space-y-2"
+                      : "grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start"
+                  }
+                >
                   <div className="min-w-0">
                     <p className="font-mono text-sm text-foreground truncate">{event.title}</p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
@@ -3263,7 +3269,9 @@ export function EventsPanel({
                       </span>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+                  <div
+                    className={`flex flex-wrap items-center justify-start gap-2 ${selection ? "" : "sm:justify-end"}`}
+                  >
                     <Link
                       to="/events/$slug"
                       params={{ slug: event.slug }}
