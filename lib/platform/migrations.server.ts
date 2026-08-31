@@ -3510,6 +3510,81 @@ const MIGRATIONS: Migration[] = [
         on game_result_group_claims (session_id, state, created_at);
     `,
   },
+  {
+    id: "0075_event_waitlists",
+    sql: `
+      alter table events alter column waitlist_enabled set default true;
+      update events
+         set waitlist_enabled = true, updated_at = now()
+       where status in ('published', 'sold-out')
+         and coalesce(ends_at, starts_at) > now();
+
+      create table event_waitlist_entries (
+        id                   uuid primary key,
+        event_slug           text not null references events (slug)
+                             on update cascade on delete cascade,
+        scope_kind           text not null
+                             check (scope_kind in ('event', 'ticket-type')),
+        ticket_type_id       text,
+        scope_label          text check (scope_label is null or char_length(scope_label) <= 120),
+        email                text not null check (char_length(email) between 3 and 320),
+        email_hash           text not null check (email_hash ~ '^[0-9a-f]{64}$'),
+        status               text not null default 'pending'
+                             check (status in (
+                               'pending', 'active', 'notified', 'left',
+                               'expired', 'undeliverable'
+                             )),
+        confirmation_version integer not null default 1
+                             check (confirmation_version >= 1),
+        confirmed_at         timestamptz,
+        notified_at          timestamptz,
+        left_at              timestamptz,
+        created_at           timestamptz not null default now(),
+        updated_at           timestamptz not null default now(),
+        foreign key (event_slug, ticket_type_id)
+          references ticket_types (event_slug, id)
+          on update cascade on delete set null (ticket_type_id),
+        check (
+          (status = 'pending' and confirmed_at is null)
+          or status <> 'pending'
+        ),
+        check (
+          (scope_kind = 'event' and ticket_type_id is null and scope_label is null)
+          or (scope_kind = 'ticket-type' and scope_label is not null)
+        )
+      );
+
+      create unique index event_waitlist_one_live_entry_idx
+        on event_waitlist_entries (event_slug, email_hash)
+        where status in ('pending', 'active');
+      create index event_waitlist_active_idx
+        on event_waitlist_entries (event_slug, ticket_type_id, confirmed_at, created_at)
+        where status = 'active';
+      create index event_waitlist_admin_idx
+        on event_waitlist_entries (event_slug, created_at desc);
+
+      create table event_waitlist_inventory (
+        event_slug text not null references events (slug)
+                   on update cascade on delete cascade,
+        scope_key  text not null,
+        available  integer not null check (available >= 0),
+        credits    integer not null default 0 check (credits >= 0 and credits <= available),
+        updated_at timestamptz not null default now(),
+        primary key (event_slug, scope_key)
+      );
+
+      alter table email_outbox drop constraint if exists email_outbox_kind_check;
+      alter table email_outbox add constraint email_outbox_kind_check check (kind in (
+        'ticket-issued','ticket-resend','ticket-refund','ticket-exchange',
+        'ticket-exchange-payment','attendee-access','ticket-assignment',
+        'ticket-transfer','ticket-return','staff-access','admin-access','security-notice',
+        'operations-alert','operations-digest','event-broadcast','communication',
+        'communication-stage','communication-test','waitlist-confirmation',
+        'waitlist-availability','pitch-welcome','pitch-published','pitch-recovery',
+        'pitch-reminder'
+      ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

@@ -124,6 +124,24 @@ Stripe sends the payment receipt. We send only the ticket. That halves send volu
 
 Cloudflare Email Service, behind the same platform-adapter boundary as Redis and S3. It is already on the project's DNS and R2 account and configures SPF, DKIM, and DMARC.
 
+### Sold-out waitlists
+
+Waitlists are verified, one-shot availability alerts rather than ticket reservations. A person
+chooses either the whole event or one sold-out ticket type, enters an email address, and confirms
+that address from a signed management link. One live scope is allowed per email and event.
+
+Availability is reconciled after admin inventory edits and by the application scheduler, so
+refunds, expired checkout holds, ticket-type changes, and replica/process failures converge on the
+same workflow. Confirmed entries are selected FIFO and the batch is capped to newly available
+places; a single returned ticket must not blast the entire list. Event capacity is treated as one
+shared pool even when several ticket types could consume the same place.
+
+The entry state transition and outbox insert share one Postgres transaction. Outbox idempotency
+keys make both confirmation and availability staging safe to retry, while the normal email worker
+owns provider retries, suppression, delivery feedback, retention, and operational visibility.
+After one availability alert the entry leaves the active queue. The email says clearly that no
+ticket is held and the person may join again if they miss it.
+
 Two Cloudflare specifics:
 
 - Sending to arbitrary recipients requires Workers Paid. The free tier only reaches verified addresses in your own account.

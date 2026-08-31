@@ -7,6 +7,7 @@ import {
   processPendingOfficialGameResults,
 } from "@/features/event-scoring/games.server";
 import { processScheduledScoringTransitions } from "@/features/event-scoring/scoring.server";
+import { reconcileActiveWaitlists } from "@/features/event-waitlist/waitlist.server";
 import { drainOfficialGameResultOutbox } from "@/features/game-results/outbox.server";
 import { PitchesService } from "@/features/things/pitches/pitches-service.server";
 import { runPitchesResult } from "@/features/things/pitches/pitches-runtime.server";
@@ -36,7 +37,7 @@ function schedulerDisabled(): boolean {
 
 export async function runEmailDeliveryScheduledJob(
   force = false,
-): Promise<ScheduledJobRun<{ staged: number; handled: number }>> {
+): Promise<ScheduledJobRun<{ staged: number; waitlistAlerts: number; handled: number }>> {
   return runLeasedScheduledJob({
     jobKey: "communications-delivery",
     intervalMs: EMAIL_INTERVAL_MS,
@@ -44,9 +45,12 @@ export async function runEmailDeliveryScheduledJob(
     leaseMs: JOB_LEASE_MS,
     force,
     run: async () => {
-      const staged = await expandDueCommunicationStages();
+      const [staged, waitlistAlerts] = await Promise.all([
+        expandDueCommunicationStages(),
+        reconcileActiveWaitlists(BASE_URL),
+      ]);
       const handled = await drainEmailOutbox();
-      return { staged, handled };
+      return { staged, waitlistAlerts, handled };
     },
   });
 }
@@ -106,7 +110,10 @@ const JOBS: readonly ScheduledJobDefinition[] = [
     intervalMs: EMAIL_INTERVAL_MS,
     run: async () => {
       const outcome = await runEmailDeliveryScheduledJob();
-      if (outcome.ran && (outcome.value.staged > 0 || outcome.value.handled > 0)) {
+      if (
+        outcome.ran &&
+        (outcome.value.staged > 0 || outcome.value.waitlistAlerts > 0 || outcome.value.handled > 0)
+      ) {
         log.info("scheduler.communications", "Scheduled email work completed", outcome.value);
       }
     },

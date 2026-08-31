@@ -177,6 +177,26 @@ export async function getEvent(slug: string): Promise<EventRecord | null> {
   return events[0] ?? null;
 }
 
+/** Read and optionally lock an event on an existing product transaction. */
+export async function getEventWithClient(
+  client: PoolClient,
+  slug: string,
+  options: { forUpdate?: boolean } = {},
+): Promise<EventRecord | null> {
+  if (!isValidEventSlug(slug)) return null;
+  const eventResult = await client.query<EventRow>(
+    `select ${EVENT_COLUMNS} from events where slug = $1${options.forUpdate ? " for update" : ""}`,
+    [slug],
+  );
+  const row = eventResult.rows[0];
+  if (!row) return null;
+  const typeResult = await client.query<TicketTypeRow>(
+    `select * from ticket_types where event_slug = $1 order by position, id`,
+    [slug],
+  );
+  return toEvent(row, typeResult.rows.map(toTicketType));
+}
+
 export async function getEvents(slugs: string[]): Promise<EventRecord[]> {
   const safe = slugs.filter(isValidEventSlug);
   if (safe.length === 0) return [];

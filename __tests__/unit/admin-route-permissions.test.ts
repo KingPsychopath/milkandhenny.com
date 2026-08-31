@@ -93,6 +93,7 @@ const EXPECTED: Record<string, { GET: string | null; POST: string | null }> = {
   },
   "/api/admin/events/sample-slug/scoring": { GET: "manageScoring", POST: "manageScoring" },
   "/api/admin/events/sample-slug/tickets": { GET: "viewOperations", POST: "manageTickets" },
+  "/api/admin/events/sample-slug/waitlist": { GET: "viewOperations", POST: "manageEvents" },
   "/api/admin/game-pools": { GET: "manageScoring", POST: "manageScoring" },
   "/api/admin/game-pools/sample-id": { GET: "manageScoring", POST: "manageScoring" },
   "/api/admin/hot-and-cold-review": { GET: "manageScoring", POST: "manageScoring" },

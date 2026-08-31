@@ -22,6 +22,7 @@ import { ThreeWordHint } from "./ThreeWordHint";
 import { ClaimTicketForm } from "./ClaimTicketForm";
 import { ResendTicketForm } from "./ResendTicketForm";
 import { EventDescription } from "./EventDescription";
+import { EventWaitlistForm, type EventWaitlistOption } from "./EventWaitlistForm";
 
 const POLICY_MARKDOWN_COMPONENTS: Components = {
   p: ({ children }) => <p>{children}</p>,
@@ -105,6 +106,27 @@ export function EventDetailPage({
   const doorsAt = event.doorsAt;
   const doorsDifferFromStart =
     doorsAt && new Date(doorsAt).getTime() !== new Date(event.startsAt).getTime();
+  const soldOutTypes = availability.filter((entry) => entry.sales.state === "sold-out");
+  const waitlistOptions: EventWaitlistOption[] = event.waitlistEnabled
+    ? [
+        ...(soldOut
+          ? [
+              {
+                value: "event",
+                label: "any ticket for this event",
+                scope: { kind: "event" as const },
+              },
+            ]
+          : []),
+        ...soldOutTypes
+          .filter(() => !soldOut || availability.length > 1)
+          .map((entry) => ({
+            value: `ticket:${entry.type.id}`,
+            label: `${entry.type.name} only`,
+            scope: { kind: "ticket-type" as const, ticketTypeId: entry.type.id },
+          })),
+      ]
+    : [];
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -259,6 +281,7 @@ export function EventDetailPage({
             <div className="mt-4">
               <ResendTicketForm eventSlug={event.slug} />
             </div>
+            <EventWaitlistForm eventSlug={event.slug} options={waitlistOptions} />
           </section>
         )}
 

@@ -12,9 +12,12 @@ async function handlePOST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? null;
   try {
     const outcome = await runEmailDeliveryScheduledJob(true);
-    const { staged, handled } = outcome.ran ? outcome.value : { staged: 0, handled: 0 };
+    const { staged, waitlistAlerts, handled } = outcome.ran
+      ? outcome.value
+      : { staged: 0, waitlistAlerts: 0, handled: 0 };
     log.info("cron.deliver-email", "Email outbox drain finished", {
       staged,
+      waitlistAlerts,
       handled,
       skipped: !outcome.ran,
       requestId,
@@ -23,6 +26,7 @@ async function handlePOST(request: Request) {
     return Response.json({
       success: true,
       staged,
+      waitlistAlerts,
       handled,
       skipped: !outcome.ran,
       timestamp: new Date().toISOString(),

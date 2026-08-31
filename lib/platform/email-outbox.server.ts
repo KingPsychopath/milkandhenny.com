@@ -240,6 +240,32 @@ export async function enqueueEmail(
   }
 }
 
+/**
+ * Add a message to an outbox inside the caller's product transaction.
+ *
+ * This is the boundary for workflows where changing durable product state
+ * without also recording its email would lose the notification forever.
+ * Delivery still happens after commit through the ordinary outbox worker.
+ */
+export async function enqueueEmailInTransaction(
+  client: PoolClient,
+  message: EmailMessage,
+  options: QueueEmailOptions,
+): Promise<SendEmailResult> {
+  try {
+    const queued = await insertEmail(client, message, options.idempotencyKey, options);
+    return { ok: true, id: queued.id, deduplicated: queued.deduplicated };
+  } catch (error) {
+    if (error instanceof SuppressedRecipientError) {
+      log.warn("email.outbox", "Suppressed recipient was not queued", {
+        channel: message.channel,
+      });
+      return { ok: false, status: 422, error: error.message };
+    }
+    throw error;
+  }
+}
+
 export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<number> {
   if (messages.length === 0) return 0;
   const queued = await transaction(async (client) => {
@@ -450,6 +476,11 @@ function triggerEmailOutboxDrain(): void {
   void drainEmailOutbox().catch((error) => {
     log.error("email.outbox", "Email delivery drain failed", {}, error);
   });
+}
+
+/** Wake delivery after a caller commits messages with `enqueueEmailInTransaction`. */
+export function wakeEmailOutbox(): void {
+  triggerEmailOutboxDrain();
 }
 
 let workerTimer: ReturnType<typeof setTimeout> | null = null;

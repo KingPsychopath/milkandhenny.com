@@ -347,7 +347,7 @@ export function normaliseEventInput(
       waitlistEnabled:
         typeof input.waitlistEnabled === "boolean"
           ? input.waitlistEnabled
-          : (existing?.waitlistEnabled ?? false),
+          : (existing?.waitlistEnabled ?? true),
       refundPolicy: optionalText(input, "refundPolicy", MAX_TEXT, existing?.refundPolicy),
       transferable:
         typeof input.transferable === "boolean"

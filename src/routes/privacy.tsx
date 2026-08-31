@@ -38,10 +38,10 @@ function PrivacyPage() {
             <h2 className="font-mono text-sm font-bold tracking-tight">What we collect</h2>
             <p className="mt-3 theme-muted">
               We collect the details that you give us when you buy or receive a ticket, submit a
-              pitch, upload media, send a report, or use a private transfer. These details can
-              include your name, email address, content, and files. We also process basic security
-              and service data, such as an IP address, request time, browser details, and error
-              records.
+              pitch, join an event waitlist, upload media, send a report, or use a private transfer.
+              These details can include your name, email address, content, and files. We also
+              process basic security and service data, such as an IP address, request time, browser
+              details, and error records.
             </p>
           </section>
 
@@ -49,8 +49,8 @@ function PrivacyPage() {
             <h2 className="font-mono text-sm font-bold tracking-tight">Why we use it</h2>
             <p className="mt-3 theme-muted">
               We use this information to provide the service you asked for, deliver tickets and
-              messages, run events, prevent abuse, keep the site reliable, answer you, and meet our
-              legal duties. We do not sell personal information.
+              requested availability alerts, run events, prevent abuse, keep the site reliable,
+              answer you, and meet our legal duties. We do not sell personal information.
             </p>
           </section>
 
@@ -83,8 +83,9 @@ function PrivacyPage() {
               offline features, and editable name and email suggestions. These suggestions stay in
               your browser until you clear its site data. Private transfers and temporary event data
               expire on the dates shown in the service. We keep transaction and security records for
-              as long as needed for accounting, disputes, safety, and legal duties. We then delete
-              or anonymise them.
+              as long as needed for accounting, disputes, safety, and legal duties. Event waitlist
+              requests expire when they can no longer be used and are not treated as marketing
+              consent. We then delete or anonymise records when they are no longer needed.
             </p>
             <p className="mt-3 theme-muted">
               Issue reports do not include full session replays, keystrokes, or pointer movement.
@@ -103,7 +104,9 @@ function PrivacyPage() {
             <p className="mt-3 theme-muted">
               You can ask for access, correction, deletion, restriction, or a copy of your personal
               information. Some rights depend on the reason we hold the data and the law that
-              applies. You can also object or complain to your local data protection authority.
+              applies. A waitlist confirmation email also gives you a private management link where
+              you can leave before an alert is sent. You can also object or complain to your local
+              data protection authority.
             </p>
             <BrowserProfileControl />
           </section>

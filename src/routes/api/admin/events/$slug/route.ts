@@ -14,6 +14,8 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
+import { reconcileEventWaitlist } from "@/features/event-waitlist/waitlist.server";
+import { log } from "@/lib/platform/logger.server";
 
 /**
  * A single admin event: read, update, delete.
@@ -83,7 +85,25 @@ async function handlePATCH(request: Request, slug: string) {
           origin: new URL(request.url).origin,
         })
       : undefined;
-    return Response.json({ event: result.value.value, cancellation });
+    let waitlistNotifications = 0;
+    try {
+      waitlistNotifications = (
+        await reconcileEventWaitlist({
+          eventSlug: result.value.value.slug,
+          origin: new URL(request.url).origin,
+        })
+      ).count;
+    } catch (error) {
+      // The scheduler retries from durable inventory and waitlist state. An
+      // email staging outage must not roll back a valid event capacity edit.
+      log.error(
+        "events.waitlist",
+        "Immediate waitlist reconciliation failed",
+        { eventSlug: result.value.value.slug },
+        error,
+      );
+    }
+    return Response.json({ event: result.value.value, cancellation, waitlistNotifications });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.update", "Failed to update event", error);
   }

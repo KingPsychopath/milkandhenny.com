@@ -62,6 +62,7 @@ import { Route as ThingsSpellingPartyRouteImport } from './routes/things.spellin
 import { Route as ThingsTwinRouteImport } from './routes/things.twin'
 import { Route as TicketIdRouteImport } from './routes/ticket.$id'
 import { Route as VaultSlugRouteImport } from './routes/vault/$slug'
+import { Route as WaitlistTokenRouteImport } from './routes/waitlist.$token'
 import { Route as WordsIndexRouteImport } from './routes/words/index'
 import { Route as WordsSlugRouteImport } from './routes/words/$slug'
 import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albums/route'
@@ -195,6 +196,7 @@ import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './rout
 import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
 import { Route as ApiAdminEventsSlugScoringRouteRouteImport } from './routes/api/admin/events/$slug/scoring/route'
 import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
+import { Route as ApiAdminEventsSlugWaitlistRouteRouteImport } from './routes/api/admin/events/$slug/waitlist/route'
 import { Route as ApiAdminTokensSessionsJtiRouteRouteImport } from './routes/api/admin/tokens/sessions/$jti/route'
 import { Route as ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/route'
 import { Route as ApiEventsSlugDiscoveriesClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/claim/route'
@@ -478,6 +480,11 @@ const TicketIdRoute = TicketIdRouteImport.update({
 const VaultSlugRoute = VaultSlugRouteImport.update({
   id: '/vault/$slug',
   path: '/vault/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WaitlistTokenRoute = WaitlistTokenRouteImport.update({
+  id: '/waitlist/$token',
+  path: '/waitlist/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WordsIndexRoute = WordsIndexRouteImport.update({
@@ -1219,6 +1226,12 @@ const ApiAdminEventsSlugTicketsRouteRoute =
     path: '/tickets',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
+const ApiAdminEventsSlugWaitlistRouteRoute =
+  ApiAdminEventsSlugWaitlistRouteRouteImport.update({
+    id: '/waitlist',
+    path: '/waitlist',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
 const ApiAdminTokensSessionsJtiRouteRoute =
   ApiAdminTokensSessionsJtiRouteRouteImport.update({
     id: '/$jti',
@@ -1384,6 +1397,7 @@ export interface FileRoutesByFullPath {
   '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
+  '/waitlist/$token': typeof WaitlistTokenRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/events/': typeof EventsIndexRoute
@@ -1521,6 +1535,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
+  '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
@@ -1591,6 +1606,7 @@ export interface FileRoutesByTo {
   '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
+  '/waitlist/$token': typeof WaitlistTokenRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin': typeof AdminIndexRoute
   '/events': typeof EventsIndexRoute
@@ -1728,6 +1744,7 @@ export interface FileRoutesByTo {
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
+  '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
@@ -1799,6 +1816,7 @@ export interface FileRoutesById {
   '/things/twin': typeof ThingsTwinRoute
   '/ticket/$id': typeof TicketIdRoute
   '/vault/$slug': typeof VaultSlugRoute
+  '/waitlist/$token': typeof WaitlistTokenRoute
   '/words/$slug': typeof WordsSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/events/': typeof EventsIndexRoute
@@ -1936,6 +1954,7 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
+  '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
   '/api/admin/tokens/sessions/$jti': typeof ApiAdminTokensSessionsJtiRouteRoute
   '/api/events/$slug/discoveries/$discoveryId': typeof ApiEventsSlugDiscoveriesDiscoveryIdRouteRouteWithChildren
   '/api/events/$slug/discoveries/claim': typeof ApiEventsSlugDiscoveriesClaimRouteRoute
@@ -2008,6 +2027,7 @@ export interface FileRouteTypes {
     | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
+    | '/waitlist/$token'
     | '/words/$slug'
     | '/admin/'
     | '/events/'
@@ -2145,6 +2165,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
+    | '/api/admin/events/$slug/waitlist'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
@@ -2215,6 +2236,7 @@ export interface FileRouteTypes {
     | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
+    | '/waitlist/$token'
     | '/words/$slug'
     | '/admin'
     | '/events'
@@ -2352,6 +2374,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
+    | '/api/admin/events/$slug/waitlist'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
@@ -2422,6 +2445,7 @@ export interface FileRouteTypes {
     | '/things/twin'
     | '/ticket/$id'
     | '/vault/$slug'
+    | '/waitlist/$token'
     | '/words/$slug'
     | '/admin/'
     | '/events/'
@@ -2559,6 +2583,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
     | '/api/admin/events/$slug/tickets'
+    | '/api/admin/events/$slug/waitlist'
     | '/api/admin/tokens/sessions/$jti'
     | '/api/events/$slug/discoveries/$discoveryId'
     | '/api/events/$slug/discoveries/claim'
@@ -2618,6 +2643,7 @@ export interface RootRouteChildren {
   TIdRoute: typeof TIdRoute
   TicketIdRoute: typeof TicketIdRoute
   VaultSlugRoute: typeof VaultSlugRoute
+  WaitlistTokenRoute: typeof WaitlistTokenRoute
   WordsSlugRoute: typeof WordsSlugRoute
   AdminIndexRoute: typeof AdminIndexRoute
   EventsIndexRoute: typeof EventsIndexRoute
@@ -3074,6 +3100,13 @@ declare module '@tanstack/react-router' {
       path: '/vault/$slug'
       fullPath: '/vault/$slug'
       preLoaderRoute: typeof VaultSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/waitlist/$token': {
+      id: '/waitlist/$token'
+      path: '/waitlist/$token'
+      fullPath: '/waitlist/$token'
+      preLoaderRoute: typeof WaitlistTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/words/': {
@@ -4007,6 +4040,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEventsSlugTicketsRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
+    '/api/admin/events/$slug/waitlist': {
+      id: '/api/admin/events/$slug/waitlist'
+      path: '/waitlist'
+      fullPath: '/api/admin/events/$slug/waitlist'
+      preLoaderRoute: typeof ApiAdminEventsSlugWaitlistRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
     '/api/admin/tokens/sessions/$jti': {
       id: '/api/admin/tokens/sessions/$jti'
       path: '/$jti'
@@ -4388,6 +4428,7 @@ interface ApiAdminEventsSlugRouteRouteChildren {
   ApiAdminEventsSlugScannerLinksRouteRoute: typeof ApiAdminEventsSlugScannerLinksRouteRoute
   ApiAdminEventsSlugScoringRouteRoute: typeof ApiAdminEventsSlugScoringRouteRoute
   ApiAdminEventsSlugTicketsRouteRoute: typeof ApiAdminEventsSlugTicketsRouteRoute
+  ApiAdminEventsSlugWaitlistRouteRoute: typeof ApiAdminEventsSlugWaitlistRouteRoute
 }
 
 const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren =
@@ -4402,6 +4443,7 @@ const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren
       ApiAdminEventsSlugScannerLinksRouteRoute,
     ApiAdminEventsSlugScoringRouteRoute: ApiAdminEventsSlugScoringRouteRoute,
     ApiAdminEventsSlugTicketsRouteRoute: ApiAdminEventsSlugTicketsRouteRoute,
+    ApiAdminEventsSlugWaitlistRouteRoute: ApiAdminEventsSlugWaitlistRouteRoute,
   }
 
 const ApiAdminEventsSlugRouteRouteWithChildren =
@@ -4594,6 +4636,7 @@ const rootRouteChildren: RootRouteChildren = {
   TIdRoute: TIdRoute,
   TicketIdRoute: TicketIdRoute,
   VaultSlugRoute: VaultSlugRoute,
+  WaitlistTokenRoute: WaitlistTokenRoute,
   WordsSlugRoute: WordsSlugRoute,
   AdminIndexRoute: AdminIndexRoute,
   EventsIndexRoute: EventsIndexRoute,

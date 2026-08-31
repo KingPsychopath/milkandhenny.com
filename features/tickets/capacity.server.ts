@@ -26,6 +26,25 @@ type CapacityRow = {
   quantity: string;
 };
 
+const CAPACITY_SNAPSHOT_SQL = `
+  select event_slug, 'sold'::text as source, ticket_type_id, count(*)::text as quantity
+    from tickets
+   where event_slug = any($1::text[]) and status = 'valid'
+   group by event_slug, ticket_type_id
+  union all
+  select event_slug, 'checkout'::text as source, ticket_type_id,
+         sum(quantity)::text as quantity
+    from checkout_sessions
+   where event_slug = any($1::text[]) and ${ACTIVE_CHECKOUT_HOLD_SQL}
+   group by event_slug, ticket_type_id
+  union all
+  select event_slug, 'exchange'::text as source, to_ticket_type_id as ticket_type_id,
+         count(*)::text as quantity
+    from ticket_exchanges
+   where event_slug = any($1::text[]) and ${ACTIVE_EXCHANGE_HOLD_SQL}
+   group by event_slug, to_ticket_type_id
+`;
+
 function emptySnapshot(): TicketCapacitySnapshot {
   return { sold: {}, checkoutReserved: {}, exchangeReserved: {} };
 }
@@ -57,28 +76,22 @@ export async function getTicketCapacitySnapshots(
 ): Promise<Record<string, TicketCapacitySnapshot>> {
   const safe = [...new Set(slugs.filter(isValidEventSlug))];
   if (safe.length === 0) return {};
-  const rows = await query<CapacityRow>(
-    `select event_slug, 'sold'::text as source, ticket_type_id, count(*)::text as quantity
-       from tickets
-      where event_slug = any($1::text[]) and status = 'valid'
-      group by event_slug, ticket_type_id
-     union all
-     select event_slug, 'checkout'::text as source, ticket_type_id,
-            sum(quantity)::text as quantity
-       from checkout_sessions
-      where event_slug = any($1::text[]) and ${ACTIVE_CHECKOUT_HOLD_SQL}
-      group by event_slug, ticket_type_id
-     union all
-     select event_slug, 'exchange'::text as source, to_ticket_type_id as ticket_type_id,
-            count(*)::text as quantity
-       from ticket_exchanges
-      where event_slug = any($1::text[]) and ${ACTIVE_EXCHANGE_HOLD_SQL}
-      group by event_slug, to_ticket_type_id`,
-    [safe],
-  );
+  const rows = await query<CapacityRow>(CAPACITY_SNAPSHOT_SQL, [safe]);
   const snapshots = Object.fromEntries(safe.map((slug) => [slug, emptySnapshot()]));
   for (const row of rows) addCount(snapshots[row.event_slug], row);
   return snapshots;
+}
+
+/** Capacity read on a caller-owned transaction, used after locking an event row. */
+export async function getTicketCapacitySnapshotWithClient(
+  client: PoolClient,
+  slug: string,
+): Promise<TicketCapacitySnapshot> {
+  if (!isValidEventSlug(slug)) return emptySnapshot();
+  const result = await client.query<CapacityRow>(CAPACITY_SNAPSHOT_SQL, [[slug]]);
+  const snapshot = emptySnapshot();
+  for (const row of result.rows) addCount(snapshot, row);
+  return snapshot;
 }
 
 export async function countCheckoutHolds(

@@ -34,6 +34,7 @@ import {
 import type { DoorTicketView } from "@/features/tickets/types";
 import { AdminFormAction } from "./AdminFormAction";
 import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
+import { EventWaitlistPanel } from "./EventWaitlistPanel";
 import {
   AdminStatus,
   adminToneBorderClass,
@@ -94,6 +95,7 @@ type Draft = {
   transportNote: string;
   stepFreeAccess: boolean;
   capacity: string;
+  waitlistEnabled: boolean;
   refundPolicy: string;
   terms: string;
   heroImage: string;
@@ -122,7 +124,7 @@ type AdminTicket = DoorTicketView & {
 
 type TicketListFilter = "all" | "valid" | "checked-in" | "not-checked-in" | "refunded" | "void";
 type TicketListSort = "newest" | "oldest" | "name" | "status";
-type EventOperationsTool = "overview" | "tickets" | "door" | "messages" | "uploads";
+type EventOperationsTool = "overview" | "tickets" | "waitlist" | "door" | "messages" | "uploads";
 type EventsWorkspaceSelection =
   | { kind: "operations"; slug: string }
   | { kind: "edit"; slug: string }
@@ -271,6 +273,7 @@ const EMPTY_DRAFT: Draft = {
   transportNote: "",
   stepFreeAccess: false,
   capacity: "",
+  waitlistEnabled: true,
   refundPolicy: "",
   terms: "",
   heroImage: "",
@@ -334,6 +337,7 @@ function toDraft(event: EventRecord): Draft {
     transportNote: event.transportNote ?? "",
     stepFreeAccess: event.stepFreeAccess === true,
     capacity: event.capacity ? String(event.capacity) : "",
+    waitlistEnabled: event.waitlistEnabled,
     refundPolicy: event.refundPolicy ?? "",
     terms: event.terms ?? "",
     heroImage: event.heroImage ?? "",
@@ -404,6 +408,7 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     transportNote: draft.transportNote.trim() || null,
     stepFreeAccess: draft.stepFreeAccess,
     capacity: draft.capacity ? Number.parseInt(draft.capacity, 10) : null,
+    waitlistEnabled: draft.waitlistEnabled,
     refundPolicy: draft.refundPolicy.trim() || null,
     terms: draft.terms.trim() || null,
     heroImage: draft.heroImage.trim() || null,
@@ -414,6 +419,39 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     marketingPath: draft.marketingPath.trim() || null,
     ticketTypes,
   };
+}
+
+function waitlistRelevantEventChange(
+  existing: EventRecord,
+  payload: Record<string, unknown>,
+): boolean {
+  if (
+    payload.status !== existing.status ||
+    payload.capacity !== (existing.capacity ?? null) ||
+    payload.waitlistEnabled !== existing.waitlistEnabled
+  ) {
+    return true;
+  }
+  const nextTypes = Array.isArray(payload.ticketTypes) ? payload.ticketTypes : [];
+  const existingShape = existing.ticketTypes.map((type) => ({
+    id: type.id,
+    quantity: type.quantity,
+    hidden: type.hidden,
+    salesStart: type.salesStart ?? null,
+    salesEnd: type.salesEnd ?? null,
+  }));
+  const nextShape = nextTypes.map((value) => {
+    const type = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const record = type as Record<string, unknown>;
+    return {
+      id: record.id,
+      quantity: record.quantity,
+      hidden: record.hidden,
+      salesStart: record.salesStart ?? null,
+      salesEnd: record.salesEnd ?? null,
+    };
+  });
+  return JSON.stringify(existingShape) !== JSON.stringify(nextShape);
 }
 
 function Field({
@@ -2280,6 +2318,7 @@ function EventOperations({
   const operationTools: Array<{ value: EventOperationsTool; label: string }> = [
     { value: "overview", label: "overview" },
     { value: "tickets", label: "tickets" },
+    ...(permissions.manageEvents ? [{ value: "waitlist" as const, label: "waitlist" }] : []),
     ...(permissions.manageEvents ? [{ value: "door" as const, label: "door setup" }] : []),
     ...(permissions.manageCommunications
       ? [{ value: "messages" as const, label: "messages" }]
@@ -2885,6 +2924,10 @@ function EventOperations({
         />
       ) : null}
 
+      {activeTool === "waitlist" && permissions.manageEvents ? (
+        <EventWaitlistPanel eventSlug={event.slug} authFetch={authFetch} onError={onError} />
+      ) : null}
+
       {activeTool === "door" && permissions.manageEvents ? (
         <ScanningSection
           event={event}
@@ -3084,6 +3127,48 @@ export function EventsPanel({
       const existing = isNew ? undefined : events.find((event) => event.slug === editing);
       const cancelling =
         !isNew && existing?.status !== "cancelled" && payload.status === "cancelled";
+      if (!isNew && existing && !cancelling && waitlistRelevantEventChange(existing, payload)) {
+        const previewResponse = await authFetch(`/api/admin/events/${editing}/waitlist`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "preview", event: payload }),
+        });
+        const preview: unknown = await previewResponse.json().catch(() => null);
+        if (!previewResponse.ok) {
+          const message =
+            preview &&
+            typeof preview === "object" &&
+            !Array.isArray(preview) &&
+            "error" in preview &&
+            typeof preview.error === "string"
+              ? preview.error
+              : "Could not check the waitlist impact";
+          throw new Error(message);
+        }
+        const impact =
+          preview &&
+          typeof preview === "object" &&
+          !Array.isArray(preview) &&
+          "count" in preview &&
+          typeof preview.count === "number"
+            ? (preview as {
+                count: number;
+                scopes?: Array<{ label: string; count: number }>;
+              })
+            : null;
+        if (impact && impact.count > 0) {
+          const detail = (impact.scopes ?? [])
+            .map((scope) => `${scope.count} for ${scope.label}`)
+            .join(" · ");
+          const confirmed = await confirm({
+            title: `Notify ${impact.count} waitlisted ${impact.count === 1 ? "person" : "people"}?`,
+            description: `${detail ? `${detail}. ` : ""}Saving this availability change queues one email for each person. Tickets are not reserved for them.`,
+            confirmLabel: "save and notify",
+            intent: "default",
+          });
+          if (!confirmed) return;
+        }
+      }
       let headers: Record<string, string> = { "Content-Type": "application/json" };
       if (cancelling) {
         const cancellationReason = await prompt({
@@ -3120,7 +3205,20 @@ export function EventsPanel({
             : "Failed to save event";
         throw new Error(message);
       }
-      onStatus(isNew ? "Event created" : "Event saved");
+      const waitlistNotifications =
+        data &&
+        typeof data === "object" &&
+        "waitlistNotifications" in data &&
+        typeof data.waitlistNotifications === "number"
+          ? data.waitlistNotifications
+          : 0;
+      onStatus(
+        isNew
+          ? "Event created"
+          : waitlistNotifications > 0
+            ? `Event saved · ${waitlistNotifications} waitlist ${waitlistNotifications === 1 ? "email" : "emails"} queued`
+            : "Event saved",
+      );
       setSelection(null);
       setDraft(null);
       await load();
@@ -3689,6 +3787,24 @@ export function EventsPanel({
                     }
                   />
                   <span className="font-mono text-micro theme-muted">step-free access</span>
+                </label>
+
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.waitlistEnabled}
+                    onChange={(event) =>
+                      setDraft({ ...draft, waitlistEnabled: event.target.checked })
+                    }
+                    className="mt-0.5"
+                  />
+                  <span className="font-mono text-micro leading-relaxed theme-muted">
+                    waitlist alerts enabled
+                    <span className="block theme-faint">
+                      Shows verified signup on sold-out tickets and sends one FIFO availability
+                      alert per person.
+                    </span>
+                  </span>
                 </label>
 
                 <div className="space-y-3">

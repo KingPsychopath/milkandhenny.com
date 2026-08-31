@@ -45,6 +45,8 @@ export const EMAIL_KINDS = [
   "communication",
   "communication-stage",
   "communication-test",
+  "waitlist-confirmation",
+  "waitlist-availability",
   "pitch-welcome",
   "pitch-published",
   "pitch-recovery",
@@ -68,6 +70,7 @@ export interface EmailContext {
   assignmentId?: string;
   transferId?: string;
   returnRequestId?: string;
+  waitlistEntryId?: string;
   staffAssignmentId?: string;
   adminGrantId?: string;
   caseId?: string;
