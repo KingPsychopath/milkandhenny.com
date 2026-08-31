@@ -72,29 +72,42 @@ full decision table and URL rules live in [navigation.md](./navigation.md).
 
 Effect v4 is used at service boundaries, not as a general programming style. Three subsystems use it today: multiplayer (`features/things/shared`), events/ticketing (`features/events`, `features/tickets`), and the Pitch Night studio (`features/things/pitches`).
 
-The same boundary pattern is used by all three:
+Events/ticketing and Pitch Night retain the established service-wrapper pattern. Multiplayer moves
+the boundary inward because game commands need deterministic replay:
 
 ```text
 TanStack / Nitro boundary
   -> ManagedRuntime (one per subsystem, disposed by a Nitro close hook)
-       -> Context.Service wrapping plain async engine functions
-            -> timeout, Data.TaggedError failures, structured logs, spans
+       -> Effect workflow
+            -> clock, randomness, ID and persistence services
+            -> pure game transition
+            -> atomic room + official-result outbox commit
+            -> advisory wake publication
+            -> typed failures, timeout, logging, spans and metrics
 ```
 
-Engine functions stay ordinary `async` code in `*.server.ts` and own the product rules. The service layer owns how those calls behave operationally. Effect remains behind `.server.ts` boundaries; browser contracts, React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise conversion happens only at TanStack/Nitro edges.
+Multiplayer game rules receive an explicit `{ now, randomValues, newId }` context. They never obtain
+time, randomness or identifiers themselves. Redis, locks, outbox persistence, wake publication and
+telemetry remain in server-only Effect workflows. Infrastructure adapters may retain plain async
+implementations behind those services; the state transition itself stays ordinary TypeScript and
+returns state plus domain events. Effect remains behind `.server.ts` boundaries; browser contracts,
+React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise
+conversion happens only at TanStack/Nitro edges.
 
-Effect is pinned to an exact v4 beta version while v4 is prerelease, so a version bump is a coordinated change rather than a routine upgrade.
+Effect is pinned to an exact v4 release-candidate version while v4 is prerelease, so a version bump is a coordinated change rather than a routine upgrade. The complete resource, cancellation, failure, retry, and shutdown contract is recorded in [effect-lifecycle.md](./effect-lifecycle.md).
 
 ## Multiplayer runtime
 
-Multiplayer is the larger of the two Effect subsystems:
+Multiplayer is the largest Effect subsystem:
 
 ```text
 TanStack / Nitro boundary
   -> one process-wide ManagedRuntime
-       -> game-owned Effect service
-            -> game-owned domain engine and policy
-                 -> Redis or development-memory adapter
+       -> game-owned Effect workflow
+            -> Redis or development-memory room store
+            -> game-owned pure command transition
+            -> atomic room + durable outbox commit
+            -> advisory wake publication
        -> bounded telemetry
        -> optional Redis realtime backplane
 ```

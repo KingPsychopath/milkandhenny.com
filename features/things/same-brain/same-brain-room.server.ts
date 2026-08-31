@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { SameBrainRoomService } from "./same-brain-room-service.server";
@@ -27,7 +26,6 @@ export function createSameBrainRoom(input: Parameters<typeof engine.createSameBr
 export function joinSameBrainRoom(input: Parameters<typeof engine.joinSameBrainRoom>[0]) {
   return runMultiplayerEffect(SameBrainRoomService.use((service) => service.joinRoom(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("same-brain", input.roomId).catch(() => undefined);
       return result;
     },
   );
@@ -51,7 +49,6 @@ export function applySameBrainHostAction(
   return runMultiplayerEffect(
     SameBrainRoomService.use((service) => service.applyHostAction(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("same-brain", input.roomId).catch(() => undefined);
     if (result.accepted && input.action.type === "player.remove") {
       await markGamePoolPlayersRemoved({
         roomId: input.roomId,
@@ -91,7 +88,6 @@ export function applySameBrainPlayerAction(
   return runMultiplayerEffect(
     SameBrainRoomService.use((service) => service.applyPlayerAction(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("same-brain", input.roomId).catch(() => undefined);
     if (result.accepted && input.action.type === "room.leave") {
       await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
         () => undefined,

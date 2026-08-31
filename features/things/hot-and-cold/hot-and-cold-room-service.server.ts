@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import * as engine from "./hot-and-cold-room-engine.server";
 
 export class HotAndColdRoomService extends Context.Service<
@@ -27,8 +27,9 @@ function createRoom(input: Parameters<typeof engine.createHotAndColdRoom>[0]) {
   );
 }
 function joinRoom(input: Parameters<typeof engine.joinHotAndColdRoom>[0]) {
-  return multiplayerOperation({ game: "hot-and-cold", operation: "join_room" }, () =>
-    engine.joinHotAndColdRoom(input),
+  return multiplayerCommand(
+    { game: "hot-and-cold", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinHotAndColdRoom(input),
   );
 }
 function readSnapshot(input: Parameters<typeof engine.readHotAndColdSnapshot>[0]) {
@@ -38,9 +39,14 @@ function readSnapshot(input: Parameters<typeof engine.readHotAndColdSnapshot>[0]
   );
 }
 function applyAction(input: Parameters<typeof engine.applyHotAndColdAction>[0]) {
-  return multiplayerOperation(
-    { game: "hot-and-cold", operation: "player_action", timeoutMs: 15_000 },
-    () => engine.applyHotAndColdAction(input),
+  return multiplayerCommand(
+    {
+      game: "hot-and-cold",
+      operation: "player_action",
+      timeoutMs: 15_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applyHotAndColdAction(input, context),
   );
 }
 function authorizeSocket(input: Parameters<typeof engine.authorizeHotAndColdSocket>[0]) {

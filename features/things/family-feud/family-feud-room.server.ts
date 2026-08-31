@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { FamilyFeudRoomService } from "./family-feud-room-service.server";
@@ -28,11 +27,7 @@ export function pairFamilyFeudController(
 ) {
   return runMultiplayerEffect(
     FamilyFeudRoomService.use((service) => service.pairController(input)),
-  ).then(async (result) => {
-    if (result.ok)
-      await publishMultiplayerRoomWake("family-feud", input.roomId).catch(() => undefined);
-    return result;
-  });
+  );
 }
 
 export function applyFamilyFeudControllerAction(
@@ -40,10 +35,7 @@ export function applyFamilyFeudControllerAction(
 ) {
   return runMultiplayerEffect(
     FamilyFeudRoomService.use((service) => service.applyControllerAction(input)),
-  ).then(async (result) => {
-    await publishMultiplayerRoomWake("family-feud", input.roomId).catch(() => undefined);
-    return result;
-  });
+  );
 }
 
 export function applyFamilyFeudBuzzerAction(
@@ -51,10 +43,7 @@ export function applyFamilyFeudBuzzerAction(
 ) {
   return runMultiplayerEffect(
     FamilyFeudRoomService.use((service) => service.applyBuzzerAction(input)),
-  ).then(async (result) => {
-    await publishMultiplayerRoomWake("family-feud", input.roomId).catch(() => undefined);
-    return result;
-  });
+  );
 }
 
 export function closeFamilyFeudRoom(...input: Parameters<typeof engine.closeFamilyFeudRoom>) {

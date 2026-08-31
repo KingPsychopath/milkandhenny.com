@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { currentOperationSignal } from "./operation-context.server";
 
 /**
  * Shared Redis REST client.
@@ -20,5 +21,12 @@ export function getRedisRestConfig(): RedisRestConfig | null {
 
 export function getRedis(): Redis | null {
   const config = getRedisRestConfig();
-  return config ? new Redis({ url: config.url, token: config.token }) : null;
+  return config
+    ? new Redis({
+        url: config.url,
+        token: config.token,
+        // The SDK accepts a function so one cached client can follow each Effect operation.
+        signal: () => currentOperationSignal() ?? new AbortController().signal,
+      })
+    : null;
 }

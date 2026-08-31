@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import * as engine from "./draw-country-room-engine.server";
 
 export class DrawCountryRoomService extends Context.Service<
@@ -29,8 +29,9 @@ function createRoom(input: Parameters<typeof engine.createDrawCountryRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinDrawCountryRoom>[0]) {
-  return multiplayerOperation({ game: "draw-country", operation: "join_room" }, () =>
-    engine.joinDrawCountryRoom(input),
+  return multiplayerCommand(
+    { game: "draw-country", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinDrawCountryRoom(input),
   );
 }
 
@@ -42,8 +43,9 @@ function readSnapshot(input: Parameters<typeof engine.readDrawCountrySnapshot>[0
 }
 
 function applyAction(input: Parameters<typeof engine.applyDrawCountryAction>[0]) {
-  return multiplayerOperation({ game: "draw-country", operation: "apply_action" }, () =>
-    engine.applyDrawCountryAction(input),
+  return multiplayerCommand(
+    { game: "draw-country", operation: "apply_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyDrawCountryAction(input, context),
   );
 }
 

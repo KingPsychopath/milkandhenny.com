@@ -30,19 +30,21 @@ export class EventsService extends Context.Service<
 }
 
 function create(input: EventInput) {
-  return eventsOperation({ domain: "events", operation: "create" }, () =>
+  return eventsOperation({ domain: "events", operation: "create", kind: "mutation" }, () =>
     engine.createEvent(input),
   );
 }
 
 function update(slug: string, input: EventInput) {
-  return eventsOperation({ domain: "events", operation: "update" }, () =>
+  return eventsOperation({ domain: "events", operation: "update", kind: "mutation" }, () =>
     engine.updateEvent(slug, input),
   );
 }
 
 function remove(slug: string) {
-  return eventsOperation({ domain: "events", operation: "remove" }, () => engine.removeEvent(slug));
+  return eventsOperation({ domain: "events", operation: "remove", kind: "mutation" }, () =>
+    engine.removeEvent(slug),
+  );
 }
 
 function read(slug: string) {

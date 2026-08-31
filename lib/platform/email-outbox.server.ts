@@ -8,6 +8,11 @@ import {
   type SendEmailResult,
 } from "./email.server";
 import { log } from "./logger.server";
+import {
+  durableWorkSnapshot,
+  DURABLE_WORK_LOG_SCOPE,
+  type DurableWorkSnapshot,
+} from "@/features/system/durable-work";
 import { isDatabaseConfigured, query, transaction } from "./postgres.server";
 import {
   EMAIL_LEDGER_RETENTION_DAYS,
@@ -230,12 +235,17 @@ export async function enqueueEmail(
     return { ok: true, id: queued.id, deduplicated: queued.deduplicated };
   } catch (error) {
     if (error instanceof SuppressedRecipientError) {
-      log.warn("email.outbox", "Suppressed recipient was not queued", {
+      log.warn(DURABLE_WORK_LOG_SCOPE.email, "Suppressed recipient was not queued", {
         channel: message.channel,
       });
       return { ok: false, status: 422, error: error.message };
     }
-    log.error("email.outbox", "Could not queue email", { channel: message.channel }, error);
+    log.error(
+      DURABLE_WORK_LOG_SCOPE.email,
+      "Could not queue email",
+      { channel: message.channel },
+      error,
+    );
     return { ok: false, status: 503, error: "Email could not be queued" };
   }
 }
@@ -257,7 +267,7 @@ export async function enqueueEmailInTransaction(
     return { ok: true, id: queued.id, deduplicated: queued.deduplicated };
   } catch (error) {
     if (error instanceof SuppressedRecipientError) {
-      log.warn("email.outbox", "Suppressed recipient was not queued", {
+      log.warn(DURABLE_WORK_LOG_SCOPE.email, "Suppressed recipient was not queued", {
         channel: message.channel,
       });
       return { ok: false, status: 422, error: error.message };
@@ -276,7 +286,7 @@ export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<n
         if (result.status === "pending" && !result.deduplicated) queued += 1;
       } catch (error) {
         if (!(error instanceof SuppressedRecipientError)) throw error;
-        log.warn("email.outbox", "Suppressed recipient was omitted from batch", {
+        log.warn(DURABLE_WORK_LOG_SCOPE.email, "Suppressed recipient was omitted from batch", {
           channel: item.message.channel,
         });
       }
@@ -474,7 +484,7 @@ export function drainEmailOutbox(): Promise<number> {
 
 function triggerEmailOutboxDrain(): void {
   void drainEmailOutbox().catch((error) => {
-    log.error("email.outbox", "Email delivery drain failed", {}, error);
+    log.error(DURABLE_WORK_LOG_SCOPE.email, "Email delivery drain failed", {}, error);
   });
 }
 
@@ -508,7 +518,12 @@ export async function stopEmailOutboxWorker(): Promise<void> {
   if (workerTimer) clearTimeout(workerTimer);
   workerTimer = null;
   await draining?.catch((error) => {
-    log.error("email.outbox", "Email delivery drain failed during shutdown", {}, error);
+    log.error(
+      DURABLE_WORK_LOG_SCOPE.email,
+      "Email delivery drain failed during shutdown",
+      {},
+      error,
+    );
   });
 }
 
@@ -523,6 +538,7 @@ export async function describeEmailOutbox(): Promise<{
   awaitingProviderFeedback: number;
   oldestPendingAt: string | null;
   latestDeliveryEventAt: string | null;
+  durableWork: DurableWorkSnapshot;
 }> {
   if (!isDatabaseConfigured()) {
     return {
@@ -536,6 +552,13 @@ export async function describeEmailOutbox(): Promise<{
       awaitingProviderFeedback: 0,
       oldestPendingAt: null,
       latestDeliveryEventAt: null,
+      durableWork: durableWorkSnapshot({
+        available: false,
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        oldestPendingAt: null,
+      }),
     };
   }
   try {
@@ -577,9 +600,16 @@ export async function describeEmailOutbox(): Promise<{
       awaitingProviderFeedback: Number(row?.awaiting_feedback ?? 0),
       oldestPendingAt: row?.oldest_pending_at?.toISOString() ?? null,
       latestDeliveryEventAt: row?.latest_delivery_event_at?.toISOString() ?? null,
+      durableWork: durableWorkSnapshot({
+        available: true,
+        pending: Number(row?.pending ?? 0),
+        processing: Number(row?.processing ?? 0),
+        failed: Number(row?.failed ?? 0),
+        oldestPendingAt: row?.oldest_pending_at?.toISOString() ?? null,
+      }),
     };
   } catch (error) {
-    log.error("email.outbox", "Could not read outbox status", {}, error);
+    log.error(DURABLE_WORK_LOG_SCOPE.email, "Could not read outbox status", {}, error);
     return {
       available: false,
       pending: 0,
@@ -591,6 +621,13 @@ export async function describeEmailOutbox(): Promise<{
       awaitingProviderFeedback: 0,
       oldestPendingAt: null,
       latestDeliveryEventAt: null,
+      durableWork: durableWorkSnapshot({
+        available: false,
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        oldestPendingAt: null,
+      }),
     };
   }
 }

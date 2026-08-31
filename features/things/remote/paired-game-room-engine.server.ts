@@ -1,4 +1,11 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import {
+  applyGameCommand,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
 import { log } from "@/lib/platform/logger.server";
 import { pairedGameRoomRedisKeys } from "./remote-keys";
 import {
@@ -62,6 +69,55 @@ interface MemoryRoom {
   activeJudgeEpoch: string | null;
   playerSeenAt: number;
   judgeSeenAt: number;
+}
+
+export interface PairedGameState {
+  processedActions: string[];
+  snapshot: RemoteSyncedSnapshot | null;
+  commands: RemoteCommand[];
+  playerSeenAt: number;
+  judgeSeenAt: number;
+}
+
+interface PairedSnapshotAction {
+  snapshot: RemoteSyncedSnapshot;
+  lastCommandSequence: number;
+}
+
+export type PairedGameCommand = VersionedGameCommand<
+  "paired-remote",
+  PairedSnapshotAction,
+  { connectionEpoch: string }
+>;
+
+export function applyPairedGameCommand(
+  state: PairedGameState,
+  command: PairedGameCommand,
+  context: GameContext,
+) {
+  return applyGameCommand(state, command, context, (draft) => {
+    const incoming = command.action.snapshot;
+    const previousSnapshot = draft.snapshot;
+    draft.commands = draft.commands.filter(
+      (queued) =>
+        queued.sequence > command.action.lastCommandSequence &&
+        context.now - queued.createdAt <= COMMAND_MAX_AGE_MS,
+    );
+    const shouldStoreSnapshot =
+      !previousSnapshot ||
+      previousSnapshot.connectionEpoch !== incoming.connectionEpoch ||
+      incoming.revision >= previousSnapshot.revision;
+    if (shouldStoreSnapshot) draft.snapshot = { ...incoming, updatedAt: context.now };
+    draft.playerSeenAt = context.now;
+    if (!draft.processedActions.includes(command.actionId))
+      draft.processedActions = [...draft.processedActions, command.actionId].slice(-64);
+    return {
+      commands: draft.commands,
+      judgeConnected: context.now - draft.judgeSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1_000,
+      previousSnapshot,
+      shouldStoreSnapshot,
+    };
+  });
 }
 
 const memoryRooms = createMemoryRoomStore<MemoryRoom>("remote");
@@ -366,12 +422,15 @@ export async function readPairedGamePlayerSetup(input: {
   };
 }
 
-export async function syncPairedGamePlayer(input: {
-  roomId: string;
-  playerToken: string;
-  snapshot: RemoteSyncedSnapshot;
-  lastCommandSequence: number;
-}): Promise<RemotePlayerSyncResult> {
+export async function syncPairedGamePlayer(
+  input: {
+    roomId: string;
+    playerToken: string;
+    snapshot: RemoteSyncedSnapshot;
+    lastCommandSequence: number;
+  },
+  workflowContext: GameContext = liveGameContext(),
+): Promise<RemotePlayerSyncResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
@@ -380,7 +439,16 @@ export async function syncPairedGamePlayer(input: {
   if (meta.game !== input.snapshot.game) {
     return remotePlayerSyncFailure("game_mismatch", "Game mismatch");
   }
-  const now = Date.now();
+  const now = workflowContext.now;
+  const command: PairedGameCommand = versionGameCommand({
+    game: "paired-remote",
+    actionId: `${input.snapshot.connectionEpoch}:${input.snapshot.revision}`,
+    actor: { connectionEpoch: input.snapshot.connectionEpoch },
+    action: {
+      snapshot: input.snapshot,
+      lastCommandSequence: input.lastCommandSequence,
+    },
+  });
   await renewPairedGameRoom(context, now);
   const redis = getRedis();
   if (!redis) {
@@ -398,32 +466,34 @@ export async function syncPairedGamePlayer(input: {
       return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
     }
     room.activePlayerEpoch = input.snapshot.connectionEpoch;
-    if (input.lastCommandSequence > 0) {
-      room.commands = room.commands.filter(
-        (command) => command.sequence > input.lastCommandSequence,
-      );
-    }
-    room.commands = room.commands.filter(
-      (command) => now - command.createdAt <= COMMAND_MAX_AGE_MS,
+    const transition = applyPairedGameCommand(
+      {
+        processedActions: room.snapshot
+          ? [`${room.snapshot.connectionEpoch}:${room.snapshot.revision}`]
+          : [],
+        snapshot: room.snapshot,
+        commands: room.commands,
+        playerSeenAt: room.playerSeenAt,
+        judgeSeenAt: room.judgeSeenAt,
+      },
+      command,
+      workflowContext,
     );
-    const previousSnapshot = room.snapshot;
-    const shouldStoreSnapshot =
-      !room.snapshot ||
-      room.snapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
-      input.snapshot.revision >= room.snapshot.revision;
-    if (shouldStoreSnapshot) {
-      logSnapshotTransitions(room.snapshot, input.snapshot);
-      room.snapshot = { ...input.snapshot, updatedAt: now };
-    }
-    room.playerSeenAt = now;
+    if (!transition.ok) return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+    const reduced = transition.value;
+    const outcome = reduced.output!;
+    if (outcome.shouldStoreSnapshot) logSnapshotTransitions(room.snapshot, input.snapshot);
+    room.snapshot = reduced.state.snapshot;
+    room.commands = reduced.state.commands;
+    room.playerSeenAt = reduced.state.playerSeenAt;
     const officialResultChannelId = meta.officialResultChannelId;
     const shouldPublishOfficial =
-      shouldStoreSnapshot &&
+      outcome.shouldStoreSnapshot &&
       input.snapshot.phase === "results" &&
       officialResultChannelId !== undefined &&
-      (!previousSnapshot ||
-        previousSnapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
-        input.snapshot.revision > previousSnapshot.revision);
+      (!outcome.previousSnapshot ||
+        outcome.previousSnapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
+        input.snapshot.revision > outcome.previousSnapshot.revision);
     if (shouldPublishOfficial && officialResultChannelId) {
       const envelope = pairedGameOfficialResult({
         roomId: input.roomId,
@@ -435,8 +505,8 @@ export async function syncPairedGamePlayer(input: {
     }
     return {
       ok: true,
-      commands: room.commands.filter((command) => command.sequence > input.lastCommandSequence),
-      judgeConnected: now - room.judgeSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1000,
+      commands: outcome.commands,
+      judgeConnected: outcome.judgeConnected,
     };
   }
 
@@ -472,30 +542,39 @@ export async function syncPairedGamePlayer(input: {
   // the judge side, room TTL on the key), and reads filter by sequence, so
   // consumed or stale entries simply age out with the room.
   const queuedCommands = await redis.lrange<RemoteCommand>(roomKeys.commands, 0, -1);
-  const commands = queuedCommands.filter(
-    (command) =>
-      command.sequence > input.lastCommandSequence && now - command.createdAt <= COMMAND_MAX_AGE_MS,
-  );
   const storedSnapshot = await redis.get<RemoteSyncedSnapshot>(roomKeys.snapshot);
-  const shouldStoreSnapshot =
-    !storedSnapshot ||
-    storedSnapshot.connectionEpoch !== input.snapshot.connectionEpoch ||
-    input.snapshot.revision >= storedSnapshot.revision;
-  if (shouldStoreSnapshot) logSnapshotTransitions(storedSnapshot, input.snapshot);
-  const stored = { ...input.snapshot, updatedAt: now };
+  const transition = applyPairedGameCommand(
+    {
+      processedActions: storedSnapshot
+        ? [`${storedSnapshot.connectionEpoch}:${storedSnapshot.revision}`]
+        : [],
+      snapshot: storedSnapshot,
+      commands: queuedCommands,
+      playerSeenAt: 0,
+      judgeSeenAt: (await redis.exists(roomKeys.judgePresence)) === 1 ? now : 0,
+    },
+    command,
+    workflowContext,
+  );
+  if (!transition.ok) return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+  const reduced = transition.value;
+  const outcome = reduced.output!;
+  if (outcome.shouldStoreSnapshot) logSnapshotTransitions(storedSnapshot, input.snapshot);
   const official =
-    shouldStoreSnapshot && input.snapshot.phase === "results" && meta.officialResultChannelId
+    outcome.shouldStoreSnapshot &&
+    input.snapshot.phase === "results" &&
+    meta.officialResultChannelId
       ? pairedGameOfficialResult({
           roomId: input.roomId,
           channelId: meta.officialResultChannelId,
           snapshot: input.snapshot,
         })
       : null;
-  const queued = shouldStoreSnapshot
+  const queued = outcome.shouldStoreSnapshot
     ? await persistRoomWithOfficialResults({
         redis,
         stateKey: roomKeys.snapshot,
-        room: stored,
+        room: reduced.state.snapshot,
         ttlSeconds: roomTtl,
         envelopes: official ? [official] : [],
       })
@@ -504,8 +583,8 @@ export async function syncPairedGamePlayer(input: {
   publishOfficialResultsAfterCommit(queued);
   return {
     ok: true,
-    commands,
-    judgeConnected: (await redis.exists(roomKeys.judgePresence)) === 1,
+    commands: outcome.commands,
+    judgeConnected: outcome.judgeConnected,
   };
 }
 
@@ -583,17 +662,20 @@ export async function readPairedGameJudge(input: {
   };
 }
 
-export async function sendPairedGameJudgeCommand(input: {
-  roomId: string;
-  judgeToken: string;
-  judgeEpoch: string;
-  command: RemoteCommandRequest;
-}): Promise<RemoteCommandResult> {
+export async function sendPairedGameJudgeCommand(
+  input: {
+    roomId: string;
+    judgeToken: string;
+    judgeEpoch: string;
+    command: RemoteCommandRequest;
+  },
+  workflowContext: GameContext = liveGameContext(),
+): Promise<RemoteCommandResult> {
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash))
     return multiplayerFailure("invite_expired", "Invite expired");
-  const receivedAt = Date.now();
+  const receivedAt = workflowContext.now;
   const commandAge = receivedAt - input.command.createdAt;
   if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000)
     return multiplayerFailure("command_expired", "Command expired");

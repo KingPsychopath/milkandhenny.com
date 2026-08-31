@@ -66,7 +66,7 @@ The established pattern, visible in `features/things/shared` and `features/event
 
 Do not rewrite data access into Effect pipelines. Do not import Effect into browser code, React components, reducers, or offline game logic.
 
-Effect is pinned to an exact prerelease (`4.0.0-beta.99`). Treat a version bump as a coordinated change, not a routine upgrade.
+Effect is pinned to an exact prerelease (`4.0.0-rc.112`). Treat a version bump as a coordinated change, not a routine upgrade.
 
 ---
 

@@ -1,3 +1,5 @@
+import { buildAppUrl } from "@/lib/shared/app-url";
+
 export const COLOURS = [
   { code: "R", name: "Ruby", background: "oklch(0.58 0.22 25)", ink: "white" },
   { code: "S", name: "Sapphire", background: "oklch(0.53 0.2 255)", ink: "white" },
@@ -127,6 +129,15 @@ export function createPlayerId() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(5));
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+export function colourForPlayerId(playerId: string): Colour {
+  let hash = 2166136261;
+  for (const character of playerId) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return COLOURS[(hash >>> 0) % COLOURS.length] ?? COLOURS[0];
 }
 
 export function pairingCode(player: IcebreakerPlayer) {
@@ -314,4 +325,3 @@ export function encounterResult(encounter: IcebreakerEncounter): PairingResult |
     partner: { id: encounter.partnerId, colour: partnerColour },
   };
 }
-import { buildAppUrl } from "@/lib/shared/app-url";

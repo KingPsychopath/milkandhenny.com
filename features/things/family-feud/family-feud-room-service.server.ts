@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
 import * as engine from "./family-feud-room-engine.server";
 
@@ -63,25 +63,41 @@ function readSnapshot(input: Parameters<typeof engine.readFamilyFeudSnapshot>[0]
 }
 
 function pairController(input: Parameters<typeof engine.pairFamilyFeudController>[0]) {
-  return multiplayerOperation(
-    { game: "family-feud", operation: "pair_controller", timeoutMs: 4_000 },
-    () => engine.pairFamilyFeudController(input),
+  return multiplayerCommand(
+    {
+      game: "family-feud",
+      operation: "pair_controller",
+      timeoutMs: 4_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.pairFamilyFeudController(input, context),
+    (result) => result.ok,
   );
 }
 
 function applyControllerAction(
   input: Parameters<typeof engine.applyFamilyFeudControllerAction>[0],
 ) {
-  return multiplayerOperation(
-    { game: "family-feud", operation: "controller_action", timeoutMs: 10_000 },
-    () => engine.applyFamilyFeudControllerAction(input),
+  return multiplayerCommand(
+    {
+      game: "family-feud",
+      operation: "controller_action",
+      timeoutMs: 10_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applyFamilyFeudControllerAction(input, context),
   );
 }
 
 function applyBuzzerAction(input: Parameters<typeof engine.applyFamilyFeudBuzzerAction>[0]) {
-  return multiplayerOperation(
-    { game: "family-feud", operation: "buzzer_action", timeoutMs: 4_000 },
-    () => engine.applyFamilyFeudBuzzerAction(input),
+  return multiplayerCommand(
+    {
+      game: "family-feud",
+      operation: "buzzer_action",
+      timeoutMs: 4_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applyFamilyFeudBuzzerAction(input, context),
   );
 }
 

@@ -196,7 +196,7 @@ required, add it in Stripe first and only then enable automatic tax.
 
 **Phase 3 — hot takes.** Submission form (name, title, 5 slides via the existing R2 upload pipeline), presenter view with a 5–8 minute countdown and speaker queue, and the stretch goal that makes it a game: live audience voting before and after each take, then "did they change your mind?" The multiplayer engine in `features/things/shared` already does live rooms. Follow `things.spelling-party_.$roomId_.present.tsx`.
 
-**Effect migration** (task #8). Events and tickets are the reference implementation. Remaining: words, media, transfers, reports, best-dressed, downloads, system. **Auth last and separately** — it is the security-critical path. Weigh the risk first: `effect` is pinned to `4.0.0-beta.99`, and spreading a prerelease across every module widens the blast radius of a breaking bump.
+**Effect migration** (task #8). Events and tickets are the reference implementation. Remaining: words, media, transfers, reports, best-dressed, downloads, system. **Auth last and separately** — it is the security-critical path. Weigh the risk first: `effect` is pinned to `4.0.0-rc.112`, and spreading a prerelease across every module widens the blast radius of a breaking bump.
 
 **E2E tests.** [testing.md](./testing.md) says these become necessary once events are paid. They now are. Nothing exercises a real camera, a real offline transition, or a real payment redirect. Known gap, not a considered decision.
 

@@ -1,5 +1,8 @@
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer } from "effect";
 
+import { runEffectResult, type EffectRunResult } from "@/lib/platform/effect-boundary.server";
+import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
+import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { EventsService } from "./events-service.server";
 
 /**
@@ -10,27 +13,25 @@ import { EventsService } from "./events-service.server";
  * state — Redis remains the source of truth, so any replica can serve the
  * next request.
  */
-const eventsLayer = Layer.mergeAll(EventsService.layer);
+const eventsLayer = Layer.mergeAll(EventsService.layer, TicketsService.layer);
 
-const eventsRuntime = ManagedRuntime.make(eventsLayer);
+const eventsRuntime = makeManagedRuntimeHost(eventsLayer, "Events");
 
-export type EventsServices = EventsService;
+export type EventsServices = EventsService | TicketsService;
 
 /** The only sanctioned Promise boundary — call this from TanStack/Nitro edges. */
 export function runEventsEffect<A, E>(
   effect: Effect.Effect<A, E, EventsServices>,
   signal?: AbortSignal,
 ) {
-  return eventsRuntime.runPromise(effect, signal ? { signal } : undefined);
+  return eventsRuntime.run(effect, signal);
 }
 
 export function disposeEventsRuntime() {
   return eventsRuntime.dispose();
 }
 
-export type EventsRunResult<A> =
-  | { ok: true; value: A }
-  | { ok: false; status: number; error: string; retryable: boolean };
+export type EventsRunResult<A> = EffectRunResult<A>;
 
 /**
  * Run an effect and flatten its failure into a transport-shaped result.
@@ -43,19 +44,5 @@ export async function runEventsResult<A, E>(
   effect: Effect.Effect<A, E, EventsServices>,
   signal?: AbortSignal,
 ): Promise<EventsRunResult<A>> {
-  try {
-    return { ok: true, value: await runEventsEffect(effect, signal) };
-  } catch (error) {
-    const retryable =
-      typeof error === "object" &&
-      error !== null &&
-      "retryable" in error &&
-      (error as { retryable: unknown }).retryable === true;
-    return {
-      ok: false,
-      status: retryable ? 503 : 500,
-      error: retryable ? "That took too long. Try again." : "Something went wrong.",
-      retryable,
-    };
-  }
+  return runEffectResult(() => runEventsEffect(effect, signal));
 }

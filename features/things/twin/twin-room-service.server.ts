@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import * as engine from "./twin-room-engine.server";
 
 export class TwinRoomService extends Context.Service<
@@ -30,8 +30,9 @@ function createRoom(input: Parameters<typeof engine.createTwinRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinTwinRoom>[0]) {
-  return multiplayerOperation({ game: "twin", operation: "join_room" }, () =>
-    engine.joinTwinRoom(input),
+  return multiplayerCommand(
+    { game: "twin", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinTwinRoom(input),
   );
 }
 
@@ -49,8 +50,9 @@ function readLog(input: Parameters<typeof engine.readTwinLog>[0]) {
 }
 
 function applyAction(input: Parameters<typeof engine.applyTwinAction>[0]) {
-  return multiplayerOperation({ game: "twin", operation: "apply_action" }, () =>
-    engine.applyTwinAction(input),
+  return multiplayerCommand(
+    { game: "twin", operation: "apply_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyTwinAction(input, context),
   );
 }
 

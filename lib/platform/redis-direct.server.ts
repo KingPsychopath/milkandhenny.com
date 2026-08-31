@@ -39,6 +39,7 @@ function getDirectRedisUrl(): string {
 
 function createRedisClient(): Redis {
   return new Redis(getDirectRedisUrl(), {
+    commandTimeout: 15_000,
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
     lazyConnect: false,

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { getMediaProcessorMode } from "@/features/media/config.server";
+import { durableWorkSnapshot } from "@/features/system/durable-work";
 import { getCommandRedis } from "@/lib/platform/redis-direct.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import type { ProcessingRoute } from "./media-state";
@@ -253,7 +254,20 @@ async function recoverTransferMediaProcessingJobs(): Promise<number> {
 
 async function describeTransferMediaQueue() {
   if (getMediaProcessorMode() === "local")
-    return { enabled: false, queued: 0, leased: 0, permanentFailures: 0, backlogAgeMs: null };
+    return {
+      enabled: false,
+      queued: 0,
+      leased: 0,
+      permanentFailures: 0,
+      backlogAgeMs: null,
+      durableWork: durableWorkSnapshot({
+        available: false,
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        oldestPendingAt: null,
+      }),
+    };
   const redis = getCommandRedis();
   const [queuedJobs, leasedJobs, deadJobs] = await Promise.all([
     redis.lrange(TRANSFER_MEDIA_QUEUE_KEY, 0, -1),
@@ -262,12 +276,20 @@ async function describeTransferMediaQueue() {
   ]);
   const oldestRaw = queuedJobs.at(-1) ?? null;
   const oldest = oldestRaw ? parseTransferMediaJob(oldestRaw) : null;
+  const oldestPendingAt = oldest?.enqueuedAt ?? null;
   return {
     enabled: true,
     queued: queuedJobs.length,
     leased: leasedJobs.length,
     permanentFailures: deadJobs.length,
-    backlogAgeMs: oldest ? Math.max(0, Date.now() - Date.parse(oldest.enqueuedAt)) : null,
+    backlogAgeMs: oldestPendingAt ? Math.max(0, Date.now() - Date.parse(oldestPendingAt)) : null,
+    durableWork: durableWorkSnapshot({
+      available: true,
+      pending: queuedJobs.length,
+      processing: leasedJobs.length,
+      failed: deadJobs.length,
+      oldestPendingAt,
+    }),
   };
 }
 

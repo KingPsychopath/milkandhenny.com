@@ -1,5 +1,5 @@
 import { Context, Layer } from "effect";
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import * as engine from "./centre-room-engine.server";
 
 export class CentreRoomService extends Context.Service<
@@ -30,8 +30,9 @@ function createRoom(input: Parameters<typeof engine.createCentreRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinCentreRoom>[0]) {
-  return multiplayerOperation({ game: "centre", operation: "join_room" }, () =>
-    engine.joinCentreRoom(input),
+  return multiplayerCommand(
+    { game: "centre", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinCentreRoom(input),
   );
 }
 
@@ -49,8 +50,9 @@ function readReplay(input: Parameters<typeof engine.readCentreReplay>[0]) {
 }
 
 function applyAction(input: Parameters<typeof engine.applyCentreAction>[0]) {
-  return multiplayerOperation({ game: "centre", operation: "apply_action" }, () =>
-    engine.applyCentreAction(input),
+  return multiplayerCommand(
+    { game: "centre", operation: "apply_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyCentreAction(input, context),
   );
 }
 

@@ -56,7 +56,7 @@
     "@tanstack/react-start": "^1.168.44",
     "@upstash/redis": "^1.38.2",
     "drawesome": "^0.1.1",
-    "effect": "4.0.0-beta.99",
+    "effect": "4.0.0-rc.112",
     "exif-reader": "^2.0.3",
     "exifr": "^7.1.3",
     "gray-matter": "^4.0.3",

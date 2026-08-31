@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect";
 
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import * as engine from "./paired-game-room-engine.server";
 
 export class PairedGameRoomService extends Context.Service<
@@ -43,9 +43,15 @@ function createRoom(input: Parameters<typeof engine.createPairedGameRoom>[0]) {
 }
 
 function disconnectJudge(input: Parameters<typeof engine.disconnectPairedGameJudge>[0]) {
-  return multiplayerOperation(
-    { game: "remote", operation: "disconnect_judge", timeoutMs: 4_000 },
+  return multiplayerCommand(
+    {
+      game: "remote",
+      operation: "disconnect_judge",
+      timeoutMs: 4_000,
+      wakeRoomId: input.roomId,
+    },
     () => engine.disconnectPairedGameJudge(input),
+    (result) => result.ok,
   );
 }
 
@@ -57,9 +63,9 @@ function readPlayerSetup(input: Parameters<typeof engine.readPairedGamePlayerSet
 }
 
 function syncPlayer(input: Parameters<typeof engine.syncPairedGamePlayer>[0]) {
-  return multiplayerOperation(
+  return multiplayerCommand(
     { game: "remote", operation: "sync_player", reconciliation: true },
-    () => engine.syncPairedGamePlayer(input),
+    (_signal, context) => engine.syncPairedGamePlayer(input, context),
   );
 }
 
@@ -71,8 +77,14 @@ function readJudge(input: Parameters<typeof engine.readPairedGameJudge>[0]) {
 }
 
 function sendJudgeCommand(input: Parameters<typeof engine.sendPairedGameJudgeCommand>[0]) {
-  return multiplayerOperation({ game: "remote", operation: "send_judge_command" }, () =>
-    engine.sendPairedGameJudgeCommand(input),
+  return multiplayerCommand(
+    {
+      game: "remote",
+      operation: "send_judge_command",
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.sendPairedGameJudgeCommand(input, context),
+    (result) => result.ok,
   ).pipe(
     Effect.tap((result) =>
       !result.ok && result.errorCode === "rate_limited"

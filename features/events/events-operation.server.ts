@@ -1,11 +1,13 @@
 import { Effect } from "effect";
 
+import { effectOperation, type OperationKind } from "@/lib/platform/effect-boundary.server";
 import { log } from "@/lib/platform/logger.server";
 import { EventsOperationError, type EventsDomain } from "./events-errors.server";
 
 interface EventsOperationOptions {
   domain: EventsDomain;
   operation: string;
+  kind?: OperationKind;
   /** `false` opts out entirely; used where a caller supplies its own bound. */
   timeoutMs?: false | number;
 }
@@ -22,46 +24,36 @@ export function eventsOperation<A>(
   options: EventsOperationOptions,
   run: (signal: AbortSignal) => Promise<A>,
 ) {
-  const attempted = Effect.tryPromise({
-    try: run,
-    catch: (cause) =>
+  const kind = options.kind ?? "read";
+  return effectOperation({
+    kind,
+    run,
+    timeoutMs: options.timeoutMs ?? 6_000,
+    isMappedError: (cause): cause is EventsOperationError => cause instanceof EventsOperationError,
+    mapError: (details) =>
       new EventsOperationError({
-        cause,
+        ...details,
         domain: options.domain,
         operation: options.operation,
-        retryable: false,
       }),
-  });
-
-  return (
-    options.timeoutMs === false
-      ? attempted
-      : attempted.pipe(Effect.timeout(options.timeoutMs ?? 6_000))
-  ).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof EventsOperationError
-        ? cause
-        : new EventsOperationError({
-            cause,
-            domain: options.domain,
-            operation: options.operation,
-            // Anything that is not our own tagged error reached us from the
-            // timeout combinator, which is worth retrying.
-            retryable: true,
-          }),
-    ),
+  }).pipe(
     Effect.tapError((error) =>
       Effect.sync(() => {
         log.error(
           options.domain,
           "Operation failed",
-          { operation: options.operation, retryable: error.retryable },
+          {
+            classification: error.classification,
+            operation: options.operation,
+            outcome: error.outcome,
+            retryable: error.retryable,
+          },
           error.cause,
         );
       }),
     ),
     Effect.withSpan(`${options.domain}.${options.operation}`, {
-      attributes: { domain: options.domain, operation: options.operation },
+      attributes: { domain: options.domain, operation: options.operation, operationKind: kind },
     }),
   );
 }

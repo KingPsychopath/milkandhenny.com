@@ -1,7 +1,6 @@
 import { PairedGameRoomService } from "./paired-game-room-service.server";
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 
@@ -26,7 +25,6 @@ export function disconnectPairedGameJudge(
     PairedGameRoomService.use((service) => service.disconnectJudge(input)),
   ).then(async (result) => {
     if (result.ok) {
-      await publishMultiplayerRoomWake("remote", input.roomId).catch(() => undefined);
       await publishMultiplayerRoomTermination("remote", input.roomId, {
         reason: "removed",
         role: "judge",
@@ -57,10 +55,7 @@ export function sendPairedGameJudgeCommand(
 ) {
   return runMultiplayerEffect(
     PairedGameRoomService.use((service) => service.sendJudgeCommand(input)),
-  ).then(async (result) => {
-    if (result.ok) await publishMultiplayerRoomWake("remote", input.roomId).catch(() => undefined);
-    return result;
-  });
+  );
 }
 
 export function closePairedGameRoom(...input: Parameters<typeof engine.closePairedGameRoom>) {

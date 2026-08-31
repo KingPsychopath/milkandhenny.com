@@ -23,6 +23,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { currentOperationSignal } from "./operation-context.server";
 
 /* ─── Types ─── */
 
@@ -180,6 +181,8 @@ function getClient(scope: StorageScope): { client: S3Client; config: R2RuntimeCo
       },
       socketAcquisitionWarningTimeout: config.socketAcquisitionWarningTimeoutMs,
     }),
+    // Retry policy is owned below, where reads and idempotent writes are explicit.
+    maxAttempts: 1,
   });
   states[scope] = {
     client,
@@ -211,8 +214,20 @@ function assertObjectPrefix(prefix: string): void {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", aborted);
+      resolve();
+    }, ms);
+    const aborted = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", aborted, { once: true });
+  });
 }
 
 function getErrorText(err: RetryableR2Error): string {
@@ -265,18 +280,24 @@ function isTransientR2Error(error: unknown): boolean {
   ].some((token) => text.includes(token));
 }
 
-async function sendWithRetry<T>(operation: string, send: () => Promise<T>): Promise<T> {
+async function sendWithRetry<T>(
+  operation: string,
+  kind: "read" | "idempotent-mutation",
+  send: (signal?: AbortSignal) => Promise<T>,
+): Promise<T> {
   let lastError: unknown;
+  const signal = currentOperationSignal();
 
   for (let attempt = 0; attempt <= R2_RETRIES; attempt++) {
     try {
-      return await send();
+      signal?.throwIfAborted();
+      return await send(signal);
     } catch (error) {
       lastError = error;
       if (attempt === R2_RETRIES || !isTransientR2Error(error)) throw error;
       const jitterMs = Math.floor(Math.random() * 120);
       const delayMs = Math.pow(2, attempt) * R2_RETRY_BASE_DELAY_MS + jitterMs;
-      await sleep(delayMs);
+      await sleep(delayMs, signal);
     }
   }
 
@@ -321,11 +342,12 @@ async function checkConnection(): Promise<void> {
   const scopes = ["public", "private"] as const;
   await Promise.all(
     scopes.map((scope) =>
-      sendWithRetry("checkConnection", () =>
+      sendWithRetry("checkConnection", "read", (signal) =>
         getClient(scope).client.send(
           new HeadBucketCommand({
             Bucket: scope === "public" ? config.publicBucket : config.privateBucket,
           }),
+          { abortSignal: signal },
         ),
       ),
     ),
@@ -335,8 +357,10 @@ async function checkConnection(): Promise<void> {
 /** Lightweight private-bucket probe for the media worker. */
 async function checkPrivateStorageConnection(): Promise<void> {
   const config = getRuntimeConfig();
-  await sendWithRetry("checkPrivateStorageConnection", () =>
-    getClient("private").client.send(new HeadBucketCommand({ Bucket: config.privateBucket })),
+  await sendWithRetry("checkPrivateStorageConnection", "read", (signal) =>
+    getClient("private").client.send(new HeadBucketCommand({ Bucket: config.privateBucket }), {
+      abortSignal: signal,
+    }),
   );
 }
 
@@ -352,13 +376,14 @@ async function listObjects(prefix: string, options: R2OperationOptions): Promise
   let continuationToken: string | undefined;
 
   do {
-    const res = await sendWithRetry("listObjects", () =>
+    const res = await sendWithRetry("listObjects", "read", (signal) =>
       client.send(
         new ListObjectsV2Command({
           Bucket: bucket,
           Prefix: prefix || undefined,
           ContinuationToken: continuationToken,
         }),
+        { abortSignal: signal },
       ),
     );
 
@@ -389,7 +414,7 @@ async function listPrefixes(prefix: string, options: R2OperationOptions): Promis
   let continuationToken: string | undefined;
 
   do {
-    const res = await sendWithRetry("listPrefixes", () =>
+    const res = await sendWithRetry("listPrefixes", "read", (signal) =>
       client.send(
         new ListObjectsV2Command({
           Bucket: bucket,
@@ -397,6 +422,7 @@ async function listPrefixes(prefix: string, options: R2OperationOptions): Promis
           Delimiter: "/",
           ContinuationToken: continuationToken,
         }),
+        { abortSignal: signal },
       ),
     );
 
@@ -421,8 +447,8 @@ async function headObject(
   const bucket = getBucket(scope);
 
   try {
-    const res = await sendWithRetry("headObject", () =>
-      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+    const res = await sendWithRetry("headObject", "read", (signal) =>
+      client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
     );
     return {
       exists: true,
@@ -443,8 +469,8 @@ async function downloadBuffer(key: string, options: R2OperationOptions): Promise
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
-  const res = await sendWithRetry("downloadBuffer", () =>
-    client.send(new GetObjectCommand({ Bucket: bucket, Key: key })),
+  const res = await sendWithRetry("downloadBuffer", "read", (signal) =>
+    client.send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
   );
 
   if (!res.Body) {
@@ -475,8 +501,8 @@ async function downloadToFile(
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
-  const res = await sendWithRetry("downloadToFile", () =>
-    client.send(new GetObjectCommand({ Bucket: bucket, Key: key })),
+  const res = await sendWithRetry("downloadToFile", "read", (signal) =>
+    client.send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
   );
 
   if (!res.Body) {
@@ -505,7 +531,7 @@ async function uploadBuffer(
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
-  await sendWithRetry("uploadBuffer", () =>
+  await sendWithRetry("uploadBuffer", "idempotent-mutation", (signal) =>
     client.send(
       new PutObjectCommand({
         Bucket: bucket,
@@ -515,6 +541,7 @@ async function uploadBuffer(
         CacheControl: options?.cacheControl,
         ContentDisposition: options?.contentDisposition,
       }),
+      { abortSignal: signal },
     ),
   );
 }
@@ -531,9 +558,10 @@ async function copyObject(
   const destinationBucket = getBucket(options.destinationScope);
 
   if (options.sourceScope !== options.destinationScope) {
-    await sendWithRetry("copyObjectBetweenScopes", async () => {
+    await sendWithRetry("copyObjectBetweenScopes", "idempotent-mutation", async (signal) => {
       const source = await getClient(options.sourceScope).client.send(
         new GetObjectCommand({ Bucket: sourceBucket, Key: sourceKey }),
+        { abortSignal: signal },
       );
       if (!source.Body) throw new Error(`Object ${sourceKey} has no body`);
       await getClient(options.destinationScope).client.send(
@@ -546,6 +574,7 @@ async function copyObject(
           CacheControl: options.cacheControl ?? source.CacheControl,
           ContentDisposition: options.contentDisposition ?? source.ContentDisposition,
         }),
+        { abortSignal: signal },
       );
     });
     return;
@@ -557,12 +586,14 @@ async function copyObject(
   );
   const current =
     replacesMetadata && !options.contentType
-      ? await sendWithRetry("headObjectForCopy", () =>
-          client.send(new HeadObjectCommand({ Bucket: sourceBucket, Key: sourceKey })),
+      ? await sendWithRetry("headObjectForCopy", "read", (signal) =>
+          client.send(new HeadObjectCommand({ Bucket: sourceBucket, Key: sourceKey }), {
+            abortSignal: signal,
+          }),
         )
       : null;
 
-  await sendWithRetry("copyObject", () =>
+  await sendWithRetry("copyObject", "idempotent-mutation", (signal) =>
     client.send(
       new CopyObjectCommand({
         Bucket: destinationBucket,
@@ -573,6 +604,7 @@ async function copyObject(
         CacheControl: options.cacheControl ?? current?.CacheControl,
         ContentDisposition: options.contentDisposition ?? current?.ContentDisposition,
       }),
+      { abortSignal: signal },
     ),
   );
 }
@@ -587,11 +619,11 @@ async function setObjectHttpMetadata(
   const { scope } = options;
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
-  const current = await sendWithRetry("headObjectForMetadata", () =>
-    client.send(new HeadObjectCommand({ Bucket: bucket, Key: key })),
+  const current = await sendWithRetry("headObjectForMetadata", "read", (signal) =>
+    client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
   );
 
-  await sendWithRetry("setObjectHttpMetadata", () =>
+  await sendWithRetry("setObjectHttpMetadata", "idempotent-mutation", (signal) =>
     client.send(
       new CopyObjectCommand({
         Bucket: bucket,
@@ -606,6 +638,7 @@ async function setObjectHttpMetadata(
         Expires: current.Expires,
         Metadata: current.Metadata,
       }),
+      { abortSignal: signal },
     ),
   );
 }
@@ -617,8 +650,8 @@ async function deleteObject(key: string, options: R2OperationOptions): Promise<v
   const { client } = getClient(scope);
   const bucket = getBucket(scope);
 
-  await sendWithRetry("deleteObject", () =>
-    client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })),
+  await sendWithRetry("deleteObject", "idempotent-mutation", (signal) =>
+    client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: signal }),
   );
 }
 
@@ -634,7 +667,7 @@ async function deleteObjects(keys: string[], options: R2OperationOptions): Promi
   for (let i = 0; i < keys.length; i += 1000) {
     const batch = keys.slice(i, i + 1000);
 
-    const response = await sendWithRetry("deleteObjects", () =>
+    const response = await sendWithRetry("deleteObjects", "idempotent-mutation", (signal) =>
       client.send(
         new DeleteObjectsCommand({
           Bucket: bucket,
@@ -643,6 +676,7 @@ async function deleteObjects(keys: string[], options: R2OperationOptions): Promi
             Quiet: true,
           },
         }),
+        { abortSignal: signal },
       ),
     );
 

@@ -6,6 +6,8 @@ import { describeScheduledJobs } from "@/lib/platform/scheduled-jobs.server";
 import { describeGamePoolOperations } from "@/features/things/pool/operations.server";
 import { describeTransferMediaQueue } from "@/features/transfers/media-queue.server";
 import { log } from "@/lib/platform/logger.server";
+import { describeOfficialGameResultOutbox } from "@/features/game-results/outbox.server";
+import { durableWorkSnapshot } from "@/features/system/durable-work";
 
 async function inspectTransferMediaQueue() {
   try {
@@ -19,6 +21,13 @@ async function inspectTransferMediaQueue() {
       leased: 0,
       permanentFailures: 0,
       backlogAgeMs: null,
+      durableWork: durableWorkSnapshot({
+        available: false,
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        oldestPendingAt: null,
+      }),
       reason: "The media queue could not be inspected.",
     };
   }
@@ -32,13 +41,15 @@ async function handleGET(request: Request) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
 
-  const [health, emailOutbox, scheduledJobs, gamePools, mediaQueue] = await Promise.all([
-    probeSystemCapabilities(),
-    describeEmailOutbox(),
-    describeScheduledJobs(),
-    describeGamePoolOperations(),
-    inspectTransferMediaQueue(),
-  ]);
+  const [health, emailOutbox, scheduledJobs, gamePools, mediaQueue, officialResults] =
+    await Promise.all([
+      probeSystemCapabilities(),
+      describeEmailOutbox(),
+      describeScheduledJobs(),
+      describeGamePoolOperations(),
+      inspectTransferMediaQueue(),
+      describeOfficialGameResultOutbox(),
+    ]);
   return Response.json(
     {
       ...health,
@@ -46,6 +57,11 @@ async function handleGET(request: Request) {
       scheduledJobs,
       gamePools,
       mediaQueue,
+      durableWork: {
+        email: emailOutbox.durableWork,
+        media: mediaQueue.durableWork,
+        officialGameResults: officialResults.durableWork,
+      },
       help: {
         forceReload: "DELETE /api/admin/guests/bootstrap to clear and reload from CSV",
         bootstrap: "POST /api/admin/guests/bootstrap to load from CSV if empty",

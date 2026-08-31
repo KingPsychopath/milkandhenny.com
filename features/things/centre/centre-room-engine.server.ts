@@ -1,5 +1,15 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  applyGameCommand,
+  gameRandomInt,
+  replaceGameState,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+  type VersionedGameEvent,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
+import {
   createAvailableMultiplayerRoomId,
   createMemoryRoomStore,
   createMultiplayerCredential,
@@ -89,7 +99,7 @@ interface CourseState {
   endsAt: number | null;
 }
 
-interface RoomState {
+export interface CentreGameState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
@@ -107,6 +117,18 @@ interface RoomState {
   players: PlayerState[];
   course: CourseState | null;
 }
+
+type RoomState = CentreGameState;
+
+export type CentreGameCommand = VersionedGameCommand<
+  "centre",
+  CentreAction,
+  { playerId: string; playerToken: string }
+>;
+
+export type CentreGameEvent = VersionedGameEvent<"centre", "replay.save"> & {
+  readonly replay: CentreReplayPlayer;
+};
 
 type Keys = ReturnType<typeof centreRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("centre");
@@ -137,10 +159,10 @@ function applyRoomExpiry(room: RoomState, now = Date.now()) {
   });
 }
 
-function changed(room: RoomState) {
+function changed(room: RoomState, now = Date.now()) {
   room.revision += 1;
   room.sequence += 1;
-  applyRoomExpiry(room);
+  applyRoomExpiry(room, now);
 }
 
 function activePlayers(room: RoomState) {
@@ -299,8 +321,7 @@ function rankings(room: RoomState) {
   return new Map(finished.map((player, index) => [player.id, index + 1]));
 }
 
-function snapshot(room: RoomState, playerId: string): CentreSnapshot {
-  const now = Date.now();
+function snapshot(room: RoomState, playerId: string, now = Date.now()): CentreSnapshot {
   const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
   const places = rankings(room);
   const player = room.players.find(({ id }) => id === playerId);
@@ -340,9 +361,8 @@ function snapshot(room: RoomState, playerId: string): CentreSnapshot {
   };
 }
 
-function startCourse(room: RoomState) {
+function startCourse(room: RoomState, seed = randomSeed(), now = Date.now()) {
   const players = activePlayers(room);
-  const seed = randomSeed();
   const maze = generateCentreMaze({
     seed,
     difficulty: room.difficulty,
@@ -367,13 +387,13 @@ function startCourse(room: RoomState) {
     endsAt: null,
   };
   room.phase = "arming";
-  changed(room);
+  changed(room, now);
 }
 
 function advance(room: RoomState, now = Date.now()) {
   if (room.phase === "countdown" && room.course?.startsAt && now >= room.course.startsAt) {
     room.phase = "racing";
-    changed(room);
+    changed(room, now);
   }
   if (room.phase === "finishing" && room.course?.firstFinishAt && room.course.endsAt) {
     const allFinished = activePlayers(room).every(
@@ -384,7 +404,7 @@ function advance(room: RoomState, now = Date.now()) {
       (allFinished && now >= room.course.firstFinishAt + PHOTO_FINISH_MS)
     ) {
       room.phase = "finished";
-      changed(room);
+      changed(room, now);
     }
   }
 }
@@ -394,13 +414,14 @@ function rejection(
   playerId: string,
   error: string,
   errorCode?: "action_unavailable" | "players_not_ready" | "invalid_route",
+  now = Date.now(),
 ) {
   return {
     ok: true,
     accepted: false,
     error,
     errorCode,
-    snapshot: snapshot(room, playerId),
+    snapshot: snapshot(room, playerId, now),
   } as const;
 }
 
@@ -564,260 +585,311 @@ export async function readCentreSnapshot(input: {
   );
 }
 
-export async function applyCentreAction(input: {
-  roomId: string;
-  playerId: string;
-  playerToken: string;
-  action: CentreAction;
-}): Promise<CentreActionResult> {
+export async function applyCentreAction(
+  input: {
+    roomId: string;
+    playerId: string;
+    playerToken: string;
+    action: CentreAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<CentreActionResult> {
+  const pick = gameRandomInt(context);
+  const command: CentreGameCommand = versionGameCommand({
+    game: "centre",
+    actionId: input.action.actionId ?? context.newId,
+    actor: { playerId: input.playerId, playerToken: input.playerToken },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, async (room) => {
-    const now = Date.now();
-    const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
-    if (!authenticated) return null;
-    const actionId = input.action.actionId ?? crypto.randomUUID();
-    const accept = (playerId = authenticated.id) => {
-      room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
-      return { ok: true, accepted: true, snapshot: snapshot(room, playerId) } as const;
-    };
-    if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
-    if (input.action.type === "player.leave") {
-      if (authenticated.withdrawn) return accept();
-      transferHost(room, authenticated.id, now);
-      authenticated.withdrawn = true;
-      if (activePlayers(room).length === 0) room.phase = "closed";
-      changed(room);
-      return accept();
-    }
-    const player = validPlayer(room, input.playerId, input.playerToken);
-    if (!player) return null;
-    player.lastSeenAt = now;
-    advance(room, now);
-    const action = input.action;
-    if (action.type === "player.rename") {
-      if (room.phase !== "lobby")
-        return rejection(room, player.id, "Names only change in the lobby", "action_unavailable");
-      if (
-        activePlayers(room).some(
-          (candidate) =>
-            candidate.id !== player.id &&
-            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
-        )
-      )
-        return rejection(room, player.id, "That name is already here", "action_unavailable");
-      player.name = action.name;
-      changed(room);
-      return accept(player.id);
-    }
-    if (action.type === "readiness.set") {
-      if (room.phase !== "lobby")
-        return rejection(
-          room,
-          player.id,
-          "Readiness only changes in the lobby",
-          "action_unavailable",
-        );
-      if (multiplayerPlayerReady(player) !== action.ready) {
-        setMultiplayerPlayerReady(player, action.ready);
-        changed(room);
+    const existingReplay =
+      input.action.type === "race.progress" || input.action.type === "race.retire"
+        ? await loadReplay(room, input.playerId)
+        : null;
+    const transition = applyGameCommand<
+      RoomState,
+      "centre",
+      CentreAction,
+      { playerId: string; playerToken: string },
+      CentreActionResult | null,
+      CentreGameEvent
+    >(room, command, context, (room, _command, _context, emit) => {
+      const now = context.now;
+      const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+      if (!authenticated) return null;
+      const actionId = input.action.actionId ?? context.newId;
+      const accept = (playerId = authenticated.id) => {
+        room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
+        return { ok: true, accepted: true, snapshot: snapshot(room, playerId, now) } as const;
+      };
+      if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
+      if (input.action.type === "player.leave") {
+        if (authenticated.withdrawn) return accept();
+        transferHost(room, authenticated.id, now);
+        authenticated.withdrawn = true;
+        if (activePlayers(room).length === 0) room.phase = "closed";
+        changed(room, now);
+        return accept();
       }
-      return accept(player.id);
-    }
-    if (action.type === "arming.set") {
-      if (room.phase !== "arming")
-        return rejection(room, player.id, "The start is no longer waiting", "action_unavailable");
-      if (player.armed !== action.armed) {
-        player.armed = action.armed;
-        changed(room);
-      }
-      if (activePlayers(room).every(({ armed }) => armed) && room.course) {
-        room.course.startsAt = now + COUNTDOWN_MS;
-        room.phase = "countdown";
-        changed(room);
-      }
-      return accept(player.id);
-    }
-    if (action.type === "race.finish") {
-      if (
-        (room.phase !== "racing" && room.phase !== "finishing") ||
-        !room.course?.startsAt ||
-        player.entranceIndex === null ||
-        player.retired
-      )
-        return rejection(
-          room,
-          player.id,
-          "The race is not accepting finishes",
-          "action_unavailable",
-        );
-      if (player.elapsedMs !== null) return accept(player.id);
-      const maze = generateCentreMaze({
-        seed: room.course.seed,
-        difficulty: room.course.difficulty,
-        playerCount: room.course.playerCount,
-      });
-      const validation = validateCentreRoute(maze, player.entranceIndex, action.route);
-      if (
-        action.courseHash !== room.course.hash ||
-        !validation.valid ||
-        Math.abs(validation.elapsedMs - action.claimedElapsedMs) > 250
-      )
-        return rejection(room, player.id, "That route could not be verified", "invalid_route");
-      const arrivalElapsed = now - room.course.startsAt;
-      const elapsedMs = Math.round(
-        Math.max(500, validation.elapsedMs, arrivalElapsed - LATENCY_ALLOWANCE_MS),
-      );
-      player.finishedAt = now;
-      player.elapsedMs = elapsedMs;
-      player.wallHits = action.route.wallHits;
-      player.resets = action.route.segments.length - 1;
-      if (room.course.firstFinishAt === null) {
-        room.course.firstFinishAt = now;
-        room.course.endsAt = now + FINISH_WINDOW_MS;
-        room.phase = "finishing";
-      }
-      changed(room);
-      const place = rankings(room).get(player.id) ?? 1;
-      await saveReplay(room, {
-        playerId: player.id,
-        name: player.name,
-        colour: player.colour,
-        entranceIndex: player.entranceIndex,
-        elapsedMs,
-        place,
-        finished: true,
-        route: action.route,
-      });
+      const player = validPlayer(room, input.playerId, input.playerToken);
+      if (!player) return null;
+      player.lastSeenAt = now;
       advance(room, now);
-      return accept(player.id);
-    }
-    if (action.type === "race.progress" || action.type === "race.retire") {
-      const allowed =
-        action.type === "race.progress"
-          ? room.phase === "racing" || room.phase === "finishing" || room.phase === "finished"
-          : room.phase === "racing" || room.phase === "finishing" || room.phase === "finished";
-      if (!allowed || !room.course?.startsAt || player.entranceIndex === null)
-        return rejection(room, player.id, "The race is not accepting routes", "action_unavailable");
-      if (
-        player.elapsedMs !== null ||
-        player.retired ||
-        (await loadReplay(room, player.id))?.finished
-      )
-        return accept(player.id);
-      const maze = generateCentreMaze({
-        seed: room.course.seed,
-        difficulty: room.course.difficulty,
-        playerCount: room.course.playerCount,
-      });
-      const validation = validateCentreRouteProgress(maze, player.entranceIndex, action.route);
-      if (action.type === "race.retire") {
-        const replayRoute =
-          action.courseHash === room.course.hash && validation.valid
-            ? action.route
-            : { segments: [[centreEntrancePoint(maze, player.entranceIndex)]], wallHits: 0 };
-        player.retired = true;
-        player.wallHits = replayRoute.wallHits;
-        player.resets = replayRoute.segments.length - 1;
-        await saveReplay(room, {
-          playerId: player.id,
-          name: player.name,
-          colour: player.colour,
-          entranceIndex: player.entranceIndex,
-          elapsedMs: validation.valid ? validation.elapsedMs : 0,
-          place: room.players.length,
-          finished: false,
-          route: replayRoute,
-        });
-        if (activePlayers(room).every(({ elapsedMs, retired }) => elapsedMs !== null || retired))
-          room.phase = "finished";
-        changed(room);
+      const action = input.action;
+      if (action.type === "player.rename") {
+        if (room.phase !== "lobby")
+          return rejection(room, player.id, "Names only change in the lobby", "action_unavailable");
+        if (
+          activePlayers(room).some(
+            (candidate) =>
+              candidate.id !== player.id &&
+              candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+          )
+        )
+          return rejection(room, player.id, "That name is already here", "action_unavailable");
+        player.name = action.name;
+        changed(room, now);
         return accept(player.id);
       }
-      if (action.courseHash !== room.course.hash || !validation.valid)
-        return rejection(room, player.id, "That route could not be verified", "invalid_route");
-      await saveReplay(room, {
-        playerId: player.id,
-        name: player.name,
-        colour: player.colour,
-        entranceIndex: player.entranceIndex,
-        elapsedMs: validation.elapsedMs,
-        place: room.players.length,
-        finished: false,
-        route: action.route,
-      });
-      return accept(player.id);
-    }
-    const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
-    const canControl =
-      player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
-    if (!canControl)
-      return rejection(room, player.id, "The host controls the race", "action_unavailable");
-    if (action.type === "host.pass") {
-      const target = activePlayers(room).find(({ id }) => id === action.playerId);
-      if (!target)
-        return rejection(room, player.id, "That player is not available", "action_unavailable");
-      room.hostPlayerId = target.id;
-      changed(room);
-      return accept(player.id);
-    }
-    if (action.type === "game.configure") {
-      if (room.managed)
-        return rejection(
-          room,
-          player.id,
-          "The game-night settings are fixed",
-          "action_unavailable",
-        );
-      if (room.phase !== "lobby")
-        return rejection(room, player.id, "Settings are locked", "action_unavailable");
-      if (action.difficulty !== undefined) room.difficulty = action.difficulty;
-      if (action.delayedRivals !== undefined) room.delayedRivals = action.delayedRivals;
-      changed(room);
-      return accept(player.id);
-    }
-    if (action.type === "game.start" && room.phase === "lobby") {
-      const confirmed = new Set(action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(activePlayers(room));
-      const unconfirmed = unready.filter(
-        ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
-      );
-      if (unconfirmed.length > 0) {
-        if (requestMultiplayerReadiness(unconfirmed, crypto.randomUUID())) changed(room);
-        return rejection(room, player.id, "Some players are not ready", "players_not_ready");
-      }
-      if (confirmed.size > 0)
-        room.players = room.players.filter(
-          (candidate) =>
-            multiplayerPlayerReady(candidate) ||
-            candidate.id === player.id ||
-            !confirmed.has(candidate.id),
-        );
-      startCourse(room);
-      return accept(player.id);
-    }
-    if (
-      (action.type === "game.replay" || action.type === "game.lobby") &&
-      room.phase === "finished"
-    ) {
-      room.gameNumber += 1;
-      if (action.type === "game.replay") startCourse(room);
-      else {
-        room.phase = "lobby";
-        room.course = null;
-        for (const candidate of room.players) {
-          setMultiplayerPlayerReady(candidate, candidate.id === room.hostPlayerId);
-          candidate.armed = false;
-          candidate.entranceIndex = null;
-          candidate.finishedAt = null;
-          candidate.elapsedMs = null;
-          candidate.wallHits = 0;
-          candidate.resets = 0;
-          candidate.retired = false;
+      if (action.type === "readiness.set") {
+        if (room.phase !== "lobby")
+          return rejection(
+            room,
+            player.id,
+            "Readiness only changes in the lobby",
+            "action_unavailable",
+          );
+        if (multiplayerPlayerReady(player) !== action.ready) {
+          setMultiplayerPlayerReady(player, action.ready);
+          changed(room, now);
         }
-        changed(room);
+        return accept(player.id);
       }
-      return accept(player.id);
-    }
-    return rejection(room, player.id, "That action is not available", "action_unavailable");
+      if (action.type === "arming.set") {
+        if (room.phase !== "arming")
+          return rejection(room, player.id, "The start is no longer waiting", "action_unavailable");
+        if (player.armed !== action.armed) {
+          player.armed = action.armed;
+          changed(room, now);
+        }
+        if (activePlayers(room).every(({ armed }) => armed) && room.course) {
+          room.course.startsAt = now + COUNTDOWN_MS;
+          room.phase = "countdown";
+          changed(room, now);
+        }
+        return accept(player.id);
+      }
+      if (action.type === "race.finish") {
+        if (
+          (room.phase !== "racing" && room.phase !== "finishing") ||
+          !room.course?.startsAt ||
+          player.entranceIndex === null ||
+          player.retired
+        )
+          return rejection(
+            room,
+            player.id,
+            "The race is not accepting finishes",
+            "action_unavailable",
+          );
+        if (player.elapsedMs !== null) return accept(player.id);
+        const maze = generateCentreMaze({
+          seed: room.course.seed,
+          difficulty: room.course.difficulty,
+          playerCount: room.course.playerCount,
+        });
+        const validation = validateCentreRoute(maze, player.entranceIndex, action.route);
+        if (
+          action.courseHash !== room.course.hash ||
+          !validation.valid ||
+          Math.abs(validation.elapsedMs - action.claimedElapsedMs) > 250
+        )
+          return rejection(room, player.id, "That route could not be verified", "invalid_route");
+        const arrivalElapsed = now - room.course.startsAt;
+        const elapsedMs = Math.round(
+          Math.max(500, validation.elapsedMs, arrivalElapsed - LATENCY_ALLOWANCE_MS),
+        );
+        player.finishedAt = now;
+        player.elapsedMs = elapsedMs;
+        player.wallHits = action.route.wallHits;
+        player.resets = action.route.segments.length - 1;
+        if (room.course.firstFinishAt === null) {
+          room.course.firstFinishAt = now;
+          room.course.endsAt = now + FINISH_WINDOW_MS;
+          room.phase = "finishing";
+        }
+        changed(room, now);
+        const place = rankings(room).get(player.id) ?? 1;
+        emit({
+          schemaVersion: 1,
+          game: "centre",
+          type: "replay.save",
+          actionId,
+          occurredAt: now,
+          replay: {
+            playerId: player.id,
+            name: player.name,
+            colour: player.colour,
+            entranceIndex: player.entranceIndex,
+            elapsedMs,
+            place,
+            finished: true,
+            route: action.route,
+          },
+        });
+        advance(room, now);
+        return accept(player.id);
+      }
+      if (action.type === "race.progress" || action.type === "race.retire") {
+        const allowed =
+          action.type === "race.progress"
+            ? room.phase === "racing" || room.phase === "finishing" || room.phase === "finished"
+            : room.phase === "racing" || room.phase === "finishing" || room.phase === "finished";
+        if (!allowed || !room.course?.startsAt || player.entranceIndex === null)
+          return rejection(
+            room,
+            player.id,
+            "The race is not accepting routes",
+            "action_unavailable",
+          );
+        if (player.elapsedMs !== null || player.retired || existingReplay?.finished)
+          return accept(player.id);
+        const maze = generateCentreMaze({
+          seed: room.course.seed,
+          difficulty: room.course.difficulty,
+          playerCount: room.course.playerCount,
+        });
+        const validation = validateCentreRouteProgress(maze, player.entranceIndex, action.route);
+        if (action.type === "race.retire") {
+          const replayRoute =
+            action.courseHash === room.course.hash && validation.valid
+              ? action.route
+              : { segments: [[centreEntrancePoint(maze, player.entranceIndex)]], wallHits: 0 };
+          player.retired = true;
+          player.wallHits = replayRoute.wallHits;
+          player.resets = replayRoute.segments.length - 1;
+          emit({
+            schemaVersion: 1,
+            game: "centre",
+            type: "replay.save",
+            actionId,
+            occurredAt: now,
+            replay: {
+              playerId: player.id,
+              name: player.name,
+              colour: player.colour,
+              entranceIndex: player.entranceIndex,
+              elapsedMs: validation.valid ? validation.elapsedMs : 0,
+              place: room.players.length,
+              finished: false,
+              route: replayRoute,
+            },
+          });
+          if (activePlayers(room).every(({ elapsedMs, retired }) => elapsedMs !== null || retired))
+            room.phase = "finished";
+          changed(room, now);
+          return accept(player.id);
+        }
+        if (action.courseHash !== room.course.hash || !validation.valid)
+          return rejection(room, player.id, "That route could not be verified", "invalid_route");
+        emit({
+          schemaVersion: 1,
+          game: "centre",
+          type: "replay.save",
+          actionId,
+          occurredAt: now,
+          replay: {
+            playerId: player.id,
+            name: player.name,
+            colour: player.colour,
+            entranceIndex: player.entranceIndex,
+            elapsedMs: validation.elapsedMs,
+            place: room.players.length,
+            finished: false,
+            route: action.route,
+          },
+        });
+        return accept(player.id);
+      }
+      const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
+      const canControl =
+        player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
+      if (!canControl)
+        return rejection(room, player.id, "The host controls the race", "action_unavailable");
+      if (action.type === "host.pass") {
+        const target = activePlayers(room).find(({ id }) => id === action.playerId);
+        if (!target)
+          return rejection(room, player.id, "That player is not available", "action_unavailable");
+        room.hostPlayerId = target.id;
+        changed(room, now);
+        return accept(player.id);
+      }
+      if (action.type === "game.configure") {
+        if (room.managed)
+          return rejection(
+            room,
+            player.id,
+            "The game-night settings are fixed",
+            "action_unavailable",
+          );
+        if (room.phase !== "lobby")
+          return rejection(room, player.id, "Settings are locked", "action_unavailable");
+        if (action.difficulty !== undefined) room.difficulty = action.difficulty;
+        if (action.delayedRivals !== undefined) room.delayedRivals = action.delayedRivals;
+        changed(room, now);
+        return accept(player.id);
+      }
+      if (action.type === "game.start" && room.phase === "lobby") {
+        const confirmed = new Set(action.removePlayerIds ?? []);
+        const unready = multiplayerUnreadyPlayers(activePlayers(room));
+        const unconfirmed = unready.filter(
+          ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
+        );
+        if (unconfirmed.length > 0) {
+          if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`))
+            changed(room, now);
+          return rejection(room, player.id, "Some players are not ready", "players_not_ready");
+        }
+        if (confirmed.size > 0)
+          room.players = room.players.filter(
+            (candidate) =>
+              multiplayerPlayerReady(candidate) ||
+              candidate.id === player.id ||
+              !confirmed.has(candidate.id),
+          );
+        startCourse(room, pick(2 ** 32), now);
+        return accept(player.id);
+      }
+      if (
+        (action.type === "game.replay" || action.type === "game.lobby") &&
+        room.phase === "finished"
+      ) {
+        room.gameNumber += 1;
+        if (action.type === "game.replay") startCourse(room, pick(2 ** 32), now);
+        else {
+          room.phase = "lobby";
+          room.course = null;
+          for (const candidate of room.players) {
+            setMultiplayerPlayerReady(candidate, candidate.id === room.hostPlayerId);
+            candidate.armed = false;
+            candidate.entranceIndex = null;
+            candidate.finishedAt = null;
+            candidate.elapsedMs = null;
+            candidate.wallHits = 0;
+            candidate.resets = 0;
+            candidate.retired = false;
+          }
+          changed(room, now);
+        }
+        return accept(player.id);
+      }
+      return rejection(room, player.id, "That action is not available", "action_unavailable");
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    for (const event of transition.value.events)
+      if (event.type === "replay.save") await saveReplay(room, event.replay);
+    return transition.value.output;
   });
   return (
     result ?? {

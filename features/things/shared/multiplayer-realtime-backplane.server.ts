@@ -124,23 +124,32 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
           }
         }
       };
+      const localBackplane = () => ({
+        mode: "local" as const,
+        publish: (channel: string, message: string) =>
+          Effect.sync(() => notifyLocal(channel, message)),
+        subscribe: (listener: BackplaneListener) =>
+          Effect.sync(() => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          }),
+      });
       const config = getDirectRedisConfig();
       if (!config) {
         yield* telemetry.setBackplaneMode("local");
-        return {
-          mode: "local" as const,
-          publish: (channel: string, message: string) =>
-            Effect.sync(() => notifyLocal(channel, message)),
-          subscribe: (listener: BackplaneListener) =>
-            Effect.sync(() => {
-              listeners.add(listener);
-              return () => listeners.delete(listener);
-            }),
-        };
+        return localBackplane();
       }
 
       const origin = getRuntimeInstanceId();
-      const { publisher, subscriber: _subscriber } = yield* Effect.acquireRelease(
+      let clientsClosed = false;
+      const closeClients = async (publisher: Redis, subscriber: Redis) => {
+        if (clientsClosed) return;
+        clientsClosed = true;
+        await Promise.allSettled([publisher.quit(), subscriber.quit()]);
+        publisher.disconnect();
+        subscriber.disconnect();
+      };
+      const { publisher, subscriber } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const options = {
             connectTimeout: 3_000,
@@ -178,31 +187,45 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
               error: error.message,
             });
           });
-          void subscriber.subscribe(BUS_CHANNEL).catch((error: unknown) => {
-            Effect.runSync(telemetry.recordBackplane("receive", "failure"));
-            log.error(
-              "things.multiplayer",
-              "Realtime backplane subscription failed",
-              undefined,
-              error,
-            );
-          });
           return { publisher, subscriber };
         }),
         ({ publisher, subscriber }) =>
           Effect.promise(async () => {
             listeners.clear();
-            await Promise.allSettled([publisher.quit(), subscriber.quit()]);
-            publisher.disconnect();
-            subscriber.disconnect();
+            await closeClients(publisher, subscriber);
           }),
       );
+      const subscribed = yield* Effect.tryPromise({
+        try: () => subscriber.subscribe(BUS_CHANNEL),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.timeout(5_000),
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            Effect.runSync(telemetry.recordBackplane("receive", "failure"));
+            log.warn(
+              "things.multiplayer",
+              "Realtime backplane unavailable; using this replica only",
+              { error: error instanceof Error ? error.message : String(error) },
+            );
+            return false;
+          }),
+        ),
+      );
+      if (!subscribed) {
+        yield* Effect.promise(() => closeClients(publisher, subscriber));
+        yield* telemetry.setBackplaneMode("local");
+        return localBackplane();
+      }
       yield* telemetry.setBackplaneMode("redis");
       log.info("things.multiplayer", "Realtime Redis backplane enabled", {
         source: config.source,
       });
 
-      const retryPolicy = Schedule.max([Schedule.exponential("25 millis"), Schedule.recurs(2)]);
+      const retryPolicy = Schedule.jittered(
+        Schedule.max([Schedule.exponential("25 millis"), Schedule.recurs(2)]),
+      );
       return {
         mode: "redis" as const,
         publish: (channel: string, message: string) =>
@@ -215,18 +238,19 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
                     JSON.stringify({ channel, message, origin } satisfies BackplaneEnvelope),
                   ),
                 catch: (cause) => cause,
-              }),
-            ),
-            Effect.timeout(1_000),
-            Effect.retry(retryPolicy),
-            Effect.tap(() => telemetry.recordBackplane("publish", "success")),
-            Effect.catch((error) =>
-              Effect.gen(function* () {
-                yield* telemetry.recordBackplane("publish", "failure");
-                log.warn("things.multiplayer", "Realtime wake publication failed", {
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              }),
+              }).pipe(
+                Effect.timeout(1_000),
+                Effect.retry(retryPolicy),
+                Effect.tap(() => telemetry.recordBackplane("publish", "success")),
+                Effect.catch((error) =>
+                  Effect.gen(function* () {
+                    yield* telemetry.recordBackplane("publish", "failure");
+                    log.warn("things.multiplayer", "Realtime wake publication failed", {
+                      error: error instanceof Error ? error.message : String(error),
+                    });
+                  }),
+                ),
+              ),
             ),
             Effect.asVoid,
           ),

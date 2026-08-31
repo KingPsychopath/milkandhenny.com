@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 import { playFeedback } from "@/lib/client/feedback";
@@ -7,7 +7,9 @@ import { IcebreakerColourBook } from "./IcebreakerColourBook";
 import {
   COLOURS,
   QUESTIONS,
+  colourForPlayerId,
   createPlayerId,
+  isPlayerId,
   parsePairingCode,
   type Colour,
   type IcebreakerPlayer,
@@ -26,7 +28,7 @@ function randomQuestion(exclude?: string) {
   return options[Math.floor(Math.random() * options.length)] ?? QUESTIONS[0];
 }
 
-function assignedColour(): Colour {
+function storedColour(): Colour | null {
   const stored = getStored("icebreakerColor");
   if (stored) {
     try {
@@ -40,37 +42,28 @@ function assignedColour(): Colour {
     }
   }
 
-  const colour = COLOURS[Math.floor(Math.random() * COLOURS.length)] ?? COLOURS[0];
-  setStored("icebreakerColor", JSON.stringify({ name: colour.name }));
-  return colour;
+  return null;
 }
 
-function useAssignedColour() {
-  const subscribe = useCallback((onChange: () => void) => {
-    window.addEventListener("storage", onChange);
-    return () => window.removeEventListener("storage", onChange);
-  }, []);
-
-  return useSyncExternalStore(subscribe, assignedColour, () => COLOURS[0]);
-}
-
-function assignedPlayerId() {
+function storedPlayerId() {
   const stored = getStored("icebreakerPlayerId");
-  if (stored && /^[A-Z2-9]{5}$/.test(stored)) return stored;
-  const id = createPlayerId();
-  setStored("icebreakerPlayerId", id);
-  return id;
+  return stored && isPlayerId(stored) ? stored : null;
 }
 
 export function IcebreakerApp() {
-  const colour = useAssignedColour();
+  const [playerId] = useState(() => storedPlayerId() ?? createPlayerId());
+  const [colour] = useState<Colour>(() => storedColour() ?? colourForPlayerId(playerId));
   const [revealed, setRevealed] = useState(false);
   const [question, setQuestion] = useState<string>(() => QUESTIONS[0]);
   const [pairing, setPairing] = useState<PairingLaunch | null>(null);
   const [showingColourBook, setShowingColourBook] = useState(false);
-  const [playerId] = useState(assignedPlayerId);
   const player = useMemo(() => ({ colour, id: playerId }), [colour, playerId]);
   const { ledger, addEncounter } = useIcebreakerLedger(player);
+
+  useEffect(() => {
+    setStored("icebreakerPlayerId", playerId);
+    setStored("icebreakerColor", JSON.stringify({ name: colour.name }));
+  }, [colour, playerId]);
 
   useEffect(() => {
     const fragment = consumeLocationFragment();

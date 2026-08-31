@@ -401,12 +401,16 @@ export function previousHotAndColdPuzzles(date = new Date()) {
   });
 }
 
-export function randomHotAndColdTargets(total: number, excluded: readonly string[] = []) {
+export function randomHotAndColdTargets(
+  total: number,
+  excluded: readonly string[] = [],
+  pick: (upperBound: number) => number = randomInt,
+) {
   const fresh = HOT_AND_COLD_TARGETS.filter((word) => !excluded.includes(word));
   const pool = [...(fresh.length >= total ? fresh : HOT_AND_COLD_TARGETS)];
   const selected: string[] = [];
   while (pool.length > 0 && selected.length < total) {
-    selected.push(...pool.splice(randomInt(pool.length), 1));
+    selected.push(...pool.splice(pick(pool.length), 1));
   }
   return selected;
 }

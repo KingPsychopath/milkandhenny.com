@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { PartyRoomService } from "./party-room-service.server";
@@ -18,7 +17,6 @@ export function createPartyRoom(input: Parameters<typeof engine.createPartyRoom>
 export function joinPartyRoom(input: Parameters<typeof engine.joinPartyRoom>[0]) {
   return runMultiplayerEffect(PartyRoomService.use((service) => service.joinRoom(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
       return result;
     },
   );
@@ -32,7 +30,6 @@ export function applyPresenterAction(input: Parameters<typeof engine.applyPresen
   return runMultiplayerEffect(
     PartyRoomService.use((service) => service.applyPresenterAction(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
     if (result.ok && result.accepted && input.action.type === "round.start") {
       const remainingPlayerIds = new Set(result.snapshot.players.map(({ id }) => id));
       const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
@@ -52,7 +49,6 @@ export function applyPlayerAction(input: Parameters<typeof engine.applyPlayerAct
   return runMultiplayerEffect(
     PartyRoomService.use((service) => service.applyPlayerAction(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("spelling-party", input.roomId).catch(() => undefined);
     if (result.ok && result.accepted && input.action.type === "room.leave")
       await publishMultiplayerRoomTermination("spelling-party", input.roomId, {
         reason: "session_ended",

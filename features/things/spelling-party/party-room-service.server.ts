@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
 import * as engine from "./party-room-engine.server";
 
@@ -56,8 +56,9 @@ function createRoom(input: Parameters<typeof engine.createPartyRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinPartyRoom>[0]) {
-  return multiplayerOperation({ game: "spelling-party", operation: "join_room" }, () =>
-    engine.joinPartyRoom(input),
+  return multiplayerCommand(
+    { game: "spelling-party", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinPartyRoom(input),
   );
 }
 
@@ -69,14 +70,20 @@ function readSnapshot(input: Parameters<typeof engine.readPartySnapshot>[0]) {
 }
 
 function applyPresenterAction(input: Parameters<typeof engine.applyPresenterAction>[0]) {
-  return multiplayerOperation({ game: "spelling-party", operation: "apply_presenter_action" }, () =>
-    engine.applyPresenterAction(input),
+  return multiplayerCommand(
+    {
+      game: "spelling-party",
+      operation: "apply_presenter_action",
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applyPresenterAction(input, context),
   );
 }
 
 function applyPlayerAction(input: Parameters<typeof engine.applyPlayerAction>[0]) {
-  return multiplayerOperation({ game: "spelling-party", operation: "apply_player_action" }, () =>
-    engine.applyPlayerAction(input),
+  return multiplayerCommand(
+    { game: "spelling-party", operation: "apply_player_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyPlayerAction(input, context),
   );
 }
 

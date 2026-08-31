@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { CentreRoomService } from "./centre-room-service.server";
@@ -17,7 +16,6 @@ export function createCentreRoom(input: Parameters<typeof engine.createCentreRoo
 export function joinCentreRoom(input: Parameters<typeof engine.joinCentreRoom>[0]) {
   return runMultiplayerEffect(CentreRoomService.use((service) => service.joinRoom(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("centre", input.roomId).catch(() => undefined);
       return result;
     },
   );
@@ -39,7 +37,6 @@ export function readCentreReplay(input: Parameters<typeof engine.readCentreRepla
 export function applyCentreAction(input: Parameters<typeof engine.applyCentreAction>[0]) {
   return runMultiplayerEffect(CentreRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("centre", input.roomId).catch(() => undefined);
       if (result.ok && result.accepted && input.action.type === "player.leave") {
         await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
           () => undefined,

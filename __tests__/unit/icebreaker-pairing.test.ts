@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   COLOURS,
   MAX_LEDGER_ENCOUNTERS,
+  colourForPlayerId,
   createEmptyLedger,
   createPairingResult,
   createPlayerId,
@@ -66,6 +67,12 @@ describe("icebreaker pairing codes", () => {
 
   it("should create random IDs that fit the pairing alphabet", () => {
     expect(createPlayerId()).toMatch(/^[A-Z2-9]{5}$/);
+  });
+
+  it("should deterministically assign a valid colour from a player ID", () => {
+    const colour = colourForPlayerId("ABCDE");
+    expect(COLOURS).toContain(colour);
+    expect(colourForPlayerId("ABCDE")).toBe(colour);
   });
 });
 

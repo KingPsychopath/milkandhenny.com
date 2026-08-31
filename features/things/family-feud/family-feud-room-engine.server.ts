@@ -1,4 +1,13 @@
 import { randomInt } from "node:crypto";
+import {
+  applyGameCommand,
+  gameRandomInt,
+  replaceGameState,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
 
 import {
   persistRoomWithOfficialResults,
@@ -130,7 +139,7 @@ interface ScoreUndoState {
   timerRemainingMs?: number;
 }
 
-interface FamilyFeudRoomState {
+export interface FamilyFeudGameState {
   roomId: string;
   officialResultChannelId?: string;
   phase: FamilyFeudPhase;
@@ -168,6 +177,14 @@ interface FamilyFeudRoomState {
   processedActions: string[];
   scoreUndo: ScoreUndoState[];
 }
+
+type FamilyFeudRoomState = FamilyFeudGameState;
+
+export type FamilyFeudGameCommand = VersionedGameCommand<
+  "family-feud",
+  FamilyFeudControllerAction | FamilyFeudBuzzerAction,
+  { role: "controller" | "buzzer"; credential: string }
+>;
 
 const memoryRooms = createMemoryRoomStore<FamilyFeudRoomState>("family-feud");
 
@@ -242,10 +259,10 @@ function accept(room: FamilyFeudRoomState, role: FamilyFeudViewerRole): FamilyFe
   return { ok: true, accepted: true, snapshot: snapshot(room, role) };
 }
 
-function shuffle<T>(values: readonly T[]): T[] {
+function shuffle<T>(values: readonly T[], pick: (upperBound: number) => number = randomInt): T[] {
   const result = [...values];
   for (let index = result.length - 1; index > 0; index -= 1) {
-    const swap = randomInt(index + 1);
+    const swap = pick(index + 1);
     [result[index], result[swap]] = [result[swap], result[index]];
   }
   return result;
@@ -920,16 +937,19 @@ export async function createFamilyFeudRoom(input: {
   };
 }
 
-export async function pairFamilyFeudController(input: {
-  roomId: string;
-  pairingToken: string;
-  controllerToken?: string;
-}): Promise<
+export async function pairFamilyFeudController(
+  input: {
+    roomId: string;
+    pairingToken: string;
+    controllerToken?: string;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<
   | { ok: true; controllerToken: string; expiresAt: number }
   | { ok: false; error: string; errorCode: "room_unavailable" | "pairing_used" }
 > {
   const result = await withRoom(input.roomId, (room) => {
-    const now = Date.now();
+    const now = context.now;
     const firstPair = Boolean(
       room.controllerPairingHash &&
       multiplayerCredentialsMatch(input.pairingToken, room.controllerPairingHash),
@@ -1003,259 +1023,307 @@ export async function readFamilyFeudSnapshot(input: {
   );
 }
 
-export async function applyFamilyFeudControllerAction(input: {
-  roomId: string;
-  controllerToken: string;
-  action: FamilyFeudControllerAction;
-}): Promise<FamilyFeudActionResult> {
+export async function applyFamilyFeudControllerAction(
+  input: {
+    roomId: string;
+    controllerToken: string;
+    action: FamilyFeudControllerAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<FamilyFeudActionResult> {
+  const command: FamilyFeudGameCommand = versionGameCommand({
+    game: "family-feud",
+    actionId: input.action.actionId,
+    actor: { role: "controller", credential: input.controllerToken },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    if (!authenticate(room, "controller", input.controllerToken)) return null;
-    advanceTimedPhase(room);
-    room.lastControllerSeenAt = Date.now();
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
-      return accept(room, "controller");
-    if (
-      room.resultConfirmedAt !== null &&
-      input.action.type !== "claim.display" &&
-      input.action.type !== "game.replay"
-    )
-      return reject(room, "result_confirmed", "The confirmed result is locked");
-    const now = Date.now();
-    const round = room.round;
-    const action = input.action;
-    let handled = true;
-    if (action.type === "game.start" && room.phase === "lobby") setPhase(room, "rules", now);
-    else if (action.type === "phase.advance") handled = phaseAdvance(room, now);
-    else if (
-      (action.type === "card.skip" ||
-        action.type === "card.next" ||
-        action.type === "card.previous") &&
-      room.phase === "round-intro" &&
-      round
-    ) {
-      const direction = action.type === "card.previous" ? -1 : 1;
-      room.round = roundFromCard(
-        room,
-        moveRoundCard(room, round.number, direction),
-        round.number,
-        round.total,
-        now,
-      );
-      changed(room, now);
-    } else if (action.type === "card.use" && room.phase === "round-intro" && round) {
-      handled = phaseAdvance(room, now);
-    } else if (
-      action.type === "round.replace" &&
-      round &&
-      ["category", "faceoff", "main-ready", "main", "steal-ready", "steal"].includes(room.phase)
-    ) {
-      const hasAcceptedAnswer =
-        round.answers.some(({ revealed }) => revealed) || round.houseAnswers.length > 0;
-      if (hasAcceptedAnswer)
-        return reject(room, "action_unavailable", "This round is locked because an answer is open");
-      room.usedCardIds = (room.usedCardIds ?? []).filter((cardId) => cardId !== round.cardId);
-      room.round = roundFromCard(
-        room,
-        moveRoundCard(room, round.number, 1),
-        round.number,
-        round.total,
-        now,
-      );
-      room.phase = "round-intro";
-      room.cue = null;
-      changed(room, now);
-    } else if (action.type === "faceoff.open" && room.phase === "category" && round) {
-      round.faceoffTeamId = null;
-      round.faceoffAttemptedTeamIds = [];
-      setPhase(room, "faceoff", now);
-    } else if (action.type === "faceoff.claim" && room.phase === "faceoff" && round) {
-      if (round.faceoffTeamId !== null)
-        return reject(
+    const transition = applyGameCommand(room, command, context, (room) => {
+      if (!authenticate(room, "controller", input.controllerToken)) return null;
+      advanceTimedPhase(room, context.now);
+      room.lastControllerSeenAt = context.now;
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(room, "controller");
+      if (
+        room.resultConfirmedAt !== null &&
+        input.action.type !== "claim.display" &&
+        input.action.type !== "game.replay"
+      )
+        return reject(room, "result_confirmed", "The confirmed result is locked");
+      const now = context.now;
+      const round = room.round;
+      const action = input.action;
+      let handled = true;
+      if (action.type === "game.start" && room.phase === "lobby") setPhase(room, "rules", now);
+      else if (action.type === "phase.advance") handled = phaseAdvance(room, now);
+      else if (
+        (action.type === "card.skip" ||
+          action.type === "card.next" ||
+          action.type === "card.previous") &&
+        room.phase === "round-intro" &&
+        round
+      ) {
+        const direction = action.type === "card.previous" ? -1 : 1;
+        room.round = roundFromCard(
           room,
-          "buzzers_closed",
-          `${team(room, round.faceoffTeamId).name} buzzed first`,
+          moveRoundCard(room, round.number, direction),
+          round.number,
+          round.total,
+          now,
         );
-      round.faceoffTeamId = action.teamId;
-      setCue(room, "buzz");
-      round.phaseStartedAt = now;
-      round.phaseEndsAt = now + FAMILY_FEUD_FACE_OFF_SECONDS * 1_000;
-      changed(room, now);
-    } else if (action.type === "faceoff.miss") handled = handleFaceoffMiss(room, now);
-    else if (action.type === "answer.reveal") {
-      const error = scoreAnswer(room, action.answerId, now);
-      if (error) return reject(room, error.code, error.error);
-    } else if (action.type === "answer.hide" && round) {
-      const answer = round.answers.find(({ id }) => id === action.answerId);
-      if (!answer?.revealed) return reject(room, "answer_unavailable", "That answer is not open");
-      saveScoreUndo(room);
-      if (answer.awardedTeamId && answer.points)
-        addPoints(room, answer.awardedTeamId, -answer.points);
-      answer.revealed = false;
-      answer.awardedTeamId = undefined;
-      answer.points = undefined;
-      if (room.phase === "finished") refreshWinnerTeamIds(room);
-      changed(room, now);
-    } else if (action.type === "answer.reassign" && round) {
-      const answer = round.answers.find(({ id }) => id === action.answerId);
-      if (!answer?.revealed || !answer.awardedTeamId || !answer.points)
-        return reject(room, "answer_unavailable", "That answer has no points to move");
-      if (answer.awardedTeamId !== action.teamId) {
+        changed(room, now);
+      } else if (action.type === "card.use" && room.phase === "round-intro" && round) {
+        handled = phaseAdvance(room, now);
+      } else if (
+        action.type === "round.replace" &&
+        round &&
+        ["category", "faceoff", "main-ready", "main", "steal-ready", "steal"].includes(room.phase)
+      ) {
+        const hasAcceptedAnswer =
+          round.answers.some(({ revealed }) => revealed) || round.houseAnswers.length > 0;
+        if (hasAcceptedAnswer)
+          return reject(
+            room,
+            "action_unavailable",
+            "This round is locked because an answer is open",
+          );
+        room.usedCardIds = (room.usedCardIds ?? []).filter((cardId) => cardId !== round.cardId);
+        room.round = roundFromCard(
+          room,
+          moveRoundCard(room, round.number, 1),
+          round.number,
+          round.total,
+          now,
+        );
+        room.phase = "round-intro";
+        room.cue = null;
+        changed(room, now);
+      } else if (action.type === "faceoff.open" && room.phase === "category" && round) {
+        round.faceoffTeamId = null;
+        round.faceoffAttemptedTeamIds = [];
+        setPhase(room, "faceoff", now);
+      } else if (action.type === "faceoff.claim" && room.phase === "faceoff" && round) {
+        if (round.faceoffTeamId !== null)
+          return reject(
+            room,
+            "buzzers_closed",
+            `${team(room, round.faceoffTeamId).name} buzzed first`,
+          );
+        round.faceoffTeamId = action.teamId;
+        setCue(room, "buzz");
+        round.phaseStartedAt = now;
+        round.phaseEndsAt = now + FAMILY_FEUD_FACE_OFF_SECONDS * 1_000;
+        changed(room, now);
+      } else if (action.type === "faceoff.miss") handled = handleFaceoffMiss(room, now);
+      else if (action.type === "answer.reveal") {
+        const error = scoreAnswer(room, action.answerId, now);
+        if (error) return reject(room, error.code, error.error);
+      } else if (action.type === "answer.hide" && round) {
+        const answer = round.answers.find(({ id }) => id === action.answerId);
+        if (!answer?.revealed) return reject(room, "answer_unavailable", "That answer is not open");
         saveScoreUndo(room);
-        addPoints(room, answer.awardedTeamId, -answer.points);
-        addPoints(room, action.teamId, answer.points);
-        answer.awardedTeamId = action.teamId;
+        if (answer.awardedTeamId && answer.points)
+          addPoints(room, answer.awardedTeamId, -answer.points);
+        answer.revealed = false;
+        answer.awardedTeamId = undefined;
+        answer.points = undefined;
         if (room.phase === "finished") refreshWinnerTeamIds(room);
         changed(room, now);
-      }
-    } else if (action.type === "steal.miss" && room.phase === "steal") {
-      setCue(room, "miss");
-      setPhase(room, "round-reveal", now);
-    } else if (action.type === "timer.pause" && round && round.phaseEndsAt > now && !round.paused) {
-      round.pausedRemainingMs = round.phaseEndsAt - now;
-      round.phaseEndsAt = 0;
-      round.paused = true;
-      changed(room, now);
-    } else if (action.type === "timer.resume" && round?.paused) {
-      round.phaseEndsAt = now + round.pausedRemainingMs;
-      round.pausedRemainingMs = 0;
-      round.paused = false;
-      changed(room, now);
-    } else if (action.type === "timer.reset" && round) {
-      const seconds =
-        room.phase === "main"
-          ? room.mainSeconds
-          : room.phase === "steal"
-            ? room.stealSeconds
-            : room.phase === "faceoff"
-              ? FAMILY_FEUD_FACE_OFF_SECONDS
-              : 0;
-      if (!seconds) handled = false;
-      else {
-        round.phaseStartedAt = now;
-        round.phaseEndsAt = now + seconds * 1_000;
+      } else if (action.type === "answer.reassign" && round) {
+        const answer = round.answers.find(({ id }) => id === action.answerId);
+        if (!answer?.revealed || !answer.awardedTeamId || !answer.points)
+          return reject(room, "answer_unavailable", "That answer has no points to move");
+        if (answer.awardedTeamId !== action.teamId) {
+          saveScoreUndo(room);
+          addPoints(room, answer.awardedTeamId, -answer.points);
+          addPoints(room, action.teamId, answer.points);
+          answer.awardedTeamId = action.teamId;
+          if (room.phase === "finished") refreshWinnerTeamIds(room);
+          changed(room, now);
+        }
+      } else if (action.type === "steal.miss" && room.phase === "steal") {
+        setCue(room, "miss");
+        setPhase(room, "round-reveal", now);
+      } else if (
+        action.type === "timer.pause" &&
+        round &&
+        round.phaseEndsAt > now &&
+        !round.paused
+      ) {
+        round.pausedRemainingMs = round.phaseEndsAt - now;
+        round.phaseEndsAt = 0;
+        round.paused = true;
+        changed(room, now);
+      } else if (action.type === "timer.resume" && round?.paused) {
+        round.phaseEndsAt = now + round.pausedRemainingMs;
         round.pausedRemainingMs = 0;
         round.paused = false;
         changed(room, now);
-      }
-    } else if (action.type === "score.adjust") {
-      if (!Number.isInteger(action.points) || action.points === 0 || Math.abs(action.points) > 10)
-        return reject(room, "action_unavailable", "Choose a score adjustment from -10 to 10");
-      saveScoreUndo(room);
-      addPoints(room, action.teamId, action.points);
-      if (room.phase === "finished") refreshWinnerTeamIds(room);
-      changed(room, now);
-    } else if (action.type === "house-answer.add" && round) {
-      if (
-        !["faceoff", "main", "steal"].includes(room.phase) ||
-        (room.phase === "faceoff" && round.faceoffTeamId === null)
-      )
-        return reject(room, "action_unavailable", "House answers cannot be scored now");
-      const label = action.label.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, 48);
-      if (!label) return reject(room, "answer_unavailable", "Add the accepted answer");
-      const existingAnswer = round.answers.find((answer) => familyFeudAnswerMatches(answer, label));
-      if (existingAnswer) {
-        const error = scoreAnswer(room, existingAnswer.id, now);
-        if (error) return reject(room, error.code, error.error);
-      } else {
-        const normalizedLabel = normaliseFamilyFeudAnswer(label);
-        if (
-          round.houseAnswers.some(
-            (answer) => normaliseFamilyFeudAnswer(answer.label) === normalizedLabel,
-          )
-        )
-          return reject(room, "already_revealed", "That house answer is already open");
-        const targetTeam =
-          action.teamId ??
-          (room.phase === "steal"
-            ? otherFamilyFeudTeam(round.activeTeamId)
-            : room.phase === "faceoff" && round.faceoffTeamId
-              ? round.faceoffTeamId
-              : round.activeTeamId);
-        const points = room.phase === "steal" ? 2 : 1;
+      } else if (action.type === "timer.reset" && round) {
+        const seconds =
+          room.phase === "main"
+            ? room.mainSeconds
+            : room.phase === "steal"
+              ? room.stealSeconds
+              : room.phase === "faceoff"
+                ? FAMILY_FEUD_FACE_OFF_SECONDS
+                : 0;
+        if (!seconds) handled = false;
+        else {
+          round.phaseStartedAt = now;
+          round.phaseEndsAt = now + seconds * 1_000;
+          round.pausedRemainingMs = 0;
+          round.paused = false;
+          changed(room, now);
+        }
+      } else if (action.type === "score.adjust") {
+        if (!Number.isInteger(action.points) || action.points === 0 || Math.abs(action.points) > 10)
+          return reject(room, "action_unavailable", "Choose a score adjustment from -10 to 10");
         saveScoreUndo(room);
-        round.houseAnswers.push({
-          id: `house:${room.sequence + 1}:${round.houseAnswers.length + 1}`,
-          label,
-          teamId: targetTeam,
-          points,
-        });
-        addPoints(room, targetTeam, points);
-        setCue(room, "correct", { teamId: targetTeam, points });
-        if (room.phase === "faceoff")
-          setPhase(room, room.suddenDeath ? "round-reveal" : "main-ready", now);
-        else if (room.phase === "steal") setPhase(room, "round-reveal", now);
+        addPoints(room, action.teamId, action.points);
+        if (room.phase === "finished") refreshWinnerTeamIds(room);
+        changed(room, now);
+      } else if (action.type === "house-answer.add" && round) {
+        if (
+          !["faceoff", "main", "steal"].includes(room.phase) ||
+          (room.phase === "faceoff" && round.faceoffTeamId === null)
+        )
+          return reject(room, "action_unavailable", "House answers cannot be scored now");
+        const label = action.label.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, 48);
+        if (!label) return reject(room, "answer_unavailable", "Add the accepted answer");
+        const existingAnswer = round.answers.find((answer) =>
+          familyFeudAnswerMatches(answer, label),
+        );
+        if (existingAnswer) {
+          const error = scoreAnswer(room, existingAnswer.id, now);
+          if (error) return reject(room, error.code, error.error);
+        } else {
+          const normalizedLabel = normaliseFamilyFeudAnswer(label);
+          if (
+            round.houseAnswers.some(
+              (answer) => normaliseFamilyFeudAnswer(answer.label) === normalizedLabel,
+            )
+          )
+            return reject(room, "already_revealed", "That house answer is already open");
+          const targetTeam =
+            action.teamId ??
+            (room.phase === "steal"
+              ? otherFamilyFeudTeam(round.activeTeamId)
+              : room.phase === "faceoff" && round.faceoffTeamId
+                ? round.faceoffTeamId
+                : round.activeTeamId);
+          const points = room.phase === "steal" ? 2 : 1;
+          saveScoreUndo(room);
+          round.houseAnswers.push({
+            id: `house:${room.sequence + 1}:${round.houseAnswers.length + 1}`,
+            label,
+            teamId: targetTeam,
+            points,
+          });
+          addPoints(room, targetTeam, points);
+          setCue(room, "correct", { teamId: targetTeam, points });
+          if (room.phase === "faceoff")
+            setPhase(room, room.suddenDeath ? "round-reveal" : "main-ready", now);
+          else if (room.phase === "steal") setPhase(room, "round-reveal", now);
+          else changed(room, now);
+        }
+      } else if (action.type === "undo.last") {
+        if (!restoreScoreUndo(room)) handled = false;
         else changed(room, now);
-      }
-    } else if (action.type === "undo.last") {
-      if (!restoreScoreUndo(room)) handled = false;
-      else changed(room, now);
-    } else if (action.type === "game.end" && room.phase !== "finished") finish(room, now);
-    else if (
-      action.type === "sudden-death.start" &&
-      room.phase === "finished" &&
-      room.resultConfirmedAt === null &&
-      room.winnerTeamIds.length > 1
-    ) {
-      room.winnerTeamIds = [];
-      beginRound(room, room.rounds + 1, now, true);
-    } else if (action.type === "result.confirm" && room.phase === "finished") {
-      refreshWinnerTeamIds(room);
-      if (room.winnerTeamIds.length > 1)
-        return reject(room, "action_unavailable", "A tie needs a sudden-death answer first");
-      room.resultConfirmedAt = now;
-      changed(room, now);
-    } else if (action.type === "claim.display" && room.phase === "finished") {
-      room.claimDisplay = action.display;
-      changed(room, now);
-    } else if (action.type === "game.replay" && room.phase === "finished") {
-      room.gameNumber += 1;
-      room.phase = "rules";
-      room.round = null;
-      room.suddenDeath = false;
-      room.winnerTeamIds = [];
-      room.resultConfirmedAt = null;
-      room.claimDisplay = null;
-      room.scoreUndo = [];
-      room.usedCardIds = [];
-      room.roundCandidateCursors = Array.from({ length: room.rounds }, () => 0);
-      room.roundCandidates = room.roundCandidates?.map((candidates) => shuffle(candidates));
-      for (const item of room.teams) {
-        item.score = 0;
-        item.roundPoints = 0;
-      }
-      changed(room, now);
-    } else handled = false;
-    if (!handled) return reject(room, "action_unavailable", "That action is not available now");
-    room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
-    return accept(room, "controller");
+      } else if (action.type === "game.end" && room.phase !== "finished") finish(room, now);
+      else if (
+        action.type === "sudden-death.start" &&
+        room.phase === "finished" &&
+        room.resultConfirmedAt === null &&
+        room.winnerTeamIds.length > 1
+      ) {
+        room.winnerTeamIds = [];
+        beginRound(room, room.rounds + 1, now, true);
+      } else if (action.type === "result.confirm" && room.phase === "finished") {
+        refreshWinnerTeamIds(room);
+        if (room.winnerTeamIds.length > 1)
+          return reject(room, "action_unavailable", "A tie needs a sudden-death answer first");
+        room.resultConfirmedAt = now;
+        changed(room, now);
+      } else if (action.type === "claim.display" && room.phase === "finished") {
+        room.claimDisplay = action.display;
+        changed(room, now);
+      } else if (action.type === "game.replay" && room.phase === "finished") {
+        room.gameNumber += 1;
+        room.phase = "rules";
+        room.round = null;
+        room.suddenDeath = false;
+        room.winnerTeamIds = [];
+        room.resultConfirmedAt = null;
+        room.claimDisplay = null;
+        room.scoreUndo = [];
+        room.usedCardIds = [];
+        room.roundCandidateCursors = Array.from({ length: room.rounds }, () => 0);
+        const pick = gameRandomInt(context);
+        room.roundCandidates = room.roundCandidates?.map((candidates) => shuffle(candidates, pick));
+        for (const item of room.teams) {
+          item.score = 0;
+          item.roundPoints = 0;
+        }
+        changed(room, now);
+      } else handled = false;
+      if (!handled) return reject(room, "action_unavailable", "That action is not available now");
+      room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
+      return accept(room, "controller");
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? actionFailure("room_unavailable", "Room unavailable");
 }
 
-export async function applyFamilyFeudBuzzerAction(input: {
-  roomId: string;
-  buzzerToken: string;
-  action: FamilyFeudBuzzerAction;
-}): Promise<FamilyFeudActionResult> {
+export async function applyFamilyFeudBuzzerAction(
+  input: {
+    roomId: string;
+    buzzerToken: string;
+    action: FamilyFeudBuzzerAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<FamilyFeudActionResult> {
+  const command: FamilyFeudGameCommand = versionGameCommand({
+    game: "family-feud",
+    actionId: input.action.actionId,
+    actor: { role: "buzzer", credential: input.buzzerToken },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const buzzerTeam = buzzerTeamForCredential(room, input.buzzerToken);
-    if (!buzzerTeam) return null;
-    advanceTimedPhase(room);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const buzzerTeam = buzzerTeamForCredential(room, input.buzzerToken);
+      if (!buzzerTeam) return null;
+      advanceTimedPhase(room, context.now);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(room, "buzzer");
+      const round = room.round;
+      if (room.phase !== "faceoff" || !round || round.faceoffTeamId !== null)
+        return reject(room, "buzzers_closed", "Buzzers are closed", "buzzer");
+      if (buzzerTeam !== "shared" && buzzerTeam !== input.action.teamId)
+        return reject(
+          room,
+          "action_unavailable",
+          "That buzzer belongs to the other team",
+          "buzzer",
+        );
+      const now = context.now;
+      round.faceoffTeamId = input.action.teamId;
+      setCue(room, "buzz");
+      round.phaseStartedAt = now;
+      round.phaseEndsAt = now + FAMILY_FEUD_FACE_OFF_SECONDS * 1_000;
+      room.processedActions = rememberMultiplayerAction(
+        room.processedActions,
+        input.action.actionId,
+      );
+      changed(room, now);
       return accept(room, "buzzer");
-    const round = room.round;
-    if (room.phase !== "faceoff" || !round || round.faceoffTeamId !== null)
-      return reject(room, "buzzers_closed", "Buzzers are closed", "buzzer");
-    if (buzzerTeam !== "shared" && buzzerTeam !== input.action.teamId)
-      return reject(room, "action_unavailable", "That buzzer belongs to the other team", "buzzer");
-    const now = Date.now();
-    round.faceoffTeamId = input.action.teamId;
-    setCue(room, "buzz");
-    round.phaseStartedAt = now;
-    round.phaseEndsAt = now + FAMILY_FEUD_FACE_OFF_SECONDS * 1_000;
-    room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
-    changed(room, now);
-    return accept(room, "buzzer");
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? actionFailure("room_unavailable", "Room unavailable");
 }

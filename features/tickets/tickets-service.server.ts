@@ -41,25 +41,28 @@ export class TicketsService extends Context.Service<
 }
 
 function issue(input: IssueTicketsInput) {
-  return eventsOperation({ domain: "tickets", operation: "issue", timeoutMs: 12_000 }, () =>
-    engine.issueTickets(input),
+  return eventsOperation(
+    { domain: "tickets", operation: "issue", kind: "mutation", timeoutMs: 12_000 },
+    () => engine.issueTickets(input),
   );
 }
 
 function redeem(input: RedeemInput) {
-  return eventsOperation({ domain: "tickets", operation: "redeem", timeoutMs: 4_000 }, () =>
-    engine.redeemTicket(input),
+  return eventsOperation(
+    { domain: "tickets", operation: "redeem", kind: "mutation", timeoutMs: 4_000 },
+    () => engine.redeemTicket(input),
   );
 }
 
 function unredeem(ticketId: string) {
-  return eventsOperation({ domain: "tickets", operation: "unredeem", timeoutMs: 4_000 }, () =>
-    engine.unredeemTicket(ticketId),
+  return eventsOperation(
+    { domain: "tickets", operation: "unredeem", kind: "mutation", timeoutMs: 4_000 },
+    () => engine.unredeemTicket(ticketId),
   );
 }
 
 function voidTicket(ticketId: string, status?: "void" | "refunded") {
-  return eventsOperation({ domain: "tickets", operation: "void" }, () =>
+  return eventsOperation({ domain: "tickets", operation: "void", kind: "mutation" }, () =>
     engine.voidTicket(ticketId, status),
   );
 }

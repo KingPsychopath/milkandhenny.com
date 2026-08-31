@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
 import * as engine from "./liars-room-engine.server";
 
@@ -53,8 +53,9 @@ function createRoom(input: Parameters<typeof engine.createLiarsRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinLiarsRoom>[0]) {
-  return multiplayerOperation({ game: "liars", operation: "join_room" }, () =>
-    engine.joinLiarsRoom(input),
+  return multiplayerCommand(
+    { game: "liars", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinLiarsRoom(input),
   );
 }
 
@@ -66,14 +67,16 @@ function readSnapshot(input: Parameters<typeof engine.readLiarsSnapshot>[0]) {
 }
 
 function applyHostAction(input: Parameters<typeof engine.applyLiarsHostAction>[0]) {
-  return multiplayerOperation({ game: "liars", operation: "apply_host_action" }, () =>
-    engine.applyLiarsHostAction(input),
+  return multiplayerCommand(
+    { game: "liars", operation: "apply_host_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyLiarsHostAction(input, context),
   );
 }
 
 function applyPlayerAction(input: Parameters<typeof engine.applyLiarsPlayerAction>[0]) {
-  return multiplayerOperation({ game: "liars", operation: "apply_player_action" }, () =>
-    engine.applyLiarsPlayerAction(input),
+  return multiplayerCommand(
+    { game: "liars", operation: "apply_player_action", wakeRoomId: input.roomId },
+    (_signal, context) => engine.applyLiarsPlayerAction(input, context),
   );
 }
 

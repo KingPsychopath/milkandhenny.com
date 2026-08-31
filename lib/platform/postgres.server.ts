@@ -1,6 +1,12 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 import { log } from "./logger.server";
+import { currentOperationSignal } from "./operation-context.server";
+
+const DATABASE_QUERY_TIMEOUT_MS =
+  Number.parseInt(process.env.DATABASE_QUERY_TIMEOUT_MS ?? "", 10) || 15_000;
+const DATABASE_LOCK_TIMEOUT_MS =
+  Number.parseInt(process.env.DATABASE_LOCK_TIMEOUT_MS ?? "", 10) || 5_000;
 
 /**
  * Provider-neutral SQL persistence.
@@ -77,8 +83,26 @@ export async function query<T extends QueryResultRow>(
   text: string,
   values: readonly unknown[] = [],
 ): Promise<T[]> {
-  const result = await requirePool().query<T>(text, values as unknown[]);
-  return result.rows;
+  currentOperationSignal()?.throwIfAborted();
+  // Keep the deadline local to this checkout. A pool-wide timeout also applies to callers that
+  // intentionally hold a session (migrations and advisory locks), while RESET before release keeps
+  // the next borrower from inheriting this operation's policy.
+  const client = await requirePool().connect();
+  let discard = false;
+  try {
+    await client.query(`SET statement_timeout = '${DATABASE_QUERY_TIMEOUT_MS}ms'`);
+    const result = await client.query<T>(text, values as unknown[]);
+    currentOperationSignal()?.throwIfAborted();
+    return result.rows;
+  } finally {
+    try {
+      await client.query("RESET statement_timeout");
+    } catch (error) {
+      discard = true;
+      log.error("postgres", "Failed to reset query deadline", {}, error);
+    }
+    client.release(discard);
+  }
 }
 
 export async function queryOne<T extends QueryResultRow>(
@@ -98,8 +122,12 @@ export async function queryOne<T extends QueryResultRow>(
 export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await requirePool().connect();
   try {
+    currentOperationSignal()?.throwIfAborted();
     await client.query("BEGIN");
+    await client.query(`SET LOCAL statement_timeout = '${DATABASE_QUERY_TIMEOUT_MS}ms'`);
+    await client.query(`SET LOCAL lock_timeout = '${DATABASE_LOCK_TIMEOUT_MS}ms'`);
     const result = await fn(client);
+    currentOperationSignal()?.throwIfAborted();
     await client.query("COMMIT");
     return result;
   } catch (error) {

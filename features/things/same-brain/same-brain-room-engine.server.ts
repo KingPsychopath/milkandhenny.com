@@ -1,4 +1,13 @@
 import { randomInt } from "node:crypto";
+import {
+  applyGameCommand,
+  gameRandomInt,
+  replaceGameState,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { sameBrainRoomRedisKeys } from "./same-brain-keys";
@@ -106,7 +115,7 @@ interface PlayerState {
   leftAt?: number;
 }
 
-interface SameBrainRoomState {
+export interface SameBrainGameState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
@@ -139,6 +148,14 @@ interface SameBrainRoomState {
   joinReceiptIds: string[];
   winnerIds: string[];
 }
+
+type SameBrainRoomState = SameBrainGameState;
+
+export type SameBrainGameCommand = VersionedGameCommand<
+  "same-brain",
+  SameBrainHostAction | SameBrainPlayerAction,
+  { role: "host" | "player"; playerId?: string }
+>;
 
 interface JoinReceipt {
   playerId: string;
@@ -415,12 +432,16 @@ function enterPhase(room: SameBrainRoomState, phase: SameBrainPhase, now: number
   changed(room);
 }
 
-function startRound(room: SameBrainRoomState, now: number) {
+function startRound(
+  room: SameBrainRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   room.round += 1;
   room.result = null;
   room.resultBaseline = null;
   for (const player of room.players) player.answer = null;
-  room.question = sameBrainQuestion(room.recentQuestions, (max) => randomInt(max));
+  room.question = sameBrainQuestion(room.recentQuestions, pick);
   // Long enough that a group playing all evening does not see a repeat, short enough that the state
   // blob stays small.
   room.recentQuestions = [...room.recentQuestions, room.question].slice(-40);
@@ -443,19 +464,27 @@ function gameOver(room: SameBrainRoomState) {
   return room.toggles.eliminateOddOne && playing(room).length < 2;
 }
 
-function afterReveal(room: SameBrainRoomState, now: number) {
+function afterReveal(
+  room: SameBrainRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   if (gameOver(room)) {
     finish(room, now);
     return;
   }
-  startRound(room, now);
+  startRound(room, now, pick);
 }
 
 /**
  * Moves the room on when its clock says so. Synchronous and side-effect free beyond the room itself,
  * so tests can drive a whole game with fake timers.
  */
-function advance(room: SameBrainRoomState, now = Date.now()) {
+function advance(
+  room: SameBrainRoomState,
+  now = Date.now(),
+  pick: (upperBound: number) => number = randomInt,
+) {
   if (room.pausedAt !== null) return;
 
   for (let guard = 0; guard < 8; guard += 1) {
@@ -471,7 +500,7 @@ function advance(room: SameBrainRoomState, now = Date.now()) {
         enterPhase(room, "reveal", now);
         break;
       case "reveal":
-        afterReveal(room, now);
+        afterReveal(room, now, pick);
         break;
       default:
         return;
@@ -557,8 +586,12 @@ function applyResult(room: SameBrainRoomState, result: SameBrainRoundResult, now
 }
 
 /** Runs the room clock before a read or action. The first phone to touch an expired room advances it. */
-async function pump(roomId: string) {
-  await withRoom(roomId, (room) => advance(room, Date.now()));
+async function pump(
+  roomId: string,
+  now = Date.now(),
+  pick: (upperBound: number) => number = randomInt,
+) {
+  await withRoom(roomId, (room) => advance(room, now, pick));
 }
 
 // ---------------------------------------------------------------------------
@@ -817,386 +850,421 @@ export async function readSameBrainSnapshot(input: {
   );
 }
 
-export async function applySameBrainHostAction(input: {
-  roomId: string;
-  hostToken?: string;
-  playerId?: string;
-  playerToken?: string;
-  action: SameBrainHostAction;
-}): Promise<SameBrainActionResult> {
-  await pump(input.roomId);
+export async function applySameBrainHostAction(
+  input: {
+    roomId: string;
+    hostToken?: string;
+    playerId?: string;
+    playerToken?: string;
+    action: SameBrainHostAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<SameBrainActionResult> {
+  const pick = gameRandomInt(context);
+  await pump(input.roomId, context.now, pick);
+  const command: SameBrainGameCommand = versionGameCommand({
+    game: "same-brain",
+    actionId: input.action.actionId,
+    actor: { role: "host", playerId: input.playerId },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const asHostToken = input.hostToken && safeEqual(input.hostToken, room.hostHash);
-    const player = room.players.find(({ id }) => id === input.playerId);
-    const asHostPlayer =
-      player &&
-      input.playerToken &&
-      safeEqual(input.playerToken, player.tokenHash) &&
-      room.hostPlayerId === player.id;
-    if (!asHostToken && !asHostPlayer) return failure("room_unavailable", "Room unavailable");
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const asHostToken = input.hostToken && safeEqual(input.hostToken, room.hostHash);
+      const player = room.players.find(({ id }) => id === input.playerId);
+      const asHostPlayer =
+        player &&
+        input.playerToken &&
+        safeEqual(input.playerToken, player.tokenHash) &&
+        room.hostPlayerId === player.id;
+      if (!asHostToken && !asHostPlayer) return failure("room_unavailable", "Room unavailable");
 
-    const now = Date.now();
-    touch(room, input.playerId, now, true);
-    advance(room, now);
-    const view = () => snapshot(room, input.playerId, now);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());
+      const now = context.now;
+      touch(room, input.playerId, now, true);
+      advance(room, now, pick);
+      const view = () => snapshot(room, input.playerId, now);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(view());
 
-    const action = input.action;
-    const remembered = () => {
-      room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
-      return accept(snapshot(room, input.playerId, now));
-    };
+      const action = input.action;
+      const remembered = () => {
+        room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
+        return accept(snapshot(room, input.playerId, now));
+      };
 
-    if (action.type === "game.configure") {
-      if (room.managed)
-        return reject(view(), "action_unavailable", "The game-night settings are fixed");
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "House rules are set before the game starts");
-      if (action.rounds !== undefined) room.rounds = clampRounds(action.rounds);
-      if (action.toggles) room.toggles = { ...room.toggles, ...action.toggles };
-      if (action.timings) room.timings = sameBrainTimings({ ...room.timings, ...action.timings });
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "game.start") {
-      if (room.phase !== "lobby") return reject(view(), "action_unavailable", "Already playing");
-      if (room.players.length < SAME_BRAIN_PLAYER_LIMITS.min)
-        return reject(
-          view(),
-          "not_enough_players",
-          `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`,
-        );
-      // A player who has not confirmed gets buzzed. The second request names exactly who the host
-      // saw as absent, and the same locked mutation rechecks that list before removing anyone.
-      const confirmed = new Set(action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
-      const unconfirmed = unready.filter(
-        ({ id, startRequestId }) =>
-          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
-      );
-      if (unconfirmed.length > 0) {
-        if (requestMultiplayerReadiness(unconfirmed, action.actionId, now)) changed(room);
-        const names = unconfirmed.map(({ name }) => name).join(", ");
-        return reject(
-          view(),
-          "players_not_ready",
-          unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
-        );
-      }
-      const remainingPlayers = room.players.filter(
-        (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
-      );
-      if (remainingPlayers.length < SAME_BRAIN_PLAYER_LIMITS.min)
-        return reject(
-          view(),
-          "not_enough_players",
-          `${SAME_BRAIN_PLAYER_LIMITS.min} ready people are needed to start`,
-        );
-      if (remainingPlayers.length !== room.players.length) {
-        room.players = remainingPlayers;
+      if (action.type === "game.configure") {
+        if (room.managed)
+          return reject(view(), "action_unavailable", "The game-night settings are fixed");
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "House rules are set before the game starts");
+        if (action.rounds !== undefined) room.rounds = clampRounds(action.rounds);
+        if (action.toggles) room.toggles = { ...room.toggles, ...action.toggles };
+        if (action.timings) room.timings = sameBrainTimings({ ...room.timings, ...action.timings });
         changed(room);
+        return remembered();
       }
-      room.round = 0;
-      room.history = [];
-      room.winnerIds = [];
-      for (const player of room.players) {
-        player.score = 0;
-        player.out = false;
-        player.aloneCount = 0;
-        player.answer = null;
+
+      if (action.type === "game.start") {
+        if (room.phase !== "lobby") return reject(view(), "action_unavailable", "Already playing");
+        if (room.players.length < SAME_BRAIN_PLAYER_LIMITS.min)
+          return reject(
+            view(),
+            "not_enough_players",
+            `${SAME_BRAIN_PLAYER_LIMITS.min} people is the smallest game`,
+          );
+        // A player who has not confirmed gets buzzed. The second request names exactly who the host
+        // saw as absent, and the same locked mutation rechecks that list before removing anyone.
+        const confirmed = new Set(action.removePlayerIds ?? []);
+        const unready = multiplayerUnreadyPlayers(room.players);
+        const unconfirmed = unready.filter(
+          ({ id, startRequestId }) =>
+            id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
+        );
+        if (unconfirmed.length > 0) {
+          if (requestMultiplayerReadiness(unconfirmed, action.actionId, now)) changed(room);
+          const names = unconfirmed.map(({ name }) => name).join(", ");
+          return reject(
+            view(),
+            "players_not_ready",
+            unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+          );
+        }
+        const remainingPlayers = room.players.filter(
+          (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
+        );
+        if (remainingPlayers.length < SAME_BRAIN_PLAYER_LIMITS.min)
+          return reject(
+            view(),
+            "not_enough_players",
+            `${SAME_BRAIN_PLAYER_LIMITS.min} ready people are needed to start`,
+          );
+        if (remainingPlayers.length !== room.players.length) {
+          room.players = remainingPlayers;
+          changed(room);
+        }
+        room.round = 0;
+        room.history = [];
+        room.winnerIds = [];
+        for (const player of room.players) {
+          player.score = 0;
+          player.out = false;
+          player.aloneCount = 0;
+          player.answer = null;
+        }
+        startRound(room, now, pick);
+        return remembered();
       }
-      startRound(room, now);
-      return remembered();
-    }
 
-    if (action.type === "game.skipQuestion") {
-      if (room.phase !== "prompt" && room.phase !== "submit")
-        return reject(view(), "action_unavailable", "There is no question to change");
-      // Does not consume a round: a question nobody understood should cost nothing.
-      room.round -= 1;
-      startRound(room, now);
-      return remembered();
-    }
+      if (action.type === "game.skipQuestion") {
+        if (room.phase !== "prompt" && room.phase !== "submit")
+          return reject(view(), "action_unavailable", "There is no question to change");
+        // Does not consume a round: a question nobody understood should cost nothing.
+        room.round -= 1;
+        startRound(room, now, pick);
+        return remembered();
+      }
 
-    if (action.type === "phase.extend") {
-      if (room.phaseEndsAt === 0)
-        return reject(view(), "action_unavailable", "Nothing is running down");
-      room.phaseEndsAt += 20_000;
-      changed(room);
-      return remembered();
-    }
+      if (action.type === "phase.extend") {
+        if (room.phaseEndsAt === 0)
+          return reject(view(), "action_unavailable", "Nothing is running down");
+        room.phaseEndsAt += 20_000;
+        changed(room);
+        return remembered();
+      }
 
-    /**
-     * Somebody has to explain the rules, or answer the door.
-     *
-     * `phaseEndsAt` is an absolute moment, so resuming has to push it forward by however long the
-     * room was paused. Without that the timer keeps running while frozen and the phase expires the
-     * instant play resumes — which is worse than not having a pause button, because the host would
-     * be the one who broke the round.
-     */
-    if (action.type === "phase.pause") {
-      if (room.pausedAt !== null) return reject(view(), "action_unavailable", "Already paused");
-      if (room.phase === "lobby" || room.phase === "ending")
-        return reject(view(), "action_unavailable", "Nothing to pause");
       /**
-       * Not the spoken beat. Its countdown is drawn from `phaseEndsAt` on each phone independently,
-       * which is what keeps six of them in step; freezing the server's clock underneath that would
-       * leave the phones counting to a moment that has moved. It lasts seven seconds — if it goes
-       * wrong, letting it finish costs less than desynchronising it.
+       * Somebody has to explain the rules, or answer the door.
+       *
+       * `phaseEndsAt` is an absolute moment, so resuming has to push it forward by however long the
+       * room was paused. Without that the timer keeps running while frozen and the phase expires the
+       * instant play resumes — which is worse than not having a pause button, because the host would
+       * be the one who broke the round.
        */
-      if (room.phase === "sayIt")
-        return reject(view(), "action_unavailable", "Let them say it first");
-      room.pausedAt = now;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "phase.resume") {
-      if (room.pausedAt === null) return reject(view(), "action_unavailable", "Not paused");
-      const frozenFor = Math.max(0, now - room.pausedAt);
-      if (room.phaseEndsAt !== 0) room.phaseEndsAt += frozenFor;
-      room.pausedAt = null;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "phase.advance") {
-      if (room.phase === "submit") {
-        closeSubmit(room, now);
+      if (action.type === "phase.pause") {
+        if (room.pausedAt !== null) return reject(view(), "action_unavailable", "Already paused");
+        if (room.phase === "lobby" || room.phase === "ending")
+          return reject(view(), "action_unavailable", "Nothing to pause");
+        /**
+         * Not the spoken beat. Its countdown is drawn from `phaseEndsAt` on each phone independently,
+         * which is what keeps six of them in step; freezing the server's clock underneath that would
+         * leave the phones counting to a moment that has moved. It lasts seven seconds — if it goes
+         * wrong, letting it finish costs less than desynchronising it.
+         */
+        if (room.phase === "sayIt")
+          return reject(view(), "action_unavailable", "Let them say it first");
+        room.pausedAt = now;
+        changed(room);
         return remembered();
       }
-      if (room.phase === "prompt") {
-        enterPhase(room, "submit", now);
-        return remembered();
-      }
-      if (room.phase === "sayIt") {
-        enterPhase(room, "reveal", now);
-        return remembered();
-      }
-      if (room.phase === "reveal") {
-        afterReveal(room, now);
-        return remembered();
-      }
-      return reject(view(), "action_unavailable", "Nothing to skip");
-    }
 
-    /** The host can correct an exact grouping when the room agrees two answers meant the same thing. */
-    if (action.type === "result.merge" || action.type === "result.reset") {
-      if (room.phase !== "reveal" || !room.result)
-        return reject(view(), "action_unavailable", "There is no result to change");
-      if (action.round !== room.round)
-        return reject(view(), "phase_ended", "That round has closed");
+      if (action.type === "phase.resume") {
+        if (room.pausedAt === null) return reject(view(), "action_unavailable", "Not paused");
+        const frozenFor = Math.max(0, now - room.pausedAt);
+        if (room.phaseEndsAt !== 0) room.phaseEndsAt += frozenFor;
+        room.pausedAt = null;
+        changed(room);
+        return remembered();
+      }
 
-      if (action.type === "result.reset") {
-        if (!room.resultBaseline || room.result === room.resultBaseline)
-          return reject(view(), "action_unavailable", "Nothing has been changed");
+      if (action.type === "phase.advance") {
+        if (room.phase === "submit") {
+          closeSubmit(room, now);
+          return remembered();
+        }
+        if (room.phase === "prompt") {
+          enterPhase(room, "submit", now);
+          return remembered();
+        }
+        if (room.phase === "sayIt") {
+          enterPhase(room, "reveal", now);
+          return remembered();
+        }
+        if (room.phase === "reveal") {
+          afterReveal(room, now);
+          return remembered();
+        }
+        return reject(view(), "action_unavailable", "Nothing to skip");
+      }
+
+      /** The host can correct an exact grouping when the room agrees two answers meant the same thing. */
+      if (action.type === "result.merge" || action.type === "result.reset") {
+        if (room.phase !== "reveal" || !room.result)
+          return reject(view(), "action_unavailable", "There is no result to change");
+        if (action.round !== room.round)
+          return reject(view(), "phase_ended", "That round has closed");
+
+        if (action.type === "result.reset") {
+          if (!room.resultBaseline || room.result === room.resultBaseline)
+            return reject(view(), "action_unavailable", "Nothing has been changed");
+          awardResult(room, room.result, -1);
+          room.result = room.resultBaseline;
+          awardResult(room, room.result, 1);
+          room.history[room.history.length - 1] = room.result;
+          changed(room);
+          return remembered();
+        }
+
+        const clusters = room.result.clusters;
+        if (
+          action.from === action.to ||
+          !clusters[action.from] ||
+          !clusters[action.to] ||
+          action.from < 0 ||
+          action.to < 0
+        )
+          return reject(view(), "action_unavailable", "Those are not two groups");
+
         awardResult(room, room.result, -1);
-        room.result = room.resultBaseline;
+        const merged = clusters.map((cluster, index) =>
+          index === action.to
+            ? {
+                ...cluster,
+                playerIds: [...cluster.playerIds, ...clusters[action.from].playerIds],
+                spellings: [...cluster.spellings, ...clusters[action.from].spellings],
+              }
+            : { ...cluster, playerIds: [...cluster.playerIds], spellings: [...cluster.spellings] },
+        );
+        merged.splice(action.from, 1);
+
+        const { herdIndex, pointsEach, noScoreReason } = scoreClusters(
+          merged,
+          playing(room).length,
+        );
+        room.result = {
+          ...room.result,
+          clusters: merged,
+          herdIndex,
+          pointsEach,
+          noScoreReason,
+          oddPlayerId: oddPlayerOf(merged, herdIndex),
+          corrected: true,
+        };
         awardResult(room, room.result, 1);
         room.history[room.history.length - 1] = room.result;
         changed(room);
         return remembered();
       }
 
-      const clusters = room.result.clusters;
-      if (
-        action.from === action.to ||
-        !clusters[action.from] ||
-        !clusters[action.to] ||
-        action.from < 0 ||
-        action.to < 0
-      )
-        return reject(view(), "action_unavailable", "Those are not two groups");
-
-      awardResult(room, room.result, -1);
-      const merged = clusters.map((cluster, index) =>
-        index === action.to
-          ? {
-              ...cluster,
-              playerIds: [...cluster.playerIds, ...clusters[action.from].playerIds],
-              spellings: [...cluster.spellings, ...clusters[action.from].spellings],
-            }
-          : { ...cluster, playerIds: [...cluster.playerIds], spellings: [...cluster.spellings] },
-      );
-      merged.splice(action.from, 1);
-
-      const { herdIndex, pointsEach, noScoreReason } = scoreClusters(merged, playing(room).length);
-      room.result = {
-        ...room.result,
-        clusters: merged,
-        herdIndex,
-        pointsEach,
-        noScoreReason,
-        oddPlayerId: oddPlayerOf(merged, herdIndex),
-        corrected: true,
-      };
-      awardResult(room, room.result, 1);
-      room.history[room.history.length - 1] = room.result;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "host.pass") {
-      const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
-      if (!target) return reject(view(), "action_unavailable", "They are not here");
-      room.hostPlayerId = target.id;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "player.remove") {
-      const target = room.players.find(({ id }) => id === action.playerId);
-      if (!target) return reject(view(), "action_unavailable", "They are not here");
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== action.playerId);
-        if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
-      } else {
-        target.out = true;
-        target.answer = null;
-        target.leftAt = now;
-        target.tokenHash = hash(token());
-        if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+      if (action.type === "host.pass") {
+        const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
+        if (!target) return reject(view(), "action_unavailable", "They are not here");
+        room.hostPlayerId = target.id;
+        changed(room);
+        return remembered();
       }
-      changed(room);
-      return remembered();
-    }
 
-    if (action.type === "game.replay" || action.type === "game.lobby") {
-      room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
-      room.gameNumber += 1;
-      room.round = 0;
-      room.result = null;
-      room.resultBaseline = null;
-      room.history = [];
-      room.winnerIds = [];
-      room.question = null;
-      for (const player of room.players) {
-        player.score = 0;
-        player.out = false;
-        player.aloneCount = 0;
-        player.answer = null;
-        setMultiplayerPlayerReady(player, true);
+      if (action.type === "player.remove") {
+        const target = room.players.find(({ id }) => id === action.playerId);
+        if (!target) return reject(view(), "action_unavailable", "They are not here");
+        if (room.phase === "lobby") {
+          room.players = room.players.filter(({ id }) => id !== action.playerId);
+          if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+        } else {
+          target.out = true;
+          target.answer = null;
+          target.leftAt = now;
+          target.tokenHash = hash(`${context.newId}:removed:${target.id}`);
+          if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+        }
+        changed(room);
+        return remembered();
       }
-      if (action.type === "game.replay") startRound(room, now);
-      else enterPhase(room, "lobby", now);
-      return remembered();
-    }
 
-    if (action.type === "game.end") {
-      finish(room, now);
-      return remembered();
-    }
+      if (action.type === "game.replay" || action.type === "game.lobby") {
+        room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
+        room.gameNumber += 1;
+        room.round = 0;
+        room.result = null;
+        room.resultBaseline = null;
+        room.history = [];
+        room.winnerIds = [];
+        room.question = null;
+        for (const player of room.players) {
+          player.score = 0;
+          player.out = false;
+          player.aloneCount = 0;
+          player.answer = null;
+          setMultiplayerPlayerReady(player, true);
+        }
+        if (action.type === "game.replay") startRound(room, now, pick);
+        else enterPhase(room, "lobby", now);
+        return remembered();
+      }
 
-    return reject(view(), "action_unavailable", "Unknown action");
+      if (action.type === "game.end") {
+        finish(room, now);
+        return remembered();
+      }
+
+      return reject(view(), "action_unavailable", "Unknown action");
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
 
   return result ?? failure("room_unavailable", "Room unavailable");
 }
 
-export async function applySameBrainPlayerAction(input: {
-  roomId: string;
-  playerId: string;
-  playerToken: string;
-  action: SameBrainPlayerAction;
-}): Promise<SameBrainActionResult> {
-  await pump(input.roomId);
+export async function applySameBrainPlayerAction(
+  input: {
+    roomId: string;
+    playerId: string;
+    playerToken: string;
+    action: SameBrainPlayerAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<SameBrainActionResult> {
+  const pick = gameRandomInt(context);
+  await pump(input.roomId, context.now, pick);
+  const command: SameBrainGameCommand = versionGameCommand({
+    game: "same-brain",
+    actionId: input.action.actionId,
+    actor: { role: "player", playerId: input.playerId },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const player = room.players.find(({ id }) => id === input.playerId);
-    if (!player || !safeEqual(input.playerToken, player.tokenHash))
-      return failure("room_unavailable", "Room unavailable");
-    const now = Date.now();
-    touch(room, player.id, now, true);
-    advance(room, now);
-    const view = () => snapshot(room, player.id, now);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const player = room.players.find(({ id }) => id === input.playerId);
+      if (!player || !safeEqual(input.playerToken, player.tokenHash))
+        return failure("room_unavailable", "Room unavailable");
+      const now = context.now;
+      touch(room, player.id, now, true);
+      advance(room, now, pick);
+      const view = () => snapshot(room, player.id, now);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(view());
 
-    const action = input.action;
-    const remembered = () => {
-      room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
-      return accept(snapshot(room, player.id, now));
-    };
+      const action = input.action;
+      const remembered = () => {
+        room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
+        return accept(snapshot(room, player.id, now));
+      };
 
-    if (action.type === "room.leave") {
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== player.id);
-        if (room.players.length === 0) room.expiresAt = now;
-      } else {
-        player.out = true;
-        player.answer = null;
-        player.leftAt = now;
-        player.tokenHash = hash(token());
-        if (gameOver(room)) finish(room, now);
-      }
-      if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "player.rename") {
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "Names only change in the lobby");
-      if (
-        room.players.some(
-          (candidate) =>
-            candidate.id !== player.id &&
-            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
-        )
-      )
-        return reject(view(), "action_unavailable", "That name is already here");
-      player.name = action.name;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "readiness.set") {
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "Readiness only changes in the lobby");
-      if (multiplayerPlayerReady(player) !== action.ready) {
-        setMultiplayerPlayerReady(player, action.ready);
-        changed(room);
-      }
-      return remembered();
-    }
-
-    if (action.type === "host.claim") {
-      if (
-        room.hostDisconnectedSince === null ||
-        now - room.hostDisconnectedSince < SAME_BRAIN_HOST_CLAIM_AFTER_MS
-      )
-        return reject(view(), "action_unavailable", "The host is still here");
-      room.hostPlayerId = player.id;
-      room.hostDisconnectedSince = null;
-      changed(room);
-      return remembered();
-    }
-
-    if (player.out) return reject(view(), "out_of_game", "You are out of this game");
-
-    if (action.type === "answer.submit" || action.type === "answer.clear") {
-      // A prompt beat that has run down but not yet been advanced by a poll should still accept an
-      // answer — the player is looking at the question, whatever the clock says.
-      if (room.phase !== "submit" && room.phase !== "prompt")
-        return reject(view(), "phase_ended", "That round has closed");
-      if (action.round !== room.round)
-        return reject(view(), "phase_ended", "That round has closed");
-
-      if (action.type === "answer.clear") {
-        player.answer = null;
+      if (action.type === "room.leave") {
+        if (room.phase === "lobby") {
+          room.players = room.players.filter(({ id }) => id !== player.id);
+          if (room.players.length === 0) room.expiresAt = now;
+        } else {
+          player.out = true;
+          player.answer = null;
+          player.leftAt = now;
+          player.tokenHash = hash(`${context.newId}:left:${player.id}`);
+          if (gameOver(room)) finish(room, now);
+        }
+        if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
         changed(room);
         return remembered();
       }
 
-      if (!answerIsUsable(action.text))
-        return reject(view(), "invalid_answer", "Type a word or two");
-      player.answer = action.text.slice(0, SAME_BRAIN_MAX_ANSWER_LENGTH).trim();
-      changed(room);
-      // Nobody waits out a timer everybody has already beaten.
-      if (room.phase === "submit" && everyoneAnswered(room)) closeSubmit(room, now);
-      return remembered();
-    }
+      if (action.type === "player.rename") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "Names only change in the lobby");
+        if (
+          room.players.some(
+            (candidate) =>
+              candidate.id !== player.id &&
+              candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+          )
+        )
+          return reject(view(), "action_unavailable", "That name is already here");
+        player.name = action.name;
+        changed(room);
+        return remembered();
+      }
 
-    return reject(view(), "action_unavailable", "Unknown action");
+      if (action.type === "readiness.set") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "Readiness only changes in the lobby");
+        if (multiplayerPlayerReady(player) !== action.ready) {
+          setMultiplayerPlayerReady(player, action.ready);
+          changed(room);
+        }
+        return remembered();
+      }
+
+      if (action.type === "host.claim") {
+        if (
+          room.hostDisconnectedSince === null ||
+          now - room.hostDisconnectedSince < SAME_BRAIN_HOST_CLAIM_AFTER_MS
+        )
+          return reject(view(), "action_unavailable", "The host is still here");
+        room.hostPlayerId = player.id;
+        room.hostDisconnectedSince = null;
+        changed(room);
+        return remembered();
+      }
+
+      if (player.out) return reject(view(), "out_of_game", "You are out of this game");
+
+      if (action.type === "answer.submit" || action.type === "answer.clear") {
+        // A prompt beat that has run down but not yet been advanced by a poll should still accept an
+        // answer — the player is looking at the question, whatever the clock says.
+        if (room.phase !== "submit" && room.phase !== "prompt")
+          return reject(view(), "phase_ended", "That round has closed");
+        if (action.round !== room.round)
+          return reject(view(), "phase_ended", "That round has closed");
+
+        if (action.type === "answer.clear") {
+          player.answer = null;
+          changed(room);
+          return remembered();
+        }
+
+        if (!answerIsUsable(action.text))
+          return reject(view(), "invalid_answer", "Type a word or two");
+        player.answer = action.text.slice(0, SAME_BRAIN_MAX_ANSWER_LENGTH).trim();
+        changed(room);
+        // Nobody waits out a timer everybody has already beaten.
+        if (room.phase === "submit" && everyoneAnswered(room)) closeSubmit(room, now);
+        return remembered();
+      }
+
+      return reject(view(), "action_unavailable", "Unknown action");
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
 
   if (!result) return failure("room_unavailable", "Room unavailable");

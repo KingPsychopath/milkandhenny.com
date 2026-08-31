@@ -1,4 +1,13 @@
 import { randomInt } from "node:crypto";
+import {
+  applyGameCommand,
+  gameRandomInt,
+  replaceGameState,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { liarsRoomRedisKeys } from "./liars-keys";
@@ -142,7 +151,7 @@ interface PlayerState {
   leftAt?: number;
 }
 
-interface LiarsRoomState {
+export interface LiarsGameState {
   roomId: string;
   /** The game-night pool owns admission and lobby settings for this room. */
   managed?: boolean;
@@ -206,6 +215,14 @@ interface LiarsRoomState {
   runoffIds: string[];
   narratorPlayerId: string | null;
 }
+
+type LiarsRoomState = LiarsGameState;
+
+export type LiarsGameCommand = VersionedGameCommand<
+  "liars",
+  LiarsHostAction | LiarsPlayerAction,
+  { role: "host" | "player"; playerId?: string }
+>;
 
 interface JoinReceipt {
   playerId: string;
@@ -533,21 +550,29 @@ function clearRoundState(room: LiarsRoomState) {
   room.runoffIds = [];
 }
 
-function startRound(room: LiarsRoomState, now: number) {
+function startRound(
+  room: LiarsRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   room.round += 1;
   clearRoundState(room);
   room.dawn = null;
   if (room.mode === "imposter") {
-    startClueRound(room, now);
+    startClueRound(room, now, pick);
     return;
   }
   enterPhase(room, "night", now);
 }
 
-function startClueRound(room: LiarsRoomState, now: number) {
+function startClueRound(
+  room: LiarsRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   const order = living(room).map(({ id }) => id);
   for (let index = order.length - 1; index > 0; index -= 1) {
-    const swap = randomInt(index + 1);
+    const swap = pick(index + 1);
     [order[index], order[swap]] = [order[swap], order[index]];
   }
   room.clueOrder = order;
@@ -562,7 +587,11 @@ function clueRoundsBeforeVote(room: LiarsRoomState) {
   return room.players.length <= 7 && room.round === 1 ? 2 : 1;
 }
 
-function advanceClue(room: LiarsRoomState, now: number) {
+function advanceClue(
+  room: LiarsRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   // At a table the window belongs to the whole circle, so running out ends the round rather than
   // nudging an index nobody is watching.
   if (room.roomMode !== "remote" && now >= room.phaseEndsAt) room.clueIndex = room.clueOrder.length;
@@ -574,7 +603,7 @@ function advanceClue(room: LiarsRoomState, now: number) {
     return;
   }
   if (room.clueRound < clueRoundsBeforeVote(room)) {
-    startClueRound(room, now);
+    startClueRound(room, now, pick);
     return;
   }
   enterPhase(room, "deliberation", now);
@@ -610,7 +639,12 @@ function checkWinner(room: LiarsRoomState, now: number, ejectedJesterId?: string
  * Lazy advance, run on every read. The room owns no timers; phases move because time has passed.
  * A room nobody is connected to pauses rather than fast-forwarding through rounds of nobody acting.
  */
-function advance(room: LiarsRoomState, now = Date.now(), idleFor = 0) {
+function advance(
+  room: LiarsRoomState,
+  now = Date.now(),
+  idleFor = 0,
+  pick: (upperBound: number) => number = randomInt,
+) {
   if (room.phase === "lobby" || room.phase === "ending") return;
   if (room.pausedAt !== null) return;
 
@@ -642,13 +676,13 @@ function advance(room: LiarsRoomState, now = Date.now(), idleFor = 0) {
     }
     switch (room.phase) {
       case "deal":
-        startRound(room, room.phaseEndsAt);
+        startRound(room, room.phaseEndsAt, pick);
         break;
       case "night":
         resolveNight(room, room.phaseEndsAt);
         break;
       case "clue":
-        advanceClue(room, room.phaseEndsAt);
+        advanceClue(room, room.phaseEndsAt, pick);
         break;
       case "dawn":
         enterPhase(room, "deliberation", room.phaseEndsAt);
@@ -660,7 +694,7 @@ function advance(room: LiarsRoomState, now = Date.now(), idleFor = 0) {
         resolveVote(room, room.phaseEndsAt);
         break;
       case "verdict":
-        afterVerdict(room, room.phaseEndsAt);
+        afterVerdict(room, room.phaseEndsAt, pick);
         break;
       case "finalGuess":
         resolveFinalGuess(room, room.phaseEndsAt, null);
@@ -1032,7 +1066,11 @@ function resolveVote(room: LiarsRoomState, now: number) {
   enterPhase(room, "verdict", now);
 }
 
-function afterVerdict(room: LiarsRoomState, now: number) {
+function afterVerdict(
+  room: LiarsRoomState,
+  now: number,
+  pick: (upperBound: number) => number = randomInt,
+) {
   if (checkWinner(room, now, room.ejectedJesterId)) return;
   // The last imposter out gets one shot at the word before the crew can be declared right.
   if (room.mode === "imposter" && lastImposterJustEjected(room)) {
@@ -1040,7 +1078,7 @@ function afterVerdict(room: LiarsRoomState, now: number) {
     enterPhase(room, "finalGuess", now);
     return;
   }
-  startRound(room, now);
+  startRound(room, now, pick);
 }
 
 function lastImposterJustEjected(room: LiarsRoomState) {
@@ -1569,7 +1607,12 @@ export async function readLiarsSnapshot(input: {
   );
 }
 
-function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string, LiarsRole>) {
+function dealGame(
+  room: LiarsRoomState,
+  now: number,
+  forcedRoles?: Record<string, LiarsRole>,
+  pick: (upperBound: number) => number = randomInt,
+) {
   const playerIds = room.players.map(({ id }) => id);
   const previousRoles = Object.fromEntries(
     room.players.flatMap((player) =>
@@ -1584,7 +1627,7 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
       lineup: room.lineup,
       playerIds,
       previousRoles: Object.keys(previousRoles).length > 0 ? previousRoles : undefined,
-      pick: (bound) => randomInt(bound),
+      pick,
     });
 
   // The board clears with the deal, not with the round: a note is worth more the longer it lives.
@@ -1594,7 +1637,7 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
   room.word = pair?.word ?? null;
   room.decoyWord = pair?.decoy ?? null;
   room.wordCategory = pair?.category ?? null;
-  room.wordBoard = pair ? liarsBoard(pair, (bound) => randomInt(bound), pair.decoy) : [];
+  room.wordBoard = pair ? liarsBoard(pair, pick, pair.decoy) : [];
   if (pair) room.recentWords = [...room.recentWords, pair.word].slice(-40);
 
   for (const player of room.players) {
@@ -1630,433 +1673,470 @@ function dealGame(room: LiarsRoomState, now: number, forcedRoles?: Record<string
   enterPhase(room, "deal", now);
 }
 
-export async function applyLiarsHostAction(input: {
-  roomId: string;
-  hostToken?: string;
-  playerId?: string;
-  playerToken?: string;
-  action: LiarsHostAction;
-}): Promise<LiarsActionResult> {
+export async function applyLiarsHostAction(
+  input: {
+    roomId: string;
+    hostToken?: string;
+    playerId?: string;
+    playerToken?: string;
+    action: LiarsHostAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<LiarsActionResult> {
+  const pick = gameRandomInt(context);
+  const command: LiarsGameCommand = versionGameCommand({
+    game: "liars",
+    actionId: input.action.actionId,
+    actor: { role: "host", playerId: input.playerId },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const now = Date.now();
-    const byToken = input.hostToken && safeEqual(input.hostToken, room.hostHash);
-    const actor = room.players.find(({ id }) => id === input.playerId) ?? null;
-    const byPlayer =
-      actor && input.playerToken && safeEqual(input.playerToken, actor.tokenHash)
-        ? actor.id === room.hostPlayerId
-        : false;
-    if (!byToken && !byPlayer) return failure("room_unavailable", "Room unavailable");
-    const idleFor = touch(room, actor?.id, now, true);
-    advance(room, now, idleFor);
-    const view = () => snapshot(room, input.playerId, now);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const now = context.now;
+      const byToken = input.hostToken && safeEqual(input.hostToken, room.hostHash);
+      const actor = room.players.find(({ id }) => id === input.playerId) ?? null;
+      const byPlayer =
+        actor && input.playerToken && safeEqual(input.playerToken, actor.tokenHash)
+          ? actor.id === room.hostPlayerId
+          : false;
+      if (!byToken && !byPlayer) return failure("room_unavailable", "Room unavailable");
+      const idleFor = touch(room, actor?.id, now, true);
+      advance(room, now, idleFor, pick);
+      const view = () => snapshot(room, input.playerId, now);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(view());
 
-    const action = input.action;
-    if (action.type === "game.configure") {
-      if (room.managed)
-        return reject(view(), "action_unavailable", "The game-night settings are fixed");
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "The game has already started");
-      if (action.roomMode) {
-        room.roomMode = action.roomMode;
-        room.timings = {
-          ...liarsDefaultTimings(action.roomMode),
-          ...room.timings,
-          deliberation: liarsDefaultTimings(action.roomMode).deliberation,
-        };
-      }
-      if (action.toggles) {
-        room.toggles = { ...room.toggles, ...action.toggles };
-        // The two are incompatible: a graveyard that can see roles is a guaranteed-correct ballot.
-        if (room.toggles.liveGodView) room.toggles.graveyardVote = false;
-        if (action.toggles.firstGame !== undefined)
-          room.lineup = action.toggles.firstGame
+      const action = input.action;
+      if (action.type === "game.configure") {
+        if (room.managed)
+          return reject(view(), "action_unavailable", "The game-night settings are fixed");
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "The game has already started");
+        if (action.roomMode) {
+          room.roomMode = action.roomMode;
+          room.timings = {
+            ...liarsDefaultTimings(action.roomMode),
+            ...room.timings,
+            deliberation: liarsDefaultTimings(action.roomMode).deliberation,
+          };
+        }
+        if (action.toggles) {
+          room.toggles = { ...room.toggles, ...action.toggles };
+          // The two are incompatible: a graveyard that can see roles is a guaranteed-correct ballot.
+          if (room.toggles.liveGodView) room.toggles.graveyardVote = false;
+          if (action.toggles.firstGame !== undefined)
+            room.lineup = action.toggles.firstGame
+              ? liarsFirstGameLineup(room.mode, room.players.length)
+              : liarsDefaultLineup(room.mode, room.players.length);
+        }
+        if (action.timings) room.timings = { ...room.timings, ...action.timings };
+        if (action.resetLineup) {
+          room.lineup = room.toggles.firstGame
             ? liarsFirstGameLineup(room.mode, room.players.length)
             : liarsDefaultLineup(room.mode, room.players.length);
-      }
-      if (action.timings) room.timings = { ...room.timings, ...action.timings };
-      if (action.resetLineup) {
-        room.lineup = room.toggles.firstGame
-          ? liarsFirstGameLineup(room.mode, room.players.length)
-          : liarsDefaultLineup(room.mode, room.players.length);
-        room.lineupCustom = false;
+          room.lineupCustom = false;
+          changed(room);
+        }
+        if (action.lineup) {
+          const check = liarsValidateLineup(room.mode, action.lineup, room.players.length);
+          if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
+          room.lineup = action.lineup;
+          room.lineupCustom = true;
+        }
         changed(room);
-      }
-      if (action.lineup) {
-        const check = liarsValidateLineup(room.mode, action.lineup, room.players.length);
+      } else if (action.type === "game.start") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "The game has already started");
+        if (room.players.length < LIARS_PLAYER_LIMITS[room.mode].min)
+          return reject(
+            view(),
+            "action_unavailable",
+            `${room.mode} needs ${LIARS_PLAYER_LIMITS[room.mode].min} players`,
+            true,
+          );
+        const check = liarsValidateLineup(room.mode, room.lineup, room.players.length);
         if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
-        room.lineup = action.lineup;
-        room.lineupCustom = true;
-      }
-      changed(room);
-    } else if (action.type === "game.start") {
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "The game has already started");
-      if (room.players.length < LIARS_PLAYER_LIMITS[room.mode].min)
-        return reject(
-          view(),
-          "action_unavailable",
-          `${room.mode} needs ${LIARS_PLAYER_LIMITS[room.mode].min} players`,
-          true,
+        const confirmed = new Set(action.removePlayerIds ?? []);
+        const unready = multiplayerUnreadyPlayers(room.players);
+        const unconfirmed = unready.filter(
+          ({ id, startRequestId }) =>
+            id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
         );
-      const check = liarsValidateLineup(room.mode, room.lineup, room.players.length);
-      if (!check.ok) return reject(view(), "lineup_invalid", check.problem.message);
-      const confirmed = new Set(action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
-      const unconfirmed = unready.filter(
-        ({ id, startRequestId }) =>
-          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
-      );
-      if (unconfirmed.length > 0) {
-        if (requestMultiplayerReadiness(unconfirmed, token())) changed(room);
-        const names = unconfirmed.map(({ name }) => name).join(", ");
-        return reject(
-          view(),
-          "players_not_ready",
-          unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
-          true,
+        if (unconfirmed.length > 0) {
+          if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`)) changed(room);
+          const names = unconfirmed.map(({ name }) => name).join(", ");
+          return reject(
+            view(),
+            "players_not_ready",
+            unconfirmed.length === 1 ? `${names} is not ready` : `${names} are not ready`,
+            true,
+          );
+        }
+        const remainingPlayers = room.players.filter(
+          (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
         );
-      }
-      const remainingPlayers = room.players.filter(
-        (candidate) => multiplayerPlayerReady(candidate) || !confirmed.has(candidate.id),
-      );
-      if (remainingPlayers.length < LIARS_PLAYER_LIMITS[room.mode].min)
-        return reject(
-          view(),
-          "action_unavailable",
-          `${room.mode} needs ${LIARS_PLAYER_LIMITS[room.mode].min} ready players`,
-          true,
-        );
-      if (remainingPlayers.length !== room.players.length) {
-        room.players = remainingPlayers;
+        if (remainingPlayers.length < LIARS_PLAYER_LIMITS[room.mode].min)
+          return reject(
+            view(),
+            "action_unavailable",
+            `${room.mode} needs ${LIARS_PLAYER_LIMITS[room.mode].min} ready players`,
+            true,
+          );
+        if (remainingPlayers.length !== room.players.length) {
+          room.players = remainingPlayers;
+          room.lineup = room.toggles.firstGame
+            ? liarsFirstGameLineup(room.mode, room.players.length)
+            : liarsDefaultLineup(room.mode, room.players.length);
+          room.lineupCustom = false;
+          changed(room);
+        }
+        dealGame(room, now, undefined, pick);
+      } else if (action.type === "phase.extend") {
+        room.phaseEndsAt += 30_000;
+        changed(room);
+      } else if (action.type === "phase.pause") {
+        room.pausedAt = now;
+        changed(room);
+      } else if (action.type === "phase.resume") {
+        if (room.pausedAt !== null) {
+          const shift = now - room.pausedAt;
+          room.phaseStartedAt += shift;
+          room.phaseEndsAt += shift;
+          if (room.nightOpensAt !== null) room.nightOpensAt += shift;
+          if (room.reportAt !== null) room.reportAt += shift;
+          room.pausedAt = null;
+          changed(room);
+        }
+      } else if (action.type === "host.pass") {
+        const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
+        if (!target) return reject(view(), "invalid_target", "No such player");
+        room.hostPlayerId = target.id;
+        changed(room);
+      } else if (action.type === "player.remove") {
+        const target = room.players.find(({ id }) => id === action.playerId);
+        if (!target) return reject(view(), "invalid_target", "No such player");
+        if (room.phase === "lobby") {
+          room.players = room.players.filter(({ id }) => id !== action.playerId);
+          room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
+        } else if (target.alive) {
+          // Someone actually leaving, not dropping. Removing a player can end the game outright.
+          kill(room, target, "left");
+          target.leftAt = now;
+          target.tokenHash = hash(`${context.newId}:removed:${target.id}`);
+          note(room, "day", narrate(room, "left", { victim: target.name }));
+          checkWinner(room, now);
+        } else {
+          target.leftAt = now;
+          target.tokenHash = hash(`${context.newId}:removed:${target.id}`);
+        }
+        if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
+        else transferNarrator(room, action.playerId, now);
+        changed(room);
+      } else if (action.type === "game.replay" || action.type === "game.lobby") {
+        room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
+        for (const player of room.players) {
+          player.previousRole = player.role ?? undefined;
+          player.alive = true;
+          player.role = null;
+        }
+        room.gameNumber += 1;
+        room.round = 0;
+        room.history = [];
+        room.dawn = null;
+        room.winner = null;
+        room.recentNarrationIds = [];
         room.lineup = room.toggles.firstGame
           ? liarsFirstGameLineup(room.mode, room.players.length)
           : liarsDefaultLineup(room.mode, room.players.length);
         room.lineupCustom = false;
-        changed(room);
-      }
-      dealGame(room, now);
-    } else if (action.type === "phase.extend") {
-      room.phaseEndsAt += 30_000;
-      changed(room);
-    } else if (action.type === "phase.pause") {
-      room.pausedAt = now;
-      changed(room);
-    } else if (action.type === "phase.resume") {
-      if (room.pausedAt !== null) {
-        const shift = now - room.pausedAt;
-        room.phaseStartedAt += shift;
-        room.phaseEndsAt += shift;
-        if (room.nightOpensAt !== null) room.nightOpensAt += shift;
-        if (room.reportAt !== null) room.reportAt += shift;
-        room.pausedAt = null;
-        changed(room);
-      }
-    } else if (action.type === "host.pass") {
-      const target = room.players.find(({ id, leftAt }) => id === action.playerId && !leftAt);
-      if (!target) return reject(view(), "invalid_target", "No such player");
-      room.hostPlayerId = target.id;
-      changed(room);
-    } else if (action.type === "player.remove") {
-      const target = room.players.find(({ id }) => id === action.playerId);
-      if (!target) return reject(view(), "invalid_target", "No such player");
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== action.playerId);
-        room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
-      } else if (target.alive) {
-        // Someone actually leaving, not dropping. Removing a player can end the game outright.
-        kill(room, target, "left");
-        target.leftAt = now;
-        target.tokenHash = hash(token());
-        note(room, "day", narrate(room, "left", { victim: target.name }));
-        checkWinner(room, now);
+        if (action.type === "game.replay") dealGame(room, now, undefined, pick);
+        else {
+          for (const player of room.players) setMultiplayerPlayerReady(player, false);
+          room.phase = "lobby";
+          changed(room);
+        }
+      } else if (action.type === "game.end") {
+        finish(room, room.winner ?? "town", now);
       } else {
-        target.leftAt = now;
-        target.tokenHash = hash(token());
+        return reject(view(), "action_unavailable", "That action is not available now", true);
       }
-      if (room.hostPlayerId === action.playerId) transferHost(room, action.playerId, now);
-      else transferNarrator(room, action.playerId, now);
-      changed(room);
-    } else if (action.type === "game.replay" || action.type === "game.lobby") {
-      room.players = room.players.filter(({ leftAt }) => leftAt === undefined);
-      for (const player of room.players) {
-        player.previousRole = player.role ?? undefined;
-        player.alive = true;
-        player.role = null;
-      }
-      room.gameNumber += 1;
-      room.round = 0;
-      room.history = [];
-      room.dawn = null;
-      room.winner = null;
-      room.recentNarrationIds = [];
-      room.lineup = room.toggles.firstGame
-        ? liarsFirstGameLineup(room.mode, room.players.length)
-        : liarsDefaultLineup(room.mode, room.players.length);
-      room.lineupCustom = false;
-      if (action.type === "game.replay") dealGame(room, now);
-      else {
-        for (const player of room.players) setMultiplayerPlayerReady(player, false);
-        room.phase = "lobby";
-        changed(room);
-      }
-    } else if (action.type === "game.end") {
-      finish(room, room.winner ?? "town", now);
-    } else {
-      return reject(view(), "action_unavailable", "That action is not available now", true);
-    }
 
-    room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
-    return accept(snapshot(room, input.playerId, now));
+      room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
+      return accept(snapshot(room, input.playerId, now));
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? failure("room_unavailable", "Room unavailable");
 }
 
-export async function applyLiarsPlayerAction(input: {
-  roomId: string;
-  playerId: string;
-  playerToken: string;
-  action: LiarsPlayerAction;
-}): Promise<LiarsActionResult> {
+export async function applyLiarsPlayerAction(
+  input: {
+    roomId: string;
+    playerId: string;
+    playerToken: string;
+    action: LiarsPlayerAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<LiarsActionResult> {
+  const pick = gameRandomInt(context);
+  const command: LiarsGameCommand = versionGameCommand({
+    game: "liars",
+    actionId: input.action.actionId,
+    actor: { role: "player", playerId: input.playerId },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const player = room.players.find(({ id }) => id === input.playerId);
-    if (!player || !safeEqual(input.playerToken, player.tokenHash))
-      return failure("room_unavailable", "Room unavailable");
-    const now = Date.now();
-    const idleFor = touch(room, player.id, now, true);
-    advance(room, now, idleFor);
-    const view = () => snapshot(room, player.id, now);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId)) return accept(view());
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const player = room.players.find(({ id }) => id === input.playerId);
+      if (!player || !safeEqual(input.playerToken, player.tokenHash))
+        return failure("room_unavailable", "Room unavailable");
+      const now = context.now;
+      const idleFor = touch(room, player.id, now, true);
+      advance(room, now, idleFor, pick);
+      const view = () => snapshot(room, player.id, now);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return accept(view());
 
-    const action = input.action;
-    const remembered = () => {
-      room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
-      return accept(snapshot(room, player.id, now));
-    };
+      const action = input.action;
+      const remembered = () => {
+        room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
+        return accept(snapshot(room, player.id, now));
+      };
 
-    if (action.type === "room.leave") {
-      if (room.phase === "lobby") {
-        room.players = room.players.filter(({ id }) => id !== player.id);
-        room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
-        if (room.players.length === 0) room.expiresAt = now;
-      } else {
-        if (player.alive) {
-          kill(room, player, "left");
-          note(room, "day", narrate(room, "left", { victim: player.name }));
-          checkWinner(room, now);
+      if (action.type === "room.leave") {
+        if (room.phase === "lobby") {
+          room.players = room.players.filter(({ id }) => id !== player.id);
+          room.lineup = liarsDefaultLineup(room.mode, Math.max(1, room.players.length));
+          if (room.players.length === 0) room.expiresAt = now;
+        } else {
+          if (player.alive) {
+            kill(room, player, "left");
+            note(room, "day", narrate(room, "left", { victim: player.name }));
+            checkWinner(room, now);
+          }
+          player.leftAt = now;
+          player.tokenHash = hash(`${context.newId}:left:${player.id}`);
         }
-        player.leftAt = now;
-        player.tokenHash = hash(token());
+        if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
+        else transferNarrator(room, player.id, now);
+        changed(room);
+        return remembered();
       }
-      if (room.hostPlayerId === player.id) transferHost(room, player.id, now);
-      else transferNarrator(room, player.id, now);
-      changed(room);
-      return remembered();
-    }
 
-    if (action.type === "player.rename") {
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "Names only change in the lobby");
-      if (
-        room.players.some(
-          (candidate) =>
-            candidate.id !== player.id &&
-            candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+      if (action.type === "player.rename") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "Names only change in the lobby");
+        if (
+          room.players.some(
+            (candidate) =>
+              candidate.id !== player.id &&
+              candidate.name.toLocaleLowerCase() === action.name.toLocaleLowerCase(),
+          )
         )
-      )
-        return reject(view(), "action_unavailable", "That name is already here");
-      player.name = action.name;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "readiness.set") {
-      if (room.phase !== "lobby")
-        return reject(view(), "action_unavailable", "Readiness only changes in the lobby");
-      if (multiplayerPlayerReady(player) !== action.ready) {
-        setMultiplayerPlayerReady(player, action.ready);
-        changed(room);
-      }
-      return remembered();
-    }
-
-    if (action.type === "host.claim") {
-      if (
-        room.hostDisconnectedSince === null ||
-        now - room.hostDisconnectedSince < LIARS_HOST_CLAIM_AFTER_MS
-      )
-        return reject(view(), "action_unavailable", "The host is still here");
-      if (!player.alive) return reject(view(), "not_alive", "Only a living player can host");
-      room.hostPlayerId = player.id;
-      room.hostDisconnectedSince = null;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "words.last") {
-      if (!player.alive && room.toggles.lastWords && player.lastWords === null) {
-        player.lastWords = action.text.slice(0, LIARS_LAST_WORDS_LENGTH).trim();
-        if (room.dawn && player.lastWords)
-          room.dawn.lastWords.push({ name: player.name, text: player.lastWords });
+          return reject(view(), "action_unavailable", "That name is already here");
+        player.name = action.name;
         changed(room);
         return remembered();
       }
-      return reject(view(), "action_unavailable", "Last words have closed");
-    }
 
-    if (action.type === "lineup.wish") {
-      // Lobby only. Once the game is dealt the lineup is settled and a tally would just be noise.
-      if (room.phase !== "lobby") return remembered();
-      const has = player.roleWishes.includes(action.role);
-      if (has === action.wanted) return remembered();
-      player.roleWishes = action.wanted
-        ? [...player.roleWishes, action.role]
-        : player.roleWishes.filter((role) => role !== action.role);
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "graveyard.pin") {
-      // The dead only. The living pinning to the dead's board would be a leak in the useful
-      // direction, which is the direction that ends games.
-      if (player.alive) return remembered();
-      const text = action.text.slice(0, LIARS_GRAVEYARD_NOTE_LENGTH).trim();
-      if (!text) return remembered();
-      // The action id, not the sequence: two pins inside one tick share a sequence, and a board
-      // with two identically-keyed notes unpins the wrong one.
-      room.graveyardBoard.push({ id: action.actionId, name: player.name, text });
-      // Oldest falls off rather than the pin being refused: a full board that silently swallows
-      // your note is worse than one that visibly costs you the note you cared about least.
-      while (room.graveyardBoard.length > LIARS_GRAVEYARD_BOARD_MAX) room.graveyardBoard.shift();
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "graveyard.unpin") {
-      if (player.alive) return remembered();
-      room.graveyardBoard = room.graveyardBoard.filter(({ id }) => id !== action.noteId);
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "graveyard.vote") {
-      if (player.alive) return reject(view(), "action_unavailable", "The living do not vote here");
-      player.graveyardVote = action.targetId;
-      changed(room);
-      return remembered();
-    }
-
-    if (action.type === "guess.final") {
-      if (
-        room.phase !== "finalGuess" ||
-        player.alive ||
-        liarsRoleSide(player.role ?? "villager") !== "mafia"
-      )
-        return reject(view(), "action_unavailable", "That is not yours to answer");
-      resolveFinalGuess(room, now, action.text);
-      return remembered();
-    }
-
-    if (!player.alive) return reject(view(), "not_alive", "You are dead");
-
-    if (action.type === "night.select" || action.type === "night.lock") {
-      if (room.phase !== "night") return reject(view(), "phase_ended", "The night has ended");
-      if (action.round !== room.round) return reject(view(), "phase_ended", "That night has ended");
-      if (player.nightLocked) return reject(view(), "already_locked", "You have locked in");
-      if (action.type === "night.lock") {
-        player.nightLocked = true;
-        changed(room);
-        // An early full lock jumps to the report, never past it.
-        if (living(room).every(({ nightLocked }) => nightLocked) && room.reportAt !== null) {
-          const remaining = room.phaseEndsAt - room.reportAt;
-          room.reportAt = now;
-          room.phaseEndsAt = now + remaining;
-          writeNightReports(room);
+      if (action.type === "readiness.set") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "Readiness only changes in the lobby");
+        if (multiplayerPlayerReady(player) !== action.ready) {
+          setMultiplayerPlayerReady(player, action.ready);
+          changed(room);
         }
         return remembered();
       }
-      const targetable = liarsTargetableIds({
-        mode: room.mode,
-        role: player.role ?? "villager",
-        actorId: player.id,
-        living: living(room).map(({ id, role }) => ({ playerId: id, role: role ?? "villager" })),
-        previousTargetId: player.previousNightTarget,
-        toggles: room.toggles,
-      });
-      if (action.targetId !== null && !targetable.includes(action.targetId))
-        return reject(view(), "invalid_target", "You cannot choose them");
-      player.nightTarget = action.targetId;
-      changed(room);
-      return remembered();
-    }
 
-    if (action.type === "clue.said" || action.type === "clue.skip") {
-      if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
-      // Anyone may move a stalled turn on. Somebody who has put their phone down should not be able
-      // to hold up nine other people, and there is nothing to cheat here — the order is public.
-      const isTheirs = room.clueOrder[room.clueIndex] === player.id;
-      if (action.type === "clue.said" && !isTheirs)
-        return reject(view(), "not_your_turn", "It is not your turn");
-      player.clueDone = isTheirs || player.clueDone;
-      advanceClue(room, now);
-      return remembered();
-    }
-
-    if (action.type === "clue.allSaid") {
-      if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
-      // Two different people, not one person twice: a double-tap is the same thumb making the same
-      // mistake, and skipping somebody's turn is not a thing you want to undo.
-      room.clueFinishedBy = [...new Set([...(room.clueFinishedBy ?? []), player.id])];
-      if (room.clueFinishedBy.length < 2) {
+      if (action.type === "host.claim") {
+        if (
+          room.hostDisconnectedSince === null ||
+          now - room.hostDisconnectedSince < LIARS_HOST_CLAIM_AFTER_MS
+        )
+          return reject(view(), "action_unavailable", "The host is still here");
+        if (!player.alive) return reject(view(), "not_alive", "Only a living player can host");
+        room.hostPlayerId = player.id;
+        room.hostDisconnectedSince = null;
         changed(room);
         return remembered();
       }
-      room.clueIndex = room.clueOrder.length;
-      advanceClue(room, now);
-      return remembered();
-    }
 
-    if (action.type === "day.point") {
-      if (room.phase !== "deliberation")
-        return reject(view(), "action_unavailable", "Nobody is listening yet");
-      player.pointedAt = action.targetId;
-      changed(room);
-      return remembered();
-    }
+      if (action.type === "words.last") {
+        if (!player.alive && room.toggles.lastWords && player.lastWords === null) {
+          player.lastWords = action.text.slice(0, LIARS_LAST_WORDS_LENGTH).trim();
+          if (room.dawn && player.lastWords)
+            room.dawn.lastWords.push({ name: player.name, text: player.lastWords });
+          changed(room);
+          return remembered();
+        }
+        return reject(view(), "action_unavailable", "Last words have closed");
+      }
 
-    if (action.type === "day.readyToVote") {
-      if (room.phase !== "deliberation")
-        return reject(view(), "action_unavailable", "Nobody is listening yet");
-      player.readyToVote = action.ready;
-      changed(room);
-      const alive = living(room);
-      const here = alive.filter((candidate) => connected(candidate, now));
-      // A majority of who is actually here — and the timer fires anyway, so this cannot deadlock.
-      if (here.length > 0 && here.filter(({ readyToVote }) => readyToVote).length > here.length / 2)
-        enterPhase(room, "vote", now);
-      return remembered();
-    }
-
-    if (action.type === "vote.cast" || action.type === "vote.lock") {
-      if (room.phase !== "vote") return reject(view(), "phase_ended", "Voting has closed");
-      if (player.voteLocked) return reject(view(), "already_locked", "Your vote is in");
-      if (action.type === "vote.lock") {
-        player.voteLocked = true;
+      if (action.type === "lineup.wish") {
+        // Lobby only. Once the game is dealt the lineup is settled and a tally would just be noise.
+        if (room.phase !== "lobby") return remembered();
+        const has = player.roleWishes.includes(action.role);
+        if (has === action.wanted) return remembered();
+        player.roleWishes = action.wanted
+          ? [...player.roleWishes, action.role]
+          : player.roleWishes.filter((role) => role !== action.role);
         changed(room);
-        if (living(room).every(({ voteLocked }) => voteLocked)) resolveVote(room, now);
         return remembered();
       }
-      if (action.targetId !== null) {
-        const target = room.players.find(({ id }) => id === action.targetId);
-        if (!target || !target.alive)
-          return reject(view(), "invalid_target", "They are already out");
-      }
-      player.vote = action.targetId;
-      changed(room);
-      return remembered();
-    }
 
-    return reject(view(), "action_unavailable", "That action is not available now", true);
+      if (action.type === "graveyard.pin") {
+        // The dead only. The living pinning to the dead's board would be a leak in the useful
+        // direction, which is the direction that ends games.
+        if (player.alive) return remembered();
+        const text = action.text.slice(0, LIARS_GRAVEYARD_NOTE_LENGTH).trim();
+        if (!text) return remembered();
+        // The action id, not the sequence: two pins inside one tick share a sequence, and a board
+        // with two identically-keyed notes unpins the wrong one.
+        room.graveyardBoard.push({ id: action.actionId, name: player.name, text });
+        // Oldest falls off rather than the pin being refused: a full board that silently swallows
+        // your note is worse than one that visibly costs you the note you cared about least.
+        while (room.graveyardBoard.length > LIARS_GRAVEYARD_BOARD_MAX) room.graveyardBoard.shift();
+        changed(room);
+        return remembered();
+      }
+
+      if (action.type === "graveyard.unpin") {
+        if (player.alive) return remembered();
+        room.graveyardBoard = room.graveyardBoard.filter(({ id }) => id !== action.noteId);
+        changed(room);
+        return remembered();
+      }
+
+      if (action.type === "graveyard.vote") {
+        if (player.alive)
+          return reject(view(), "action_unavailable", "The living do not vote here");
+        player.graveyardVote = action.targetId;
+        changed(room);
+        return remembered();
+      }
+
+      if (action.type === "guess.final") {
+        if (
+          room.phase !== "finalGuess" ||
+          player.alive ||
+          liarsRoleSide(player.role ?? "villager") !== "mafia"
+        )
+          return reject(view(), "action_unavailable", "That is not yours to answer");
+        resolveFinalGuess(room, now, action.text);
+        return remembered();
+      }
+
+      if (!player.alive) return reject(view(), "not_alive", "You are dead");
+
+      if (action.type === "night.select" || action.type === "night.lock") {
+        if (room.phase !== "night") return reject(view(), "phase_ended", "The night has ended");
+        if (action.round !== room.round)
+          return reject(view(), "phase_ended", "That night has ended");
+        if (player.nightLocked) return reject(view(), "already_locked", "You have locked in");
+        if (action.type === "night.lock") {
+          player.nightLocked = true;
+          changed(room);
+          // An early full lock jumps to the report, never past it.
+          if (living(room).every(({ nightLocked }) => nightLocked) && room.reportAt !== null) {
+            const remaining = room.phaseEndsAt - room.reportAt;
+            room.reportAt = now;
+            room.phaseEndsAt = now + remaining;
+            writeNightReports(room);
+          }
+          return remembered();
+        }
+        const targetable = liarsTargetableIds({
+          mode: room.mode,
+          role: player.role ?? "villager",
+          actorId: player.id,
+          living: living(room).map(({ id, role }) => ({ playerId: id, role: role ?? "villager" })),
+          previousTargetId: player.previousNightTarget,
+          toggles: room.toggles,
+        });
+        if (action.targetId !== null && !targetable.includes(action.targetId))
+          return reject(view(), "invalid_target", "You cannot choose them");
+        player.nightTarget = action.targetId;
+        changed(room);
+        return remembered();
+      }
+
+      if (action.type === "clue.said" || action.type === "clue.skip") {
+        if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
+        // Anyone may move a stalled turn on. Somebody who has put their phone down should not be able
+        // to hold up nine other people, and there is nothing to cheat here — the order is public.
+        const isTheirs = room.clueOrder[room.clueIndex] === player.id;
+        if (action.type === "clue.said" && !isTheirs)
+          return reject(view(), "not_your_turn", "It is not your turn");
+        player.clueDone = isTheirs || player.clueDone;
+        advanceClue(room, now, pick);
+        return remembered();
+      }
+
+      if (action.type === "clue.allSaid") {
+        if (room.phase !== "clue") return reject(view(), "phase_ended", "The clues have ended");
+        // Two different people, not one person twice: a double-tap is the same thumb making the same
+        // mistake, and skipping somebody's turn is not a thing you want to undo.
+        room.clueFinishedBy = [...new Set([...(room.clueFinishedBy ?? []), player.id])];
+        if (room.clueFinishedBy.length < 2) {
+          changed(room);
+          return remembered();
+        }
+        room.clueIndex = room.clueOrder.length;
+        advanceClue(room, now, pick);
+        return remembered();
+      }
+
+      if (action.type === "day.point") {
+        if (room.phase !== "deliberation")
+          return reject(view(), "action_unavailable", "Nobody is listening yet");
+        player.pointedAt = action.targetId;
+        changed(room);
+        return remembered();
+      }
+
+      if (action.type === "day.readyToVote") {
+        if (room.phase !== "deliberation")
+          return reject(view(), "action_unavailable", "Nobody is listening yet");
+        player.readyToVote = action.ready;
+        changed(room);
+        const alive = living(room);
+        const here = alive.filter((candidate) => connected(candidate, now));
+        // A majority of who is actually here — and the timer fires anyway, so this cannot deadlock.
+        if (
+          here.length > 0 &&
+          here.filter(({ readyToVote }) => readyToVote).length > here.length / 2
+        )
+          enterPhase(room, "vote", now);
+        return remembered();
+      }
+
+      if (action.type === "vote.cast" || action.type === "vote.lock") {
+        if (room.phase !== "vote") return reject(view(), "phase_ended", "Voting has closed");
+        if (player.voteLocked) return reject(view(), "already_locked", "Your vote is in");
+        if (action.type === "vote.lock") {
+          player.voteLocked = true;
+          changed(room);
+          if (living(room).every(({ voteLocked }) => voteLocked)) resolveVote(room, now);
+          return remembered();
+        }
+        if (action.targetId !== null) {
+          const target = room.players.find(({ id }) => id === action.targetId);
+          if (!target || !target.alive)
+            return reject(view(), "invalid_target", "They are already out");
+        }
+        player.vote = action.targetId;
+        changed(room);
+        return remembered();
+      }
+
+      return reject(view(), "action_unavailable", "That action is not available now", true);
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? failure("room_unavailable", "Room unavailable");
 }

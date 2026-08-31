@@ -135,6 +135,7 @@ export function IcebreakerQrScanner({ playerId, onCancel, onScan }: IcebreakerQr
         };
         animationFrame = requestAnimationFrame(() => void scanFrame());
       } catch {
+        stop();
         setMessage("Camera access wasn't available. Use your Camera app or their short code.");
       }
     };

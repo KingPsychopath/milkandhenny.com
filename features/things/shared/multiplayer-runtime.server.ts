@@ -1,4 +1,8 @@
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer } from "effect";
+import {
+  makeManagedRuntimeHost,
+  type ManagedRuntimeHost,
+} from "@/lib/platform/managed-runtime.server";
 
 import { PairedGameRoomService } from "../remote/paired-game-room-service.server";
 import { PartyRoomService } from "../spelling-party/party-room-service.server";
@@ -14,6 +18,12 @@ import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.s
 import { gameRealtimeChannel } from "./multiplayer-keys";
 import { MULTIPLAYER_GAME_REGISTRY, type MultiplayerGame } from "./multiplayer-telemetry";
 import { startMemoryRoomSweeper, stopMemoryRoomSweeper } from "./room-primitives.server";
+import {
+  GameClock,
+  GameIdGenerator,
+  GameRandom,
+  gameWorkflowServicesLayer,
+} from "./game-workflow-services.server";
 
 const multiplayerLayer = Layer.mergeAll(
   MultiplayerTelemetry.layer,
@@ -27,6 +37,7 @@ const multiplayerLayer = Layer.mergeAll(
   HotAndColdRoomService.layer,
   FamilyFeudRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
   MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
+  gameWorkflowServicesLayer,
 );
 
 /**
@@ -64,16 +75,14 @@ const RUNTIME_KEY = "__milkandhenny_multiplayer_runtime__";
 const runtimeHolder = globalThis as Record<string, unknown>;
 
 if (import.meta.hot) {
-  const outgoing = runtimeHolder[RUNTIME_KEY] as
-    | ManagedRuntime.ManagedRuntime<MultiplayerServices, never>
-    | undefined;
+  const outgoing = runtimeHolder[RUNTIME_KEY] as MultiplayerRuntimeHost | undefined;
   // Fire and forget: nothing is waiting on it, and a failed teardown of a runtime already being
   // thrown away is not worth taking the dev server down for.
   if (outgoing) void outgoing.dispose().catch(() => undefined);
-  runtimeHolder[RUNTIME_KEY] = ManagedRuntime.make(multiplayerLayer);
+  runtimeHolder[RUNTIME_KEY] = makeManagedRuntimeHost(multiplayerLayer, "Multiplayer");
 } else {
   // Production evaluates once, so this is a plain module-scoped singleton with extra steps.
-  runtimeHolder[RUNTIME_KEY] ??= ManagedRuntime.make(multiplayerLayer);
+  runtimeHolder[RUNTIME_KEY] ??= makeManagedRuntimeHost(multiplayerLayer, "Multiplayer");
 }
 
 type MultiplayerServices =
@@ -87,12 +96,15 @@ type MultiplayerServices =
   | TwinRoomService
   | CentreRoomService
   | HotAndColdRoomService
-  | FamilyFeudRoomService;
+  | FamilyFeudRoomService
+  | GameClock
+  | GameIdGenerator
+  | GameRandom;
+
+type MultiplayerRuntimeHost = ManagedRuntimeHost<MultiplayerServices>;
 
 function currentMultiplayerRuntime() {
-  return runtimeHolder[RUNTIME_KEY] as
-    | ManagedRuntime.ManagedRuntime<MultiplayerServices, never>
-    | undefined;
+  return runtimeHolder[RUNTIME_KEY] as MultiplayerRuntimeHost | undefined;
 }
 
 export function runMultiplayerEffect<A, E>(
@@ -108,7 +120,7 @@ export function runMultiplayerEffect<A, E>(
     // ignore, not a synchronous throw inside a timer callback.
     return Promise.reject(new Error("Multiplayer runtime is disposed"));
   }
-  return runtime.runPromise(effect, signal ? { signal } : undefined);
+  return runtime.run(effect, signal);
 }
 
 export function multiplayerTelemetrySnapshot() {

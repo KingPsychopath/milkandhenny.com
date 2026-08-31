@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-import { multiplayerOperation } from "../shared/multiplayer-operation.server";
+import { multiplayerCommand, multiplayerOperation } from "../shared/multiplayer-operation.server";
 import { MultiplayerTelemetry } from "../shared/multiplayer-telemetry.server";
 import * as engine from "./same-brain-room-engine.server";
 
@@ -56,8 +56,9 @@ function createRoom(input: Parameters<typeof engine.createSameBrainRoom>[0]) {
 }
 
 function joinRoom(input: Parameters<typeof engine.joinSameBrainRoom>[0]) {
-  return multiplayerOperation({ game: "same-brain", operation: "join_room" }, () =>
-    engine.joinSameBrainRoom(input),
+  return multiplayerCommand(
+    { game: "same-brain", operation: "join_room", wakeRoomId: input.roomId },
+    () => engine.joinSameBrainRoom(input),
   );
 }
 
@@ -69,16 +70,26 @@ function readSnapshot(input: Parameters<typeof engine.readSameBrainSnapshot>[0])
 }
 
 function applyHostAction(input: Parameters<typeof engine.applySameBrainHostAction>[0]) {
-  return multiplayerOperation(
-    { game: "same-brain", operation: "host_action", timeoutMs: 15_000 },
-    () => engine.applySameBrainHostAction(input),
+  return multiplayerCommand(
+    {
+      game: "same-brain",
+      operation: "host_action",
+      timeoutMs: 15_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applySameBrainHostAction(input, context),
   );
 }
 
 function applyPlayerAction(input: Parameters<typeof engine.applySameBrainPlayerAction>[0]) {
-  return multiplayerOperation(
-    { game: "same-brain", operation: "player_action", timeoutMs: 15_000 },
-    () => engine.applySameBrainPlayerAction(input),
+  return multiplayerCommand(
+    {
+      game: "same-brain",
+      operation: "player_action",
+      timeoutMs: 15_000,
+      wakeRoomId: input.roomId,
+    },
+    (_signal, context) => engine.applySameBrainPlayerAction(input, context),
   );
 }
 

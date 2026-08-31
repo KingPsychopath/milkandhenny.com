@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { HotAndColdRoomService } from "./hot-and-cold-room-service.server";
@@ -16,7 +15,6 @@ export const createHotAndColdRoom = (input: Parameters<typeof engine.createHotAn
 export const joinHotAndColdRoom = (input: Parameters<typeof engine.joinHotAndColdRoom>[0]) =>
   runMultiplayerEffect(HotAndColdRoomService.use((service) => service.joinRoom(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("hot-and-cold", input.roomId).catch(() => undefined);
       return result;
     },
   );
@@ -35,7 +33,6 @@ export const readHotAndColdSnapshot = (
 export const applyHotAndColdAction = (input: Parameters<typeof engine.applyHotAndColdAction>[0]) =>
   runMultiplayerEffect(HotAndColdRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("hot-and-cold", input.roomId).catch(() => undefined);
       if (result.accepted && input.action.type === "player.leave") {
         await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
           () => undefined,

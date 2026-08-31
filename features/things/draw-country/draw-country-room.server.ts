@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { DrawCountryRoomService } from "./draw-country-room-service.server";
@@ -19,7 +18,6 @@ export function joinDrawCountryRoom(input: Parameters<typeof engine.joinDrawCoun
   return runMultiplayerEffect(
     DrawCountryRoomService.use((service) => service.joinRoom(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("draw-country", input.roomId).catch(() => undefined);
     return result;
   });
 }
@@ -42,7 +40,6 @@ export function applyDrawCountryAction(input: Parameters<typeof engine.applyDraw
   return runMultiplayerEffect(
     DrawCountryRoomService.use((service) => service.applyAction(input)),
   ).then(async (result) => {
-    await publishMultiplayerRoomWake("draw-country", input.roomId).catch(() => undefined);
     if (result.ok && result.accepted && input.action.type === "player.leave") {
       await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
         () => undefined,

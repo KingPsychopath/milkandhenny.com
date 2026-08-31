@@ -1,4 +1,13 @@
 import { randomInt } from "node:crypto";
+import {
+  applyGameCommand,
+  gameRandomInt,
+  replaceGameState,
+  versionGameCommand,
+  type GameContext,
+  type VersionedGameCommand,
+} from "../shared/game-engine";
+import { liveGameContext } from "../shared/game-workflow-services.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { partyRoomRedisKeys } from "./party-keys";
@@ -129,7 +138,7 @@ interface JoinReceipt {
   playerToken: string;
   expiresAt: number;
 }
-interface PartyRoomState {
+export interface PartyGameState {
   roomId: string;
   officialResultChannelId?: string;
   deckId: string;
@@ -157,6 +166,14 @@ interface PartyRoomState {
   /** Where this game starts in `wordIds`, so a rematch deals words nobody has had yet. */
   wordCursor?: number;
 }
+
+type PartyRoomState = PartyGameState;
+
+export type PartyGameCommand = VersionedGameCommand<
+  "spelling-party",
+  PartyPresenterAction | PartyPlayerAction,
+  { role: "presenter" | "player"; id: string }
+>;
 
 const memoryRooms = createMemoryRoomStore<PartyRoomState>("spelling-party");
 const memoryJoinReceipts = createMemoryRoomStore<JoinReceipt>("spelling-party-receipts");
@@ -425,7 +442,7 @@ function reveal(room: PartyRoomState) {
   changed(room);
 }
 
-function advance(room: PartyRoomState, now = Date.now()) {
+function advance(room: PartyRoomState, now = Date.now(), context?: GameContext) {
   const round = room.round;
   if (!round) return;
   if (room.phase === "countdown" && now >= round.answerOpensAt) {
@@ -435,7 +452,7 @@ function advance(room: PartyRoomState, now = Date.now()) {
   if (room.phase === "answer" && now >= round.answerLocksAt) lockAll(room, round.answerLocksAt);
   if (room.phase === "locked" && now >= round.revealAt) reveal(room);
   if (room.phase === "reveal" && round.nextRoundAt !== null && now >= round.nextRoundAt)
-    startRound(room, round.nextRoundAt);
+    startRound(room, round.nextRoundAt, context);
 }
 
 function audioUrl(roomIdValue: string, assetId: string) {
@@ -551,7 +568,7 @@ function snapshot(
   };
 }
 
-function startRound(room: PartyRoomState, now = Date.now()) {
+function startRound(room: PartyRoomState, now = Date.now(), context?: GameContext) {
   const number = (room.round?.number ?? 0) + 1;
   if (number > room.roundTotal) {
     room.phase = "finished";
@@ -574,7 +591,7 @@ function startRound(room: PartyRoomState, now = Date.now()) {
     player.lockedAt = null;
   });
   room.round = {
-    roundId: token(),
+    roundId: context ? `${context.newId}:round:${number}` : token(),
     number,
     wordId,
     countdownStartsAt,
@@ -585,7 +602,10 @@ function startRound(room: PartyRoomState, now = Date.now()) {
     nextRoundAt: null,
     wordAudio: room.usesLocalSpeech
       ? null
-      : { id: capability(), key: partyAudioAssetKey(word, "word") },
+      : {
+          id: context ? `${context.newId}:audio:${number}` : capability(),
+          key: partyAudioAssetKey(word, "word"),
+        },
     repeatUsed: false,
     definitionUsed: false,
     activeClue: null,
@@ -601,11 +621,14 @@ function startRound(room: PartyRoomState, now = Date.now()) {
  * the roster, the room code and the presenter token. The deck reshuffles and starts over once it
  * runs out, so a long night on one room code never dead-ends.
  */
-function resetPartyForRematch(room: PartyRoomState) {
+function resetPartyForRematch(
+  room: PartyRoomState,
+  pick: (upperBound: number) => number = randomInt,
+) {
   const cursor = (room.wordCursor ?? 0) + room.roundTotal;
   if (cursor + room.roundTotal > room.wordIds.length) {
     for (let index = room.wordIds.length - 1; index > 0; index -= 1) {
-      const swap = randomInt(index + 1);
+      const swap = pick(index + 1);
       [room.wordIds[index], room.wordIds[swap]] = [room.wordIds[swap], room.wordIds[index]];
     }
     room.wordCursor = 0;
@@ -835,177 +858,317 @@ export async function readPartySnapshot(input: {
   );
 }
 
-export async function applyPresenterAction(input: {
-  roomId: string;
-  presenterToken: string;
-  action: PartyPresenterAction;
-}): Promise<PartyActionResult> {
+export async function applyPresenterAction(
+  input: {
+    roomId: string;
+    presenterToken: string;
+    action: PartyPresenterAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<PartyActionResult> {
+  const command: PartyGameCommand = versionGameCommand({
+    game: "spelling-party",
+    actionId: input.action.actionId,
+    actor: { role: "presenter", id: "presenter" },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    if (!safeEqual(input.presenterToken, room.presenterHash))
-      return partyActionFailure("room_unavailable", "Room unavailable");
-    advance(room);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
-      return acceptPartyAction(snapshot(room, "presenter"));
-    if (input.action.type === "round.start" && room.phase === "lobby") {
-      const confirmed = new Set(input.action.removePlayerIds ?? []);
-      const unready = multiplayerUnreadyPlayers(room.players);
-      const unconfirmed = unready.filter(
-        ({ id, startRequestId }) =>
-          id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
-      );
-      if (unconfirmed.length > 0) {
-        if (requestMultiplayerReadiness(unconfirmed, token())) changed(room);
-        return rejectPartyAction(
-          snapshot(room, "presenter"),
-          "players_not_ready",
-          unconfirmed.some(({ id }) => id === room.hostPlayerId)
-            ? "Set yourself ready before starting"
-            : "Some players are not ready",
-          true,
+    const transition = applyGameCommand(room, command, context, (room) => {
+      if (!safeEqual(input.presenterToken, room.presenterHash))
+        return partyActionFailure("room_unavailable", "Room unavailable");
+      advance(room, context.now, context);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return acceptPartyAction(snapshot(room, "presenter"));
+      if (input.action.type === "round.start" && room.phase === "lobby") {
+        const confirmed = new Set(input.action.removePlayerIds ?? []);
+        const unready = multiplayerUnreadyPlayers(room.players);
+        const unconfirmed = unready.filter(
+          ({ id, startRequestId }) =>
+            id === room.hostPlayerId || !confirmed.has(id) || !startRequestId,
         );
-      }
-      if (confirmed.size > 0) {
-        const remainingPlayers = room.players.filter(
-          (player) => multiplayerPlayerReady(player) || !confirmed.has(player.id),
-        );
-        if (remainingPlayers.length === 0)
+        if (unconfirmed.length > 0) {
+          if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`)) changed(room);
+          return rejectPartyAction(
+            snapshot(room, "presenter"),
+            "players_not_ready",
+            unconfirmed.some(({ id }) => id === room.hostPlayerId)
+              ? "Set yourself ready before starting"
+              : "Some players are not ready",
+            true,
+          );
+        }
+        if (confirmed.size > 0) {
+          const remainingPlayers = room.players.filter(
+            (player) => multiplayerPlayerReady(player) || !confirmed.has(player.id),
+          );
+          if (remainingPlayers.length === 0)
+            return rejectPartyAction(
+              snapshot(room, "presenter"),
+              "waiting_for_players",
+              "At least one ready player is needed",
+              true,
+            );
+          room.players = remainingPlayers;
+          changed(room);
+        }
+        if (room.players.length === 0)
           return rejectPartyAction(
             snapshot(room, "presenter"),
             "waiting_for_players",
-            "At least one ready player is needed",
+            "Waiting for at least one player",
             true,
           );
-        room.players = remainingPlayers;
+        startRound(room, context.now, context);
+      } else if (input.action.type === "round.next" && room.phase === "reveal")
+        startRound(room, context.now, context);
+      else if (
+        (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
+        room.phase === "finished"
+      ) {
+        resetPartyForRematch(room, gameRandomInt(context));
+        if (input.action.type === "game.replay") startRound(room, context.now, context);
+        else {
+          // Back to the lobby so people can join or drop; everyone re-readies from there.
+          for (const player of room.players) setMultiplayerPlayerReady(player, false);
+          room.phase = "lobby";
+          changed(room);
+        }
+      } else if (
+        input.action.type === "round.pause" &&
+        room.phase === "reveal" &&
+        room.round &&
+        room.round.nextRoundAt !== null
+      ) {
+        room.round.nextRoundAt = null;
         changed(room);
-      }
-      if (room.players.length === 0)
+      } else if (
+        input.action.type === "round.resume" &&
+        room.phase === "reveal" &&
+        room.round &&
+        room.round.nextRoundAt === null
+      ) {
+        room.round.nextRoundAt = context.now + PARTY_REVEAL_COOLDOWN_MS;
+        changed(room);
+      } else {
+        const waitingForPlayers = room.players.length === 0;
         return rejectPartyAction(
           snapshot(room, "presenter"),
-          "waiting_for_players",
-          "Waiting for at least one player",
+          waitingForPlayers ? "waiting_for_players" : "action_unavailable",
+          waitingForPlayers
+            ? "Waiting for at least one player"
+            : "That action is not available now",
           true,
         );
-      startRound(room);
-    } else if (input.action.type === "round.next" && room.phase === "reveal") startRound(room);
-    else if (
-      (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
-      room.phase === "finished"
-    ) {
-      resetPartyForRematch(room);
-      if (input.action.type === "game.replay") startRound(room);
-      else {
-        // Back to the lobby so people can join or drop; everyone re-readies from there.
-        for (const player of room.players) setMultiplayerPlayerReady(player, false);
-        room.phase = "lobby";
-        changed(room);
       }
-    } else if (
-      input.action.type === "round.pause" &&
-      room.phase === "reveal" &&
-      room.round &&
-      room.round.nextRoundAt !== null
-    ) {
-      room.round.nextRoundAt = null;
-      changed(room);
-    } else if (
-      input.action.type === "round.resume" &&
-      room.phase === "reveal" &&
-      room.round &&
-      room.round.nextRoundAt === null
-    ) {
-      room.round.nextRoundAt = Date.now() + PARTY_REVEAL_COOLDOWN_MS;
-      changed(room);
-    } else {
-      const waitingForPlayers = room.players.length === 0;
-      return rejectPartyAction(
-        snapshot(room, "presenter"),
-        waitingForPlayers ? "waiting_for_players" : "action_unavailable",
-        waitingForPlayers ? "Waiting for at least one player" : "That action is not available now",
-        true,
+      room.processedActions = rememberMultiplayerAction(
+        room.processedActions,
+        input.action.actionId,
       );
-    }
-    room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
-    return acceptPartyAction(snapshot(room, "presenter"));
+      return acceptPartyAction(snapshot(room, "presenter"));
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? partyActionFailure("room_unavailable", "Room unavailable");
 }
 
-export async function applyPlayerAction(input: {
-  roomId: string;
-  playerId: string;
-  playerToken: string;
-  action: PartyPlayerAction;
-}): Promise<PartyActionResult> {
+export async function applyPlayerAction(
+  input: {
+    roomId: string;
+    playerId: string;
+    playerToken: string;
+    action: PartyPlayerAction;
+  },
+  context: GameContext = liveGameContext(),
+): Promise<PartyActionResult> {
+  const command: PartyGameCommand = versionGameCommand({
+    game: "spelling-party",
+    actionId: input.action.actionId,
+    actor: { role: "player", id: input.playerId },
+    action: input.action,
+  });
   const result = await withRoom(input.roomId, (room) => {
-    const player = room.players.find(({ id }) => id === input.playerId);
-    if (!player || !safeEqual(input.playerToken, player.tokenHash))
-      return partyActionFailure("room_unavailable", "Room unavailable");
-    advance(room);
-    if (multiplayerActionSeen(room.processedActions, input.action.actionId))
-      return acceptPartyAction(snapshot(room, "player", player.id));
-    if (player.leftAt !== undefined)
-      return partyActionFailure("room_unavailable", "Your session has ended");
-    player.lastSeenAt = Date.now();
-    if (input.action.type === "room.leave") {
-      const now = Date.now();
-      transferHost(room, player.id, now);
-      if (room.phase === "lobby") room.players = room.players.filter(({ id }) => id !== player.id);
-      else {
-        player.leftAt = now;
-        player.locked = true;
-        player.automatic = true;
-        player.lockedAt ??= now;
-        if (activePlayers(room).length === 0) {
-          room.phase = "finished";
-          room.expiresAt = Math.min(room.expiresAt, now + FINISHED_GRACE_SECONDS * 1_000);
-        } else if (room.phase === "answer" && activePlayers(room).every(({ locked }) => locked)) {
-          lockAll(room, now);
+    const transition = applyGameCommand(room, command, context, (room) => {
+      const player = room.players.find(({ id }) => id === input.playerId);
+      if (!player || !safeEqual(input.playerToken, player.tokenHash))
+        return partyActionFailure("room_unavailable", "Room unavailable");
+      advance(room, context.now, context);
+      if (multiplayerActionSeen(room.processedActions, input.action.actionId))
+        return acceptPartyAction(snapshot(room, "player", player.id));
+      if (player.leftAt !== undefined)
+        return partyActionFailure("room_unavailable", "Your session has ended");
+      player.lastSeenAt = context.now;
+      if (input.action.type === "room.leave") {
+        const now = context.now;
+        transferHost(room, player.id, now);
+        if (room.phase === "lobby")
+          room.players = room.players.filter(({ id }) => id !== player.id);
+        else {
+          player.leftAt = now;
+          player.locked = true;
+          player.automatic = true;
+          player.lockedAt ??= now;
+          if (activePlayers(room).length === 0) {
+            room.phase = "finished";
+            room.expiresAt = Math.min(room.expiresAt, now + FINISHED_GRACE_SECONDS * 1_000);
+          } else if (room.phase === "answer" && activePlayers(room).every(({ locked }) => locked)) {
+            lockAll(room, now);
+          }
         }
-      }
-      changed(room);
-      room.processedActions = rememberMultiplayerAction(
-        room.processedActions,
-        input.action.actionId,
-      );
-      return acceptPartyAction(snapshot(room, "player", player.id));
-    }
-    if (input.action.type === "player.rename") {
-      const nextName = input.action.name;
-      if (room.phase !== "lobby")
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "action_unavailable",
-          "Names only change in the lobby",
+        changed(room);
+        room.processedActions = rememberMultiplayerAction(
+          room.processedActions,
+          input.action.actionId,
         );
-      if (
-        activePlayers(room).some(
-          (candidate) =>
-            candidate.id !== player.id &&
-            candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+        return acceptPartyAction(snapshot(room, "player", player.id));
+      }
+      if (input.action.type === "player.rename") {
+        const nextName = input.action.name;
+        if (room.phase !== "lobby")
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "action_unavailable",
+            "Names only change in the lobby",
+          );
+        if (
+          activePlayers(room).some(
+            (candidate) =>
+              candidate.id !== player.id &&
+              candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+          )
         )
-      )
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "action_unavailable",
+            "That name is already here",
+          );
+        player.name = nextName;
+        changed(room);
+        room.processedActions = rememberMultiplayerAction(
+          room.processedActions,
+          input.action.actionId,
+        );
+        return acceptPartyAction(snapshot(room, "player", player.id));
+      }
+      if (input.action.type === "readiness.set") {
+        if (room.phase !== "lobby")
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "action_unavailable",
+            "Readiness can only change in the lobby",
+          );
+        if (multiplayerPlayerReady(player) !== input.action.ready) {
+          setMultiplayerPlayerReady(player, input.action.ready);
+          changed(room);
+        }
+        room.processedActions = rememberMultiplayerAction(
+          room.processedActions,
+          input.action.actionId,
+        );
+        return acceptPartyAction(snapshot(room, "player", player.id));
+      }
+      const round = room.round;
+      if (!round || input.action.roundId !== round.roundId)
         return rejectPartyAction(
           snapshot(room, "player", player.id),
-          "action_unavailable",
-          "That name is already here",
+          "round_ended",
+          "That word has ended",
         );
-      player.name = nextName;
-      changed(room);
-      room.processedActions = rememberMultiplayerAction(
-        room.processedActions,
-        input.action.actionId,
-      );
-      return acceptPartyAction(snapshot(room, "player", player.id));
-    }
-    if (input.action.type === "readiness.set") {
-      if (room.phase !== "lobby")
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "action_unavailable",
-          "Readiness can only change in the lobby",
-        );
-      if (multiplayerPlayerReady(player) !== input.action.ready) {
-        setMultiplayerPlayerReady(player, input.action.ready);
+      const now = context.now;
+      if (input.action.type === "draft.update") {
+        if (room.phase !== "answer" || player.locked || now >= round.answerLocksAt)
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "answers_locked",
+            "Answers are locked",
+          );
+        if (input.action.draftRevision > player.draftRevision) {
+          player.draft = input.action.draft.slice(0, 64);
+          player.draftRevision = input.action.draftRevision;
+          changed(room);
+        }
+      } else if (input.action.type === "answer.lock") {
+        if (room.phase !== "answer" || now >= round.answerLocksAt)
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "answers_locked",
+            "Answers are locked",
+          );
+        player.locked = true;
+        player.automatic = false;
+        player.lockedAt = now;
+        changed(room);
+        if (activePlayers(room).every(({ locked }) => locked)) lockAll(room, now);
+      } else if (input.action.type === "integrity.notice") {
+        if (
+          (room.phase === "answer" || room.phase === "locked") &&
+          input.action.hiddenMs >= 1_000 &&
+          !player.integrityRoundIds.includes(round.roundId)
+        ) {
+          player.integrityRoundIds.push(round.roundId);
+          changed(room);
+        }
+      } else if (input.action.type === "clue.request") {
+        if (room.phase !== "answer")
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "clues_unavailable",
+            "Clues are not available now",
+            true,
+          );
+        const word = wordFor(room);
+        if (!word) return partyActionFailure("word_unavailable", "Word unavailable");
+        const kind: PartyClueKind = input.action.clue;
+        if (kind === "repeat" && round.repeatUsed)
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "repeat_already_used",
+            "The word is already being repeated",
+          );
+        if (kind === "definition" && round.definitionUsed)
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "definition_already_used",
+            "The definition has already been played",
+          );
+        if (kind === "sentence" && room.sentenceCluesRemaining <= 0)
+          return rejectPartyAction(
+            snapshot(room, "player", player.id),
+            "sentence_clues_exhausted",
+            "No sentence clues remain",
+          );
+        if (kind === "repeat") round.repeatUsed = true;
+        if (kind === "definition") round.definitionUsed = true;
+        if (kind === "sentence") room.sentenceCluesRemaining -= 1;
+        const eventId = `${context.newId}:clue`;
+        const asset: AudioCapability | null = room.usesLocalSpeech
+          ? null
+          : { id: eventId, key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
+        if (asset) round.clueCapabilities.push(asset);
+        const message =
+          kind === "repeat"
+            ? `${player.name} asked to hear it again.`
+            : kind === "definition"
+              ? `${player.name} asked for the definition.`
+              : `${player.name} used a sentence clue · ${room.sentenceCluesRemaining} remaining.`;
+        const speechText =
+          kind === "repeat"
+            ? (word.speakAs ?? word.word)
+            : kind === "definition"
+              ? (word.definition ?? "No definition is available for this word.")
+              : word.sentence;
+        const event: PartyClueEvent = {
+          id: eventId,
+          kind,
+          playerName: player.name,
+          message,
+          createdAt: now,
+          audioUrl: asset ? audioUrl(room.roomId, asset.id) : null,
+          speechText,
+        };
+        round.activeClue = event;
+        room.recentClues.push(event);
         changed(room);
       }
       room.processedActions = rememberMultiplayerAction(
@@ -1013,112 +1176,10 @@ export async function applyPlayerAction(input: {
         input.action.actionId,
       );
       return acceptPartyAction(snapshot(room, "player", player.id));
-    }
-    const round = room.round;
-    if (!round || input.action.roundId !== round.roundId)
-      return rejectPartyAction(
-        snapshot(room, "player", player.id),
-        "round_ended",
-        "That word has ended",
-      );
-    const now = Date.now();
-    if (input.action.type === "draft.update") {
-      if (room.phase !== "answer" || player.locked || now >= round.answerLocksAt)
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "answers_locked",
-          "Answers are locked",
-        );
-      if (input.action.draftRevision > player.draftRevision) {
-        player.draft = input.action.draft.slice(0, 64);
-        player.draftRevision = input.action.draftRevision;
-        changed(room);
-      }
-    } else if (input.action.type === "answer.lock") {
-      if (room.phase !== "answer" || now >= round.answerLocksAt)
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "answers_locked",
-          "Answers are locked",
-        );
-      player.locked = true;
-      player.automatic = false;
-      player.lockedAt = now;
-      changed(room);
-      if (activePlayers(room).every(({ locked }) => locked)) lockAll(room, now);
-    } else if (input.action.type === "integrity.notice") {
-      if (
-        (room.phase === "answer" || room.phase === "locked") &&
-        input.action.hiddenMs >= 1_000 &&
-        !player.integrityRoundIds.includes(round.roundId)
-      ) {
-        player.integrityRoundIds.push(round.roundId);
-        changed(room);
-      }
-    } else if (input.action.type === "clue.request") {
-      if (room.phase !== "answer")
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "clues_unavailable",
-          "Clues are not available now",
-          true,
-        );
-      const word = wordFor(room);
-      if (!word) return partyActionFailure("word_unavailable", "Word unavailable");
-      const kind: PartyClueKind = input.action.clue;
-      if (kind === "repeat" && round.repeatUsed)
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "repeat_already_used",
-          "The word is already being repeated",
-        );
-      if (kind === "definition" && round.definitionUsed)
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "definition_already_used",
-          "The definition has already been played",
-        );
-      if (kind === "sentence" && room.sentenceCluesRemaining <= 0)
-        return rejectPartyAction(
-          snapshot(room, "player", player.id),
-          "sentence_clues_exhausted",
-          "No sentence clues remain",
-        );
-      if (kind === "repeat") round.repeatUsed = true;
-      if (kind === "definition") round.definitionUsed = true;
-      if (kind === "sentence") room.sentenceCluesRemaining -= 1;
-      const eventId = capability();
-      const asset: AudioCapability | null = room.usesLocalSpeech
-        ? null
-        : { id: eventId, key: partyAudioAssetKey(word, kind === "repeat" ? "word" : kind) };
-      if (asset) round.clueCapabilities.push(asset);
-      const message =
-        kind === "repeat"
-          ? `${player.name} asked to hear it again.`
-          : kind === "definition"
-            ? `${player.name} asked for the definition.`
-            : `${player.name} used a sentence clue · ${room.sentenceCluesRemaining} remaining.`;
-      const speechText =
-        kind === "repeat"
-          ? (word.speakAs ?? word.word)
-          : kind === "definition"
-            ? (word.definition ?? "No definition is available for this word.")
-            : word.sentence;
-      const event: PartyClueEvent = {
-        id: eventId,
-        kind,
-        playerName: player.name,
-        message,
-        createdAt: now,
-        audioUrl: asset ? audioUrl(room.roomId, asset.id) : null,
-        speechText,
-      };
-      round.activeClue = event;
-      room.recentClues.push(event);
-      changed(room);
-    }
-    room.processedActions = rememberMultiplayerAction(room.processedActions, input.action.actionId);
-    return acceptPartyAction(snapshot(room, "player", player.id));
+    });
+    if (!transition.ok) return null;
+    replaceGameState(room, transition.value.state);
+    return transition.value.output;
   });
   return result ?? partyActionFailure("room_unavailable", "Room unavailable");
 }

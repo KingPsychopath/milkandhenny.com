@@ -1,6 +1,5 @@
 import {
   publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
   runMultiplayerEffect,
 } from "../shared/multiplayer-runtime.server";
 import { TwinRoomService } from "./twin-room-service.server";
@@ -18,7 +17,6 @@ export function createTwinRoom(input: Parameters<typeof engine.createTwinRoom>[0
 export function joinTwinRoom(input: Parameters<typeof engine.joinTwinRoom>[0]) {
   return runMultiplayerEffect(TwinRoomService.use((service) => service.joinRoom(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("twin", input.roomId).catch(() => undefined);
       return result;
     },
   );
@@ -43,7 +41,6 @@ export function readTwinLog(input: Parameters<typeof engine.readTwinLog>[0]) {
 export function applyTwinAction(input: Parameters<typeof engine.applyTwinAction>[0]) {
   return runMultiplayerEffect(TwinRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
-      await publishMultiplayerRoomWake("twin", input.roomId).catch(() => undefined);
       if (result.ok && result.accepted && input.action.type === "player.leave") {
         await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
           () => undefined,

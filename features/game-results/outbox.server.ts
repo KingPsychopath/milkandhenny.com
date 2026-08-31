@@ -10,6 +10,11 @@ import { log } from "@/lib/platform/logger.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
 import type { OfficialGameResultDraft, OfficialGameResultEnvelope } from "./types";
+import {
+  durableWorkSnapshot,
+  DURABLE_WORK_LOG_SCOPE,
+  type DurableWorkSnapshot,
+} from "@/features/system/durable-work";
 
 const OUTBOX_PREFIX = "things:official-result-outbox";
 const WAKE_CHANNEL = "game-results:v1:wake";
@@ -100,7 +105,12 @@ export function publishOfficialResultsAfterCommit(
   queueMicrotask(() => {
     for (const listener of localListeners) {
       void Promise.resolve(listener(envelopes)).catch((error: unknown) => {
-        log.error("game-results.wake", "Local result wake failed", undefined, error);
+        log.error(
+          DURABLE_WORK_LOG_SCOPE.officialGameResults,
+          "Local advisory wake failed",
+          undefined,
+          error,
+        );
       });
     }
   });
@@ -108,7 +118,7 @@ export function publishOfficialResultsAfterCommit(
   void getCommandRedis()
     .publish(WAKE_CHANNEL, JSON.stringify({ origin: getRuntimeInstanceId() }))
     .catch((error: unknown) => {
-      log.warn("game-results.wake", "Redis result wake failed", {
+      log.warn(DURABLE_WORK_LOG_SCOPE.officialGameResults, "Redis advisory wake failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     });
@@ -136,18 +146,30 @@ export function subscribeOfficialResultWake(listener: WakeListener): () => Promi
         (message as { origin?: unknown }).origin !== origin
       ) {
         void Promise.resolve(listener([])).catch((error: unknown) => {
-          log.error("game-results.wake", "Redis result wake consumer failed", undefined, error);
+          log.error(
+            DURABLE_WORK_LOG_SCOPE.officialGameResults,
+            "Redis advisory wake consumer failed",
+            undefined,
+            error,
+          );
         });
       }
     } catch {
-      log.warn("game-results.wake", "Ignored an invalid Redis wake message");
+      log.warn(DURABLE_WORK_LOG_SCOPE.officialGameResults, "Ignored an invalid advisory wake");
     }
   });
   subscriber.on("error", (error) => {
-    log.warn("game-results.wake", "Redis result subscriber failed", { error: error.message });
+    log.warn(DURABLE_WORK_LOG_SCOPE.officialGameResults, "Redis wake subscriber failed", {
+      error: error.message,
+    });
   });
   void subscriber.subscribe(WAKE_CHANNEL).catch((error: unknown) => {
-    log.error("game-results.wake", "Redis result subscription failed", undefined, error);
+    log.error(
+      DURABLE_WORK_LOG_SCOPE.officialGameResults,
+      "Redis wake subscription failed",
+      undefined,
+      error,
+    );
   });
 
   return async () => {
@@ -195,7 +217,12 @@ export async function drainOfficialGameResultOutbox(
     try {
       if (await consumeOutboxItem(key, envelope, consumer)) delivered += 1;
     } catch (error) {
-      log.error("game-results.outbox", "Official result delivery failed", { key }, error);
+      log.error(
+        DURABLE_WORK_LOG_SCOPE.officialGameResults,
+        "Official result delivery failed",
+        { key },
+        error,
+      );
     }
   }
   return { selected: keys.length, delivered };
@@ -209,4 +236,49 @@ export async function consumeOfficialResultWake(
   let delivered = 0;
   for (const envelope of envelopes) if (await consumer(envelope)) delivered += 1;
   return { selected: envelopes.length, delivered };
+}
+
+export async function describeOfficialGameResultOutbox(): Promise<{
+  durableWork: DurableWorkSnapshot;
+}> {
+  const redis = getRedis();
+  if (!redis)
+    return {
+      durableWork: durableWorkSnapshot({
+        available: false,
+        pending: 0,
+        processing: 0,
+        failed: 0,
+        oldestPendingAt: null,
+      }),
+    };
+  const envelopes: OfficialGameResultEnvelope[] = [];
+  let cursor = "0";
+  do {
+    const [nextCursor, keys]: [string, string[]] = await redis.scan(cursor, {
+      match: `${OUTBOX_PREFIX}:*`,
+      count: 100,
+    });
+    cursor = nextCursor;
+    if (keys.length > 0) {
+      const values = await redis.mget<OfficialGameResultEnvelope[]>(...keys);
+      envelopes.push(
+        ...values.filter((value): value is OfficialGameResultEnvelope => value !== null),
+      );
+    }
+  } while (String(cursor) !== "0");
+  const oldestPendingAt = envelopes.reduce<string | null>((oldest, envelope) => {
+    if (!oldest || Date.parse(envelope.committedAt) < Date.parse(oldest))
+      return envelope.committedAt;
+    return oldest;
+  }, null);
+  return {
+    durableWork: durableWorkSnapshot({
+      available: true,
+      pending: envelopes.length,
+      processing: 0,
+      failed: 0,
+      oldestPendingAt,
+    }),
+  };
 }

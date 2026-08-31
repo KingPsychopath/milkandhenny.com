@@ -102,12 +102,16 @@ function create(input: Parameters<typeof engine.createPitch>[0]) {
 }
 
 function readOwned(...input: Parameters<typeof engine.readOwnedPitch>) {
-  return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input), { access: "read" });
+  return pitchesOperation("read_owned", () => engine.readOwnedPitch(...input), {
+    access: "read",
+    kind: "read",
+  });
 }
 
 function readOwnedStatus(...input: Parameters<typeof engine.readOwnedPitchStatus>) {
   return pitchesOperation("read_owned_status", () => engine.readOwnedPitchStatus(...input), {
     access: "read",
+    kind: "read",
   });
 }
 
@@ -122,24 +126,28 @@ function restoreFromTrash(...input: Parameters<typeof engine.restoreOwnedPitchFr
 function listForPerson(personId: string) {
   return pitchesOperation("list_for_person", () => engine.listPitchDecksForPerson(personId), {
     access: "read",
+    kind: "read",
   });
 }
 
 function openForPerson(...input: Parameters<typeof engine.openPitchForPerson>) {
   return pitchesOperation("open_for_person", () => engine.openPitchForPerson(...input), {
     access: "read",
+    kind: "read",
   });
 }
 
 function listHistory(...input: Parameters<typeof engine.listPitchHistory>) {
   return pitchesOperation("list_history", () => engine.listPitchHistory(...input), {
     access: "read",
+    kind: "read",
   });
 }
 
 function readVersion(...input: Parameters<typeof engine.readPitchVersion>) {
   return pitchesOperation("read_version", () => engine.readPitchVersion(...input), {
     access: "read",
+    kind: "read",
   });
 }
 
@@ -163,6 +171,7 @@ function publish(input: Parameters<typeof engine.publishPitch>[0]) {
 function listPublished(search?: string) {
   return pitchesOperation("list_published", () => engine.listPublishedPitches(search), {
     access: "read",
+    kind: "read",
   });
 }
 
@@ -172,6 +181,7 @@ function readPublished(deckId: string, editionNumber?: number) {
     () => engine.readPublishedPitch(deckId, editionNumber),
     {
       access: "read",
+      kind: "read",
     },
   );
 }
@@ -210,18 +220,23 @@ function cleanup(limit?: number) {
 }
 
 function listAdmin() {
-  return pitchesOperation("admin_list", () => store.listPitchDecksForAdmin(), { access: "admin" });
+  return pitchesOperation("admin_list", () => store.listPitchDecksForAdmin(), {
+    access: "admin",
+    kind: "read",
+  });
 }
 
 function readAdmin(deckId: string) {
   return pitchesOperation("admin_read", () => store.readPitchDeckForAdmin(deckId), {
     access: "admin",
+    kind: "read",
   });
 }
 
 function adminDetail(deckId: string) {
   return pitchesOperation("admin_detail", () => engine.readPitchForAdmin(deckId), {
     access: "admin",
+    kind: "read",
   });
 }
 
@@ -234,6 +249,7 @@ function archive(deckId: string, archived: boolean) {
 function adminAssets(deckId: string) {
   return pitchesOperation("admin_assets", () => assets.signedPitchAssets(deckId), {
     access: "admin",
+    kind: "read",
   });
 }
 
@@ -290,6 +306,7 @@ function restoreTrashAdmin(...input: Parameters<typeof engine.restorePitchFromTr
 function reminderAdmin() {
   return pitchesOperation("admin_reminder_read", () => reminders.readPitchReminderAdmin(), {
     access: "admin",
+    kind: "read",
   });
 }
 
@@ -335,6 +352,7 @@ function joinPresentation(roomId: string, name: string) {
 function readPresentation(...input: Parameters<typeof presentation.readPresentation>) {
   return pitchesOperation("presentation_read", () => presentation.readPresentation(...input), {
     access: "live",
+    kind: "read",
   });
 }
 
