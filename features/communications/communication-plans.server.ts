@@ -51,6 +51,7 @@ export type CommunicationStageDelivery = {
   emailHash: string;
   email: string;
   displayName: string | null;
+  isCurrentRecipient: boolean;
   deliveryStatus: string;
   outboxStatus: string | null;
   attempts: number;
@@ -168,7 +169,9 @@ function validMedia(value: unknown): CommunicationMedia[] {
 function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
   const status = String(row.status);
   const recipientCount = Number(row.recipient_count) || 0;
+  const audienceCount = Number(row.audience_count) || 0;
   const delivery = deliveryCounts(row.delivery);
+  const activeRecipientCount = row.audience === "event_attendees" ? audienceCount : recipientCount;
   return {
     id: String(row.id),
     stageKey: String(row.stage_key),
@@ -183,9 +186,9 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
     sendAt: iso(row.send_at as Date | null),
     lateJoinHours: Number(row.late_join_hours) || 0,
     status,
-    deliveryState: stageDeliveryState(status, recipientCount, delivery),
+    deliveryState: stageDeliveryState(status, activeRecipientCount, delivery),
     recipientCount,
-    audienceCount: Number(row.audience_count) || 0,
+    audienceCount,
     receivedCount: Number(row.received_count) || 0,
     missingRecipientCount: Number(row.missing_recipient_count) || 0,
     deliveryUpdatedAt: iso(row.delivery_updated_at as Date | string | null),
@@ -254,20 +257,44 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
                 select max(delivery.updated_at)
                   from communication_stage_deliveries delivery
                  where delivery.stage_id = s.id
+                   and (
+                     s.audience <> 'event_attendees'
+                     or exists (
+                       select 1
+                         from tickets current_ticket
+                        where current_ticket.event_slug = p.event_slug
+                          and current_ticket.status = 'valid'
+                          and lower(current_ticket.email) = lower(delivery.email)
+                     )
+                   )
               ),
               'queued_count', s.queued_count,
               'last_error', s.last_error,
               'survey_id', s.survey_id,
-              'delivery', jsonb_build_object(
-                'queued', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'queued'),
-                'accepted', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'accepted'),
-                'delivered', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'delivered'),
-                'deferred', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'deferred'),
-                'failed', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'failed'),
-                'bounced', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'bounced'),
-                'rejected', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'rejected'),
-                'complained', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'complained'),
-                'skipped', (select count(*) from communication_stage_deliveries d where d.stage_id = s.id and d.status = 'skipped')
+              'delivery', (
+                select jsonb_build_object(
+                  'queued', count(*) filter (where d.status = 'queued'),
+                  'accepted', count(*) filter (where d.status = 'accepted'),
+                  'delivered', count(*) filter (where d.status = 'delivered'),
+                  'deferred', count(*) filter (where d.status = 'deferred'),
+                  'failed', count(*) filter (where d.status = 'failed'),
+                  'bounced', count(*) filter (where d.status = 'bounced'),
+                  'rejected', count(*) filter (where d.status = 'rejected'),
+                  'complained', count(*) filter (where d.status = 'complained'),
+                  'skipped', count(*) filter (where d.status = 'skipped')
+                )
+                  from communication_stage_deliveries d
+                 where d.stage_id = s.id
+                   and (
+                     s.audience <> 'event_attendees'
+                     or exists (
+                       select 1
+                         from tickets current_ticket
+                        where current_ticket.event_slug = p.event_slug
+                          and current_ticket.status = 'valid'
+                          and lower(current_ticket.email) = lower(d.email)
+                     )
+                   )
               ),
               'link_clicks', coalesce((
                 select jsonb_agg(jsonb_build_object(
@@ -320,6 +347,7 @@ export async function listCommunicationStageDeliveries(
     email_hash: string;
     email: string;
     display_name: string | null;
+    is_current_recipient: boolean;
     delivery_status: string;
     outbox_status: string | null;
     attempts: number | null;
@@ -329,21 +357,37 @@ export async function listCommunicationStageDeliveries(
     accepted_at: Date | null;
     delivered_at: Date | null;
   }>(
-    `select d.email_hash, d.email, c.display_name,
-            d.status as delivery_status,
-            o.status as outbox_status,
-            o.attempts,
-            o.last_error,
-            o.provider_delivery_status,
-            o.next_attempt_at,
-            o.accepted_at,
-            o.delivered_at
-       from communication_stage_deliveries d
-       left join communication_contacts c on c.email_hash = d.email_hash
-       left join email_outbox o on o.id = d.outbox_id
-      where d.stage_id = $1
+    `select delivery.*
+       from (
+         select d.email_hash, d.email, c.display_name,
+                case
+                  when s.audience <> 'event_attendees' then true
+                  else exists (
+                    select 1
+                      from tickets current_ticket
+                     where current_ticket.event_slug = p.event_slug
+                       and current_ticket.status = 'valid'
+                       and lower(current_ticket.email) = lower(d.email)
+                  )
+                end as is_current_recipient,
+                d.status as delivery_status,
+                o.status as outbox_status,
+                o.attempts,
+                o.last_error,
+                o.provider_delivery_status,
+                o.next_attempt_at,
+                o.accepted_at,
+                o.delivered_at
+           from communication_stage_deliveries d
+           join communication_plan_stages s on s.id = d.stage_id
+           join communication_plans p on p.id = s.plan_id
+           left join communication_contacts c on c.email_hash = d.email_hash
+           left join email_outbox o on o.id = d.outbox_id
+          where d.stage_id = $1
+       ) delivery
       order by
-        case d.status
+        case when delivery.is_current_recipient then 0 else 1 end,
+        case delivery.delivery_status
           when 'failed' then 0
           when 'bounced' then 0
           when 'rejected' then 0
@@ -354,13 +398,14 @@ export async function listCommunicationStageDeliveries(
           when 'delivered' then 4
           else 5
         end,
-        lower(d.email)`,
+        lower(delivery.email)`,
     [stageId],
   );
   return rows.map((row) => ({
     emailHash: row.email_hash,
     email: row.email,
     displayName: row.display_name,
+    isCurrentRecipient: row.is_current_recipient,
     deliveryStatus: row.delivery_status,
     outboxStatus: row.outbox_status,
     attempts: Number(row.attempts) || 0,
@@ -1164,6 +1209,7 @@ async function fanOutClaimedStages(
     const stage = plan?.stages.find((candidate) => candidate.id === item.stageId);
     const event = await getEvent(item.eventSlug);
     if (!plan || !stage || !event) continue;
+    const stageSendAt = stage.sendAt;
     const recipients = await recipientsForStage(stage, item.eventSlug);
     const surveyRow = stage.surveyId
       ? await query<{ slug: string }>(`select slug from surveys where id = $1`, [stage.surveyId])
@@ -1230,7 +1276,13 @@ async function fanOutClaimedStages(
           idempotencyKey: `communication-stage:${stage.id}:${recipient.emailHash}`,
           kind: "communication-stage",
           source: "scheduled",
-          context: { eventSlug: event.slug, communicationId: stage.id },
+          context: {
+            eventSlug: event.slug,
+            communicationId: stage.id,
+            ...(stageSendAt && recipient.issuedAt > stageSendAt
+              ? { deliveryReason: "late-join-catch-up" as const }
+              : {}),
+          },
           communicationId: stage.id,
         },
       );

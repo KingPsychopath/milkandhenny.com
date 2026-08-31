@@ -10,6 +10,11 @@ import {
 } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import { AdminFormAction } from "./AdminFormAction";
 import { COMMUNICATION_TABS, type CommunicationsTab } from "./AdminSectionNav";
+import {
+  CommunicationStageHealth,
+  communicationLinkMetricsLabel,
+  communicationStageLifecyclePresentation,
+} from "./CommunicationStageHealth";
 import { EmailOperationsPanel } from "./EmailOperationsPanel";
 import { AlertSettings } from "./AlertSettings";
 import {
@@ -110,6 +115,7 @@ type StageDelivery = {
   emailHash: string;
   email: string;
   displayName: string | null;
+  isCurrentRecipient: boolean;
   deliveryStatus: string;
   outboxStatus: string | null;
   attempts: number;
@@ -277,30 +283,35 @@ function consentLabel(contact: Contact): string {
   return `${decision} · ${consentSourceLabel(contact.marketingConsentSource)} · ${dateLabel(contact.marketingConsentAt)}${copyVersion}`;
 }
 
-function DeliveryMetrics({ delivery, links }: { delivery: DeliveryCounts; links: LinkMetric[] }) {
+function MessageDeliveryMetrics({
+  delivery,
+  links,
+}: {
+  delivery: DeliveryCounts;
+  links: LinkMetric[];
+}) {
   const clicked = links.reduce((total, link) => total + link.uniqueRecipients, 0);
   const issues = delivery.failed + delivery.bounced + delivery.rejected + delivery.complained;
   return (
-    <span className="flex flex-wrap gap-x-3 gap-y-1">
-      <span className={delivery.accepted ? adminToneTextClass("positive") : "theme-muted"}>
-        accepted {delivery.accepted}
-      </span>
-      <span className={delivery.delivered ? adminToneTextClass("positive") : "theme-muted"}>
-        delivered {delivery.delivered}
-      </span>
-      <span className="theme-muted">clicked {clicked}</span>
-      {delivery.deferred ? (
-        <span className={adminToneTextClass("attention")}>deferred {delivery.deferred}</span>
+    <span className="flex flex-wrap gap-x-3 gap-y-1 theme-muted">
+      {delivery.accepted > 0 ? <span>awaiting confirmation {delivery.accepted}</span> : null}
+      {delivery.delivered > 0 ? (
+        <span className={adminToneTextClass("positive")}>delivered {delivery.delivered}</span>
       ) : null}
-      {issues ? (
+      {delivery.deferred > 0 ? (
+        <span className={adminToneTextClass("attention")}>retrying {delivery.deferred}</span>
+      ) : null}
+      {issues > 0 ? (
         <span className={adminToneTextClass("danger")}>needs attention {issues}</span>
       ) : null}
-      {delivery.skipped ? <span className="theme-muted">skipped {delivery.skipped}</span> : null}
+      {delivery.skipped > 0 ? <span>skipped {delivery.skipped}</span> : null}
+      {clicked > 0 ? <span>clicked {clicked}</span> : null}
     </span>
   );
 }
 
 function deliveryStatusLabel(row: StageDelivery): string {
+  if (!row.isCurrentRecipient) return "superseded · historical address";
   if (row.deliveryStatus === "delivered") return "delivered";
   if (row.deliveryStatus === "accepted") return "accepted · awaiting confirmation";
   if (row.deliveryStatus === "queued") {
@@ -312,6 +323,7 @@ function deliveryStatusLabel(row: StageDelivery): string {
 }
 
 function deliveryStatusTone(row: StageDelivery): AdminStatusTone {
+  if (!row.isCurrentRecipient) return "neutral";
   switch (row.deliveryStatus) {
     case "delivered":
     case "accepted":
@@ -331,53 +343,6 @@ function deliveryStatusTone(row: StageDelivery): AdminStatusTone {
   }
 }
 
-function stageDeliveryStateLabel(stage: Stage): string {
-  switch (stage.deliveryState) {
-    case "queued":
-      return "queued for sending";
-    case "accepted":
-      return "accepted · awaiting delivery confirmation";
-    case "delivered":
-      return "delivered";
-    case "complete with issues":
-      return "complete · needs attention";
-    default:
-      return stage.deliveryState;
-  }
-}
-
-function stageTone(stage: Stage): AdminStatusTone {
-  if (
-    stage.deliveryState === "complete with issues" ||
-    (stage.lastError && stage.lastError !== "send window passed")
-  ) {
-    return "danger";
-  }
-  if (stageNeedsManualSendDecision(stage)) return "attention";
-  if (stage.deliveryState === "preparing") return "attention";
-  return adminToneForStatus(stage.deliveryState || stage.status);
-}
-
-function stageAudienceTone(stage: Stage): AdminStatusTone {
-  const issues =
-    stage.delivery.failed +
-    stage.delivery.bounced +
-    stage.delivery.rejected +
-    stage.delivery.complained;
-  if (issues > 0) return "danger";
-  if (stage.missingRecipientCount > 0 || stage.delivery.queued > 0 || stage.delivery.deferred > 0) {
-    return "attention";
-  }
-  if (
-    (stage.audienceCount > 0 && stage.receivedCount >= stage.audienceCount) ||
-    stage.delivery.accepted > 0 ||
-    stage.delivery.delivered > 0
-  ) {
-    return "positive";
-  }
-  return "neutral";
-}
-
 function stageHasRecentUnsettledDelivery(
   stage: Stage,
   deliveryEventsConfigured: boolean,
@@ -391,34 +356,6 @@ function stageHasRecentUnsettledDelivery(
     stage.delivery.deferred > 0 ||
     (deliveryEventsConfigured && stage.delivery.accepted > 0)
   );
-}
-
-function stageAudienceStatusLabel(stage: Stage, deliveryEventsConfigured: boolean): string {
-  if (stage.audienceCount > 0 && stage.receivedCount >= stage.audienceCount) {
-    return "delivered to everyone";
-  }
-  if (stage.delivery.queued > 0 || stage.delivery.deferred > 0) {
-    return "sending to all current attendees";
-  }
-  if (stage.delivery.accepted > 0) {
-    return deliveryEventsConfigured
-      ? "sent to all · awaiting delivery confirmation"
-      : "sent to all current attendees · provider accepted";
-  }
-  const issues =
-    stage.delivery.failed +
-    stage.delivery.bounced +
-    stage.delivery.rejected +
-    stage.delivery.complained;
-  if (issues > 0) return "sent to all · delivery issues need attention";
-  return "sent to all current attendees";
-}
-
-function linkMetricsLabel(links: LinkMetric[]): string {
-  return links
-    .filter((link) => link.uniqueRecipients > 0)
-    .map((link) => `${link.linkKey} ${link.uniqueRecipients}`)
-    .join(" · ");
 }
 
 function shortDate(value: string | null): string {
@@ -563,6 +500,8 @@ export function CommunicationsPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [planRefreshHalted, setPlanRefreshHalted] = useState(false);
+  const [planRefreshFailed, setPlanRefreshFailed] = useState(false);
+  const [planCheckedAt, setPlanCheckedAt] = useState<string | null>(null);
   const [localSelectedEvent, setLocalSelectedEvent] = useState(
     communicationEvent || "after-school-club-2026-09-01",
   );
@@ -633,6 +572,8 @@ export function CommunicationsPanel({
   const setSelectedEvent = useCallback(
     (nextEvent: string) => {
       setLocalSelectedEvent(nextEvent);
+      setPlanRefreshHalted(false);
+      setPlanRefreshFailed(false);
       onCommunicationEventChange(nextEvent);
     },
     [onCommunicationEventChange],
@@ -651,6 +592,7 @@ export function CommunicationsPanel({
         templates?: Template[];
         surveys?: Survey[];
         email?: EmailCapability;
+        checkedAt?: string;
         error?: string;
       };
       if (!response.ok) throw new Error(data.error || "Could not load communications");
@@ -662,6 +604,8 @@ export function CommunicationsPanel({
       setSurveys(data.surveys || []);
       setEmail(data.email || { provider: null, mailpitUrl: null });
       setPlanRefreshHalted(false);
+      setPlanRefreshFailed(false);
+      setPlanCheckedAt(data.checkedAt || new Date().toISOString());
       setHasLoaded(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load communications";
@@ -683,30 +627,45 @@ export function CommunicationsPanel({
         stageHasRecentUnsettledDelivery(stage, email.deliveryEventsConfigured === true),
       ),
     );
-  const refreshActivePlan = useCallback(async () => {
-    if (!selectedEvent) return;
-    const params = new URLSearchParams({ scope: "event-plan", eventSlug: selectedEvent });
-    const response = await authFetch(`/api/admin/communications?${params}`);
-    const data = (await response.json().catch(() => ({}))) as {
-      plans?: Plan[];
-    };
-    if (!response.ok) {
-      if (response.status >= 400 && response.status < 500) setPlanRefreshHalted(true);
-      throw new Error("Could not refresh event-plan delivery status");
-    }
-    const refreshed = data.plans || [];
-    setPlanRefreshHalted(false);
-    setPlans((current) => [
-      ...current.filter((plan) => plan.eventSlug !== selectedEvent),
-      ...refreshed,
-    ]);
-  }, [authFetch, selectedEvent]);
+  const planRefreshEnabled = tab === "event-plan" && Boolean(selectedEvent);
+  const refreshActivePlan = useCallback(
+    async (isCurrent: () => boolean = () => true) => {
+      if (!selectedEvent) return;
+      try {
+        const params = new URLSearchParams({ scope: "event-plan", eventSlug: selectedEvent });
+        const response = await authFetch(`/api/admin/communications?${params}`);
+        const data = (await response.json().catch(() => ({}))) as {
+          plans?: Plan[];
+          checkedAt?: string;
+        };
+        if (!response.ok) {
+          if (isCurrent()) {
+            setPlanRefreshFailed(true);
+            if (response.status >= 400 && response.status < 500) setPlanRefreshHalted(true);
+          }
+          throw new Error("Could not refresh event-plan delivery status");
+        }
+        if (!isCurrent()) return;
+        const refreshed = data.plans || [];
+        setPlanRefreshHalted(false);
+        setPlanRefreshFailed(false);
+        setPlanCheckedAt(data.checkedAt || new Date().toISOString());
+        setPlans((current) => [
+          ...current.filter((plan) => plan.eventSlug !== selectedEvent),
+          ...refreshed,
+        ]);
+      } catch (error) {
+        if (isCurrent()) setPlanRefreshFailed(true);
+        throw error;
+      }
+    },
+    [authFetch, selectedEvent],
+  );
   useAdminAutoRefresh({
-    enabled: planDeliveryIsActive && !planRefreshHalted,
-    cadence: "active",
+    enabled: planRefreshEnabled && !planRefreshHalted,
+    cadence: planDeliveryIsActive ? "active" : "monitoring",
     identity: `admin-event-plan:${selectedEvent}`,
-    refreshOnEnable: false,
-    refresh: () => refreshActivePlan(),
+    refresh: refreshActivePlan,
   });
   const optedInCount = contacts.filter((contact) => contact.marketingOptedIn).length;
   const scheduledCount =
@@ -1305,8 +1264,10 @@ export function CommunicationsPanel({
               sendTestPlan={sendTestPlan}
               sendStageNow={sendStageNow}
               sendStageToMissingRecipients={sendStageToMissingRecipients}
-              deliveryAutoRefreshing={planDeliveryIsActive && !planRefreshHalted}
+              deliveryRefreshMode={planDeliveryIsActive ? "settling" : "monitoring"}
+              deliveryRefreshFailed={planRefreshFailed}
               deliveryAutoRefreshHalted={planRefreshHalted}
+              deliveryCheckedAt={planCheckedAt}
               deliveryEventsConfigured={email.deliveryEventsConfigured === true}
             />
           ) : null}
@@ -1453,8 +1414,10 @@ function EventPlanView(props: {
   sendTestPlan: () => void;
   sendStageNow: (stage: Stage) => void;
   sendStageToMissingRecipients: (stage: Stage) => void;
-  deliveryAutoRefreshing: boolean;
+  deliveryRefreshMode: "settling" | "monitoring";
+  deliveryRefreshFailed: boolean;
   deliveryAutoRefreshHalted: boolean;
+  deliveryCheckedAt: string | null;
   deliveryEventsConfigured: boolean;
 }) {
   const {
@@ -1483,8 +1446,10 @@ function EventPlanView(props: {
     sendTestPlan,
     sendStageNow,
     sendStageToMissingRecipients,
-    deliveryAutoRefreshing,
+    deliveryRefreshMode,
+    deliveryRefreshFailed,
     deliveryAutoRefreshHalted,
+    deliveryCheckedAt,
     deliveryEventsConfigured,
   } = props;
   const pausedFutureStages =
@@ -1554,17 +1519,21 @@ function EventPlanView(props: {
                   tone={
                     deliveryAutoRefreshHalted
                       ? "danger"
-                      : deliveryAutoRefreshing
-                        ? "attention"
-                        : "neutral"
+                      : deliveryRefreshFailed
+                        ? "danger"
+                        : deliveryRefreshMode === "settling"
+                          ? "attention"
+                          : "neutral"
                   }
                   className="font-mono text-micro"
                 >
                   {deliveryAutoRefreshHalted
                     ? "automatic delivery updates paused after an access error · use refresh"
-                    : deliveryAutoRefreshing
-                      ? "delivery status updates automatically while messages settle"
-                      : "automatic updates pause after delivery settles or 15 minutes · refresh remains available"}
+                    : deliveryRefreshFailed
+                      ? `last delivery check failed · retrying automatically${deliveryCheckedAt ? ` · last successful check ${dateLabel(deliveryCheckedAt)}` : ""}`
+                      : deliveryRefreshMode === "settling"
+                        ? `delivery data checked ${dateLabel(deliveryCheckedAt)} · updates every 12 seconds while messages settle`
+                        : `delivery data checked ${dateLabel(deliveryCheckedAt)} · updates every 30 seconds while this tab is open`}
                 </AdminStatus>
               </div>
             </div>
@@ -1608,268 +1577,266 @@ function EventPlanView(props: {
             </AdminFormAction>
           </div>
           <ol className="mt-5 border-l theme-border pl-6">
-            {activePlan.stages.map((stage) => (
-              <li
-                key={stage.id}
-                className="relative border-b theme-border-faint pb-7 pt-2 last:border-0"
-              >
-                <span
-                  className="absolute -left-[1.78rem] top-3 h-3 w-3 rounded-full border-2 border-background bg-[var(--prose-hashtag)]"
-                  aria-hidden="true"
-                />
-                <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
-                  <div>
-                    <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-                      {stage.label}
-                    </p>
-                    <h4 className="mt-2 font-serif text-2xl">{stage.subject}</h4>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
-                      <span className="theme-muted">
-                        {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"}
-                      </span>
-                      <AdminStatus tone={stageTone(stage)}>
-                        {stageNeedsManualSendDecision(stage)
-                          ? "overdue — waiting for your decision"
-                          : stageDeliveryStateLabel(stage)}
-                      </AdminStatus>
-                      <span className="theme-muted">
-                        {stage.recipientCount
-                          ? `${stage.recipientCount} recipients`
-                          : "recipient count at fan-out"}
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
-                      <AdminStatus tone={stageAudienceTone(stage)}>
-                        {deliveryEventsConfigured
-                          ? `delivered to ${stage.receivedCount} of ${stage.audienceCount} current attendees`
-                          : `sent to ${stage.audienceCount - stage.missingRecipientCount} of ${stage.audienceCount} current attendees · delivery confirmation unavailable`}
-                      </AdminStatus>
-                      {stage.missingRecipientCount ? (
-                        <AdminStatus tone="attention">
-                          {stage.missingRecipientCount} not yet sent
-                        </AdminStatus>
-                      ) : null}
-                    </div>
-                    {stageNeedsManualSendDecision(stage) ? (
-                      <p className="mt-2 font-mono text-micro theme-faint">
-                        This did not send automatically. Send it now, or edit the time first.
+            {activePlan.stages.map((stage) => {
+              const lifecycle = communicationStageLifecyclePresentation(
+                stage,
+                stageNeedsManualSendDecision(stage),
+              );
+              return (
+                <li
+                  key={stage.id}
+                  className="relative border-b theme-border-faint pb-7 pt-2 last:border-0"
+                >
+                  <span
+                    className="absolute -left-[1.78rem] top-3 h-3 w-3 rounded-full border-2 border-background bg-[var(--prose-hashtag)]"
+                    aria-hidden="true"
+                  />
+                  <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <div>
+                      <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+                        {stage.label}
                       </p>
-                    ) : null}
-                    <div className="mt-2 font-mono text-micro">
-                      <DeliveryMetrics delivery={stage.delivery} links={stage.linkClicks} />
-                      {linkMetricsLabel(stage.linkClicks) ? (
-                        <span className="mt-1 block theme-muted">
-                          {linkMetricsLabel(stage.linkClicks)}
+                      <h4 className="mt-2 font-serif text-2xl">{stage.subject}</h4>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                        <span className="theme-muted">
+                          {stage.sendAt ? dateLabel(stage.sendAt) : "needs a send time"}
                         </span>
+                        <AdminStatus tone={lifecycle.tone}>{lifecycle.label}</AdminStatus>
+                      </div>
+                      <CommunicationStageHealth
+                        stage={stage}
+                        deliveryEventsConfigured={deliveryEventsConfigured}
+                      />
+                      {stageNeedsManualSendDecision(stage) ? (
+                        <p className="mt-2 font-mono text-micro theme-faint">
+                          This did not send automatically. Send it now, or edit the time first.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
+                      <Button
+                        onClick={() => void viewStageRecipients(stage)}
+                        ariaExpanded={
+                          stageRecipients?.stageId === stage.id ||
+                          stageDeliveries?.stageId === stage.id
+                        }
+                      >
+                        {stageRecipients?.stageId === stage.id ||
+                        stageDeliveries?.stageId === stage.id
+                          ? "hide recipients"
+                          : stage.delivery.queued +
+                                stage.delivery.accepted +
+                                stage.delivery.delivered +
+                                stage.delivery.failed +
+                                stage.delivery.bounced +
+                                stage.delivery.rejected +
+                                stage.delivery.complained +
+                                stage.delivery.skipped >
+                              0
+                            ? "delivery details"
+                            : "see recipients"}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (stagePreview?.stageId === stage.id) setStagePreview(null);
+                          else void previewStageEmail(stage);
+                        }}
+                        disabled={busy}
+                        ariaExpanded={stagePreview?.stageId === stage.id}
+                      >
+                        {stagePreview?.stageId === stage.id ? "hide preview" : "preview email"}
+                      </Button>
+                      {stageCanEdit(stage) ? (
+                        <Button
+                          onClick={() =>
+                            editingStage === stage.id ? setEditingStage(null) : openStage(stage)
+                          }
+                          ariaExpanded={editingStage === stage.id}
+                        >
+                          {editingStage === stage.id ? "close editor" : "edit message"}
+                        </Button>
+                      ) : null}
+                      {canSendStageNow(stage) ? (
+                        <Button
+                          primary={stageNeedsManualSendDecision(stage)}
+                          onClick={() => sendStageNow(stage)}
+                          disabled={busy}
+                        >
+                          {stageHasReachedSendTime(stage) ? "send now" : "send early"}
+                        </Button>
+                      ) : stage.missingRecipientCount > 0 ? (
+                        <Button
+                          primary
+                          onClick={() => void sendStageToMissingRecipients(stage)}
+                          disabled={busy}
+                        >
+                          send to {stage.missingRecipientCount} missing
+                        </Button>
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                    <Button
-                      onClick={() => void viewStageRecipients(stage)}
-                      ariaExpanded={
-                        stageRecipients?.stageId === stage.id ||
-                        stageDeliveries?.stageId === stage.id
-                      }
-                    >
-                      {stageRecipients?.stageId === stage.id ||
-                      stageDeliveries?.stageId === stage.id
-                        ? "hide recipients"
-                        : stage.delivery.queued +
-                              stage.delivery.accepted +
-                              stage.delivery.delivered +
-                              stage.delivery.failed +
-                              stage.delivery.bounced +
-                              stage.delivery.rejected +
-                              stage.delivery.complained +
-                              stage.delivery.skipped >
-                            0
-                          ? "delivery details"
-                          : "see recipients"}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        if (stagePreview?.stageId === stage.id) setStagePreview(null);
-                        else void previewStageEmail(stage);
-                      }}
-                      disabled={busy}
-                      ariaExpanded={stagePreview?.stageId === stage.id}
-                    >
-                      {stagePreview?.stageId === stage.id ? "hide preview" : "preview email"}
-                    </Button>
-                    {stageCanEdit(stage) ? (
-                      <Button
-                        onClick={() =>
-                          editingStage === stage.id ? setEditingStage(null) : openStage(stage)
-                        }
-                        ariaExpanded={editingStage === stage.id}
-                      >
-                        {editingStage === stage.id ? "close editor" : "edit message"}
-                      </Button>
-                    ) : null}
-                    {canSendStageNow(stage) ? (
-                      <Button
-                        primary={stageNeedsManualSendDecision(stage)}
-                        onClick={() => sendStageNow(stage)}
-                        disabled={busy}
-                      >
-                        {stageHasReachedSendTime(stage) ? "send now" : "send early"}
-                      </Button>
-                    ) : stage.missingRecipientCount > 0 ? (
-                      <Button
-                        primary
-                        onClick={() => void sendStageToMissingRecipients(stage)}
-                        disabled={busy}
-                      >
-                        send to {stage.missingRecipientCount} missing
-                      </Button>
-                    ) : (
-                      <AdminStatus
-                        tone={stageAudienceTone(stage)}
-                        className="self-center font-mono text-micro"
-                      >
-                        {stageAudienceStatusLabel(stage, deliveryEventsConfigured)}
-                      </AdminStatus>
-                    )}
-                  </div>
-                </div>
-                {stageRecipients?.stageId === stage.id ? (
-                  <div className="mt-4 border-y theme-border-faint py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-mono text-xs">
-                        {stageRecipients.count} people would receive this
-                      </p>
-                    </div>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {stageRecipients.recipients.slice(0, 20).map((recipient) => (
-                        <p
-                          key={recipient.email}
-                          className="truncate font-mono text-micro theme-muted"
-                        >
-                          {recipient.name || "unnamed"} · {recipient.email}
+                  {stageRecipients?.stageId === stage.id ? (
+                    <div className="mt-4 border-y theme-border-faint py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-xs">
+                          {stageRecipients.count} people would receive this
                         </p>
-                      ))}
-                    </div>
-                    {stageRecipients.count > 20 ? (
-                      <p className="mt-2 font-mono text-micro theme-faint">showing the first 20</p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {stageDeliveries?.stageId === stage.id ? (
-                  <div className="mt-4 border-y theme-border-faint py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-mono text-xs">
-                        {stageDeliveries.deliveries.length} delivery records
-                      </p>
-                      <p className="font-mono text-micro theme-faint">
-                        accepted means the provider accepted the message
-                      </p>
-                    </div>
-                    <div className="mt-3 divide-y theme-border-faint">
-                      {stageDeliveries.deliveries.map((delivery) => (
-                        <div
-                          key={delivery.emailHash}
-                          className="grid gap-1 py-3 font-mono text-micro sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate">
-                              {delivery.displayName || "unnamed"} · {delivery.email}
-                            </p>
-                            {delivery.lastError ? (
-                              <p className={`mt-1 break-words ${adminToneTextClass("danger")}`}>
-                                error · {delivery.lastError}
-                              </p>
-                            ) : null}
-                          </div>
-                          <AdminStatus
-                            tone={deliveryStatusTone(delivery)}
-                            className="sm:justify-end sm:text-right"
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {stageRecipients.recipients.slice(0, 20).map((recipient) => (
+                          <p
+                            key={recipient.email}
+                            className="truncate font-mono text-micro theme-muted"
                           >
-                            {deliveryStatusLabel(delivery)}
-                            {delivery.attempts
-                              ? ` · ${delivery.attempts} attempt${delivery.attempts === 1 ? "" : "s"}`
-                              : ""}
-                            {delivery.nextAttemptAt &&
-                            (delivery.deliveryStatus === "deferred" ||
-                              delivery.outboxStatus === "pending")
-                              ? ` · next retry ${dateLabel(delivery.nextAttemptAt)}`
-                              : ""}
-                          </AdminStatus>
-                        </div>
-                      ))}
+                            {recipient.name || "unnamed"} · {recipient.email}
+                          </p>
+                        ))}
+                      </div>
+                      {stageRecipients.count > 20 ? (
+                        <p className="mt-2 font-mono text-micro theme-faint">
+                          showing the first 20
+                        </p>
+                      ) : null}
                     </div>
-                  </div>
-                ) : null}
-                {stagePreview?.stageId === stage.id ? (
-                  <div className="mt-4 border-y theme-border-faint py-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-mono text-xs">email preview</p>
+                  ) : null}
+                  {stageDeliveries?.stageId === stage.id ? (
+                    <div className="mt-4 border-y theme-border-faint py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-xs">
+                          {
+                            stageDeliveries.deliveries.filter(
+                              (delivery) => delivery.isCurrentRecipient,
+                            ).length
+                          }{" "}
+                          current ·{" "}
+                          {
+                            stageDeliveries.deliveries.filter(
+                              (delivery) => !delivery.isCurrentRecipient,
+                            ).length
+                          }{" "}
+                          historical
+                        </p>
+                        <p className="font-mono text-micro theme-faint">
+                          historical attempts are retained for audit, not treated as live problems
+                        </p>
+                      </div>
+                      <div className="mt-3 divide-y theme-border-faint">
+                        {stageDeliveries.deliveries.map((delivery) => (
+                          <div
+                            key={delivery.emailHash}
+                            className="grid gap-1 py-3 font-mono text-micro sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-4"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate">
+                                {delivery.displayName || "unnamed"} · {delivery.email}
+                              </p>
+                              {delivery.lastError ? (
+                                <p
+                                  className={`mt-1 break-words ${
+                                    delivery.isCurrentRecipient
+                                      ? adminToneTextClass("danger")
+                                      : "theme-muted"
+                                  }`}
+                                >
+                                  {delivery.isCurrentRecipient ? "error" : "historical result"} ·{" "}
+                                  {delivery.lastError}
+                                </p>
+                              ) : null}
+                            </div>
+                            <AdminStatus
+                              tone={deliveryStatusTone(delivery)}
+                              className="sm:justify-end sm:text-right"
+                            >
+                              {deliveryStatusLabel(delivery)}
+                              {delivery.attempts
+                                ? ` · ${delivery.attempts} attempt${delivery.attempts === 1 ? "" : "s"}`
+                                : ""}
+                              {delivery.nextAttemptAt &&
+                              (delivery.deliveryStatus === "deferred" ||
+                                delivery.outboxStatus === "pending")
+                                ? ` · next retry ${dateLabel(delivery.nextAttemptAt)}`
+                                : ""}
+                            </AdminStatus>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <iframe
-                      title={`${stage.subject} email preview`}
-                      sandbox=""
-                      srcDoc={stagePreview.html}
-                      className="mt-4 h-[38rem] w-full rounded border theme-border bg-background"
-                    />
-                  </div>
-                ) : null}
-                {editingStage === stage.id ? (
-                  <div className="mt-6 space-y-4 border-t theme-border pt-5">
-                    <Field
-                      label="subject"
-                      value={stageDraft.subject}
-                      onChange={(value) => setStageDraft((draft) => ({ ...draft, subject: value }))}
-                    />
-                    <CommunicationMessageEditor
-                      body={stageDraft.body}
-                      onBodyChange={(value) =>
-                        setStageDraft((draft) => ({ ...draft, body: value }))
-                      }
-                      media={{
-                        kind: stageDraft.mediaKind,
-                        url: stageDraft.mediaUrl,
-                        alt: stageDraft.mediaAlt,
-                        posterUrl: stageDraft.posterUrl,
-                      }}
-                      onMediaChange={(media) =>
-                        setStageDraft((draft) => ({
-                          ...draft,
-                          mediaKind: media.kind,
-                          mediaUrl: media.url,
-                          mediaAlt: media.alt,
-                          posterUrl: media.posterUrl,
-                        }))
-                      }
-                      previewValues={previewValuesForEvent(
-                        events.find((event) => event.slug === selectedEvent),
-                        activePlan?.eventTitle,
-                      )}
-                      hint="Use the writing tools for Markdown. Event tokens such as {{event.venue}} and {{survey.url}} are filled when the email is sent."
-                    />
-                    <Field
-                      label="send at"
-                      type="datetime-local"
-                      value={stageDraft.sendAt}
-                      onChange={(value) => setStageDraft((draft) => ({ ...draft, sendAt: value }))}
-                      hint={
-                        stageNeedsManualSendDecision(stage)
-                          ? "You can change an overdue stage. Saving keeps it unsent until you choose send now."
-                          : undefined
-                      }
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button primary onClick={saveStage} disabled={busy}>
-                        save stage
-                      </Button>
-                      <Button onClick={() => void resetStageTemplate(stage)} disabled={busy}>
-                        reset from template
-                      </Button>
-                      <Button onClick={() => setEditingStage(null)}>close</Button>
+                  ) : null}
+                  {stagePreview?.stageId === stage.id ? (
+                    <div className="mt-4 border-y theme-border-faint py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-mono text-xs">email preview</p>
+                      </div>
+                      <iframe
+                        title={`${stage.subject} email preview`}
+                        sandbox=""
+                        srcDoc={stagePreview.html}
+                        className="mt-4 h-[38rem] w-full rounded border theme-border bg-background"
+                      />
                     </div>
-                  </div>
-                ) : null}
-              </li>
-            ))}
+                  ) : null}
+                  {editingStage === stage.id ? (
+                    <div className="mt-6 space-y-4 border-t theme-border pt-5">
+                      <Field
+                        label="subject"
+                        value={stageDraft.subject}
+                        onChange={(value) =>
+                          setStageDraft((draft) => ({ ...draft, subject: value }))
+                        }
+                      />
+                      <CommunicationMessageEditor
+                        body={stageDraft.body}
+                        onBodyChange={(value) =>
+                          setStageDraft((draft) => ({ ...draft, body: value }))
+                        }
+                        media={{
+                          kind: stageDraft.mediaKind,
+                          url: stageDraft.mediaUrl,
+                          alt: stageDraft.mediaAlt,
+                          posterUrl: stageDraft.posterUrl,
+                        }}
+                        onMediaChange={(media) =>
+                          setStageDraft((draft) => ({
+                            ...draft,
+                            mediaKind: media.kind,
+                            mediaUrl: media.url,
+                            mediaAlt: media.alt,
+                            posterUrl: media.posterUrl,
+                          }))
+                        }
+                        previewValues={previewValuesForEvent(
+                          events.find((event) => event.slug === selectedEvent),
+                          activePlan?.eventTitle,
+                        )}
+                        hint="Use the writing tools for Markdown. Event tokens such as {{event.venue}} and {{survey.url}} are filled when the email is sent."
+                      />
+                      <Field
+                        label="send at"
+                        type="datetime-local"
+                        value={stageDraft.sendAt}
+                        onChange={(value) =>
+                          setStageDraft((draft) => ({ ...draft, sendAt: value }))
+                        }
+                        hint={
+                          stageNeedsManualSendDecision(stage)
+                            ? "You can change an overdue stage. Saving keeps it unsent until you choose send now."
+                            : undefined
+                        }
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button primary onClick={saveStage} disabled={busy}>
+                          save stage
+                        </Button>
+                        <Button onClick={() => void resetStageTemplate(stage)} disabled={busy}>
+                          reset from template
+                        </Button>
+                        <Button onClick={() => setEditingStage(null)}>close</Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
           </ol>
         </div>
       )}
@@ -2109,10 +2076,13 @@ function ComposeView(props: {
                       {KIND_LABELS[message.kind]} · {message.recipientCount} people
                     </p>
                     <div className="mt-2 font-mono text-micro">
-                      <DeliveryMetrics delivery={message.delivery} links={message.linkClicks} />
-                      {linkMetricsLabel(message.linkClicks) ? (
+                      <MessageDeliveryMetrics
+                        delivery={message.delivery}
+                        links={message.linkClicks}
+                      />
+                      {communicationLinkMetricsLabel(message.linkClicks) ? (
                         <span className="mt-1 block theme-muted">
-                          {linkMetricsLabel(message.linkClicks)}
+                          {communicationLinkMetricsLabel(message.linkClicks)}
                         </span>
                       ) : null}
                     </div>

@@ -43,7 +43,10 @@ async function handleGET(request: Request) {
     if (url.searchParams.get("scope") === "event-plan") {
       const eventSlug = url.searchParams.get("eventSlug")?.trim();
       if (!eventSlug) return Response.json({ error: "Choose an event" }, { status: 400 });
-      return Response.json({ plans: await listCommunicationPlans(eventSlug) });
+      return Response.json({
+        plans: await listCommunicationPlans(eventSlug),
+        checkedAt: new Date().toISOString(),
+      });
     }
     const [contacts, messages, events, plans, templates, surveys] = await Promise.all([
       listCommunicationContacts(),
@@ -61,6 +64,7 @@ async function handleGET(request: Request) {
       templates,
       surveys,
       email: describeEmailCapability(),
+      checkedAt: new Date().toISOString(),
     });
   } catch (error) {
     return apiErrorFromRequest(

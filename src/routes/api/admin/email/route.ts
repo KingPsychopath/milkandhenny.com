@@ -8,6 +8,7 @@ import {
   EmailOperationError,
   listEmailLedger,
   removeEmailSuppression,
+  revealEmailLedgerRecipient,
   resendEmailFromLedger,
   retryEmailNow,
 } from "@/features/email-operations/email-operations.server";
@@ -77,7 +78,12 @@ async function handlePOST(request: Request) {
     if (action === "drain") {
       return Response.json({ ok: true, handled: await drainEmailOutbox() });
     }
-    if (action === "cleanup" || action === "unsuppress" || action === "correct-and-resend") {
+    if (
+      action === "cleanup" ||
+      action === "unsuppress" ||
+      action === "correct-and-resend" ||
+      action === "reveal-recipient"
+    ) {
       const stepUpError = await requireAdminStepUp(request);
       if (stepUpError) return stepUpError;
     }
@@ -111,6 +117,15 @@ async function handlePOST(request: Request) {
         getBaseUrlForRequest(request),
       );
       return Response.json({ ok: true, ...result });
+    }
+    if (action === "reveal-recipient") {
+      if (!/^[a-f0-9-]{36}$/.test(id)) {
+        return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });
+      }
+      return Response.json(
+        { recipientEmail: await revealEmailLedgerRecipient(id) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     if (!/^[a-f0-9-]{36}$/.test(id)) {
       return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });

@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
+import {
+  deliveryThreadKey,
+  groupDeliveryThreads,
+  groupEmailDeliveryIncidents,
+} from "@/features/email-operations/delivery-incidents";
 import type { EmailLedgerPage } from "@/features/email-operations/types";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
@@ -97,28 +102,6 @@ function hasRecentUnsettledEmail(
 
 type LedgerEntry = EmailLedgerPage["entries"][number];
 
-function deliveryThreadKey(entry: LedgerEntry): string {
-  if (
-    entry.channel === "tickets" &&
-    (entry.kind === "ticket-issued" || entry.kind === "ticket-resend") &&
-    entry.context.orderId
-  ) {
-    return `ticket-order:${entry.context.orderId}`;
-  }
-  return entry.id;
-}
-
-function groupDeliveryThreads(entries: LedgerEntry[]): LedgerEntry[][] {
-  const groups = new Map<string, LedgerEntry[]>();
-  for (const entry of entries) {
-    const key = deliveryThreadKey(entry);
-    groups.set(key, [...(groups.get(key) ?? []), entry]);
-  }
-  return [...groups.values()].map((group) =>
-    group.toSorted((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
-  );
-}
-
 export function EmailOperationsPanel({
   authFetch,
   onError,
@@ -152,6 +135,7 @@ export function EmailOperationsPanel({
   const [page, setPage] = useState(1);
   const [pollingHalted, setPollingHalted] = useState(false);
   const [recoveryEmails, setRecoveryEmails] = useState<Record<string, string>>({});
+  const [revealedRecipients, setRevealedRecipients] = useState<Record<string, string>>({});
   const { confirm, dialog } = useActionDialog();
 
   useEffect(() => {
@@ -314,6 +298,39 @@ export function EmailOperationsPanel({
     }
   };
 
+  const revealRecipient = async (entry: LedgerEntry) => {
+    if (revealedRecipients[entry.id]) {
+      setRevealedRecipients((current) => {
+        const next = { ...current };
+        delete next[entry.id];
+        return next;
+      });
+      return;
+    }
+    setBusy(`reveal:${entry.id}`);
+    onError("");
+    try {
+      const result = await stepUpPost({ action: "reveal-recipient", id: entry.id });
+      if (!result) return;
+      const recipientEmail = result && result.recipientEmail;
+      if (typeof recipientEmail !== "string" || !recipientEmail) {
+        throw new Error("The current ticket address could not be revealed");
+      }
+      setRevealedRecipients((current) => ({ ...current, [entry.id]: recipientEmail }));
+      if (entry.suppression) {
+        const recipientHash = entry.suppression.recipientHash;
+        setRecoveryEmails((current) => ({
+          ...current,
+          [recipientHash]: current[recipientHash] || recipientEmail,
+        }));
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not reveal the ticket address");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const unsuppress = async (recipientHash: string, recipientHint: string | null) => {
     if (
       !(await confirm({
@@ -388,6 +405,7 @@ export function EmailOperationsPanel({
 
   const overview = data?.overview;
   const deliveryThreads = groupDeliveryThreads(data?.entries ?? []);
+  const deliveryIncidents = groupEmailDeliveryIncidents(data?.entries ?? []);
   const visibleSuppressionHashes = new Set(
     data?.entries.flatMap((entry) =>
       entry.suppression ? [entry.suppression.recipientHash] : [],
@@ -408,8 +426,9 @@ export function EmailOperationsPanel({
             Delivery history
           </h3>
           <p className="mt-2 max-w-2xl font-serif leading-relaxed theme-muted">
-            Search ticket, refund, exchange, studio and campaign email in one place. Recipient
-            addresses are masked here; an exact address search is matched by its private hash.
+            Search ticket, refund, exchange, studio and campaign email in one place. Addresses are
+            masked by default to limit routine exposure. Ticket addresses are resolved from the
+            current order only after an admin security check; exact searches use a private hash.
           </p>
         </div>
         <div className="flex gap-3">
@@ -651,85 +670,80 @@ export function EmailOperationsPanel({
         </button>
       </form>
 
-      <div aria-busy={loading} className="divide-y theme-border">
-        {deliveryThreads.map((thread) => {
-          const entry = thread[0];
-          if (!entry) return null;
-          const suppression = thread.find((attempt) => attempt.suppression)?.suppression ?? null;
-          const recoveryEntry = thread.find(
-            (attempt) =>
-              attempt.suppression?.reason === "bounced" &&
-              attempt.canResend &&
-              (attempt.kind === "ticket-issued" || attempt.kind === "ticket-resend"),
-          );
-          return (
-            <article key={deliveryThreadKey(entry)} className="py-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-mono text-micro theme-muted">
-                    {entry.channel === "tickets" && thread.length > 1
-                      ? `ticket delivery · ${thread.length} attempts`
-                      : `${entry.kind.replaceAll("-", " ")} · ${entry.channel} · ${entry.source}`}
-                  </p>
-                  <h4 className="mt-1 font-serif text-lg">{entry.subject ?? "Subject removed"}</h4>
-                  <p className="mt-1 font-mono text-xs theme-muted">
-                    {entry.recipientHint ?? "recipient no longer available"} · latest{" "}
-                    {dateTime(entry.createdAt)}
-                  </p>
-                </div>
-                <AdminStatus tone={emailEntryTone(entry)} className="font-mono text-xs font-bold">
-                  {stateLabel(entry)}
+      {deliveryIncidents.length > 0 ? (
+        <section aria-labelledby="active-delivery-incidents" className="space-y-4">
+          <div>
+            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
+              active delivery incidents
+            </p>
+            <h4 id="active-delivery-incidents" className="mt-1 font-serif text-xl">
+              Resolve each recipient once
+            </h4>
+          </div>
+          {deliveryIncidents.map((incident) => {
+            const { suppression, recoveryEntry } = incident;
+            return (
+              <div
+                key={incident.recipientHash}
+                className={`border-l-2 pl-4 font-mono text-xs ${adminToneBorderClass("danger")}`}
+              >
+                <AdminStatus tone="danger" className="font-bold">
+                  Delivery blocked after{" "}
+                  {suppression.reason === "bounced" ? "a bounce" : "a complaint"}
                 </AdminStatus>
-              </div>
-
-              {suppression ? (
-                <div
-                  className={`mt-4 border-l-2 pl-4 font-mono text-xs ${adminToneBorderClass("danger")}`}
-                >
-                  <AdminStatus tone="danger" className="font-bold">
-                    Delivery blocked after{" "}
-                    {suppression.reason === "bounced" ? "a bounce" : "a complaint"}
-                  </AdminStatus>
+                <p className="mt-1 theme-muted">
+                  {suppression.recipientHint ?? "This recipient"} is blocked. This one incident
+                  affects {incident.entries.length} email{incident.entries.length === 1 ? "" : "s"}
+                  shown below.
+                </p>
+                {incident.lateJoinCount > 0 ? (
                   <p className="mt-1 theme-muted">
-                    {suppression.recipientHint ?? "This recipient"} will not be emailed again until
-                    this block is resolved. Removing a block alone never sends mail.
+                    {incident.lateJoinCount} earlier event email
+                    {incident.lateJoinCount === 1 ? " was" : "s were"} sent as late-join catch-up
+                    because the attendee joined while the stage windows were still open.
                   </p>
-                  {recoveryEntry ? (
-                    <form
-                      className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void recoverTicketDelivery(recoveryEntry);
-                      }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <label>
-                          <span className="theme-muted">correct recipient address</span>
-                          <input
-                            type="email"
-                            required
-                            autoComplete="off"
-                            value={recoveryEmails[suppression.recipientHash] ?? ""}
-                            onChange={(event) =>
-                              setRecoveryEmails((current) => ({
-                                ...current,
-                                [suppression.recipientHash]: event.target.value,
-                              }))
-                            }
-                            placeholder="name@example.com"
-                            className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-                          />
-                        </label>
-                        <EmailAddressNotice
-                          email={recoveryEmails[suppression.recipientHash] ?? ""}
-                          onAcceptSuggestion={(email) =>
+                ) : null}
+                <p className="mt-1 theme-faint">
+                  A newer confirmed delivery will clear a bounce automatically. Complaints always
+                  require manual review. Removing a block alone never sends mail.
+                </p>
+                {recoveryEntry ? (
+                  <form
+                    className="mt-3 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void recoverTicketDelivery(recoveryEntry);
+                    }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <label>
+                        <span className="theme-muted">correct recipient address</span>
+                        <input
+                          type="email"
+                          required
+                          autoComplete="off"
+                          value={recoveryEmails[suppression.recipientHash] ?? ""}
+                          onChange={(event) =>
                             setRecoveryEmails((current) => ({
                               ...current,
-                              [suppression.recipientHash]: email,
+                              [suppression.recipientHash]: event.target.value,
                             }))
                           }
+                          placeholder="name@example.com"
+                          className="mt-1 min-h-11 w-full rounded border theme-border bg-transparent px-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                         />
-                      </div>
+                      </label>
+                      <EmailAddressNotice
+                        email={recoveryEmails[suppression.recipientHash] ?? ""}
+                        onAcceptSuggestion={(email) =>
+                          setRecoveryEmails((current) => ({
+                            ...current,
+                            [suppression.recipientHash]: email,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col items-start gap-1">
                       <button
                         type="submit"
                         disabled={busy !== null}
@@ -737,26 +751,80 @@ export function EmailOperationsPanel({
                       >
                         correct + queue one copy
                       </button>
-                    </form>
-                  ) : null}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4">
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() =>
-                        void unsuppress(suppression.recipientHash, suppression.recipientHint)
-                      }
-                      className="min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
-                    >
-                      remove block only — do not send
-                    </button>
-                    {recoveryEntry ? (
-                      <span className="theme-faint">
-                        repeat requests are deduplicated for 5 minutes
-                      </span>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => void revealRecipient(recoveryEntry)}
+                        className="min-h-11 underline underline-offset-4 disabled:opacity-50"
+                      >
+                        {revealedRecipients[recoveryEntry.id]
+                          ? "hide current ticket address"
+                          : "show current ticket address"}
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    void unsuppress(suppression.recipientHash, suppression.recipientHint)
+                  }
+                  className="mt-2 min-h-11 theme-muted underline underline-offset-4 disabled:opacity-50"
+                >
+                  remove block only — do not send
+                </button>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
+
+      <div aria-busy={loading} className="divide-y theme-border">
+        {deliveryThreads.map((thread) => {
+          const entry = thread[0];
+          if (!entry) return null;
+          const hasActiveIncident = thread.some((attempt) => attempt.suppression !== null);
+          return (
+            <article key={deliveryThreadKey(entry)} className="py-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-mono text-micro theme-muted">
+                    {entry.channel === "tickets" && thread.length > 1
+                      ? `ticket delivery · ${thread.length} attempts`
+                      : `${entry.kind.replaceAll("-", " ")} · ${entry.channel} · ${entry.dispatchReason.replaceAll("-", " ")}`}
+                  </p>
+                  <h4 className="mt-1 font-serif text-lg">{entry.subject ?? "Subject removed"}</h4>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-xs theme-muted">
+                    <span>
+                      {revealedRecipients[entry.id] ??
+                        entry.recipientHint ??
+                        "recipient no longer available"}
+                    </span>
+                    {entry.channel === "tickets" && entry.context.orderId ? (
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => void revealRecipient(entry)}
+                        aria-pressed={Boolean(revealedRecipients[entry.id])}
+                        aria-label={`${revealedRecipients[entry.id] ? "Hide" : "Show"} full recipient address for ${entry.recipientHint ?? "this ticket email"}`}
+                        className="min-h-11 underline underline-offset-4 transition-opacity hover:opacity-70 disabled:opacity-50"
+                      >
+                        {revealedRecipients[entry.id] ? "hide address" : "show address"}
+                      </button>
                     ) : null}
+                    <span>· latest {dateTime(entry.createdAt)}</span>
                   </div>
                 </div>
+                <AdminStatus tone={emailEntryTone(entry)} className="font-mono text-xs font-bold">
+                  {stateLabel(entry)}
+                </AdminStatus>
+              </div>
+
+              {hasActiveIncident ? (
+                <p className="mt-3 font-mono text-xs theme-muted">
+                  Part of the active recipient incident summarised above.
+                </p>
               ) : null}
 
               <details className="mt-3 font-mono text-xs">

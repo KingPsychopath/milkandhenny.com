@@ -6,6 +6,7 @@ import {
 import { hashEmailRecipient } from "@/lib/platform/email-outbox.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import type { EmailContext } from "@/lib/shared/email-operations";
+import type { PoolClient } from "pg";
 
 type DeliveryRecord = {
   id: string;
@@ -62,6 +63,16 @@ async function createDeliveryAttention(
 /** Fold provider feedback into the outbox and project durable operator work. */
 export async function recordEmailDeliveryFeedback(event: EmailDeliveryEvent): Promise<void> {
   await recordEmailDeliveryEvent(event);
+  if (event.type === "delivered") {
+    for (const recipient of event.recipients) {
+      await resolveEmailBounceAfterConfirmedDelivery(
+        hashEmailRecipient(recipient),
+        event.providerMessageId,
+        event.occurredAt,
+      );
+    }
+    return;
+  }
   if (!createsAttention(event.type)) return;
 
   for (const recipient of event.recipients) {
@@ -95,6 +106,72 @@ export async function recordEmailDeliveryFeedback(event: EmailDeliveryEvent): Pr
       record.first_occurred_at?.toISOString() ?? event.eventId,
     );
   }
+}
+
+async function resolveNotifications(
+  client: PoolClient,
+  recipientHash: string,
+  reason: string,
+): Promise<void> {
+  const rows = await client.query<{ id: string; case_id: string | null }>(
+    `update admin_notifications notification
+        set status = 'resolved',updated_at = now(),resolved_at = now()
+       from attendee_domain_events domain
+      where notification.source_event_id = domain.id
+        and notification.category = 'email-delivery'
+        and notification.status in ('new','in-progress')
+        and domain.entity_refs->>'recipientHash' = $1
+      returning notification.id,notification.case_id`,
+    [recipientHash],
+  );
+  const caseIds = rows.rows.flatMap((row) => (row.case_id ? [row.case_id] : []));
+  if (caseIds.length > 0) {
+    await client.query(
+      `update admin_attention_cases
+          set status = 'resolved',resolution_reason = $2,updated_at = now(),resolved_at = now()
+        where id = any($1::text[])`,
+      [caseIds, reason],
+    );
+  }
+  for (const row of rows.rows) {
+    await client.query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason)
+       values ('notification.auto-resolved','system','email-delivery','notification',$1,
+               '{"status":"new-or-in-progress"}'::jsonb,'{"status":"resolved"}'::jsonb,$2)`,
+      [row.id, reason],
+    );
+  }
+}
+
+async function resolveEmailBounceAfterConfirmedDelivery(
+  recipientHash: string,
+  providerMessageId: string,
+  deliveredAt: Date,
+): Promise<boolean> {
+  return transaction(async (client) => {
+    const suppression = await client.query<{ recipient_hash: string }>(
+      `delete from email_suppressions
+        where recipient_hash = $1
+          and reason = 'bounced'
+          and last_occurred_at < $2
+          and exists (
+            select 1
+              from email_outbox delivered
+             where delivered.provider_message_id = $3
+               and delivered.recipient_hash = email_suppressions.recipient_hash
+          )
+      returning recipient_hash`,
+      [recipientHash, deliveredAt, providerMessageId],
+    );
+    if (!suppression.rows[0]) return false;
+    await resolveNotifications(
+      client,
+      recipientHash,
+      "A newer provider event confirmed delivery to this recipient",
+    );
+    return true;
+  });
 }
 
 /** Repair attention projections for immediate provider bounces even if feedback is delayed. */
@@ -140,35 +217,7 @@ export async function resolveEmailDeliveryBlock(
     );
     if (!suppression.rows[0]) return false;
 
-    const rows = await client.query<{ id: string; case_id: string | null }>(
-      `update admin_notifications notification
-          set status = 'resolved',updated_at = now(),resolved_at = now()
-         from attendee_domain_events domain
-        where notification.source_event_id = domain.id
-          and notification.category = 'email-delivery'
-          and notification.status in ('new','in-progress')
-          and domain.entity_refs->>'recipientHash' = $1
-        returning notification.id,notification.case_id`,
-      [recipientHash],
-    );
-    const caseIds = rows.rows.flatMap((row) => (row.case_id ? [row.case_id] : []));
-    if (caseIds.length > 0) {
-      await client.query(
-        `update admin_attention_cases
-            set status = 'resolved',resolution_reason = $2,updated_at = now(),resolved_at = now()
-          where id = any($1::text[])`,
-        [caseIds, reason],
-      );
-    }
-    for (const row of rows.rows) {
-      await client.query(
-        `insert into attendee_operations_audit_events
-           (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason)
-         values ('notification.auto-resolved','system','email-delivery','notification',$1,
-                 '{"status":"new-or-in-progress"}'::jsonb,'{"status":"resolved"}'::jsonb,$2)`,
-        [row.id, reason],
-      );
-    }
+    await resolveNotifications(client, recipientHash, reason);
     return true;
   });
 }

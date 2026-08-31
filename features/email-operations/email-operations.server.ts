@@ -67,6 +67,7 @@ interface LedgerRow {
   cancelled_at: Date | null;
   content_expires_at: Date;
   retain_until: Date;
+  stage_send_at: Date | null;
 }
 
 interface SuppressionRow {
@@ -120,6 +121,9 @@ function parseContext(value: unknown): EmailContext {
     const value = source[key];
     if (typeof value === "string" && value.trim()) context[key] = value.trim();
   }
+  if (source.deliveryReason === "late-join-catch-up") {
+    context.deliveryReason = source.deliveryReason;
+  }
   if (Array.isArray(source.ticketIds)) {
     const ticketIds = source.ticketIds
       .filter((value): value is string => typeof value === "string")
@@ -142,12 +146,23 @@ function entryFromRow(row: LedgerRow): EmailLedgerEntry {
     throw new Error(`Email ledger row ${row.id} has an invalid state`);
   }
   const context = parseContext(row.context);
+  const dispatchReason =
+    context.deliveryReason === "late-join-catch-up" ||
+    (row.kind === "communication-stage" &&
+      row.source === "scheduled" &&
+      row.stage_send_at !== null &&
+      row.created_at.getTime() > row.stage_send_at.getTime() + 5 * 60_000)
+      ? "late-join-catch-up"
+      : row.source === "scheduled"
+        ? "scheduled"
+        : "requested";
   return {
     id: row.id,
     idempotencyKey: row.idempotency_key,
     channel: row.channel,
     kind: row.kind,
     source: row.source,
+    dispatchReason,
     context,
     recipientHint: row.recipient_hint,
     suppression:
@@ -364,6 +379,9 @@ export async function listEmailLedger(input: EmailLedgerQuery): Promise<EmailLed
               message is not null as payload_retained,
               next_attempt_at, created_at, updated_at, accepted_at, delivered_at,
               failed_at, cancelled_at, content_expires_at, retain_until
+              ,(select stage.send_at
+                  from communication_plan_stages stage
+                 where stage.id::text = email_outbox.context->>'communicationId') as stage_send_at
          from email_outbox ${where}
         order by ${order}
         limit $${limitIndex} offset $${offsetIndex}`,
@@ -384,6 +402,39 @@ export async function listEmailLedger(input: EmailLedgerQuery): Promise<EmailLed
     pages: total === 0 ? 0 : Math.ceil(total / input.limit),
     overview,
   };
+}
+
+export async function revealEmailLedgerRecipient(id: string): Promise<string> {
+  const row = await queryOne<{
+    channel: string;
+    context: unknown;
+    recipient_hash: string;
+  }>(`select channel, context, recipient_hash from email_outbox where id = $1`, [id]);
+  if (!row) throw new EmailOperationError(404, "Email ledger entry not found");
+
+  const context = parseContext(row.context);
+  if (row.channel !== "tickets" || !context.orderId) {
+    throw new EmailOperationError(
+      409,
+      "The full recipient is no longer available from this message's owning record",
+    );
+  }
+
+  const ticket = await queryOne<{ email: string }>(
+    `select lower(trim(email)) as email
+       from tickets
+      where order_id = $1 and email_hash = $2 and email is not null
+      order by issued_at desc
+      limit 1`,
+    [context.orderId, row.recipient_hash],
+  );
+  if (!ticket?.email || hashEmailRecipient(ticket.email) !== row.recipient_hash) {
+    throw new EmailOperationError(
+      409,
+      "The ticket address has changed since this delivery; open the current order instead",
+    );
+  }
+  return ticket.email;
 }
 
 export async function retryEmailNow(id: string): Promise<void> {

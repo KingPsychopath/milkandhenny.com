@@ -71,6 +71,7 @@ export interface EmailContext {
   staffAssignmentId?: string;
   adminGrantId?: string;
   caseId?: string;
+  deliveryReason?: "late-join-catch-up";
 }
 
 export const EMAIL_QUEUE_CONTENT_DAYS = 7;

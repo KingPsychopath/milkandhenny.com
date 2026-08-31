@@ -9,6 +9,7 @@ import type {
 
 export type EmailLedgerSort = "newest" | "oldest" | "next-attempt";
 export type EmailFeedbackHealth = "disabled" | "waiting" | "healthy" | "stale";
+export type EmailDispatchReason = "scheduled" | "late-join-catch-up" | "requested";
 
 export interface EmailLedgerQuery {
   page: number;
@@ -29,6 +30,7 @@ export interface EmailLedgerEntry {
   channel: EmailChannel;
   kind: EmailKind;
   source: EmailSource;
+  dispatchReason: EmailDispatchReason;
   context: EmailContext;
   recipientHint: string | null;
   suppression: EmailSuppression | null;

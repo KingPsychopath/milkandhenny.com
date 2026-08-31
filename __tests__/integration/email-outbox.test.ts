@@ -17,6 +17,7 @@ import {
   correctTicketRecipientAndResend,
   listEmailLedger,
   removeEmailSuppression,
+  revealEmailLedgerRecipient,
 } from "@/features/email-operations/email-operations.server";
 import { recordEmailDeliveryFeedback } from "@/features/email-operations/delivery-feedback.server";
 import { updateAdminNotification } from "@/features/attendee-operations/notifications.server";
@@ -271,6 +272,92 @@ describeWithDatabase("email outbox (postgres)", () => {
     expect(rows[0]?.count).toBe("1");
   });
 
+  it("self-heals a bounce only after newer confirmed delivery and never auto-clears complaints", async () => {
+    const recipient = "self-heal@example.com";
+    const recipientHash = hashEmailRecipient(recipient);
+    await query(
+      `insert into email_outbox
+         (id,idempotency_key,channel,recipient_hash,status,kind,source,context,
+          recipient_hint,subject_hint,provider_message_id,accepted_at)
+       values ($1,'self-heal-bounce','tickets',$2,'accepted','ticket-issued','system','{}',
+               's…@example.com','Your ticket','provider-self-heal',now())`,
+      [randomUUID(), recipientHash],
+    );
+    await recordEmailDeliveryFeedback({
+      eventId: "self-heal-bounce",
+      type: "bounced",
+      occurredAt: new Date("2026-08-30T20:39:00.000Z"),
+      providerMessageId: "provider-self-heal",
+      recipients: [recipient],
+      suppressRecipient: true,
+    });
+
+    await recordEmailDeliveryFeedback({
+      eventId: "self-heal-stale-delivered",
+      type: "delivered",
+      occurredAt: new Date("2026-08-30T20:38:00.000Z"),
+      providerMessageId: "provider-self-heal",
+      recipients: [recipient],
+    });
+    await expect(
+      query(`select recipient_hash from email_suppressions where recipient_hash = $1`, [
+        recipientHash,
+      ]),
+    ).resolves.toHaveLength(1);
+
+    await recordEmailDeliveryFeedback({
+      eventId: "self-heal-unmatched-delivered",
+      type: "delivered",
+      occurredAt: new Date("2026-08-30T20:40:00.000Z"),
+      providerMessageId: "unknown-provider-message",
+      recipients: [recipient],
+    });
+    await expect(
+      query(`select recipient_hash from email_suppressions where recipient_hash = $1`, [
+        recipientHash,
+      ]),
+    ).resolves.toHaveLength(1);
+
+    await recordEmailDeliveryFeedback({
+      eventId: "self-heal-new-delivered",
+      type: "delivered",
+      occurredAt: new Date("2026-08-30T20:41:00.000Z"),
+      providerMessageId: "provider-self-heal",
+      recipients: [recipient],
+    });
+    await expect(
+      query(`select recipient_hash from email_suppressions where recipient_hash = $1`, [
+        recipientHash,
+      ]),
+    ).resolves.toHaveLength(0);
+    const resolved = await query<{ status: string; case_status: string }>(
+      `select notification.status,attention.status as case_status
+         from admin_notifications notification
+         join admin_attention_cases attention on attention.id = notification.case_id`,
+    );
+    expect(resolved).toEqual([{ status: "resolved", case_status: "resolved" }]);
+
+    await query(
+      `insert into email_suppressions
+         (recipient_hash,recipient_hint,reason,provider_message_id,first_occurred_at,last_occurred_at)
+       values ($1,'s…@example.com','complained','provider-self-heal',
+               '2026-08-30T20:42:00.000Z','2026-08-30T20:42:00.000Z')`,
+      [recipientHash],
+    );
+    await recordEmailDeliveryFeedback({
+      eventId: "self-heal-after-complaint",
+      type: "delivered",
+      occurredAt: new Date("2026-08-30T20:43:00.000Z"),
+      providerMessageId: "provider-self-heal",
+      recipients: [recipient],
+    });
+    const complaint = await query<{ reason: string }>(
+      `select reason from email_suppressions where recipient_hash = $1`,
+      [recipientHash],
+    );
+    expect(complaint).toEqual([{ reason: "complained" }]);
+  });
+
   it("corrects one clear ticket-domain typo and queues one replacement", async () => {
     const ledgerId = randomUUID();
     const oldEmail = "person@gmail.con";
@@ -325,6 +412,39 @@ describeWithDatabase("email outbox (postgres)", () => {
       "select recipient_hint from email_outbox where kind = 'ticket-resend' and context->>'orderId' = 'order-domain-fix'",
     );
     expect(replacements).toEqual([{ recipient_hint: "p…@gmail.com" }]);
+  });
+
+  it("reveals a ticket recipient from the authoritative order after queue content is removed", async () => {
+    const ledgerId = randomUUID();
+    const email = "person@example.com";
+    const emailHash = hashEmailRecipient(email);
+    await query(
+      "insert into events (slug,title,status,starts_at) values ('recipient-reveal','Recipient Reveal','published',now() + interval '7 days')",
+    );
+    await query(
+      "insert into ticket_types (event_slug,id,name,quantity) values ('recipient-reveal','entry','Entry',20)",
+    );
+    await query(
+      "insert into tickets (id,event_slug,ticket_type_id,holder_name,email,email_hash,order_id) values ('REVEAL-TICKET-01','recipient-reveal','entry','Person',$1,$2,'order-recipient-reveal')",
+      [email, emailHash],
+    );
+    await query(
+      `insert into email_outbox
+         (id,idempotency_key,channel,recipient_hash,message,status,kind,source,context,recipient_hint)
+       values ($1,'recipient-reveal','tickets',$2,null,'accepted','ticket-issued','system',
+               '{"orderId":"order-recipient-reveal"}','p…@example.com')`,
+      [ledgerId, emailHash],
+    );
+
+    await expect(revealEmailLedgerRecipient(ledgerId)).resolves.toBe(email);
+
+    await query(
+      "update tickets set email = 'changed@example.com', email_hash = $1 where order_id = 'order-recipient-reveal'",
+      [hashEmailRecipient("changed@example.com")],
+    );
+    await expect(revealEmailLedgerRecipient(ledgerId)).rejects.toThrow(
+      "ticket address has changed",
+    );
   });
 
   it("stops a queued message if its recipient becomes suppressed before claiming", async () => {

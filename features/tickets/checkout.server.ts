@@ -58,6 +58,7 @@ export type StartCheckoutInput = {
   ticketTypeId: string;
   holderName: string;
   email: string;
+  emailConfirmed: boolean;
   quantity: number;
   origin: string;
   acceptedTerms: boolean;
@@ -88,6 +89,13 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       error:
         (emailAssessment.message ?? "That email address doesn't look right") +
         (emailAssessment.suggestion ? " Try " + emailAssessment.suggestion + "." : ""),
+    };
+  }
+  if (input.emailConfirmed !== true) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Confirm where the ticket should be sent before continuing.",
     };
   }
 

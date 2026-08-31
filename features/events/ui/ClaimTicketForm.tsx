@@ -14,15 +14,16 @@ import { claimFreeTicketsFn, startCheckoutFn } from "@/features/tickets/tickets.
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
+import { normaliseEmail } from "@/lib/shared/email-address";
 import { formatMoney, type TicketType } from "../types";
 import type { TicketTypeAvailability } from "@/features/event-operations/event-page.server";
 
 /**
  * Free ticket claim.
  *
- * Deliberately two fields and one button. Paid checkout arrives in Phase 2
- * and will hand off to hosted Stripe Checkout from the same position on the
- * page, so the shape people learn here does not change under them.
+ * Paid checkout hands off to hosted Stripe Checkout from this form. Before
+ * either path continues, the address is shown back clearly for review because
+ * a syntactically valid typo can strand every later event message.
  */
 
 type ClaimState =
@@ -82,12 +83,16 @@ export function ClaimTicketForm({
 }) {
   const nameId = useId();
   const emailId = useId();
+  const emailReviewId = useId();
   const marketingOptInId = useId();
   const marketingSupportId = useId();
   const errorId = useId();
 
   const [open, setOpen] = useState(false);
   const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const emailReviewRef = useRef<HTMLDivElement>(null);
+  const [reviewedEmail, setReviewedEmail] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
@@ -114,6 +119,12 @@ export function ClaimTicketForm({
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const normalizedEmail = normaliseEmail(email);
+    if (reviewedEmail !== normalizedEmail) {
+      setReviewedEmail(normalizedEmail);
+      requestAnimationFrame(() => emailReviewRef.current?.focus());
+      return;
+    }
     setState({ status: "submitting" });
 
     try {
@@ -127,6 +138,7 @@ export function ClaimTicketForm({
             ticketTypeId: availability.type.id,
             holderName: name,
             email,
+            emailConfirmed: true,
             quantity: selectedQuantity,
             acceptedTerms,
             marketingOptIn,
@@ -151,6 +163,7 @@ export function ClaimTicketForm({
           ticketTypeId: availability.type.id,
           holderName: name,
           email,
+          emailConfirmed: true,
           quantity: selectedQuantity,
           marketingOptIn,
         },
@@ -253,17 +266,27 @@ export function ClaimTicketForm({
               email — we send the ticket here
             </label>
             <input
+              ref={emailInputRef}
               id={emailId}
               name="email"
               type="email"
               inputMode="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setReviewedEmail(null);
+              }}
               autoComplete="email"
               required
               className="mt-1 w-full min-h-12 px-4 font-mono text-base bg-transparent border theme-border-strong rounded-lg text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
             />
-            <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
+            <EmailAddressNotice
+              email={email}
+              onAcceptSuggestion={(suggestion) => {
+                setEmail(suggestion);
+                setReviewedEmail(null);
+              }}
+            />
           </div>
 
           <BrowserProfileHint />
@@ -343,22 +366,59 @@ export function ClaimTicketForm({
             </label>
           )}
 
+          {reviewedEmail ? (
+            <div
+              ref={emailReviewRef}
+              tabIndex={-1}
+              aria-labelledby={emailReviewId}
+              className="border-y theme-border py-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            >
+              <p
+                id={emailReviewId}
+                className="font-mono text-micro uppercase tracking-widest theme-muted"
+              >
+                check your ticket email
+              </p>
+              <p className="mt-2 break-all font-serif text-xl text-foreground">{reviewedEmail}</p>
+              <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+                Your ticket, barcode and event details will be sent here. Check every letter before
+                continuing.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewedEmail(null);
+                  requestAnimationFrame(() => emailInputRef.current?.focus());
+                }}
+                className="mt-2 min-h-11 font-mono text-micro underline underline-offset-4 transition-opacity hover:opacity-70"
+              >
+                change email
+              </button>
+            </div>
+          ) : null}
+
           <button
             type="submit"
             disabled={state.status === "submitting" || (isPaid && !acceptedTerms)}
-            aria-describedby={state.status === "error" ? errorId : undefined}
+            aria-describedby={
+              [state.status === "error" ? errorId : null, reviewedEmail ? emailReviewId : null]
+                .filter(Boolean)
+                .join(" ") || undefined
+            }
             className="w-full min-h-12 font-mono text-sm bg-foreground text-background rounded-lg disabled:opacity-50 hover-scale-slight transition-transform"
           >
             {state.status === "submitting"
               ? isPaid
                 ? "taking you to checkout..."
                 : "getting your ticket..."
-              : isPaid
-                ? `pay ${formatMoney(
-                    availability.type.priceMinor * selectedQuantity,
-                    availability.type.currency,
-                  )}`
-                : "confirm"}
+              : !reviewedEmail
+                ? "continue"
+                : isPaid
+                  ? `yes, pay ${formatMoney(
+                      availability.type.priceMinor * selectedQuantity,
+                      availability.type.currency,
+                    )}`
+                  : "yes, get my ticket"}
           </button>
         </form>
       )}

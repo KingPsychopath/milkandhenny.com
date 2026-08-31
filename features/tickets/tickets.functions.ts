@@ -48,6 +48,7 @@ export type ClaimTicketInput = {
   ticketTypeId: string;
   holderName: string;
   email: string;
+  emailConfirmed: boolean;
   quantity: number;
   marketingOptIn: boolean;
 };
@@ -75,6 +76,13 @@ export const claimFreeTicketsFn = createServerFn({ method: "POST" })
 
     if (!isValidEmail(data.email)) {
       return { ok: false, status: 400, error: "That email address doesn't look right" };
+    }
+    if (data.emailConfirmed !== true) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Confirm where the ticket should be sent before continuing.",
+      };
     }
 
     const loaded = await runEventOperationsResult(
@@ -326,6 +334,7 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
       ticketTypeId: string;
       holderName: string;
       email: string;
+      emailConfirmed: boolean;
       quantity: number;
       acceptedTerms: boolean;
       marketingOptIn: boolean;

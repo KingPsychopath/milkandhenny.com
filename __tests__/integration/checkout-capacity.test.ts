@@ -73,6 +73,7 @@ function checkoutInput(reference: string, email = "buyer@example.com", ticketTyp
     ticketTypeId,
     holderName: "Buyer",
     email,
+    emailConfirmed: true,
     quantity: 1,
     origin: "https://example.com",
     acceptedTerms: true,
@@ -88,6 +89,20 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
   beforeEach(async () => {
     await truncateAll();
     stripe.createCheckoutSession.mockReset();
+  });
+
+  it("rejects checkout before creating a payment when the address was not reviewed", async () => {
+    const result = await startCheckout({
+      ...checkoutInput("mistyped-email-reference", "anitjbraide@icloud.com"),
+      emailConfirmed: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      error: "Confirm where the ticket should be sent before continuing.",
+    });
+    expect(stripe.createCheckoutSession).not.toHaveBeenCalled();
   });
 
   it("reserves the final ticket before Stripe and rejects a concurrent buyer", async () => {
