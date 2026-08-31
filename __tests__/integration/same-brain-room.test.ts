@@ -131,6 +131,32 @@ async function answerAll(
 }
 
 describe("same brain room", () => {
+  it("lets the room creator close and reopen admission", async () => {
+    const created = await createSameBrainRoom({});
+    const locked = await host(created.roomId, created.hostToken, {
+      type: "room.admission.set",
+      locked: true,
+    });
+    expect(locked).toMatchObject({ accepted: true, snapshot: { joinLocked: true } });
+    await expect(
+      joinSameBrainRoom({
+        roomId: created.roomId,
+        joinToken: created.joinToken,
+        name: "Maya",
+        joinId: `${created.roomId}-locked`,
+      }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+    await host(created.roomId, created.hostToken, { type: "room.admission.set", locked: false });
+    await expect(
+      joinSameBrainRoom({
+        roomId: created.roomId,
+        joinToken: created.joinToken,
+        name: "Maya",
+        joinId: `${created.roomId}-open`,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("recovers a joined player after the game starts when the first response was lost", async () => {
     const created = await room(["Abel", "Maya", "Daniel"]);
     await host(created.roomId, created.hostToken, { type: "game.start" });

@@ -65,6 +65,7 @@ export const STAFF_PERMISSIONS = [
   "admitTickets",
   "viewParticipantPoints",
   "awardPoints",
+  "manageTeams",
   "runActivities",
   "transferPoints",
   "reverseAwards",
@@ -150,7 +151,9 @@ export type ScoreParticipant = {
   publicAlias: string;
   displayMode: "alias" | "anonymous" | "hidden";
   displayName?: string;
+  teamId?: string;
   teamName?: string;
+  teamColourKey?: import("./team-palette").TeamColourKey;
   status: "active" | "refunded" | "void" | "disqualified" | "merged";
   checkedInAt?: string;
 };
@@ -203,6 +206,7 @@ export type RankedScore = ScoreProjection & {
   displayMode?: ScoreParticipant["displayMode"];
   teamId?: string;
   teamName?: string;
+  teamColourKey?: import("./team-palette").TeamColourKey;
 };
 
 export type ScorePool = {
@@ -217,6 +221,9 @@ export type ScoreTeam = {
   id: string;
   eventSlug: string;
   name: string;
+  colourKey?: import("./team-palette").TeamColourKey;
+  sortOrder?: number;
+  checkedInCount: number;
   status: "active" | "archived";
 };
 

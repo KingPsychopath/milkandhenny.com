@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 
 import { query } from "@/lib/platform/postgres.server";
@@ -13,6 +15,8 @@ import {
   listScoreMediaLinks,
   listScoreAuditEvents,
   listScoreAnomalyFlags,
+  listCheckedInTeamParticipants,
+  listTeams,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -20,6 +24,7 @@ import {
   releaseActivityReservations,
   reverseScore,
   setTeamMembership,
+  shuffleCheckedInTeams,
   updateParticipantPublicIdentity,
 } from "@/features/event-scoring/store.server";
 import { getEvent, putEvent } from "@/features/events/store.server";
@@ -62,9 +67,15 @@ import {
 import {
   awardStaffPoints,
   getStaffScoringPage,
+  mintStaffAwardClaim,
 } from "@/features/event-scoring/staff-scoring.server";
+import {
+  claimStaffAward,
+  getStaffAwardClaimPreview,
+} from "@/features/event-scoring/staff-award-claims.server";
 import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
 import { buildTicketQrPayload } from "@/features/tickets/qr.server";
+import { redeemTicket } from "@/features/tickets/tickets.server";
 import {
   closeOfflineScoreReservation,
   reconcileOfflineScoreCommands,
@@ -188,6 +199,94 @@ describeWithDatabase("event scoring postgres", () => {
 
     await getOrCreateSettings("scoring-night");
     expect((await findSettings("scoring-night"))?.state).toBe("off");
+  });
+
+  it("balances checked-in guests, reshuffles team counts, and places later arrivals", async () => {
+    const ticketIds = [
+      "01ARZ3NDEKTSV4RR",
+      "01ARZ3NDEKTSV4T1",
+      "01ARZ3NDEKTSV4T2",
+      "01ARZ3NDEKTSV4T3",
+      "01ARZ3NDEKTSV4T4",
+      "01ARZ3NDEKTSV4T5",
+      "01ARZ3NDEKTSV4T6",
+    ];
+    await query(
+      `insert into tickets (id,event_slug,ticket_type_id,holder_name,order_id)
+       select id,'scoring-night','standard','Guest ' || row_number() over (), 'team-order-' || id
+         from unnest($1::text[]) as id
+       on conflict (id) do nothing`,
+      [ticketIds],
+    );
+    const participants = await Promise.all(
+      ticketIds.map((ticketId) => participantForTicket(ticketId)),
+    );
+    expect(participants.every(Boolean)).toBe(true);
+    for (const participant of participants.slice(0, 5)) {
+      await markParticipantCheckedIn(participant!.id);
+    }
+
+    const threeTeams = await shuffleCheckedInTeams({
+      eventSlug: "scoring-night",
+      teamCount: 3,
+      actorType: "admin",
+      actorId: "admin-1",
+    });
+    expect(threeTeams.ok).toBe(true);
+    expect((await listTeams("scoring-night")).filter((team) => team.status === "active")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ colourKey: "amber" }),
+        expect.objectContaining({ colourKey: "sage" }),
+        expect.objectContaining({ colourKey: "plum" }),
+      ]),
+    );
+    expect(
+      (await listTeams("scoring-night"))
+        .filter((team) => team.status === "active")
+        .map((team) => team.checkedInCount)
+        .sort(),
+    ).toEqual([1, 2, 2]);
+    expect(await listCheckedInTeamParticipants("scoring-night")).toHaveLength(5);
+
+    expect(
+      await redeemTicket({
+        scanned: ticketIds[5]!,
+        eventSlug: "scoring-night",
+        redeemedBy: "admin",
+      }),
+    ).toMatchObject({ result: "admitted" });
+    expect(
+      (await listTeams("scoring-night"))
+        .filter((team) => team.status === "active")
+        .map((team) => team.checkedInCount)
+        .sort(),
+    ).toEqual([2, 2, 2]);
+    expect((await participantForTicket(ticketIds[5]!))?.teamName).toBeTruthy();
+
+    const twoTeams = await shuffleCheckedInTeams({
+      eventSlug: "scoring-night",
+      teamCount: 2,
+      actorType: "admin",
+      actorId: "admin-1",
+    });
+    expect(twoTeams.ok).toBe(true);
+    const teams = await listTeams("scoring-night");
+    expect(
+      teams.filter((team) => team.status === "active").map((team) => team.checkedInCount),
+    ).toEqual([3, 3]);
+    expect(teams.filter((team) => team.status === "active").map((team) => team.colourKey)).toEqual([
+      "amber",
+      "plum",
+    ]);
+    expect(teams.filter((team) => team.status === "archived")).toHaveLength(1);
+    expect(
+      await shuffleCheckedInTeams({
+        eventSlug: "scoring-night",
+        teamCount: 5,
+        actorType: "admin",
+        actorId: "admin-1",
+      }),
+    ).toMatchObject({ ok: false, status: 400 });
   });
 
   it("saves an activity as a personal template without linking later edits", async () => {
@@ -730,7 +829,9 @@ describeWithDatabase("event scoring postgres", () => {
     });
     await getOrCreateSettings("scoring-night");
     await query(
-      `update event_scoring_settings set state = 'frozen' where event_slug = 'scoring-night'`,
+      `update event_scoring_settings
+          set state = 'frozen', allow_precheckin_online_points = true
+        where event_slug = 'scoring-night'`,
     );
     const binding = await createGameScoreBinding({
       eventSlug: "scoring-night",
@@ -902,7 +1003,9 @@ describeWithDatabase("event scoring postgres", () => {
       });
       await getOrCreateSettings("scoring-night");
       await query(
-        `update event_scoring_settings set state = 'ready' where event_slug = 'scoring-night'`,
+        `update event_scoring_settings
+            set state = 'ready', allow_precheckin_online_points = true
+          where event_slug = 'scoring-night'`,
       );
       const binding = await createGameScoreBinding({
         eventSlug: "scoring-night",
@@ -1027,6 +1130,10 @@ describeWithDatabase("event scoring postgres", () => {
         targetParticipantId: ticketParticipant!.id,
       }),
     ).toMatchObject({ ok: false, status: 400 });
+    expect(
+      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
+    ).toMatchObject({ ok: false, status: 403 });
+    await markParticipantCheckedIn(ticketParticipant!.id);
     expect(
       await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
     ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
@@ -1487,6 +1594,204 @@ describeWithDatabase("event scoring postgres", () => {
     expect(
       await awardStaffPoints({ ...base, activityId: other.id, commandId: "staff-other" }),
     ).toMatchObject({ ok: false, status: 403 });
+  });
+
+  it("lets exactly one attendee claim an expiring staff award QR", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    await query(
+      `insert into tickets (id, event_slug, ticket_type_id, holder_name, order_id)
+       values ('01ARZ3NDEKTSV4R3', 'scoring-night', 'standard', 'Second guest', 'ord_second')`,
+    );
+    const first = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const second = await participantForTicket("01ARZ3NDEKTSV4R3");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Quick thanks",
+      template: "participation",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 3, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Quick award marshal",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      reason: "integration test",
+      scope: { activityIds: [activity.id] },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "station",
+      ownerId: access.id,
+      points: 10,
+    });
+    const minted = await mintStaffAwardClaim({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "qr-device",
+      activityId: activity.id,
+      expiresInSeconds: 60,
+    });
+    expect(minted.ok).toBe(true);
+    if (!minted.ok || !first || !second) return;
+
+    const results = await Promise.all([
+      claimStaffAward({
+        eventSlug: "scoring-night",
+        token: minted.value.token,
+        participantId: first.id,
+      }),
+      claimStaffAward({
+        eventSlug: "scoring-night",
+        token: minted.value.token,
+        participantId: second.id,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(
+      (await participantForTicket("01ARZ3NDEKTSV4RR"))!.balance +
+        (await participantForTicket("01ARZ3NDEKTSV4R3"))!.balance,
+    ).toBe(3);
+
+    const expired = await mintStaffAwardClaim({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "qr-device",
+      activityId: activity.id,
+      expiresInSeconds: 60,
+    });
+    expect(expired.ok).toBe(true);
+    if (!expired.ok) return;
+    const expiredTokenHash = createHash("sha256").update(expired.value.token).digest("hex");
+    await query(
+      `update score_staff_award_claims set expires_at = now() - interval '1 second'
+        where token_hash = $1`,
+      [expiredTokenHash],
+    );
+    expect(
+      await claimStaffAward({
+        eventSlug: "scoring-night",
+        token: expired.value.token,
+        participantId: first.id,
+      }),
+    ).toMatchObject({ ok: false, status: 410 });
+  });
+
+  it("keeps a physical quick award available until the attendee checks in", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Door-side thanks",
+      template: "scan-to-award",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 3, repeat: "repeat", requiresCheckIn: true },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Door-side marshal",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      reason: "integration test",
+      scope: { activityIds: [activity.id] },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "station",
+      ownerId: access.id,
+      points: 10,
+    });
+    const minted = await mintStaffAwardClaim({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "precheck-qr-device",
+      activityId: activity.id,
+      expiresInSeconds: 60,
+    });
+    expect(minted.ok).toBe(true);
+    if (!minted.ok || !participant) return;
+
+    expect(await getStaffAwardClaimPreview("scoring-night", minted.value.token)).toMatchObject({
+      requiresCheckIn: true,
+      state: "active",
+    });
+    expect(
+      await claimStaffAward({
+        eventSlug: "scoring-night",
+        token: minted.value.token,
+        participantId: participant.id,
+      }),
+    ).toMatchObject({ ok: false, status: 409 });
+    expect(await getStaffAwardClaimPreview("scoring-night", minted.value.token)).toMatchObject({
+      state: "active",
+    });
+
+    await markParticipantCheckedIn(participant.id);
+    expect(
+      await claimStaffAward({
+        eventSlug: "scoring-night",
+        token: minted.value.token,
+        participantId: participant.id,
+      }),
+    ).toMatchObject({ ok: true, value: { points: 3 } });
+  });
+
+  it("awards every active ticket in a selected multi-ticket order atomically", async () => {
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings set state = 'live' where event_slug = 'scoring-night'`,
+    );
+    await query(
+      `insert into tickets (id, event_slug, ticket_type_id, holder_name, order_id)
+       values ('01ARZ3NDEKTSV4R4', 'scoring-night', 'standard', 'Order guest', 'ord_test')`,
+    );
+    const first = await participantForTicket("01ARZ3NDEKTSV4RR");
+    await participantForTicket("01ARZ3NDEKTSV4R4");
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Table bonus",
+      template: "participation",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 2, repeat: "repeat", requiresCheckIn: false },
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Table marshal",
+      assignmentType: "station",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      reason: "integration test",
+      scope: { activityIds: [activity.id] },
+    });
+    await createPool({
+      eventSlug: "scoring-night",
+      ownerType: "station",
+      ownerId: access.id,
+      points: 10,
+    });
+
+    const result = await awardStaffPoints({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "order-device",
+      activityId: activity.id,
+      participantId: first!.id,
+      recipientScope: "order",
+      commandId: "order-award",
+    });
+
+    expect(result.ok && result.value.postings).toHaveLength(2);
+    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(2);
+    expect((await participantForTicket("01ARZ3NDEKTSV4R4"))?.balance).toBe(2);
   });
 
   it("commits a staff award independently from its optional media attachment", async () => {

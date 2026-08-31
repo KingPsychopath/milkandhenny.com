@@ -24,6 +24,10 @@ import type { HotAndColdAction, HotAndColdActionResult, HotAndColdCredentials } 
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
+import { RoomAdmissionControl } from "../shared/MultiplayerLobby";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 type HotAndColdSendErrorCode =
   | Extract<HotAndColdActionResult, { accepted: false }>["errorCode"]
@@ -42,6 +46,7 @@ export function JoinHotAndColdRoom({
   joinToken: string;
   onJoined: (credentials: HotAndColdCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(24);
   const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -139,9 +144,11 @@ export function JoinHotAndColdRoom({
 export function HotAndColdRoomApp({
   credentials,
   onLeave,
+  onUnavailable,
 }: {
   credentials: HotAndColdCredentials;
   onLeave: () => void;
+  onUnavailable: () => void;
 }) {
   const live = useHotAndColdRoom({
     roomId: credentials.roomId,
@@ -154,6 +161,12 @@ export function HotAndColdRoomApp({
   const [newest, setNewest] = useState<string | null>(null);
   const [confirmingStart, setConfirmingStart] = useState(false);
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable: markRoomUnavailable } = useRoomUnavailableRecovery({
+    roomKey: credentials.roomId,
+    unavailable: live.ended || snapshot?.phase === "closed",
+    onUnavailable,
+  });
+  useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
   const turnIdentity = `${snapshot?.phase ?? "loading"}:${snapshot?.round?.id ?? ""}:${snapshot?.round?.currentPlayerId ?? ""}`;
   const { wordsHidden, toggleWords } = useHotAndColdWordVisibility(
     `room:${snapshot?.round?.id ?? "waiting"}`,
@@ -209,6 +222,10 @@ export function HotAndColdRoomApp({
       if (result.snapshot) live.setSnapshot(result.snapshot);
       live.notify();
       if (!result.accepted) {
+        if (result.errorCode === "room_unavailable") {
+          markRoomUnavailable();
+          return { accepted: false, errorCode: result.errorCode };
+        }
         setMessage(result.error);
         return { accepted: false, errorCode: result.errorCode };
       }
@@ -229,8 +246,19 @@ export function HotAndColdRoomApp({
   };
   const leave = async () => {
     const result = await send({ type: "player.leave" });
-    if (result.accepted) onLeave();
+    if (result.accepted || result.errorCode === "room_unavailable") onLeave();
   };
+  if (roomUnavailable)
+    return (
+      <div className="hot-and-cold min-h-svh">
+        <RoomUnavailableState
+          gameName="hot and cold"
+          gamePath="/things/hot-and-cold"
+          title="This room has cooled down."
+          detail="It is not accepting guesses anymore. We cleared it from your active rooms, so you will not be sent back here again."
+        />
+      </div>
+    );
   if (!snapshot)
     return (
       <div className="hot-and-cold grid min-h-svh place-items-center font-mono text-xs">
@@ -278,6 +306,12 @@ export function HotAndColdRoomApp({
             className="mt-8 flex flex-col items-center text-center"
             aria-label="Join the room"
           >
+            <RoomAdmissionControl
+              locked={snapshot.joinLocked}
+              canChange={snapshot.canControl && !snapshot.managed}
+              onChange={(locked) => void send({ type: "room.admission.set", locked })}
+              tone="theme"
+            />
             {inviteQr ? (
               <AppImage
                 src={inviteQr}

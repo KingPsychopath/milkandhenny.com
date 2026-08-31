@@ -90,14 +90,14 @@ export function HeadsUpSetup({
 
   return (
     <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+      <header className="flex items-center gap-4 p-5 pr-28 font-mono text-xs text-white/55">
         <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
           ← things
         </Link>
         <button
           type="button"
           onClick={onToggleSound}
-          className="min-h-11 rounded-full px-2 hover:text-white"
+          className="min-h-11 rounded-full border border-white/12 px-4 hover:text-white"
           aria-pressed={soundEnabled}
         >
           sound {soundEnabled ? "on" : "off"}
@@ -108,12 +108,17 @@ export function HeadsUpSetup({
         <GameLaunch
           tone="night"
           eyebrow="a guessing game"
-          title="Forehead."
+          title="Heads Up."
           description="Guess the card from your friends' clues. Tilt down for correct, up to pass."
         >
-          <GameLaunchButton accent="amber" onClick={onStart}>
-            start
-          </GameLaunchButton>
+          <div className="grid grid-cols-2 gap-3">
+            <GameLaunchButton accent="amber" onClick={onStart}>
+              start
+            </GameLaunchButton>
+            <GameLaunchButton accent="paper" onClick={() => togglePanel("judge")}>
+              play together
+            </GameLaunchButton>
+          </div>
           <GameLaunchMeta tone="dark">
             {selectedDeck?.name ?? "All sorts"} · 60 seconds
           </GameLaunchMeta>
@@ -133,14 +138,6 @@ export function HeadsUpSetup({
               className="min-h-11"
             >
               game options
-            </button>
-            <button
-              type="button"
-              onClick={() => togglePanel("judge")}
-              aria-pressed={panel === "judge"}
-              className="min-h-11"
-            >
-              play with a remote judge
             </button>
           </GameLaunchChoices>
         </GameLaunch>
@@ -261,9 +258,9 @@ export function HeadsUpSetup({
         {panel === "options" ? (
           <section
             className="mx-auto mt-10 max-w-lg border-t border-white/12 pt-7"
-            aria-labelledby="forehead-options"
+            aria-labelledby="heads-up-options"
           >
-            <h2 id="forehead-options" className="font-serif text-3xl font-semibold">
+            <h2 id="heads-up-options" className="font-serif text-3xl font-semibold">
               Options
             </h2>
             <OrientationControls

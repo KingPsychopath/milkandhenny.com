@@ -8,12 +8,14 @@ import {
 } from "@/features/offline/client";
 import { useIsUpdateReloadSafe } from "@/features/offline/update-safety.client";
 import { getOfflineThingByPath, type OfflineThingSlug } from "@/features/things/offline";
+import { useGameNavigationSafety } from "@/features/things/shared/useSafeGameNavigation";
 
 export function OfflinePlatform() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isCliAuth = pathname === "/admin/cli-auth";
   const updateState = useSiteUpdateState();
   const safeToReload = useIsUpdateReloadSafe();
+  const safeGameScreen = useGameNavigationSafety();
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export function OfflinePlatform() {
   }, [updateState]);
 
   if (isCliAuth || updateState === "idle" || dismissed) return null;
+  if (pathname.startsWith("/things/") && !safeGameScreen) return null;
 
   const activating = updateState === "activating";
   const updated = updateState === "updated";
@@ -58,7 +61,7 @@ export function OfflinePlatform() {
 
   return (
     <aside
-      className={`fixed bottom-4 left-1/2 z-[100] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center rounded-full border theme-border bg-background/95 text-foreground shadow-md backdrop-blur-sm ${hasActions ? "gap-1 py-1 pl-4 pr-1" : "gap-2 px-4 py-3"}`}
+      className={`offline-platform-notice themed-floating-notice fixed bottom-4 left-1/2 z-[100] flex max-w-[calc(100%-2rem)] -translate-x-1/2 items-center rounded-full border backdrop-blur-sm ${hasActions ? "gap-1 py-1 pl-4 pr-1" : "gap-2 px-4 py-3"}`}
     >
       {activating ? (
         <span

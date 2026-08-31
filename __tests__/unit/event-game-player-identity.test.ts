@@ -2,12 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   binding: null as { event_slug: string; channel_id: string } | null,
+  queryError: null as Error | null,
   participantId: undefined as string | undefined,
   links: [] as Array<{ channelId: string; gamePlayerId: string; participantId: string }>,
 }));
 
 vi.mock("@/lib/platform/postgres.server", () => ({
-  queryOne: async () => state.binding,
+  isDatabaseConfigured: () => true,
+  queryOne: async () => {
+    if (state.queryError) throw state.queryError;
+    return state.binding;
+  },
 }));
 vi.mock("@/features/event-scoring/session.server", () => ({
   activeParticipantForEvent: async () => state.participantId,
@@ -24,6 +29,7 @@ import { linkCurrentAttendeeGamePlayer } from "@/features/event-scoring/game-pla
 describe("event game player identity", () => {
   beforeEach(() => {
     state.binding = null;
+    state.queryError = null;
     state.participantId = undefined;
     state.links = [];
   });
@@ -48,6 +54,18 @@ describe("event game player identity", () => {
       gameInstanceId: "room",
       gamePlayerId: "player",
     });
+    expect(state.links).toEqual([]);
+  });
+
+  it("does not block a game join when event identity persistence is unavailable", async () => {
+    state.queryError = new Error("database unavailable");
+    await expect(
+      linkCurrentAttendeeGamePlayer({
+        gameKind: "liars",
+        gameInstanceId: "room",
+        gamePlayerId: "player",
+      }),
+    ).resolves.toBeUndefined();
     expect(state.links).toEqual([]);
   });
 });

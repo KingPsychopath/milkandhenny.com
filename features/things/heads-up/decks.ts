@@ -1,3 +1,5 @@
+import { shuffledCopy } from "../shared/content-random";
+
 export type DeckCategory =
   | "mixed"
   | "screen"
@@ -116,30 +118,56 @@ export const GAME_DECKS = [
     category: "active",
     cards: [
       "Applying mascara",
+      "Balancing on a tightrope",
+      "Blowing up a balloon",
       "Bowling",
       "Brushing your teeth",
+      "Building flat-pack furniture",
+      "Catching a spider",
       "Changing a nappy",
       "Climbing a ladder",
+      "Cooking with a flaming pan",
+      "Crossing a very hot beach",
+      "Dancing at a silent disco",
       "Dodging rain",
       "Doing yoga",
+      "Eating very sour sweets",
+      "Escaping from quicksand",
+      "Feeding a baby",
       "Folding a fitted sheet",
+      "Getting through airport security",
       "Hailing a taxi",
       "Ice skating",
+      "Learning to surf",
+      "Losing your keys",
       "Making a cocktail",
       "Missing the bus",
+      "Opening an umbrella in the wind",
       "Opening a stubborn jar",
       "Parallel parking",
+      "Playing air guitar",
       "Playing the drums",
+      "Putting in contact lenses",
       "Putting up a tent",
+      "Reeling in a giant fish",
       "Riding a horse",
+      "Riding a packed lift",
+      "Rollerblading downhill",
       "Running for a train",
+      "Searching for phone signal",
       "Sending a voice note",
+      "Shaking a vending machine",
       "Sneaking in late",
+      "Stepping on a plug",
+      "Trying on shoes that are too small",
       "Taking a selfie",
+      "Walking against a strong wind",
       "Walking a tiny dog",
       "Washing your hair",
+      "Watching a horror film",
       "Winning the lottery",
       "Wrapping a present",
+      "Wrestling an alligator",
       "Zipping a suitcase",
     ],
   },
@@ -767,10 +795,5 @@ export const GAME_DECKS = [
 ] satisfies readonly GameDeck[];
 
 export function shuffledCards(cards: readonly string[]) {
-  const next = [...cards];
-  for (let index = next.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-  }
-  return next;
+  return shuffledCopy(cards);
 }

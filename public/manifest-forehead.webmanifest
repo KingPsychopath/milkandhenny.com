@@ -1,6 +1,6 @@
 {
-  "name": "Forehead by Milk & Henny",
-  "short_name": "Forehead",
+  "name": "Heads Up by Milk & Henny",
+  "short_name": "Heads Up",
   "id": "/things/heads-up",
   "description": "A fast, tilt-controlled guessing game for friends.",
   "start_url": "/things/heads-up",

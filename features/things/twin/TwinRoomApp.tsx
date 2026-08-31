@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -26,10 +26,13 @@ import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
 import {
-  releaseGamePoolMembership,
+  clearUnavailableGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function TwinRoomApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
@@ -51,9 +54,13 @@ export function TwinRoomApp({ roomId }: { roomId: string }) {
     <TwinRoom
       roomId={roomId}
       credentials={credentials}
+      onUnavailable={() => {
+        localStorage.removeItem(twinBrowserKeys.playerSession(roomId));
+        void clearUnavailableGamePoolMembership("twin", roomId);
+      }}
       onLeft={() => {
         localStorage.removeItem(twinBrowserKeys.playerSession(roomId));
-        void releaseGamePoolMembership("twin", roomId).then((entrance) => {
+        void leaveGamePoolRoom("twin", roomId).then((entrance) => {
           if (entrance) window.location.assign(entrance);
           else void navigate({ to: "/things/twin" });
         });
@@ -74,11 +81,13 @@ export function TwinRoom({
   credentials,
   heartbeatTiming,
   onLeft,
+  onUnavailable,
 }: {
   roomId: string;
   credentials: TwinPlayerCredentials;
   heartbeatTiming?: TwinHeartbeatTiming;
   onLeft?: () => void;
+  onUnavailable?: () => void;
 }) {
   const live = useTwinRoom({
     roomId,
@@ -87,6 +96,11 @@ export function TwinRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended || snapshot?.phase === "closed",
+    onUnavailable,
+  });
   useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
@@ -172,6 +186,8 @@ export function TwinRoom({
     try {
       const result = await dispatchAction(action);
       if (result.snapshot) live.setSnapshot(result.snapshot);
+      if (!result.ok && result.errorCode === "room_unavailable" && action.type !== "player.leave")
+        markUnavailable();
       if (!result.ok || !result.accepted) {
         // A wrong tap and a cooldown are the game talking, not an error worth a banner.
         const expected =
@@ -222,18 +238,14 @@ export function TwinRoom({
     return false;
   };
 
-  if (live.ended || !snapshot || snapshot.phase === "closed")
+  if (roomUnavailable)
     return (
       <div className="things-game things-game--night twin">
-        <main id="main" className="twin-gone">
-          <h1 className="twin-title">The room has gone quiet.</h1>
-          <p className="twin-lede">{live.message ?? "This room is no longer available."}</p>
-          <Link to="/things/twin" className="twin-button twin-button--go">
-            back to the game
-          </Link>
-        </main>
+        <RoomUnavailableState gameName="twin" gamePath="/things/twin" />
       </div>
     );
+
+  if (!snapshot) return <div className="things-game things-game--night twin" aria-busy="true" />;
 
   if (snapshot.phase === "lobby")
     return (
@@ -258,6 +270,7 @@ export function TwinRoom({
             void send({ type: "game.start" });
           }}
           onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
+          onAdmissionChange={(locked) => void send({ type: "room.admission.set", locked })}
           onRename={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";

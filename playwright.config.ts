@@ -1,12 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:4173";
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:4173";
+const webPort = new URL(baseURL).port || "4173";
 const testDatabase =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
+  // Browser journeys share the isolated PostgreSQL test database and model a
+  // single event night. Serial workers keep one journey from invalidating
+  // another journey's attendee session or browser-history assumptions.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "line",
   use: {
@@ -22,7 +27,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: "pnpm dev --host 127.0.0.1 --port 4173",
+      command: `pnpm dev --host 127.0.0.1 --port ${webPort}`,
       url: `${baseURL}/things/pitches/new`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

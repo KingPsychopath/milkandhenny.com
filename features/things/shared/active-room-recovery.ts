@@ -43,6 +43,13 @@ function activeRoomLabel(game: keyof typeof ROOM_GAMES, session: ActiveRoomSessi
   return label;
 }
 
+function liarsModeFromSession(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as { mode?: unknown; snapshot?: { mode?: unknown } };
+  const mode = record.mode ?? record.snapshot?.mode;
+  return mode === "mafia" || mode === "imposter" ? mode : null;
+}
+
 export function activeRoomMatchesPath(room: ActiveRoom, pathname: string) {
   const roomPath =
     room.game === "remote"
@@ -59,10 +66,16 @@ function storageKeys(storage: Storage) {
 
 export function readActiveRooms() {
   const rooms: ActiveRoom[] = [];
-  const seenPaths = new Set<string>();
+  const roomIndexes = new Map<string, number>();
   const addRoom = (room: ActiveRoom) => {
-    if (seenPaths.has(room.path)) return;
-    seenPaths.add(room.path);
+    const existingIndex = roomIndexes.get(room.path);
+    if (existingIndex !== undefined) {
+      const existing = rooms[existingIndex];
+      const specificLiarsLabel = room.label === "mafia" || room.label === "imposter";
+      if (existing && specificLiarsLabel) rooms[existingIndex] = room;
+      return;
+    }
+    roomIndexes.set(room.path, rooms.length);
     rooms.push(room);
   };
 
@@ -77,10 +90,12 @@ export function readActiveRooms() {
       const roomId = match?.[2];
       const session = match?.[3] as ActiveRoomSession | undefined;
       if (!game || !roomId || !session || !(game in ROOM_GAMES)) continue;
-      if (!readExpiringLocalValue(key)) continue;
+      const value = readExpiringLocalValue(key);
+      if (!value) continue;
+      const liarsMode = game === "liars" ? liarsModeFromSession(value) : null;
       addRoom({
         game,
-        label: activeRoomLabel(game, session),
+        label: liarsMode ?? activeRoomLabel(game, session),
         path: activeRoomPath(game, roomId, session),
         roomId,
       });

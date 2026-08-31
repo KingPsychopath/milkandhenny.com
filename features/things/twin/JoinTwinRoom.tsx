@@ -8,6 +8,7 @@ import { joinTwinRoomFn } from "./twin-room.functions";
 import type { TwinPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinTwinRoom({
   roomId,
@@ -16,6 +17,7 @@ export function JoinTwinRoom({
   roomId: string;
   onJoined: (credentials: TwinPlayerCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(32);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);

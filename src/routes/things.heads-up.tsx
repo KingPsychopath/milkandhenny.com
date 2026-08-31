@@ -7,10 +7,10 @@ export const Route = createFileRoute("/things/heads-up")({
   component: HeadsUpApp,
   head: () =>
     buildSeoHead({
-      title: `Forehead — ${SITE_NAME}`,
+      title: `Heads Up — ${SITE_NAME}`,
       description: "A fast, tilt-controlled guessing game for friends.",
       path: "/things/heads-up",
       image: OG_IMAGES.forehead,
-      imageAlt: "Forehead — a fast guessing game for friends from Milk & Henny",
+      imageAlt: "Heads Up — a fast guessing game for friends from Milk & Henny",
     }),
 });

@@ -98,6 +98,7 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
     const rawAction = record(data.action);
     let action:
       | { type: "game.start"; removePlayerIds?: string[] }
+      | { type: "room.admission.set"; locked: boolean }
       | { type: "readiness.set"; ready: boolean }
       | { type: "round.next" }
       | { type: "game.replay" }
@@ -115,6 +116,8 @@ export const applyDrawCountryActionFn = createServerFn({ method: "POST" })
       };
     else if (rawAction.type === "readiness.set" && typeof rawAction.ready === "boolean")
       action = { type: rawAction.type, ready: rawAction.ready };
+    else if (rawAction.type === "room.admission.set" && typeof rawAction.locked === "boolean")
+      action = { type: rawAction.type, locked: rawAction.locked };
     else if (
       rawAction.type === "round.next" ||
       rawAction.type === "game.replay" ||

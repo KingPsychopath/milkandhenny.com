@@ -8,6 +8,7 @@ import {
   type RememberedStaffAccess,
 } from "@/features/event-scoring/staff-memory";
 import { readRememberedScanners, type RememberedScanner } from "@/features/tickets/scanner-memory";
+import { useGameNavigationSafety } from "@/features/things/shared/useSafeGameNavigation";
 
 type RememberedWorkAccess =
   | { kind: "staff"; value: RememberedStaffAccess }
@@ -23,6 +24,7 @@ function rememberedAccess(): RememberedWorkAccess[] {
 export function WorkAccessReturnPrompt() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [access, setAccess] = useState<RememberedWorkAccess[]>([]);
+  const safeGameScreen = useGameNavigationSafety();
 
   useEffect(() => {
     if (pathname.startsWith("/scan") || /\/events\/[^/]+\/staff\//.test(pathname)) {
@@ -33,9 +35,11 @@ export function WorkAccessReturnPrompt() {
   }, [pathname]);
 
   if (access.length === 0) return null;
+  if (pathname.startsWith("/things/") && !safeGameScreen) return null;
+  if (/^\/events\/[^/]+\/icebreaker$/.test(pathname)) return null;
 
   return (
-    <details className="group fixed bottom-3 left-3 z-40 font-mono">
+    <details className="work-access-return-prompt group fixed bottom-3 left-3 z-40 font-mono">
       <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-full border theme-border-strong bg-background px-4 text-xs shadow-lg hover:opacity-80">
         staff tools
         {access.length > 1 ? ` · ${access.length}` : ""}

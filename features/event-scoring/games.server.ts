@@ -74,6 +74,81 @@ export async function createGameScoreBinding(input: {
     : { ok: false, status: 404, error: "Event scoring activity not found" };
 }
 
+export async function getOrCreateManagedGameScoreBinding(input: {
+  eventSlug: string;
+  activityId: string;
+  gameKind: OfficialGameKind;
+  gameInstanceId: string;
+  acceptedScope: OfficialGameResultScope;
+}): Promise<
+  | { ok: true; value: { channelId: string; committedAt: string } }
+  | { ok: false; status: number; error: string }
+> {
+  const channelId = opaqueId("gsc");
+  return transaction(async (client) => {
+    const inserted = await client.query<{ channel_id: string; created_at: Date }>(
+      `insert into event_game_score_bindings
+         (channel_id, event_id, activity_id, game_kind, game_instance_id, accepted_scope, status)
+       select $1, events.event_id, activities.id, $4, $5, $6, 'active'
+         from events
+         join score_activities activities on activities.event_slug = events.slug
+        where events.slug = $2 and activities.id = $3
+       on conflict (game_kind, game_instance_id) do nothing
+       returning channel_id, created_at`,
+      [
+        channelId,
+        input.eventSlug,
+        input.activityId,
+        input.gameKind,
+        input.gameInstanceId,
+        input.acceptedScope,
+      ],
+    );
+    if (inserted.rows[0]) {
+      return {
+        ok: true as const,
+        value: { channelId, committedAt: inserted.rows[0].created_at.toISOString() },
+      };
+    }
+
+    const existing = await client.query<{
+      channel_id: string;
+      event_slug: string;
+      activity_id: string;
+      accepted_scope: OfficialGameResultScope;
+      status: BindingStatus;
+      created_at: Date;
+    }>(
+      `select bindings.channel_id, events.slug as event_slug, bindings.activity_id,
+              bindings.accepted_scope, bindings.status, bindings.created_at
+         from event_game_score_bindings bindings
+         join events on events.event_id = bindings.event_id
+        where bindings.game_kind = $1 and bindings.game_instance_id = $2`,
+      [input.gameKind, input.gameInstanceId],
+    );
+    const binding = existing.rows[0];
+    if (!binding) {
+      return { ok: false as const, status: 404, error: "Event scoring activity not found" };
+    }
+    if (
+      binding.event_slug !== input.eventSlug ||
+      binding.activity_id !== input.activityId ||
+      binding.accepted_scope !== input.acceptedScope ||
+      binding.status !== "active"
+    ) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "This managed game result is already bound to another scoring setup",
+      };
+    }
+    return {
+      ok: true as const,
+      value: { channelId: binding.channel_id, committedAt: binding.created_at.toISOString() },
+    };
+  });
+}
+
 export async function activateGameScoreBinding(input: {
   channelId: string;
   gameInstanceId: string;
@@ -136,6 +211,56 @@ export async function linkGamePlayer(input: {
     }
     throw error;
   }
+}
+
+export async function getOrCreateManagedGamePlayerLink(input: {
+  channelId: string;
+  gamePlayerId: string;
+  participantId: string;
+}): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  return transaction(async (client) => {
+    const inserted = await client.query<{ channel_id: string }>(
+      `insert into event_game_player_links (channel_id, game_player_id, participant_id)
+       select bindings.channel_id, $2, participants.id
+         from event_game_score_bindings bindings
+         join events on events.event_id = bindings.event_id
+         join event_participants participants on participants.event_slug = events.slug
+        where bindings.channel_id = $1
+          and participants.id = $3
+          and participants.status = 'active'
+       on conflict do nothing
+       returning channel_id`,
+      [input.channelId, input.gamePlayerId, input.participantId],
+    );
+    if (inserted.rows[0]) return { ok: true as const };
+
+    const existing = await client.query<{ game_player_id: string; participant_id: string }>(
+      `select game_player_id, participant_id
+         from event_game_player_links
+        where channel_id = $1
+          and (game_player_id = $2 or participant_id = $3)`,
+      [input.channelId, input.gamePlayerId, input.participantId],
+    );
+    if (
+      existing.rows.length === 1 &&
+      existing.rows[0]?.game_player_id === input.gamePlayerId &&
+      existing.rows[0]?.participant_id === input.participantId
+    ) {
+      return { ok: true as const };
+    }
+    if (existing.rows.length > 0) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "This managed game player is already linked to another participant",
+      };
+    }
+    return {
+      ok: false as const,
+      status: 404,
+      error: "Game player or event participant not found",
+    };
+  });
 }
 
 export type OfficialResultIngestFailure = {
@@ -273,11 +398,13 @@ export async function ingestOfficialGameResult(
       };
     }
     const id = opaqueId("ogr");
-    await client.query(
+    const inserted = await client.query<{ id: string }>(
       `insert into official_game_results
          (id, channel_id, game_kind, game_instance_id, result_id, revision, operation,
           scope, players, payload_hash, committed_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::timestamptz)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::timestamptz)
+       on conflict (channel_id, result_id, revision) do nothing
+       returning id`,
       [
         id,
         envelope.channelId,
@@ -292,7 +419,37 @@ export async function ingestOfficialGameResult(
         envelope.committedAt,
       ],
     );
-    return { ok: true, value: { id, duplicate: false } };
+    if (inserted.rows[0]) return { ok: true, value: { id, duplicate: false } };
+
+    const raced = await client.query<{ id: string; payload_hash: string }>(
+      `select id, payload_hash from official_game_results
+        where channel_id = $1 and result_id = $2 and revision = $3`,
+      [envelope.channelId, envelope.resultId, envelope.revision],
+    );
+    const duplicate = raced.rows[0];
+    if (!duplicate) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Official result could not be reconciled",
+        retryable: true,
+      };
+    }
+    if (duplicate.payload_hash !== envelope.payloadHash) {
+      await client.query(
+        `update official_game_results
+            set status = 'held', held_reason = 'Conflicting payload for one result revision'
+          where id = $1 and status = 'pending'`,
+        [duplicate.id],
+      );
+      return {
+        ok: false,
+        status: 409,
+        error: "Official result revision conflicts",
+        retryable: false,
+      };
+    }
+    return { ok: true, value: { id: duplicate.id, duplicate: true } };
   });
 }
 

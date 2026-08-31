@@ -18,6 +18,7 @@ import {
   type ScoringSettingsRow,
   type TransactionRow,
 } from "./common.server";
+import { SCORE_REALTIME_CHANNEL, scoreRealtimePayload } from "../score-realtime";
 
 export async function rebuildEventProjections(eventSlug: string): Promise<{
   eventSlug: string;
@@ -237,8 +238,9 @@ export async function recordScoreInTransaction(
     event_slug: string;
     status: string;
     checked_in_at: Date | null;
+    ticket_id: string | null;
   }>(
-    `select id, event_slug, status, checked_in_at from event_participants
+    `select id, event_slug, status, checked_in_at, ticket_id from event_participants
           where id = any($1::text[]) for update`,
     [participantIds],
   );
@@ -267,6 +269,15 @@ export async function recordScoreInTransaction(
     }
   }
   const activityRepeatRuleApplies = activityAward && input.sourceType !== "discovery";
+  if (
+    input.sourceType === "game" &&
+    !settings.allowPreCheckinOnlinePoints &&
+    participantResult.rows.some(
+      (participant) => participant.ticket_id && !participant.checked_in_at,
+    )
+  ) {
+    return { ok: false, status: 409, error: "Check in before receiving online game points" };
+  }
   if (
     activityAward &&
     activityRule?.requiresCheckIn &&
@@ -522,6 +533,15 @@ async function insertTransaction(
     }
   }
 
+  await client.query("select pg_notify($1, $2)", [
+    SCORE_REALTIME_CHANNEL,
+    scoreRealtimePayload({
+      eventSlug: input.eventSlug,
+      transactionId,
+      participantIds: [...new Set(input.postings.map((posting) => posting.participantId))],
+    }),
+  ]);
+
   return { ok: true, value: toTransaction(row, input.postings) };
 }
 
@@ -733,6 +753,17 @@ export async function acceptHeldScore(
         JSON.stringify({ note: input.note ?? null }),
       ],
     );
+    await client.query(
+      `update score_notifications
+          set kind = case when points < 0 then 'negative' else 'positive' end,
+              delivered_at = null
+        where transaction_id = $1`,
+      [transactionId],
+    );
+    await client.query("select pg_notify($1, $2)", [
+      SCORE_REALTIME_CHANNEL,
+      scoreRealtimePayload({ eventSlug, transactionId, participantIds }),
+    ]);
     return {
       ok: true,
       value: toTransaction(

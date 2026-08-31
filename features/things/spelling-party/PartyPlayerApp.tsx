@@ -41,6 +41,8 @@ import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -228,6 +230,16 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const previousStartRequest = useRef<string | null>(null);
   const flushingActions = useRef(false);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: credentials.roomId,
+    unavailable: live.ended,
+    onUnavailable: () => {
+      sessionStorage.removeItem(partyBrowserKeys.invite(credentials.roomId));
+      removeStorageKeys(localStorage, [playerKey(credentials.roomId), queueKey]);
+      removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+      removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(credentials.roomId)]);
+    },
+  });
   const dispatchPresenterAction = useReliableMultiplayerAction(
     (action: MultiplayerActionInput<PartyPresenterAction>, actionId) =>
       applyPresenterActionFn({
@@ -278,6 +290,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         });
         if (result.snapshot && !isHost) live.setSnapshot(result.snapshot);
         if (!result.accepted) {
+          if (result.errorCode === "room_unavailable") markUnavailable();
           if (!result.retryable) {
             const remaining = queued().filter(({ actionId }) => actionId !== action.actionId);
             if (remaining.length)
@@ -317,6 +330,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       enqueue,
       isHost,
       live,
+      markUnavailable,
       queueKey,
       queued,
     ],
@@ -613,13 +627,6 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     );
   }, [credentials, roomExpiry]);
 
-  useEffect(() => {
-    if (!live.ended) return;
-    sessionStorage.removeItem(partyBrowserKeys.invite(credentials.roomId));
-    removeStorageKeys(localStorage, [playerKey(credentials.roomId), queueKey]);
-    removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
-  }, [credentials.playerId, credentials.roomId, live.ended, queueKey]);
-
   const setReady = async (ready: boolean) => {
     // Readying up is the one tap every player makes before a round, which makes it the place to
     // buy this device permission to speak later — Safari only allows audio after a real gesture.
@@ -640,6 +647,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         type === "round.start" ? { type, removePlayerIds } : { type },
       );
       if (!result.accepted) {
+        if (result.errorCode === "room_unavailable") markUnavailable();
         live.setMessage(result.error ?? "That action is not ready yet.");
         if (result.errorCode === "players_not_ready" && result.snapshot) {
           const removable = result.snapshot.players.filter(
@@ -717,24 +725,11 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
       ),
     [snapshot?.players],
   );
-  if (live.ended)
+  if (roomUnavailable)
     return (
-      <main
-        id="main"
-        className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
-      >
-        <div>
-          <h1 className="font-serif text-5xl font-semibold">Party ended.</h1>
-          <p className="mt-4 font-serif text-lg text-white/60">This room has been cleared.</p>
-          <button
-            type="button"
-            onClick={() => void handleLeave()}
-            className="mt-6 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm"
-          >
-            back to spelling bee
-          </button>
-        </div>
-      </main>
+      <div className="things-game things-game--night text-white">
+        <RoomUnavailableState gameName="spelling party" gamePath="/things/spelling-party" />
+      </div>
     );
   if (!snapshot)
     return <PlayerMessage title="Rejoining…" detail={live.message ?? "Your place is saved."} />;
@@ -743,7 +738,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     <div className="things-game things-game--night text-white">
       <ThingsRoomHeader
         tone="night"
-        back={<span className="things-room-header-utility">type together</span>}
+        back={<span className="things-room-header-utility">spelling party</span>}
         roomId={credentials.roomId}
         connection={live.connectionState}
         connectionLabel={connectionLabel}

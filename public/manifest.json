@@ -11,8 +11,8 @@
   "categories": ["lifestyle", "entertainment"],
   "shortcuts": [
     {
-      "name": "Forehead",
-      "short_name": "Forehead",
+      "name": "Heads Up",
+      "short_name": "Heads Up",
       "url": "/things/heads-up",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },

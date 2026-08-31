@@ -137,6 +137,7 @@ export interface SameBrainGameState {
   lastActiveAt: number;
   players: PlayerState[];
   hostPlayerId: string | null;
+  joinLocked?: boolean;
   hostDisconnectedSince: number | null;
   question: string | null;
   recentQuestions: string[];
@@ -642,6 +643,7 @@ function snapshot(
     players: room.players.map((player) => summaryOf(room, player, now)),
     hostPlayerId: room.hostPlayerId,
     hostDisconnected: Boolean(host && !connected(host, now)),
+    joinLocked: room.joinLocked === true,
     you: viewer
       ? {
           id: viewer.id,
@@ -747,6 +749,7 @@ export async function joinSameBrainRoom(input: {
       };
     if (room.phase !== "lobby")
       return { errorCode: "game_started" as const, error: "This game has already started" };
+    if (room.joinLocked) return { errorCode: "room_locked" as const, error: "This room is locked" };
 
     const name = input.name.trim().replace(/\s+/g, " ");
     if (name.length < 1) return { errorCode: "invalid_name" as const, error: "Enter your name" };
@@ -891,6 +894,16 @@ export async function applySameBrainHostAction(
         room.processedActions = rememberMultiplayerAction(room.processedActions, action.actionId);
         return accept(snapshot(room, input.playerId, now));
       };
+
+      if (action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "The room only locks in the lobby");
+        if (room.joinLocked !== action.locked) {
+          room.joinLocked = action.locked;
+          changed(room);
+        }
+        return remembered();
+      }
 
       if (action.type === "game.configure") {
         if (room.managed)

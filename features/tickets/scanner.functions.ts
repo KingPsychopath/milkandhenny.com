@@ -61,6 +61,7 @@ export type ScannerPageResult =
       token: string;
       eventSlug: string;
       eventTitle: string;
+      arrivalExperience: import("@/features/events/types").EventArrivalExperience;
       role: ScannerRole;
       permissions: ScannerPermissionSet;
       /** Own requests, or every pending one when this link approves. */
@@ -142,6 +143,7 @@ export const getScannerPageFn = createServerFn({ method: "GET" })
         token: link.token,
         eventSlug: link.eventSlug,
         eventTitle: event.title,
+        arrivalExperience: event.arrivalExperience ?? "none",
         role: link.role,
         permissions: link.permissions,
         requests,

@@ -17,8 +17,11 @@ export type AttendeeAccount = {
     status: string;
     startsAt: string;
     points: number;
+    orderPoints?: number;
     rank?: number;
     publicAlias?: string;
+    teamName?: string;
+    teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
     scoreHistory: Array<{ points: number; reason: string; createdAt: string }>;
     personallyClaimed: boolean;
     managesOrder: boolean;

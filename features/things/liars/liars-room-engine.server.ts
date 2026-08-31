@@ -180,6 +180,7 @@ export interface LiarsGameState {
   timings: LiarsTimings;
   players: PlayerState[];
   hostPlayerId: string | null;
+  joinLocked?: boolean;
   hostDisconnectedSince: number | null;
   history: LiarsHistoryEntry[];
   dawn: LiarsDawnSnapshot | null;
@@ -1317,6 +1318,7 @@ function snapshot(room: LiarsRoomState, viewerId?: string, now = Date.now()): Li
     narratorPlayerId: room.narratorPlayerId,
     hostPlayerId: room.hostPlayerId,
     hostDisconnectedSince: room.hostDisconnectedSince,
+    joinLocked: room.joinLocked === true,
     player: viewer
       ? {
           playerId: viewer.id,
@@ -1481,6 +1483,7 @@ export async function joinLiarsRoom(input: {
       };
     if (room.phase !== "lobby")
       return { errorCode: "game_started", error: "This game has already started" } as const;
+    if (room.joinLocked) return { errorCode: "room_locked", error: "This room is locked" } as const;
 
     const name = input.name.trim().replace(/\s+/g, " ");
     if (name.length < 1) return { errorCode: "invalid_name", error: "Enter your name" } as const;
@@ -1707,7 +1710,14 @@ export async function applyLiarsHostAction(
         return accept(view());
 
       const action = input.action;
-      if (action.type === "game.configure") {
+      if (action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return reject(view(), "action_unavailable", "The room only locks in the lobby");
+        if (room.joinLocked !== action.locked) {
+          room.joinLocked = action.locked;
+          changed(room);
+        }
+      } else if (action.type === "game.configure") {
         if (room.managed)
           return reject(view(), "action_unavailable", "The game-night settings are fixed");
         if (room.phase !== "lobby")

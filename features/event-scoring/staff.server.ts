@@ -39,11 +39,17 @@ import {
 export const STAFF_PRESETS = {
   "door-scanner": ["admitTickets"] as const,
   "door-manager": ["admitTickets", "requestGuests", "addGuests", "approveRequests"] as const,
-  "game-moderator": ["runActivities", "viewParticipantPoints", "awardPoints"] as const,
+  "game-moderator": [
+    "runActivities",
+    "viewParticipantPoints",
+    "awardPoints",
+    "manageTeams",
+  ] as const,
   "points-marshal": ["viewParticipantPoints", "awardPoints"] as const,
   "activity-manager": [
     "viewParticipantPoints",
     "awardPoints",
+    "manageTeams",
     "runActivities",
     "manageActivities",
   ] as const,
@@ -51,6 +57,7 @@ export const STAFF_PRESETS = {
     "admitTickets",
     "viewParticipantPoints",
     "awardPoints",
+    "manageTeams",
     "runActivities",
     "transferPoints",
     "reverseAwards",

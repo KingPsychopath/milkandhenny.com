@@ -108,6 +108,7 @@ interface RoomState {
   sequence: number;
   phase: "lobby" | "playing" | "reveal" | "finished" | "closed";
   hostPlayerId: string;
+  joinLocked?: boolean;
   joinHash: string;
   rounds: number;
   guessesPerPlayer: number;
@@ -310,6 +311,7 @@ function snapshot(room: RoomState, playerId: string): HotAndColdSnapshot {
     judgingVersion: room.judgingVersion,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    joinLocked: room.joinLocked === true,
     rounds: room.rounds,
     guessesPerPlayer: room.guessesPerPlayer,
     turnSeconds: room.turnSeconds,
@@ -453,6 +455,7 @@ export async function joinHotAndColdRoom(input: {
         };
       if (room.phase !== "lobby")
         return multiplayerFailure("game_started", "This hunt has started");
+      if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
       if (activePlayers(room).length >= HOT_AND_COLD_PLAYER_LIMITS.max)
         return multiplayerFailure("room_full", "This room is full");
       const name = input.name.trim();
@@ -657,6 +660,15 @@ export async function applyHotAndColdAction(
         context.now - (room.players.find(({ id }) => id === room.hostPlayerId)?.lastSeenAt ?? 0) >
           HOST_TAKEOVER_MS;
       if (!canControl) return reject("action_unavailable", "The room lead controls the hunt");
+      if (action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return reject("action_unavailable", "The room only locks in the lobby");
+        if (room.joinLocked !== action.locked) {
+          room.joinLocked = action.locked;
+          changed(room);
+        }
+        return accept();
+      }
       if (action.type === "host.pass") {
         if (!activePlayers(room).some(({ id }) => id === action.playerId))
           return reject("action_unavailable", "That player is not available");

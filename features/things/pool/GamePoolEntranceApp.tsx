@@ -150,7 +150,7 @@ export function GamePoolEntranceApp({
         window.location.assign(gamePoolPlayerPath(assignment.game, assignment.roomId));
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : "Could not find a room. Try again.";
+          error instanceof Error ? error.message : "Could not start playing together. Try again.";
         if (typeof choice === "object" && errorMessage === "That room is no longer available.") {
           setTargetRejected(true);
           setMessage("That room just filled or started. Join the next available room.");
@@ -351,7 +351,7 @@ export function GamePoolEntranceApp({
                         ? "return to my room"
                         : activeRoom
                           ? "leave current room and find another"
-                          : "find me a room"}
+                          : "play together"}
           </button>
           {view.run?.allowNewRooms ? (
             <button

@@ -39,8 +39,71 @@ export function LobbyIntro({
   );
 }
 
+export function RoomAdmissionControl({
+  locked,
+  canChange = false,
+  onChange,
+  tone = "dark",
+}: {
+  locked: boolean;
+  canChange?: boolean;
+  onChange?: (locked: boolean) => void;
+  tone?: "light" | "dark" | "theme";
+}) {
+  const muted =
+    tone === "theme" ? "theme-muted" : tone === "light" ? "text-black/50" : "text-white/50";
+  const faint =
+    tone === "theme" ? "theme-faint" : tone === "light" ? "text-black/35" : "text-white/35";
+  const label = locked ? "room locked" : "room open";
+  const consequence = locked ? "allow new joins" : "stop new joins";
+
+  if (!canChange || !onChange) {
+    return (
+      <p className={`mb-2 inline-flex min-h-8 items-center gap-2 font-mono text-micro ${faint}`}>
+        <RoomAdmissionIcon locked={locked} />
+        {label}
+      </p>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-pressed={locked}
+      aria-label={`Room is ${locked ? "locked" : "open"}. ${locked ? "Allow new joins." : "Stop new joins."}`}
+      onClick={() => onChange(!locked)}
+      className={`mb-2 inline-flex min-h-11 items-center gap-2 px-2 font-mono text-micro transition-opacity hover:opacity-70 ${muted}`}
+    >
+      <RoomAdmissionIcon locked={locked} />
+      <span>{label}</span>
+      <span className={faint}>· {consequence}</span>
+    </button>
+  );
+}
+
+function RoomAdmissionIcon({ locked }: { locked: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3.25" y="7" width="9.5" height="6.5" rx="1.75" />
+      <path d={locked ? "M5.25 7V5a2.75 2.75 0 0 1 5.5 0v2" : "M10.75 7V5a2.75 2.75 0 0 0-5.5 0"} />
+    </svg>
+  );
+}
+
 export function MultiplayerLobby({
+  admissionLocked,
   actions,
+  canSetAdmission = false,
   canPassLead = false,
   currentPlayerId,
   game,
@@ -49,6 +112,7 @@ export function MultiplayerLobby({
   inviteTitle,
   inviteUrl,
   onPassLead,
+  onAdmissionChange,
   onReadyChange,
   onRename,
   players,
@@ -57,7 +121,9 @@ export function MultiplayerLobby({
   tone = "dark",
   ready,
 }: {
+  admissionLocked?: boolean;
   actions?: ReactNode;
+  canSetAdmission?: boolean;
   canPassLead?: boolean;
   currentPlayerId: string | null;
   game: PixelWorldGame;
@@ -66,6 +132,7 @@ export function MultiplayerLobby({
   inviteTitle?: string;
   inviteUrl?: string | null;
   onPassLead?: (playerId: string) => void;
+  onAdmissionChange?: (locked: boolean) => void;
   onReadyChange?: (ready: boolean) => void;
   onRename?: () => void;
   players: PixelWorldPlayer[];
@@ -116,6 +183,14 @@ export function MultiplayerLobby({
     <section className="mt-8 w-full text-left" aria-label="Room lobby">
       {inviteUrl ? (
         <section className="flex flex-col items-center text-center" aria-label="Join the room">
+          {admissionLocked !== undefined ? (
+            <RoomAdmissionControl
+              locked={admissionLocked}
+              canChange={canSetAdmission}
+              onChange={onAdmissionChange}
+              tone={tone}
+            />
+          ) : null}
           {qr ? (
             <AppImage
               src={qr}

@@ -140,6 +140,50 @@ async function startGame(seats: Seat[]) {
 }
 
 describe("Twin rooms", () => {
+  it("starts open and lets only the room lead close or reopen admission", async () => {
+    const created = await createTwinRoom({ hostName: "Abel", handSize: 4 });
+    expect(created.snapshot.joinLocked).toBe(false);
+
+    const locked = await applyTwinAction({
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+      action: { type: "room.admission.set", locked: true },
+    });
+    expect(locked).toMatchObject({ accepted: true, snapshot: { joinLocked: true } });
+
+    await expect(
+      joinTwinRoom({
+        roomId: created.roomId,
+        joinToken: created.joinToken,
+        name: "Maya",
+      }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+
+    const reopened = await applyTwinAction({
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+      action: { type: "room.admission.set", locked: false },
+    });
+    expect(reopened).toMatchObject({ accepted: true, snapshot: { joinLocked: false } });
+    const joined = await joinTwinRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Maya",
+    });
+    expect(joined).toMatchObject({ ok: true });
+    if (!joined.ok) throw new Error(joined.error);
+    await expect(
+      applyTwinAction({
+        roomId: created.roomId,
+        playerId: joined.playerId,
+        playerToken: joined.playerToken,
+        action: { type: "room.admission.set", locked: true },
+      }),
+    ).resolves.toMatchObject({ accepted: false, errorCode: "not_host" });
+  });
+
   it("recovers one player after a lost join response, even once the game has started", async () => {
     const created = await createTwinRoom({ hostName: "Abel", handSize: 4 });
     const attempt = {

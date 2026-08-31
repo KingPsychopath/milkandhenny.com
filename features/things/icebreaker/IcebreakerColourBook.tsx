@@ -9,14 +9,20 @@ interface IcebreakerColourBookProps {
   ledger: IcebreakerLedger;
   player: IcebreakerPlayer;
   onClose: () => void;
+  persistenceLabel?: string;
 }
 
-export function IcebreakerColourBook({ ledger, player, onClose }: IcebreakerColourBookProps) {
+export function IcebreakerColourBook({
+  ledger,
+  player,
+  onClose,
+  persistenceLabel,
+}: IcebreakerColourBookProps) {
   return (
     <section className="w-full max-w-sm text-white" aria-labelledby="colour-book-title">
       <div className="text-center">
         <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/55">
-          kept on this device
+          {persistenceLabel ?? "kept on this device"}
         </p>
         <h1 id="colour-book-title" className="mt-2 font-serif text-5xl font-semibold">
           My colours.

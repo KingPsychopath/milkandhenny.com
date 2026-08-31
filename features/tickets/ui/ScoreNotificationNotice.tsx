@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { subscribeScoreStream } from "@/features/event-scoring/score-event-stream";
+import { ScoreBalanceChange } from "@/features/event-scoring/ui/ScoreBalanceChange";
 
 type Notice = {
   id: string;
@@ -9,6 +12,8 @@ type Notice = {
 
 export function ScoreNotificationNotice({ ticketId }: { ticketId: string }) {
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [balance, setBalance] = useState<number>();
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
@@ -20,7 +25,15 @@ export function ScoreNotificationNotice({ ticketId }: { ticketId: string }) {
       const body = (await response.json()) as { notifications?: Notice[] };
       const next = body.notifications ?? [];
       if (!active || next.length === 0) return;
+      const scoreResponse = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/score`);
+      if (scoreResponse.ok) {
+        const scoreBody = (await scoreResponse.json()) as { participant?: { balance?: number } };
+        if (typeof scoreBody.participant?.balance === "number")
+          setBalance(scoreBody.participant.balance);
+      }
       setNotices(next.slice(-3));
+      clearTimeout(dismissTimer.current);
+      dismissTimer.current = setTimeout(() => setNotices([]), 8_000);
       await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/score/notifications`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -30,22 +43,22 @@ export function ScoreNotificationNotice({ ticketId }: { ticketId: string }) {
     }
     // Notices are a nicety: an offline ticket page or a non-JSON response
     // should fail silently, not surface an unhandled rejection.
-    void load().catch(() => undefined);
+    const refresh = () => void load().catch(() => undefined);
+    const unsubscribe = subscribeScoreStream(ticketId, (event) => {
+      if (event.kind !== "unavailable") refresh();
+    });
+    refresh();
+    const fallback = window.setInterval(refresh, 5_000);
+    window.addEventListener("mah-score-wake", refresh);
     return () => {
       active = false;
+      unsubscribe();
+      window.clearInterval(fallback);
+      clearTimeout(dismissTimer.current);
+      window.removeEventListener("mah-score-wake", refresh);
     };
   }, [ticketId]);
 
   if (notices.length === 0) return null;
-  return (
-    <div aria-live="polite" className="mt-4 border-y theme-border py-3">
-      {notices.map((notice) => (
-        <p key={notice.id} className="font-mono text-xs">
-          {notice.kind === "held"
-            ? `${Math.abs(notice.points)} points pending review`
-            : `${notice.points > 0 ? "+" : ""}${notice.points} points · ${notice.reasonCode.replaceAll("-", " ")}`}
-        </p>
-      ))}
-    </div>
-  );
+  return <ScoreBalanceChange notices={notices} balance={balance} />;
 }

@@ -1,7 +1,13 @@
 import { buildAppUrl } from "@/lib/shared/app-url";
 
+import type { LiarsMode } from "./types";
+
 export function liarsPlayerPath(roomId: string) {
   return `/things/liars/${encodeURIComponent(roomId)}`;
+}
+
+export function liarsSetupPath(mode: LiarsMode): "/things/mafia" | "/things/imposter" {
+  return mode === "mafia" ? "/things/mafia" : "/things/imposter";
 }
 
 export function parseLiarsPlayerFragment(fragment: string) {

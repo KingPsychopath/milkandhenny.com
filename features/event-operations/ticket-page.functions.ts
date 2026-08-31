@@ -16,7 +16,11 @@ import {
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
 import { personalScore } from "@/features/event-scoring/scoring.server";
 import { listDiscoveries } from "@/features/event-scoring/discoveries.server";
-import { findSettings, privateOrderScore } from "@/features/event-scoring/store.server";
+import {
+  findSettings,
+  participantForTicket,
+  privateOrderScore,
+} from "@/features/event-scoring/store.server";
 import { getEventAlbumView } from "@/features/events/drop.server";
 import { EventsService } from "@/features/events/events-service.server";
 import {
@@ -51,6 +55,10 @@ export type TicketPageResult =
       checkpointNames: string[];
       album: EventAlbumView;
       hasDiscoveries: boolean;
+      team?: {
+        name: string;
+        colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+      };
       preview?: true;
       attendeeIdentity?: AttendeeTicketIdentity;
       ticketPointSelection?: Awaited<ReturnType<typeof ticketPointSelection>>;
@@ -62,6 +70,8 @@ export type TicketPageResult =
         revision: number;
         rank: number;
         teamRank?: number;
+        teamName?: string;
+        teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
         leaderboardAvailable: boolean;
         synchronizedAt: string;
         orderPoints?: number;
@@ -146,7 +156,10 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       listCheckpoints(event.slug),
       listDiscoveries(event.slug),
     ]);
-    const scoringSettings = await findSettings(event.slug);
+    const [scoringSettings, participant] = await Promise.all([
+      findSettings(event.slug),
+      participantForTicket(ticket.id),
+    ]);
     const scoreResult =
       scoringSettings && scoringSettings.state !== "off"
         ? await personalScore({
@@ -219,6 +232,9 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
       hasDiscoveries: discoveries.some((discovery) => discovery.status === "live"),
+      team: participant?.teamName
+        ? { name: participant.teamName, colourKey: participant.teamColourKey }
+        : undefined,
       preview: data.preview ? true : undefined,
       attendeeIdentity,
       ticketPointSelection: pointSelection,
@@ -231,6 +247,8 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
             revision: scoreResult.value.participant.revision,
             rank: scoreResult.value.rank,
             teamRank: scoreResult.value.teamRank,
+            teamName: scoreResult.value.participant.teamName,
+            teamColourKey: scoreResult.value.participant.teamColourKey,
             leaderboardAvailable:
               scoringSettings?.leaderboardVisibility === "public-live" ||
               scoringSettings?.leaderboardVisibility === "public-final",

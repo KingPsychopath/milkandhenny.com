@@ -88,7 +88,7 @@ function HeadsUpExperience({
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
   const [countdown, setCountdown] = useState(3);
-  // Round length is fixed for forehead; sound is the only thing worth remembering.
+  // Round length is fixed for Heads Up; sound is the only thing worth remembering.
   const { preferences, set: setPreference } = useGamePreferences("heads-up", {
     soundEnabled: true,
   });
@@ -337,7 +337,7 @@ function HeadsUpExperience({
     const deck = customDecks.find((current) => current.id === id);
     if (!deck) return;
     const text = formatDeckText(deck);
-    const result = await shareOrCopy({ title: `Forehead deck: ${deck.name}`, text });
+    const result = await shareOrCopy({ title: `Heads Up deck: ${deck.name}`, text });
     if (result === "shared") setShareMessage("Shared.");
     else if (result === "copied") setShareMessage("Copied — paste it wherever you like.");
     else if (result === "failed") setShareMessage("Open edit and copy the list from there.");
@@ -565,7 +565,7 @@ function HeadsUpExperience({
   if (joinedDeck) {
     return (
       <PairedGamePlayerReady
-        gameName="Forehead"
+        gameName="Heads Up"
         deckName={joinedDeck.name}
         detail="Hold it to your forehead."
         judgeConnected={remote.judgeConnected}
@@ -593,7 +593,7 @@ function HeadsUpExperience({
       shareMessage={shareMessage}
       remoteControls={
         <PairedGameHostPanel
-          gameLabel="Forehead"
+          gameLabel="Heads Up"
           inviteUrl={remote.inviteUrl}
           roomId={remote.room?.roomId ?? null}
           connected={remote.judgeConnected}

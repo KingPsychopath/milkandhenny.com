@@ -10,6 +10,61 @@
   }
 }
 
+@keyframes arrival-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes arrival-handoff-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes arrival-handoff-orb {
+  0% {
+    transform: scale(0.2);
+    background: var(--prose-hashtag);
+  }
+  55% {
+    transform: scale(1.15);
+    background: var(--status-positive);
+  }
+  100% {
+    transform: scale(1);
+    background: var(--prose-hashtag);
+  }
+}
+
+.arrival-pulse {
+  animation: arrival-pulse 1.8s ease-in-out infinite;
+}
+.arrival-handoff {
+  background: var(--things-night);
+  animation: arrival-handoff-in 320ms ease-out both;
+}
+.arrival-handoff-orb {
+  animation: arrival-handoff-orb 900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-pulse,
+  .arrival-handoff,
+  .arrival-handoff-orb {
+    animation: none;
+  }
+}
+
 @keyframes feud-claim-plus {
   0% {
     opacity: 0;
@@ -297,6 +352,10 @@
   --status-positive: oklch(0.45 0.12 151);
   --status-attention: oklch(0.55 0.16 62);
   --status-danger: oklch(0.5 0.19 27);
+  --team-amber: oklch(0.68 0.15 76);
+  --team-sage: oklch(0.53 0.11 145);
+  --team-plum: oklch(0.52 0.13 315);
+  --team-sky: oklch(0.55 0.1 235);
   --things-night: oklch(0.17 0.015 56.42);
   --things-amber: oklch(0.82 0.16 79);
   --things-heat-red: oklch(0.58 0.2 29);
@@ -309,6 +368,11 @@
   --things-country-outside: oklch(0.57 0.19 28);
   --things-country-inside: oklch(0.53 0.15 253);
   --things-country-point: oklch(0.2 0.01 56.42);
+  --things-dark-foreground: oklch(0.918 0.006 70.7);
+  --things-dark-muted: oklch(0.696 0.019 70.7);
+  --things-light-foreground: oklch(0.214 0.012 56.42);
+  --things-light-muted: oklch(0.396 0.019 55.4);
+  --things-green-muted: oklch(0.34 0.04 151);
   --centre-player-0: oklch(0.83 0.16 79);
   --centre-player-1: oklch(0.75 0.15 25);
   --centre-player-2: oklch(0.78 0.13 151);
@@ -351,8 +415,17 @@
   --status-positive: oklch(0.76 0.15 151);
   --status-attention: oklch(0.79 0.14 79);
   --status-danger: oklch(0.72 0.16 27);
+  --team-amber: oklch(0.82 0.15 79);
+  --team-sage: oklch(0.74 0.13 145);
+  --team-plum: oklch(0.74 0.14 315);
+  --team-sky: oklch(0.76 0.11 235);
   --things-heat-red: oklch(0.67 0.19 29);
   --things-frost: oklch(0.76 0.075 225);
+  --things-dark-foreground: oklch(0.918 0.006 70.7);
+  --things-dark-muted: oklch(0.696 0.019 70.7);
+  --things-light-foreground: oklch(0.214 0.012 56.42);
+  --things-light-muted: oklch(0.396 0.019 55.4);
+  --things-green-muted: oklch(0.34 0.04 151);
   --liars-dead: oklch(0.62 0.22 27);
   --liars-alive: oklch(0.74 0.18 152);
   --liars-house-wall: oklch(0.24 0.016 56.42);
@@ -501,6 +574,85 @@
   }
 }
 
+@keyframes score-celebration-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes score-balance-delta-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes score-balance-settle {
+  0% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-0.08em);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes active-room-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes active-room-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.88);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@layer components {
+  .score-celebration {
+    animation: score-celebration-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .score-balance-delta {
+    animation: score-balance-delta-in 420ms 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .score-balance-total--settled {
+    animation: score-balance-settle 240ms ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .score-celebration,
+    .score-balance-delta,
+    .score-balance-total--settled {
+      animation: none;
+    }
+  }
+}
+
 @keyframes country-outline-trace {
   from {
     opacity: 0;
@@ -642,6 +794,81 @@
   .mh-action:disabled .mh-action__cue,
   .mh-action[aria-disabled="true"] .mh-action__cue {
     transform: none;
+  }
+
+  /* Colour reinforces written operational state; it never carries the meaning alone. */
+  .mh-status {
+    --mh-status-colour: var(--stone-500);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    border-inline-start: 3px solid var(--mh-status-colour);
+    background: color-mix(in oklch, var(--mh-status-colour) 8%, transparent);
+    padding: 0.75rem 0.875rem;
+    color: var(--foreground);
+    font-family: var(--font-geist-mono);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .team-colour--amber {
+    --team-colour: var(--team-amber);
+  }
+
+  .team-colour--sage {
+    --team-colour: var(--team-sage);
+  }
+
+  .team-colour--plum {
+    --team-colour: var(--team-plum);
+  }
+
+  .team-colour--sky {
+    --team-colour: var(--team-sky);
+  }
+
+  .team-badge {
+    color: var(--foreground);
+  }
+
+  .team-badge__mark {
+    width: 0.7rem;
+    height: 0.7rem;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--team-colour);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--team-colour) 60%, var(--foreground));
+  }
+
+  .mh-status--positive {
+    --mh-status-colour: var(--status-positive);
+  }
+  .mh-status--attention {
+    --mh-status-colour: var(--status-attention);
+  }
+  .mh-status--danger {
+    --mh-status-colour: var(--status-danger);
+  }
+
+  .mh-status__mark {
+    width: 0.625rem;
+    height: 0.625rem;
+    margin-top: 0.3125rem;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--mh-status-colour);
+  }
+
+  .mh-status__label {
+    display: block;
+    color: var(--mh-status-colour);
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .mh-status__detail {
+    display: block;
   }
 
   /*
@@ -1150,6 +1377,253 @@
 
   .things-game--cream {
     background: var(--things-cream);
+  }
+
+  /*
+    The active-room notice is mounted beside the route outlet, so ordinary inheritance cannot
+    see a game's intentionally stronger art direction. These semantic variables keep the notice
+    on the site palette by default and let every shared game tone provide the matching surface.
+  */
+  .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--background) 96%, transparent);
+    --floating-notice-foreground: var(--foreground);
+    --floating-notice-muted: var(--stone-500);
+    --floating-notice-border: var(--stone-200);
+    --floating-notice-accent: var(--prose-hashtag);
+
+    color: var(--floating-notice-foreground);
+    background: var(--floating-notice-surface);
+    border-color: var(--floating-notice-border);
+    box-shadow: 0 1.25rem 3rem color-mix(in oklab, var(--foreground) 14%, transparent);
+  }
+
+  .themed-floating-notice-muted {
+    color: var(--floating-notice-muted);
+  }
+
+  .themed-floating-notice-border {
+    border-color: var(--floating-notice-border);
+  }
+
+  .active-room-notice {
+    --active-room-notice-bottom: 1rem;
+    overflow: hidden;
+    border-radius: 1.5rem;
+    animation: active-room-notice-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    isolation: isolate;
+  }
+
+  .active-room-notice::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 0.2rem;
+    background: var(--floating-notice-accent);
+  }
+
+  .active-room-notice::after {
+    content: "";
+    position: absolute;
+    top: -5rem;
+    left: -4rem;
+    z-index: -1;
+    width: 12rem;
+    height: 12rem;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--floating-notice-accent) 10%, transparent);
+    filter: blur(1.5rem);
+    pointer-events: none;
+  }
+
+  .active-room-notice__body {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.125rem;
+  }
+
+  .active-room-notice__beacon {
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    flex: none;
+    place-items: center;
+    border: 1px solid color-mix(in oklab, var(--floating-notice-accent) 34%, transparent);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--floating-notice-accent) 10%, transparent);
+    color: var(--floating-notice-accent);
+  }
+
+  .active-room-notice__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--floating-notice-accent);
+  }
+
+  .active-room-notice__pulse {
+    width: 0.45rem;
+    height: 0.45rem;
+    flex: none;
+    border-radius: 9999px;
+    background: currentColor;
+    box-shadow: 0 0 0 0.2rem color-mix(in oklab, currentColor 14%, transparent);
+    animation: active-room-pulse 2.4s ease-in-out infinite;
+  }
+
+  .active-room-notice__dismiss {
+    display: flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: -0.5rem -0.5rem 0 0;
+    padding-inline: 0.5rem;
+  }
+
+  .active-room-notice__room {
+    display: flex;
+    min-height: 4rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--floating-notice-foreground);
+  }
+
+  .active-room-notice__return {
+    display: inline-flex;
+    min-height: 2.75rem;
+    flex: none;
+    align-items: center;
+    gap: 0.65rem;
+    color: var(--floating-notice-foreground);
+  }
+
+  .active-room-notice__arrow {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 9999px;
+    background: var(--floating-notice-foreground);
+    color: var(--floating-notice-surface);
+    transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .active-room-notice__room:hover .active-room-notice__arrow {
+    transform: translateX(0.2rem);
+  }
+
+  @media (max-width: 30rem) {
+    .active-room-notice__body {
+      gap: 0;
+      padding: 1.125rem 1rem 0.875rem;
+    }
+
+    .active-room-notice__beacon {
+      display: none;
+    }
+
+    .active-room-notice__return > :first-child {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+  }
+
+  @media (min-width: 40rem) {
+    .active-room-notice__body {
+      gap: 1.125rem;
+      padding: 1.25rem 1.375rem 1.125rem;
+    }
+
+    .active-room-notice__beacon {
+      width: 3.25rem;
+      height: 3.25rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .active-room-notice,
+    .active-room-notice__pulse {
+      animation: none;
+    }
+  }
+
+  body:has(.things-game--night) .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--things-night) 96%, transparent);
+    --floating-notice-foreground: var(--things-dark-foreground);
+    --floating-notice-muted: var(--things-dark-muted);
+    --floating-notice-border: color-mix(
+      in oklab,
+      var(--floating-notice-foreground) 16%,
+      transparent
+    );
+  }
+
+  body:has(.things-game--amber) .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--things-amber) 96%, transparent);
+    --floating-notice-foreground: var(--things-light-foreground);
+    --floating-notice-muted: var(--things-light-muted);
+    --floating-notice-border: color-mix(
+      in oklab,
+      var(--floating-notice-foreground) 18%,
+      transparent
+    );
+  }
+
+  body:has(.things-game--green) .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--things-green) 96%, transparent);
+    --floating-notice-foreground: var(--things-light-foreground);
+    --floating-notice-muted: var(--things-green-muted);
+    --floating-notice-border: color-mix(
+      in oklab,
+      var(--floating-notice-foreground) 18%,
+      transparent
+    );
+  }
+
+  body:has(.things-game--stone) .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--things-stone) 96%, transparent);
+    --floating-notice-foreground: var(--things-light-foreground);
+    --floating-notice-muted: var(--things-light-muted);
+    --floating-notice-border: color-mix(
+      in oklab,
+      var(--floating-notice-foreground) 18%,
+      transparent
+    );
+  }
+
+  body:has(.things-game--cream) .themed-floating-notice {
+    --floating-notice-surface: color-mix(in oklab, var(--things-cream) 96%, transparent);
+    --floating-notice-foreground: var(--things-light-foreground);
+    --floating-notice-muted: var(--things-light-muted);
+    --floating-notice-border: color-mix(
+      in oklab,
+      var(--floating-notice-foreground) 16%,
+      transparent
+    );
+  }
+
+  body:has(.offline-platform-notice) .active-room-notice {
+    --active-room-notice-bottom: 5.5rem;
+  }
+
+  body:has(.event-night-nav) .active-room-notice {
+    --active-room-notice-bottom: 5.5rem;
+  }
+
+  .event-night-nav {
+    bottom: 0.75rem;
+  }
+
+  body:has(.work-access-return-prompt) .event-night-nav {
+    bottom: 4.75rem;
   }
 
   .country-reveal-reference,
@@ -2236,11 +2710,29 @@
   .theme-faint {
     color: var(--stone-300);
   }
-  .things-game .things-game-report {
+  .things-report-footer {
+    background: var(--background);
+    color: var(--foreground);
+  }
+  body:has(.things-game--night) .things-report-footer {
+    background: var(--things-night);
+    color: var(--things-cream);
+  }
+  body:has(.things-game--amber) .things-report-footer {
+    background: var(--things-amber);
     color: var(--things-night);
   }
-  .things-game--night .things-game-report {
-    color: var(--things-cream);
+  body:has(.things-game--green) .things-report-footer {
+    background: var(--things-green);
+    color: var(--things-night);
+  }
+  body:has(.things-game--stone) .things-report-footer {
+    background: var(--things-stone);
+    color: var(--things-night);
+  }
+  body:has(.things-game--cream) .things-report-footer {
+    background: var(--things-cream);
+    color: var(--things-night);
   }
   .theme-border {
     border-color: var(--stone-200);
@@ -2741,9 +3233,16 @@
     width: var(--twin-card-size);
     aspect-ratio: 1;
     border: 1px solid var(--twin-edge);
-    border-radius: 1.75rem;
-    background: var(--twin-face);
+    border-radius: 2rem;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--things-cream) 10%, transparent),
+      var(--twin-face)
+    );
     color: var(--twin-ink);
+    box-shadow:
+      inset 0 1px color-mix(in oklab, var(--things-cream) 16%, transparent),
+      0 0.75rem 2rem color-mix(in oklab, var(--things-night) 42%, transparent);
     /* Its own stacking context: the symbols inside animate, the card should not repaint with them. */
     isolation: isolate;
   }
@@ -2763,7 +3262,7 @@
   }
 
   .twin-card--claimed {
-    animation: twin-card-shed 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: twin-card-match 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   .twin-card--down {
@@ -2798,12 +3297,13 @@
 
   .twin-symbol--found {
     color: var(--twin-accent);
-    scale: 1.35;
+    scale: 1.18;
     z-index: 2;
+    animation: twin-symbol-lock var(--twin-connection-ms, 420ms) cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .twin-symbol--dimmed {
-    opacity: 0.25;
+    opacity: 0.16;
   }
 
   /* the heat */
@@ -3414,9 +3914,18 @@
   .twin-duel {
     --twin-card-size: min(38svh, 80vw, 24rem);
     position: relative;
+    align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding-block: 0.5rem;
+    padding: 1rem 0.75rem;
+  }
+
+  .twin-duel[data-players="2"] {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+    justify-content: stretch;
+    justify-items: center;
+    gap: 0;
   }
 
   /* Solo has two cards too: the middle and the hand. Keep them together and let both stay generous. */
@@ -3437,9 +3946,11 @@
 
   .twin-seat {
     display: flex;
+    width: 100%;
     flex-direction: column;
     align-items: center;
-    gap: 0.375rem;
+    justify-content: center;
+    gap: 0.625rem;
   }
 
   /* Both seats read upright from where their owner is sitting. */
@@ -3466,6 +3977,30 @@
     position: relative;
     display: grid;
     place-items: center;
+    padding: 0.4rem;
+    isolation: isolate;
+  }
+
+  .twin-duel-stack::before {
+    content: "";
+    position: absolute;
+    inset: -0.35rem;
+    z-index: -2;
+    border: 1px solid color-mix(in oklab, var(--things-cream) 10%, transparent);
+    border-radius: 2.35rem;
+    background: color-mix(in oklab, var(--things-cream) 3%, transparent);
+    box-shadow:
+      inset 0 1px color-mix(in oklab, var(--things-cream) 7%, transparent),
+      0 1rem 2.5rem color-mix(in oklab, var(--things-night) 52%, transparent);
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .twin-duel-stack--matched::before {
+    border-color: color-mix(in oklab, var(--twin-accent) 48%, transparent);
+    background: color-mix(in oklab, var(--twin-accent) 5%, transparent);
+    animation: twin-stage-match var(--twin-connection-ms, 420ms) ease both;
   }
 
   .twin-duel-stack-card {
@@ -3473,12 +4008,21 @@
     width: var(--twin-card-size);
     aspect-ratio: 1;
     border: 1px solid var(--twin-edge);
-    border-radius: 1.75rem;
+    border-radius: 2rem;
     background: var(--twin-face);
-    transform: translateY(calc(var(--twin-duel-depth) * 0.12rem))
-      rotate(calc((var(--twin-duel-depth) - 5) * 0.28deg))
-      scale(calc(1 - var(--twin-duel-depth) * 0.006));
-    opacity: calc(0.62 - var(--twin-duel-depth) * 0.022);
+    transform: translateY(calc(var(--twin-duel-depth) * 0.18rem))
+      rotate(calc((var(--twin-duel-depth) - 2) * 0.35deg))
+      scale(calc(1 - var(--twin-duel-depth) * 0.008));
+    opacity: calc(0.5 - var(--twin-duel-depth) * 0.08);
+  }
+
+  .twin-card--mine {
+    animation: twin-card-arrive 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .twin-card--mine.twin-card--claimed {
+    animation: twin-card-match var(--twin-connection-ms, 420ms) cubic-bezier(0.16, 1, 0.3, 1)
+      forwards;
   }
 
   .twin-card-transfer {
@@ -3500,6 +4044,32 @@
     position: relative;
     display: grid;
     place-items: center;
+  }
+
+  .twin-duel-middle--controls {
+    width: min(100%, 34rem);
+    min-height: 3.25rem;
+    grid-template-columns: minmax(4.5rem, 1fr) auto minmax(7rem, 1fr);
+    gap: 0.75rem;
+    border-block: 1px solid var(--twin-edge);
+    padding-inline: 0.25rem;
+    justify-self: center;
+  }
+
+  .twin-duel-middle--controls .twin-duel-quit,
+  .twin-duel-middle--controls .twin-duel-palette {
+    position: static;
+    translate: none;
+  }
+
+  .twin-duel-middle--controls .twin-duel-quit {
+    justify-self: start;
+  }
+
+  .twin-duel-middle--controls .twin-duel-palette {
+    justify-self: end;
+    flex-direction: row;
+    gap: 0.5rem;
   }
 
   .twin-duel-quit,
@@ -3557,11 +4127,22 @@
   @media (min-width: 48rem) and (min-height: 40rem) {
     .twin-duel,
     .twin-duel:has(.twin-duel-bar) {
-      --twin-card-size: min(39svh, 32vw, 30rem);
-      justify-content: center;
-      gap: 0.875rem;
-      padding-block: 2.75rem 1rem;
+      --twin-card-size: min(34svh, 30vw, 23rem);
+      padding-block: 1.25rem;
     }
+  }
+
+  .twin-duel .twin-ray-line {
+    stroke-width: 2;
+    opacity: 0.78;
+  }
+
+  .twin-duel .twin-ray-glow {
+    display: none;
+  }
+
+  .twin-duel .twin-ray-end {
+    r: 2.5px;
   }
 
   .twin-duel-exit {
@@ -3617,6 +4198,8 @@
     .twin-ray-line,
     .twin-ray-glow,
     .twin-ray-end,
+    .twin-symbol--found,
+    .twin-duel-stack--matched::before,
     .twin-card--claimed,
     .twin-deal-card,
     .twin-chart-node,
@@ -3647,15 +4230,40 @@
     }
   }
 
-  @keyframes twin-card-shed {
+  @keyframes twin-card-arrive {
+    from {
+      opacity: 0.35;
+      transform: translate3d(0, 0.8rem, 0) scale(0.985);
+    }
+  }
+
+  @keyframes twin-card-match {
     0%,
-    68% {
+    70% {
       opacity: 1;
       transform: translate3d(0, 0, 0) scale(1);
     }
     100% {
-      opacity: 0.18;
-      transform: translate3d(0, -0.75rem, 0) scale(0.94);
+      opacity: 0;
+      transform: translate3d(0, -0.65rem, 0) scale(0.975);
+    }
+  }
+
+  @keyframes twin-symbol-lock {
+    0% {
+      scale: 0.94;
+    }
+    48% {
+      scale: 1.24;
+    }
+    100% {
+      scale: 1.18;
+    }
+  }
+
+  @keyframes twin-stage-match {
+    50% {
+      scale: 1.015;
     }
   }
 

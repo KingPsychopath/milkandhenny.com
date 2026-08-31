@@ -6,6 +6,7 @@ export type ScoreSnapshot = {
   balance: number;
   revision: number;
   synchronizedAt: string;
+  orderPoints?: number;
 };
 
 export type PendingScoreCommand = ClientCommand & {
@@ -17,12 +18,35 @@ export type PendingScoreCommand = ClientCommand & {
 };
 
 const SCORE_SESSION_MARKER = "mah-has-score-session";
+const SCORE_SESSION_LINKS = "mah-score-session-links";
+export const SCORE_SESSION_EVENT = "mah-score-session";
 
-export function rememberScoreSession(): void {
+export function rememberScoreSession(link?: { eventSlug: string; ticketId: string }): void {
   try {
     localStorage.setItem(SCORE_SESSION_MARKER, "1");
+    if (link) {
+      const links = rememberedScoreLinks().filter((entry) => entry.eventSlug !== link.eventSlug);
+      localStorage.setItem(SCORE_SESSION_LINKS, JSON.stringify([...links, link]));
+    }
+    window.dispatchEvent(new CustomEvent(SCORE_SESSION_EVENT, { detail: link }));
   } catch {
     // Storage is an optimization; confirmed scores still refresh from the server.
+  }
+}
+
+export function rememberedScoreLinks(): Array<{ eventSlug: string; ticketId: string }> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SCORE_SESSION_LINKS) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (link): link is { eventSlug: string; ticketId: string } =>
+        Boolean(link) &&
+        typeof link === "object" &&
+        typeof (link as { eventSlug?: unknown }).eventSlug === "string" &&
+        typeof (link as { ticketId?: unknown }).ticketId === "string",
+    );
+  } catch {
+    return [];
   }
 }
 
@@ -118,6 +142,7 @@ export type ScoreSyncResponse = {
     revision: number;
     lastTransactionAt?: string;
   };
+  orderPoints?: number;
 };
 
 export function scoreSnapshotFromResponse(
@@ -131,6 +156,7 @@ export function scoreSnapshotFromResponse(
     balance: response.participant.balance,
     revision: response.participant.revision,
     synchronizedAt,
+    orderPoints: response.orderPoints,
   };
 }
 
@@ -139,12 +165,15 @@ export function isScoreSyncResponse(value: unknown): value is ScoreSyncResponse 
   const participant = (value as { participant?: unknown }).participant;
   if (!participant || typeof participant !== "object" || Array.isArray(participant)) return false;
   const record = participant as Record<string, unknown>;
+  const orderPoints = (value as { orderPoints?: unknown }).orderPoints;
   return (
     typeof record.id === "string" &&
     typeof record.balance === "number" &&
     Number.isInteger(record.balance) &&
     typeof record.revision === "number" &&
     Number.isInteger(record.revision) &&
-    record.revision >= 0
+    record.revision >= 0 &&
+    (orderPoints === undefined ||
+      (typeof orderPoints === "number" && Number.isInteger(orderPoints)))
   );
 }

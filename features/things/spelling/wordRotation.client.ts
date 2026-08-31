@@ -1,4 +1,5 @@
-import { shuffledWords, type SpellingWord } from "./decks";
+import { freshFirst } from "../shared/content-random";
+import type { SpellingWord } from "./decks";
 
 const keyFor = (deckId: string) =>
   `things:spelling-bee:v2:deck:${encodeURIComponent(deckId)}:recent-words`;
@@ -20,10 +21,7 @@ export function selectSpellingRoundWords(
   requestedCount: number,
 ) {
   const count = Math.max(1, Math.min(words.length, requestedCount));
-  const recent = new Set(readRecentSpellingWordIds(deckId));
-  const fresh = shuffledWords(words.filter(({ id }) => !recent.has(id)));
-  const previouslyUsed = shuffledWords(words.filter(({ id }) => recent.has(id)));
-  return [...fresh, ...previouslyUsed].slice(0, count);
+  return freshFirst(words, readRecentSpellingWordIds(deckId), ({ id }) => id).slice(0, count);
 }
 
 export function rememberSpellingWords(

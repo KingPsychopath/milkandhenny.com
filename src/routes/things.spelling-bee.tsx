@@ -8,7 +8,7 @@ export const Route = createFileRoute("/things/spelling-bee")({
   head: () =>
     buildSeoHead({
       title: `Spelling Bee — ${SITE_NAME}`,
-      description: "Hear the word, spell it aloud, or type together in a local-first spelling bee.",
+      description: "Hear the word and spell it aloud, with an optional remote judge.",
       path: "/things/spelling-bee",
       image: OG_IMAGES.spellingBee,
       imageAlt: "Spelling Bee — a local-first word game from Milk & Henny",

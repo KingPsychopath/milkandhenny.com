@@ -13,7 +13,7 @@ import {
 describe("spelling content", () => {
   it("keeps every curated deck deep enough for repeat games with complete audio", () => {
     for (const summary of SPELLING_DECKS) {
-      expect(summary.words).toHaveLength(24);
+      expect(summary.words).toHaveLength(36);
       const deck = partyDeck(summary.id)!;
       for (const word of deck.words) {
         expect(word.sentence).toBeTruthy();

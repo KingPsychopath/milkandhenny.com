@@ -74,6 +74,7 @@ export interface DrawCountrySnapshot extends MultiplayerRevision, MultiplayerSeq
   serverNow: number;
   hostPlayerId: string;
   canControl: boolean;
+  joinLocked: boolean;
   managed?: boolean;
   /** 1 for the first game on this room code, incremented by every rematch. */
   gameNumber: number;
@@ -101,6 +102,7 @@ export type DrawCountryJoinResult =
   | MultiplayerSuccess<DrawCountryPlayerCredentials>
   | MultiplayerFailure<
       | "game_started"
+      | "room_locked"
       | "invite_expired"
       | "invalid_name"
       | "name_taken"
@@ -119,6 +121,7 @@ export type DrawCountrySnapshotResult =
 export type DrawCountryAction = Partial<MultiplayerAction> &
   (
     | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "room.admission.set"; locked: boolean }
     | { type: "readiness.set"; ready: boolean }
     | { type: "round.next" }
     | { type: "game.replay" }

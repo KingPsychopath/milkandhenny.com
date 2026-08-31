@@ -1,4 +1,4 @@
-import { createTeam, setTeamMembership } from "../store.server";
+import { createTeam, setTeamMembership, shuffleCheckedInTeams } from "../store.server";
 import { IdentityAcquisitionRestrictedError } from "@/features/attendee-operations/identity-policy.server";
 import {
   adjustStaffPool,
@@ -22,6 +22,18 @@ const STAFF_PRESETS: ReadonlySet<string> = new Set([
 ]);
 
 export const staffingActions: AdminScoringActionHandlers = {
+  "shuffle-teams": async ({ eventSlug, actorId, body }) => {
+    return resultResponse(
+      await shuffleCheckedInTeams({
+        eventSlug,
+        teamCount: typeof body.teamCount === "number" ? body.teamCount : Number.NaN,
+        actorType: "admin",
+        actorId,
+      }),
+      "shuffle",
+    );
+  },
+
   "create-team": async ({ eventSlug, body }) => {
     const name = stringValue(body.name);
     if (!name) return Response.json({ error: "Team name is required" }, { status: 400 });

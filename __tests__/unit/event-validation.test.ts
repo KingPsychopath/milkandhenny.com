@@ -73,7 +73,15 @@ describe("normaliseEventInput", () => {
       expect(result.value.slug).toBe("apartment-life");
       expect(result.value.status).toBe("draft");
       expect(result.value.timezone).toBe("Europe/London");
+      expect(result.value.arrivalExperience).toBe("none");
     }
+  });
+
+  it("normalises the optional post-check-in experience", () => {
+    const enabled = normaliseEventInput(validInput({ arrivalExperience: "icebreaker" }));
+    expect(enabled.ok && enabled.value.arrivalExperience).toBe("icebreaker");
+    const unknown = normaliseEventInput(validInput({ arrivalExperience: "external-game" }));
+    expect(unknown.ok && unknown.value.arrivalExperience).toBe("none");
   });
 
   it("requires a title", () => {

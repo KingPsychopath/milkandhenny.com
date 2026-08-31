@@ -1,4 +1,5 @@
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { isTeamCount, teamPaletteForCount, type TeamColourKey } from "../team-palette";
 import type { ScoreParticipant, ScoreProjection, ScoreTeam, ScoreTeamMembership } from "../types";
 import { id, toParticipant, type ParticipantRow, type ScoreStoreResult } from "./common.server";
 
@@ -10,10 +11,17 @@ export async function createTeam(input: {
   if (!name) return { ok: false, status: 400, error: "Name the team" };
   if (name.length > 120)
     return { ok: false, status: 400, error: "Use 120 characters or fewer for a team name" };
-  const row = await queryOne<{ id: string; event_slug: string; name: string; status: string }>(
+  const row = await queryOne<{
+    id: string;
+    event_slug: string;
+    name: string;
+    colour_key: TeamColourKey | null;
+    sort_order: number | null;
+    status: string;
+  }>(
     `insert into score_teams (id, event_slug, name)
      values ($1,$2,$3)
-     returning id, event_slug, name, status`,
+     returning id, event_slug, name, colour_key, sort_order, status`,
     [id("team"), input.eventSlug, name],
   );
   if (!row) return { ok: false, status: 500, error: "Team could not be created" };
@@ -23,21 +31,250 @@ export async function createTeam(input: {
       id: row.id,
       eventSlug: row.event_slug,
       name: row.name,
+      colourKey: row.colour_key ?? undefined,
+      sortOrder: row.sort_order ?? undefined,
+      checkedInCount: 0,
       status: row.status as ScoreTeam["status"],
     },
   };
 }
 
 export async function listTeams(eventSlug: string): Promise<ScoreTeam[]> {
-  const rows = await query<{ id: string; event_slug: string; name: string; status: string }>(
-    `select id, event_slug, name, status from score_teams where event_slug = $1 order by name, id`,
+  const rows = await query<{
+    id: string;
+    event_slug: string;
+    name: string;
+    colour_key: TeamColourKey | null;
+    sort_order: number | null;
+    checked_in_count: number;
+    status: string;
+  }>(
+    `select teams.id, teams.event_slug, teams.name, teams.colour_key, teams.sort_order, teams.status,
+            count(participants.id) filter (where participants.checked_in_at is not null
+              and participants.status = 'active')::integer as checked_in_count
+       from score_teams teams
+       left join score_team_memberships memberships
+         on memberships.team_id = teams.id
+        and memberships.starts_at <= now()
+        and (memberships.ends_at is null or memberships.ends_at > now())
+       left join event_participants participants on participants.id = memberships.participant_id
+      where teams.event_slug = $1
+      group by teams.id
+      order by teams.status = 'active' desc, teams.sort_order nulls last,
+               teams.created_at, teams.name, teams.id`,
     [eventSlug],
   );
   return rows.map((row) => ({
     id: row.id,
     eventSlug: row.event_slug,
     name: row.name,
+    colourKey: row.colour_key ?? undefined,
+    sortOrder: row.sort_order ?? undefined,
+    checkedInCount: row.checked_in_count,
     status: row.status as ScoreTeam["status"],
+  }));
+}
+
+export type CheckedInTeamParticipant = {
+  id: string;
+  publicAlias: string;
+  displayName?: string;
+  ticketSuffix?: string;
+  teamId?: string;
+  teamName?: string;
+  teamColourKey?: TeamColourKey;
+};
+
+export async function listCheckedInTeamParticipants(
+  eventSlug: string,
+): Promise<CheckedInTeamParticipant[]> {
+  const rows = await query<{
+    id: string;
+    generated_alias: string;
+    chosen_alias: string | null;
+    display_name: string | null;
+    holder_name: string | null;
+    ticket_id: string | null;
+    team_id: string | null;
+    team_name: string | null;
+    team_colour_key: TeamColourKey | null;
+  }>(
+    `select participants.id, participants.generated_alias, participants.chosen_alias,
+            participants.display_name, tickets.holder_name, participants.ticket_id,
+            team.team_id, team.team_name, team.team_colour_key
+       from event_participants participants
+       left join tickets on tickets.id = participants.ticket_id
+       left join lateral (
+         select memberships.team_id, teams.name as team_name,
+                teams.colour_key as team_colour_key
+           from score_team_memberships memberships
+           join score_teams teams on teams.id = memberships.team_id
+          where memberships.participant_id = participants.id
+            and memberships.starts_at <= now()
+            and (memberships.ends_at is null or memberships.ends_at > now())
+          order by memberships.starts_at desc limit 1
+       ) team on true
+      where participants.event_slug = $1
+        and participants.status = 'active'
+        and participants.checked_in_at is not null
+      order by team.team_name nulls last,
+               coalesce(participants.display_name, tickets.holder_name,
+                        participants.chosen_alias, participants.generated_alias), participants.id`,
+    [eventSlug],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    publicAlias: row.chosen_alias ?? row.generated_alias,
+    displayName: row.display_name ?? row.holder_name ?? undefined,
+    ticketSuffix: row.ticket_id?.slice(-8),
+    teamId: row.team_id ?? undefined,
+    teamName: row.team_name ?? undefined,
+    teamColourKey: row.team_colour_key ?? undefined,
+  }));
+}
+
+export async function shuffleCheckedInTeams(input: {
+  eventSlug: string;
+  teamCount: number;
+  actorType: "admin" | "staff";
+  actorId: string;
+  assignmentId?: string;
+  deviceId?: string;
+}): Promise<ScoreStoreResult<{ teams: ScoreTeam[]; assignedCount: number }>> {
+  if (!isTeamCount(input.teamCount)) {
+    return { ok: false, status: 400, error: "Choose 2, 3, or 4 teams" };
+  }
+  const teamCount = input.teamCount;
+  const result = await transaction(async (client) => {
+    const event = await client.query<{ slug: string }>(
+      `select slug from events where slug = $1 for update`,
+      [input.eventSlug],
+    );
+    if (!event.rows[0]) return { ok: false as const, status: 404, error: "Event not found" };
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [input.eventSlug]);
+
+    const stored = await client.query<{
+      id: string;
+      name: string;
+      created_at: Date;
+    }>(
+      `select id, name, created_at from score_teams
+        where event_slug = $1
+        order by status = 'active' desc, sort_order nulls last, created_at, id
+        for update`,
+      [input.eventSlug],
+    );
+    const palette = teamPaletteForCount(teamCount);
+    const selected = stored.rows.slice(0, teamCount);
+    while (selected.length < teamCount) {
+      const slot = selected.length;
+      const created = await client.query<{ id: string; name: string; created_at: Date }>(
+        `insert into score_teams (id,event_slug,name,status,colour_key,sort_order)
+         values ($1,$2,$3,'active',$4,$5)
+         returning id,name,created_at`,
+        [id("team"), input.eventSlug, palette[slot]!.defaultName, palette[slot]!.colourKey, slot],
+      );
+      selected.push(created.rows[0]!);
+    }
+    for (const [slot, team] of selected.entries()) {
+      await client.query(
+        `update score_teams
+            set status = 'active', colour_key = $3, sort_order = $4
+          where id = $1 and event_slug = $2`,
+        [team.id, input.eventSlug, palette[slot]!.colourKey, slot],
+      );
+    }
+    const selectedIds = selected.map((team) => team.id);
+    await client.query(
+      `update score_teams set status = 'archived', sort_order = null
+        where event_slug = $1 and not (id = any($2::text[]))`,
+      [input.eventSlug, selectedIds],
+    );
+
+    const participants = await client.query<{ id: string }>(
+      `select id from event_participants
+        where event_slug = $1 and status = 'active' and checked_in_at is not null
+        order by random(), id for update`,
+      [input.eventSlug],
+    );
+    const timestamp = (await client.query<{ at: Date }>(`select clock_timestamp() as at`)).rows[0]!
+      .at;
+    await client.query(
+      `update score_team_memberships memberships
+          set ends_at = $2
+        where memberships.event_slug = $1 and memberships.ends_at is null
+          and memberships.starts_at < $2
+          and exists (
+            select 1 from event_participants participants
+             where participants.id = memberships.participant_id
+               and participants.status = 'active'
+          )`,
+      [input.eventSlug, timestamp],
+    );
+    for (const [index, participant] of participants.rows.entries()) {
+      await client.query(
+        `insert into score_team_memberships
+           (id,event_slug,team_id,participant_id,starts_at)
+         values ($1,$2,$3,$4,$5)`,
+        [
+          id("tm"),
+          input.eventSlug,
+          selectedIds[index % selectedIds.length]!,
+          participant.id,
+          timestamp,
+        ],
+      );
+    }
+    await client.query(
+      `insert into score_audit_events
+         (event_slug,action,actor_type,actor_id,assignment_id,device_id,
+          entity_type,entity_id,metadata)
+       values ($1,'teams.shuffled',$2,$3,$4,$5,'event',$1,$6::jsonb)`,
+      [
+        input.eventSlug,
+        input.actorType,
+        input.actorId,
+        input.assignmentId ?? null,
+        input.deviceId ?? null,
+        JSON.stringify({
+          teamCount,
+          teamIds: selectedIds,
+          assignedCount: participants.rowCount ?? 0,
+        }),
+      ],
+    );
+    return { ok: true as const, assignedCount: participants.rowCount ?? 0 };
+  });
+  if (!result.ok) return result;
+  return {
+    ok: true,
+    value: { teams: await listTeams(input.eventSlug), assignedCount: result.assignedCount },
+  };
+}
+
+export async function listTeamLeaderboardTotals(eventSlug: string) {
+  const rows = await query<{
+    id: string;
+    name: string;
+    colour_key: TeamColourKey | null;
+    points: number;
+  }>(
+    `select teams.id, teams.name, teams.colour_key,
+            coalesce(sum(postings.points) filter (where transactions.status = 'accepted'), 0)::integer as points
+       from score_teams teams
+       left join score_postings postings on postings.team_id = teams.id
+       left join score_transactions transactions on transactions.id = postings.transaction_id
+      where teams.event_slug = $1 and teams.status = 'active'
+      group by teams.id
+      order by points desc, teams.sort_order nulls last, teams.name, teams.id`,
+    [eventSlug],
+  );
+  return rows.map((row, index, all) => ({
+    id: row.id,
+    name: row.name,
+    colourKey: row.colour_key ?? undefined,
+    points: row.points,
+    rank: all.findIndex((candidate) => candidate.points === row.points) + 1 || index + 1,
   }));
 }
 
@@ -144,12 +381,12 @@ export async function participantForTicket(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id, tm.team_name
+            tm.team_id, tm.team_name, tm.team_colour_key
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
-         select m.team_id, t.name as team_name
+         select m.team_id, t.name as team_name, t.colour_key as team_colour_key
            from score_team_memberships m
            left join score_teams t on t.id = m.team_id
           where m.participant_id = p.id
@@ -170,12 +407,12 @@ export async function getParticipant(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id, tm.team_name
+            tm.team_id, tm.team_name, tm.team_colour_key
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
-         select m.team_id, t.name as team_name
+         select m.team_id, t.name as team_name, t.colour_key as team_colour_key
            from score_team_memberships m
            left join score_teams t on t.id = m.team_id
           where m.participant_id = p.id
@@ -196,12 +433,12 @@ export async function listLeaderboardParticipants(
     `select p.*, people.canonical_name, coalesce(sp.balance, 0)::integer as balance,
             coalesce(sp.revision, 0)::bigint as projection_revision,
             sp.last_transaction_at,
-            tm.team_id, tm.team_name
+            tm.team_id, tm.team_name, tm.team_colour_key
        from event_participants p
        left join event_people people on people.id = p.person_id
        left join score_projections sp on sp.participant_id = p.id
        left join lateral (
-         select m.team_id, t.name as team_name
+         select m.team_id, t.name as team_name, t.colour_key as team_colour_key
            from score_team_memberships m
            left join score_teams t on t.id = m.team_id
           where m.participant_id = p.id
@@ -285,6 +522,8 @@ export async function searchEventParticipants(
     checkedIn: boolean;
     teamName?: string;
     email?: string;
+    orderSize: number;
+    orderPoints: number;
   }>
 > {
   const normalized = term.trim();
@@ -294,19 +533,36 @@ export async function searchEventParticipants(
     generated_alias: string;
     chosen_alias: string | null;
     display_name: string | null;
+    holder_name: string | null;
     ticket_id: string | null;
     balance: number;
     checked_in_at: Date | null;
     team_name: string | null;
     email: string | null;
+    order_size: number;
+    order_points: number;
   }>(
     `select participants.id, participants.generated_alias, participants.chosen_alias,
-            participants.display_name,
+            participants.display_name, tickets.holder_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
-            participants.checked_in_at, team.team_name, tickets.email
+            participants.checked_in_at, team.team_name, tickets.email,
+            coalesce(ticket_order.size, 1)::integer as order_size,
+            coalesce(ticket_order.points, coalesce(projections.balance, 0))::integer as order_points
        from event_participants participants
        left join score_projections projections on projections.participant_id = participants.id
        left join tickets on tickets.id = participants.ticket_id
+       left join lateral (
+         select count(*)::integer as size,
+                coalesce(sum(order_projection.balance), 0)::integer as points
+           from tickets order_ticket
+           join event_participants order_participant on order_participant.ticket_id = order_ticket.id
+           left join score_projections order_projection
+             on order_projection.participant_id = order_participant.id
+          where order_ticket.order_id = tickets.order_id
+            and order_ticket.event_slug = participants.event_slug
+            and order_ticket.status = 'valid'
+            and order_participant.status = 'active'
+       ) ticket_order on true
        left join lateral (
          select score_teams.name as team_name
            from score_team_memberships membership
@@ -322,13 +578,15 @@ export async function searchEventParticipants(
           participants.generated_alias ilike '%' || $2 || '%'
           or coalesce(participants.chosen_alias, '') ilike '%' || $2 || '%'
           or coalesce(participants.display_name, '') ilike '%' || $2 || '%'
+          or coalesce(tickets.holder_name, '') ilike '%' || $2 || '%'
           or right(coalesce(participants.ticket_id, ''), 8) ilike '%' || $2 || '%'
         )
       order by
-        case when lower(coalesce(participants.display_name, participants.chosen_alias,
+        case when lower(coalesce(participants.display_name, tickets.holder_name,
+                                 participants.chosen_alias,
                                  participants.generated_alias)) = lower($2)
           then 0 else 1 end,
-        coalesce(participants.display_name, participants.chosen_alias,
+        coalesce(participants.display_name, tickets.holder_name, participants.chosen_alias,
                  participants.generated_alias), participants.id
       limit $3`,
     [eventSlug, normalized, Math.min(Math.max(limit, 1), 30)],
@@ -336,11 +594,58 @@ export async function searchEventParticipants(
   return rows.map((row) => ({
     id: row.id,
     publicAlias: row.chosen_alias ?? row.generated_alias,
-    displayName: row.display_name ?? undefined,
+    displayName: row.display_name ?? row.holder_name ?? undefined,
     ticketSuffix: row.ticket_id?.slice(-8),
     balance: row.balance,
     checkedIn: row.checked_in_at !== null,
     teamName: row.team_name ?? undefined,
     email: includeEmail ? (row.email ?? undefined) : undefined,
+    orderSize: row.order_size,
+    orderPoints: row.order_points,
   }));
+}
+
+export async function participantIdsInTicketOrder(
+  eventSlug: string,
+  participantId: string,
+): Promise<string[]> {
+  const rows = await query<{ id: string }>(
+    `select order_participant.id
+       from event_participants selected_participant
+       join tickets selected_ticket on selected_ticket.id = selected_participant.ticket_id
+       join tickets order_ticket on order_ticket.order_id = selected_ticket.order_id
+       join event_participants order_participant on order_participant.ticket_id = order_ticket.id
+      where selected_participant.id = $1
+        and selected_participant.event_slug = $2
+        and order_participant.event_slug = $2
+        and order_ticket.event_slug = $2
+        and order_participant.status = 'active'
+        and order_ticket.status = 'valid'
+      order by order_ticket.issued_at, order_ticket.id`,
+    [participantId, eventSlug],
+  );
+  return rows.map((row) => row.id);
+}
+
+export async function ticketOrderSummaryForParticipant(
+  eventSlug: string,
+  participantId: string,
+): Promise<{ orderSize: number; orderPoints: number }> {
+  const row = await queryOne<{ order_size: number; order_points: number }>(
+    `select count(*)::integer as order_size,
+            coalesce(sum(order_projection.balance), 0)::integer as order_points
+       from event_participants selected_participant
+       join tickets selected_ticket on selected_ticket.id = selected_participant.ticket_id
+       join tickets order_ticket on order_ticket.order_id = selected_ticket.order_id
+       join event_participants order_participant on order_participant.ticket_id = order_ticket.id
+       left join score_projections order_projection
+         on order_projection.participant_id = order_participant.id
+      where selected_participant.id = $1
+        and selected_participant.event_slug = $2
+        and order_ticket.event_slug = $2
+        and order_participant.status = 'active'
+        and order_ticket.status = 'valid'`,
+    [participantId, eventSlug],
+  );
+  return { orderSize: row?.order_size ?? 1, orderPoints: row?.order_points ?? 0 };
 }

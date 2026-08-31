@@ -86,7 +86,7 @@ export async function listHeldScoreTransactions(eventSlug: string): Promise<Scor
 
 export async function listScoreNotifications(
   participantId: string,
-  options: { undeliveredOnly?: boolean; limit?: number } = {},
+  options: { undeliveredOnly?: boolean; transactionId?: string; limit?: number } = {},
 ): Promise<ScoreNotification[]> {
   const rows = await query<{
     id: string;
@@ -105,11 +105,13 @@ export async function listScoreNotifications(
        join score_transactions transactions on transactions.id = notifications.transaction_id
       where notifications.participant_id = $1
         and ($2 = false or notifications.delivered_at is null)
+        and ($3::text is null or notifications.transaction_id = $3)
       order by notifications.created_at, notifications.id
-      limit $3`,
+      limit $4`,
     [
       participantId,
       options.undeliveredOnly === true,
+      options.transactionId ?? null,
       Math.min(Math.max(options.limit ?? 50, 1), 100),
     ],
   );
@@ -125,13 +127,16 @@ export async function listScoreNotifications(
   }));
 }
 
-export async function markScoreNotificationsDelivered(notificationIds: string[]): Promise<number> {
+export async function markScoreNotificationsDelivered(
+  participantId: string,
+  notificationIds: string[],
+): Promise<number> {
   if (notificationIds.length === 0) return 0;
   const rows = await query<{ id: string }>(
     `update score_notifications set delivered_at = coalesce(delivered_at, now())
-      where id = any($1::text[])
+      where participant_id = $1 and id = any($2::text[])
       returning id`,
-    [notificationIds.slice(0, 100)],
+    [participantId, notificationIds.slice(0, 100)],
   );
   return rows.length;
 }

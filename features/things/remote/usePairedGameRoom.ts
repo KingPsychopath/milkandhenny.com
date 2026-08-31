@@ -262,7 +262,9 @@ export function usePairedGameRoom(
           setMessage(result.error ?? "Remote room ended. Local play continues.");
           setRoom(null);
           setJudgeConnected(false);
-          if (!initialSession) sessionStorage.removeItem(storageKey(game));
+          if (initialSession)
+            sessionStorage.removeItem(remoteBrowserKeys.playerSession(initialSession.roomId));
+          else sessionStorage.removeItem(storageKey(game));
           return;
         }
         setJudgeConnected(result.judgeConnected);

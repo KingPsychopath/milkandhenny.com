@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -30,9 +30,12 @@ import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAc
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
-  releaseGamePoolMembership,
+  clearUnavailableGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
@@ -56,9 +59,13 @@ export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
     <DrawCountryRoom
       roomId={roomId}
       credentials={credentials}
+      onUnavailable={() => {
+        localStorage.removeItem(drawCountryBrowserKeys.playerSession(roomId));
+        void clearUnavailableGamePoolMembership("draw-country", roomId);
+      }}
       onLeft={() => {
         localStorage.removeItem(drawCountryBrowserKeys.playerSession(roomId));
-        void releaseGamePoolMembership("draw-country", roomId).then((entrance) => {
+        void leaveGamePoolRoom("draw-country", roomId).then((entrance) => {
           if (entrance) window.location.assign(entrance);
           else void navigate({ to: "/things/draw-country" });
         });
@@ -111,10 +118,12 @@ function DrawCountryRoom({
   roomId,
   credentials,
   onLeft,
+  onUnavailable,
 }: {
   roomId: string;
   credentials: DrawCountryPlayerCredentials;
   onLeft: () => void;
+  onUnavailable?: () => void;
 }) {
   const live = useDrawCountryRoom({
     roomId,
@@ -123,6 +132,11 @@ function DrawCountryRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended || snapshot?.phase === "closed",
+    onUnavailable,
+  });
   useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
@@ -247,6 +261,7 @@ function DrawCountryRoom({
         drawing,
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
+      if (!result.ok && result.errorCode === "room_unavailable") markUnavailable();
       if (!result.ok || !result.accepted) live.setMessage(result.error);
       live.notify();
       void live.refresh();
@@ -278,6 +293,7 @@ function DrawCountryRoom({
       | { type: "game.replay" }
       | { type: "game.lobby" }
       | { type: "readiness.set"; ready: boolean }
+      | { type: "room.admission.set"; locked: boolean }
       | { type: "player.leave" }
       | { type: "player.rename"; name: string }
       | { type: "host.pass"; playerId: string },
@@ -285,6 +301,8 @@ function DrawCountryRoom({
     try {
       const result = await dispatchAction(action);
       if (result.snapshot) live.setSnapshot(result.snapshot);
+      if (!result.ok && result.errorCode === "room_unavailable" && action.type !== "player.leave")
+        markUnavailable();
       if (!result.ok || !result.accepted) {
         live.setMessage(result.error);
         if (result.ok && result.errorCode === "players_not_ready" && result.snapshot) {
@@ -348,23 +366,14 @@ function DrawCountryRoom({
     }
   };
 
-  if (live.ended || !snapshot || snapshot.phase === "closed")
+  if (roomUnavailable)
     return (
       <div className="things-game things-game--cream text-black">
-        <main id="main" className="m-auto max-w-md px-6 text-center">
-          <h1 className="font-serif text-4xl font-semibold">The room has gone quiet.</h1>
-          <p className="mt-4 text-black/55">
-            {live.message ?? "This room is no longer available."}
-          </p>
-          <Link
-            to="/things/draw-country"
-            className="mt-7 inline-flex min-h-12 items-center rounded-full bg-black px-6 font-mono text-xs text-white"
-          >
-            back to the game
-          </Link>
-        </main>
+        <RoomUnavailableState gameName="draw the country" gamePath="/things/draw-country" />
       </div>
     );
+
+  if (!snapshot) return <div className="things-game things-game--cream" aria-busy="true" />;
 
   if (snapshot.phase === "lobby")
     return (
@@ -377,6 +386,7 @@ function DrawCountryRoom({
           onReadyChange={(ready) => void control({ type: "readiness.set", ready })}
           onStart={() => void control({ type: "game.start" })}
           onPassLead={(playerId) => void control({ type: "host.pass", playerId })}
+          onAdmissionChange={(locked) => void control({ type: "room.admission.set", locked })}
           onRename={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";

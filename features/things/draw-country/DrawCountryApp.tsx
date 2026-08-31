@@ -208,7 +208,7 @@ export function DrawCountryApp({
             </GameLaunchButton>
             {defaultPool && online ? (
               <GamePoolDefaultLaunch pool={defaultPool} tone="light" emphasis="secondary">
-                find a room
+                play together
               </GamePoolDefaultLaunch>
             ) : null}
           </div>
@@ -230,22 +230,26 @@ export function DrawCountryApp({
             >
               solo rounds
             </button>
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "friends" ? null : "friends")}
-              aria-pressed={panel === "friends"}
-              className="min-h-11"
-            >
-              multiplayer rounds
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "join" ? null : "join")}
-              aria-pressed={panel === "join"}
-              className="min-h-11"
-            >
-              join by code
-            </button>
+            {!defaultPool ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPanel(panel === "friends" ? null : "friends")}
+                  aria-pressed={panel === "friends"}
+                  className="min-h-11"
+                >
+                  play together
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanel(panel === "join" ? null : "join")}
+                  aria-pressed={panel === "join"}
+                  className="min-h-11"
+                >
+                  enter a room code
+                </button>
+              </>
+            ) : null}
           </GameLaunchChoices>
         </GameLaunch>
 
@@ -345,7 +349,7 @@ export function DrawCountryApp({
                   disabled={creating}
                   className="min-h-12 rounded-full bg-black px-6 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white disabled:opacity-40 sm:col-span-3"
                 >
-                  {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
+                  {creating ? "making room…" : "create room"}
                 </button>
               </form>
             )}

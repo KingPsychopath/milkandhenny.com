@@ -13,6 +13,7 @@ import {
 import type { Thing } from "@/features/things/catalog";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { ThingsConcierge } from "@/features/things/shared/ThingsConcierge";
+import { ThingsReportFooter } from "@/features/things/shared/ThingsReportFooter";
 
 function ThingMark({ mark }: { mark: Thing["mark"] }) {
   if (mark.kind === "symbol") return mark.value;
@@ -29,6 +30,17 @@ function ThingMark({ mark }: { mark: Thing["mark"] }) {
           d="M8.5 7.1c.2 1.5 1 2.4 2.4 2.7m8.6-2.7c-.2 1.5-1 2.4-2.4 2.7M6.3 12.4c1.4-.1 2.5.5 3.1 1.7m12.3-1.7c-1.4-.1-2.5.5-3.1 1.7m-9.7 4.5c.7-1.1 1.7-1.7 3-1.7m7.2 1.7c-.7-1.1-1.7-1.7-3-1.7"
           strokeLinecap="round"
         />
+      </svg>
+    );
+  }
+
+  if (mark.value === "feud") {
+    return (
+      <svg viewBox="0 0 28 28" className="size-7 fill-none stroke-current" strokeWidth="1.6">
+        <rect x="4" y="4.5" width="20" height="15" rx="2.5" />
+        <path d="M8 9h8m-8 3h12m-12 3h10" strokeLinecap="round" />
+        <circle cx="20.5" cy="8.5" r="1" className="fill-current stroke-none" />
+        <path d="M11 23.5h6m-3-4v4" strokeLinecap="round" />
       </svg>
     );
   }
@@ -99,7 +111,13 @@ function ThingsRoute() {
     });
   }, [query]);
 
-  if (!isIndex) return <Outlet />;
+  if (!isIndex)
+    return (
+      <>
+        <Outlet />
+        <ThingsReportFooter />
+      </>
+    );
 
   return (
     <div className="min-h-screen bg-background">

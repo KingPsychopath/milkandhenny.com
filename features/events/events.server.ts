@@ -1,6 +1,7 @@
 import { log } from "@/lib/platform/logger.server";
 import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
 import {
+  isEventArrivalExperience,
   isEventHeroHeight,
   isEventStatus,
   isPubliclyVisible,
@@ -355,6 +356,9 @@ export function normaliseEventInput(
           : (existing?.transferable ?? false),
       terms: optionalText(input, "terms", MAX_TEXT, existing?.terms),
       checkInOpensAt: optionalInstant(input, "checkInOpensAt", existing?.checkInOpensAt),
+      arrivalExperience: isEventArrivalExperience(input.arrivalExperience)
+        ? input.arrivalExperience
+        : (existing?.arrivalExperience ?? "none"),
       staffNotes: optionalText(input, "staffNotes", MAX_TEXT, existing?.staffNotes),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

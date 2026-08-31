@@ -148,8 +148,8 @@ export function pairingPayload(player: IcebreakerPlayer) {
   return `MH1-${pairingCode(player)}`;
 }
 
-export function pairingUrl(origin: string, player: IcebreakerPlayer) {
-  return buildAppUrl(origin, "/things/icebreaker", {
+export function pairingUrl(origin: string, player: IcebreakerPlayer, path = "/things/icebreaker") {
+  return buildAppUrl(origin, path, {
     fragment: { pair: pairingPayload(player) },
   });
 }

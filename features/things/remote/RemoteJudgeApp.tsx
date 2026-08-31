@@ -358,7 +358,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
 
   const gameKind = snapshot?.game ?? tokens.game;
   const gameName =
-    gameKind === "spelling-bee" ? "Spelling Bee" : gameKind === "heads-up" ? "Forehead" : "game";
+    gameKind === "spelling-bee" ? "Spelling Bee" : gameKind === "heads-up" ? "Heads Up" : "game";
   const decisionLabels = useMemo(
     () =>
       snapshot?.game === "spelling-bee"

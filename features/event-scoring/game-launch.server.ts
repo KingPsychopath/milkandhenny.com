@@ -27,6 +27,8 @@ import { query } from "@/lib/platform/postgres.server";
 import {
   activateGameScoreBinding,
   createGameScoreBinding,
+  getOrCreateManagedGamePlayerLink,
+  getOrCreateManagedGameScoreBinding,
   ingestOfficialGameResult,
   linkGamePlayer,
   processOfficialGameResult,
@@ -579,21 +581,17 @@ export async function confirmManagedEventGameResult(
   );
   if (existing[0])
     return { ok: true as const, value: await processOfficialGameResult(existing[0].id) };
-  const binding = await createGameScoreBinding({
+  const binding = await getOrCreateManagedGameScoreBinding({
     eventSlug: input.eventSlug,
     activityId: input.activityId,
     gameKind: input.kind,
+    gameInstanceId: input.gameInstanceId,
     acceptedScope: input.kind === "pitches" ? "game" : "round",
   });
   if (!binding.ok) return binding;
   const channelId = binding.value.channelId;
-  const activated = await activateGameScoreBinding({
-    channelId,
-    gameInstanceId: input.gameInstanceId,
-  });
-  if (!activated.ok) return activated;
   for (const player of result.players) {
-    const linked = await linkGamePlayer({
+    const linked = await getOrCreateManagedGamePlayerLink({
       channelId,
       gamePlayerId: player.playerId,
       participantId: player.playerId,
@@ -604,6 +602,7 @@ export async function confirmManagedEventGameResult(
     sealOfficialGameResult({
       channelId,
       revision: 1,
+      committedAt: binding.value.committedAt,
       result: {
         gameKind: input.kind,
         gameInstanceId: input.gameInstanceId,

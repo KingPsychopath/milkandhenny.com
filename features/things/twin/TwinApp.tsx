@@ -23,6 +23,7 @@ import { TwinDuelApp } from "./TwinDuelApp";
 import { useNetworkAvailability } from "../shared/useNetworkAvailability";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
 import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function TwinApp({
   defaultPool,
@@ -42,6 +43,7 @@ export function TwinApp({
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [panel, setPanel] = useState<"friends" | "join" | null>(null);
+  useSafeGameNavigation(!initialBoard);
 
   if (initialBoard)
     return (
@@ -116,8 +118,8 @@ export function TwinApp({
         <GameLaunch
           tone="night"
           eyebrow="spot it first"
-          title="Every two cards share exactly one symbol."
-          description="Find it before anyone else, put your card down, and empty your hand."
+          title="Spot the twin."
+          description="Every pair shares one symbol. Find it, tap it, and lose your cards first."
         >
           {/*
             The face-off is the default because it is the best version of the game and needs nothing —
@@ -133,11 +135,11 @@ export function TwinApp({
                 void haptics.trigger("selection");
               }}
             >
-              two of you, one screen
+              two players · one screen
             </GameLaunchButton>
             {defaultPool && online ? (
               <GamePoolDefaultLaunch pool={defaultPool} emphasis="secondary">
-                find a room
+                play together
               </GamePoolDefaultLaunch>
             ) : null}
           </div>
@@ -158,24 +160,28 @@ export function TwinApp({
               }}
               className="min-h-11"
             >
-              on your own
+              solo practice
             </button>
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "friends" ? null : "friends")}
-              aria-pressed={panel === "friends"}
-              className="min-h-11"
-            >
-              everyone on their own phone
-            </button>
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "join" ? null : "join")}
-              aria-pressed={panel === "join"}
-              className="min-h-11"
-            >
-              join by code
-            </button>
+            {!defaultPool ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPanel(panel === "friends" ? null : "friends")}
+                  aria-pressed={panel === "friends"}
+                  className="min-h-11"
+                >
+                  play together
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanel(panel === "join" ? null : "join")}
+                  aria-pressed={panel === "join"}
+                  className="min-h-11"
+                >
+                  enter a room code
+                </button>
+              </>
+            ) : null}
           </GameLaunchChoices>
         </GameLaunch>
 
@@ -231,7 +237,7 @@ export function TwinApp({
                   />
                 </label>
                 <button type="submit" disabled={creating} className="twin-button twin-button--go">
-                  {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
+                  {creating ? "making room…" : "create room"}
                 </button>
               </form>
             )}

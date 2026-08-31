@@ -31,6 +31,8 @@ import {
 import type { FamilyFeudClaimDisplay, FamilyFeudControllerAction, FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
 import { useFamilyFeudCountdown } from "./useFamilyFeudCountdown";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 interface ControllerSession {
   controllerToken: string;
@@ -177,6 +179,17 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     credential: session?.controllerToken ?? "",
   });
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended,
+    onUnavailable: () => {
+      removeStorageKeys(sessionStorage, [familyFeudBrowserKeys.controllerSession(roomId)]);
+      removeStorageKeys(localStorage, [
+        familyFeudBrowserKeys.controllerSession(roomId),
+        familyFeudBrowserKeys.controllerPairing(roomId),
+      ]);
+    },
+  });
   const setLiveSnapshot = live.setSnapshot;
   const notifyLiveRoom = live.notify;
   const dispatchControllerAction = useReliableMultiplayerAction(
@@ -200,8 +213,10 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
       try {
         const result = await dispatchControllerAction(action);
         if (result.snapshot) setLiveSnapshot(result.snapshot);
-        if (!result.accepted) setMessage(result.error ?? "That action is not ready.");
-        else notifyLiveRoom();
+        if (!result.accepted) {
+          if (result.errorCode === "room_unavailable") markUnavailable();
+          else setMessage(result.error ?? "That action is not ready.");
+        } else notifyLiveRoom();
         return result;
       } catch {
         setMessage("Reconnecting… try that once more.");
@@ -211,7 +226,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         setBusy(false);
       }
     },
-    [dispatchControllerAction, notifyLiveRoom, session, setLiveSnapshot],
+    [dispatchControllerAction, markUnavailable, notifyLiveRoom, session, setLiveSnapshot],
   );
   const buzzerInvites = useMemo(() => {
     if (!session || !snapshot || typeof location === "undefined") return null;
@@ -307,6 +322,12 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           <p className="mt-4 text-white/55">{pairingError}</p>
           <p className="mt-7 font-mono text-xs text-white/40">Room {roomId}</p>
         </main>
+      </div>
+    );
+  if (roomUnavailable)
+    return (
+      <div className="things-game things-game--night text-white">
+        <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
       </div>
     );
   if (!snapshot)

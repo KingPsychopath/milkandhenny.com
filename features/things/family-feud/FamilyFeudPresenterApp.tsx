@@ -18,6 +18,7 @@ import { FAMILY_FEUD_PHASE_LABELS } from "./family-feud-rules";
 import type { FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
 import { useFamilyFeudCountdown } from "./useFamilyFeudCountdown";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
 
 interface PresenterSession {
   presenterToken: string;
@@ -148,6 +149,11 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
     snapshot?.round?.paused,
     snapshot?.round?.phaseEndsAt,
   ]);
+  useEffect(() => {
+    if (!live.ended) return;
+    removeStorageKeys(sessionStorage, [familyFeudBrowserKeys.presenterSession(roomId)]);
+    removeStorageKeys(localStorage, [familyFeudBrowserKeys.presenterRecovery(roomId)]);
+  }, [live.ended, roomId]);
 
   if (!ready) return <div className="things-game things-game--night" aria-busy="true" />;
   if (!session)
@@ -165,6 +171,12 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
             return to setup
           </Link>
         </main>
+      </div>
+    );
+  if (live.ended)
+    return (
+      <div className="things-game things-game--night text-white">
+        <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
       </div>
     );
   if (!snapshot)

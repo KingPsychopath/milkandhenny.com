@@ -18,7 +18,7 @@ const MAX_CARD_LENGTH = 80;
 export function parseDeckText(value: string) {
   const lines = value
     .split(/\r?\n/)
-    .filter((line) => !/^\s*forehead deck:/i.test(line))
+    .filter((line) => !/^\s*(?:heads up|forehead) deck:/i.test(line))
     .map((line) =>
       line
         .trim()
@@ -43,14 +43,14 @@ export function parseDeckText(value: string) {
 export function deckNameFromText(value: string) {
   return (
     value
-      .match(/^\s*forehead deck:\s*(.+)$/im)?.[1]
+      .match(/^\s*(?:heads up|forehead) deck:\s*(.+)$/im)?.[1]
       ?.trim()
       .slice(0, 50) ?? null
   );
 }
 
 export function formatDeckText(deck: Pick<CustomDeck, "name" | "cards">) {
-  return [`Forehead deck: ${deck.name}`, "", ...deck.cards].join("\n");
+  return [`Heads Up deck: ${deck.name}`, "", ...deck.cards].join("\n");
 }
 
 export function customDeckAsGameDeck(deck: CustomDeck): GameDeck {

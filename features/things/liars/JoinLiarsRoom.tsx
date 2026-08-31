@@ -7,6 +7,7 @@ import { joinLiarsRoomFn } from "./liars-room.functions";
 import { captureLiarsInvite } from "./invite.client";
 import type { LiarsPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinLiarsRoom({
   roomId,
@@ -15,6 +16,7 @@ export function JoinLiarsRoom({
   roomId: string;
   onJoined: (credentials: LiarsPlayerCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(LIARS_MAX_NAME_LENGTH);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -63,11 +65,7 @@ export function JoinLiarsRoom({
   return (
     <GameShell tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
-        <ThingsRoomHeader
-          tone="night"
-          back={<Link to="/things/liars">← liars</Link>}
-          roomId={roomId}
-        />
+        <ThingsRoomHeader tone="night" back={<Link to="/things">← games</Link>} roomId={roomId} />
         <main
           id="main"
           className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"

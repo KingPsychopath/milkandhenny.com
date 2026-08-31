@@ -113,6 +113,7 @@ export interface CentreGameState {
   gameNumber: number;
   joinHash: string;
   hostPlayerId: string;
+  joinLocked?: boolean;
   processedActions: string[];
   players: PlayerState[];
   course: CourseState | null;
@@ -336,6 +337,7 @@ function snapshot(room: RoomState, playerId: string, now = Date.now()): CentreSn
     gameNumber: room.gameNumber,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    joinLocked: room.joinLocked === true,
     delayedRivals: room.delayedRivals,
     difficulty: room.difficulty,
     players: room.players.map((candidate) => ({
@@ -516,6 +518,7 @@ export async function joinCentreRoom(input: {
         snapshot: snapshot(room, joining.player.id),
       } satisfies CentrePlayerCredentials & { ok: true };
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This race has started");
+    if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
     if (activePlayers(room).length >= MAX_PLAYERS)
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
@@ -816,6 +819,20 @@ export async function applyCentreAction(
         player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
       if (!canControl)
         return rejection(room, player.id, "The host controls the race", "action_unavailable");
+      if (action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return rejection(
+            room,
+            player.id,
+            "The room only locks in the lobby",
+            "action_unavailable",
+          );
+        if (room.joinLocked !== action.locked) {
+          room.joinLocked = action.locked;
+          changed(room, now);
+        }
+        return accept(player.id);
+      }
       if (action.type === "host.pass") {
         const target = activePlayers(room).find(({ id }) => id === action.playerId);
         if (!target)

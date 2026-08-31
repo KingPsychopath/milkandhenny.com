@@ -12,8 +12,9 @@ import {
   shouldRetryScoreResponse,
   type ScoreSnapshot,
 } from "@/features/event-scoring/client-sync";
+import { subscribeScoreStream } from "@/features/event-scoring/score-event-stream";
 
-const NORMAL_REFRESH_MS = 30_000;
+const NORMAL_REFRESH_MS = 5_000;
 const MINIMUM_FETCH_GAP_MS = 5_000;
 const LEASE_MS = 12_000;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -53,7 +54,7 @@ export function ScoreSyncStatus({
   snapshotRef.current = snapshot;
   const { eventSlug, participantId } = snapshot;
   useEffect(() => {
-    rememberScoreSession();
+    rememberScoreSession({ eventSlug, ticketId });
     setOnline(navigator.onLine);
     const store = new EventScoringClientStore();
     const initial = snapshotRef.current;
@@ -90,12 +91,14 @@ export function ScoreSyncStatus({
         if (!response.ok) throw new Error(`Score refresh failed (${response.status})`);
         const body: unknown = await response.json();
         if (!isScoreSyncResponse(body)) throw new Error("Score refresh returned invalid data");
+        const previousRevision = current.revision;
         const incoming = scoreSnapshotFromResponse(eventSlug, body);
         current = reconcileSnapshot(current, incoming);
         attempts = 0;
         setOnline(true);
         await store.saveSnapshot(current).catch(() => undefined);
         onSnapshotRef.current?.(current);
+        if (current.revision > previousRevision) window.dispatchEvent(new Event("mah-score-wake"));
         schedule();
       } catch {
         if (!active) return;
@@ -116,6 +119,9 @@ export function ScoreSyncStatus({
     };
     const wake = () => void refresh();
     const unsubscribe = store.subscribe(wake);
+    const unsubscribeStream = subscribeScoreStream(ticketId, (event) => {
+      if (event.kind !== "unavailable") void refresh(true);
+    });
     window.addEventListener("online", updateNetwork);
     window.addEventListener("offline", updateNetwork);
     window.addEventListener("mah-score-wake", wake);
@@ -126,6 +132,7 @@ export function ScoreSyncStatus({
       clearTimeout(timer);
       requestDeadline?.abort();
       unsubscribe();
+      unsubscribeStream();
       window.removeEventListener("online", updateNetwork);
       window.removeEventListener("offline", updateNetwork);
       window.removeEventListener("mah-score-wake", wake);
@@ -139,5 +146,10 @@ export function ScoreSyncStatus({
       store.close();
     };
   }, [eventSlug, participantId, ticketId]);
-  return <span>{online ? "synchronized" : "offline - showing last confirmed score"}</span>;
+  return (
+    <span className={online ? "text-[var(--status-positive)]" : "text-[var(--status-attention)]"}>
+      <span aria-hidden="true">● </span>
+      {online ? "synchronized" : "offline — showing last confirmed score"}
+    </span>
+  );
 }

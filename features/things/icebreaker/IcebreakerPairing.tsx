@@ -13,7 +13,9 @@ interface IcebreakerPairingProps {
   initialPartner?: IcebreakerPlayer | null;
   initialError?: string | null;
   onClose: () => void;
-  onEncounter: (partner: IcebreakerPlayer) => EncounterOutcome;
+  onEncounter: (partner: IcebreakerPlayer) => EncounterOutcome | Promise<EncounterOutcome>;
+  pairingPath?: string;
+  persistenceLabel?: string;
 }
 
 interface PairingDisplay {
@@ -28,7 +30,8 @@ function PairingResultView({
   onShowCode,
   onPairAgain,
   onClose,
-}: Pick<IcebreakerPairingProps, "player" | "onClose"> & {
+  persistenceLabel,
+}: Pick<IcebreakerPairingProps, "player" | "onClose" | "persistenceLabel"> & {
   display: PairingDisplay;
   onShowCode: () => void;
   onPairAgain: () => void;
@@ -67,9 +70,9 @@ function PairingResultView({
       </p>
       <p className="mt-4 font-mono text-xs text-white/55">
         {!display.persisted
-          ? "saved for this visit · device storage is unavailable"
+          ? "saved for this visit · sync is unavailable"
           : status === "new"
-            ? "✓ saved on this device"
+            ? `✓ ${persistenceLabel ?? "saved on this device"}`
             : "✓ no duplicate added"}
       </p>
       <div className="mt-6 rounded-3xl bg-white/[0.08] p-6 text-left">
@@ -114,6 +117,8 @@ export function IcebreakerPairing({
   initialError = null,
   onClose,
   onEncounter,
+  pairingPath,
+  persistenceLabel,
 }: IcebreakerPairingProps) {
   const [view, setView] = useState<"choose" | "scan" | "show">("choose");
   const [display, setDisplay] = useState<PairingDisplay | null>(null);
@@ -121,8 +126,19 @@ export function IcebreakerPairing({
   const consumedInitialPartner = useRef(false);
 
   const handlePartner = useCallback(
-    (partner: IcebreakerPlayer) => {
-      const outcome = onEncounter(partner);
+    async (partner: IcebreakerPlayer) => {
+      let outcome: EncounterOutcome;
+      try {
+        outcome = await onEncounter(partner);
+      } catch (encounterError) {
+        setError(
+          encounterError instanceof Error
+            ? encounterError.message
+            : "That pairing could not be saved. Try once more.",
+        );
+        setView("choose");
+        return;
+      }
       if (outcome.status === "self" || !outcome.encounter) {
         setError("That's your own code. Scan the code on the other phone.");
         setView("choose");
@@ -151,6 +167,7 @@ export function IcebreakerPairing({
       <IcebreakerPairingCode
         player={player}
         returningToResult={Boolean(display)}
+        pairingPath={pairingPath}
         onScan={() => setView("scan")}
         onBack={() => (display ? setView("choose") : onClose())}
       />
@@ -162,6 +179,7 @@ export function IcebreakerPairing({
       <PairingResultView
         player={player}
         display={display}
+        persistenceLabel={persistenceLabel}
         onShowCode={() => setView("show")}
         onPairAgain={() => {
           setDisplay(null);

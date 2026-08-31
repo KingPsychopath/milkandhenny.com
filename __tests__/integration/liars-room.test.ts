@@ -160,6 +160,32 @@ async function startedGame(names = NAMES.slice(0, 9)) {
 }
 
 describe("liars rooms — official results", () => {
+  it("lets the room creator close and reopen admission", async () => {
+    const created = await createLiarsRoom({ mode: "mafia", roomMode: "same-room" });
+    const locked = await host(created.roomId, created.hostToken, {
+      type: "room.admission.set",
+      locked: true,
+    });
+    expect(locked).toMatchObject({ accepted: true, snapshot: { joinLocked: true } });
+    await expect(
+      joinLiarsRoom({
+        roomId: created.roomId,
+        joinToken: created.joinToken,
+        name: "Maya",
+        joinId: `${created.roomId}-locked`,
+      }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+    await host(created.roomId, created.hostToken, { type: "room.admission.set", locked: false });
+    await expect(
+      joinLiarsRoom({
+        roomId: created.roomId,
+        joinToken: created.joinToken,
+        name: "Maya",
+        joinId: `${created.roomId}-open`,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("publishes each event-linked game once with a replay-safe result id", async () => {
     const created = await room("imposter", NAMES.slice(0, 6), undefined, "gsc_liars_event");
     await host(created.roomId, created.hostToken, { type: "game.start" });

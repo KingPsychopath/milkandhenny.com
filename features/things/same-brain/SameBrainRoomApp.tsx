@@ -38,12 +38,15 @@ import type { SameBrainPlayerCredentials, SameBrainSnapshot } from "./types";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import {
+  clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
-  releaseGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function SameBrainRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<SameBrainPlayerCredentials | null>(null);
@@ -76,7 +79,16 @@ export function SameBrainRoomApp({ roomId }: { roomId: string }) {
       />
     );
 
-  return <SameBrainRoom key={credentials.playerId} credentials={credentials} />;
+  return (
+    <SameBrainRoom
+      key={credentials.playerId}
+      credentials={credentials}
+      onUnavailable={() => {
+        removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)]);
+        void clearUnavailableGamePoolMembership("same-brain", roomId);
+      }}
+    />
+  );
 }
 
 /**
@@ -84,7 +96,13 @@ export function SameBrainRoomApp({ roomId }: { roomId: string }) {
  * table's worth of them side by side and be looking at exactly what a player looks at, rather than
  * at a debug view that drifts from the real thing.
  */
-export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCredentials }) {
+export function SameBrainRoom({
+  credentials,
+  onUnavailable,
+}: {
+  credentials: SameBrainPlayerCredentials;
+  onUnavailable?: () => void;
+}) {
   const { roomId, playerId, playerToken } = credentials;
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useSameBrainRoom({
@@ -94,6 +112,11 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = room.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: room.ended,
+    onUnavailable,
+  });
   useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "ending");
   const roomExpiry = snapshot?.expiresAt;
   useEffect(() => {
@@ -147,12 +170,19 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
         if (
+          !result.accepted &&
+          "errorCode" in result &&
+          result.errorCode === "room_unavailable" &&
+          action.type !== "room.leave"
+        )
+          markUnavailable();
+        if (
           action.type === "room.leave" &&
           (result.accepted ||
             (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
         ) {
           removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)]);
-          const entrance = await releaseGamePoolMembership("same-brain", roomId);
+          const entrance = await leaveGamePoolRoom("same-brain", roomId);
           window.location.assign(entrance ?? "/things/same-brain");
           return;
         }
@@ -164,7 +194,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         busyRef.current = false;
       }
     },
-    [dispatchPlayerAction, room, roomId],
+    [dispatchPlayerAction, markUnavailable, room, roomId],
   );
 
   const sendHost = useCallback(
@@ -175,6 +205,8 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         const result = await dispatchHostAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
+        if (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable")
+          markUnavailable();
         if (result.accepted) room.notify();
       } catch {
         room.setMessage("That did not go through. Try again.");
@@ -182,7 +214,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         busyRef.current = false;
       }
     },
-    [dispatchHostAction, room],
+    [dispatchHostAction, markUnavailable, room],
   );
 
   /**
@@ -194,26 +226,10 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
    * longer exists, so keeping them would make the door unopenable next time rather than offering a
    * fresh join.
    */
-  if (room.ended)
+  if (roomUnavailable)
     return (
       <GameShell tone="night">
-        <div className="flex min-h-svh items-center justify-center px-6 text-center text-white">
-          <div>
-            <h1 className="font-serif text-4xl font-semibold">The room has gone quiet.</h1>
-            <p className="mt-4 font-serif text-lg text-white/60">
-              {room.message ?? "This room is no longer available."}
-            </p>
-            <Link
-              to="/things/same-brain"
-              onClick={() =>
-                removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)])
-              }
-              className="mt-7 inline-flex min-h-12 items-center rounded-full border border-white/25 px-6 font-mono text-xs text-white/80"
-            >
-              back to same brain
-            </Link>
-          </div>
-        </div>
+        <RoomUnavailableState gameName="same brain" gamePath="/things/same-brain" />
       </GameShell>
     );
 
@@ -354,6 +370,7 @@ function LobbyPhase({
         rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
       />
       <MultiplayerLobby
+        admissionLocked={snapshot.joinLocked}
         actions={
           isHost ? (
             <>
@@ -388,6 +405,7 @@ function LobbyPhase({
           )
         }
         canPassLead={isHost && snapshot.players.length > 1}
+        canSetAdmission={isHost && !snapshot.managed}
         currentPlayerId={snapshot.you?.id ?? null}
         game="same-brain"
         inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
@@ -395,6 +413,7 @@ function LobbyPhase({
         inviteTitle="Same brain"
         inviteUrl={inviteUrl}
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
+        onAdmissionChange={(locked) => void sendHost({ type: "room.admission.set", locked })}
         onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
         onRename={async () => {
           const current = snapshot.players.find(({ id }) => id === snapshot.you?.id)?.name ?? "";

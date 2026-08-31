@@ -154,6 +154,8 @@ export function adoptGamePoolAssignment(
 export function forgetGamePoolRoomMembership(game: GamePoolGame, roomId: string) {
   if (typeof window === "undefined") return;
   localStorage.removeItem(gamePoolMembershipKey(game, roomId));
+  const active = readActiveGamePoolMembership(game);
+  if (active?.roomId === roomId) localStorage.removeItem(gamePoolActiveMembershipKey(game));
 }
 
 export function useGamePoolRoomBackNavigation({
@@ -177,14 +179,9 @@ export function useGamePoolRoomBackNavigation({
       if (leaving) return;
       leaving = true;
       window.history.pushState(guardState, "", window.location.href);
-      void releaseGamePoolMembership(game, roomId)
-        .then((entrance) => {
-          window.location.assign(entrance ?? `/things/${game}`);
-        })
-        .catch(() => {
-          leaving = false;
-          window.history.back();
-        });
+      void leaveGamePoolRoom(game, roomId).then((entrance) => {
+        window.location.assign(entrance ?? `/things/${game}`);
+      });
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -202,4 +199,20 @@ export async function releaseGamePoolMembership(game: GamePoolGame, roomId: stri
   localStorage.removeItem(key);
   if (active?.roomId === roomId) localStorage.removeItem(gamePoolActiveMembershipKey(game));
   return `/play/${encodeURIComponent(membership.token)}?choose=1`;
+}
+
+export async function clearUnavailableGamePoolMembership(game: GamePoolGame, roomId: string) {
+  await leaveGamePoolRoom(game, roomId);
+}
+
+export async function leaveGamePoolRoom(game: GamePoolGame, roomId: string) {
+  try {
+    return await releaseGamePoolMembership(game, roomId);
+  } catch {
+    // Leaving must remain local-first. A failed pool request must not trap someone in a room they
+    // already left or keep its recovery marker alive; the server assignment expires independently.
+    return null;
+  } finally {
+    forgetGamePoolRoomMembership(game, roomId);
+  }
 }

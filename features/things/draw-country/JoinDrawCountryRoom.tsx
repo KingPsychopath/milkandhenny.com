@@ -8,6 +8,7 @@ import { captureDrawCountryInvite } from "./invite.client";
 import type { DrawCountryPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinDrawCountryRoom({
   roomId,
@@ -16,6 +17,7 @@ export function JoinDrawCountryRoom({
   roomId: string;
   onJoined: (credentials: DrawCountryPlayerCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(32);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);

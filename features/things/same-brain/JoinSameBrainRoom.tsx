@@ -7,6 +7,7 @@ import { joinSameBrainRoomFn } from "./same-brain-room.functions";
 import { captureSameBrainInvite } from "./invite.client";
 import type { SameBrainPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinSameBrainRoom({
   roomId,
@@ -15,6 +16,7 @@ export function JoinSameBrainRoom({
   roomId: string;
   onJoined: (credentials: SameBrainPlayerCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(SAME_BRAIN_MAX_NAME_LENGTH);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);

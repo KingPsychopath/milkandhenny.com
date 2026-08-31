@@ -34,14 +34,17 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Participant[]>([]);
   const [participant, setParticipant] = useState<Participant | null>(null);
+  const [recipientScope, setRecipientScope] = useState<"participant" | "order">("participant");
   const [scanned, setScanned] = useState("");
   const [placement, setPlacement] = useState(1);
   const [rawScore, setRawScore] = useState(0);
   const [note, setNote] = useState("");
+  const [customPoints, setCustomPoints] = useState(1);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [pendingPointsOverride, setPendingPointsOverride] = useState<number>();
   const [reviewReady, setReviewReady] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [confirmedRemaining, setConfirmedRemaining] = useState<number | undefined>();
@@ -53,8 +56,14 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [mediaConsent, setMediaConsent] = useState<
     "not-requested" | "requested" | "obtained" | "declined"
   >(data.photoConsentPolicy === "required" ? "obtained" : "requested");
-  const [operation, setOperation] = useState<"admit" | "run" | "award">(
-    data.canAdmit ? "admit" : data.canRun && data.canAward ? "run" : "award",
+  const [operation, setOperation] = useState<"admit" | "run" | "award" | "teams">(
+    data.canAdmit
+      ? "admit"
+      : data.canRun && data.canAward
+        ? "run"
+        : data.canAward
+          ? "award"
+          : "teams",
   );
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();
@@ -72,6 +81,9 @@ export function useStaffScoringController(data: PageData, token: string) {
   const activity = data.activities.find((entry) => entry.id === activityId);
   const pool = data.pools.find((entry) => entry.activityId === activityId) ?? data.pools[0];
   const previewPoints = activity ? convertRulePoints(activity.rule, { placement, rawScore }) : 0;
+  const quickActivities = data.activities.filter(
+    (entry) => entry.rule.mode === "fixed" || entry.rule.mode === "participation",
+  );
 
   async function captureMedia(file: File) {
     const uploadPath = data.mediaDrop?.uploadPath;
@@ -170,13 +182,26 @@ export function useStaffScoringController(data: PageData, token: string) {
     }
   }
 
-  async function award(confirmLarge = false) {
-    if (!activityId || !participant) {
+  async function award(
+    confirmLarge = false,
+    activityOverride = activityId,
+    pointsOverride = needsConfirmation ? pendingPointsOverride : undefined,
+  ) {
+    if (!activityOverride || !participant) {
       setError("Choose an activity and a participant.");
       return;
     }
+    const selectedActivity = data.activities.find((entry) => entry.id === activityOverride);
+    if (!selectedActivity) {
+      setError("Choose an activity.");
+      return;
+    }
+    setActivityId(activityOverride);
+    setPendingPointsOverride(pointsOverride);
+    const selectedPoints =
+      pointsOverride ?? convertRulePoints(selectedActivity.rule, { placement, rawScore });
     if (!navigator.onLine) {
-      if (!offlineReservation || offlineReservation.activityId !== activityId) {
+      if (!offlineReservation || offlineReservation.activityId !== activityOverride) {
         setError("This device has no offline budget for the selected activity.");
         return;
       }
@@ -190,7 +215,7 @@ export function useStaffScoringController(data: PageData, token: string) {
         );
         return;
       }
-      const spent = offlineReservation.spent + previewPoints;
+      const spent = offlineReservation.spent + selectedPoints;
       if (spent > offlineReservation.points) {
         setError("This device has used its offline point budget.");
         return;
@@ -204,7 +229,7 @@ export function useStaffScoringController(data: PageData, token: string) {
       };
       setOfflineCommands((commands) => [...commands, command]);
       setOfflineReservation({ ...offlineReservation, spent });
-      setStatus(`${previewPoints} points queued on this device. They are not accepted yet.`);
+      setStatus(`${selectedPoints} points queued on this device. They are not accepted yet.`);
       setParticipant(null);
       setScanned("");
       setReviewReady(false);
@@ -218,10 +243,12 @@ export function useStaffScoringController(data: PageData, token: string) {
       data: {
         eventSlug: data.eventSlug,
         token,
-        activityId,
+        activityId: activityOverride,
         participantId: participant.id,
+        recipientScope,
         placement,
         rawScore,
+        points: pointsOverride,
         commandId: commandId.current,
         note: note.trim() || undefined,
         confirmLarge,
@@ -237,12 +264,19 @@ export function useStaffScoringController(data: PageData, token: string) {
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
-      setNeedsConfirmation(result.status === 409 && result.error.startsWith("Confirm this"));
+      const confirmationRequired = result.status === 409 && result.error.startsWith("Confirm this");
+      setNeedsConfirmation(confirmationRequired);
+      if (confirmationRequired) setReviewReady(true);
       return;
     }
-    setStatus(`${result.value.points} points awarded.`);
+    setStatus(
+      result.value.recipients > 1
+        ? `${result.value.pointsEach} points awarded to all ${result.value.recipients} tickets.`
+        : `${result.value.pointsEach} points awarded.`,
+    );
     setConfirmedRemaining(result.value.remainingPool);
     setNeedsConfirmation(false);
+    setPendingPointsOverride(undefined);
     setReviewReady(false);
     setParticipant(null);
     setScanned("");
@@ -250,6 +284,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setResults([]);
     setNote("");
     setMediaRef("");
+    setRecipientScope("participant");
+    setCustomPoints(1);
     commandId.current = crypto.randomUUID();
   }
 
@@ -283,6 +319,7 @@ export function useStaffScoringController(data: PageData, token: string) {
       return;
     }
     setParticipant(found);
+    setRecipientScope("participant");
     setResults([]);
     setQuery("");
     setReviewReady(false);
@@ -418,6 +455,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setResults,
     participant,
     setParticipant,
+    recipientScope,
+    setRecipientScope,
     scanned,
     setScanned,
     placement,
@@ -426,6 +465,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setRawScore,
     note,
     setNote,
+    customPoints,
+    setCustomPoints,
     status,
     setStatus,
     error,
@@ -475,6 +516,7 @@ export function useStaffScoringController(data: PageData, token: string) {
     activity,
     pool,
     previewPoints,
+    quickActivities,
     search,
     award,
     prepareOffline,

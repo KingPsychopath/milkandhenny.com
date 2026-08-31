@@ -26,6 +26,10 @@ import {
 import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
 import { simulateScoreClaim, TEST_SCENARIOS } from "@/features/event-scoring/test-mode";
 import { formatDiscoveryCooldown } from "@/features/event-scoring/ui/useDiscoveryCooldown";
+import {
+  parseScoreRealtimeEvent,
+  scoreRealtimePayload,
+} from "@/features/event-scoring/score-realtime";
 
 describe("event scoring rules", () => {
   afterEach(() => {
@@ -45,6 +49,39 @@ describe("event scoring rules", () => {
 
     expect(() => rememberScoreSession()).not.toThrow();
     expect(hasRememberedScoreSession()).toBe(false);
+  });
+
+  it("validates score wake-ups before delivering them to ticket streams", () => {
+    expect(
+      parseScoreRealtimeEvent({
+        eventSlug: "summer-night",
+        transactionId: "score-1",
+        participantIds: ["participant-1"],
+      }),
+    ).toEqual({
+      eventSlug: "summer-night",
+      transactionId: "score-1",
+      participantIds: ["participant-1"],
+    });
+    expect(parseScoreRealtimeEvent({ eventSlug: "summer-night", transactionId: 1 })).toBeNull();
+    expect(
+      parseScoreRealtimeEvent({
+        eventSlug: "summer-night",
+        transactionId: "score-1",
+        participantIds: [null],
+      }),
+    ).toBeNull();
+  });
+
+  it("falls back to an event-wide wake-up before PostgreSQL's notify limit", () => {
+    const payload = scoreRealtimePayload({
+      eventSlug: "summer-night",
+      transactionId: "score-1",
+      participantIds: Array.from({ length: 1_000 }, (_, index) => `participant-${index}`),
+    });
+
+    expect(new TextEncoder().encode(payload).byteLength).toBeLessThan(7_900);
+    expect(JSON.parse(payload)).toEqual({ eventSlug: "summer-night", transactionId: "score-1" });
   });
 
   it("aborts a score refresh that exceeds its request deadline", () => {

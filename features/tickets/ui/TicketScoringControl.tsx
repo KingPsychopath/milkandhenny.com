@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { StatusNotice } from "@/components/StatusNotice";
 import { useTicketForScoringFn } from "../ticket-session.functions";
 
 export type TicketMode = "scoring" | "view-only";
@@ -44,7 +45,9 @@ export function TicketScoringControl({
   return (
     <div className="mt-4 border-t theme-border pt-4">
       {active ? (
-        <p className="font-mono text-xs">Event points go to this ticket.</p>
+        <StatusNotice tone="positive" label="Scoring ticket" announce={false}>
+          Event points go to this ticket.
+        </StatusNotice>
       ) : (
         <>
           <button
@@ -63,9 +66,13 @@ export function TicketScoringControl({
         </>
       )}
       {message && (
-        <p role="status" className="mt-2 font-mono text-micro theme-muted">
+        <StatusNotice
+          tone={active ? "positive" : "danger"}
+          label={active ? "Ticket selected" : "Could not switch"}
+          className="mt-2"
+        >
           {message}
-        </p>
+        </StatusNotice>
       )}
     </div>
   );

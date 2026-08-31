@@ -21,11 +21,13 @@ import { RefundTicketButton } from "./RefundTicketButton";
 import { ManageTickets } from "./ManageTickets";
 import { ShareTicketButton } from "./ShareTicketButton";
 import { TicketScoringControl, type TicketMode } from "./TicketScoringControl";
-import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScoreSyncStatus } from "./ScoreSyncStatus";
+import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
 import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
+import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
+import { TicketArrivalHandoff } from "./TicketArrivalHandoff";
 
 /**
  * The ticket itself.
@@ -50,6 +52,7 @@ export function TicketPage({
   checkpointNames,
   album,
   hasDiscoveries,
+  team,
   score,
   preview = false,
   previewIdentityControls,
@@ -68,6 +71,10 @@ export function TicketPage({
   checkpointNames: string[];
   album: EventAlbumView;
   hasDiscoveries: boolean;
+  team?: {
+    name: string;
+    colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+  };
   preview?: boolean;
   /** Production identity UI supplied with synthetic state by the admin preview. */
   previewIdentityControls?: ReactNode;
@@ -86,6 +93,8 @@ export function TicketPage({
     revision: number;
     rank: number;
     teamRank?: number;
+    teamName?: string;
+    teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
     leaderboardAvailable?: boolean;
     synchronizedAt: string;
     orderPoints?: number;
@@ -98,6 +107,7 @@ export function TicketPage({
   };
 }) {
   const [confirmedScore, setConfirmedScore] = useState(score?.points);
+  const [confirmedOrderPoints, setConfirmedOrderPoints] = useState(score?.orderPoints);
   const [ticketMode, setTicketMode] = useState<TicketMode | null>(
     initialTicketPointSelection
       ? initialTicketPointSelection.mode === "scoring" && initialTicketPointSelection.active
@@ -258,6 +268,14 @@ export function TicketPage({
           </p>
         )}
 
+        {!preview && !invalid && event.arrivalExperience === "icebreaker" ? (
+          <TicketArrivalHandoff
+            ticketReference={ticketReference}
+            eventSlug={event.slug}
+            initialRedeemedAt={ticket.redeemedAt}
+          />
+        ) : null}
+
         {/* The QR — deliberately the largest element on the page. */}
         <div className="mt-8 flex items-center justify-center">
           <div
@@ -287,6 +305,9 @@ export function TicketPage({
 
         <div className="mt-6 text-center">
           <p className="font-serif text-xl text-foreground">{ticket.holderName}</p>
+          {team ? (
+            <TeamBadge name={`Team ${team.name}`} colourKey={team.colourKey} className="mt-2" />
+          ) : null}
           {/* Only the kinds that tell the holder something. A paid ticket
               being paid is the unremarkable case, and labelling it invites
               the reader to wonder what it would mean if it were missing. */}
@@ -457,9 +478,6 @@ export function TicketPage({
                 onModeChange={setTicketMode}
               />
             ) : null}
-            {!preview && !eventCancelled && ticketMode === "scoring" && (
-              <ScoreNotificationNotice ticketId={ticketReference} />
-            )}
             <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
             {!preview && !eventCancelled && ticketMode === "scoring" && (
               <ScorePublicIdentityControls
@@ -475,7 +493,7 @@ export function TicketPage({
             )}
             {score.orderPoints !== undefined && orderSize > 1 && (
               <p className="mt-2 font-mono text-xs theme-subtle">
-                managed order total: {score.orderPoints} points
+                managed order total: {confirmedOrderPoints ?? score.orderPoints} points
               </p>
             )}
             <p className="mt-4 font-mono text-micro theme-muted">
@@ -493,11 +511,17 @@ export function TicketPage({
                     revision: score.revision,
                     synchronizedAt: score.synchronizedAt,
                   }}
-                  onSnapshot={(next) => setConfirmedScore(next.balance)}
+                  onSnapshot={(next) => {
+                    setConfirmedScore(next.balance);
+                    if (next.orderPoints !== undefined) setConfirmedOrderPoints(next.orderPoints);
+                  }}
                 />
               )}{" "}
               · last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
             </p>
+            {!preview && !eventCancelled && ticketMode === "scoring" ? (
+              <ScoreNotificationNotice ticketId={ticketReference} />
+            ) : null}
             {score.transactions.length > 0 && (
               <details className="mt-4">
                 <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">

@@ -96,4 +96,24 @@ describe("active room notice", () => {
 
     expect(readActiveRooms().map(({ path }) => path)).toEqual(["/things/twin/NEW2345"]);
   });
+
+  it("names shared deduction rooms by their actual game mode", () => {
+    vi.stubGlobal(
+      "localStorage",
+      fakeStorage({
+        "things:liars:v1:room:MAF2345:host-session": live({
+          hostToken: "host",
+          mode: "mafia",
+        }),
+        "things:liars:v1:room:IMP2345:player-session": live({
+          snapshot: { mode: "imposter" },
+        }),
+      }),
+    );
+
+    expect(readActiveRooms().map(({ label, path }) => ({ label, path }))).toEqual([
+      { label: "imposter", path: "/things/liars/IMP2345" },
+      { label: "mafia", path: "/things/liars/MAF2345" },
+    ]);
+  });
 });

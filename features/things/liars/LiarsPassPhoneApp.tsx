@@ -213,8 +213,8 @@ function Shell({ children }: { children: React.ReactNode }) {
     <GameShell tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
         <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
-          <Link to="/things/liars" className="inline-flex min-h-11 items-center">
-            ← liars
+          <Link to="/things/imposter" className="inline-flex min-h-11 items-center">
+            ← imposter
           </Link>
           <span>one phone</span>
         </header>

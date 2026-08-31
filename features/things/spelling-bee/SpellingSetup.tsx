@@ -95,7 +95,7 @@ export function SpellingSetup({
 
   return (
     <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+      <header className="flex items-center gap-4 p-5 pr-28 font-mono text-xs text-white/55">
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
@@ -103,7 +103,7 @@ export function SpellingSetup({
           type="button"
           onClick={onToggleSound}
           aria-pressed={soundEnabled}
-          className="min-h-11 rounded-full px-2"
+          className="min-h-11 rounded-full border border-white/12 px-4"
         >
           sound {soundEnabled ? "on" : "off"}
         </button>
@@ -120,9 +120,14 @@ export function SpellingSetup({
               : "Hear the word. Spell it aloud. Judge with the on-screen controls."
           }
         >
-          <GameLaunchButton accent="amber" onClick={onStart}>
-            start
-          </GameLaunchButton>
+          <div className="grid grid-cols-2 gap-3">
+            <GameLaunchButton accent="amber" onClick={onStart}>
+              start
+            </GameLaunchButton>
+            <GameLaunchButton accent="paper" onClick={() => togglePanel("judge")}>
+              play together
+            </GameLaunchButton>
+          </div>
           <GameLaunchMeta tone="dark">
             {selectedDeck?.name ?? "Warm-up words"} · {Math.min(roundTotal, wordCount)} words ·{" "}
             {timerSeconds ? `${timerSeconds} seconds` : "no timer"}
@@ -144,17 +149,6 @@ export function SpellingSetup({
             >
               game options
             </button>
-            <button
-              type="button"
-              onClick={() => togglePanel("judge")}
-              aria-pressed={panel === "judge"}
-              className="min-h-11"
-            >
-              play with a remote judge
-            </button>
-            <Link to="/things/spelling-party" className="inline-flex min-h-11 items-center">
-              type together →
-            </Link>
           </GameLaunchChoices>
         </GameLaunch>
 

@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { log } from "@/lib/platform/logger.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import {
+  isEventArrivalExperience,
   isEventHeroHeight,
   isPubliclyVisible,
   isValidEventSlug,
@@ -54,6 +55,7 @@ type EventRow = {
   transferable: boolean;
   terms: string | null;
   check_in_opens_at: Date | null;
+  arrival_experience: string;
   staff_notes: string | null;
   created_at: Date;
   updated_at: Date;
@@ -80,7 +82,7 @@ const EVENT_COLUMNS = `
   transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
   hero_image_width, hero_image_height, hero_height, og_image, marketing_path, capacity,
   waitlist_enabled, refund_policy, transferable, terms,
-  check_in_opens_at, staff_notes, created_at, updated_at
+  check_in_opens_at, arrival_experience, staff_notes, created_at, updated_at
 `;
 
 function optional(value: string | null): string | undefined {
@@ -144,6 +146,9 @@ function toEvent(row: EventRow, ticketTypes: TicketType[]): EventRecord {
     transferable: row.transferable,
     terms: optional(row.terms),
     checkInOpensAt: instant(row.check_in_opens_at),
+    arrivalExperience: isEventArrivalExperience(row.arrival_experience)
+      ? row.arrival_experience
+      : "none",
     staffNotes: optional(row.staff_notes),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -306,10 +311,10 @@ export async function putEvent(
          area, venue_name, address, door_code, three_word_hint, map_url, step_free_access,
          transport_note, description, lineup, dress_code, age_limit, house_rules, hero_image,
          hero_image_width, hero_image_height, hero_height, og_image, marketing_path, capacity, waitlist_enabled, refund_policy,
-         transferable, terms, check_in_opens_at, staff_notes, created_at, updated_at
+         transferable, terms, check_in_opens_at, arrival_experience, staff_notes, created_at, updated_at
        ) values (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22,
-         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
+         $23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
        )
        on conflict (slug) do update set
          title = excluded.title, tagline = excluded.tagline, status = excluded.status,
@@ -328,6 +333,7 @@ export async function putEvent(
          capacity = excluded.capacity, waitlist_enabled = excluded.waitlist_enabled,
          refund_policy = excluded.refund_policy, transferable = excluded.transferable,
          terms = excluded.terms, check_in_opens_at = excluded.check_in_opens_at,
+         arrival_experience = excluded.arrival_experience,
          staff_notes = excluded.staff_notes, updated_at = excluded.updated_at`,
       [
         event.slug,
@@ -364,6 +370,7 @@ export async function putEvent(
         event.transferable,
         event.terms ?? null,
         event.checkInOpensAt ?? null,
+        event.arrivalExperience ?? "none",
         event.staffNotes ?? null,
         event.createdAt,
         event.updatedAt,

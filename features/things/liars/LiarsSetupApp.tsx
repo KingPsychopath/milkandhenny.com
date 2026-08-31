@@ -14,8 +14,8 @@ import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
 import { gameSettingsDocument } from "../shared/game-settings";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
-  LIARS_MODE_COPY,
   LIARS_PLAYER_LIMITS,
+  LIARS_MODE_COPY,
   liarsDefaultLineup,
   liarsImposterBlurb,
   liarsImposterRange,
@@ -31,24 +31,13 @@ import {
   type LiarsTorchState,
 } from "./torch.client";
 import type { LiarsMode, LiarsRoomMode, LiarsToggles } from "./types";
-import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
-import type { GamePoolDefaultLaunch as GamePoolDefaultLaunchTarget } from "../pool/types";
-
-const MAFIA_BLURB =
-  "Someone here is killing people at night. Find them before they run out of people.";
 
 /**
- * One decision on the surface — which game — and everything else folded away behind it.
- *
- * The two modes want different explanations, different player counts and different roles, so the
- * toggle is not a setting among settings: it is the thing the page is about, and choosing it
- * reflows what is underneath. Everything a group will never touch lives under "more".
+ * Mafia and Imposter are separate catalogue journeys, but deliberately share this setup and room
+ * engine. The route fixes the mode so a remembered preference or imported settings file can never
+ * turn the game somebody selected into the other one.
  */
-export function LiarsSetupApp({
-  defaultPool,
-}: {
-  defaultPool?: GamePoolDefaultLaunchTarget | null;
-}) {
+export function LiarsSetupApp({ mode }: { mode: LiarsMode }) {
   const navigate = useNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than eight.
   const { preferences, set, replace } = useGamePreferences("liars", {
@@ -60,7 +49,6 @@ export function LiarsSetupApp({
     firstGame: LIARS_GAME_SETTINGS.firstGame,
     blindImposters: LIARS_GAME_SETTINGS.blindImposters,
   });
-  const mode = preferences.mode === "imposter" ? "imposter" : ("mafia" as LiarsMode);
   const roomMode = preferences.roomMode === "remote" ? "remote" : ("same-room" as LiarsRoomMode);
   const firstGame = preferences.firstGame;
   const blindImposters = preferences.blindImposters;
@@ -69,7 +57,7 @@ export function LiarsSetupApp({
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
-  const [panel, setPanel] = useState<"roles" | "more" | "join" | null>(null);
+  const [panel, setPanel] = useState<"game" | "more" | "join" | null>(null);
   const imposters = preferences.imposters;
   const wordBoard = preferences.wordBoard;
 
@@ -77,16 +65,9 @@ export function LiarsSetupApp({
   const players = Math.min(limits.max, Math.max(limits.min, expected));
   const imposterRange = liarsImposterRange(players);
   const imposterCount = Math.min(imposterRange.max, Math.max(imposterRange.min, imposters));
-  const blurb = mode === "mafia" ? MAFIA_BLURB : liarsImposterBlurb(imposterCount);
+  const blurb =
+    mode === "mafia" ? LIARS_MODE_COPY.mafia.tagline : liarsImposterBlurb(imposterCount);
   const lineup = liarsDefaultLineup(mode, players, imposterCount);
-
-  const chooseMode = (next: LiarsMode) => {
-    set("mode", next);
-    set(
-      "players",
-      Math.min(LIARS_PLAYER_LIMITS[next].max, Math.max(LIARS_PLAYER_LIMITS[next].min, expected)),
-    );
-  };
 
   const handleCreate = async () => {
     if (creating) return;
@@ -104,7 +85,7 @@ export function LiarsSetupApp({
       });
       writeExpiringLocalValue(
         liarsBrowserKeys.hostSession(room.roomId),
-        { hostToken: room.hostToken, joinToken: room.joinToken },
+        { hostToken: room.hostToken, joinToken: room.joinToken, mode },
         room.expiresAt,
       );
       writeExpiringLocalValue(liarsBrowserKeys.invite(room.roomId), room.joinToken, room.expiresAt);
@@ -120,35 +101,32 @@ export function LiarsSetupApp({
       <div className="flex min-h-0 flex-1 flex-col px-5 pb-16 text-white">
         <GameLaunch
           tone="night"
-          eyebrow="social deduction · 4–16 people"
-          title="liars"
-          description="Two games, one room. Everyone has something to do every round, and the phone keeps track of all of it so you can argue."
+          eyebrow={`social deduction · ${limits.min}–${limits.max} people`}
+          title={LIARS_MODE_COPY[mode].name}
+          description={blurb}
         >
           <div>
-            {defaultPool ? (
-              <GamePoolDefaultLaunch pool={defaultPool}>find a room</GamePoolDefaultLaunch>
-            ) : (
-              <GameLaunchButton
-                accent="amber"
-                disabled={creating}
-                onClick={() => void handleCreate()}
-              >
-                {creating
-                  ? "opening…"
-                  : `open ${LIARS_MODE_COPY[mode].article} ${LIARS_MODE_COPY[mode].name} room`}
-              </GameLaunchButton>
-            )}
+            <GameLaunchButton
+              accent="amber"
+              disabled={creating}
+              onClick={() => void handleCreate()}
+            >
+              {creating ? "opening…" : "play together"}
+            </GameLaunchButton>
             <GameLaunchMeta tone="dark">
-              {defaultPool
-                ? `${defaultPool.label} · settings ready · everyone joins from their own phone`
-                : "you play too · everyone joins with the room code"}
+              you play too · everyone joins with the room code
             </GameLaunchMeta>
+            {message ? (
+              <p className="mt-3 font-mono text-xs text-[var(--things-amber)]" role="status">
+                {message}
+              </p>
+            ) : null}
 
             {mode === "imposter" ? (
               <p className="mt-4 font-mono text-xs text-white/40">
                 only got one phone?{" "}
                 <Link
-                  to="/things/liars/phone"
+                  to="/things/imposter/phone"
                   className="underline underline-offset-4 hover:text-white/80"
                 >
                   pass it round instead
@@ -157,23 +135,13 @@ export function LiarsSetupApp({
             ) : null}
 
             <GameLaunchChoices tone="dark">
-              {defaultPool ? (
-                <button
-                  type="button"
-                  onClick={() => void handleCreate()}
-                  disabled={creating}
-                  className="min-h-11 disabled:opacity-40"
-                >
-                  {creating ? "opening…" : "private room"}
-                </button>
-              ) : null}
               <button
                 type="button"
-                aria-pressed={panel === "roles"}
-                onClick={() => setPanel(panel === "roles" ? null : "roles")}
+                aria-pressed={panel === "game"}
+                onClick={() => setPanel(panel === "game" ? null : "game")}
                 className="min-h-11"
               >
-                choose the game
+                game settings
               </button>
               <button
                 type="button"
@@ -189,39 +157,13 @@ export function LiarsSetupApp({
                 onClick={() => setPanel(panel === "join" ? null : "join")}
                 className="min-h-11"
               >
-                join by code
+                enter a room code
               </button>
             </GameLaunchChoices>
 
-            {panel === "roles" ? (
+            {panel === "game" ? (
               <div className="mt-3">
-                <div
-                  role="radiogroup"
-                  aria-label="which game"
-                  className="flex rounded-full border border-white/20 p-1"
-                >
-                  {(["mafia", "imposter"] as const).map((id) => {
-                    const active = mode === id;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => chooseMode(id)}
-                        className={`min-h-12 flex-1 rounded-full px-4 font-mono text-sm font-bold transition-colors ${
-                          active
-                            ? "bg-[var(--things-amber)] text-black"
-                            : "text-white/55 hover:text-white/85"
-                        }`}
-                      >
-                        {id}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-5 font-serif text-lg leading-relaxed text-white/70">{blurb}</p>
-                <div className="mt-6">
+                <div>
                   <label className="font-mono text-xs text-white/55">
                     <span className="block pb-2">how many of you · {players}</span>
                     <input
@@ -383,7 +325,7 @@ export function LiarsSetupApp({
                     blindImposters,
                     wordBoard,
                   })}
-                  onApply={replace}
+                  onApply={(settings) => replace({ ...settings, mode })}
                 />
               </div>
             ) : null}

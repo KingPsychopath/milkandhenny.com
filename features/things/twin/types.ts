@@ -142,6 +142,7 @@ export interface TwinSnapshot
   gameNumber: number;
   hostPlayerId: string;
   canControl: boolean;
+  joinLocked: boolean;
   order: TwinOrder;
   handSize: number;
   windowMs: number;
@@ -166,6 +167,7 @@ export interface TwinPlayerCredentials extends MultiplayerRoomLifetime {
 
 export type TwinJoinErrorCode =
   | "game_started"
+  | "room_locked"
   | "invite_expired"
   | "invalid_name"
   | "name_taken"
@@ -193,6 +195,7 @@ export type TwinSnapshotResult =
 
 export type TwinHostAction =
   | { type: "game.start"; removePlayerIds?: string[] }
+  | { type: "room.admission.set"; locked: boolean }
   | { type: "host.pass"; playerId: string }
   | { type: "game.configure"; handSize?: number; windowMs?: number; graceMs?: number }
   | { type: "game.replay" }

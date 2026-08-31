@@ -145,6 +145,8 @@ function action(value: unknown): HotAndColdAction {
         ? data.removePlayerIds.map((id) => multiplayerText(id, 120))
         : undefined,
     };
+  if (type === "room.admission.set" && typeof data.locked === "boolean")
+    return { actionId, type, locked: data.locked };
   if (type === "guess.submit")
     return {
       actionId,

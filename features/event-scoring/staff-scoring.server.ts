@@ -30,12 +30,19 @@ import {
   getParticipant,
   listPools,
   listHeldScoreTransactions,
+  listCheckedInTeamParticipants,
+  listTeams,
+  setTeamMembership,
+  shuffleCheckedInTeams,
   participantForTicket,
+  participantIdsInTicketOrder,
+  ticketOrderSummaryForParticipant,
   searchEventParticipants,
   type StoredStaffAssignment,
 } from "./store.server";
 import { convertRulePoints, type ScoreParticipant, type ScoreTransaction } from "./types";
 import { recordScoringOperationalEvent } from "./operations.server";
+import { createStaffAwardClaim } from "./staff-award-claims.server";
 
 export type StaffScoringContext = {
   assignment: StoredStaffAssignment;
@@ -90,6 +97,8 @@ export async function getStaffScoringPage(input: {
       expiresAt?: string;
       assignmentType: StoredStaffAssignment["assignmentType"];
       canAward: boolean;
+      canManageTeams: boolean;
+      canFreeform: boolean;
       canAdmit: boolean;
       canTransfer: boolean;
       canReverse: boolean;
@@ -124,11 +133,16 @@ export async function getStaffScoringPage(input: {
         ticketSuffix?: string;
         balance: number;
         checkedIn: boolean;
+        teamName?: string;
         email?: string;
+        orderSize: number;
+        orderPoints: number;
         recentReason: "scan" | "award";
       }>;
       activities: Awaited<ReturnType<typeof listScoringActivities>>;
       pools: Awaited<ReturnType<typeof listPools>>;
+      teams: Awaited<ReturnType<typeof listTeams>>;
+      teamRoster: Awaited<ReturnType<typeof listCheckedInTeamParticipants>>;
     }
 > {
   const context = await resolveStaffScoringContext(input);
@@ -148,6 +162,8 @@ export async function getStaffScoringPage(input: {
     guestRequests,
     heldActions,
     recentParticipants,
+    teams,
+    teamRoster,
   ] = await Promise.all([
     getEvent(input.eventSlug),
     listScoringActivities(input.eventSlug),
@@ -162,6 +178,10 @@ export async function getStaffScoringPage(input: {
       ? listHeldScoreTransactions(input.eventSlug)
       : [],
     listRecentStaffParticipants(input.eventSlug, assignment.id, assignment.label, canViewEmail),
+    hasStaffPermission(assignment, "manageTeams") ? listTeams(input.eventSlug) : [],
+    hasStaffPermission(assignment, "manageTeams")
+      ? listCheckedInTeamParticipants(input.eventSlug)
+      : [],
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
@@ -176,6 +196,8 @@ export async function getStaffScoringPage(input: {
     expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
     canAward: hasStaffPermission(assignment, "awardPoints"),
+    canManageTeams: hasStaffPermission(assignment, "manageTeams"),
+    canFreeform: scopeBoolean(assignment, "allowFreeformPoints"),
     canAdmit: hasStaffPermission(assignment, "admitTickets"),
     canTransfer: hasStaffPermission(assignment, "transferPoints"),
     canReverse: hasStaffPermission(assignment, "reverseAwards"),
@@ -201,6 +223,8 @@ export async function getStaffScoringPage(input: {
       createdAt: action.createdAt,
     })),
     recentParticipants,
+    teams,
+    teamRoster,
     pinnedActivityIds: Array.isArray(assignment.scope.pinnedActivityIds)
       ? assignment.scope.pinnedActivityIds.filter(
           (entry): entry is string => typeof entry === "string",
@@ -223,6 +247,83 @@ export async function getStaffScoringPage(input: {
         (stationId !== undefined && pool.ownerId === stationId),
     ),
   };
+}
+
+async function currentStaffTeamState(eventSlug: string) {
+  const [teams, teamRoster] = await Promise.all([
+    listTeams(eventSlug),
+    listCheckedInTeamParticipants(eventSlug),
+  ]);
+  return { teams, teamRoster };
+}
+
+export async function shuffleStaffTeams(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  teamCount: number;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  if (!context || !hasStaffPermission(context.assignment, "manageTeams")) {
+    return { ok: false as const, status: 403, error: "This staff link cannot manage teams" };
+  }
+  const shuffled = await shuffleCheckedInTeams({
+    eventSlug: input.eventSlug,
+    teamCount: input.teamCount,
+    actorType: "staff",
+    actorId: context.assignment.id,
+    assignmentId: context.assignment.id,
+    deviceId: context.deviceId,
+  });
+  return shuffled.ok
+    ? { ok: true as const, value: await currentStaffTeamState(input.eventSlug) }
+    : shuffled;
+}
+
+export async function moveStaffTeamParticipant(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  participantId: string;
+  teamId: string;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  if (!context || !hasStaffPermission(context.assignment, "manageTeams")) {
+    return { ok: false as const, status: 403, error: "This staff link cannot manage teams" };
+  }
+  const eligible = await queryOne<{ participant: boolean; team: boolean }>(
+    `select
+       exists(select 1 from event_participants
+               where id = $2 and event_slug = $1 and status = 'active'
+                 and checked_in_at is not null) as participant,
+       exists(select 1 from score_teams
+               where id = $3 and event_slug = $1 and status = 'active') as team`,
+    [input.eventSlug, input.participantId, input.teamId],
+  );
+  if (!eligible?.participant) {
+    return { ok: false as const, status: 409, error: "That attendee is not checked in" };
+  }
+  if (!eligible.team) return { ok: false as const, status: 404, error: "Team not found" };
+  const membership = await setTeamMembership({
+    eventSlug: input.eventSlug,
+    participantId: input.participantId,
+    teamId: input.teamId,
+  });
+  if (!membership.ok) return membership;
+  await query(
+    `insert into score_audit_events
+       (event_slug,action,actor_type,actor_id,assignment_id,device_id,
+        entity_type,entity_id,metadata)
+     values ($1,'teams.member.moved','staff',$2,$2,$3,'participant',$4,$5::jsonb)`,
+    [
+      input.eventSlug,
+      context.assignment.id,
+      context.deviceId,
+      input.participantId,
+      JSON.stringify({ teamId: input.teamId }),
+    ],
+  );
+  return { ok: true as const, value: await currentStaffTeamState(input.eventSlug) };
 }
 
 export async function submitStaffGuest(input: {
@@ -427,6 +528,8 @@ async function listRecentStaffParticipants(
     balance: number;
     checked_in_at: Date | null;
     email: string | null;
+    order_size: number;
+    order_points: number;
     recent_reason: "scan" | "award";
     happened_at: Date;
   }>(
@@ -449,11 +552,25 @@ async function listRecentStaffParticipants(
      select participants.id, participants.generated_alias, participants.chosen_alias,
             participants.display_name,
             participants.ticket_id, coalesce(projections.balance, 0)::integer as balance,
-            participants.checked_in_at, tickets.email, ranked.recent_reason, ranked.happened_at
+            participants.checked_in_at, tickets.email, ranked.recent_reason, ranked.happened_at,
+            coalesce(ticket_order.size, 1)::integer as order_size,
+            coalesce(ticket_order.points, coalesce(projections.balance, 0))::integer as order_points
        from ranked
        join event_participants participants on participants.id = ranked.id
        left join tickets on tickets.id = participants.ticket_id
        left join score_projections projections on projections.participant_id = participants.id
+       left join lateral (
+         select count(*)::integer as size,
+                coalesce(sum(order_projection.balance), 0)::integer as points
+           from tickets order_ticket
+           join event_participants order_participant on order_participant.ticket_id = order_ticket.id
+           left join score_projections order_projection
+             on order_projection.participant_id = order_participant.id
+          where order_ticket.order_id = tickets.order_id
+            and order_ticket.event_slug = participants.event_slug
+            and order_ticket.status = 'valid'
+            and order_participant.status = 'active'
+       ) ticket_order on true
       order by ranked.happened_at desc limit 12`,
     [eventSlug, assignmentId, assignmentLabel],
   );
@@ -466,6 +583,8 @@ async function listRecentStaffParticipants(
     checkedIn: row.checked_in_at !== null,
     email: includeEmail ? (row.email ?? undefined) : undefined,
     recentReason: row.recent_reason,
+    orderSize: row.order_size,
+    orderPoints: row.order_points,
   }));
 }
 
@@ -478,16 +597,18 @@ export async function resolveStaffScannedParticipant(input: {
   const context = await resolveStaffScoringContext(input);
   if (!context || !hasStaffPermission(context.assignment, "viewParticipantPoints")) return null;
   const participant = await participantFromScannedValue(input.eventSlug, input.scanned);
-  return participant
-    ? {
-        id: participant.id,
-        publicAlias: participant.publicAlias,
-        displayName: participant.displayName,
-        ticketSuffix: participant.ticketId?.slice(-8),
-        balance: participant.balance,
-        checkedIn: participant.checkedInAt !== undefined,
-      }
-    : null;
+  if (!participant) return null;
+  const order = await ticketOrderSummaryForParticipant(input.eventSlug, participant.id);
+  return {
+    id: participant.id,
+    publicAlias: participant.publicAlias,
+    displayName: participant.displayName,
+    ticketSuffix: participant.ticketId?.slice(-8),
+    balance: participant.balance,
+    checkedIn: participant.checkedInAt !== undefined,
+    teamName: participant.teamName,
+    ...order,
+  };
 }
 
 async function participantFromScannedValue(
@@ -513,6 +634,7 @@ export async function awardStaffPoints(input: {
   placement?: number;
   rawScore?: number;
   points?: number;
+  recipientScope?: "participant" | "order";
   commandId: string;
   note?: string;
   confirmLarge?: boolean;
@@ -543,6 +665,13 @@ export async function awardStaffPoints(input: {
   if (!participant || participant.eventSlug !== input.eventSlug) {
     return { ok: false, status: 404, error: "Participant not found" };
   }
+  const participantIds =
+    input.recipientScope === "order"
+      ? await participantIdsInTicketOrder(input.eventSlug, participant.id)
+      : [participant.id];
+  if (participantIds.length === 0) {
+    return { ok: false, status: 409, error: "No active tickets in this order can receive points" };
+  }
   const points = input.points ?? convertRulePoints(activity.rule, input);
   const warningAt = Math.max(1, scopeNumber(context.assignment, "largeAwardWarningAt", 25));
   if (points >= warningAt && !input.confirmLarge) {
@@ -562,7 +691,7 @@ export async function awardStaffPoints(input: {
   const awarded = await awardPoints({
     eventSlug: input.eventSlug,
     activityId: activity.id,
-    participantIds: [participant.id],
+    participantIds,
     rawScore: input.rawScore,
     placement: input.placement,
     points: input.points,
@@ -606,6 +735,56 @@ export async function awardStaffPoints(input: {
     }).catch(() => undefined);
   }
   return awarded;
+}
+
+export async function mintStaffAwardClaim(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  activityId: string;
+  points?: number;
+  note?: string;
+  expiresInSeconds?: number;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  if (!context || !hasStaffPermission(context.assignment, "awardPoints")) {
+    return { ok: false as const, status: 403, error: "This staff link cannot award points" };
+  }
+  if (!canUseActivity(context.assignment, input.activityId)) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "This activity is outside this staff assignment",
+    };
+  }
+  if (input.points !== undefined && !scopeBoolean(context.assignment, "allowFreeformPoints")) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "This staff link cannot create custom awards",
+    };
+  }
+  const activity = (await listScoringActivities(input.eventSlug)).find(
+    (entry) => entry.id === input.activityId && entry.status === "live",
+  );
+  if (!activity) return { ok: false as const, status: 404, error: "Activity not found" };
+  const pools = await listPools(input.eventSlug);
+  const pool =
+    pools.find((entry) => entry.activityId === activity.id) ??
+    pools.find((entry) => entry.ownerId === context.assignment.id);
+  if (!pool && !scopeBoolean(context.assignment, "unmetered")) {
+    return { ok: false as const, status: 409, error: "This staff assignment has no points pool" };
+  }
+  return createStaffAwardClaim({
+    eventSlug: input.eventSlug,
+    assignment: context.assignment,
+    activity,
+    poolId: pool?.id,
+    deviceId: input.deviceId,
+    pointsOverride: input.points,
+    note: input.note,
+    expiresInSeconds: input.expiresInSeconds ?? 60,
+  });
 }
 
 export async function reverseStaffAward(input: {

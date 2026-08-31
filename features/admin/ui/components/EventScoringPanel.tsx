@@ -371,6 +371,7 @@ export function EventScoringPanel({
                 <ScoringTeamsPanel
                   eventSlug={eventSlug.trim()}
                   teams={data.teams}
+                  teamRoster={data.teamRoster}
                   authFetch={authFetch}
                   onAction={performAction}
                 />

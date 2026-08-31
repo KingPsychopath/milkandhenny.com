@@ -9,6 +9,7 @@ import {
 } from "../scoring.server";
 import {
   listHeldScoreTransactions,
+  listCheckedInTeamParticipants,
   listParticipantMerges,
   listPools,
   listScoreAnomalyFlags,
@@ -37,6 +38,7 @@ export async function readAdminScoring(
     pools,
     discoveries,
     teams,
+    teamRoster,
     held,
     heldOfficialResults,
     staff,
@@ -53,6 +55,7 @@ export async function readAdminScoring(
     listPools(eventSlug),
     listDiscoveries(eventSlug),
     listTeams(eventSlug),
+    listCheckedInTeamParticipants(eventSlug),
     listHeldScoreTransactions(eventSlug),
     listHeldOfficialGameResults(eventSlug),
     listStaffAssignments(eventSlug),
@@ -90,6 +93,7 @@ export async function readAdminScoring(
       })),
     ),
     teams,
+    teamRoster,
     held,
     heldOfficialResults,
     staff: await Promise.all(

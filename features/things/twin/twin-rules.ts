@@ -33,7 +33,7 @@ export const TWIN_TIMING = {
   minSettleHoldMs: 500,
   maxSettleHoldMs: 6_000,
   /** The connection stays drawn before a one-device board advances. */
-  connectionHoldMs: 320,
+  connectionHoldMs: 420,
   /** Two touches closer than this are indistinguishable as a shared-screen race. */
   duelPhotoFinishMs: 75,
   /** Faster than any human nervous system. Rejects prefiring and absurd claims. */

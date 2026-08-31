@@ -72,6 +72,8 @@ function hostAction(value: unknown): SameBrainHostAction {
       ...(data.toggles === undefined ? {} : { toggles: toggles(data.toggles) }),
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
     };
+  if (data.type === "room.admission.set" && typeof data.locked === "boolean")
+    return { actionId: id, type: data.type, locked: data.locked };
   if (data.type === "player.remove" || data.type === "host.pass")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
   if (data.type === "result.merge")

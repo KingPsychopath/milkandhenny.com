@@ -33,12 +33,15 @@ import type {
 } from "./types";
 import { useCentreRoom } from "./useCentreRoom";
 import {
+  clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
-  releaseGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { CentreReportButton } from "./CentreReportButton";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
@@ -60,9 +63,13 @@ export function CentreRoomApp({ roomId }: { roomId: string }) {
     <CentreRoom
       roomId={roomId}
       credentials={credentials}
+      onUnavailable={() => {
+        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        void clearUnavailableGamePoolMembership("centre", roomId);
+      }}
       onLeft={() => {
         localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
-        void releaseGamePoolMembership("centre", roomId).then((entrance) => {
+        void leaveGamePoolRoom("centre", roomId).then((entrance) => {
           if (entrance) window.location.assign(entrance);
           else void navigate({ to: "/things/centre" });
         });
@@ -75,10 +82,12 @@ export function CentreRoom({
   roomId,
   credentials,
   onLeft,
+  onUnavailable,
 }: {
   roomId: string;
   credentials: CentrePlayerCredentials;
   onLeft: () => void;
+  onUnavailable?: () => void;
 }) {
   const live = useCentreRoom({
     roomId,
@@ -87,6 +96,11 @@ export function CentreRoom({
     initialSnapshot: credentials.snapshot,
   });
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended || snapshot?.phase === "closed",
+    onUnavailable,
+  });
   useGamePoolRoomBackNavigation({
     enabled: Boolean(snapshot?.managed),
     game: "centre",
@@ -164,6 +178,8 @@ export function CentreRoom({
       try {
         const result = await dispatchAction(action);
         if (result.snapshot) setSnapshot(result.snapshot);
+        if (!result.ok && result.errorCode === "room_unavailable" && action.type !== "player.leave")
+          markUnavailable();
         if (!result.ok || !result.accepted) {
           if (!quiet) setMessage(result.error);
           if (result.ok && result.errorCode === "players_not_ready" && result.snapshot) {
@@ -192,7 +208,7 @@ export function CentreRoom({
         return null;
       }
     },
-    [credentials.playerId, dispatchAction, notify, setMessage, setSnapshot],
+    [credentials.playerId, dispatchAction, markUnavailable, notify, setMessage, setSnapshot],
   );
 
   const leaveRoom = useCallback(async () => {
@@ -349,19 +365,14 @@ export function CentreRoom({
     return () => window.clearInterval(timer);
   }, [clockOffset, course?.endsAt, snapshotPhase]);
 
-  if (live.ended || !snapshot || snapshot.phase === "closed")
+  if (roomUnavailable || snapshot?.phase === "closed")
     return (
       <div className="things-game things-game--night centre">
-        <main id="main" className="centre-join">
-          <h1 className="centre-title">The room has closed.</h1>
-          <p className="centre-note">{live.message ?? "This race is no longer available."}</p>
-          <Link to="/things/centre" className="centre-button centre-button--go">
-            back to centre
-          </Link>
-          <CentreReportButton phase="closed" roomId={roomId} />
-        </main>
+        <RoomUnavailableState gameName="centre" gamePath="/things/centre" />
       </div>
     );
+
+  if (!snapshot) return <div className="things-game things-game--night centre" aria-busy="true" />;
 
   if (snapshot.phase === "lobby") {
     const token = sessionStorage.getItem(centreBrowserKeys.invite(roomId));
@@ -381,6 +392,7 @@ export function CentreRoom({
           onDifficulty={(difficulty) => void send({ type: "game.configure", difficulty })}
           onDelayedRivals={(delayedRivals) => void send({ type: "game.configure", delayedRivals })}
           onPassLead={(playerId) => void send({ type: "host.pass", playerId })}
+          onAdmissionChange={(locked) => void send({ type: "room.admission.set", locked })}
           onRename={async () => {
             const current =
               snapshot.players.find(({ id }) => id === credentials.playerId)?.name ?? "";
@@ -664,6 +676,7 @@ function CentreLobby({
   onDifficulty,
   onDelayedRivals,
   onPassLead,
+  onAdmissionChange,
   onRename,
   onStart,
   onLeave,
@@ -678,6 +691,7 @@ function CentreLobby({
   onDifficulty: (difficulty: CentreDifficulty) => void;
   onDelayedRivals: (enabled: boolean) => void;
   onPassLead: (playerId: string) => void;
+  onAdmissionChange: (locked: boolean) => void;
   onRename: () => void;
   onStart: () => void;
   onLeave: () => Promise<boolean>;
@@ -701,6 +715,7 @@ function CentreLobby({
           tone="dark"
         />
         <MultiplayerLobby
+          admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
               <button type="button" className="centre-button centre-button--go" onClick={onStart}>
@@ -716,6 +731,7 @@ function CentreLobby({
             )
           }
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
           game="centre"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
@@ -723,6 +739,7 @@ function CentreLobby({
           inviteTitle="Centre"
           inviteUrl={invite}
           onPassLead={onPassLead}
+          onAdmissionChange={onAdmissionChange}
           onReadyChange={onReady}
           onRename={onRename}
           players={snapshot.players.map((player) => ({

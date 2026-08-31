@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  readExpiringLocalValue,
+  removeStorageKeys,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import { FamilyFeudTeamMark } from "./FamilyFeudBoard";
@@ -10,6 +14,8 @@ import { familyFeudBrowserKeys } from "./family-feud-keys";
 import { applyFamilyFeudBuzzerActionFn } from "./family-feud-room.functions";
 import type { FamilyFeudBuzzerAction, FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 interface BuzzerSession {
   token: string;
@@ -62,6 +68,15 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   }, [roomId]);
   const live = useFamilyFeudRoom({ roomId, role: "buzzer", credential: session?.token ?? "" });
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended,
+    onUnavailable: () => {
+      const key = familyFeudBrowserKeys.buzzerSession(roomId);
+      removeStorageKeys(sessionStorage, [key]);
+      removeStorageKeys(localStorage, [key]);
+    },
+  });
   const dispatchBuzzerAction = useReliableMultiplayerAction(
     (action: MultiplayerActionInput<FamilyFeudBuzzerAction>, actionId) =>
       applyFamilyFeudBuzzerActionFn({
@@ -88,8 +103,10 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
     try {
       const result = await dispatchBuzzerAction({ type: "buzzer.hit", teamId });
       if (result.snapshot) live.setSnapshot(result.snapshot);
-      if (!result.accepted) setMessage(result.error ?? "Someone already buzzed.");
-      else live.notify();
+      if (!result.accepted) {
+        if (result.errorCode === "room_unavailable") markUnavailable();
+        else setMessage(result.error ?? "Someone already buzzed.");
+      } else live.notify();
     } catch {
       setMessage("Connection missed that buzz. The MC can assign it.");
     } finally {
@@ -97,6 +114,12 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
       setBusy(false);
     }
   };
+  if (roomUnavailable)
+    return (
+      <div className="things-game things-game--night text-white">
+        <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
+      </div>
+    );
   if (!ready || (session && !snapshot))
     return (
       <div

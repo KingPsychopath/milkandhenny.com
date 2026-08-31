@@ -130,6 +130,8 @@ function hostAction(value: unknown): LiarsHostAction {
       ...(data.timings === undefined ? {} : { timings: timings(data.timings) }),
       ...(data.roomMode === undefined ? {} : { roomMode: roomMode(data.roomMode) }),
     };
+  if (data.type === "room.admission.set" && typeof data.locked === "boolean")
+    return { actionId: id, type: data.type, locked: data.locked };
   if (data.type === "player.remove" || data.type === "host.pass")
     return { actionId: id, type: data.type, playerId: text(data.playerId, 120) };
   if (data.type === "game.start")

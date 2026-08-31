@@ -45,6 +45,11 @@ import {
   type TicketRecord,
 } from "./types";
 import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
+import {
+  markParticipantCheckedIn,
+  participantForTicket,
+} from "@/features/event-scoring/store.server";
+import { publishTicketEvent } from "./ticket-events.server";
 
 /**
  * Ticket workflows.
@@ -297,6 +302,19 @@ export async function redeemTicket(input: RedeemInput): Promise<RedeemOutcome> {
   const claim = await claimRedemption(existing.id, input.redeemedBy, input.offline === true);
 
   if (claim.claimed) {
+    const participant = await participantForTicket(claim.ticket.id);
+    if (participant) await markParticipantCheckedIn(participant.id);
+    await publishTicketEvent({
+      eventSlug: claim.ticket.eventSlug,
+      ticketId: claim.ticket.id,
+      kind: "checked-in",
+      occurredAt: claim.ticket.redeemedAt ?? new Date().toISOString(),
+    }).catch((error: unknown) =>
+      log.warn("tickets.realtime", "Admission succeeded but its live wake-up failed", {
+        ticketId: claim.ticket.id,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
     return { result: "admitted", ticket: toDoorView(claim.ticket, ticketTypeName) };
   }
 
@@ -317,6 +335,12 @@ export async function unredeemTicket(ticketId: string): Promise<TicketOpResult<v
   const ticket = await getTicket(ticketId);
   if (!ticket) return { ok: false, status: 404, error: "Ticket not found" };
   await releaseRedemption(ticket.id);
+  await publishTicketEvent({
+    eventSlug: ticket.eventSlug,
+    ticketId: ticket.id,
+    kind: "unchecked-in",
+    occurredAt: new Date().toISOString(),
+  }).catch(() => undefined);
   return { ok: true, value: undefined };
 }
 

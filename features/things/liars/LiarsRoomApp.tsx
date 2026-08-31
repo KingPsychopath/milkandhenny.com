@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { GameShell } from "../shared/GameShell";
 import {
@@ -12,8 +13,9 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import {
+  clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
-  releaseGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
@@ -29,7 +31,7 @@ import {
 } from "./liars-rules";
 import { applyLiarsHostActionFn, applyLiarsPlayerActionFn } from "./liars-room.functions";
 import { JoinLiarsRoom } from "./JoinLiarsRoom";
-import { buildLiarsPlayerInviteUrl } from "./liars-invite";
+import { buildLiarsPlayerInviteUrl, liarsSetupPath } from "./liars-invite";
 import {
   ActionButton,
   Eyebrow,
@@ -57,6 +59,8 @@ import type { LiarsNote } from "./useLiarsNotes";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function LiarsRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<LiarsPlayerCredentials | null>(null);
@@ -83,7 +87,24 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
       />
     );
 
-  return <LiarsRoom key={credentials.playerId} credentials={credentials} />;
+  return (
+    <LiarsRoom
+      key={credentials.playerId}
+      credentials={credentials}
+      onUnavailable={() => {
+        forgetLiarsRoomRecovery(roomId);
+        void clearUnavailableGamePoolMembership("liars", roomId);
+      }}
+    />
+  );
+}
+
+export function forgetLiarsRoomRecovery(roomId: string) {
+  removeStorageKeys(localStorage, [
+    liarsBrowserKeys.playerSession(roomId),
+    liarsBrowserKeys.hostSession(roomId),
+    liarsBrowserKeys.invite(roomId),
+  ]);
 }
 
 /**
@@ -91,7 +112,13 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
  * table's worth of them side by side and be looking at exactly what a player looks at, rather than
  * at a debug view that drifts from the real thing.
  */
-export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials }) {
+export function LiarsRoom({
+  credentials,
+  onUnavailable,
+}: {
+  credentials: LiarsPlayerCredentials;
+  onUnavailable?: () => void;
+}) {
   const { roomId, playerId, playerToken } = credentials;
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useLiarsRoom({
@@ -102,6 +129,12 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
   });
   const sound = useGameSound(liarsBrowserKeys.muted());
   const snapshot = room.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: room.ended,
+    onUnavailable,
+  });
+  useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "ending");
   const roomExpiry = snapshot?.expiresAt;
   useEffect(() => {
     if (!roomExpiry) return;
@@ -165,13 +198,20 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
         if (
+          !result.accepted &&
+          "errorCode" in result &&
+          result.errorCode === "room_unavailable" &&
+          action.type !== "room.leave"
+        )
+          markUnavailable();
+        if (
           action.type === "room.leave" &&
           (result.accepted ||
             (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
         ) {
-          removeStorageKeys(localStorage, [liarsBrowserKeys.playerSession(roomId)]);
-          const entrance = await releaseGamePoolMembership("liars", roomId);
-          window.location.assign(entrance ?? "/things/liars");
+          forgetLiarsRoomRecovery(roomId);
+          const entrance = await leaveGamePoolRoom("liars", roomId);
+          window.location.assign(entrance ?? liarsSetupPath(snapshot?.mode ?? "mafia"));
           return;
         }
       } catch {
@@ -180,7 +220,7 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
         busyRef.current = false;
       }
     },
-    [dispatchPlayerAction, room, roomId],
+    [dispatchPlayerAction, markUnavailable, room, roomId, snapshot?.mode],
   );
 
   const sendHost = useCallback(
@@ -189,12 +229,21 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
         const result = await dispatchHostAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
+        if (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable")
+          markUnavailable();
       } catch {
         room.setMessage("That did not go through. Try again.");
       }
     },
-    [dispatchHostAction, room],
+    [dispatchHostAction, markUnavailable, room],
   );
+
+  if (roomUnavailable)
+    return (
+      <GameShell tone="night">
+        <RoomUnavailableState gameName="this game" gamePath="/things" />
+      </GameShell>
+    );
 
   if (!snapshot)
     return (
@@ -213,7 +262,9 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
       <div className={`flex min-h-0 flex-1 flex-col text-white ${dead ? "opacity-60" : ""}`}>
         <ThingsRoomHeader
           tone="night"
-          back={<Link to="/things/liars">← liars</Link>}
+          back={
+            <Link to={liarsSetupPath(snapshot.mode)}>← {LIARS_MODE_COPY[snapshot.mode].name}</Link>
+          }
           roomId={snapshot.roomId}
           connection={room.connectionState}
           detail={
@@ -392,6 +443,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         rules="The host sets the roles, everyone taps ready, and the phone guides the night. Talk in the room; use the game only for private information, choices, and timing."
       />
       <MultiplayerLobby
+        admissionLocked={snapshot.joinLocked}
         actions={
           isHost ? (
             <>
@@ -426,6 +478,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
           )
         }
         canPassLead={isHost && snapshot.players.length > 1}
+        canSetAdmission={isHost && !snapshot.managed}
         currentPlayerId={snapshot.player?.playerId ?? null}
         game={snapshot.mode}
         inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
@@ -433,6 +486,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         inviteTitle="Liars"
         inviteUrl={inviteUrl}
         onPassLead={(playerId) => void sendHost({ type: "host.pass", playerId })}
+        onAdmissionChange={(locked) => void sendHost({ type: "room.admission.set", locked })}
         onReadyChange={(ready) => void send({ type: "readiness.set", ready })}
         onRename={async () => {
           const current =

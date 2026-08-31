@@ -91,6 +91,8 @@ export const applyCentreActionFn = createServerFn({ method: "POST" })
     let action: Parameters<typeof applyCentreAction>[0]["action"];
     if (raw.type === "readiness.set" && typeof raw.ready === "boolean")
       action = { type: raw.type, ready: raw.ready };
+    else if (raw.type === "room.admission.set" && typeof raw.locked === "boolean")
+      action = { type: raw.type, locked: raw.locked };
     else if (raw.type === "arming.set" && typeof raw.armed === "boolean")
       action = { type: raw.type, armed: raw.armed };
     else if (raw.type === "game.configure")

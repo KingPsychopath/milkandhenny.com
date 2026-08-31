@@ -3585,6 +3585,87 @@ const MIGRATIONS: Migration[] = [
       ));
     `,
   },
+  {
+    id: "0076_expiring_staff_award_claims",
+    sql: `
+      create table score_staff_award_claims (
+        id                    text primary key,
+        event_slug            text not null references events (slug)
+                              on update cascade on delete restrict,
+        assignment_id         text not null references score_staff_assignments (id)
+                              on delete restrict,
+        activity_id           text not null references score_activities (id)
+                              on delete restrict,
+        pool_id               text references score_pools (id) on delete restrict,
+        token_hash            text not null unique check (token_hash ~ '^[0-9a-f]{64}$'),
+        points_override       integer check (points_override > 0),
+        note                  text check (note is null or char_length(note) <= 1000),
+        status                text not null default 'active'
+                              check (status in ('active','processing','claimed','expired','revoked')),
+        participant_id        text references event_participants (id) on delete restrict,
+        transaction_id        text references score_transactions (id) on delete restrict,
+        created_by_device_id  text,
+        processing_started_at timestamptz,
+        expires_at            timestamptz not null,
+        claimed_at            timestamptz,
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now()
+      );
+
+      create index score_staff_award_claims_active_idx
+        on score_staff_award_claims (event_slug, expires_at)
+        where status in ('active','processing');
+      create index score_staff_award_claims_assignment_idx
+        on score_staff_award_claims (assignment_id, created_at desc);
+    `,
+  },
+  {
+    id: "0077_event_team_colours",
+    sql: `
+      alter table score_teams
+        add column if not exists colour_key text
+          check (colour_key in ('amber','sage','plum','sky')),
+        add column if not exists sort_order integer
+          check (sort_order is null or sort_order between 0 and 3);
+
+      create index if not exists score_teams_event_order_idx
+        on score_teams (event_slug, status, sort_order, created_at, id);
+    `,
+  },
+  {
+    id: "0078_event_arrival_icebreaker",
+    sql: `
+      alter table events
+        add column if not exists arrival_experience text not null default 'none'
+          check (arrival_experience in ('none','icebreaker'));
+
+      create table event_icebreaker_profiles (
+        participant_id text primary key references event_participants (id) on delete cascade,
+        event_slug text not null references events (slug) on update cascade on delete cascade,
+        player_code text not null,
+        colour_code text not null check (colour_code in ('R','S','E','A','T','O','C','L')),
+        created_at timestamptz not null default now(),
+        unique (event_slug, player_code)
+      );
+
+      create index event_icebreaker_profiles_colour_idx
+        on event_icebreaker_profiles (event_slug, colour_code);
+
+      create table event_icebreaker_encounters (
+        event_slug text not null references events (slug) on update cascade on delete cascade,
+        participant_a_id text not null references event_participants (id) on delete cascade,
+        participant_b_id text not null references event_participants (id) on delete cascade,
+        first_met_at timestamptz not null default now(),
+        last_met_at timestamptz not null default now(),
+        times_met integer not null default 1 check (times_met > 0),
+        primary key (event_slug, participant_a_id, participant_b_id),
+        check (participant_a_id < participant_b_id)
+      );
+
+      create index event_icebreaker_encounters_b_idx
+        on event_icebreaker_encounters (event_slug, participant_b_id);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

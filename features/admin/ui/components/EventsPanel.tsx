@@ -12,6 +12,7 @@ import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefre
 import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import {
   EVENT_HERO_HEIGHTS,
+  EVENT_ARRIVAL_EXPERIENCES,
   EVENT_STATUSES,
   formatEventDateTime,
   formatMoney,
@@ -19,6 +20,7 @@ import {
   isEventHeroHeight,
   isEventStatus,
   type EventHeroHeight,
+  type EventArrivalExperience,
   type EventRecord,
   type EventStatus,
   type TicketType,
@@ -104,6 +106,7 @@ type Draft = {
   heroHeight: EventHeroHeight;
   ogImage: string;
   marketingPath: string;
+  arrivalExperience: EventArrivalExperience;
   ticketTypes: DraftTicketType[];
 };
 
@@ -282,6 +285,7 @@ const EMPTY_DRAFT: Draft = {
   heroHeight: "natural",
   ogImage: "",
   marketingPath: "",
+  arrivalExperience: "none",
   ticketTypes: [
     {
       id: "standard",
@@ -346,6 +350,7 @@ function toDraft(event: EventRecord): Draft {
     heroHeight: event.heroHeight ?? "natural",
     ogImage: event.ogImage ?? "",
     marketingPath: event.marketingPath ?? "",
+    arrivalExperience: event.arrivalExperience ?? "none",
     ticketTypes: event.ticketTypes.map((type) => ({
       id: type.id,
       name: type.name,
@@ -417,6 +422,7 @@ function draftToPayload(draft: Draft): Record<string, unknown> {
     heroHeight: draft.heroHeight,
     ogImage: draft.ogImage.trim() || null,
     marketingPath: draft.marketingPath.trim() || null,
+    arrivalExperience: draft.arrivalExperience,
     ticketTypes,
   };
 }
@@ -2973,6 +2979,7 @@ export function EventsPanel({
 }) {
   const statusId = useId();
   const heroHeightId = useId();
+  const arrivalExperienceId = useId();
   const [events, setEvents] = useState<EventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -3806,6 +3813,34 @@ export function EventsPanel({
                     </span>
                   </span>
                 </label>
+
+                <div className="border-y theme-border py-3">
+                  <label
+                    htmlFor={arrivalExperienceId}
+                    className="font-mono text-micro theme-muted tracking-wide"
+                  >
+                    after check-in
+                  </label>
+                  <AppSelect
+                    id={arrivalExperienceId}
+                    value={draft.arrivalExperience}
+                    onValueChange={(value) =>
+                      EVENT_ARRIVAL_EXPERIENCES.includes(value as EventArrivalExperience) &&
+                      setDraft({ ...draft, arrivalExperience: value as EventArrivalExperience })
+                    }
+                    options={[
+                      { value: "none", label: "ticket stays open" },
+                      { value: "icebreaker", label: "reveal an icebreaker colour" },
+                    ]}
+                    variant="field"
+                    className="mt-1 rounded text-sm"
+                  />
+                  <p className="mt-2 font-mono text-micro leading-relaxed theme-faint">
+                    With the ticket open, a successful door scan gently moves the guest into the
+                    colour-mixing icebreaker. A durable start button remains on their scanned ticket
+                    for later.
+                  </p>
+                </div>
 
                 <div className="space-y-3">
                   <p className="font-mono text-micro theme-muted tracking-wide">ticket types</p>

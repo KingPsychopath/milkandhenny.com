@@ -83,6 +83,7 @@ export interface CentreSnapshot
   gameNumber: number;
   hostPlayerId: string;
   canControl: boolean;
+  joinLocked: boolean;
   delayedRivals: boolean;
   difficulty: CentreDifficulty;
   players: CentrePlayerSummary[];
@@ -107,6 +108,7 @@ export type CentreJoinResult =
   | MultiplayerSuccess<CentrePlayerCredentials>
   | MultiplayerFailure<
       | "game_started"
+      | "room_locked"
       | "invite_expired"
       | "invalid_name"
       | "name_taken"
@@ -122,6 +124,7 @@ export type CentreSnapshotResult =
 export type CentreAction = Partial<MultiplayerAction> &
   (
     | { type: "readiness.set"; ready: boolean }
+    | { type: "room.admission.set"; locked: boolean }
     | { type: "game.configure"; difficulty?: CentreDifficulty; delayedRivals?: boolean }
     | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "arming.set"; armed: boolean }

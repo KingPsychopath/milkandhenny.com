@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import { StatusNotice } from "@/components/StatusNotice";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 import { searchStaffParticipantsFn } from "../staff-scoring.functions";
 import {
@@ -8,6 +9,8 @@ import {
   type PageData,
   type Participant,
 } from "./useStaffScoringController";
+import { StaffQuickAwardQr } from "./StaffQuickAwardQr";
+import { StaffTeamsPanel } from "./StaffTeamsPanel";
 
 export function StaffScoringPage({ data, token }: { data: PageData; token: string }) {
   const {
@@ -19,6 +22,8 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setResults,
     participant,
     setParticipant,
+    recipientScope,
+    setRecipientScope,
     scanned,
     setScanned,
     placement,
@@ -27,6 +32,8 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setRawScore,
     note,
     setNote,
+    customPoints,
+    setCustomPoints,
     status,
     error,
     setError,
@@ -69,6 +76,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     activity,
     pool,
     previewPoints,
+    quickActivities,
     search,
     award,
     prepareOffline,
@@ -81,6 +89,20 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     acceptHeld,
   } = useStaffScoringController(data, token);
 
+  async function selectRecentParticipant(entry: Participant) {
+    const matches = await searchStaffParticipantsFn({
+      data: {
+        eventSlug: data.eventSlug,
+        token,
+        term: entry.ticketSuffix ?? entry.displayName ?? entry.publicAlias,
+      },
+    });
+    setParticipant(matches.find((match) => match.id === entry.id) ?? entry);
+    setRecipientScope("participant");
+    setResults([]);
+    setReviewReady(false);
+  }
+
   return (
     <main id="main" className="mx-auto max-w-2xl px-6 py-10">
       <header>
@@ -89,7 +111,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         <p className="mt-2 font-mono text-xs theme-muted">{data.label}</p>
       </header>
 
-      {(data.canAdmit || data.canAward) && (
+      {(data.canAdmit || data.canAward || data.canManageTeams) && (
         <nav
           aria-label="Staff operation"
           className="mt-8 flex flex-wrap gap-3 border-y theme-border py-3"
@@ -124,8 +146,22 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
               Award points
             </button>
           )}
+          {data.canManageTeams && (
+            <button
+              type="button"
+              onClick={() => setOperation("teams")}
+              aria-pressed={operation === "teams"}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+            >
+              Teams
+            </button>
+          )}
         </nav>
       )}
+
+      {operation === "teams" && data.canManageTeams ? (
+        <StaffTeamsPanel data={data} token={token} />
+      ) : null}
 
       {operation === "run" && data.canRun && data.canAward && (
         <section aria-labelledby="run-heading" className="mt-10 border-t theme-border pt-7">
@@ -210,14 +246,14 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
             </div>
           )}
           {error && (
-            <p role="alert" className="mt-4 font-mono text-xs text-red-700 dark:text-red-300">
+            <StatusNotice tone="danger" label="Could not admit" className="mt-4">
               {error}
-            </p>
+            </StatusNotice>
           )}
           {status && (
-            <p role="status" className="mt-4 font-mono text-xs">
+            <StatusNotice tone="positive" label="Admission confirmed" className="mt-4">
               {status}
-            </p>
+            </StatusNotice>
           )}
         </section>
       )}
@@ -236,6 +272,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
             <h2 id="award-heading" className="font-serif text-2xl">
               Award points
             </h2>
+            <StaffQuickAwardQr data={data} token={token} />
             <div className="mt-6 space-y-6">
               <label className="block font-mono text-xs">
                 activity
@@ -399,11 +436,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                       <button
                         key={entry.id}
                         type="button"
-                        onClick={() => {
-                          setParticipant(entry);
-                          setResults([]);
-                          setReviewReady(false);
-                        }}
+                        onClick={() => void selectRecentParticipant(entry)}
                         className="min-h-11 shrink-0 border theme-border px-3 text-left hover:opacity-70"
                       >
                         <span className="block font-serif">
@@ -448,6 +481,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                           type="button"
                           onClick={() => {
                             setParticipant(entry);
+                            setRecipientScope("participant");
                             setResults([]);
                             setScanned("");
                             setReviewReady(false);
@@ -460,6 +494,9 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                           </span>
                           <span className="font-mono text-micro theme-muted">
                             {entry.balance} points
+                            {entry.ticketSuffix ? ` · ticket ${entry.ticketSuffix}` : ""}
+                            {entry.teamName ? ` · ${entry.teamName}` : ""}
+                            {entry.orderSize > 1 ? ` · ${entry.orderSize}-ticket order` : ""}
                             {entry.email ? ` · ${entry.email}` : ""}
                           </span>
                         </button>
@@ -513,6 +550,108 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                 )}
               </div>
 
+              {participant && (
+                <section
+                  aria-labelledby="quick-award-heading"
+                  className="border-y theme-border py-5"
+                >
+                  <h3 id="quick-award-heading" className="font-serif text-xl">
+                    {participant.displayName ?? participant.publicAlias}
+                  </h3>
+                  <p className="mt-1 font-mono text-micro theme-muted">
+                    ticket {participant.ticketSuffix ?? "selected"} · {participant.balance} points
+                    {participant.orderSize > 1
+                      ? ` · ${participant.orderPoints} across ${participant.orderSize} tickets`
+                      : ""}
+                  </p>
+                  {participant.orderSize > 1 && (
+                    <fieldset className="mt-4">
+                      <legend className="font-mono text-xs">who receives it?</legend>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          aria-pressed={recipientScope === "participant"}
+                          onClick={() => setRecipientScope("participant")}
+                          className="min-h-14 border theme-border px-3 font-mono text-xs aria-pressed:border-foreground"
+                        >
+                          this ticket
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={recipientScope === "order"}
+                          onClick={() => setRecipientScope("order")}
+                          className="min-h-14 border theme-border px-3 font-mono text-xs aria-pressed:border-foreground"
+                        >
+                          all {participant.orderSize} tickets
+                        </button>
+                      </div>
+                    </fieldset>
+                  )}
+                  {quickActivities.length > 0 && (
+                    <div className="mt-4">
+                      <p className="font-mono text-xs">tap once to award</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {quickActivities.map((entry) => {
+                          const points =
+                            entry.rule.mode === "participation"
+                              ? (entry.rule.participationPoints ?? 0)
+                              : (entry.rule.fixedPoints ?? 0);
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              disabled={busy || points < 1}
+                              onClick={() => void award(false, entry.id)}
+                              className="min-h-14 border theme-border px-4 py-3 text-left disabled:opacity-50"
+                            >
+                              <span className="block font-serif text-lg">{entry.name}</span>
+                              <span className="font-mono text-micro theme-muted">
+                                +{points} each
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {data.canFreeform && (
+                    <div className="mt-5 border-t theme-border pt-4">
+                      <p className="font-mono text-xs">custom award</p>
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                        <label className="sr-only" htmlFor="staff-custom-points">
+                          Custom points per ticket
+                        </label>
+                        <input
+                          id="staff-custom-points"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={customPoints}
+                          onChange={(event) => setCustomPoints(Number(event.target.value))}
+                          className="min-h-11 border theme-border bg-transparent px-3 font-mono"
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            busy ||
+                            !Number.isInteger(customPoints) ||
+                            customPoints < 1 ||
+                            !note.trim()
+                          }
+                          onClick={() => void award(false, activityId, customPoints)}
+                          className="min-h-11 border border-foreground px-4 font-mono text-xs disabled:opacity-50"
+                        >
+                          award custom
+                        </button>
+                      </div>
+                      <p className="mt-2 font-mono text-micro theme-muted">
+                        Add the reason in the note field below before awarding custom points.
+                      </p>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {participant && reviewReady && (
                 <div className="border-y theme-border py-4" aria-live="polite">
                   <p className="font-serif text-lg">
@@ -540,16 +679,16 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
               </label>
 
               {error && (
-                <p role="alert" className="font-mono text-xs text-red-700 dark:text-red-300">
+                <StatusNotice tone="danger" label="Action blocked">
                   {error}
-                </p>
+                </StatusNotice>
               )}
               <div className="border-t theme-border pt-4">
                 {offlineReservation?.activityId === activityId ? (
-                  <p className="font-mono text-xs" role="status">
-                    Offline budget: {offlineReservation.points - offlineReservation.spent} points
-                    left · {offlineCommands.length} pending commands
-                  </p>
+                  <StatusNotice tone="attention" label="Offline scoring ready">
+                    {offlineReservation.points - offlineReservation.spent} budget points left ·{" "}
+                    {offlineCommands.length} pending commands
+                  </StatusNotice>
                 ) : (
                   <button
                     type="button"
@@ -566,9 +705,9 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
                 </p>
               </div>
               {status && (
-                <p role="status" className="font-mono text-xs">
+                <StatusNotice tone="positive" label="Points confirmed">
                   {status}
-                </p>
+                </StatusNotice>
               )}
               <button
                 type="button"

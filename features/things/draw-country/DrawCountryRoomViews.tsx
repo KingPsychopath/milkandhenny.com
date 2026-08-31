@@ -67,6 +67,7 @@ export function RoomLobby({
   onReadyChange,
   onStart,
   onPassLead,
+  onAdmissionChange,
   onRename,
   startLabel,
   onLeave,
@@ -78,6 +79,7 @@ export function RoomLobby({
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
   onPassLead: (playerId: string) => void;
+  onAdmissionChange: (locked: boolean) => void;
   onRename: () => void;
   /** Overrides the start button label, e.g. after nudging unready players. */
   startLabel?: string | null;
@@ -112,6 +114,7 @@ export function RoomLobby({
           tone="light"
         />
         <MultiplayerLobby
+          admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
               <button
@@ -129,6 +132,7 @@ export function RoomLobby({
             )
           }
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
           game="draw-country"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
@@ -136,6 +140,7 @@ export function RoomLobby({
           inviteTitle="Draw the country"
           inviteUrl={invite}
           onPassLead={onPassLead}
+          onAdmissionChange={onAdmissionChange}
           onReadyChange={onReadyChange}
           onRename={onRename}
           players={snapshot.players.map((player) => ({

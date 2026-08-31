@@ -166,12 +166,12 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <span className="inline-flex min-h-11 items-center">type together</span>
+        <span className="inline-flex min-h-11 items-center">play together</span>
       </header>
       <main id="main" className="flex-1 px-5 pb-10">
         <GameLaunch
           tone="night"
-          eyebrow="spelling bee · type together"
+          eyebrow="spelling bee · play together"
           title="Spelling Bee."
           description="Listen together. Type your answer. Reveal everyone's spelling."
         >

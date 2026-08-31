@@ -15,9 +15,11 @@ import { removePersonEmail } from "@/features/attendee-operations/identity-manag
 import {
   acceptHeldScore,
   createActivity,
+  createTeam,
   getOrCreateSettings,
   participantForTicket,
   recordScore,
+  setTeamMembership,
 } from "@/features/event-scoring/store.server";
 import { pseudonymizeEventPerson } from "@/features/event-scoring/identity.server";
 import { hashEmail } from "@/features/tickets/qr.server";
@@ -356,6 +358,37 @@ describeWithDatabase("attendee person access", () => {
           points: 5,
           scoreHistory: [expect.objectContaining({ points: 5 })],
         }),
+      ]),
+    );
+  });
+
+  it("shows a claimed ticket's current team and palette colour on the account", async () => {
+    const person = await createVerifiedPerson("person_team_owner", "team-owner@example.com");
+    const participant = await participantForTicket(SPARE);
+    expect(
+      await claimTicketForPerson({
+        personId: person.personId,
+        verifiedEmailHash: person.emailHash,
+        ticketId: SPARE,
+        permittedParticipantId: participant!.id,
+      }),
+    ).toMatchObject({ ok: true });
+    const team = await createTeam({ eventSlug: EVENT, name: "Sky" });
+    expect(team.ok).toBe(true);
+    await query(`update score_teams set colour_key = 'sky', sort_order = 0 where id = $1`, [
+      team.ok ? team.value.id : "missing",
+    ]);
+    expect(
+      await setTeamMembership({
+        eventSlug: EVENT,
+        participantId: participant!.id,
+        teamId: team.ok ? team.value.id : "missing",
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect((await attendeeAccount(person.personId))?.tickets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: SPARE, teamName: "Sky", teamColourKey: "sky" }),
       ]),
     );
   });

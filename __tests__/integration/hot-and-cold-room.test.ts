@@ -18,6 +18,29 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Hot and Cold room", () => {
+  it("lets the room lead close and reopen admission", async () => {
+    const host = await roomEngine.createHotAndColdRoom({ hostName: "Ada" });
+    expect(host.snapshot.joinLocked).toBe(false);
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: { type: "room.admission.set", locked: true, actionId: "lock-room" },
+    });
+    await expect(
+      roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Bea" }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+    await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: { type: "room.admission.set", locked: false, actionId: "open-room" },
+    });
+    await expect(
+      roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Bea" }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("recovers one hunter after a lost join response, even once the hunt has started", async () => {
     const host = await roomEngine.createHotAndColdRoom({ hostName: "Ada" });
     const attempt = {

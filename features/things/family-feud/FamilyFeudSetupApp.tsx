@@ -15,8 +15,10 @@ import {
 import { createFamilyFeudRoomFn } from "./family-feud-room.functions";
 import { FamilyFeudDeckBuilder } from "./FamilyFeudDeckBuilder";
 import type { FamilyFeudCustomDeckInput, FamilyFeudVibeId } from "./types";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function FamilyFeudSetupApp() {
+  useSafeGameNavigation(true);
   const navigate = useNavigate();
   const custom = useFamilyFeudCustomDecks();
   const [vibeId, setVibeId] = useState<FamilyFeudVibeId>("london-link-up");

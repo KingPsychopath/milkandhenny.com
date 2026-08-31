@@ -103,6 +103,7 @@ export interface SameBrainSnapshot extends MultiplayerSequence {
   players: SameBrainPlayerSummary[];
   hostPlayerId: string | null;
   hostDisconnected: boolean;
+  joinLocked: boolean;
   you: {
     id: string;
     /** Your own answer this round, echoed back so a reconnect does not lose it. */
@@ -124,6 +125,7 @@ export type SameBrainRoomErrorCode =
   | "room_unavailable"
   | "invite_expired"
   | "game_started"
+  | "room_locked"
   | "invalid_name"
   | "name_taken"
   | "room_full"
@@ -148,6 +150,7 @@ export type SameBrainHostAction = MultiplayerAction &
         timings?: Partial<SameBrainTimings>;
       }
     | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "room.admission.set"; locked: boolean }
     | { type: "game.skipQuestion" }
     | { type: "phase.extend" }
     | { type: "phase.advance" }

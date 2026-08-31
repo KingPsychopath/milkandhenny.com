@@ -97,6 +97,33 @@ async function snapshot(seat: Seat) {
 }
 
 describe("Centre rooms", () => {
+  it("lets the room lead close and reopen admission", async () => {
+    const created = await createCentreRoom({
+      hostName: "Abel",
+      difficulty: 2,
+      delayedRivals: false,
+    });
+    expect(created.snapshot.joinLocked).toBe(false);
+    await applyCentreAction({
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+      action: { type: "room.admission.set", locked: true },
+    });
+    await expect(
+      joinCentreRoom({ roomId: created.roomId, joinToken: created.joinToken, name: "Maya" }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+    await applyCentreAction({
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+      action: { type: "room.admission.set", locked: false },
+    });
+    await expect(
+      joinCentreRoom({ roomId: created.roomId, joinToken: created.joinToken, name: "Maya" }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("recovers one racer after a lost join response, even once the race has started", async () => {
     const created = await createCentreRoom({
       hostName: "Abel",

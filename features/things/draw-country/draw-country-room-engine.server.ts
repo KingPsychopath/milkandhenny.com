@@ -105,6 +105,7 @@ export interface DrawCountryGameState {
   hostHash: string;
   joinHash: string;
   hostPlayerId: string;
+  joinLocked?: boolean;
   processedActions: string[];
   players: PlayerState[];
   round: RoundState | null;
@@ -298,6 +299,7 @@ function snapshot(room: RoomState, playerId: string, now: number): DrawCountrySn
     sequence: room.sequence,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    joinLocked: room.joinLocked === true,
     managed: room.managed === true,
     gameNumber: room.gameNumber ?? 1,
     roundTotal: room.countryIds.length,
@@ -525,6 +527,7 @@ export async function joinDrawCountryRoom(input: {
         snapshot: snapshot(room, joining.player.id, now),
       } satisfies DrawCountryPlayerCredentials & { ok: true };
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
+    if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
     if (activePlayers(room).length >= MAX_PLAYERS)
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
@@ -708,6 +711,21 @@ export async function applyDrawCountryAction(
           error: "The host controls the rounds",
           snapshot: current(),
         } as const;
+      if (input.action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return {
+            ok: true,
+            accepted: false,
+            errorCode: "action_unavailable",
+            error: "The room only locks in the lobby",
+            snapshot: current(),
+          } as const;
+        if (room.joinLocked !== input.action.locked) {
+          room.joinLocked = input.action.locked;
+          changed(room, now);
+        }
+        return accept();
+      }
       if (input.action.type === "host.pass") {
         const targetId = input.action.playerId;
         const target = activePlayers(room).find(({ id }) => id === targetId);

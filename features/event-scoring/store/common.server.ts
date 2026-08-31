@@ -67,6 +67,7 @@ export type ParticipantRow = {
   last_transaction_at: Date | null;
   team_id: string | null;
   team_name: string | null;
+  team_colour_key: string | null;
 };
 
 export type TransactionRow = {
@@ -218,9 +219,7 @@ export function toActivity(row: ActivityRow): ScoreActivity {
   };
 }
 
-export function toParticipant(
-  row: ParticipantRow,
-): ScoreParticipant & ScoreProjection & { teamId?: string } {
+export function toParticipant(row: ParticipantRow): ScoreParticipant & ScoreProjection {
   return {
     id: row.id,
     participantId: row.id,
@@ -240,6 +239,13 @@ export function toParticipant(
     lastTransactionAt: iso(row.last_transaction_at),
     teamId: row.team_id ?? undefined,
     teamName: row.team_name ?? undefined,
+    teamColourKey:
+      row.team_colour_key === "amber" ||
+      row.team_colour_key === "sage" ||
+      row.team_colour_key === "plum" ||
+      row.team_colour_key === "sky"
+        ? row.team_colour_key
+        : undefined,
   };
 }
 

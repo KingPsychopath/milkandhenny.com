@@ -9,11 +9,14 @@ import {
   acceptStaffHeldAction,
   decideStaffGuestRequest,
   getStaffScoringPage,
+  mintStaffAwardClaim,
   reverseStaffAward,
   resolveStaffScannedParticipant,
   searchStaffParticipants,
+  shuffleStaffTeams,
   submitStaffGuest,
   transferStaffPoints,
+  moveStaffTeamParticipant,
 } from "./staff-scoring.server";
 import {
   closeOfflineScoreReservation,
@@ -62,6 +65,7 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
       placement?: number;
       rawScore?: number;
       points?: number;
+      recipientScope?: "participant" | "order";
       commandId: string;
       note?: string;
       confirmLarge?: boolean;
@@ -87,15 +91,40 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
           value: {
             id: result.value.id,
             points: result.value.postings.reduce((sum, posting) => sum + posting.points, 0),
+            recipients: result.value.postings.length,
+            pointsEach: result.value.postings[0]?.points ?? 0,
             remainingPool: pool?.available,
           },
         }
       : result;
   });
 
+export const mintStaffAwardClaimFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      eventSlug: string;
+      token: string;
+      activityId: string;
+      points?: number;
+      note?: string;
+      expiresInSeconds?: number;
+    }) => data,
+  )
+  .handler(({ data }) => mintStaffAwardClaim({ ...data, deviceId: ensureDeviceId() }));
+
 export const admitStaffTicketFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; scanned: string }) => data)
   .handler(({ data }) => admitStaffTicket({ ...data, deviceId: ensureDeviceId() }));
+
+export const shuffleStaffTeamsFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; token: string; teamCount: number }) => data)
+  .handler(({ data }) => shuffleStaffTeams({ ...data, deviceId: ensureDeviceId() }));
+
+export const moveStaffTeamParticipantFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { eventSlug: string; token: string; participantId: string; teamId: string }) => data,
+  )
+  .handler(({ data }) => moveStaffTeamParticipant({ ...data, deviceId: ensureDeviceId() }));
 
 export const reverseStaffAwardFn = createServerFn({ method: "POST" })
   .validator(

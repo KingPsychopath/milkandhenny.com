@@ -34,6 +34,7 @@ const PRESET_DESCRIPTIONS: Record<(typeof PRESETS)[number], string> = {
 const PERMISSIONS = [
   "viewParticipantPoints",
   "awardPoints",
+  "manageTeams",
   "runActivities",
   "transferPoints",
   "reverseAwards",

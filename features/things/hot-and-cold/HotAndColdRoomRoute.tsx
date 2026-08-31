@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import {
   readExpiringLocalValue,
@@ -12,7 +12,8 @@ import { parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HotAndColdRoomApp, JoinHotAndColdRoom } from "./HotAndColdRoomApp";
 import type { HotAndColdCredentials } from "./types";
 import {
-  releaseGamePoolMembership,
+  clearUnavailableGamePoolMembership,
+  leaveGamePoolRoom,
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 
@@ -36,6 +37,11 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
     game: "hot-and-cold",
     roomId,
   });
+  const clearUnavailableRoom = useCallback(() => {
+    removeStorageKeys(localStorage, [key, inviteKey]);
+    removeStorageKeys(sessionStorage, [inviteKey]);
+    void clearUnavailableGamePoolMembership("hot-and-cold", roomId);
+  }, [inviteKey, key, roomId]);
   if (credentials === undefined || joinToken === undefined)
     return (
       <div className="hot-and-cold grid min-h-svh place-items-center font-mono text-xs">
@@ -47,14 +53,11 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
   return (
     <HotAndColdRoomApp
       credentials={credentials}
+      onUnavailable={clearUnavailableRoom}
       onLeave={async () => {
         removeStorageKeys(localStorage, [key]);
-        try {
-          const entrance = await releaseGamePoolMembership("hot-and-cold", roomId);
-          window.location.assign(entrance ?? "/things/hot-and-cold");
-        } catch {
-          setCredentials(null);
-        }
+        const entrance = await leaveGamePoolRoom("hot-and-cold", roomId);
+        window.location.assign(entrance ?? "/things/hot-and-cold");
       }}
     />
   );

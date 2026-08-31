@@ -6,6 +6,7 @@ import { query } from "@/lib/platform/postgres.server";
 import {
   createActivity,
   getOrCreateSettings,
+  markParticipantCheckedIn,
   participantForTicket,
 } from "@/features/event-scoring/store.server";
 import { launchEventCentreGame } from "@/features/event-scoring/game-launch.server";
@@ -94,6 +95,7 @@ describeWithDatabase("event-linked Centre scoring", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-08T12:00:00Z"));
     const participant = await participantForTicket("01ARZ3NDEKTSV4CT");
+    await markParticipantCheckedIn(participant!.id);
     await getOrCreateSettings("centre-night");
     await query(
       `update event_scoring_settings set state = 'live' where event_slug = 'centre-night'`,

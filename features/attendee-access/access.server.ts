@@ -701,7 +701,10 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       holder_name: string;
       status: string;
       points: number;
+      order_points: number | null;
       public_alias: string | null;
+      team_name: string | null;
+      team_colour_key: import("@/features/event-scoring/team-palette").TeamColourKey | null;
       rank: string | null;
       participant_id: string | null;
       personally_claimed: boolean;
@@ -711,7 +714,19 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
           t.id, t.access_reference, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
           t.holder_name, t.status, p.id as participant_id,
           coalesce(sp.balance, 0)::integer as points,
+          case when om.id is not null then (
+            select coalesce(sum(order_projection.balance), 0)::integer
+              from tickets order_ticket
+              join event_participants order_participant on order_participant.ticket_id = order_ticket.id
+             left join score_projections order_projection
+                on order_projection.participant_id = order_participant.id
+             where order_ticket.order_id = t.order_id
+               and order_ticket.event_slug = t.event_slug
+               and order_ticket.status = 'valid'
+               and order_participant.status = 'active'
+          ) else null end as order_points,
           coalesce(p.chosen_alias,p.generated_alias) as public_alias,
+          team.name as team_name, team.colour_key as team_colour_key,
           case when p.id is null then null else (
             1 + (select count(*) from score_projections ranked
                   join event_participants ranked_participant
@@ -726,6 +741,15 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
          join events e on e.slug = t.event_slug
          left join event_participants p on p.ticket_id = t.id
          left join score_projections sp on sp.participant_id = p.id
+         left join lateral (
+           select score_teams.name, score_teams.colour_key
+             from score_team_memberships membership
+             join score_teams on score_teams.id = membership.team_id
+            where membership.participant_id = p.id
+              and membership.starts_at <= now()
+              and (membership.ends_at is null or membership.ends_at > now())
+            order by membership.starts_at desc limit 1
+         ) team on true
          left join event_order_managers om
            on om.order_id = t.order_id and om.person_id = $1 and om.status = 'active'
         where p.person_id = $1 or om.id is not null
@@ -793,8 +817,11 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       status: row.status,
       startsAt: row.starts_at.toISOString(),
       points: row.points,
+      orderPoints: row.order_points ?? undefined,
       rank: row.rank ? Number(row.rank) : undefined,
       publicAlias: row.public_alias ?? undefined,
+      teamName: row.team_name ?? undefined,
+      teamColourKey: row.team_colour_key ?? undefined,
       scoreHistory: historyRows
         .filter((history) => history.participant_id === row.participant_id)
         .map((history) => ({

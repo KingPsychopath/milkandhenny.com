@@ -54,7 +54,7 @@ function StatusPill({ event }: { event: EventsIndexItem }) {
         ? "sold out"
         : event.status;
   return (
-    <span className="font-mono text-micro tracking-widest uppercase theme-subtle border theme-border rounded-full px-2 py-0.5">
+    <span className="mt-0.5 inline-flex shrink-0 whitespace-nowrap rounded-full border theme-border px-3 py-1 font-mono text-micro uppercase tracking-widest theme-subtle">
       {label}
     </span>
   );

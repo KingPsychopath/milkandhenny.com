@@ -7,6 +7,7 @@ import { joinCentreRoomFn } from "./centre-room.functions";
 import { captureCentreInvite } from "./invite.client";
 import type { CentrePlayerCredentials } from "./types";
 import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinCentreRoom({
   roomId,
@@ -15,6 +16,7 @@ export function JoinCentreRoom({
   roomId: string;
   onJoined: (credentials: CentrePlayerCredentials) => void;
 }) {
+  useSafeGameNavigation(true);
   const { loaded, name, setName, remember } = useRememberedPlayerName(32);
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);

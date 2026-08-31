@@ -106,12 +106,16 @@ export async function claimGamePlayerResult(input: {
     source_status: string;
     target_status: string;
     target_ticket_id: string | null;
+    target_checked_in_at: Date | null;
+    allow_precheckin_online_points: boolean;
     already_claimed: boolean;
   }>(
     `select events.slug as event_slug,
             source.status as source_status,
             target.status as target_status,
             target.ticket_id as target_ticket_id,
+            target.checked_in_at as target_checked_in_at,
+            settings.allow_precheckin_online_points,
             exists (
               select 1 from event_participant_merges merges
                where merges.source_participant_id = source.id
@@ -121,6 +125,7 @@ export async function claimGamePlayerResult(input: {
        from event_game_player_links links
        join event_game_score_bindings bindings on bindings.channel_id = links.channel_id
        join events on events.event_id = bindings.event_id
+       join event_scoring_settings settings on settings.event_slug = events.slug
        join event_participants source on source.id = links.participant_id
        join event_participants target on target.id = $4 and target.event_slug = events.slug
       where links.channel_id = $1 and links.game_player_id = $2 and source.id = $3`,
@@ -133,6 +138,9 @@ export async function claimGamePlayerResult(input: {
   );
   if (!claim || claim.target_status !== "active" || !claim.target_ticket_id) {
     return { ok: false, status: 404, error: "Claim target not found" };
+  }
+  if (!claim.allow_precheckin_online_points && !claim.target_checked_in_at) {
+    return { ok: false, status: 403, error: "Check in with your event ticket first" };
   }
   if (claim.already_claimed) {
     return { ok: true, value: { participantId: input.targetParticipantId } };

@@ -108,6 +108,8 @@ export const applyTwinActionFn = createServerFn({ method: "POST" })
 
     if (raw.type === "readiness.set" && typeof raw.ready === "boolean")
       action = { type: raw.type, ready: raw.ready };
+    else if (raw.type === "room.admission.set" && typeof raw.locked === "boolean")
+      action = { type: raw.type, locked: raw.locked };
     else if (raw.type === "answer.tap")
       action = {
         type: raw.type,

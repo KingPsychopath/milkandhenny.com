@@ -25,6 +25,8 @@ import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 function roomTokens(roomId: string) {
   const sessionKey = partyBrowserKeys.presenterSession(roomId);
@@ -86,6 +88,14 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
   });
   const stage = useSynchronizedPartyStage(live.snapshot, live.clockOffset);
   const snapshot = live.snapshot;
+  const { roomUnavailable, markUnavailable } = useRoomUnavailableRecovery({
+    roomKey: roomId,
+    unavailable: live.ended,
+    onUnavailable: () => {
+      sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
+      removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
+    },
+  });
   useUpdateReloadSafety(
     "spelling-party-presenter",
     snapshot?.phase === "lobby" || snapshot?.phase === "finished",
@@ -171,6 +181,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
       );
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) {
+        if (result.errorCode === "room_unavailable") markUnavailable();
         live.setMessage(result.error ?? "That action is not ready yet.");
         if (result.errorCode === "players_not_ready" && result.snapshot) {
           const unready = result.snapshot.players.filter(({ ready }) => !ready);
@@ -240,12 +251,6 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     [snapshot?.players],
   );
 
-  useEffect(() => {
-    if (!live.ended) return;
-    sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
-    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
-  }, [live.ended, roomId]);
-
   if (tokensReadyForRoom !== roomId)
     return <PartyScreenMessage title="Opening the room…" detail="Keep this screen open." />;
   if (!tokens.presenterToken)
@@ -255,24 +260,11 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
         detail="Open the private shared-screen link created with this room."
       />
     );
-  if (live.ended)
+  if (roomUnavailable)
     return (
-      <main
-        id="main"
-        className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
-      >
-        <div>
-          <h1 className="font-serif text-5xl font-semibold">Party ended.</h1>
-          <p className="mt-4 font-serif text-lg text-white/60">This room has been cleared.</p>
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/things/spelling-party" })}
-            className="mt-6 min-h-12 rounded-full border border-white/20 px-6 font-mono text-sm"
-          >
-            start a new room
-          </button>
-        </div>
-      </main>
+      <div className="things-game things-game--night text-white">
+        <RoomUnavailableState gameName="spelling party" gamePath="/things/spelling-party" />
+      </div>
     );
   if (!snapshot)
     return (
@@ -286,7 +278,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     <div className="things-game things-game--night text-white">
       <ThingsRoomHeader
         tone="night"
-        back={<span className="things-room-header-utility">type together</span>}
+        back={<span className="things-room-header-utility">spelling party</span>}
         roomId={roomId}
         connection={live.connectionState}
         right={

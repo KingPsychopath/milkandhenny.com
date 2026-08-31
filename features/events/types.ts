@@ -13,6 +13,16 @@ export function isEventStatus(value: unknown): value is EventStatus {
   return typeof value === "string" && (EVENT_STATUSES as readonly string[]).includes(value);
 }
 
+export const EVENT_ARRIVAL_EXPERIENCES = ["none", "icebreaker"] as const;
+
+export type EventArrivalExperience = (typeof EVENT_ARRIVAL_EXPERIENCES)[number];
+
+export function isEventArrivalExperience(value: unknown): value is EventArrivalExperience {
+  return (
+    typeof value === "string" && (EVENT_ARRIVAL_EXPERIENCES as readonly string[]).includes(value)
+  );
+}
+
 /**
  * A purchasable (or comp-able) class of admission.
  *
@@ -115,6 +125,8 @@ export type EventRecord = {
   terms?: string;
 
   checkInOpensAt?: string;
+  /** Optional attendee experience that becomes available after door check-in. */
+  arrivalExperience?: EventArrivalExperience;
   staffNotes?: string;
 
   createdAt: string;

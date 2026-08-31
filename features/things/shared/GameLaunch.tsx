@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { HomeScreenGamePrompt } from "./HomeScreenGamePrompt";
+import { useSafeGameNavigation } from "./useSafeGameNavigation";
 
 type LaunchTone = "night" | "cream" | "paper" | "theme";
 
@@ -20,6 +21,7 @@ export function GameLaunch({
   title,
   tone,
 }: GameLaunchProps) {
+  useSafeGameNavigation(true);
   const light = tone === "cream";
   const themed = tone === "theme";
   const centred = align === "center";

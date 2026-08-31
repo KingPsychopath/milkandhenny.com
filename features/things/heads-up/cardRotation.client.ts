@@ -1,4 +1,4 @@
-import { shuffledCards } from "./decks";
+import { freshFirst } from "../shared/content-random";
 
 /**
  * Cards this device has already played, per deck, so back-to-back rounds feel like a new game
@@ -24,14 +24,7 @@ export function readRecentCards(deckId: string) {
  */
 export function selectRoundCards(deckId: string, cards: readonly string[]) {
   const recent = readRecentCards(deckId);
-  const seen = new Set(recent);
-  const fresh = shuffledCards(cards.filter((card) => !seen.has(card)));
-  const staleFirst = recent.filter((card) => cards.includes(card));
-  const repeats = [
-    ...staleFirst,
-    ...shuffledCards(cards.filter((card) => seen.has(card) && !staleFirst.includes(card))),
-  ];
-  return [...fresh, ...repeats];
+  return freshFirst(cards, recent, (card) => card);
 }
 
 export function rememberCards(deckId: string, playedCards: readonly string[], deckSize: number) {

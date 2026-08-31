@@ -6,6 +6,8 @@ import {
   subscribeOfficialResultWake,
 } from "@/features/game-results/outbox.server";
 import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
+import { closeScoreEventSubscriber } from "@/features/event-scoring/score-events.server";
+import { closeTicketEventSubscriber } from "@/features/tickets/ticket-events.server";
 
 export default definePlugin((nitroApp) => {
   let consuming = false;
@@ -29,5 +31,9 @@ export default definePlugin((nitroApp) => {
       consuming = false;
     }
   });
-  nitroApp.hooks.hook("close", stop);
+  nitroApp.hooks.hook("close", async () => {
+    stop();
+    await closeScoreEventSubscriber();
+    await closeTicketEventSubscriber();
+  });
 });

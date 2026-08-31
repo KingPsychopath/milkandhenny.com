@@ -7,6 +7,7 @@ interface IcebreakerPairingCodeProps {
   returningToResult: boolean;
   onScan: () => void;
   onBack: () => void;
+  pairingPath?: string;
 }
 
 export function IcebreakerPairingCode({
@@ -14,9 +15,10 @@ export function IcebreakerPairingCode({
   returningToResult,
   onScan,
   onBack,
+  pairingPath,
 }: IcebreakerPairingCodeProps) {
   const pairingLink =
-    typeof window === "undefined" ? null : pairingUrl(window.location.origin, player);
+    typeof window === "undefined" ? null : pairingUrl(window.location.origin, player, pairingPath);
   const { dataUrl: qrCode, failed: qrFailed } = useQrCode(pairingLink, 320);
 
   return (

@@ -7,7 +7,8 @@ export interface Thing {
     | "spelling-bee"
     | "draw-country"
     | "pitches"
-    | "liars"
+    | "mafia"
+    | "imposter"
     | "same-brain"
     | "twin"
     | "centre"
@@ -22,7 +23,8 @@ export interface Thing {
     | "/things/spelling-bee"
     | "/things/draw-country"
     | "/things/pitches"
-    | "/things/liars"
+    | "/things/mafia"
+    | "/things/imposter"
     | "/things/same-brain"
     | "/things/twin"
     | "/things/centre"
@@ -31,19 +33,19 @@ export interface Thing {
   status: "ready";
   mark:
     | { kind: "symbol"; value: string }
-    | { kind: "icon"; value: "brain" | "maze" | "pair" | "temperature" };
+    | { kind: "icon"; value: "brain" | "feud" | "maze" | "pair" | "temperature" };
   offline: (typeof THING_OFFLINE)[keyof typeof THING_OFFLINE] | null;
 }
 
 export const THINGS = [
   {
     slug: "family-feud",
-    name: "Family Feud",
+    name: "family feud",
     description: "Two teams, ten answers, and one host running the room from their phone.",
     eyebrow: "team game · 2–40 people",
     href: "/things/family-feud",
     status: "ready",
-    mark: { kind: "symbol", value: "10" },
+    mark: { kind: "icon", value: "feud" },
     offline: null,
   },
   {
@@ -90,11 +92,21 @@ export const THINGS = [
     offline: THING_OFFLINE.twin,
   },
   {
-    slug: "liars",
-    name: "liars",
-    description: "Mafia or imposter, on everyone's phone. Nobody keeps score but you.",
+    slug: "mafia",
+    name: "mafia",
+    description: "The town sleeps. The mafia chooses. Find them before they take over.",
+    eyebrow: "social deduction · 5–16 people",
+    href: "/things/mafia",
+    status: "ready",
+    mark: { kind: "symbol", value: "◒" },
+    offline: null,
+  },
+  {
+    slug: "imposter",
+    name: "imposter",
+    description: "Everyone knows the secret word except the imposter. Blend in or find the liar.",
     eyebrow: "social deduction · 4–16 people",
-    href: "/things/liars",
+    href: "/things/imposter",
     status: "ready",
     mark: { kind: "symbol", value: "◑" },
     offline: null,
@@ -122,7 +134,7 @@ export const THINGS = [
   {
     slug: "spelling-bee",
     name: "spelling bee",
-    description: "Hear the word. Spell it aloud—or type together.",
+    description: "Hear the word. Spell it aloud, together or solo.",
     eyebrow: "word game · 1+ people",
     href: "/things/spelling-bee",
     status: "ready",
@@ -131,7 +143,7 @@ export const THINGS = [
   },
   {
     slug: "heads-up",
-    name: "forehead",
+    name: "heads up",
     description: "Guess the card from your friends' clues.",
     eyebrow: "party game · 2+ people",
     href: "/things/heads-up",

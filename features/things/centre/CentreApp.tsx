@@ -166,7 +166,7 @@ export function CentreApp({
             </GameLaunchButton>
             {defaultPool ? (
               <GamePoolDefaultLaunch pool={defaultPool} tone="theme" emphasis="secondary">
-                find a room
+                play together
               </GamePoolDefaultLaunch>
             ) : null}
           </div>
@@ -191,14 +191,16 @@ export function CentreApp({
                 race my ghost
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "friends" ? null : "friends")}
-              aria-pressed={panel === "friends"}
-              className="min-h-11"
-            >
-              race friends
-            </button>
+            {!defaultPool ? (
+              <button
+                type="button"
+                onClick={() => setPanel(panel === "friends" ? null : "friends")}
+                aria-pressed={panel === "friends"}
+                className="min-h-11"
+              >
+                play together
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setPanel(panel === "options" ? null : "options")}
@@ -207,14 +209,16 @@ export function CentreApp({
             >
               change difficulty
             </button>
-            <button
-              type="button"
-              onClick={() => setPanel(panel === "join" ? null : "join")}
-              aria-pressed={panel === "join"}
-              className="min-h-11"
-            >
-              join by code
-            </button>
+            {!defaultPool ? (
+              <button
+                type="button"
+                onClick={() => setPanel(panel === "join" ? null : "join")}
+                aria-pressed={panel === "join"}
+                className="min-h-11"
+              >
+                enter a room code
+              </button>
+            ) : null}
           </GameLaunchChoices>
         </GameLaunch>
         {panel === "friends" ? (
@@ -249,7 +253,7 @@ export function CentreApp({
                 <span>show delayed rival dots</span>
               </label>
               <button type="submit" disabled={creating} className="centre-button centre-button--go">
-                {creating ? "making room…" : defaultPool ? "create private room" : "create room"}
+                {creating ? "making room…" : "create room"}
               </button>
             </form>
           </section>

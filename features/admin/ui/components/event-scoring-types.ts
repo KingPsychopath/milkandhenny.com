@@ -23,7 +23,19 @@ export type AdminScoringPool = {
 export type AdminScoringTeam = {
   id: string;
   name: string;
+  colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+  checkedInCount: number;
   status: "active" | "archived";
+};
+
+export type AdminTeamParticipant = {
+  id: string;
+  publicAlias: string;
+  displayName?: string;
+  ticketSuffix?: string;
+  teamId?: string;
+  teamName?: string;
+  teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
 };
 
 export type AdminStaffDevice = {
@@ -73,6 +85,7 @@ export type ScoringData = {
   };
   pools: AdminScoringPool[];
   teams: AdminScoringTeam[];
+  teamRoster: AdminTeamParticipant[];
   held: { id: string; sourceType: string; createdAt: string }[];
   heldOfficialResults: Array<{
     id: string;

@@ -63,6 +63,7 @@ export function TwinLobby({
   onReadyChange,
   onStart,
   onPassLead,
+  onAdmissionChange,
   onRename,
   startLabel,
   onHandSize,
@@ -79,6 +80,7 @@ export function TwinLobby({
   onReadyChange: (ready: boolean) => void;
   onStart: () => void;
   onPassLead: (playerId: string) => void;
+  onAdmissionChange: (locked: boolean) => void;
   onRename: () => void;
   /** Overrides the start button label, e.g. after nudging unready players. */
   startLabel?: string | null;
@@ -112,6 +114,7 @@ export function TwinLobby({
           tone="dark"
         />
         <MultiplayerLobby
+          admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
               <button type="button" onClick={onStart} className="twin-button twin-button--go">
@@ -125,6 +128,7 @@ export function TwinLobby({
             )
           }
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
+          canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
           game="twin"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
@@ -132,6 +136,7 @@ export function TwinLobby({
           inviteTitle="Twin"
           inviteUrl={invite}
           onPassLead={onPassLead}
+          onAdmissionChange={onAdmissionChange}
           onRename={onRename}
           onReadyChange={onReadyChange}
           players={snapshot.players.map((player) => ({

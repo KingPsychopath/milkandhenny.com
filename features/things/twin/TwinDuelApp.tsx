@@ -263,6 +263,7 @@ export function TwinDuelApp({
       setSecondFlash(null);
       setSecondClaimed(false);
       race.current = null;
+      setRaceSummary(null);
       const tiedRemaining = tied ? seats.map((seat) => Math.max(0, seat.hand.length - 1)) : null;
       const tiedWinner = tiedRemaining
         ? tiedRemaining[0] === 0 && tiedRemaining[1] === 0
@@ -290,7 +291,12 @@ export function TwinDuelApp({
   const remainingMs = Math.max(0, DUEL_CAP_MS - elapsedMs);
 
   return (
-    <div className="things-game things-game--night twin twin-duel" ref={boardRef}>
+    <div
+      className="things-game things-game--night twin twin-duel"
+      data-players={players}
+      ref={boardRef}
+      style={{ "--twin-connection-ms": `${connectionHoldMs}ms` } as React.CSSProperties}
+    >
       <div className="contents" inert={winner !== null ? true : undefined}>
         {players === 2 ? (
           <DuelSeat
@@ -328,15 +334,15 @@ export function TwinDuelApp({
           </header>
         )}
 
-        <div className="twin-duel-middle">
+        <div className={`twin-duel-middle ${players === 2 ? "twin-duel-middle--controls" : ""}`}>
           {players === 2 ? (
             <button type="button" className="twin-duel-quit" onClick={onExit}>
-              ← twin
+              ← exit
             </button>
           ) : null}
           <div className="twin-duel-palette">
             <button type="button" aria-pressed={palette.colour} onClick={palette.toggle}>
-              {palette.colour ? "colour" : "ink"}
+              {palette.colour ? "colour" : "ink only"}
             </button>
             <button
               type="button"
@@ -396,7 +402,6 @@ export function TwinDuelApp({
             }}
             token={`${flash.seat}-${flash.symbolId}-${seats[flash.seat]?.hand[0]?.cardId ?? ""}`}
             durationMs={connectionHoldMs}
-            label="match"
           />
           {players === 1 ? (
             <TwinCardTransfer
@@ -424,7 +429,6 @@ export function TwinDuelApp({
             }}
             token={`tie-${secondFlash.seat}-${secondFlash.tappedAt}`}
             durationMs={connectionHoldMs}
-            label="match"
           />
         </>
       ) : null}
@@ -514,8 +518,8 @@ function DuelSeat({
         </span>
       </div>
       {top ? (
-        <div className="twin-duel-stack">
-          {seat.hand.slice(1).map((card, depth) => (
+        <div className={`twin-duel-stack ${answer ? "twin-duel-stack--matched" : ""}`}>
+          {seat.hand.slice(1, 4).map((card, depth) => (
             <span
               key={card.cardId}
               className="twin-duel-stack-card"
@@ -524,6 +528,7 @@ function DuelSeat({
             />
           ))}
           <TwinCard
+            key={top.cardId}
             card={top}
             slot={slot}
             label={`Seat ${index + 1} card`}

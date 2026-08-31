@@ -59,6 +59,7 @@ export interface HotAndColdSnapshot extends MultiplayerReadiness {
   judgingVersion: string;
   hostPlayerId: string;
   canControl: boolean;
+  joinLocked: boolean;
   rounds: number;
   guessesPerPlayer: number;
   turnSeconds: number;
@@ -79,6 +80,7 @@ export type HotAndColdJoinResult =
   | MultiplayerSuccess<HotAndColdCredentials>
   | MultiplayerFailure<
       | "game_started"
+      | "room_locked"
       | "invite_expired"
       | "invalid_name"
       | "name_taken"
@@ -89,6 +91,7 @@ export type HotAndColdJoinResult =
 export type HotAndColdAction = MultiplayerAction &
   (
     | { type: "readiness.set"; ready: boolean }
+    | { type: "room.admission.set"; locked: boolean }
     | { type: "game.configure"; rounds?: number; guessesPerPlayer?: number; turnSeconds?: number }
     | { type: "game.start"; removePlayerIds?: string[] }
     | { type: "guess.submit"; word: string; roundId: string }

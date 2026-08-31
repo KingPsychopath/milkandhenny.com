@@ -338,6 +338,7 @@ export interface LiarsSnapshot
   narratorPlayerId: string | null;
   hostPlayerId: string | null;
   hostDisconnectedSince: number | null;
+  joinLocked: boolean;
   player: LiarsPrivateState | null;
 }
 
@@ -368,6 +369,7 @@ export type LiarsRoomErrorCode = "room_unavailable" | "lineup_invalid";
 export type LiarsJoinErrorCode =
   | "invite_expired"
   | "game_started"
+  | "room_locked"
   | "invalid_name"
   | "name_taken"
   | "room_full"
@@ -407,6 +409,7 @@ export type LiarsHostAction = MultiplayerAction &
         roomMode?: LiarsRoomMode;
       }
     | { type: "game.start"; removePlayerIds?: string[] }
+    | { type: "room.admission.set"; locked: boolean }
     | { type: "phase.extend" }
     | { type: "phase.pause" | "phase.resume" }
     | { type: "player.remove"; playerId: string }

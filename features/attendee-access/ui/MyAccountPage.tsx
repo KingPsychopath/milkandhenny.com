@@ -15,14 +15,17 @@ import {
   updateAttendeeNameFn,
 } from "../access.functions";
 import type { AttendeeAccount } from "../types";
+import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   const groups = new Map<
     string,
     {
+      eventSlug: string;
       eventTitle: string;
       managesOrder: boolean;
+      orderPoints?: number;
       tickets: AttendeeAccount["tickets"];
     }
   >();
@@ -32,10 +35,13 @@ function ticketGroups(tickets: AttendeeAccount["tickets"]) {
     if (current) {
       current.tickets.push(ticket);
       current.managesOrder ||= ticket.managesOrder;
+      current.orderPoints ??= ticket.orderPoints;
     } else {
       groups.set(key, {
+        eventSlug: ticket.eventSlug,
         eventTitle: ticket.eventTitle,
         managesOrder: ticket.managesOrder,
+        orderPoints: ticket.orderPoints,
         tickets: [ticket],
       });
     }
@@ -164,6 +170,14 @@ export function MyAccountPage({
   useEffect(() => {
     if (initialAccount.name) rememberBrowserProfile({ name: initialAccount.name });
   }, [initialAccount.name]);
+
+  useEffect(() => setAccount(initialAccount), [initialAccount]);
+
+  useEffect(() => {
+    const refreshScores = () => void router.invalidate();
+    window.addEventListener("mah-score-wake", refreshScores);
+    return () => window.removeEventListener("mah-score-wake", refreshScores);
+  }, [router]);
 
   async function saveName(event: FormEvent) {
     event.preventDefault();
@@ -348,10 +362,22 @@ export function MyAccountPage({
           <ul className="mt-4 divide-y border-y theme-border">
             {ticketGroups(account.tickets).map((group) => (
               <li key={`${group.eventTitle}:${group.tickets[0]!.orderId}`} className="py-5">
-                <h3 className="font-serif text-xl">{group.eventTitle}</h3>
+                <div className="flex items-baseline justify-between gap-4">
+                  <h3 className="font-serif text-xl">{group.eventTitle}</h3>
+                  <Link
+                    to="/events/$slug/score"
+                    params={{ slug: group.eventSlug }}
+                    className="inline-flex min-h-11 shrink-0 items-center font-mono text-micro underline hover:opacity-70"
+                  >
+                    leaderboard
+                  </Link>
+                </div>
                 <p className="mt-1 font-mono text-micro theme-muted">
                   {group.tickets.length} {group.tickets.length === 1 ? "ticket" : "tickets"}
                   {group.managesOrder ? " · you manage this order" : ""}
+                  {group.orderPoints !== undefined
+                    ? ` · ${group.orderPoints} points across the order`
+                    : ""}
                 </p>
                 <ul className="mt-3 divide-y border-y theme-border">
                   {group.tickets.map((ticket) => (
@@ -361,12 +387,24 @@ export function MyAccountPage({
                         params={{ id: ticket.publicId }}
                         className="flex min-h-11 items-center justify-between gap-4 py-3 hover:opacity-70"
                       >
-                        <span className="min-w-0 truncate font-mono text-xs">
-                          {ticket.holderName}
-                          {ticket.personallyClaimed ? " · saved to You" : ""}
+                        <span className="min-w-0 font-mono text-xs">
+                          <span className="block truncate">
+                            {ticket.holderName}
+                            {ticket.personallyClaimed ? " · saved to You" : ""}
+                          </span>
+                          {ticket.teamName ? (
+                            <TeamBadge
+                              name={`Team ${ticket.teamName}`}
+                              colourKey={ticket.teamColourKey}
+                              className="mt-1 flex w-fit"
+                            />
+                          ) : null}
                         </span>
                         <span className="shrink-0 font-mono text-micro theme-muted">
-                          {ticket.points} pts{ticket.rank ? ` · #${ticket.rank}` : ""} →
+                          {group.orderPoints !== undefined && group.tickets.length > 1
+                            ? `${group.orderPoints} total (${ticket.points} this ticket)`
+                            : `${ticket.points} pts`}
+                          {ticket.rank ? ` · #${ticket.rank}` : ""} →
                         </span>
                       </Link>
                     </li>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppImage } from "@/components/AppImage";
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
@@ -44,6 +44,13 @@ export function PairedGameHostPanel({
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const [manualCopyUrl, setManualCopyUrl] = useState<string | null>(null);
   const { dataUrl: qrCode, failed: qrFailed } = useQrCode(inviteUrl, 240);
+  const autoCreated = useRef(false);
+
+  useEffect(() => {
+    if (roomId || syncing || autoCreated.current) return;
+    autoCreated.current = true;
+    void onCreate();
+  }, [onCreate, roomId, syncing]);
 
   const handleShare = async () => {
     setManualCopyUrl(null);
@@ -94,14 +101,14 @@ export function PairedGameHostPanel({
   return (
     <section
       className="mt-9 rounded-3xl border border-white/12 bg-white/[0.04] p-5"
-      aria-labelledby="remote-judge-title"
+      aria-labelledby="play-together-title"
     >
       <div>
-        <h2 id="remote-judge-title" className="font-serif text-2xl font-semibold">
-          Remote judge
+        <h2 id="play-together-title" className="font-serif text-2xl font-semibold">
+          Play together
         </h2>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/55">
-          Let someone score from their phone.
+          Keep the game on this phone and let one person judge from theirs. Share the QR below.
         </p>
         {roomId ? (
           <p

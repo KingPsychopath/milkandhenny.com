@@ -64,6 +64,29 @@ function traceOf(countryId: string): CountryDrawing {
 }
 
 describe("Draw the Country rooms", () => {
+  it("lets the room lead close and reopen admission", async () => {
+    const room = await hostedRoom();
+    expect(room.snapshot.joinLocked).toBe(false);
+    await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "room.admission.set", locked: true },
+    });
+    await expect(
+      joinDrawCountryRoom({ roomId: room.roomId, joinToken: room.joinToken, name: "Maya" }),
+    ).resolves.toMatchObject({ ok: false, errorCode: "room_locked" });
+    await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "room.admission.set", locked: false },
+    });
+    await expect(
+      joinDrawCountryRoom({ roomId: room.roomId, joinToken: room.joinToken, name: "Maya" }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("recovers one artist after a lost join response, even once drawing has started", async () => {
     const room = await hostedRoom();
     const attempt = {

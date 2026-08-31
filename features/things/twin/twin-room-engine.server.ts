@@ -156,6 +156,7 @@ export interface TwinGameState {
   hostHash: string;
   joinHash: string;
   hostPlayerId: string;
+  joinLocked?: boolean;
   processedActions: string[];
   players: PlayerState[];
   middle: CardState | null;
@@ -650,6 +651,7 @@ function snapshot(room: RoomState, playerId: string): TwinSnapshot {
     gameNumber: room.gameNumber,
     hostPlayerId: room.hostPlayerId,
     canControl: playerId === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS,
+    joinLocked: room.joinLocked === true,
     order: room.order,
     handSize: room.handSize,
     windowMs: room.windowMs,
@@ -863,6 +865,7 @@ export async function joinTwinRoom(input: {
         snapshot: snapshot(room, joining.player.id),
       } satisfies TwinPlayerCredentials & { ok: true };
     if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
+    if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
     if (activePlayers(room).length >= twinMaxPlayers())
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
@@ -1083,6 +1086,16 @@ export async function applyTwinAction(
       const canControl =
         player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
       if (!canControl) return reject("not_host", "The host controls the game");
+
+      if (input.action.type === "room.admission.set") {
+        if (room.phase !== "lobby")
+          return reject("action_unavailable", "The room only locks in the lobby");
+        if (room.joinLocked !== input.action.locked) {
+          room.joinLocked = input.action.locked;
+          changed(room);
+        }
+        return accept();
+      }
 
       if (input.action.type === "host.pass") {
         const targetId = input.action.playerId;

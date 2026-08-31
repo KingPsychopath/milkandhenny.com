@@ -1,3 +1,5 @@
+import { shuffledCopy } from "../shared/content-random";
+
 export interface SpellingWord {
   id: string;
   word: string;
@@ -61,6 +63,18 @@ export const SPELLING_DECKS = [
       word("privilege", "noun", "a special right or advantage"),
       word("receive", "verb", "to be given or presented with something"),
       word("surprise", "noun", "an unexpected event or discovery"),
+      word("accommodate", "verb", "to provide enough space or meet a need"),
+      word("appearance", "noun", "the way that someone or something looks"),
+      word("believe", "verb", "to accept that something is true"),
+      word("convenient", "adjective", "fitting well with a person’s needs or plans"),
+      word("disappear", "verb", "to cease to be visible"),
+      word("familiar", "adjective", "well known from repeated experience"),
+      word("government", "noun", "the group responsible for governing a country"),
+      word("knowledge", "noun", "facts and understanding gained through experience"),
+      word("maintenance", "noun", "work done to keep something in good condition"),
+      word("parallel", "adjective", "side by side and always the same distance apart"),
+      word("recommend", "verb", "to suggest something as suitable"),
+      word("successful", "adjective", "achieving the intended result"),
     ],
   },
   {
@@ -93,6 +107,18 @@ export const SPELLING_DECKS = [
       word("pronunciation", "noun", "the way in which a word is spoken"),
       word("supersede", "verb", "to replace something older or less effective"),
       word("vicissitude", "noun", "an unwelcome change of circumstances or fortune"),
+      word("antediluvian", "adjective", "ridiculously old-fashioned"),
+      word("bougainvillea", "noun", "a climbing plant with brightly coloured bracts"),
+      word("circumlocution", "noun", "the use of many words where fewer would do"),
+      word("dichotomy", "noun", "a division into two contrasting parts"),
+      word("ephemeral", "adjective", "lasting for a very short time"),
+      word("fastidious", "adjective", "very attentive to accuracy and detail"),
+      word("grandiloquent", "adjective", "using language intended to sound impressive"),
+      word("incontrovertible", "adjective", "not able to be denied or disputed"),
+      word("lachrymose", "adjective", "tearful or inclined to weep"),
+      word("prestidigitation", "noun", "magic tricks performed with the hands"),
+      word("quintessential", "adjective", "representing the most perfect example"),
+      word("surreptitious", "adjective", "kept secret because it would not be approved"),
     ],
   },
   {
@@ -125,6 +151,18 @@ export const SPELLING_DECKS = [
       word("pyjamas", "noun", "clothes worn for sleeping"),
       word("theatre", "noun", "a building where plays or films are shown"),
       word("travelling", "verb", "making a journey from one place to another"),
+      word("apologise", "verb", "to express regret for something"),
+      word("cheque", "noun", "a written instruction to a bank to pay money"),
+      word("dialogue", "noun", "conversation between two or more people"),
+      word("enrolment", "noun", "the act of joining a course or organisation"),
+      word("fibre", "noun", "a thin thread forming part of a material"),
+      word("fulfil", "verb", "to carry out or bring something to completion"),
+      word("honour", "noun", "high respect or a mark of distinction"),
+      word("labour", "noun", "work, especially work requiring physical effort"),
+      word("neighbour", "noun", "a person living near another person"),
+      word("recognise", "verb", "to identify someone or something known before"),
+      word("sceptical", "adjective", "not easily convinced that something is true"),
+      word("tyre", "noun", "a rubber covering fitted around a wheel"),
     ],
   },
   {
@@ -157,17 +195,24 @@ export const SPELLING_DECKS = [
       word("realize", "verb", "to become fully aware of something"),
       word("traveling", "verb", "making a journey from one place to another"),
       word("woolen", "adjective", "made wholly or partly from wool"),
+      word("apologize", "verb", "to express regret for something"),
+      word("check", "noun", "a written instruction to a bank to pay money"),
+      word("dialog", "noun", "conversation between two or more people"),
+      word("enrollment", "noun", "the act of joining a course or organization"),
+      word("fiber", "noun", "a thin thread forming part of a material"),
+      word("focused", "adjective", "giving close attention to one thing"),
+      word("labeled", "verb", "marked with a name or description"),
+      word("liter", "noun", "a metric unit of volume"),
+      word("recognize", "verb", "to identify someone or something known before"),
+      word("skeptical", "adjective", "not easily convinced that something is true"),
+      word("tire", "noun", "a rubber covering fitted around a wheel"),
+      word("vacation", "noun", "a period spent away from work or school"),
     ],
   },
 ] satisfies readonly SpellingDeck[];
 
 export function shuffledWords(words: readonly SpellingWord[]) {
-  const next = words.map((item) => ({ ...item }));
-  for (let index = next.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-  }
-  return next;
+  return shuffledCopy(words).map((item) => ({ ...item }));
 }
 
 export function spellingRoundOptions(wordCount: number) {

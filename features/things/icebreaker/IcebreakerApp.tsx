@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 import { playFeedback } from "@/lib/client/feedback";
@@ -12,6 +12,8 @@ import {
   isPlayerId,
   parsePairingCode,
   type Colour,
+  type EncounterOutcome,
+  type IcebreakerLedger,
   type IcebreakerPlayer,
 } from "./icebreaker-pairing";
 import { useIcebreakerLedger } from "./useIcebreakerLedger";
@@ -50,20 +52,46 @@ function storedPlayerId() {
   return stored && isPlayerId(stored) ? stored : null;
 }
 
-export function IcebreakerApp() {
+export type IcebreakerEventExperience = {
+  player: IcebreakerPlayer;
+  initialLedger: IcebreakerLedger;
+  recordEncounter: (partner: IcebreakerPlayer) => Promise<EncounterOutcome>;
+  pairingPath: string;
+  backHref: string;
+  backLabel: string;
+  eventLabel: string;
+};
+
+export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExperience }) {
   const [playerId] = useState(() => storedPlayerId() ?? createPlayerId());
-  const [colour] = useState<Colour>(() => storedColour() ?? colourForPlayerId(playerId));
-  const [revealed, setRevealed] = useState(false);
+  const [assignedColour] = useState<Colour>(() => storedColour() ?? colourForPlayerId(playerId));
+  const [revealed, setRevealed] = useState(Boolean(experience));
   const [question, setQuestion] = useState<string>(() => QUESTIONS[0]);
   const [pairing, setPairing] = useState<PairingLaunch | null>(null);
   const [showingColourBook, setShowingColourBook] = useState(false);
-  const player = useMemo(() => ({ colour, id: playerId }), [colour, playerId]);
-  const { ledger, addEncounter } = useIcebreakerLedger(player);
+  const localPlayer = useMemo(
+    () => ({ colour: assignedColour, id: playerId }),
+    [assignedColour, playerId],
+  );
+  const { ledger: localLedger, addEncounter: addLocalEncounter } = useIcebreakerLedger(localPlayer);
+  const player = experience?.player ?? localPlayer;
+  const colour = player.colour;
+  const [eventLedger, setEventLedger] = useState(experience?.initialLedger);
+  const ledger = eventLedger ?? localLedger;
+  const addEncounter = useCallback(
+    async (partner: IcebreakerPlayer) => {
+      if (!experience) return addLocalEncounter(partner);
+      const outcome = await experience.recordEncounter(partner);
+      setEventLedger(outcome.ledger);
+      return outcome;
+    },
+    [addLocalEncounter, experience],
+  );
 
   useEffect(() => {
     setStored("icebreakerPlayerId", playerId);
-    setStored("icebreakerColor", JSON.stringify({ name: colour.name }));
-  }, [colour, playerId]);
+    setStored("icebreakerColor", JSON.stringify({ name: assignedColour.name }));
+  }, [assignedColour, playerId]);
 
   useEffect(() => {
     const fragment = consumeLocationFragment();
@@ -100,10 +128,19 @@ export function IcebreakerApp() {
       }}
     >
       <header className="flex items-center justify-between p-5 font-mono text-xs text-white/60">
-        <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
-          ← things
-        </Link>
-        <span>icebreaker</span>
+        {experience ? (
+          <a
+            href={experience.backHref}
+            className="min-h-11 inline-flex items-center hover:text-white"
+          >
+            ← {experience.backLabel}
+          </a>
+        ) : (
+          <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
+            ← things
+          </Link>
+        )}
+        <span>{experience?.eventLabel ?? "icebreaker"}</span>
       </header>
 
       <main id="main" className="flex-1 flex items-center justify-center px-6 py-10">
@@ -111,6 +148,7 @@ export function IcebreakerApp() {
           <IcebreakerColourBook
             player={player}
             ledger={ledger}
+            persistenceLabel={experience ? "synced to this event ticket" : undefined}
             onClose={() => setShowingColourBook(false)}
           />
         ) : pairing ? (
@@ -119,6 +157,8 @@ export function IcebreakerApp() {
             initialPartner={pairing.partner}
             initialError={pairing.error}
             onEncounter={addEncounter}
+            pairingPath={experience?.pairingPath}
+            persistenceLabel={experience ? "saved to this event ticket" : undefined}
             onClose={() => setPairing(null)}
           />
         ) : !revealed ? (

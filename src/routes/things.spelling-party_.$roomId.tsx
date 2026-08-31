@@ -8,7 +8,7 @@ export const Route = createFileRoute("/things/spelling-party_/$roomId")({
   head: ({ params }) =>
     buildSeoHead({
       title: `Join Party Typing — ${SITE_NAME}`,
-      description: "Join a private Type Together spelling game from your phone.",
+      description: "Join a private multiplayer spelling game from your phone.",
       path: `/things/spelling-party/${params.roomId}`,
       image: OG_IMAGES.spellingParty,
       robots: "noindex, nofollow",

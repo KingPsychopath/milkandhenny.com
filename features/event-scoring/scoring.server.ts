@@ -32,12 +32,14 @@ import {
   getParticipant,
   listActivities,
   listLeaderboardParticipants,
+  listTeamLeaderboardTotals,
   listTransactionsForParticipant,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
   releaseActivityReservations,
   reverseScore,
+  ticketOrderSummaryForParticipant,
   updateActivity,
   updateSettings,
   type RecordScoreInput,
@@ -605,6 +607,7 @@ export type PublicLeaderboardRow = {
   publicAlias: string;
   points: number;
   team?: string;
+  teamColourKey?: import("./team-palette").TeamColourKey;
   isCurrentAttendee?: boolean;
 };
 
@@ -618,6 +621,13 @@ export async function publicLeaderboard(input: {
     visibility: LeaderboardVisibility;
     boardStatus: "live" | "frozen" | "closed" | "corrected-provisional" | "final";
     rows: PublicLeaderboardRow[];
+    teams: Array<{
+      id: string;
+      name: string;
+      colourKey?: import("./team-palette").TeamColourKey;
+      points: number;
+      rank: number;
+    }>;
   }>
 > {
   if (!(await getEvent(input.eventSlug)))
@@ -645,6 +655,7 @@ export async function publicLeaderboard(input: {
         visibility: settings.leaderboardVisibility,
         boardStatus,
         rows: [],
+        teams: [],
       },
     };
   }
@@ -659,6 +670,7 @@ export async function publicLeaderboard(input: {
         visibility: settings.leaderboardVisibility,
         boardStatus,
         rows: [],
+        teams: [],
       },
     };
   }
@@ -681,11 +693,13 @@ export async function publicLeaderboard(input: {
       state: settings.state,
       visibility: settings.leaderboardVisibility,
       boardStatus,
+      teams: await listTeamLeaderboardTotals(input.eventSlug),
       rows: ranked.map((score) => ({
         rank: score.rank,
         publicAlias: score.displayMode === "anonymous" ? "Anonymous" : score.publicAlias,
         points: score.balance,
         team: score.teamName,
+        teamColourKey: score.teamColourKey,
         isCurrentAttendee: score.participantId === input.currentParticipantId,
       })),
     },
@@ -700,11 +714,12 @@ export async function personalScore(input: {
   ScoringOperationResult<{
     participant: Pick<
       ScoreParticipant,
-      "id" | "publicAlias" | "displayMode" | "teamName" | "status" | "checkedInAt"
+      "id" | "publicAlias" | "displayMode" | "teamName" | "teamColourKey" | "status" | "checkedInAt"
     > &
       Pick<ScoreProjection, "balance" | "revision" | "lastTransactionAt">;
     rank: number;
     teamRank?: number;
+    orderPoints: number;
     transactions: Array<{
       status: ScoreTransaction["status"];
       reasonCode: ScoreTransaction["reasonCode"];
@@ -724,6 +739,7 @@ export async function personalScore(input: {
   if (!participant || participant.eventSlug !== input.eventSlug)
     return { ok: false, status: 404, error: "Ticket participant not found" };
   const ranked = rankScores(await listLeaderboardParticipants(input.eventSlug));
+  const order = await ticketOrderSummaryForParticipant(input.eventSlug, participant.id);
   const current = ranked.find((score) => score.participantId === participant.id);
   const teamRank =
     participant.teamId && current
@@ -750,12 +766,14 @@ export async function personalScore(input: {
         publicAlias: participant.publicAlias,
         displayMode: participant.displayMode,
         teamName: participant.teamName,
+        teamColourKey: participant.teamColourKey,
         status: participant.status,
         checkedInAt: participant.checkedInAt,
         balance: participant.balance,
         revision: participant.revision,
         lastTransactionAt: participant.lastTransactionAt,
       },
+      orderPoints: order.orderPoints,
       rank: current?.rank ?? ranked.length + 1,
       teamRank,
       transactions,

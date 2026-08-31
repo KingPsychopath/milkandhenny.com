@@ -15,7 +15,7 @@ const deck = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
 beforeEach(() => store.clear());
 
-describe("forehead card rotation", () => {
+describe("Heads Up card rotation", () => {
   it("deals unseen cards before anything the device has already played", () => {
     rememberCards("d", ["A", "B", "C"], deck.length);
     const dealt = selectRoundCards("d", deck);

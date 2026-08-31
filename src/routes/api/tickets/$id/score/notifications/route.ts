@@ -16,7 +16,10 @@ async function handleGET(request: Request, ticketId: string) {
     const participantId = await participantForTicket(ticketId);
     if (!participantId)
       return Response.json({ error: "Open this ticket on the device first" }, { status: 404 });
-    const notifications = await listScoreNotifications(participantId, { undeliveredOnly: true });
+    const transactionId = new URL(request.url).searchParams.get("transactionId")?.trim();
+    const notifications = transactionId
+      ? await listScoreNotifications(participantId, { transactionId })
+      : await listScoreNotifications(participantId, { undeliveredOnly: true });
     return Response.json({ notifications }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiErrorFromRequest(
@@ -41,9 +44,7 @@ async function handlePOST(request: Request, ticketId: string) {
     const ids = Array.isArray(record.notificationIds)
       ? record.notificationIds.filter((value): value is string => typeof value === "string")
       : [];
-    const notifications = await listScoreNotifications(participantId, { limit: 100 });
-    const allowed = new Set(notifications.map((notification) => notification.id));
-    const count = await markScoreNotificationsDelivered(ids.filter((id) => allowed.has(id)));
+    const count = await markScoreNotificationsDelivered(participantId, ids);
     return Response.json({ delivered: count });
   } catch (error) {
     return apiErrorFromRequest(
