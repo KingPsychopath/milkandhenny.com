@@ -64,6 +64,43 @@ function traceOf(countryId: string): CountryDrawing {
 }
 
 describe("Draw the Country rooms", () => {
+  it("recovers one artist after a lost join response, even once drawing has started", async () => {
+    const room = await hostedRoom();
+    const attempt = {
+      joinId: "join-draw-country-recovery",
+      playerToken: "draw-country-client-generated-player-token",
+    };
+    const first = await joinDrawCountryRoom({
+      roomId: room.roomId,
+      joinToken: room.joinToken,
+      name: "Maya",
+      ...attempt,
+    });
+    if (!first.ok) throw new Error(first.error);
+
+    const started = await applyDrawCountryAction({
+      roomId: room.roomId,
+      playerId: room.playerId,
+      playerToken: room.playerToken,
+      action: { type: "game.start" },
+    });
+    expect(started.accepted).toBe(true);
+
+    const recovered = await joinDrawCountryRoom({
+      roomId: room.roomId,
+      joinToken: room.joinToken,
+      name: "Maya",
+      ...attempt,
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: first.playerId,
+      playerToken: attempt.playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Maya")).toHaveLength(1);
+  });
+
   it("keeps the round's answer available to players but never leaks other drawings", async () => {
     const room = await hostedRoom();
     expect(room.snapshot).toMatchObject({ roundTotal: 2, drawSeconds: 30 });

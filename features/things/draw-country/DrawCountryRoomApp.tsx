@@ -20,12 +20,14 @@ import {
 } from "./drawing-constraints";
 import { captureDrawCountryInvite } from "./invite.client";
 import { JoinDrawCountryRoom } from "./JoinDrawCountryRoom";
-import type { CountryDrawing, DrawCountryPlayerCredentials } from "./types";
+import type { CountryDrawing, DrawCountryAction, DrawCountryPlayerCredentials } from "./types";
 import type { CountryOutline } from "./types";
 import { loadCountryOutline } from "./rotation.client";
 import { useDrawCountryRoom } from "./useDrawCountryRoom";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   releaseGamePoolMembership,
@@ -220,24 +222,29 @@ function DrawCountryRoom({
     if (roundId) sessionStorage.setItem(drawingKey(roomId, roundId), JSON.stringify(next));
   };
 
+  const dispatchAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<DrawCountryAction>, actionId) =>
+      applyDrawCountryActionFn({
+        data: {
+          roomId,
+          playerId: credentials.playerId,
+          playerToken: credentials.playerToken,
+          action: { ...action, actionId },
+        },
+      }),
+    `${roomId}:${credentials.playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+
   const submit = async () => {
     const round = snapshot?.round;
     if (!round || submitting || submittedRound.current === round.id) return;
     submittedRound.current = round.id;
     setSubmitting(true);
     try {
-      const result = await applyDrawCountryActionFn({
-        data: {
-          roomId,
-          playerId: credentials.playerId,
-          playerToken: credentials.playerToken,
-          action: {
-            actionId: crypto.randomUUID(),
-            type: "drawing.submit",
-            roundId: round.id,
-            drawing,
-          },
-        },
+      const result = await dispatchAction({
+        type: "drawing.submit",
+        roundId: round.id,
+        drawing,
       });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.ok || !result.accepted) live.setMessage(result.error);
@@ -276,14 +283,7 @@ function DrawCountryRoom({
       | { type: "host.pass"; playerId: string },
   ) => {
     try {
-      const result = await applyDrawCountryActionFn({
-        data: {
-          roomId,
-          playerId: credentials.playerId,
-          playerToken: credentials.playerToken,
-          action: { ...action, actionId: crypto.randomUUID() },
-        },
-      });
+      const result = await dispatchAction(action);
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.ok || !result.accepted) {
         live.setMessage(result.error);

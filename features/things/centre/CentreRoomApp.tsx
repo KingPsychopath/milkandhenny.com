@@ -14,6 +14,7 @@ import { gameBrowserKey } from "../shared/multiplayer-keys";
 import type { MultiplayerActionInput, MultiplayerConnectionState } from "../shared/multiplayer";
 import { RoomConnectionIndicator } from "../shared/RoomHeader";
 import { useGameSound } from "../shared/useGameSound";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import { buildCentrePlayerInviteUrl } from "./centre-invite";
 import { centreBrowserKeys } from "./centre-keys";
 import { applyCentreActionFn, readCentreReplayFn } from "./centre-room.functions";
@@ -145,17 +146,23 @@ export function CentreRoom({
     );
   }, [credentials, roomExpiresAt, roomId]);
 
+  const dispatchAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<CentreAction>, actionId) =>
+      applyCentreActionFn({
+        data: {
+          roomId,
+          playerId: credentials.playerId,
+          playerToken: credentials.playerToken,
+          action: { ...action, actionId },
+        },
+      }),
+    `${roomId}:${credentials.playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+
   const send = useCallback(
     async (action: MultiplayerActionInput<CentreAction>, quiet = false) => {
       try {
-        const result = await applyCentreActionFn({
-          data: {
-            roomId,
-            playerId: credentials.playerId,
-            playerToken: credentials.playerToken,
-            action: { ...action, actionId: crypto.randomUUID() },
-          },
-        });
+        const result = await dispatchAction(action);
         if (result.snapshot) setSnapshot(result.snapshot);
         if (!result.ok || !result.accepted) {
           if (!quiet) setMessage(result.error);
@@ -185,7 +192,7 @@ export function CentreRoom({
         return null;
       }
     },
-    [credentials.playerId, credentials.playerToken, notify, roomId, setMessage, setSnapshot],
+    [credentials.playerId, dispatchAction, notify, setMessage, setSnapshot],
   );
 
   const leaveRoom = useCallback(async () => {

@@ -11,6 +11,7 @@ import {
   registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
+  resolveMultiplayerJoinAttempt,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
@@ -18,6 +19,7 @@ import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
   multiplayerRoomExpiry,
+  type MultiplayerJoinAttempt,
   type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
@@ -53,6 +55,7 @@ const MAX_PLAYERS = 16;
 
 interface PlayerState {
   id: string;
+  joinId?: string;
   name: string;
   tokenHash: string;
   joinedAt: number;
@@ -465,24 +468,43 @@ export async function joinDrawCountryRoom(input: {
   roomId: string;
   joinToken?: string;
   name: string;
+  joinId?: string;
+  playerToken?: string;
 }): Promise<DrawCountryJoinResult> {
   const result = await withRoom(input.roomId, (room) => {
     advance(room);
-    if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
     if (
       (room.managed && !input.joinToken) ||
       (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
     )
       return multiplayerFailure("invite_expired", "This invite is no longer valid");
+    const attempt: MultiplayerJoinAttempt | undefined =
+      input.joinId && input.playerToken
+        ? { joinId: input.joinId, playerToken: input.playerToken }
+        : undefined;
+    const joining = resolveMultiplayerJoinAttempt(room.players, attempt);
+    if (joining.kind === "conflict")
+      return multiplayerFailure("invite_expired", "This join attempt is no longer valid");
+    if (joining.kind === "retry")
+      return {
+        ok: true,
+        roomId: room.roomId,
+        expiresAt: room.expiresAt,
+        playerId: joining.player.id,
+        playerToken: joining.playerToken,
+        snapshot: snapshot(room, joining.player.id),
+      } satisfies DrawCountryPlayerCredentials & { ok: true };
+    if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
     if (activePlayers(room).length >= MAX_PLAYERS)
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
     if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
     if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
       return multiplayerFailure("name_taken", "That name is already playing");
-    const playerToken = createMultiplayerCredential();
+    const playerToken = joining.playerToken;
     const player: PlayerState = {
       id: crypto.randomUUID(),
+      joinId: joining.joinId,
       name,
       tokenHash: hashMultiplayerCredential(playerToken),
       joinedAt: Date.now(),

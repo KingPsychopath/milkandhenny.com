@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { recordDiagnosticAction } from "@/features/reports/diagnostics";
-import { resolveLiveRoomRead } from "./live-room-state";
+import { resolveLiveRoomRead, shouldApplyLiveRoomSnapshot } from "./live-room-state";
 import { useRoomReconciler } from "./useRoomReconciler";
 
 export interface LiveRoomSnapshotBase {
@@ -42,7 +42,7 @@ interface LiveRoomSnapshotInput<Snapshot extends LiveRoomSnapshotBase> {
 export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
   input: LiveRoomSnapshotInput<Snapshot>,
 ) {
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(input.initialSnapshot ?? null);
+  const [snapshot, setSnapshotState] = useState<Snapshot | null>(input.initialSnapshot ?? null);
   const [clockOffset, setClockOffset] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
@@ -62,60 +62,75 @@ export function useLiveRoomSnapshot<Snapshot extends LiveRoomSnapshotBase>(
   // A fresh room or viewer starts with a clean failure count, otherwise a previous room's blips
   // would count towards ending this one.
   useEffect(() => {
-    const roomChanged = roomKeyRef.current !== input.roomKey;
     roomKeyRef.current = input.roomKey;
+    const initialSnapshot = input.roomKey ? (initialSnapshotRef.current ?? null) : null;
     failuresRef.current = 0;
-    sequenceRef.current = roomChanged ? 0 : (initialSnapshotRef.current?.sequence ?? 0);
-    digestRef.current = null;
+    sequenceRef.current = initialSnapshot?.sequence ?? 0;
+    digestRef.current = initialSnapshot?.digest ?? null;
     setClockOffset(0);
     setMessage(null);
     setEnded(false);
-    if (roomChanged) setSnapshot(null);
+    setSnapshotState(initialSnapshot);
   }, [input.roomKey]);
 
-  const reconcile = useCallback(async (isCurrent: () => boolean) => {
-    const startedAt = Date.now();
-    let read: Parameters<typeof resolveLiveRoomRead<Snapshot>>[0];
-    try {
-      read = await readRef.current(sequenceRef.current, digestRef.current);
-    } catch {
-      // A request that never landed — offline tab, timeout, busy room — says nothing about whether
-      // the room still exists.
-      read = { ok: false, unreachable: true };
-    }
-    const endedAt = Date.now();
-    if (!isCurrent()) return;
+  const setSnapshot = useCallback(
+    (nextSnapshot: Snapshot | null) => {
+      // A response belonging to the previous room must not populate the next room if route props
+      // change while that request is still in flight.
+      if (roomKeyRef.current !== input.roomKey) return false;
+      if (nextSnapshot && !shouldApplyLiveRoomSnapshot(sequenceRef.current, nextSnapshot.sequence))
+        return false;
+      sequenceRef.current = nextSnapshot?.sequence ?? 0;
+      digestRef.current = nextSnapshot?.digest ?? null;
+      setSnapshotState(nextSnapshot);
+      return true;
+    },
+    [input.roomKey],
+  );
 
-    const outcome = resolveLiveRoomRead(read, failuresRef.current);
-    failuresRef.current = outcome.consecutiveFailures;
-    if (!read.ok) {
-      recordDiagnosticAction(
-        "unreachable" in read ? "room.read.unreachable" : "room.read.unavailable",
-        {
-          failures: outcome.consecutiveFailures,
-          ended: outcome.ended,
-        },
-      );
-    }
-    setMessage(outcome.message);
-    setEnded(outcome.ended);
-    // Nothing to apply, but the clock still gets a free correction out of the round trip.
-    if (read.ok && "unchanged" in read) {
-      setClockOffset(read.serverNow - (startedAt + endedAt) / 2);
-      return;
-    }
+  const reconcile = useCallback(
+    async (isCurrent: () => boolean) => {
+      const startedAt = Date.now();
+      let read: Parameters<typeof resolveLiveRoomRead<Snapshot>>[0];
+      try {
+        read = await readRef.current(sequenceRef.current, digestRef.current);
+      } catch {
+        // A request that never landed — offline tab, timeout, busy room — says nothing about whether
+        // the room still exists.
+        read = { ok: false, unreachable: true };
+      }
+      const endedAt = Date.now();
+      if (!isCurrent()) return;
 
-    if (outcome.snapshot === undefined) return;
-    if (outcome.snapshot === null) {
-      digestRef.current = null;
-      setSnapshot(null);
-      return;
-    }
-    sequenceRef.current = outcome.snapshot.sequence;
-    digestRef.current = outcome.snapshot.digest ?? null;
-    setClockOffset(outcome.snapshot.serverNow - (startedAt + endedAt) / 2);
-    setSnapshot(outcome.snapshot);
-  }, []);
+      const outcome = resolveLiveRoomRead(read, failuresRef.current);
+      failuresRef.current = outcome.consecutiveFailures;
+      if (!read.ok) {
+        recordDiagnosticAction(
+          "unreachable" in read ? "room.read.unreachable" : "room.read.unavailable",
+          {
+            failures: outcome.consecutiveFailures,
+            ended: outcome.ended,
+          },
+        );
+      }
+      setMessage(outcome.message);
+      setEnded(outcome.ended);
+      // Nothing to apply, but the clock still gets a free correction out of the round trip.
+      if (read.ok && "unchanged" in read) {
+        setClockOffset(read.serverNow - (startedAt + endedAt) / 2);
+        return;
+      }
+
+      if (outcome.snapshot === undefined) return;
+      if (outcome.snapshot === null) {
+        setSnapshot(null);
+        return;
+      }
+      setClockOffset(outcome.snapshot.serverNow - (startedAt + endedAt) / 2);
+      setSnapshot(outcome.snapshot);
+    },
+    [setSnapshot],
+  );
 
   const refresh = useRoomReconciler({
     enabled: (input.enabled ?? true) && Boolean(input.roomKey) && !ended,

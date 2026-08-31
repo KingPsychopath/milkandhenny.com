@@ -18,6 +18,41 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Hot and Cold room", () => {
+  it("recovers one hunter after a lost join response, even once the hunt has started", async () => {
+    const host = await roomEngine.createHotAndColdRoom({ hostName: "Ada" });
+    const attempt = {
+      joinId: "join-hot-and-cold-recovery",
+      playerToken: "hot-and-cold-client-generated-player-token",
+    };
+    const first = await roomEngine.joinHotAndColdRoom({
+      roomId: host.roomId,
+      name: "Bea",
+      ...attempt,
+    });
+    if (!first.ok) throw new Error(first.error);
+
+    const started = await roomEngine.applyHotAndColdAction({
+      roomId: host.roomId,
+      playerId: host.playerId,
+      playerToken: host.playerToken,
+      action: { type: "game.start", actionId: "start-recovery-test" },
+    });
+    expect(started.accepted).toBe(true);
+
+    const recovered = await roomEngine.joinHotAndColdRoom({
+      roomId: host.roomId,
+      name: "Bea",
+      ...attempt,
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: first.playerId,
+      playerToken: attempt.playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Bea")).toHaveLength(1);
+  });
+
   it("fails closed without Redis in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
 

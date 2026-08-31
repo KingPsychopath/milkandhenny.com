@@ -140,6 +140,8 @@ interface FamilyFeudRoomState {
   presenterHash: string;
   controllerHash: string;
   controllerPairingHash: string | null;
+  /** Retains only the one-time code's hash so a lost pairing response can be replayed safely. */
+  controllerPairingReceiptHash?: string;
   controllerRecoveryHash?: string;
   buzzerHash: string;
   buzzerHashes?: Partial<Record<FamilyFeudTeamId, string>>;
@@ -921,6 +923,7 @@ export async function createFamilyFeudRoom(input: {
 export async function pairFamilyFeudController(input: {
   roomId: string;
   pairingToken: string;
+  controllerToken?: string;
 }): Promise<
   | { ok: true; controllerToken: string; expiresAt: number }
   | { ok: false; error: string; errorCode: "room_unavailable" | "pairing_used" }
@@ -935,6 +938,22 @@ export async function pairFamilyFeudController(input: {
       room.controllerRecoveryHash &&
       multiplayerCredentialsMatch(input.pairingToken, room.controllerRecoveryHash),
     );
+    const sameControllerRetry = Boolean(
+      input.controllerToken &&
+      multiplayerCredentialsMatch(input.controllerToken, room.controllerHash) &&
+      ((room.controllerPairingReceiptHash &&
+        multiplayerCredentialsMatch(input.pairingToken, room.controllerPairingReceiptHash)) ||
+        recoveryPair),
+    );
+    if (sameControllerRetry) {
+      room.lastControllerSeenAt = now;
+      changed(room, now);
+      return {
+        ok: true as const,
+        controllerToken: input.controllerToken!,
+        expiresAt: room.expiresAt,
+      };
+    }
     if (!firstPair && (!recoveryPair || now - room.lastControllerSeenAt <= CONNECTED_WINDOW_MS))
       return {
         ok: false as const,
@@ -943,8 +962,10 @@ export async function pairFamilyFeudController(input: {
           : "This controller code is no longer valid",
         errorCode: "pairing_used" as const,
       };
-    const controllerToken = createMultiplayerCredential();
+    const controllerToken = input.controllerToken ?? createMultiplayerCredential();
     room.controllerHash = hashMultiplayerCredential(controllerToken);
+    if (firstPair && room.controllerPairingHash)
+      room.controllerPairingReceiptHash = room.controllerPairingHash;
     room.controllerPairingHash = null;
     room.lastControllerSeenAt = now;
     changed(room, now);

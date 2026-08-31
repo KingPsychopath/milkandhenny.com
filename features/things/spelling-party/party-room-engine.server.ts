@@ -716,15 +716,18 @@ export async function joinPartyRoom(input: {
   const result = await withRoom(input.roomId, async (room, keys) => {
     if (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
       return { errorCode: "invite_expired", error: "Invite expired" } as const;
-    if (room.phase !== "lobby")
-      return { errorCode: "game_started", error: "This game has already started" } as const;
     const receipt = await readJoinReceipt(room.roomId, input.joinId, keys);
-    if (receipt)
+    const receiptPlayer = receipt
+      ? room.players.find(({ id }) => id === receipt.playerId)
+      : undefined;
+    if (receipt && receiptPlayer && safeEqual(receipt.playerToken, receiptPlayer.tokenHash))
       return {
         receipt,
         snapshot: snapshot(room, "player", receipt.playerId),
         expiresAt: room.expiresAt,
       };
+    if (room.phase !== "lobby")
+      return { errorCode: "game_started", error: "This game has already started" } as const;
     const name = input.name.trim().replace(/\s+/g, " ");
     if (name.length < 1) return { errorCode: "invalid_name", error: "Enter your name" } as const;
     if (name.length > 32)

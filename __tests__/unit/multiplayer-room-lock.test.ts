@@ -14,8 +14,9 @@ function fakeRedis() {
       keys.set(key, value);
       return "OK";
     }),
-    eval: vi.fn(async (_script: string, [key]: string[], [owner]: string[]) => {
+    eval: vi.fn(async (script: string, [key]: string[], [owner]: string[]) => {
       if (keys.get(key) !== owner) return 0;
+      if (script.includes("pexpire")) return 1;
       keys.delete(key);
       return 1;
     }),
@@ -96,5 +97,61 @@ describe("multiplayer room lock", () => {
       async () => "done",
     );
     expect(attempts).toEqual([{ acquired: true, contended: true }]);
+  });
+
+  it("renews the owner-checked lease while a mutation is still running", async () => {
+    vi.useFakeTimers();
+    try {
+      const redis = fakeRedis();
+      let finish: () => void = () => undefined;
+      const guarded = withMultiplayerRoomLock(
+        redis,
+        room,
+        () => new Promise<void>((resolve) => (finish = resolve)),
+      );
+
+      await vi.advanceTimersByTimeAsync(5_100);
+      expect(redis.eval.mock.calls.some(([script]) => String(script).includes("pexpire"))).toBe(
+        true,
+      );
+
+      finish();
+      await guarded;
+      expect(redis.keys.has(room.lockKey)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not report success when an in-flight renewal proves the lease was lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const redis = fakeRedis();
+      let finishWork: () => void = () => undefined;
+      let finishRenewal: (value: 0 | 1) => void = () => undefined;
+      redis.eval.mockImplementation((script: string, [key]: string[], [owner]: string[]) => {
+        if (script.includes("pexpire"))
+          return new Promise<0 | 1>((resolve) => void (finishRenewal = resolve));
+        if (redis.keys.get(key) !== owner) return Promise.resolve(0);
+        redis.keys.delete(key);
+        return Promise.resolve(1);
+      });
+      const guarded = withMultiplayerRoomLock(
+        redis,
+        room,
+        () => new Promise<void>((resolve) => void (finishWork = resolve)),
+      );
+
+      await vi.advanceTimersByTimeAsync(5_100);
+      redis.keys.set(room.lockKey, "new-owner");
+      finishWork();
+      await Promise.resolve();
+      finishRenewal(0);
+
+      await expect(guarded).rejects.toBeInstanceOf(MultiplayerRoomBusyError);
+      expect(redis.keys.get(room.lockKey)).toBe("new-owner");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

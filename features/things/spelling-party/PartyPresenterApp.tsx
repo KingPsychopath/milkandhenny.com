@@ -23,6 +23,8 @@ import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { buildPartyPlayerInviteUrl, parsePartyPresenterFragment } from "./party-invite";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 
 function roomTokens(roomId: string) {
   const sessionKey = partyBrowserKeys.presenterSession(roomId);
@@ -145,20 +147,28 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     previousPhase.current = snapshot?.phase;
   }, [haptics, snapshot?.phase]);
 
-  const send = async (type: PartyPresenterAction["type"], removePlayerIds?: string[]) => {
-    if (!tokens.presenterToken) return;
-    unlockPartyAudio();
-    try {
-      const result = await applyPresenterActionFn({
+  const dispatchPresenterAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<PartyPresenterAction>, actionId) =>
+      applyPresenterActionFn({
         data: {
           roomId,
           presenterToken: tokens.presenterToken,
           action:
-            type === "round.start"
-              ? { actionId: crypto.randomUUID(), type, removePlayerIds }
-              : { actionId: crypto.randomUUID(), type },
+            action.type === "round.start"
+              ? { ...action, actionId }
+              : { actionId, type: action.type },
         },
-      });
+      }),
+    `${roomId}:presenter:${snapshot?.sequence ?? "loading"}`,
+  );
+
+  const send = async (type: PartyPresenterAction["type"], removePlayerIds?: string[]) => {
+    if (!tokens.presenterToken) return;
+    unlockPartyAudio();
+    try {
+      const result = await dispatchPresenterAction(
+        type === "round.start" ? { type, removePlayerIds } : { type },
+      );
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) {
         live.setMessage(result.error ?? "That action is not ready yet.");

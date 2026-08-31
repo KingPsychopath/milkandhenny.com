@@ -131,6 +131,25 @@ async function answerAll(
 }
 
 describe("same brain room", () => {
+  it("recovers a joined player after the game starts when the first response was lost", async () => {
+    const created = await room(["Abel", "Maya", "Daniel"]);
+    await host(created.roomId, created.hostToken, { type: "game.start" });
+
+    const recovered = await joinSameBrainRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Maya",
+      joinId: `${created.roomId}-Maya`,
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: created.seats[1].playerId,
+      playerToken: created.seats[1].playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Maya")).toHaveLength(1);
+  });
+
   it("seats a table and makes the first joiner host", async () => {
     const created = await room(["Abel", "Maya", "Daniel"]);
     const snapshot = await read(created.roomId, created.seats[0]);

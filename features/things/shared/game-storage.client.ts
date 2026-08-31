@@ -10,6 +10,7 @@ const GAME_PREFIXES = [
   "things:liars:",
   "things:heads-up:",
   "things:spelling-bee:",
+  "things:hot-and-cold:",
   "things:twin:",
   "things:centre:",
   "things:same-brain:",
@@ -17,6 +18,23 @@ const GAME_PREFIXES = [
   "things:family-feud:",
   "pitch-remote:",
 ];
+
+export function readStorageValue(storage: Storage, key: string) {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeStorageValue(storage: Storage, key: string, value: string) {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function readExpiringLocalValue<T>(key: string): T | null {
   try {
@@ -29,29 +47,44 @@ export function readExpiringLocalValue<T>(key: string): T | null {
       stored.expiresAt <= Date.now() ||
       !("value" in stored)
     ) {
-      localStorage.removeItem(key);
+      removeStorageKeys(localStorage, [key]);
       return null;
     }
     return stored.value as T;
   } catch {
-    localStorage.removeItem(key);
+    removeStorageKeys(localStorage, [key]);
     return null;
   }
 }
 
 export function writeExpiringLocalValue<T>(key: string, value: T, expiresAt: number) {
-  localStorage.setItem(key, JSON.stringify({ expiresAt, value } satisfies ExpiringValue<T>));
+  // Storage is recovery, not game authority. A full or blocked store must never stop play.
+  return writeStorageValue(
+    localStorage,
+    key,
+    JSON.stringify({ expiresAt, value } satisfies ExpiringValue<T>),
+  );
 }
 
 export function removeStorageKeys(storage: Storage, keys: string[]) {
-  for (const key of keys) storage.removeItem(key);
+  for (const key of keys) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // A private browser may expose Storage while rejecting every operation.
+    }
+  }
 }
 
 export function removeStoragePrefix(storage: Storage, prefix: string) {
   const matches: string[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    if (key?.startsWith(prefix)) matches.push(key);
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith(prefix)) matches.push(key);
+    }
+  } catch {
+    return;
   }
   removeStorageKeys(storage, matches);
 }
@@ -67,21 +100,25 @@ export function removeStoragePrefix(storage: Storage, prefix: string) {
  */
 export function clearExpiredGameLocalStorage() {
   const expired: string[] = [];
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (!key || !GAME_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
-    let stored: unknown;
-    try {
-      stored = JSON.parse(localStorage.getItem(key) ?? "null");
-    } catch {
-      // Not JSON, so not one of ours to expire. Leave it alone.
-      continue;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !GAME_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
+      let stored: unknown;
+      try {
+        stored = JSON.parse(localStorage.getItem(key) ?? "null");
+      } catch {
+        // Not JSON, so not one of ours to expire. Leave it alone.
+        continue;
+      }
+      if (!stored || typeof stored !== "object" || Array.isArray(stored)) continue;
+      const expiresAt = (stored as { expiresAt?: unknown }).expiresAt;
+      // No expiry means it was never meant to have one.
+      if (typeof expiresAt !== "number") continue;
+      if (expiresAt <= Date.now()) expired.push(key);
     }
-    if (!stored || typeof stored !== "object" || Array.isArray(stored)) continue;
-    const expiresAt = (stored as { expiresAt?: unknown }).expiresAt;
-    // No expiry means it was never meant to have one.
-    if (typeof expiresAt !== "number") continue;
-    if (expiresAt <= Date.now()) expired.push(key);
+  } catch {
+    return;
   }
   removeStorageKeys(localStorage, expired);
 }

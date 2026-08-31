@@ -38,7 +38,10 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
   const helloJson = input.hello ? JSON.stringify({ type: "hello", ...input.hello }) : "";
 
   useEffect(() => {
-    if (!helloJson) return;
+    if (!helloJson) {
+      setState("offline");
+      return;
+    }
     let active = true;
     let attempt = 0;
     let socket: WebSocket | null = null;
@@ -60,7 +63,11 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
     };
     const scheduleReconnect = (connect: () => void) => {
       if (suspended || document.visibilityState === "hidden") return;
-      setState(navigator.onLine ? "reconnecting" : "offline");
+      if (!navigator.onLine) {
+        setState("offline");
+        return;
+      }
+      setState("reconnecting");
       const delay = Math.min(
         MULTIPLAYER_REALTIME_LIMITS.maxReconnectDelayMs,
         MULTIPLAYER_REALTIME_LIMITS.initialReconnectDelayMs * 2 ** attempt,
@@ -71,6 +78,10 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
 
     const connect = () => {
       if (!active || suspended || document.visibilityState === "hidden") return;
+      if (!navigator.onLine) {
+        setState("offline");
+        return;
+      }
       if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING)
         return;
       setState("reconnecting");
@@ -145,13 +156,24 @@ export function useMultiplayerWakeSocket(input: MultiplayerWakeSocketInput) {
       suspended = false;
       connect();
     };
+    const markOffline = () => {
+      clearTimers();
+      setState("offline");
+      const current = socket;
+      socket = null;
+      if (socketRef.current === current) socketRef.current = null;
+      if (current && current.readyState < WebSocket.CLOSING)
+        current.close(MULTIPLAYER_SOCKET_CLOSE.normal, "network offline");
+    };
     resume();
     window.addEventListener("online", resume);
+    window.addEventListener("offline", markOffline);
     document.addEventListener("visibilitychange", resume);
     return () => {
       active = false;
       clearTimers();
       window.removeEventListener("online", resume);
+      window.removeEventListener("offline", markOffline);
       document.removeEventListener("visibilitychange", resume);
       if (socketRef.current === socket) socketRef.current = null;
       socket?.close(MULTIPLAYER_SOCKET_CLOSE.normal, "leaving");

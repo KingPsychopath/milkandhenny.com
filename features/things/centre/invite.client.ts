@@ -1,10 +1,12 @@
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { centreBrowserKeys } from "./centre-keys";
 import { parseCentrePlayerFragment } from "./centre-invite";
+import { readStorageValue, writeStorageValue } from "../shared/game-storage.client";
 
 export function captureCentreInvite(roomId: string) {
   const fragmentToken = parseCentrePlayerFragment(consumeLocationFragment());
-  const token = fragmentToken || sessionStorage.getItem(centreBrowserKeys.invite(roomId));
-  if (token) sessionStorage.setItem(centreBrowserKeys.invite(roomId), token);
+  const key = centreBrowserKeys.invite(roomId);
+  const token = fragmentToken || readStorageValue(sessionStorage, key);
+  if (token) writeStorageValue(sessionStorage, key, token);
   return token ?? undefined;
 }

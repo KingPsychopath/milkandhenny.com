@@ -66,6 +66,12 @@ export interface MultiplayerAction {
   actionId: string;
 }
 
+/** A browser-generated join identity makes a lost join response safely replayable. */
+export interface MultiplayerJoinAttempt {
+  joinId: string;
+  playerToken: string;
+}
+
 export type MultiplayerActionInput<Action> = Action extends unknown
   ? Omit<Action, "actionId">
   : never;

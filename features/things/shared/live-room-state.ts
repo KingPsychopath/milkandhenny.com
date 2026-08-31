@@ -31,6 +31,17 @@ export interface LiveRoomOutcome<Snapshot> {
 }
 
 /**
+ * Mutation responses and background reconciliations use different HTTP requests. A read that
+ * started first can therefore arrive after a successful action response. Room sequences are
+ * monotonic, so an older projection must never replace the newer public truth already on screen.
+ * Equal sequences remain valid because presence and other time-derived fields can change without
+ * a game-state mutation.
+ */
+export function shouldApplyLiveRoomSnapshot(latestSequence: number, nextSequence: number) {
+  return nextSequence >= latestSequence;
+}
+
+/**
  * Fold one room read into the viewer's session state. Kept separate from the hook so the recovery
  * rules can be exercised directly.
  */

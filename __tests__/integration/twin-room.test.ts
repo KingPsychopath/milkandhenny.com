@@ -140,6 +140,43 @@ async function startGame(seats: Seat[]) {
 }
 
 describe("Twin rooms", () => {
+  it("recovers one player after a lost join response, even once the game has started", async () => {
+    const created = await createTwinRoom({ hostName: "Abel", handSize: 4 });
+    const attempt = {
+      joinId: "join-twin-recovery",
+      playerToken: "twin-client-generated-player-token",
+    };
+    const first = await joinTwinRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Maya",
+      ...attempt,
+    });
+    if (!first.ok) throw new Error(first.error);
+
+    const started = await applyTwinAction({
+      roomId: created.roomId,
+      playerId: created.playerId,
+      playerToken: created.playerToken,
+      action: { type: "game.start" },
+    });
+    expect(started.accepted).toBe(true);
+
+    const recovered = await joinTwinRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Maya",
+      ...attempt,
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: first.playerId,
+      playerToken: attempt.playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Maya")).toHaveLength(1);
+  });
+
   it("always leaves every player exactly one symbol to find, every heat of a whole game", async () => {
     const { seats, roomId } = await openRoom(["Abel", "Maya", "Daniel", "Priya"], 4, "gsc_twin");
     await startGame(seats);

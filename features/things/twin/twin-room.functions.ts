@@ -7,6 +7,7 @@ import {
   multiplayerRoomId,
   multiplayerSequence,
   multiplayerText,
+  optionalMultiplayerJoinAttempt,
 } from "../shared/multiplayer-validation";
 import { TWIN_MAX_HAND, TWIN_MIN_HAND, TWIN_DEFAULT_HAND } from "./twin-deck";
 import { TWIN_TIMING } from "./twin-rules";
@@ -70,6 +71,7 @@ export const joinTwinRoomFn = createServerFn({ method: "POST" })
       roomId: multiplayerRoomId(data.roomId),
       joinToken: data.joinToken === undefined ? undefined : credential(data.joinToken),
       name: multiplayerBoundedText(data.name, 32, "Add your name").trim(),
+      ...optionalMultiplayerJoinAttempt(data.joinId, data.playerToken),
     };
   })
   .handler(async ({ data }) => {

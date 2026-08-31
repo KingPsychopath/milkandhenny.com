@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import { FamilyFeudTeamMark } from "./FamilyFeudBoard";
 import { parseFamilyFeudBuzzerFragment } from "./family-feud-invite";
 import { familyFeudBrowserKeys } from "./family-feud-keys";
 import { applyFamilyFeudBuzzerActionFn } from "./family-feud-room.functions";
-import type { FamilyFeudTeamId } from "./types";
+import type { FamilyFeudBuzzerAction, FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
 
 interface BuzzerSession {
@@ -21,12 +23,21 @@ function loadBuzzerSession(roomId: string): BuzzerSession | null {
     const invite = parseFamilyFeudBuzzerFragment(fragment);
     if (invite) {
       const session = { token: invite.token, teamId: invite.teamId };
-      sessionStorage.setItem(key, JSON.stringify(session));
+      try {
+        sessionStorage.setItem(key, JSON.stringify(session));
+      } catch {
+        // The expiring local fallback below retains the role where storage is partially available.
+      }
       writeExpiringLocalValue(key, session, invite.expiresAt);
       return session;
     }
   }
-  const stored = sessionStorage.getItem(key);
+  let stored: string | null = null;
+  try {
+    stored = sessionStorage.getItem(key);
+  } catch {
+    // Continue to the local recovery record.
+  }
   if (stored) {
     try {
       const parsed = JSON.parse(stored) as BuzzerSession;
@@ -51,6 +62,17 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   }, [roomId]);
   const live = useFamilyFeudRoom({ roomId, role: "buzzer", credential: session?.token ?? "" });
   const snapshot = live.snapshot;
+  const dispatchBuzzerAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<FamilyFeudBuzzerAction>, actionId) =>
+      applyFamilyFeudBuzzerActionFn({
+        data: {
+          roomId,
+          buzzerToken: session?.token ?? "",
+          action: { ...action, actionId },
+        },
+      }),
+    `${roomId}:${session?.teamId ?? "shared"}:${snapshot?.sequence ?? "loading"}`,
+  );
   const hit = async (teamId: FamilyFeudTeamId) => {
     if (
       !session ||
@@ -64,13 +86,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
     setMessage(null);
     navigator.vibrate?.(24);
     try {
-      const result = await applyFamilyFeudBuzzerActionFn({
-        data: {
-          roomId,
-          buzzerToken: session.token,
-          action: { type: "buzzer.hit", teamId, actionId: crypto.randomUUID() },
-        },
-      });
+      const result = await dispatchBuzzerAction({ type: "buzzer.hit", teamId });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) setMessage(result.error ?? "Someone already buzzed.");
       else live.notify();

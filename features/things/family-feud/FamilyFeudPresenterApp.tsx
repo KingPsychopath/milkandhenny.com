@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  readExpiringLocalValue,
+  removeStorageKeys,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
 import { useFullscreen } from "../shared/useFullscreen";
 import { playFamilyFeudSound, unlockFamilyFeudAudio } from "./family-feud-audio.client";
 import { FamilyFeudAnswerBoard, FamilyFeudScoreboard, FamilyFeudTeamMark } from "./FamilyFeudBoard";
@@ -33,10 +37,14 @@ function loadPresenterSession(roomId: string): PresenterSession | null {
         buzzerToken: invite.buzzerToken,
         buzzerTokens: invite.buzzerTokens,
       };
-      sessionStorage.setItem(
-        familyFeudBrowserKeys.presenterSession(roomId),
-        JSON.stringify(session),
-      );
+      try {
+        sessionStorage.setItem(
+          familyFeudBrowserKeys.presenterSession(roomId),
+          JSON.stringify(session),
+        );
+      } catch {
+        // The local expiring recovery below is enough when session storage is unavailable.
+      }
       writeExpiringLocalValue(
         familyFeudBrowserKeys.presenterRecovery(roomId),
         session,
@@ -51,7 +59,7 @@ function loadPresenterSession(roomId: string): PresenterSession | null {
     ) as PresenterSession | null;
     if (stored?.presenterToken) return stored;
   } catch {
-    sessionStorage.removeItem(familyFeudBrowserKeys.presenterSession(roomId));
+    removeStorageKeys(sessionStorage, [familyFeudBrowserKeys.presenterSession(roomId)]);
   }
   return readExpiringLocalValue<PresenterSession>(familyFeudBrowserKeys.presenterRecovery(roomId));
 }
@@ -89,7 +97,11 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
   const fullscreen = useFullscreen();
   useEffect(() => {
     setSession(loadPresenterSession(roomId));
-    setMuted(localStorage.getItem(familyFeudBrowserKeys.muted()) === "1");
+    try {
+      setMuted(localStorage.getItem(familyFeudBrowserKeys.muted()) === "1");
+    } catch {
+      setMuted(false);
+    }
     setReady(true);
   }, [roomId]);
   const live = useFamilyFeudRoom({
@@ -190,12 +202,16 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
                 if (!audioEnabled) {
                   setAudioEnabled(true);
                   setMuted(false);
-                  localStorage.removeItem(familyFeudBrowserKeys.muted());
+                  removeStorageKeys(localStorage, [familyFeudBrowserKeys.muted()]);
                   return;
                 }
                 const nextMuted = !muted;
                 setMuted(nextMuted);
-                localStorage.setItem(familyFeudBrowserKeys.muted(), nextMuted ? "1" : "0");
+                try {
+                  localStorage.setItem(familyFeudBrowserKeys.muted(), nextMuted ? "1" : "0");
+                } catch {
+                  // Sound still changes for this session when preferences cannot be persisted.
+                }
               }}
               className="min-h-11 px-2"
               aria-label={

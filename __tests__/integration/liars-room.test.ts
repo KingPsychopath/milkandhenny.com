@@ -530,6 +530,26 @@ describe("liars rooms — the day", () => {
 });
 
 describe("liars rooms — robustness", () => {
+  it("recovers a joined player after the game starts when the first response was lost", async () => {
+    const created = await room("imposter", ["Abel", "Maya", "Daniel", "Priya"]);
+    const started = await host(created.roomId, created.hostToken, { type: "game.start" });
+    expect(started.accepted).toBe(true);
+
+    const recovered = await joinLiarsRoom({
+      roomId: created.roomId,
+      joinToken: created.joinToken,
+      name: "Maya",
+      joinId: "join-Maya",
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: created.seats[1].playerId,
+      playerToken: created.seats[1].playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Maya")).toHaveLength(1);
+  });
+
   it("pauses rather than fast-forwarding through rounds nobody was present for", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-09T05:00:00Z"));

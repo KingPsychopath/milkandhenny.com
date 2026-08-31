@@ -702,16 +702,18 @@ export async function joinSameBrainRoom(input: {
       (input.joinToken !== undefined && !safeEqual(input.joinToken, room.joinHash))
     )
       return { errorCode: "invite_expired" as const, error: "Invite expired" };
-    if (room.phase !== "lobby")
-      return { errorCode: "game_started" as const, error: "This game has already started" };
-
     const receipt = await readJoinReceipt(room.roomId, input.joinId, keys);
-    if (receipt)
+    const receiptPlayer = receipt
+      ? room.players.find(({ id }) => id === receipt.playerId)
+      : undefined;
+    if (receipt && receiptPlayer && safeEqual(receipt.playerToken, receiptPlayer.tokenHash))
       return {
         receipt,
         snapshot: snapshot(room, receipt.playerId),
         expiresAt: room.expiresAt,
       };
+    if (room.phase !== "lobby")
+      return { errorCode: "game_started" as const, error: "This game has already started" };
 
     const name = input.name.trim().replace(/\s+/g, " ");
     if (name.length < 1) return { errorCode: "invalid_name" as const, error: "Enter your name" };

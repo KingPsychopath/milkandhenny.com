@@ -7,6 +7,7 @@ import { twinBrowserKeys } from "./twin-keys";
 import { joinTwinRoomFn } from "./twin-room.functions";
 import type { TwinPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 
 export function JoinTwinRoom({
   roomId,
@@ -19,6 +20,7 @@ export function JoinTwinRoom({
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const joinAttempt = useMultiplayerJoinAttempt("twin", 1, roomId);
 
   const handleJoin = useCallback(async () => {
     if (!name.trim() || joining) return;
@@ -26,7 +28,12 @@ export function JoinTwinRoom({
     setMessage(null);
     try {
       const result = await joinTwinRoomFn({
-        data: { roomId, joinToken: captureTwinInvite(roomId), name: name.trim() },
+        data: {
+          roomId,
+          joinToken: captureTwinInvite(roomId),
+          name: name.trim(),
+          ...joinAttempt.attempt,
+        },
       });
       if (!result.ok) {
         setMessage(result.error);
@@ -42,6 +49,7 @@ export function JoinTwinRoom({
         snapshot: result.snapshot,
       };
       remember(name);
+      joinAttempt.clear();
       writeExpiringLocalValue(twinBrowserKeys.playerSession(roomId), credentials, result.expiresAt);
       onJoined(credentials);
     } catch {
@@ -49,7 +57,7 @@ export function JoinTwinRoom({
       setJoining(false);
       setEditingName(true);
     }
-  }, [joining, name, onJoined, remember, roomId]);
+  }, [joinAttempt, joining, name, onJoined, remember, roomId]);
 
   const changeName = () => {
     if (joining) return;

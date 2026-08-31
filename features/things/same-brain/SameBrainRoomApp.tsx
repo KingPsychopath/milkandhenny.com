@@ -43,9 +43,7 @@ import {
   useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
-
-let actionCounter = 0;
-const nextActionId = () => `sb-${Date.now().toString(36)}-${(actionCounter += 1)}`;
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 
 export function SameBrainRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<SameBrainPlayerCredentials | null>(null);
@@ -124,20 +122,28 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
     void haptics.trigger("heavy");
   }, [haptics, setMessage, startRequestId]);
 
+  const dispatchPlayerAction = useReliableMultiplayerAction(
+    (action: Record<string, unknown>, actionId) =>
+      applySameBrainPlayerActionFn({
+        data: { roomId, playerId, playerToken, action: { ...action, actionId } },
+      }),
+    `${roomId}:${playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+  const dispatchHostAction = useReliableMultiplayerAction(
+    (action: Record<string, unknown>, actionId) =>
+      applySameBrainHostActionFn({
+        data: { roomId, playerId, playerToken, action: { ...action, actionId } },
+      }),
+    `${roomId}:${playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+
   const busyRef = useRef(false);
   const send = useCallback(
     async (action: Record<string, unknown>) => {
       if (busyRef.current) return;
       busyRef.current = true;
       try {
-        const result = await applySameBrainPlayerActionFn({
-          data: {
-            roomId,
-            playerId,
-            playerToken,
-            action: { actionId: nextActionId(), ...action },
-          },
-        });
+        const result = await dispatchPlayerAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
         if (
@@ -158,7 +164,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         busyRef.current = false;
       }
     },
-    [playerId, playerToken, room, roomId],
+    [dispatchPlayerAction, room, roomId],
   );
 
   const sendHost = useCallback(
@@ -166,14 +172,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
       if (busyRef.current) return;
       busyRef.current = true;
       try {
-        const result = await applySameBrainHostActionFn({
-          data: {
-            roomId,
-            playerId,
-            playerToken,
-            action: { actionId: nextActionId(), ...action },
-          },
-        });
+        const result = await dispatchHostAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
         if (result.accepted) room.notify();
@@ -183,7 +182,7 @@ export function SameBrainRoom({ credentials }: { credentials: SameBrainPlayerCre
         busyRef.current = false;
       }
     },
-    [playerId, playerToken, room, roomId],
+    [dispatchHostAction, room],
   );
 
   /**

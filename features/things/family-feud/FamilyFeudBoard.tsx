@@ -20,7 +20,7 @@ export function FamilyFeudTeamMark({
   const marker = (
     <span
       aria-hidden="true"
-      className={`${compact ? "h-3 w-3" : "h-4 w-4"} mr-2 inline-block shrink-0 align-[-0.08em] border-2 border-current ${team.marker === "circle" ? "rounded-full" : "feud-triangle"}`}
+      className={`${compact ? "mr-1 h-3 w-3" : "mr-2 h-4 w-4"} inline-block shrink-0 align-[-0.08em] border-2 border-current ${team.marker === "circle" ? "rounded-full" : "feud-triangle"}`}
     />
   );
   if (truncate)
@@ -76,9 +76,9 @@ export function FamilyFeudScoreboard({
       {snapshot.teams.map((team) => (
         <div
           key={team.id}
-          className={`relative flex min-w-0 items-center justify-between gap-4 px-4 py-3 sm:px-6 ${team.id === "one" ? "border-r border-white/12" : ""}`}
+          className={`relative flex min-w-0 items-center justify-between gap-1 px-1 py-3 text-sm min-[360px]:gap-2 min-[360px]:px-2 sm:gap-4 sm:px-6 sm:text-base ${team.id === "one" ? "border-r border-white/12" : ""}`}
         >
-          <FamilyFeudTeamMark team={team} truncate />
+          <FamilyFeudTeamMark team={team} compact truncate />
           {award?.teamId === team.id ? (
             <span
               key={award.id}

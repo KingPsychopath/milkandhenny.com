@@ -5,7 +5,7 @@ export const MULTIPLAYER_GAME_REGISTRY = {
   "draw-country": { channelVersion: "v1" },
   liars: { channelVersion: "v1" },
   "same-brain": { channelVersion: "v1" },
-  "hot-and-cold": { channelVersion: "v1" },
+  "hot-and-cold": { channelVersion: "v2" },
   twin: { channelVersion: "v1" },
   centre: { channelVersion: "v1" },
   "game-pool": { channelVersion: "v1" },

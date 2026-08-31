@@ -19,7 +19,12 @@ interface RoomQrScannerProps {
   gamePath: string;
   tone: RoomJoinControlProps["tone"];
   onCancel: () => void;
-  onScan: (roomCode: string) => void;
+  onScan: (result: MultiplayerRoomQrResult) => void;
+}
+
+export interface MultiplayerRoomQrResult {
+  inviteUrl?: string;
+  roomCode: string;
 }
 
 function normalizeRoomCode(value: string) {
@@ -29,13 +34,18 @@ function normalizeRoomCode(value: string) {
     .slice(0, 7);
 }
 
-function roomCodeFromQr(value: string, gamePath: string) {
+export function multiplayerRoomFromQr(
+  value: string,
+  gamePath: string,
+  origin: string,
+): MultiplayerRoomQrResult | null {
   const directCode = normalizeRoomCode(value.trim());
-  if (ROOM_CODE_PATTERN.test(directCode) && value.trim().length === 7) return directCode;
+  if (ROOM_CODE_PATTERN.test(directCode) && value.trim().length === 7)
+    return { roomCode: directCode };
 
   try {
-    const invite = new URL(value, window.location.origin);
-    if (invite.origin !== window.location.origin) return null;
+    const invite = new URL(value, origin);
+    if (invite.origin !== new URL(origin).origin) return null;
 
     const pathParts = invite.pathname.replace(/\/+$/, "").split("/");
     const gameParts = gamePath.replace(/^\/+|\/+$/g, "").split("/");
@@ -43,7 +53,7 @@ function roomCodeFromQr(value: string, gamePath: string) {
     if (gameParts.some((part, index) => pathParts[index + 1] !== part)) return null;
 
     const roomCode = normalizeRoomCode(decodeURIComponent(pathParts.at(-1) ?? ""));
-    return ROOM_CODE_PATTERN.test(roomCode) ? roomCode : null;
+    return ROOM_CODE_PATTERN.test(roomCode) ? { roomCode, inviteUrl: invite.toString() } : null;
   } catch {
     return null;
   }
@@ -120,11 +130,15 @@ function RoomQrScanner({ gamePath, tone, onCancel, onScan }: RoomQrScannerProps)
           try {
             const codes = await detector.detect(videoRef.current);
             if (codes[0]) {
-              const roomCode = roomCodeFromQr(codes[0].rawValue, gamePath);
-              if (roomCode) {
+              const result = multiplayerRoomFromQr(
+                codes[0].rawValue,
+                gamePath,
+                window.location.origin,
+              );
+              if (result) {
                 setMessage("Room found. Joining…");
                 stop();
-                onScanRef.current(roomCode);
+                onScanRef.current(result);
                 return;
               }
               setMessage("That isn't an invite for this game. Try another QR code.");
@@ -316,9 +330,12 @@ export function RoomJoinControl({
           gamePath={gamePath}
           tone={tone}
           onCancel={() => setScannerOpen(false)}
-          onScan={(roomCode) => {
+          onScan={({ inviteUrl, roomCode }) => {
             onValueChange(roomCode);
-            void onJoin(roomCode);
+            // Private and managed-room credentials live in the URL fragment. Sending only the
+            // visible code silently stripped that capability and made a valid QR look expired.
+            if (inviteUrl) window.location.assign(inviteUrl);
+            else void onJoin(roomCode);
           }}
         />
       ) : null}

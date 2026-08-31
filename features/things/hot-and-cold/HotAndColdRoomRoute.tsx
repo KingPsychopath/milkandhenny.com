@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  readExpiringLocalValue,
+  readStorageValue,
+  removeStorageKeys,
+  writeExpiringLocalValue,
+  writeStorageValue,
+} from "../shared/game-storage.client";
 import { hotAndColdBrowserKeys } from "./hot-and-cold-keys";
 import { parseHotAndColdInviteFragment } from "./hot-and-cold-invite";
 import { HotAndColdRoomApp, JoinHotAndColdRoom } from "./HotAndColdRoomApp";
@@ -17,11 +23,10 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
   const [joinToken, setJoinToken] = useState<string>();
   useEffect(() => {
     setCredentials(readExpiringLocalValue<HotAndColdCredentials>(key));
-    setJoinToken(
-      parseHotAndColdInviteFragment(consumeLocationFragment()) ||
-        readExpiringLocalValue<string>(inviteKey) ||
-        "",
-    );
+    const fragmentToken = parseHotAndColdInviteFragment(consumeLocationFragment());
+    if (fragmentToken) writeStorageValue(sessionStorage, inviteKey, fragmentToken);
+    const sessionToken = readStorageValue(sessionStorage, inviteKey) ?? "";
+    setJoinToken(fragmentToken || sessionToken || readExpiringLocalValue<string>(inviteKey) || "");
   }, [inviteKey, key]);
   useEffect(() => {
     if (credentials) writeExpiringLocalValue(key, credentials, credentials.expiresAt);
@@ -43,7 +48,7 @@ export function HotAndColdRoomRoute({ roomId }: { roomId: string }) {
     <HotAndColdRoomApp
       credentials={credentials}
       onLeave={async () => {
-        localStorage.removeItem(key);
+        removeStorageKeys(localStorage, [key]);
         try {
           const entrance = await releaseGamePoolMembership("hot-and-cold", roomId);
           window.location.assign(entrance ?? "/things/hot-and-cold");

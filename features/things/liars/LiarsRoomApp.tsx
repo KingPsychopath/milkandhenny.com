@@ -56,9 +56,7 @@ import type { LiarsPlayerCredentials, LiarsSnapshot } from "./types";
 import type { LiarsNote } from "./useLiarsNotes";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
-
-let actionCounter = 0;
-const nextActionId = () => `${Date.now().toString(36)}-${(actionCounter += 1)}`;
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 
 export function LiarsRoomApp({ roomId }: { roomId: string }) {
   const [credentials, setCredentials] = useState<LiarsPlayerCredentials | null>(null);
@@ -141,6 +139,21 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
     void haptics.trigger("heavy");
   }, [haptics, setMessage, startRequestId]);
 
+  const dispatchPlayerAction = useReliableMultiplayerAction(
+    (action: Record<string, unknown>, actionId) =>
+      applyLiarsPlayerActionFn({
+        data: { roomId, playerId, playerToken, action: { ...action, actionId } },
+      }),
+    `${roomId}:${playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+  const dispatchHostAction = useReliableMultiplayerAction(
+    (action: Record<string, unknown>, actionId) =>
+      applyLiarsHostActionFn({
+        data: { roomId, playerId, playerToken, action: { ...action, actionId } },
+      }),
+    `${roomId}:${playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+
   const busyRef = useRef(false);
   const send = useCallback(
     async (action: Record<string, unknown>) => {
@@ -148,14 +161,7 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
       busyRef.current = true;
       primeLiarsAudio();
       try {
-        const result = await applyLiarsPlayerActionFn({
-          data: {
-            roomId,
-            playerId,
-            playerToken,
-            action: { actionId: nextActionId(), ...action },
-          },
-        });
+        const result = await dispatchPlayerAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
         if (
@@ -174,27 +180,20 @@ export function LiarsRoom({ credentials }: { credentials: LiarsPlayerCredentials
         busyRef.current = false;
       }
     },
-    [playerId, playerToken, room, roomId],
+    [dispatchPlayerAction, room, roomId],
   );
 
   const sendHost = useCallback(
     async (action: Record<string, unknown>) => {
       try {
-        const result = await applyLiarsHostActionFn({
-          data: {
-            roomId,
-            playerId,
-            playerToken,
-            action: { actionId: nextActionId(), ...action },
-          },
-        });
+        const result = await dispatchHostAction(action);
         if (result.snapshot) room.setSnapshot(result.snapshot);
         if (!result.accepted && "error" in result) room.setMessage(result.error);
       } catch {
         room.setMessage("That did not go through. Try again.");
       }
     },
-    [playerId, playerToken, room, roomId],
+    [dispatchHostAction, room],
   );
 
   if (!snapshot)

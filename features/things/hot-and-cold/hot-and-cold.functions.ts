@@ -11,6 +11,7 @@ import {
   multiplayerRoomId,
   multiplayerSequence,
   multiplayerText,
+  optionalMultiplayerJoinAttempt,
 } from "../shared/multiplayer-validation";
 import {
   applyHotAndColdAction,
@@ -189,6 +190,7 @@ export const joinHotAndColdRoomFn = createServerFn({ method: "POST" })
       roomId: multiplayerRoomId(data.roomId),
       joinToken: data.joinToken === undefined ? undefined : multiplayerCredential(data.joinToken),
       name: multiplayerBoundedText(data.name, 24).trim(),
+      ...optionalMultiplayerJoinAttempt(data.joinId, data.playerToken),
     };
   })
   .handler(async ({ data }) => {

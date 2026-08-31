@@ -36,6 +36,15 @@ export function multiplayerCredential(value: unknown, max = 120) {
   return multiplayerText(value, max, "Invalid credential");
 }
 
+export function optionalMultiplayerJoinAttempt(joinId: unknown, playerToken: unknown) {
+  if (joinId === undefined && playerToken === undefined) return {};
+  if (joinId === undefined || playerToken === undefined) throw new Error("Invalid join attempt");
+  return {
+    joinId: multiplayerText(joinId, 80, "Invalid join attempt"),
+    playerToken: multiplayerCredential(playerToken),
+  };
+}
+
 export function multiplayerSequence(value: unknown) {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0)
     throw new Error("Invalid sequence");

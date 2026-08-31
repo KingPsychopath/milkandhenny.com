@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearExpiredGameLocalStorage } from "../../features/things/shared/game-storage.client";
+import {
+  clearExpiredGameLocalStorage,
+  readExpiringLocalValue,
+  readStorageValue,
+  removeStorageKeys,
+  writeExpiringLocalValue,
+  writeStorageValue,
+} from "../../features/things/shared/game-storage.client";
 
 /**
  * The cleanup used to remove anything under a game prefix that did not parse as an expiring record,
@@ -35,6 +42,10 @@ describe("expired game storage cleanup", () => {
         expiresAt: Date.now() + 60_000,
         value: { playerId: "live" },
       }),
+      "things:hot-and-cold:v2:room:CCC:player-session": JSON.stringify({
+        expiresAt: Date.now() - 1_000,
+        value: { playerId: "also-old" },
+      }),
     });
     vi.stubGlobal("localStorage", storage);
 
@@ -42,6 +53,7 @@ describe("expired game storage cleanup", () => {
 
     expect(storage.map.has("things:liars:v1:room:AAA:player-session")).toBe(false);
     expect(storage.map.has("things:liars:v1:room:BBB:player-session")).toBe(true);
+    expect(storage.map.has("things:hot-and-cold:v2:room:CCC:player-session")).toBe(false);
   });
 
   it("leaves everything that was never meant to expire", () => {
@@ -68,5 +80,51 @@ describe("expired game storage cleanup", () => {
     vi.stubGlobal("localStorage", storage);
     clearExpiredGameLocalStorage();
     expect(storage.map.has("unrelated:thing")).toBe(true);
+  });
+
+  it("keeps storage failures from interrupting a live game", () => {
+    const blocked = {
+      get length(): number {
+        throw new Error("storage blocked");
+      },
+      key: () => {
+        throw new Error("storage blocked");
+      },
+      getItem: () => {
+        throw new Error("storage blocked");
+      },
+      setItem: () => {
+        throw new Error("storage blocked");
+      },
+      removeItem: () => {
+        throw new Error("storage blocked");
+      },
+      clear: () => {
+        throw new Error("storage blocked");
+      },
+    } as Storage;
+    vi.stubGlobal("localStorage", blocked);
+
+    expect(readExpiringLocalValue("things:twin:v1:room:ABC2345:player-session")).toBeNull();
+    expect(
+      writeExpiringLocalValue(
+        "things:twin:v1:room:ABC2345:player-session",
+        { playerId: "one" },
+        Date.now() + 1_000,
+      ),
+    ).toBe(false);
+    expect(() => removeStorageKeys(blocked, ["one", "two"])).not.toThrow();
+    expect(readStorageValue(blocked, "one")).toBeNull();
+    expect(writeStorageValue(blocked, "one", "value")).toBe(false);
+    expect(() => clearExpiredGameLocalStorage()).not.toThrow();
+  });
+
+  it("safely discards a corrupt expiring recovery record", () => {
+    const key = "things:twin:v1:room:ABC2345:player-session";
+    const storage = fakeStorage({ [key]: "not-json" });
+    vi.stubGlobal("localStorage", storage);
+
+    expect(readExpiringLocalValue(key)).toBeNull();
+    expect(storage.map.has(key)).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { captureDrawCountryInvite } from "./invite.client";
 import type { DrawCountryPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 
 export function JoinDrawCountryRoom({
   roomId,
@@ -19,6 +20,7 @@ export function JoinDrawCountryRoom({
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const joinAttempt = useMultiplayerJoinAttempt("draw-country", 1, roomId);
 
   const handleJoin = useCallback(async () => {
     if (!name.trim() || joining) return;
@@ -26,7 +28,12 @@ export function JoinDrawCountryRoom({
     setMessage(null);
     try {
       const result = await joinDrawCountryRoomFn({
-        data: { roomId, joinToken: captureDrawCountryInvite(roomId), name: name.trim() },
+        data: {
+          roomId,
+          joinToken: captureDrawCountryInvite(roomId),
+          name: name.trim(),
+          ...joinAttempt.attempt,
+        },
       });
       if (!result.ok) {
         setMessage(result.error);
@@ -42,6 +49,7 @@ export function JoinDrawCountryRoom({
         snapshot: result.snapshot,
       };
       remember(name);
+      joinAttempt.clear();
       writeExpiringLocalValue(
         drawCountryBrowserKeys.playerSession(roomId),
         credentials,
@@ -53,7 +61,7 @@ export function JoinDrawCountryRoom({
       setJoining(false);
       setEditingName(true);
     }
-  }, [joining, name, onJoined, remember, roomId]);
+  }, [joinAttempt, joining, name, onJoined, remember, roomId]);
 
   const changeName = () => {
     if (joining) return;

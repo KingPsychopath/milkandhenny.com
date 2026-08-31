@@ -15,6 +15,8 @@ export const familyFeudBrowserKeys = {
     gameBrowserKey("family-feud", 1, "room", roomId, "presenter-recovery"),
   controllerSession: (roomId: string) =>
     gameBrowserKey("family-feud", 1, "room", roomId, "controller-session"),
+  controllerPairing: (roomId: string) =>
+    gameBrowserKey("family-feud", 1, "room", roomId, "controller-pairing"),
   buzzerSession: (roomId: string, teamId: "one" | "two" | "shared" = "shared") =>
     gameBrowserKey("family-feud", 1, "room", roomId, `buzzer-session-${teamId}`),
   muted: () => gameBrowserKey("family-feud", 1, "sound-muted"),

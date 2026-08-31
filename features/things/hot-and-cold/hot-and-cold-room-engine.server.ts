@@ -3,6 +3,7 @@ import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
   multiplayerRoomExpiry,
+  type MultiplayerJoinAttempt,
   type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
@@ -24,6 +25,7 @@ import {
   registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
+  resolveMultiplayerJoinAttempt,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { hotAndColdRoomRedisKeys } from "./hot-and-cold-keys";
@@ -64,6 +66,7 @@ const CONNECTED_MS = 25_000;
 const HOST_TAKEOVER_MS = 60_000;
 interface PlayerState {
   id: string;
+  joinId?: string;
   name: string;
   tokenHash: string;
   joinedAt: number;
@@ -402,25 +405,44 @@ export async function joinHotAndColdRoom(input: {
   roomId: string;
   joinToken?: string;
   name: string;
+  joinId?: string;
+  playerToken?: string;
 }): Promise<HotAndColdJoinResult> {
   return (
     (await withRoom(input.roomId, (room) => {
-      if (room.phase !== "lobby")
-        return multiplayerFailure("game_started", "This hunt has started");
       if (
         (room.managed && !input.joinToken) ||
         (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
       )
         return multiplayerFailure("invite_expired", "This invite is no longer valid");
+      const attempt: MultiplayerJoinAttempt | undefined =
+        input.joinId && input.playerToken
+          ? { joinId: input.joinId, playerToken: input.playerToken }
+          : undefined;
+      const joining = resolveMultiplayerJoinAttempt(room.players, attempt);
+      if (joining.kind === "conflict")
+        return multiplayerFailure("invite_expired", "This join attempt is no longer valid");
+      if (joining.kind === "retry")
+        return {
+          ok: true as const,
+          roomId: room.roomId,
+          expiresAt: room.expiresAt,
+          playerId: joining.player.id,
+          playerToken: joining.playerToken,
+          snapshot: snapshot(room, joining.player.id),
+        };
+      if (room.phase !== "lobby")
+        return multiplayerFailure("game_started", "This hunt has started");
       if (activePlayers(room).length >= HOT_AND_COLD_PLAYER_LIMITS.max)
         return multiplayerFailure("room_full", "This room is full");
       const name = input.name.trim();
       if (!name) return multiplayerFailure("invalid_name", "Add your name");
       if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
         return multiplayerFailure("name_taken", "That name is already here");
-      const token = createMultiplayerCredential();
+      const token = joining.playerToken;
       const player: PlayerState = {
         id: crypto.randomUUID(),
+        joinId: joining.joinId,
         name,
         tokenHash: hashMultiplayerCredential(token),
         joinedAt: Date.now(),

@@ -43,6 +43,35 @@ async function joined(roomId: string, joinToken: string, name: string, joinId: s
 }
 
 describe("Party Typing rooms", () => {
+  it("recovers a joined player after the round starts when the first response was lost", async () => {
+    const room = await createPartyRoom({
+      deckId: "warm-up",
+      answerSeconds: 20,
+      roundTotal: 3,
+    });
+    const player = await joined(room.roomId, room.joinToken, "Maya", "recover-maya");
+    const started = await applyPresenterAction({
+      roomId: room.roomId,
+      presenterToken: room.presenterToken,
+      action: { actionId: "start-recovery", type: "round.start" },
+    });
+    expect(started.accepted).toBe(true);
+
+    const recovered = await joinPartyRoom({
+      roomId: room.roomId,
+      joinToken: room.joinToken,
+      name: "Maya",
+      joinId: "recover-maya",
+    });
+    expect(recovered).toMatchObject({
+      ok: true,
+      playerId: player.playerId,
+      playerToken: player.playerToken,
+    });
+    if (recovered.ok)
+      expect(recovered.snapshot.players.filter(({ name }) => name === "Maya")).toHaveLength(1);
+  });
+
   it("uses a validated room-local custom deck without exposing its word to players", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T11:00:00Z"));

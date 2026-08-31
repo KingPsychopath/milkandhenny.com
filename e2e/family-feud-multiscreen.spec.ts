@@ -17,7 +17,7 @@ test("keeps the Family Feud TV, MC, and team buzzer in sync through refresh", as
   const mc = await openIsolatedGameSurface({
     baseURL,
     browser,
-    contextOptions: phone,
+    contextOptions: { ...phone, viewport: { width: 320, height: 700 } },
     role: "MC",
   });
   const buzzer = await openIsolatedGameSurface({
@@ -50,6 +50,22 @@ test("keeps the Family Feud TV, MC, and team buzzer in sync through refresh", as
     await expect(
       presenter.page.getByText("MC connected. Start the game from the phone."),
     ).toBeVisible({ timeout: 15_000 });
+    const triangleScoreLabel = mc.page
+      .getByLabel("Score")
+      .getByText("Triangle team", { exact: true });
+    await expect(triangleScoreLabel).toBeVisible();
+    expect(
+      await triangleScoreLabel.evaluate((label) => label.scrollWidth <= label.clientWidth),
+    ).toBe(true);
+
+    await mc.context.setOffline(true);
+    await expect(mc.page.getByText("offline", { exact: true })).toBeVisible();
+    await mc.page.getByRole("button", { name: "start game" }).click();
+    await expect(
+      mc.page.getByText("Reconnecting… try that once more.", { exact: true }),
+    ).toBeVisible();
+    await mc.context.setOffline(false);
+    await expect(mc.page.getByText("connected", { exact: true })).toBeVisible({ timeout: 15_000 });
 
     await mc.page.getByRole("button", { name: "buzzer QR" }).click();
     const circleBuzzerUrl = await mc.page

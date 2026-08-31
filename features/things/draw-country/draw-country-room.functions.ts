@@ -7,6 +7,7 @@ import {
   multiplayerRoomId,
   multiplayerSequence,
   multiplayerText,
+  optionalMultiplayerJoinAttempt,
 } from "../shared/multiplayer-validation";
 import {
   applyDrawCountryAction,
@@ -64,6 +65,7 @@ export const joinDrawCountryRoomFn = createServerFn({ method: "POST" })
       roomId: multiplayerRoomId(data.roomId),
       joinToken: data.joinToken === undefined ? undefined : credential(data.joinToken),
       name: multiplayerBoundedText(data.name, 32, "Add your name").trim(),
+      ...optionalMultiplayerJoinAttempt(data.joinId, data.playerToken),
     };
   })
   .handler(async ({ data }) => {

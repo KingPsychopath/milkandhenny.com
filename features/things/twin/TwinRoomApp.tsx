@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -154,16 +155,22 @@ export function TwinRoom({
     void haptics.trigger("heavy");
   }, [haptics, setLiveMessage, snapshot?.player?.startRequestId]);
 
-  const send = async (action: MultiplayerActionInput<TwinAction>, quiet = false) => {
-    try {
-      const result = await applyTwinActionFn({
+  const dispatchAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<TwinAction>, actionId) =>
+      applyTwinActionFn({
         data: {
           roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action: { ...action, actionId: crypto.randomUUID() },
+          action: { ...action, actionId },
         },
-      });
+      }),
+    `${roomId}:${credentials.playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+
+  const send = async (action: MultiplayerActionInput<TwinAction>, quiet = false) => {
+    try {
+      const result = await dispatchAction(action);
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.ok || !result.accepted) {
         // A wrong tap and a cooldown are the game talking, not an error worth a banner.

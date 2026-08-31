@@ -39,6 +39,8 @@ import { buildPartyPlayerInviteUrl, parsePartyPlayerFragment } from "./party-inv
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
+import type { MultiplayerActionInput } from "../shared/multiplayer";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -226,6 +228,20 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   const previousStartRequest = useRef<string | null>(null);
   const flushingActions = useRef(false);
   const queueKey = partyBrowserKeys.pendingActions(credentials.roomId, credentials.playerId);
+  const dispatchPresenterAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<PartyPresenterAction>, actionId) =>
+      applyPresenterActionFn({
+        data: {
+          roomId: credentials.roomId,
+          presenterToken: credentials.presenterToken ?? "",
+          action:
+            action.type === "round.start"
+              ? { ...action, actionId }
+              : { actionId, type: action.type },
+        },
+      }),
+    `${credentials.roomId}:${credentials.playerId}:${live.snapshot?.sequence ?? "loading"}`,
+  );
 
   const queued = useCallback((): PartyPlayerAction[] => {
     return readExpiringLocalValue<PartyPlayerAction[]>(queueKey) ?? [];
@@ -620,16 +636,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     if (!credentials.presenterToken) return;
     unlockPartyAudio();
     try {
-      const result = await applyPresenterActionFn({
-        data: {
-          roomId: credentials.roomId,
-          presenterToken: credentials.presenterToken,
-          action:
-            type === "round.start"
-              ? { actionId: crypto.randomUUID(), type, removePlayerIds }
-              : { actionId: crypto.randomUUID(), type },
-        },
-      });
+      const result = await dispatchPresenterAction(
+        type === "round.start" ? { type, removePlayerIds } : { type },
+      );
       if (!result.accepted) {
         live.setMessage(result.error ?? "That action is not ready yet.");
         if (result.errorCode === "players_not_ready" && result.snapshot) {

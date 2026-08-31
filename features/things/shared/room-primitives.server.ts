@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { MULTIPLAYER_ROOM_ALPHABET, MULTIPLAYER_ROOM_ID_LENGTH } from "./multiplayer";
+import type { MultiplayerJoinAttempt } from "./multiplayer";
 
 export function createMultiplayerCredential(bytes = 24) {
   return randomBytes(bytes).toString("base64url");
@@ -14,6 +15,35 @@ export function multiplayerCredentialsMatch(value: string, expectedHash: string,
   const actual = Buffer.from(hashMultiplayerCredential(value), "hex");
   const expected = Buffer.from(expectedHash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export type MultiplayerJoinAttemptResolution<Player> =
+  | { kind: "conflict" }
+  | { kind: "new"; joinId?: string; playerToken: string }
+  | { kind: "retry"; player: Player; playerToken: string };
+
+/**
+ * Resolves a browser-generated join attempt without retaining a plaintext recovery credential on
+ * the server. Existing clients remain compatible: without an attempt, the server creates a token
+ * as before.
+ */
+export function resolveMultiplayerJoinAttempt<
+  Player extends { joinId?: string; tokenHash: string },
+>(
+  players: readonly Player[],
+  attempt?: MultiplayerJoinAttempt,
+): MultiplayerJoinAttemptResolution<Player> {
+  if (!attempt) return { kind: "new", playerToken: createMultiplayerCredential() };
+  const existing = players.find(({ joinId }) => joinId === attempt.joinId);
+  if (!existing)
+    return {
+      kind: "new",
+      joinId: attempt.joinId,
+      playerToken: attempt.playerToken,
+    };
+  return multiplayerCredentialsMatch(attempt.playerToken, existing.tokenHash)
+    ? { kind: "retry", player: existing, playerToken: attempt.playerToken }
+    : { kind: "conflict" };
 }
 
 export function createMultiplayerRoomId() {
@@ -47,8 +77,15 @@ export function multiplayerRoomStateChanged(before: string, room: unknown) {
   return before !== JSON.stringify(room);
 }
 
-/** Long enough to outlast the slowest room mutation (scoring a full lobby of drawings). */
-const ROOM_LOCK_TTL_MS = 5_000;
+/**
+ * A mutation normally finishes in milliseconds, but Redis and official-result persistence can
+ * briefly run long during a provider or deployment wobble. The lease is renewed while work is in
+ * flight; fifteen seconds is also long enough that a single delayed renewal cannot let a second
+ * writer enter a still-running mutation.
+ */
+const ROOM_LOCK_TTL_MS = 15_000;
+const ROOM_LOCK_RENEW_INTERVAL_MS = 5_000;
+const ROOM_LOCK_RENEW_RETRY_MS = 500;
 const ROOM_LOCK_ATTEMPTS = 12;
 const ROOM_LOCK_RETRY_BASE_MS = 20;
 const ROOM_LOCK_RETRY_JITTER_MS = 25;
@@ -56,6 +93,8 @@ const ROOM_LOCK_RETRY_JITTER_MS = 25;
 /** Releases only our own lock, so a lock that already expired is never stolen from its new owner. */
 const RELEASE_LOCK_SCRIPT =
   "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+const RENEW_LOCK_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end";
 
 export interface MultiplayerLockAttempt {
   acquired: boolean;
@@ -98,11 +137,58 @@ export async function withMultiplayerRoomLock<T>(
   }
   input.onAttempt?.({ acquired, contended, waitMs: performance.now() - startedAt });
   if (!acquired) throw new MultiplayerRoomBusyError(input.roomId);
+  let stopped = false;
+  let leaseLost = false;
+  let leaseValidUntil = performance.now() + ROOM_LOCK_TTL_MS;
+  let renewalTimer: ReturnType<typeof setTimeout> | null = null;
+  let renewalPromise = Promise.resolve();
+
+  const scheduleRenewal = (delayMs = ROOM_LOCK_RENEW_INTERVAL_MS) => {
+    if (stopped || leaseLost) return;
+    renewalTimer = setTimeout(() => {
+      renewalTimer = null;
+      renewalPromise = renewLease();
+    }, delayMs);
+    renewalTimer.unref?.();
+  };
+  const renewLease = async (): Promise<void> => {
+    try {
+      const renewed = Number(
+        await redis.eval(RENEW_LOCK_SCRIPT, [input.lockKey], [owner, String(ROOM_LOCK_TTL_MS)]),
+      );
+      if (renewed !== 1) {
+        leaseLost = true;
+        return;
+      }
+      leaseValidUntil = performance.now() + ROOM_LOCK_TTL_MS;
+      scheduleRenewal();
+    } catch {
+      if (performance.now() >= leaseValidUntil) {
+        leaseLost = true;
+        return;
+      }
+      scheduleRenewal(ROOM_LOCK_RENEW_RETRY_MS);
+    }
+  };
+
+  scheduleRenewal();
+  let leaseInvalid = false;
+  let result!: T;
   try {
-    return await use();
+    result = await use();
   } finally {
-    await redis.eval(RELEASE_LOCK_SCRIPT, [input.lockKey], [owner]);
+    stopped = true;
+    if (renewalTimer) clearTimeout(renewalTimer);
+    await renewalPromise.catch(() => undefined);
+    leaseInvalid = leaseLost || performance.now() >= leaseValidUntil;
+    // A failed release leaves only this short lease behind. It must not turn an already-committed,
+    // idempotent action into an apparent failure that encourages unnecessary retries.
+    await redis.eval(RELEASE_LOCK_SCRIPT, [input.lockKey], [owner]).catch(() => undefined);
   }
+  // A renewal already in flight can be the first proof that ownership was lost. Check after it
+  // settles, not only when guarded work returns, or stale work could appear successful.
+  if (leaseInvalid) throw new MultiplayerRoomBusyError(input.roomId);
+  return result;
 }
 
 /**

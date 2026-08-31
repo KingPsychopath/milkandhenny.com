@@ -29,6 +29,31 @@ function actionSender(roomId: string, controllerToken: string) {
 }
 
 describe("Family Feud room", () => {
+  it("replays a lost one-time controller pairing response without creating a new authority", async () => {
+    const room = await createFamilyFeudRoom({ rounds: 4 });
+    const controllerToken = "browser-generated-controller-recovery-token";
+    const first = await pairFamilyFeudController({
+      roomId: room.roomId,
+      pairingToken: room.controllerPairingToken,
+      controllerToken,
+    });
+    const recovered = await pairFamilyFeudController({
+      roomId: room.roomId,
+      pairingToken: room.controllerPairingToken,
+      controllerToken,
+    });
+
+    expect(first).toMatchObject({ ok: true, controllerToken });
+    expect(recovered).toMatchObject({ ok: true, controllerToken });
+    expect(
+      await pairFamilyFeudController({
+        roomId: room.roomId,
+        pairingToken: room.controllerPairingToken,
+        controllerToken: "different-controller-token",
+      }),
+    ).toMatchObject({ ok: false, errorCode: "pairing_used" });
+  });
+
   it("pairs one MC once, redacts the TV, and runs face-off, main and steal scoring", async () => {
     const room = await createFamilyFeudRoom({
       deckId: "everyday-life",

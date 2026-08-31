@@ -219,6 +219,8 @@ export const pairFamilyFeudControllerFn = createServerFn({ method: "POST" })
     return {
       roomId: multiplayerRoomId(data.roomId),
       pairingToken: credential(data.pairingToken),
+      controllerToken:
+        data.controllerToken === undefined ? undefined : credential(data.controllerToken),
     };
   })
   .handler(({ data }) => pairFamilyFeudController(data));

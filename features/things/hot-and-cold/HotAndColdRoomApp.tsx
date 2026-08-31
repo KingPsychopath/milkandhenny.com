@@ -22,6 +22,8 @@ import { useHotAndColdWordVisibility, WordVisibilityControl } from "./WordVisibi
 import { useHotAndColdRoom } from "./useHotAndColdRoom";
 import type { HotAndColdAction, HotAndColdActionResult, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
+import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 
 type HotAndColdSendErrorCode =
   | Extract<HotAndColdActionResult, { accepted: false }>["errorCode"]
@@ -43,6 +45,7 @@ export function JoinHotAndColdRoom({
   const { loaded, name, setName, remember } = useRememberedPlayerName(24);
   const [joining, setJoining] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const joinAttempt = useMultiplayerJoinAttempt("hot-and-cold", 2, roomId);
   const join = async () => {
     if (!name.trim() || joining) return;
     setJoining(true);
@@ -52,6 +55,7 @@ export function JoinHotAndColdRoom({
           roomId,
           name: name.trim(),
           joinToken: joinToken || undefined,
+          ...joinAttempt.attempt,
         },
       });
       if (!result.ok) {
@@ -60,6 +64,7 @@ export function JoinHotAndColdRoom({
         return;
       }
       remember(name);
+      joinAttempt.clear();
       onJoined(result);
     } catch {
       setMessage("Could not join this room");
@@ -184,18 +189,23 @@ export function HotAndColdRoomApp({
   useEffect(() => {
     setMessage(null);
   }, [turnIdentity]);
-  const send = async (
-    action: MultiplayerActionInput<HotAndColdAction>,
-  ): Promise<HotAndColdSendResult> => {
-    try {
-      const result = await applyHotAndColdActionFn({
+  const dispatchAction = useReliableMultiplayerAction(
+    (action: MultiplayerActionInput<HotAndColdAction>, actionId) =>
+      applyHotAndColdActionFn({
         data: {
           roomId: credentials.roomId,
           playerId: credentials.playerId,
           playerToken: credentials.playerToken,
-          action: { ...action, actionId: crypto.randomUUID() },
+          action: { ...action, actionId },
         },
-      });
+      }),
+    `${credentials.roomId}:${credentials.playerId}:${snapshot?.sequence ?? "loading"}`,
+  );
+  const send = async (
+    action: MultiplayerActionInput<HotAndColdAction>,
+  ): Promise<HotAndColdSendResult> => {
+    try {
+      const result = await dispatchAction(action);
       if (result.snapshot) live.setSnapshot(result.snapshot);
       live.notify();
       if (!result.accepted) {

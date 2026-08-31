@@ -4,6 +4,7 @@ import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
   multiplayerRoomExpiry,
+  type MultiplayerJoinAttempt,
   type MultiplayerRoomPhaseKind,
 } from "../shared/multiplayer";
 import {
@@ -24,6 +25,7 @@ import {
   registerMemoryRoomSweeper,
   remainingMultiplayerRoomTtlSeconds,
   rememberMultiplayerAction,
+  resolveMultiplayerJoinAttempt,
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
@@ -82,6 +84,7 @@ interface CardState {
 
 interface PlayerState {
   id: string;
+  joinId?: string;
   name: string;
   tokenHash: string;
   joinedAt: number;
@@ -806,15 +809,33 @@ export async function joinTwinRoom(input: {
   roomId: string;
   joinToken?: string;
   name: string;
+  joinId?: string;
+  playerToken?: string;
 }): Promise<TwinJoinResult> {
   const result = await withRoom(input.roomId, async (room) => {
     await appendLog(room, advance(room));
-    if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
     if (
       (room.managed && !input.joinToken) ||
       (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
     )
       return multiplayerFailure("invite_expired", "This invite is no longer valid");
+    const attempt: MultiplayerJoinAttempt | undefined =
+      input.joinId && input.playerToken
+        ? { joinId: input.joinId, playerToken: input.playerToken }
+        : undefined;
+    const joining = resolveMultiplayerJoinAttempt(room.players, attempt);
+    if (joining.kind === "conflict")
+      return multiplayerFailure("invite_expired", "This join attempt is no longer valid");
+    if (joining.kind === "retry")
+      return {
+        ok: true,
+        roomId: room.roomId,
+        expiresAt: room.expiresAt,
+        playerId: joining.player.id,
+        playerToken: joining.playerToken,
+        snapshot: snapshot(room, joining.player.id),
+      } satisfies TwinPlayerCredentials & { ok: true };
+    if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
     if (activePlayers(room).length >= twinMaxPlayers())
       return multiplayerFailure("room_full", "This room is full");
     const name = input.name.trim();
@@ -822,8 +843,9 @@ export async function joinTwinRoom(input: {
     if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
       return multiplayerFailure("name_taken", "That name is already playing");
 
-    const playerToken = createMultiplayerCredential();
+    const playerToken = joining.playerToken;
     const player = newPlayer(name, hashMultiplayerCredential(playerToken), Date.now());
+    player.joinId = joining.joinId;
     room.players.push(player);
     // One more player can mean a bigger deck or a shorter hand; the lobby shows it live.
     const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);

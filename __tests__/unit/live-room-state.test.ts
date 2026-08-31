@@ -3,6 +3,7 @@ import {
   RECONNECTING_MESSAGE,
   UNAVAILABLE_READS_BEFORE_ENDING,
   resolveLiveRoomRead,
+  shouldApplyLiveRoomSnapshot,
 } from "../../features/things/shared/live-room-state";
 
 const snapshot = { sequence: 4, serverNow: 1_000 };
@@ -70,5 +71,11 @@ describe("live room recovery", () => {
       UNAVAILABLE_READS_BEFORE_ENDING - 1,
     );
     expect(terminal.snapshot).toBeNull();
+  });
+
+  it("never lets an older reconciliation replace a newer mutation response", () => {
+    expect(shouldApplyLiveRoomSnapshot(12, 11)).toBe(false);
+    expect(shouldApplyLiveRoomSnapshot(12, 12)).toBe(true);
+    expect(shouldApplyLiveRoomSnapshot(12, 13)).toBe(true);
   });
 });

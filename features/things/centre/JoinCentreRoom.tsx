@@ -6,6 +6,7 @@ import { centreBrowserKeys } from "./centre-keys";
 import { joinCentreRoomFn } from "./centre-room.functions";
 import { captureCentreInvite } from "./invite.client";
 import type { CentrePlayerCredentials } from "./types";
+import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 
 export function JoinCentreRoom({
   roomId,
@@ -18,6 +19,7 @@ export function JoinCentreRoom({
   const [joining, setJoining] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const joinAttempt = useMultiplayerJoinAttempt("centre", 1, roomId);
 
   const join = useCallback(async () => {
     if (!name.trim() || joining) return;
@@ -25,7 +27,12 @@ export function JoinCentreRoom({
     setMessage(null);
     try {
       const result = await joinCentreRoomFn({
-        data: { roomId, joinToken: captureCentreInvite(roomId), name: name.trim() },
+        data: {
+          roomId,
+          joinToken: captureCentreInvite(roomId),
+          name: name.trim(),
+          ...joinAttempt.attempt,
+        },
       });
       if (!result.ok) {
         setMessage(result.error);
@@ -41,6 +48,7 @@ export function JoinCentreRoom({
         snapshot: result.snapshot,
       };
       remember(name);
+      joinAttempt.clear();
       writeExpiringLocalValue(
         centreBrowserKeys.playerSession(roomId),
         credentials,
@@ -52,7 +60,7 @@ export function JoinCentreRoom({
       setJoining(false);
       setEditingName(true);
     }
-  }, [joining, name, onJoined, remember, roomId]);
+  }, [joinAttempt, joining, name, onJoined, remember, roomId]);
 
   const changeName = () => {
     if (joining) return;

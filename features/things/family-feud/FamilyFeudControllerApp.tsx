@@ -4,14 +4,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQrCode } from "@/hooks/useQrCode";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
-import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
+import {
+  readExpiringLocalValue,
+  removeStorageKeys,
+  writeExpiringLocalValue,
+} from "../shared/game-storage.client";
+import { createMultiplayerBrowserCredential } from "../shared/multiplayer-join.client";
+import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import {
   closeFamilyFeudTeamClaimSessionFn,
   openFamilyFeudTeamClaimSessionFn,
 } from "./family-feud-claims.functions";
 import { unlockFamilyFeudAudio } from "./family-feud-audio.client";
 import { FamilyFeudAnswerBoard, FamilyFeudScoreboard, FamilyFeudTeamMark } from "./FamilyFeudBoard";
-import { familyFeudBuzzerUrl, parseFamilyFeudControllerFragment } from "./family-feud-invite";
+import {
+  familyFeudBuzzerUrl,
+  parseFamilyFeudControllerFragment,
+  type FamilyFeudControllerInvitePayload,
+} from "./family-feud-invite";
 import { familyFeudBrowserKeys } from "./family-feud-keys";
 import { FAMILY_FEUD_PHASE_LABELS } from "./family-feud-rules";
 import {
@@ -28,6 +38,10 @@ interface ControllerSession {
   buzzerTokens?: Record<FamilyFeudTeamId, string>;
 }
 
+interface PendingControllerPairing extends FamilyFeudControllerInvitePayload {
+  controllerToken: string;
+}
+
 type ControllerActionInput = MultiplayerActionInput<FamilyFeudControllerAction>;
 
 function readControllerSession(roomId: string): ControllerSession | null {
@@ -37,9 +51,15 @@ function readControllerSession(roomId: string): ControllerSession | null {
     ) as ControllerSession | null;
     if (current?.controllerToken && current.buzzerToken) return current;
   } catch {
-    sessionStorage.removeItem(familyFeudBrowserKeys.controllerSession(roomId));
+    removeStorageKeys(sessionStorage, [familyFeudBrowserKeys.controllerSession(roomId)]);
   }
   return readExpiringLocalValue<ControllerSession>(familyFeudBrowserKeys.controllerSession(roomId));
+}
+
+function readPendingControllerPairing(roomId: string) {
+  return readExpiringLocalValue<PendingControllerPairing>(
+    familyFeudBrowserKeys.controllerPairing(roomId),
+  );
 }
 
 function PrimaryButton({
@@ -76,27 +96,46 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const cardSwipeStart = useRef<number | null>(null);
   const busyRef = useRef(false);
-  const uncertainActionRef = useRef<{ key: string; actionId: string } | null>(null);
   useEffect(() => {
     const fragment = consumeLocationFragment();
     const invite = parseFamilyFeudControllerFragment(fragment);
     const existing = readControllerSession(roomId);
-    if (!invite && existing) {
+    const pairing = invite
+      ? {
+          ...invite,
+          controllerToken: createMultiplayerBrowserCredential(),
+        }
+      : existing
+        ? null
+        : readPendingControllerPairing(roomId);
+    if (invite && pairing)
+      writeExpiringLocalValue(
+        familyFeudBrowserKeys.controllerPairing(roomId),
+        pairing,
+        pairing.expiresAt,
+      );
+    if (!pairing && existing) {
+      removeStorageKeys(localStorage, [familyFeudBrowserKeys.controllerPairing(roomId)]);
       setSession(existing);
       setPairing(false);
       return;
     }
-    if (!invite) {
+    if (!pairing) {
       setPairingError("Scan the controller code on the Family Feud screen.");
       setPairing(false);
       return;
     }
     void pairFamilyFeudControllerFn({
-      data: { roomId, pairingToken: invite.token },
+      data: {
+        roomId,
+        pairingToken: pairing.token,
+        controllerToken: pairing.controllerToken,
+      },
     })
       .then((result) => {
         if (!result.ok) {
           if (existing) {
+            removeStorageKeys(localStorage, [familyFeudBrowserKeys.controllerPairing(roomId)]);
             setSession(existing);
             return;
           }
@@ -105,23 +144,30 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         }
         const next = {
           controllerToken: result.controllerToken,
-          buzzerToken: invite.buzzerToken,
-          buzzerTokens: invite.buzzerTokens,
+          buzzerToken: pairing.buzzerToken,
+          buzzerTokens: pairing.buzzerTokens,
         };
-        sessionStorage.setItem(
-          familyFeudBrowserKeys.controllerSession(roomId),
-          JSON.stringify(next),
-        );
         writeExpiringLocalValue(
           familyFeudBrowserKeys.controllerSession(roomId),
           next,
           result.expiresAt,
         );
+        try {
+          sessionStorage.setItem(
+            familyFeudBrowserKeys.controllerSession(roomId),
+            JSON.stringify(next),
+          );
+        } catch {
+          // The expiring local recovery above is enough when session storage is unavailable.
+        }
+        removeStorageKeys(localStorage, [familyFeudBrowserKeys.controllerPairing(roomId)]);
         setSession(next);
       })
       .catch(() => {
-        if (existing) setSession(existing);
-        else setPairingError("Could not pair this phone. Check the connection and rescan.");
+        if (existing) {
+          removeStorageKeys(localStorage, [familyFeudBrowserKeys.controllerPairing(roomId)]);
+          setSession(existing);
+        } else setPairingError("Could not pair this phone. Check the connection and rescan.");
       })
       .finally(() => setPairing(false));
   }, [roomId]);
@@ -133,33 +179,31 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
   const snapshot = live.snapshot;
   const setLiveSnapshot = live.setSnapshot;
   const notifyLiveRoom = live.notify;
+  const dispatchControllerAction = useReliableMultiplayerAction(
+    (action: ControllerActionInput, actionId) =>
+      applyFamilyFeudControllerActionFn({
+        data: {
+          roomId,
+          controllerToken: session?.controllerToken ?? "",
+          action: { ...action, actionId } as FamilyFeudControllerAction,
+        },
+      }),
+    `${roomId}:controller:${snapshot?.sequence ?? "loading"}`,
+  );
   const send = useCallback(
     async (action: ControllerActionInput) => {
       if (!session || busyRef.current) return null;
-      const actionKey = JSON.stringify(action);
-      const actionId =
-        uncertainActionRef.current?.key === actionKey
-          ? uncertainActionRef.current.actionId
-          : crypto.randomUUID();
       unlockFamilyFeudAudio();
       busyRef.current = true;
       setBusy(true);
       setMessage(null);
       try {
-        const result = await applyFamilyFeudControllerActionFn({
-          data: {
-            roomId,
-            controllerToken: session.controllerToken,
-            action: { ...action, actionId } as FamilyFeudControllerAction,
-          },
-        });
-        uncertainActionRef.current = null;
+        const result = await dispatchControllerAction(action);
         if (result.snapshot) setLiveSnapshot(result.snapshot);
         if (!result.accepted) setMessage(result.error ?? "That action is not ready.");
         else notifyLiveRoom();
         return result;
       } catch {
-        uncertainActionRef.current = { key: actionKey, actionId };
         setMessage("Reconnecting… try that once more.");
         return null;
       } finally {
@@ -167,7 +211,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         setBusy(false);
       }
     },
-    [notifyLiveRoom, roomId, session, setLiveSnapshot],
+    [dispatchControllerAction, notifyLiveRoom, session, setLiveSnapshot],
   );
   const buzzerInvites = useMemo(() => {
     if (!session || !snapshot || typeof location === "undefined") return null;
@@ -352,13 +396,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         claimUrl,
         expiresAt: opened.value.expiresAt,
       };
-      const result = await applyFamilyFeudControllerActionFn({
-        data: {
-          roomId,
-          controllerToken: session.controllerToken,
-          action: { type: "claim.display", display, actionId: crypto.randomUUID() },
-        },
-      });
+      const result = await dispatchControllerAction({ type: "claim.display", display });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) setMessage(result.error ?? "Could not show that claim.");
       else {
@@ -384,13 +422,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         sessionId: current.sessionId,
       },
     }).catch(() => null);
-    await applyFamilyFeudControllerActionFn({
-      data: {
-        roomId,
-        controllerToken: session.controllerToken,
-        action: { type: "claim.display", display: null, actionId: crypto.randomUUID() },
-      },
-    })
+    await dispatchControllerAction({ type: "claim.display", display: null })
       .then((result) => {
         if (result.snapshot) live.setSnapshot(result.snapshot);
         live.notify();
