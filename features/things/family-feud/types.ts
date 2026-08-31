@@ -119,6 +119,7 @@ export interface FamilyFeudRoundSnapshot {
   phaseStartedAt: number;
   phaseEndsAt: number;
   paused: boolean;
+  pausedRemainingMs: number;
 }
 
 export interface FamilyFeudClaimDisplay {
@@ -163,7 +164,9 @@ export interface FamilyFeudSnapshot extends MultiplayerSequence {
 export interface FamilyFeudRoomCredentials extends MultiplayerRoomLifetime {
   controllerPairingToken: string;
   presenterToken: string;
+  /** Legacy shared-buzzer credential retained for existing links and recovery. */
   buzzerToken: string;
+  buzzerTokens: Record<FamilyFeudTeamId, string>;
 }
 
 export type FamilyFeudRoomErrorCode = "room_unavailable" | "card_unavailable";
@@ -193,7 +196,7 @@ export type FamilyFeudControllerAction = MultiplayerAction &
     | { type: "undo.last" }
     | { type: "result.confirm" }
     | { type: "claim.display"; display: FamilyFeudClaimDisplay | null }
-    | { type: "game.replay" | "game.end" }
+    | { type: "game.replay" | "game.end" | "sudden-death.start" }
   );
 
 export type FamilyFeudBuzzerAction = MultiplayerAction & {

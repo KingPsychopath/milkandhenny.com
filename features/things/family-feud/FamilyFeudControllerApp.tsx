@@ -25,6 +25,7 @@ import { useFamilyFeudCountdown } from "./useFamilyFeudCountdown";
 interface ControllerSession {
   controllerToken: string;
   buzzerToken: string;
+  buzzerTokens?: Record<FamilyFeudTeamId, string>;
 }
 
 type ControllerActionInput = MultiplayerActionInput<FamilyFeudControllerAction>;
@@ -74,15 +75,17 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
   const [endConfirm, setEndConfirm] = useState(false);
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const cardSwipeStart = useRef<number | null>(null);
+  const busyRef = useRef(false);
+  const uncertainActionRef = useRef<{ key: string; actionId: string } | null>(null);
   useEffect(() => {
-    const existing = readControllerSession(roomId);
     const fragment = consumeLocationFragment();
-    if (existing) {
+    const invite = parseFamilyFeudControllerFragment(fragment);
+    const existing = readControllerSession(roomId);
+    if (!invite && existing) {
       setSession(existing);
       setPairing(false);
       return;
     }
-    const invite = parseFamilyFeudControllerFragment(fragment);
     if (!invite) {
       setPairingError("Scan the controller code on the Family Feud screen.");
       setPairing(false);
@@ -93,10 +96,18 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     })
       .then((result) => {
         if (!result.ok) {
+          if (existing) {
+            setSession(existing);
+            return;
+          }
           setPairingError(result.error);
           return;
         }
-        const next = { controllerToken: result.controllerToken, buzzerToken: invite.buzzerToken };
+        const next = {
+          controllerToken: result.controllerToken,
+          buzzerToken: invite.buzzerToken,
+          buzzerTokens: invite.buzzerTokens,
+        };
         sessionStorage.setItem(
           familyFeudBrowserKeys.controllerSession(roomId),
           JSON.stringify(next),
@@ -108,7 +119,10 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         );
         setSession(next);
       })
-      .catch(() => setPairingError("Could not pair this phone. Check the connection and rescan."))
+      .catch(() => {
+        if (existing) setSession(existing);
+        else setPairingError("Could not pair this phone. Check the connection and rescan.");
+      })
       .finally(() => setPairing(false));
   }, [roomId]);
   const live = useFamilyFeudRoom({
@@ -117,10 +131,18 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     credential: session?.controllerToken ?? "",
   });
   const snapshot = live.snapshot;
+  const setLiveSnapshot = live.setSnapshot;
+  const notifyLiveRoom = live.notify;
   const send = useCallback(
     async (action: ControllerActionInput) => {
-      if (!session || busy) return null;
+      if (!session || busyRef.current) return null;
+      const actionKey = JSON.stringify(action);
+      const actionId =
+        uncertainActionRef.current?.key === actionKey
+          ? uncertainActionRef.current.actionId
+          : crypto.randomUUID();
       unlockFamilyFeudAudio();
+      busyRef.current = true;
       setBusy(true);
       setMessage(null);
       try {
@@ -128,58 +150,97 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           data: {
             roomId,
             controllerToken: session.controllerToken,
-            action: { ...action, actionId: crypto.randomUUID() } as FamilyFeudControllerAction,
+            action: { ...action, actionId } as FamilyFeudControllerAction,
           },
         });
-        if (result.snapshot) live.setSnapshot(result.snapshot);
+        uncertainActionRef.current = null;
+        if (result.snapshot) setLiveSnapshot(result.snapshot);
         if (!result.accepted) setMessage(result.error ?? "That action is not ready.");
-        else live.notify();
+        else notifyLiveRoom();
         return result;
       } catch {
+        uncertainActionRef.current = { key: actionKey, actionId };
         setMessage("Reconnecting… try that once more.");
         return null;
       } finally {
+        busyRef.current = false;
         setBusy(false);
       }
     },
-    [busy, live, roomId, session],
+    [notifyLiveRoom, roomId, session, setLiveSnapshot],
   );
-  const buzzerInvite = useMemo(() => {
+  const buzzerInvites = useMemo(() => {
     if (!session || !snapshot || typeof location === "undefined") return null;
-    return familyFeudBuzzerUrl(location.origin, roomId, {
-      token: session.buzzerToken,
-      expiresAt: snapshot.expiresAt,
-    });
+    const tokens = session.buzzerTokens ?? {
+      one: session.buzzerToken,
+      two: session.buzzerToken,
+    };
+    return {
+      one: familyFeudBuzzerUrl(location.origin, roomId, {
+        token: tokens.one,
+        teamId: "one",
+        expiresAt: snapshot.expiresAt,
+      }),
+      two: familyFeudBuzzerUrl(location.origin, roomId, {
+        token: tokens.two,
+        teamId: "two",
+        expiresAt: snapshot.expiresAt,
+      }),
+    };
   }, [roomId, session, snapshot]);
-  const buzzerQr = useQrCode(buzzerOpen ? buzzerInvite : null, 320);
+  const buzzerOneQr = useQrCode(buzzerOpen ? (buzzerInvites?.one ?? null) : null, 280);
+  const buzzerTwoQr = useQrCode(buzzerOpen ? (buzzerInvites?.two ?? null) : null, 280);
   const round = snapshot?.round;
   const remaining = useFamilyFeudCountdown(
     round?.phaseEndsAt ?? 0,
     live.clockOffset,
     round?.paused ?? false,
+    round?.pausedRemainingMs ?? 0,
   );
 
   useEffect(() => {
     if (!claimToken || !snapshot?.claimDisplay) return;
     const display = snapshot.claimDisplay;
-    const timer = window.setInterval(() => {
-      void fetch(
-        `/api/events/${encodeURIComponent(new URL(display.claimUrl).pathname.split("/")[2] ?? "")}/game-results/group-claims`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ operation: "preview", token: claimToken }),
-        },
-      )
-        .then(async (response) => (response.ok ? response.json() : null))
-        .then((value) => {
-          const current = value as { claimed?: number } | null;
-          if (typeof current?.claimed !== "number" || current.claimed === display.claimed) return;
-          void send({ type: "claim.display", display: { ...display, claimed: current.claimed } });
-        })
-        .catch(() => undefined);
-    }, 3_000);
-    return () => window.clearInterval(timer);
+    let active = true;
+    let inFlight = false;
+    let lastStartedAt = 0;
+    const poll = async () => {
+      const now = Date.now();
+      if (!active || inFlight || now - lastStartedAt < 2_500) return;
+      inFlight = true;
+      lastStartedAt = now;
+      try {
+        const response = await fetch(
+          `/api/events/${encodeURIComponent(new URL(display.claimUrl).pathname.split("/")[2] ?? "")}/game-results/group-claims`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ operation: "preview", token: claimToken }),
+          },
+        );
+        if (!active) return;
+        if (response.status >= 400 && response.status < 500) {
+          active = false;
+          setClaimToken(null);
+          setMessage("That team claim expired. Stop the QR and open a fresh one.");
+          return;
+        }
+        if (!response.ok) return;
+        const current = (await response.json()) as { claimed?: number };
+        if (typeof current.claimed !== "number" || current.claimed === display.claimed) return;
+        void send({ type: "claim.display", display: { ...display, claimed: current.claimed } });
+      } catch {
+        // Network and server failures are transient; the next bounded poll reconciles the count.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [claimToken, send, snapshot?.claimDisplay]);
 
   if (pairing)
@@ -224,6 +285,10 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     ? snapshot.teams.find(({ id }) => id === round.faceoffTeamId)!
     : null;
   const answerPhase = ["practice", "faceoff", "main", "steal"].includes(snapshot.phase);
+  const tied = snapshot.teams[0].score === snapshot.teams[1].score;
+  const houseAnswerAvailable =
+    ["main", "steal"].includes(snapshot.phase) ||
+    (snapshot.phase === "faceoff" && Boolean(faceoffTeam));
   const primary: { label: string; action: ControllerActionInput } | null =
     snapshot.phase === "lobby"
       ? { label: "start game", action: { type: "game.start" } }
@@ -260,7 +325,8 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
                         : null;
 
   const openClaim = async (teamId: FamilyFeudTeamId) => {
-    if (!session || busy) return;
+    if (!session || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setMessage("preparing secure team claim…");
     try {
@@ -302,12 +368,14 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     } catch {
       setMessage("Could not open the team claim. Try again.");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
   const closeClaim = async () => {
     const current = snapshot.claimDisplay;
-    if (!current || !session) return;
+    if (!current || !session || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     await closeFamilyFeudTeamClaimSessionFn({
       data: {
@@ -329,6 +397,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
       })
       .catch(() => undefined);
     setClaimToken(null);
+    busyRef.current = false;
     setBusy(false);
   };
 
@@ -349,33 +418,46 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         {buzzerOpen ? (
           <section
             className="mb-7 rounded-2xl border border-white/12 p-5 text-center"
-            aria-label="Optional buzzer"
+            aria-label="Optional team buzzers"
           >
-            <h2 className="font-serif text-2xl">Optional shared buzzer</h2>
+            <h2 className="font-serif text-2xl">Optional team buzzers</h2>
             <p className="mt-2 text-sm text-white/50">
-              Open this on one phone between the two teams. The MC buttons still work without it.
+              Give each team its own phone. The MC buttons still work if you skip this.
             </p>
-            <div className="mx-auto mt-5 w-fit rounded-2xl bg-white p-3">
-              {buzzerQr.dataUrl ? (
-                <img
-                  src={buzzerQr.dataUrl}
-                  alt="QR code for the shared Family Feud buzzer"
-                  className="h-56 w-56"
-                />
-              ) : (
-                <div className="h-56 w-56 animate-pulse bg-black/5" />
-              )}
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {snapshot.teams.map((team) => {
+                const invite = buzzerInvites?.[team.id];
+                const qr = team.id === "one" ? buzzerOneQr : buzzerTwoQr;
+                return (
+                  <div key={team.id} className="rounded-2xl border border-white/12 p-3">
+                    <div className="font-serif text-lg">
+                      <FamilyFeudTeamMark team={team} />
+                    </div>
+                    <div className="mx-auto mt-3 w-fit rounded-xl bg-white p-2">
+                      {qr.dataUrl ? (
+                        <img
+                          src={qr.dataUrl}
+                          alt={`QR code for ${team.name}'s Family Feud buzzer`}
+                          className="h-44 w-44"
+                        />
+                      ) : (
+                        <div className="h-44 w-44 animate-pulse bg-black/5" />
+                      )}
+                    </div>
+                    {invite ? (
+                      <a
+                        href={invite}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex min-h-11 items-center font-mono text-[11px] text-white/35 underline decoration-white/20 underline-offset-4"
+                      >
+                        open this buzzer
+                      </a>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-            {buzzerInvite ? (
-              <a
-                href={buzzerInvite}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex min-h-11 items-center font-mono text-[11px] text-white/35 underline decoration-white/20 underline-offset-4"
-              >
-                open buzzer on this device
-              </a>
-            ) : null}
           </section>
         ) : null}
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-5">
@@ -393,7 +475,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           </div>
           {round?.phaseEndsAt || round?.paused ? (
             <span className="shrink-0 font-mono text-4xl tabular-nums text-[var(--things-amber)]">
-              {round.paused ? "Ⅱ" : remaining}
+              {round.paused ? `Ⅱ ${remaining}` : remaining}
             </span>
           ) : null}
         </div>
@@ -594,17 +676,34 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           <section className="mt-8">
             {!snapshot.resultConfirmed ? (
               <div className="rounded-2xl border border-[var(--things-amber)]/35 p-5">
-                <h2 className="font-serif text-2xl">Confirm before points move.</h2>
-                <p className="mt-2 text-sm text-white/50">
-                  Use the score tools below if anything needs fixing. Confirmation locks this
-                  result.
-                </p>
-                <PrimaryButton
-                  disabled={busy}
-                  onClick={() => void send({ type: "result.confirm" })}
-                >
-                  confirm final result
-                </PrimaryButton>
+                {tied ? (
+                  <>
+                    <h2 className="font-serif text-2xl">The scores are tied.</h2>
+                    <p className="mt-2 text-sm text-white/50">
+                      Run one sudden-death face-off. The first accepted answer wins the game.
+                    </p>
+                    <PrimaryButton
+                      disabled={busy}
+                      onClick={() => void send({ type: "sudden-death.start" })}
+                    >
+                      start sudden death
+                    </PrimaryButton>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="font-serif text-2xl">Confirm before points move.</h2>
+                    <p className="mt-2 text-sm text-white/50">
+                      Use the score tools below if anything needs fixing. Confirmation locks this
+                      result.
+                    </p>
+                    <PrimaryButton
+                      disabled={busy}
+                      onClick={() => void send({ type: "result.confirm" })}
+                    >
+                      confirm final result
+                    </PrimaryButton>
+                  </>
+                )}
               </div>
             ) : snapshot.eventScoring ? (
               <div>
@@ -738,7 +837,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
                     ))}
                   </div>
                 </div>
-                {round ? (
+                {round && houseAnswerAvailable ? (
                   <div>
                     <h2 className="font-mono text-xs text-white/45">accepted house answer</h2>
                     <p className="mt-2 text-xs text-white/40">
@@ -749,8 +848,10 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
                       onSubmit={(event) => {
                         event.preventDefault();
                         if (!houseAnswer.trim()) return;
-                        void send({ type: "house-answer.add", label: houseAnswer }).then(() =>
-                          setHouseAnswer(""),
+                        void send({ type: "house-answer.add", label: houseAnswer }).then(
+                          (result) => {
+                            if (result?.accepted) setHouseAnswer("");
+                          },
                         );
                       }}
                       className="mt-2 flex gap-2"
@@ -773,6 +874,13 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
                     </form>
                   </div>
                 ) : null}
+                <div className="border-t border-white/10 pt-5 text-sm text-white/50">
+                  <h2 className="font-mono text-xs text-white/45">scoring reminder</h2>
+                  <p className="mt-2">
+                    Ranked tiles score 10 down to 1. A successful steal doubles that tile. A new
+                    house answer scores 1, or 2 on a steal. Nobody loses points for a miss.
+                  </p>
+                </div>
                 {round?.answers.some(({ revealed }) => revealed) ? (
                   <div>
                     <h2 className="font-mono text-xs text-white/45">revealed answers</h2>
@@ -808,7 +916,11 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
                                 }
                                 className="min-h-11 px-2"
                               >
-                                hide
+                                {["round-reveal", "round-score", "finished"].includes(
+                                  snapshot.phase,
+                                )
+                                  ? "remove points"
+                                  : "hide"}
                               </button>
                             </div>
                           </div>

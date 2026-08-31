@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { normaliseFamilyFeudAnswer } from "./family-feud-rules";
 import type { FamilyFeudCustomDeckInput } from "./types";
 
 type AnswerDraft = { label: string; aliases: string };
@@ -38,6 +39,7 @@ export function FamilyFeudDeckBuilder({
   const [name, setName] = useState(deck?.name ?? "My Family Feud deck");
   const [cards, setCards] = useState(() => draftFromDeck(deck));
   const [openCard, setOpenCard] = useState(0);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const valid = useMemo(
     () =>
       Boolean(name.trim()) &&
@@ -46,7 +48,9 @@ export function FamilyFeudDeckBuilder({
         (card) =>
           Boolean(card.prompt.trim()) &&
           card.answers.length === 10 &&
-          card.answers.every((answer) => Boolean(answer.label.trim())),
+          card.answers.every((answer) => Boolean(answer.label.trim())) &&
+          new Set(card.answers.map((answer) => normaliseFamilyFeudAnswer(answer.label))).size ===
+            10,
       ),
     [cards, name],
   );
@@ -54,14 +58,15 @@ export function FamilyFeudDeckBuilder({
     setCards((current) => current.map((card, cardIndex) => (cardIndex === index ? next : card)));
   const save = () => {
     if (!valid) return;
+    const deckId = deck?.id ?? `custom:${crypto.randomUUID()}`;
     onSave({
-      id: deck?.id ?? `custom:${crypto.randomUUID()}`,
+      id: deckId,
       name: name.trim(),
       cards: cards.map((card, cardIndex) => ({
-        id: `custom:${deck?.id ?? "new"}:card:${cardIndex + 1}:${card.id}`,
+        id: deck ? card.id : `${deckId}:card:${cardIndex + 1}`,
         prompt: card.prompt.trim(),
         answers: card.answers.map((answer, answerIndex) => ({
-          id: `custom:${card.id}:answer:${answerIndex + 1}`,
+          id: `${deck ? card.id : `${deckId}:card:${cardIndex + 1}`}:answer:${answerIndex + 1}`,
           label: answer.label.trim(),
           aliases: answer.aliases
             .split(",")
@@ -221,17 +226,39 @@ export function FamilyFeudDeckBuilder({
           </button>
           {!valid ? (
             <p className="mt-2 text-center font-mono text-xs text-white/45">
-              Complete at least four cards, with ten answers on every card.
+              Complete at least four cards, with ten different answers on every card.
             </p>
           ) : null}
           {deck && onDelete ? (
-            <button
-              type="button"
-              onClick={() => onDelete(deck)}
-              className="mt-3 min-h-11 w-full font-mono text-xs text-white/45"
-            >
-              delete this deck
-            </button>
+            deleteConfirm ? (
+              <div className="mt-3 rounded-xl border border-white/15 p-3 text-center">
+                <p className="text-sm text-white/60">Delete this deck from this browser?</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirm(false)}
+                    className="min-h-11 rounded-full border border-white/15 font-mono text-xs"
+                  >
+                    keep deck
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(deck)}
+                    className="min-h-11 rounded-full border border-white/15 font-mono text-xs"
+                  >
+                    delete deck
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(true)}
+                className="mt-3 min-h-11 w-full font-mono text-xs text-white/45"
+              >
+                delete this deck
+              </button>
+            )
           ) : null}
         </div>
       </main>

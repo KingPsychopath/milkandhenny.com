@@ -50,6 +50,7 @@ import {
   familyFeudAnswerMatches,
   familyFeudBoardValue,
   familyFeudPlacements,
+  normaliseFamilyFeudAnswer,
   otherFamilyFeudTeam,
   validateFamilyFeudCard,
 } from "./family-feud-rules";
@@ -120,6 +121,13 @@ interface ScoreUndoState {
   teams: Array<Pick<TeamState, "id" | "score" | "roundPoints">>;
   answers: Array<Pick<AnswerState, "id" | "revealed" | "awardedTeamId" | "points">>;
   houseAnswers: HouseAnswerState[];
+  phase?: FamilyFeudPhase;
+  cue?: FamilyFeudSnapshot["cue"];
+  winnerTeamIds?: FamilyFeudTeamId[];
+  faceoffTeamId?: FamilyFeudTeamId | null;
+  faceoffAttemptedTeamIds?: FamilyFeudTeamId[];
+  paused?: boolean;
+  timerRemainingMs?: number;
 }
 
 interface FamilyFeudRoomState {
@@ -132,7 +140,9 @@ interface FamilyFeudRoomState {
   presenterHash: string;
   controllerHash: string;
   controllerPairingHash: string | null;
+  controllerRecoveryHash?: string;
   buzzerHash: string;
+  buzzerHashes?: Partial<Record<FamilyFeudTeamId, string>>;
   lastControllerSeenAt: number;
   gameNumber: number;
   rounds: number;
@@ -402,6 +412,7 @@ function snapshot(room: FamilyFeudRoomState, role: FamilyFeudViewerRole): Family
           phaseStartedAt: room.round.phaseStartedAt,
           phaseEndsAt: room.round.phaseEndsAt,
           paused: room.round.paused,
+          pausedRemainingMs: room.round.pausedRemainingMs ?? 0,
         }
       : null,
     winnerTeamIds: [...room.winnerTeamIds],
@@ -414,36 +425,65 @@ function snapshot(room: FamilyFeudRoomState, role: FamilyFeudViewerRole): Family
 }
 
 function saveScoreUndo(room: FamilyFeudRoomState) {
-  if (!room.round) return;
+  const now = Date.now();
   room.scoreUndo.push({
     teams: room.teams.map(({ id, score, roundPoints }) => ({ id, score, roundPoints })),
-    answers: room.round.answers.map(({ id, revealed, awardedTeamId, points }) => ({
-      id,
-      revealed,
-      awardedTeamId,
-      points,
-    })),
-    houseAnswers: room.round.houseAnswers.map((item) => ({ ...item })),
+    answers:
+      room.round?.answers.map(({ id, revealed, awardedTeamId, points }) => ({
+        id,
+        revealed,
+        awardedTeamId,
+        points,
+      })) ?? [],
+    houseAnswers: room.round?.houseAnswers.map((item) => ({ ...item })) ?? [],
+    phase: room.phase,
+    cue: room.cue ? { ...room.cue } : null,
+    winnerTeamIds: [...room.winnerTeamIds],
+    faceoffTeamId: room.round?.faceoffTeamId,
+    faceoffAttemptedTeamIds: room.round ? [...room.round.faceoffAttemptedTeamIds] : undefined,
+    paused: room.round?.paused,
+    timerRemainingMs: room.round
+      ? room.round.paused
+        ? room.round.pausedRemainingMs
+        : Math.max(0, room.round.phaseEndsAt - now)
+      : undefined,
   });
   room.scoreUndo = room.scoreUndo.slice(-40);
 }
 
 function restoreScoreUndo(room: FamilyFeudRoomState) {
   const previous = room.scoreUndo.pop();
-  if (!previous || !room.round) return false;
+  if (!previous) return false;
   for (const priorTeam of previous.teams) {
     const current = team(room, priorTeam.id);
     current.score = priorTeam.score;
     current.roundPoints = priorTeam.roundPoints;
   }
-  for (const priorAnswer of previous.answers) {
-    const current = room.round.answers.find(({ id }) => id === priorAnswer.id);
-    if (!current) continue;
-    current.revealed = priorAnswer.revealed;
-    current.awardedTeamId = priorAnswer.awardedTeamId;
-    current.points = priorAnswer.points;
+  if (room.round) {
+    for (const priorAnswer of previous.answers) {
+      const current = room.round.answers.find(({ id }) => id === priorAnswer.id);
+      if (!current) continue;
+      current.revealed = priorAnswer.revealed;
+      current.awardedTeamId = priorAnswer.awardedTeamId;
+      current.points = priorAnswer.points;
+    }
+    room.round.houseAnswers = previous.houseAnswers.map((item) => ({ ...item }));
   }
-  room.round.houseAnswers = previous.houseAnswers.map((item) => ({ ...item }));
+  if (previous.phase) room.phase = previous.phase;
+  if (previous.cue !== undefined) room.cue = previous.cue ? { ...previous.cue } : null;
+  if (previous.winnerTeamIds) room.winnerTeamIds = [...previous.winnerTeamIds];
+  if (room.round && previous.faceoffTeamId !== undefined)
+    room.round.faceoffTeamId = previous.faceoffTeamId;
+  if (room.round && previous.faceoffAttemptedTeamIds)
+    room.round.faceoffAttemptedTeamIds = [...previous.faceoffAttemptedTeamIds];
+  if (room.round && previous.timerRemainingMs !== undefined) {
+    const remaining = Math.max(0, previous.timerRemainingMs);
+    const now = Date.now();
+    room.round.phaseStartedAt = now;
+    room.round.paused = previous.paused ?? false;
+    room.round.pausedRemainingMs = room.round.paused ? remaining : 0;
+    room.round.phaseEndsAt = !room.round.paused && remaining > 0 ? now + remaining : 0;
+  }
   return true;
 }
 
@@ -457,10 +497,14 @@ function hiddenAnswers(room: FamilyFeudRoomState) {
   return room.round?.answers.filter(({ revealed }) => !revealed) ?? [];
 }
 
-function finish(room: FamilyFeudRoomState, now: number) {
+function refreshWinnerTeamIds(room: FamilyFeudRoomState) {
   const scores = { one: team(room, "one").score, two: team(room, "two").score };
   room.winnerTeamIds =
     scores.one === scores.two ? ["one", "two"] : [scores.one > scores.two ? "one" : "two"];
+}
+
+function finish(room: FamilyFeudRoomState, now: number) {
+  refreshWinnerTeamIds(room);
   setCue(room, "victory");
   setPhase(room, "finished", now);
 }
@@ -472,8 +516,10 @@ function advanceTimedPhase(room: FamilyFeudRoomState, now = Date.now()) {
     if (round.faceoffTeamId === null) return;
     handleFaceoffMiss(room, now);
   } else if (room.phase === "main") {
+    setCue(room, "miss");
     setPhase(room, hiddenAnswers(room).length > 0 ? "steal-ready" : "round-reveal", now);
   } else if (room.phase === "steal") {
+    setCue(room, "miss");
     setPhase(room, "round-reveal", now);
   }
 }
@@ -689,7 +735,20 @@ function authenticate(room: FamilyFeudRoomState, role: FamilyFeudViewerRole, cre
       : role === "presenter"
         ? room.presenterHash
         : room.buzzerHash;
-  return multiplayerCredentialsMatch(credential, expected);
+  if (multiplayerCredentialsMatch(credential, expected)) return true;
+  return role === "buzzer"
+    ? Object.values(room.buzzerHashes ?? {}).some((hash) =>
+        hash ? multiplayerCredentialsMatch(credential, hash) : false,
+      )
+    : false;
+}
+
+function buzzerTeamForCredential(room: FamilyFeudRoomState, credential: string) {
+  for (const teamId of ["one", "two"] as const) {
+    const hash = room.buzzerHashes?.[teamId];
+    if (hash && multiplayerCredentialsMatch(credential, hash)) return teamId;
+  }
+  return multiplayerCredentialsMatch(credential, room.buzzerHash) ? "shared" : null;
 }
 
 export async function createFamilyFeudRoom(input: {
@@ -761,6 +820,10 @@ export async function createFamilyFeudRoom(input: {
   const presenterToken = createMultiplayerCredential();
   const controllerPairingToken = createMultiplayerCredential();
   const buzzerToken = createMultiplayerCredential();
+  const buzzerTokens = {
+    one: createMultiplayerCredential(),
+    two: createMultiplayerCredential(),
+  } satisfies Record<FamilyFeudTeamId, string>;
   const roomId = await createAvailableMultiplayerRoomId(async (candidate) =>
     Boolean(await loadRoom(candidate)),
   );
@@ -783,7 +846,12 @@ export async function createFamilyFeudRoom(input: {
     presenterHash: hashMultiplayerCredential(presenterToken),
     controllerHash: hashMultiplayerCredential(createMultiplayerCredential()),
     controllerPairingHash: hashMultiplayerCredential(controllerPairingToken),
+    controllerRecoveryHash: hashMultiplayerCredential(controllerPairingToken),
     buzzerHash: hashMultiplayerCredential(buzzerToken),
+    buzzerHashes: {
+      one: hashMultiplayerCredential(buzzerTokens.one),
+      two: hashMultiplayerCredential(buzzerTokens.two),
+    },
     lastControllerSeenAt: 0,
     gameNumber: 1,
     rounds,
@@ -840,7 +908,14 @@ export async function createFamilyFeudRoom(input: {
     rounds: room.rounds,
     playerCount: playerCounts[0] + playerCounts[1],
   });
-  return { roomId, presenterToken, controllerPairingToken, buzzerToken, expiresAt };
+  return {
+    roomId,
+    presenterToken,
+    controllerPairingToken,
+    buzzerToken,
+    buzzerTokens,
+    expiresAt,
+  };
 }
 
 export async function pairFamilyFeudController(input: {
@@ -851,20 +926,28 @@ export async function pairFamilyFeudController(input: {
   | { ok: false; error: string; errorCode: "room_unavailable" | "pairing_used" }
 > {
   const result = await withRoom(input.roomId, (room) => {
-    if (
-      !room.controllerPairingHash ||
-      !multiplayerCredentialsMatch(input.pairingToken, room.controllerPairingHash)
-    )
+    const now = Date.now();
+    const firstPair = Boolean(
+      room.controllerPairingHash &&
+      multiplayerCredentialsMatch(input.pairingToken, room.controllerPairingHash),
+    );
+    const recoveryPair = Boolean(
+      room.controllerRecoveryHash &&
+      multiplayerCredentialsMatch(input.pairingToken, room.controllerRecoveryHash),
+    );
+    if (!firstPair && (!recoveryPair || now - room.lastControllerSeenAt <= CONNECTED_WINDOW_MS))
       return {
         ok: false as const,
-        error: "This controller code has already been used",
+        error: recoveryPair
+          ? "The current controller is still connected. Wait a moment, then scan again."
+          : "This controller code is no longer valid",
         errorCode: "pairing_used" as const,
       };
     const controllerToken = createMultiplayerCredential();
     room.controllerHash = hashMultiplayerCredential(controllerToken);
     room.controllerPairingHash = null;
-    room.lastControllerSeenAt = Date.now();
-    changed(room);
+    room.lastControllerSeenAt = now;
+    changed(room, now);
     return { ok: true as const, controllerToken, expiresAt: room.expiresAt };
   });
   return (
@@ -989,6 +1072,7 @@ export async function applyFamilyFeudControllerAction(input: {
       answer.revealed = false;
       answer.awardedTeamId = undefined;
       answer.points = undefined;
+      if (room.phase === "finished") refreshWinnerTeamIds(room);
       changed(room, now);
     } else if (action.type === "answer.reassign" && round) {
       const answer = round.answers.find(({ id }) => id === action.answerId);
@@ -999,6 +1083,7 @@ export async function applyFamilyFeudControllerAction(input: {
         addPoints(room, answer.awardedTeamId, -answer.points);
         addPoints(room, action.teamId, answer.points);
         answer.awardedTeamId = action.teamId;
+        if (room.phase === "finished") refreshWinnerTeamIds(room);
         changed(room, now);
       }
     } else if (action.type === "steal.miss" && room.phase === "steal") {
@@ -1036,8 +1121,14 @@ export async function applyFamilyFeudControllerAction(input: {
         return reject(room, "action_unavailable", "Choose a score adjustment from -10 to 10");
       saveScoreUndo(room);
       addPoints(room, action.teamId, action.points);
+      if (room.phase === "finished") refreshWinnerTeamIds(room);
       changed(room, now);
     } else if (action.type === "house-answer.add" && round) {
+      if (
+        !["faceoff", "main", "steal"].includes(room.phase) ||
+        (room.phase === "faceoff" && round.faceoffTeamId === null)
+      )
+        return reject(room, "action_unavailable", "House answers cannot be scored now");
       const label = action.label.normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, 48);
       if (!label) return reject(room, "answer_unavailable", "Add the accepted answer");
       const existingAnswer = round.answers.find((answer) => familyFeudAnswerMatches(answer, label));
@@ -1045,6 +1136,13 @@ export async function applyFamilyFeudControllerAction(input: {
         const error = scoreAnswer(room, existingAnswer.id, now);
         if (error) return reject(room, error.code, error.error);
       } else {
+        const normalizedLabel = normaliseFamilyFeudAnswer(label);
+        if (
+          round.houseAnswers.some(
+            (answer) => normaliseFamilyFeudAnswer(answer.label) === normalizedLabel,
+          )
+        )
+          return reject(room, "already_revealed", "That house answer is already open");
         const targetTeam =
           action.teamId ??
           (room.phase === "steal"
@@ -1062,13 +1160,27 @@ export async function applyFamilyFeudControllerAction(input: {
         });
         addPoints(room, targetTeam, points);
         setCue(room, "correct", { teamId: targetTeam, points });
-        changed(room, now);
+        if (room.phase === "faceoff")
+          setPhase(room, room.suddenDeath ? "round-reveal" : "main-ready", now);
+        else if (room.phase === "steal") setPhase(room, "round-reveal", now);
+        else changed(room, now);
       }
     } else if (action.type === "undo.last") {
       if (!restoreScoreUndo(room)) handled = false;
       else changed(room, now);
     } else if (action.type === "game.end" && room.phase !== "finished") finish(room, now);
-    else if (action.type === "result.confirm" && room.phase === "finished") {
+    else if (
+      action.type === "sudden-death.start" &&
+      room.phase === "finished" &&
+      room.resultConfirmedAt === null &&
+      room.winnerTeamIds.length > 1
+    ) {
+      room.winnerTeamIds = [];
+      beginRound(room, room.rounds + 1, now, true);
+    } else if (action.type === "result.confirm" && room.phase === "finished") {
+      refreshWinnerTeamIds(room);
+      if (room.winnerTeamIds.length > 1)
+        return reject(room, "action_unavailable", "A tie needs a sudden-death answer first");
       room.resultConfirmedAt = now;
       changed(room, now);
     } else if (action.type === "claim.display" && room.phase === "finished") {
@@ -1105,13 +1217,16 @@ export async function applyFamilyFeudBuzzerAction(input: {
   action: FamilyFeudBuzzerAction;
 }): Promise<FamilyFeudActionResult> {
   const result = await withRoom(input.roomId, (room) => {
-    if (!authenticate(room, "buzzer", input.buzzerToken)) return null;
+    const buzzerTeam = buzzerTeamForCredential(room, input.buzzerToken);
+    if (!buzzerTeam) return null;
     advanceTimedPhase(room);
     if (multiplayerActionSeen(room.processedActions, input.action.actionId))
       return accept(room, "buzzer");
     const round = room.round;
     if (room.phase !== "faceoff" || !round || round.faceoffTeamId !== null)
       return reject(room, "buzzers_closed", "Buzzers are closed", "buzzer");
+    if (buzzerTeam !== "shared" && buzzerTeam !== input.action.teamId)
+      return reject(room, "action_unavailable", "That buzzer belongs to the other team", "buzzer");
     const now = Date.now();
     round.faceoffTeamId = input.action.teamId;
     setCue(room, "buzz");

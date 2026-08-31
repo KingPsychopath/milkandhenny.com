@@ -110,6 +110,7 @@ function controllerAction(value: unknown): FamilyFeudControllerAction {
     data.type === "timer.reset" ||
     data.type === "undo.last" ||
     data.type === "result.confirm" ||
+    data.type === "sudden-death.start" ||
     data.type === "game.replay" ||
     data.type === "game.end"
   )

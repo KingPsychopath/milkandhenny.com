@@ -11,6 +11,7 @@ import { FamilyFeudAnswerBoard, FamilyFeudScoreboard, FamilyFeudTeamMark } from 
 import { familyFeudControllerUrl, parseFamilyFeudPresenterFragment } from "./family-feud-invite";
 import { familyFeudBrowserKeys } from "./family-feud-keys";
 import { FAMILY_FEUD_PHASE_LABELS } from "./family-feud-rules";
+import type { FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
 import { useFamilyFeudCountdown } from "./useFamilyFeudCountdown";
 
@@ -18,6 +19,7 @@ interface PresenterSession {
   presenterToken: string;
   controllerPairingToken: string;
   buzzerToken: string;
+  buzzerTokens?: Record<FamilyFeudTeamId, string>;
 }
 
 function loadPresenterSession(roomId: string): PresenterSession | null {
@@ -29,6 +31,7 @@ function loadPresenterSession(roomId: string): PresenterSession | null {
         presenterToken: invite.token,
         controllerPairingToken: invite.controllerPairingToken,
         buzzerToken: invite.buzzerToken,
+        buzzerTokens: invite.buzzerTokens,
       };
       sessionStorage.setItem(
         familyFeudBrowserKeys.presenterSession(roomId),
@@ -53,15 +56,27 @@ function loadPresenterSession(roomId: string): PresenterSession | null {
   return readExpiringLocalValue<PresenterSession>(familyFeudBrowserKeys.presenterRecovery(roomId));
 }
 
-function Timer({ endsAt, paused, offset }: { endsAt: number; paused: boolean; offset: number }) {
-  const remaining = useFamilyFeudCountdown(endsAt, offset, paused);
+function Timer({
+  endsAt,
+  paused,
+  pausedRemainingMs,
+  offset,
+}: {
+  endsAt: number;
+  paused: boolean;
+  pausedRemainingMs: number;
+  offset: number;
+}) {
+  const remaining = useFamilyFeudCountdown(endsAt, offset, paused, pausedRemainingMs);
   if (!endsAt && !paused) return null;
   return (
     <div
       className={`font-mono text-5xl font-semibold tabular-nums sm:text-7xl ${remaining <= 5 ? "text-[var(--things-amber)]" : "text-white"}`}
-      aria-label={paused ? "Timer paused" : `${remaining} seconds remaining`}
+      aria-label={
+        paused ? `Timer paused at ${remaining} seconds` : `${remaining} seconds remaining`
+      }
     >
-      {paused ? "PAUSED" : remaining}
+      {paused ? `PAUSED · ${remaining}` : remaining}
     </div>
   );
 }
@@ -89,6 +104,10 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
     return familyFeudControllerUrl(location.origin, roomId, {
       token: session.controllerPairingToken,
       buzzerToken: session.buzzerToken,
+      buzzerTokens: session.buzzerTokens ?? {
+        one: session.buzzerToken,
+        two: session.buzzerToken,
+      },
       expiresAt: snapshot?.expiresAt ?? Date.now() + 60_000,
     });
   }, [roomId, session, snapshot?.expiresAt]);
@@ -104,15 +123,12 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
   useEffect(() => {
     if (!snapshot?.round?.phaseEndsAt || snapshot.round.paused || muted || !audioEnabled) return;
     const remaining = snapshot.round.phaseEndsAt - (Date.now() + live.clockOffset);
-    if (remaining <= 5_000 && remaining > 0) {
-      const timers = Array.from({ length: Math.ceil(remaining / 1_000) }, (_, index) =>
-        window.setTimeout(
-          () => playFamilyFeudSound("timer", muted),
-          Math.max(0, remaining - (Math.ceil(remaining / 1_000) - index) * 1_000),
-        ),
-      );
-      return () => timers.forEach(window.clearTimeout);
-    }
+    if (remaining <= 0) return;
+    const timers = [5, 4, 3, 2, 1]
+      .map((seconds) => remaining - seconds * 1_000)
+      .filter((delay) => delay >= 0)
+      .map((delay) => window.setTimeout(() => playFamilyFeudSound("timer", muted), delay));
+    return () => timers.forEach(window.clearTimeout);
   }, [
     audioEnabled,
     live.clockOffset,
@@ -200,6 +216,45 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
           </div>
         </header>
 
+        {!snapshot.controllerConnected && snapshot.phase !== "lobby" ? (
+          <aside
+            className="mx-5 flex flex-col items-center justify-between gap-4 rounded-2xl border border-[var(--things-amber)]/35 bg-[var(--things-night)] p-4 text-center sm:mx-7 sm:flex-row sm:text-left"
+            aria-live="polite"
+          >
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--things-amber)]">
+                MC disconnected
+              </p>
+              <p className="mt-2 font-serif text-xl">
+                Scan to reclaim the controls. The current game is safe.
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <div className="rounded-xl bg-white p-2">
+                {controllerQr.dataUrl ? (
+                  <img
+                    src={controllerQr.dataUrl}
+                    alt="QR code to recover the Family Feud MC controls"
+                    className="h-28 w-28"
+                  />
+                ) : (
+                  <div className="h-28 w-28 animate-pulse bg-black/5" />
+                )}
+              </div>
+              {controllerInvite ? (
+                <a
+                  href={controllerInvite}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-11 items-center font-mono text-[11px] text-white/40 underline decoration-white/20 underline-offset-4"
+                >
+                  open controls
+                </a>
+              ) : null}
+            </div>
+          </aside>
+        ) : null}
+
         {snapshot.claimDisplay ? (
           <main id="main" className="flex flex-1 items-center justify-center px-6 py-8 text-center">
             <div className="max-w-2xl">
@@ -256,7 +311,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
                   {controllerQr.dataUrl ? (
                     <img
                       src={controllerQr.dataUrl}
-                      alt="One-use QR code for the Family Feud MC"
+                      alt="QR code for the Family Feud MC controls"
                       className="h-72 w-72 sm:h-80 sm:w-80"
                     />
                   ) : (
@@ -264,7 +319,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
                   )}
                 </div>
                 <p className="mt-4 font-mono text-xs text-white/45">
-                  {snapshot.controllerConnected ? "paired" : "one-use controller code"}
+                  {snapshot.controllerConnected ? "paired" : "MC controller code"}
                 </p>
                 {!snapshot.controllerConnected && controllerInvite ? (
                   <a
@@ -356,7 +411,9 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
                   ? snapshot.eventScoring
                     ? "Result confirmed. The MC can now open one team’s point claim."
                     : "Result confirmed."
-                  : "MC: check the scores, then confirm the result on your phone."}
+                  : snapshot.winnerTeamIds.length > 1
+                    ? "MC: start sudden death from your phone. A tied result cannot be confirmed."
+                    : "MC: check the scores, then confirm the result on your phone."}
               </p>
             </div>
           </main>
@@ -380,6 +437,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
                   <Timer
                     endsAt={round.phaseEndsAt}
                     paused={round.paused}
+                    pausedRemainingMs={round.pausedRemainingMs}
                     offset={live.clockOffset}
                   />
                 ) : null}

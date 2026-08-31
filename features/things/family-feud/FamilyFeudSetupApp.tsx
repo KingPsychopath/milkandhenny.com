@@ -98,6 +98,7 @@ export function FamilyFeudSetupApp() {
         presenterToken: room.presenterToken,
         controllerPairingToken: room.controllerPairingToken,
         buzzerToken: room.buzzerToken,
+        buzzerTokens: room.buzzerTokens,
       };
       writeExpiringLocalValue(
         familyFeudBrowserKeys.presenterRecovery(room.roomId),
@@ -111,6 +112,7 @@ export function FamilyFeudSetupApp() {
           token: room.presenterToken,
           controllerPairingToken: room.controllerPairingToken,
           buzzerToken: room.buzzerToken,
+          buzzerTokens: room.buzzerTokens,
           expiresAt: room.expiresAt,
         }),
       });

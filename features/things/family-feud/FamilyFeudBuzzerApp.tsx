@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
 import { readExpiringLocalValue, writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -9,40 +9,57 @@ import { applyFamilyFeudBuzzerActionFn } from "./family-feud-room.functions";
 import type { FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
 
-function loadBuzzerToken(roomId: string) {
+interface BuzzerSession {
+  token: string;
+  teamId?: FamilyFeudTeamId;
+}
+
+function loadBuzzerSession(roomId: string): BuzzerSession | null {
+  const key = familyFeudBrowserKeys.buzzerSession(roomId);
   const fragment = consumeLocationFragment();
   if (fragment) {
     const invite = parseFamilyFeudBuzzerFragment(fragment);
     if (invite) {
-      sessionStorage.setItem(familyFeudBrowserKeys.buzzerSession(roomId), invite.token);
-      writeExpiringLocalValue(
-        familyFeudBrowserKeys.buzzerSession(roomId),
-        invite.token,
-        invite.expiresAt,
-      );
-      return invite.token;
+      const session = { token: invite.token, teamId: invite.teamId };
+      sessionStorage.setItem(key, JSON.stringify(session));
+      writeExpiringLocalValue(key, session, invite.expiresAt);
+      return session;
     }
   }
-  return (
-    sessionStorage.getItem(familyFeudBrowserKeys.buzzerSession(roomId)) ??
-    readExpiringLocalValue<string>(familyFeudBrowserKeys.buzzerSession(roomId)) ??
-    ""
-  );
+  const stored = sessionStorage.getItem(key);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored) as BuzzerSession;
+      if (parsed.token) return parsed;
+    } catch {
+      return { token: stored };
+    }
+  }
+  const recovered = readExpiringLocalValue<BuzzerSession | string>(key);
+  return typeof recovered === "string" ? { token: recovered } : recovered;
 }
 
 export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
-  const [token, setToken] = useState("");
+  const [session, setSession] = useState<BuzzerSession | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const busyRef = useRef(false);
   useEffect(() => {
-    setToken(loadBuzzerToken(roomId));
+    setSession(loadBuzzerSession(roomId));
     setReady(true);
   }, [roomId]);
-  const live = useFamilyFeudRoom({ roomId, role: "buzzer", credential: token });
+  const live = useFamilyFeudRoom({ roomId, role: "buzzer", credential: session?.token ?? "" });
   const snapshot = live.snapshot;
   const hit = async (teamId: FamilyFeudTeamId) => {
-    if (!token || busy || snapshot?.phase !== "faceoff" || snapshot.round?.faceoffTeamId) return;
+    if (
+      !session ||
+      busyRef.current ||
+      snapshot?.phase !== "faceoff" ||
+      snapshot.round?.faceoffTeamId
+    )
+      return;
+    busyRef.current = true;
     setBusy(true);
     setMessage(null);
     navigator.vibrate?.(24);
@@ -50,7 +67,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
       const result = await applyFamilyFeudBuzzerActionFn({
         data: {
           roomId,
-          buzzerToken: token,
+          buzzerToken: session.token,
           action: { type: "buzzer.hit", teamId, actionId: crypto.randomUUID() },
         },
       });
@@ -60,10 +77,11 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
     } catch {
       setMessage("Connection missed that buzz. The MC can assign it.");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
-  if (!ready || (token && !snapshot))
+  if (!ready || (session && !snapshot))
     return (
       <div
         className="things-game things-game--night flex items-center justify-center px-6 text-white"
@@ -72,7 +90,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
         <p className="font-mono text-sm text-white/50">opening buzzers…</p>
       </div>
     );
-  if (!token)
+  if (!session)
     return (
       <div className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
         <main className="max-w-md">
@@ -86,11 +104,14 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   const buzzed = snapshot.round?.faceoffTeamId
     ? snapshot.teams.find(({ id }) => id === snapshot.round?.faceoffTeamId)
     : null;
+  const teams = session.teamId
+    ? snapshot.teams.filter((team) => team.id === session.teamId)
+    : snapshot.teams;
   return (
     <div className="things-game things-game--night flex min-h-[100dvh] flex-col text-white">
       <header className="px-5 py-4 text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
-          Family Feud · shared buzzer · {roomId}
+          Family Feud · {session.teamId ? "team buzzer" : "shared buzzer"} · {roomId}
         </p>
         <h1 className="mx-auto mt-2 max-w-3xl font-serif text-2xl sm:text-4xl">
           {snapshot.round?.prompt ?? "Wait for the category."}
@@ -104,13 +125,16 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
                 : "MC will open the buzzers")}
         </p>
       </header>
-      <main id="main" className="grid flex-1 grid-cols-2 gap-1 p-2 sm:gap-3 sm:p-4">
-        {snapshot.teams.map((team) => (
+      <main
+        id="main"
+        className={`grid flex-1 gap-1 p-2 sm:gap-3 sm:p-4 ${session.teamId ? "grid-cols-1" : "grid-cols-2"}`}
+      >
+        {teams.map((team) => (
           <button
             key={team.id}
             type="button"
             disabled={!open || busy}
-            onPointerDown={() => void hit(team.id)}
+            onClick={() => void hit(team.id)}
             className={`flex min-h-72 items-center justify-center rounded-3xl border-2 p-3 text-center transition-transform active:scale-[0.98] disabled:opacity-30 ${team.id === "one" ? "border-[var(--things-amber)] bg-[var(--things-amber)]/10" : "border-[var(--things-frost)] bg-[var(--things-frost)]/10"}`}
           >
             <span className="font-serif text-2xl font-semibold sm:text-5xl">
