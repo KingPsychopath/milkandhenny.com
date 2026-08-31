@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  emailFormDefault,
   forgetBrowserProfile,
   gameNameDefault,
   readBrowserProfile,
@@ -54,6 +55,14 @@ describe("browser profile", () => {
   it("ignores malformed stored values", () => {
     localStorage.setItem("mah-browser-profile-v1", JSON.stringify({ name: 42, email: "nope" }));
     expect(readBrowserProfile()).toEqual({ name: "", gameName: "", email: "" });
+  });
+
+  it("prefers a trusted form email and falls back to the remembered profile", () => {
+    expect(emailFormDefault(" SignedIn@Example.COM ", "remembered@example.com")).toBe(
+      "signedin@example.com",
+    );
+    expect(emailFormDefault(undefined, " Remembered@Example.COM ")).toBe("remembered@example.com");
+    expect(emailFormDefault("invalid", "remembered@example.com")).toBe("remembered@example.com");
   });
 
   it("can remove only the profile", () => {

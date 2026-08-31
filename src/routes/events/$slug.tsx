@@ -47,7 +47,7 @@ export const Route = createFileRoute("/events/$slug")({
 });
 
 function EventDetailRoute() {
-  const { data, origin } = Route.useLoaderData();
+  const { data, origin, waitlistEmail } = Route.useLoaderData();
   const { checkout } = Route.useSearch();
   const { event, availability } = data;
 
@@ -75,6 +75,7 @@ function EventDetailRoute() {
         heroImage={data.heroImage}
         descriptionImages={data.descriptionImages}
         checkoutCancelled={checkout === "cancelled"}
+        waitlistEmail={waitlistEmail}
       />
     </>
   );

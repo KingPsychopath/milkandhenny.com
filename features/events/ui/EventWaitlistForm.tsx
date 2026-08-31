@@ -4,9 +4,11 @@ import { useId, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
+import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { requestEventWaitlistFn } from "@/features/event-waitlist/waitlist.functions";
 import type { WaitlistScope } from "@/features/event-waitlist/types";
+import { useBrowserProfileForm } from "@/lib/client/browser-profile";
 
 export interface EventWaitlistOption {
   value: string;
@@ -23,14 +25,16 @@ type WaitlistFormState =
 export function EventWaitlistForm({
   eventSlug,
   options,
+  initialEmail,
 }: {
   eventSlug: string;
   options: EventWaitlistOption[];
+  initialEmail?: string;
 }) {
   const emailId = useId();
   const scopeId = useId();
   const errorId = useId();
-  const [email, setEmail] = useState("");
+  const { email, setEmail, remember } = useBrowserProfileForm({ initialEmail });
   const [selected, setSelected] = useState(options[0]?.value ?? "");
   const [state, setState] = useState<WaitlistFormState>({ status: "idle" });
 
@@ -49,6 +53,7 @@ export function EventWaitlistForm({
         setState({ status: "error", message: result.error });
         return;
       }
+      remember({ email });
       setState({ status: "done" });
     } catch {
       setState({ status: "error", message: "We could not join the waitlist. Try again." });
@@ -107,6 +112,7 @@ export function EventWaitlistForm({
             </label>
             <input
               id={emailId}
+              name="email"
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -122,6 +128,8 @@ export function EventWaitlistForm({
             />
             <EmailAddressNotice email={email} onAcceptSuggestion={setEmail} />
           </div>
+
+          <BrowserProfileHint />
 
           {state.status === "error" ? (
             <p id={errorId} role="alert" className="font-mono text-xs text-[var(--admin-danger)]">

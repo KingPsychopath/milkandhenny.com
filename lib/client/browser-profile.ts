@@ -45,6 +45,10 @@ function normaliseEmail(value: unknown): string {
   return email.length <= MAX_EMAIL_LENGTH && isValidEmail(email) ? email : "";
 }
 
+export function emailFormDefault(initialEmail: unknown, rememberedEmail: unknown): string {
+  return normaliseEmail(initialEmail) || normaliseEmail(rememberedEmail);
+}
+
 export function readBrowserProfile(): BrowserProfile {
   try {
     const value: unknown = JSON.parse(getStored("browserProfile") ?? "null");
@@ -123,10 +127,13 @@ export function useBrowserProfile() {
 }
 
 /** Editable form defaults which do not overwrite a field after the person starts typing. */
-export function useBrowserProfileForm({ maxNameLength = MAX_NAME_LENGTH } = {}) {
+export function useBrowserProfileForm({
+  maxNameLength = MAX_NAME_LENGTH,
+  initialEmail,
+}: { maxNameLength?: number; initialEmail?: string } = {}) {
   const { loaded, profile, remember } = useBrowserProfile();
   const [name, setNameState] = useState("");
-  const [email, setEmailState] = useState("");
+  const [email, setEmailState] = useState(() => emailFormDefault(initialEmail, ""));
   const edited = useRef({ name: false, email: false });
 
   useEffect(() => {
@@ -134,8 +141,8 @@ export function useBrowserProfileForm({ maxNameLength = MAX_NAME_LENGTH } = {}) 
     if (!edited.current.name) {
       setNameState(profile.name.length <= maxNameLength ? profile.name : "");
     }
-    if (!edited.current.email) setEmailState(profile.email);
-  }, [loaded, maxNameLength, profile]);
+    if (!edited.current.email) setEmailState(emailFormDefault(initialEmail, profile.email));
+  }, [initialEmail, loaded, maxNameLength, profile]);
 
   const setName = useCallback((value: string) => {
     edited.current.name = true;

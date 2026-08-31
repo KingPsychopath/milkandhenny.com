@@ -91,6 +91,7 @@ export function EventDetailPage({
   heroImage,
   descriptionImages,
   checkoutCancelled = false,
+  waitlistEmail,
 }: {
   event: ViewableEvent;
   availability: TicketTypeAvailability[];
@@ -100,6 +101,7 @@ export function EventDetailPage({
   descriptionImages?: Record<string, ResponsiveImageData>;
   /** Set when Stripe sent them back without taking payment. */
   checkoutCancelled?: boolean;
+  waitlistEmail?: string;
 }) {
   const revealed = isRevealed(event);
   const ticketsExist = hasTickets(event);
@@ -281,7 +283,11 @@ export function EventDetailPage({
             <div className="mt-4">
               <ResendTicketForm eventSlug={event.slug} />
             </div>
-            <EventWaitlistForm eventSlug={event.slug} options={waitlistOptions} />
+            <EventWaitlistForm
+              eventSlug={event.slug}
+              options={waitlistOptions}
+              initialEmail={waitlistEmail}
+            />
           </section>
         )}
 

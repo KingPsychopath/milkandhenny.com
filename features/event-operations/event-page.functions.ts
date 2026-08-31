@@ -1,14 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
+import { currentAttendeeEmailAddress } from "@/features/attendee-access/access.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
 import { readTicketHolderSlugs } from "@/features/tickets/holder-cookie.server";
+import { log } from "@/lib/platform/logger.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEventPage, type EventPageData } from "./event-page.server";
 import { runEventOperationsResult } from "./runtime.server";
 
 export type EventPageResult =
-  | { found: true; data: EventPageData; origin: string }
+  | { found: true; data: EventPageData; origin: string; waitlistEmail?: string }
   | { found: false };
 
 export const getEventPageFn = createServerFn({ method: "GET" })
@@ -24,5 +26,19 @@ export const getEventPageFn = createServerFn({ method: "GET" })
     );
 
     if (!result.ok || !result.value) return { found: false };
-    return { found: true, data: result.value, origin };
+    const hasWaitlist =
+      result.value.event.waitlistEnabled &&
+      (result.value.soldOut ||
+        result.value.availability.some((entry) => entry.sales.state === "sold-out"));
+    let waitlistEmail: string | undefined;
+    if (hasWaitlist) {
+      try {
+        waitlistEmail = await currentAttendeeEmailAddress();
+      } catch (error) {
+        log.warn("events.waitlist_prefill", "Could not load the attendee email default", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { found: true, data: result.value, origin, waitlistEmail };
   });

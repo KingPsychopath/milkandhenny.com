@@ -892,6 +892,34 @@ export async function removeAttendeeEmail(input: {
   return result;
 }
 
+/**
+ * Returns an active verified address for an attendee. Prefer the address that authenticated the
+ * current session; passkey sessions deliberately fall back to the most recently verified address.
+ */
+export async function attendeeEmailAddress(
+  personId: string,
+  preferredEmailHash?: string,
+): Promise<string | undefined> {
+  const identifier = await queryOne<{ email_address: string }>(
+    `select email_address
+       from event_person_identifiers
+      where person_id = $1 and kind = 'email' and verified_at is not null
+        and historical_until is null and email_address is not null
+      order by case when value_hash = $2 then 0 else 1 end, verified_at desc
+      limit 1`,
+    [personId, preferredEmailHash ?? null],
+  );
+  if (!identifier) return undefined;
+  const email = normaliseEmail(identifier.email_address);
+  return isValidEmail(email) ? email : undefined;
+}
+
+export async function currentAttendeeEmailAddress(): Promise<string | undefined> {
+  const session = await getAttendeeSession();
+  if (!session?.personId) return undefined;
+  return attendeeEmailAddress(session.personId, session.verifiedEmailHash);
+}
+
 export async function currentAttendeeAccountView(): Promise<{
   account: AttendeeAccount | null;
   emailStepUpRequired: boolean;

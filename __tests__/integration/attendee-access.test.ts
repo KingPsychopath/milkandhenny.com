@@ -5,6 +5,7 @@ process.env.AUTH_SECRET = "attendee-access-test-secret-32-characters";
 import {
   __attendeeAccessTesting,
   attendeeAccount,
+  attendeeEmailAddress,
   claimTicketForPerson,
   managedOrderIdsForPerson,
   releaseOwnTicketClaim,
@@ -219,6 +220,27 @@ describeWithDatabase("attendee person access", () => {
         reason: "self-service email removal",
       }),
     ).toMatchObject({ ok: false, status: 409 });
+  });
+
+  it("prefers the session email and falls back to the latest active verified address", async () => {
+    const person = await createVerifiedPerson("person_email_default", "first@example.com");
+    const secondHash = __attendeeAccessTesting.sha256("second@example.com");
+    await query(
+      `insert into event_person_identifiers
+         (person_id,kind,value_hash,verified_at,display_hint,email_address)
+       values ($1,'email',$2,now() + interval '1 second','s•••@example.com','second@example.com')`,
+      [person.personId, secondHash],
+    );
+
+    expect(await attendeeEmailAddress(person.personId, person.emailHash)).toBe("first@example.com");
+    expect(await attendeeEmailAddress(person.personId)).toBe("second@example.com");
+
+    await query(
+      `update event_person_identifiers set historical_until = now()
+        where person_id = $1 and value_hash = $2`,
+      [person.personId, secondHash],
+    );
+    expect(await attendeeEmailAddress(person.personId)).toBe("first@example.com");
   });
 
   it("lets a shared-ticket recipient claim only that participant and rejects a racing owner", async () => {
