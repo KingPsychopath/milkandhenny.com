@@ -160,7 +160,7 @@ export function AdminSectionNav({
       </nav>
       {utilitySections.length > 0 ? (
         <div className="mt-1 flex flex-wrap items-center gap-x-5 border-t theme-border-faint pt-2">
-          <p className="font-mono text-micro uppercase tracking-widest theme-faint">more</p>
+          <p className="font-mono text-micro uppercase tracking-widest theme-faint">utilities</p>
           <nav
             aria-label="Admin utilities and policies"
             className="flex min-w-0 flex-1 flex-wrap gap-x-5"
