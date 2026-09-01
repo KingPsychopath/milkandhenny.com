@@ -33,7 +33,11 @@ import {
   isTicketSigningConfigured,
   verifyTicketSignature,
 } from "./qr.server";
-import { getTicketCapacitySnapshot } from "./capacity.server";
+import {
+  getTicketCapacitySnapshot,
+  listActiveCheckoutHolds,
+  type ActiveCheckoutHold,
+} from "./capacity.server";
 import {
   isValidTicketId,
   MAX_TICKETS_PER_ORDER,
@@ -375,6 +379,7 @@ export type EventTicketSummary = {
   netMinor: number;
   currency?: string;
   reserved: number;
+  checkouts: ActiveCheckoutHold[];
   byType: Record<
     string,
     {
@@ -405,11 +410,12 @@ export type EventTicketSummary = {
 };
 
 export async function getEventTickets(eventSlug: string): Promise<EventTicketSummary> {
-  const [event, tickets, capacity, exchanges] = await Promise.all([
+  const [event, tickets, capacity, exchanges, checkouts] = await Promise.all([
     getEvent(eventSlug),
     listTicketsForEvent(eventSlug),
     getTicketCapacitySnapshot(eventSlug),
     listActiveTicketExchangesForEvent(eventSlug),
+    listActiveCheckoutHolds(eventSlug),
   ]);
   const activeExchangeByTicket = new Map(
     exchanges.map((exchange) => [exchange.ticketId, exchange]),
@@ -483,6 +489,7 @@ export async function getEventTickets(eventSlug: string): Promise<EventTicketSum
     netMinor,
     currency,
     reserved,
+    checkouts,
     byType,
     tickets: tickets.map((ticket) => ({
       ...toDoorView(

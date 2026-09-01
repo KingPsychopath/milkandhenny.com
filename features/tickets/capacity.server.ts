@@ -19,6 +19,18 @@ export type TicketCapacitySnapshot = {
   exchangeReserved: Record<string, number>;
 };
 
+export type ActiveCheckoutHold = {
+  id: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+  quantity: number;
+  holderName: string;
+  email: string;
+  status: "creating" | "pending" | "payment_pending" | "fulfilling" | "payment_mismatch";
+  createdAt: string;
+  expiresAt: string;
+};
+
 type CapacityRow = {
   event_slug: string;
   source: "sold" | "checkout" | "exchange";
@@ -69,6 +81,45 @@ function addCount(snapshot: TicketCapacitySnapshot, row: CapacityRow): void {
 export async function getTicketCapacitySnapshot(slug: string): Promise<TicketCapacitySnapshot> {
   if (!isValidEventSlug(slug)) return emptySnapshot();
   return (await getTicketCapacitySnapshots([slug]))[slug] ?? emptySnapshot();
+}
+
+export async function listActiveCheckoutHolds(eventSlug: string): Promise<ActiveCheckoutHold[]> {
+  if (!isValidEventSlug(eventSlug)) return [];
+  const rows = await query<{
+    id: string;
+    ticket_type_id: string;
+    ticket_type_name: string;
+    quantity: number;
+    holder_name: string;
+    email: string;
+    status: ActiveCheckoutHold["status"];
+    created_at: Date;
+    expires_at: Date;
+  }>(
+    `select checkout.id, checkout.ticket_type_id, ticket_type.name as ticket_type_name,
+            checkout.quantity, checkout.holder_name, checkout.email, checkout.status,
+            checkout.created_at, checkout.expires_at
+       from (
+         select * from checkout_sessions
+          where event_slug = $1 and ${ACTIVE_CHECKOUT_HOLD_SQL}
+       ) checkout
+       join ticket_types ticket_type
+         on ticket_type.event_slug = checkout.event_slug
+        and ticket_type.id = checkout.ticket_type_id
+      order by checkout.created_at desc`,
+    [eventSlug],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    ticketTypeId: row.ticket_type_id,
+    ticketTypeName: row.ticket_type_name,
+    quantity: row.quantity,
+    holderName: row.holder_name,
+    email: row.email,
+    status: row.status,
+    createdAt: row.created_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+  }));
 }
 
 export async function getTicketCapacitySnapshots(

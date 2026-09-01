@@ -133,6 +133,16 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
     expect((await getTicketCapacitySnapshot("capacity-night")).checkoutReserved.entry).toBe(1);
     const adminSummary = await getEventTickets("capacity-night");
     expect(adminSummary.reserved).toBe(1);
+    expect(adminSummary.checkouts).toEqual([
+      expect.objectContaining({
+        id: "cs_capacity_first_123",
+        ticketTypeName: "Entry",
+        quantity: 1,
+        holderName: "Buyer",
+        email: "buyer@example.com",
+        status: "pending",
+      }),
+    ]);
     expect(adminSummary.byType.entry).toEqual(
       expect.objectContaining({ valid: 0, reserved: 1, remaining: 0 }),
     );

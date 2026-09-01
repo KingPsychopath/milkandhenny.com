@@ -218,6 +218,17 @@ type EventTicketSummary = {
   netMinor: number;
   currency?: string;
   reserved: number;
+  checkouts: Array<{
+    id: string;
+    ticketTypeId: string;
+    ticketTypeName: string;
+    quantity: number;
+    holderName: string;
+    email: string;
+    status: "creating" | "pending" | "payment_pending" | "fulfilling" | "payment_mismatch";
+    createdAt: string;
+    expiresAt: string;
+  }>;
   byType: Record<
     string,
     {
@@ -263,7 +274,7 @@ function parseEventTicketSummary(value: unknown): EventTicketSummary | null {
   if (!record.byType || typeof record.byType !== "object" || Array.isArray(record.byType)) {
     return null;
   }
-  if (!Array.isArray(record.tickets)) return null;
+  if (!Array.isArray(record.tickets) || !Array.isArray(record.checkouts)) return null;
   return record as EventTicketSummary;
 }
 
@@ -2452,7 +2463,14 @@ function EventOperations({
                 {summary.valid}/{capacity}
               </p>
               {summary.reserved > 0 && (
-                <p className="font-mono text-micro theme-faint">+{summary.reserved} in checkout</p>
+                <button
+                  type="button"
+                  onClick={() => handleToolChange("tickets")}
+                  aria-controls="active-checkouts-list"
+                  className="min-h-11 font-mono text-micro theme-faint underline decoration-dotted underline-offset-4 hover:text-foreground"
+                >
+                  +{summary.reserved} in checkout · show
+                </button>
               )}
             </div>
             <div>
@@ -2516,6 +2534,43 @@ function EventOperations({
 
       {activeTool === "tickets" && (
         <div>
+          {summary.checkouts.length > 0 && (
+            <section className="mt-4 border-t theme-border pt-4" aria-labelledby="checkouts-title">
+              <h4 id="checkouts-title" className="font-mono text-xs text-foreground">
+                in checkout
+              </h4>
+              <p className="mt-1 font-mono text-micro theme-faint">
+                These places are held while payment is unfinished. They become tickets only after
+                payment succeeds.
+              </p>
+              <ul id="active-checkouts-list" className="mt-2 divide-y theme-divide">
+                {summary.checkouts.map((checkout) => (
+                  <li key={checkout.id} className="py-3">
+                    <p className="truncate font-mono text-sm text-foreground">
+                      {checkout.holderName}
+                    </p>
+                    <p className="truncate font-mono text-micro theme-muted">
+                      {checkout.email} · {checkout.quantity} × {checkout.ticketTypeName}
+                    </p>
+                    <AdminStatus
+                      tone={checkout.status === "payment_mismatch" ? "danger" : "attention"}
+                      className="mt-1 font-mono text-micro"
+                    >
+                      {checkout.status.replaceAll("_", " ")} · started{" "}
+                      {new Date(checkout.createdAt).toLocaleString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "Europe/London",
+                      })}
+                    </AdminStatus>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {permissions.manageTickets ? (
             <div className="mt-4">
               <button
