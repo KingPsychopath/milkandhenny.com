@@ -54,7 +54,7 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     await clickSessionAction(
       page,
       "use this ticket for points",
-      "Event points now go to this ticket",
+      "This device will use this ticket for event points.",
     );
 
     const secondTab = await context.newPage();
@@ -62,8 +62,16 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     await clickSessionAction(
       secondTab,
       "use this ticket for points",
-      "Event points now go to this ticket",
+      "This device will use this ticket for event points.",
     );
+
+    await secondTab.goto(`/events/${eventSlug}`);
+    const eventNavigation = secondTab.getByRole("navigation", { name: "Your event ticket" });
+    await expect(eventNavigation).toContainText("Second guest's ticket");
+    await expect(eventNavigation).toContainText("points ticket selected · scoring not open");
+    await expect(eventNavigation.getByRole("link", { name: "ticket", exact: true })).toBeVisible();
+    await expect(eventNavigation.getByRole("link", { name: "score", exact: true })).toBeVisible();
+    await expect(eventNavigation.getByRole("link", { name: "save", exact: true })).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole("link", { name: "← Browser scoring" })).toBeVisible();
@@ -209,5 +217,7 @@ async function clickSessionAction(
   expected: string,
 ) {
   await page.getByRole("button", { name: buttonName }).click();
-  await expect(page.getByRole("status")).toContainText(expected, { timeout: 15_000 });
+  await expect(page.getByRole("status").filter({ hasText: expected })).toBeVisible({
+    timeout: 15_000,
+  });
 }

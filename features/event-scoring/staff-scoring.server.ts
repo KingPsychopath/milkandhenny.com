@@ -17,6 +17,8 @@ import {
   disableEventDrop,
   enableEventDrop,
   getEventDrop,
+  getEventDropSchedule,
+  scheduleEventDrop,
 } from "@/features/events/drop.server";
 import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
@@ -89,7 +91,7 @@ function scopeActivityIds(assignment: StoredStaffAssignment): string[] | null {
 
 function canUseActivity(assignment: StoredStaffAssignment, activityId: string): boolean {
   const ids = scopeActivityIds(assignment);
-  return ids === null || ids.includes(activityId);
+  return ids === null || ids.length === 0 || ids.includes(activityId);
 }
 
 function canUseCheckpoint(assignment: StoredStaffAssignment, checkpointId: string): boolean {
@@ -128,6 +130,7 @@ export async function getStaffScoringPage(input: {
       found: true;
       eventSlug: string;
       eventTitle: string;
+      eventStartsAt: string;
       label: string;
       personId?: string;
       rolePreset?: string;
@@ -147,7 +150,8 @@ export async function getStaffScoringPage(input: {
       canManageGuestPhotos: boolean;
       guestPhotosAvailable: boolean;
       photoConsentPolicy: "ask" | "required" | "not-required";
-      mediaDrop?: { uploadPath?: string; albumPath: string; expiresAt: string };
+      mediaDrop?: { uploadPath?: string; albumPath?: string; expiresAt: string };
+      mediaSchedule?: { opensAt: string };
       canRun: boolean;
       canRequestGuests: boolean;
       canAddGuests: boolean;
@@ -203,6 +207,7 @@ export async function getStaffScoringPage(input: {
     recentAwards,
     settings,
     drop,
+    dropSchedule,
     guestRequests,
     heldActions,
     recentParticipants,
@@ -223,6 +228,7 @@ export async function getStaffScoringPage(input: {
     ),
     getScoring(input.eventSlug),
     getEventDrop(input.eventSlug),
+    getEventDropSchedule(input.eventSlug),
     canApproveGuests
       ? listGuestRequests(input.eventSlug, "pending")
       : Promise.all(
@@ -262,6 +268,7 @@ export async function getStaffScoringPage(input: {
     found: true,
     eventSlug: input.eventSlug,
     eventTitle: event.title,
+    eventStartsAt: event.startsAt,
     label: assignments.map((entry) => entry.label).join(" · "),
     personId: assignment.personId,
     rolePreset:
@@ -287,10 +294,14 @@ export async function getStaffScoringPage(input: {
     mediaDrop: drop
       ? {
           uploadPath: drop.live ? `/drop/${drop.token}` : undefined,
-          albumPath: `/t/${drop.transferId}`,
+          albumPath: drop.available ? `/t/${drop.transferId}` : undefined,
           expiresAt: drop.expiresAt,
         }
       : undefined,
+    mediaSchedule:
+      dropSchedule && !dropSchedule.openedAt && !dropSchedule.cancelledAt
+        ? { opensAt: dropSchedule.opensAt }
+        : undefined,
     canRun: grant("runActivities") !== null,
     canRequestGuests: grant("requestGuests") !== null,
     canAddGuests: grant("addGuests") !== null,
@@ -366,6 +377,7 @@ export async function setStaffGuestPhotos(input: {
   deviceId: string;
   enabled: boolean;
   expirySeconds?: number;
+  opensAt?: string;
 }) {
   const context = await resolveStaffScoringContext(input);
   const assignment = assignmentFor(context, "manageGuestPhotos");
@@ -381,16 +393,32 @@ export async function setStaffGuestPhotos(input: {
   }
   await cancelEventDropSchedule(input.eventSlug);
   const result = input.enabled
-    ? await enableEventDrop(input.eventSlug, input.expirySeconds ?? 7 * 24 * 60 * 60)
+    ? input.opensAt
+      ? await scheduleEventDrop({
+          eventSlug: input.eventSlug,
+          opensAt: input.opensAt,
+          expirySeconds: input.expirySeconds ?? 7 * 24 * 60 * 60,
+          actorId: assignment.id,
+        })
+      : await enableEventDrop(input.eventSlug, input.expirySeconds ?? 7 * 24 * 60 * 60)
     : await disableEventDrop(input.eventSlug);
   if (!result.ok) return result;
   await query(
     `insert into score_audit_events
        (event_slug,action,actor_type,actor_id,assignment_id,device_id,entity_type,entity_id,metadata)
      values ($1,'event.photos.toggled','staff',$2,$2,$3,'event',$1,$4::jsonb)`,
-    [input.eventSlug, assignment.id, context.deviceId, JSON.stringify({ enabled: input.enabled })],
+    [
+      input.eventSlug,
+      assignment.id,
+      context.deviceId,
+      JSON.stringify({ enabled: input.enabled, opensAt: input.opensAt }),
+    ],
   );
-  return { ok: true as const, value: await getEventDrop(input.eventSlug) };
+  const [drop, schedule] = await Promise.all([
+    getEventDrop(input.eventSlug),
+    getEventDropSchedule(input.eventSlug),
+  ]);
+  return { ok: true as const, value: { drop, schedule } };
 }
 
 async function currentStaffTeamState(eventSlug: string) {

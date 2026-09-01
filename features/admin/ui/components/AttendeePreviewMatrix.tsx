@@ -182,6 +182,8 @@ export function AttendeePreviewMatrix() {
                 {
                   status: "held",
                   reasonCode: "offline-award",
+                  activityName: "Offline award",
+                  sourceType: "staff-award",
                   points: 12,
                   createdAt: "2027-10-16T20:14:00.000Z",
                 },

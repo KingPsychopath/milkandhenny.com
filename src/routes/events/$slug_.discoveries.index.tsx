@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -8,6 +8,11 @@ import {
   useDiscoveryCooldown,
 } from "@/features/event-scoring/ui/useDiscoveryCooldown";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
+import {
+  ATTENDEE_CLAIMS_EVENT,
+  attendeeClaimResultFromEvent,
+  submitAttendeeClaim,
+} from "@/features/event-scoring/ui/submitAttendeeClaim";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 function credential(raw: string): string {
@@ -17,6 +22,22 @@ function credential(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+function confirmedDiscoveryMessage(body: Record<string, unknown>) {
+  const points = typeof body.points === "number" ? body.points : 0;
+  const discovery = body.discovery;
+  const discoveryName =
+    discovery && typeof discovery === "object" && "name" in discovery
+      ? String(discovery.name)
+      : "Clue";
+  const progress =
+    body.progress && typeof body.progress === "object"
+      ? (body.progress as { claimed?: unknown; total?: unknown })
+      : undefined;
+  return body.state === "held"
+    ? `${discoveryName} saved for review while scoring is frozen.`
+    : `${discoveryName} claimed.${points > 0 ? ` ${points} points.` : ""}${progress ? ` ${String(progress.claimed)} of ${String(progress.total)} found.` : ""}`;
 }
 
 export const Route = createFileRoute("/events/$slug_/discoveries/")({
@@ -42,6 +63,8 @@ function DiscoveriesRoute() {
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [cooldownDiscovery, setCooldownDiscovery] = useState("");
+  const [claimPending, setClaimPending] = useState(false);
+  const commandId = useRef(crypto.randomUUID());
   const { clearCooldown, coolingDown, remainingSeconds, startCooldown } = useDiscoveryCooldown();
 
   useEffect(() => {
@@ -49,6 +72,27 @@ function DiscoveriesRoute() {
       sessionStorage.setItem("mah-pending-discovery", window.location.href);
     }
   }, [activeParticipantId, tickets.length]);
+
+  useEffect(() => {
+    if (!claimPending) return;
+    const settle = (event: Event) => {
+      const detail = attendeeClaimResultFromEvent(event, commandId.current);
+      if (!detail || detail.result.state === "pending") return;
+      setClaimPending(false);
+      commandId.current = crypto.randomUUID();
+      if (detail.result.state === "rejected") {
+        setIsError(true);
+        setMessage(detail.result.error);
+        return;
+      }
+      setIsError(false);
+      setMessage(confirmedDiscoveryMessage(detail.result.body));
+      setPresented("");
+      setCameraOpen(false);
+    };
+    window.addEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+    return () => window.removeEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+  }, [claimPending]);
 
   async function claim() {
     if (!presented.trim()) return;
@@ -60,42 +104,48 @@ function DiscoveriesRoute() {
     setBusy(true);
     setMessage("");
     setIsError(false);
+    setClaimPending(false);
     clearCooldown();
     setCooldownDiscovery("");
     try {
-      const response = await fetch(`/api/events/${encodeURIComponent(slug)}/discoveries/claim`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      const selectedTicket = tickets.find((ticket) => ticket.ticketId === ticketId);
+      const participantId = activeParticipantId ?? selectedTicket?.participantId;
+      if (!participantId) throw new Error("Choose the ticket playing this hunt");
+      const result = await submitAttendeeClaim({
+        commandId: commandId.current,
+        eventSlug: slug,
+        participantId,
+        ticketId: ticketId || tickets.find((ticket) => ticket.active)?.ticketId,
+        url: `/api/events/${encodeURIComponent(slug)}/discoveries/claim`,
+        label: "Clue claim",
+        body: {
           presented: credential(presented),
-          commandId: crypto.randomUUID(),
+          commandId: commandId.current,
           ticketId: ticketId || undefined,
-        }),
+        },
       });
-      const body = (await response.json()) as {
-        error?: string;
-        points?: number;
-        state?: string;
-        discovery?: { name: string };
-        progress?: { claimed: number; total: number; complete: boolean };
-        retryAfterSeconds?: number;
-      };
-      if (body.retryAfterSeconds) {
-        startCooldown(body.retryAfterSeconds);
-        setCooldownDiscovery(body.discovery?.name ?? "This clue");
+      if (result.state === "pending") {
+        setClaimPending(true);
+        setMessage("Claim saved on this device. It will confirm automatically when connected.");
+        return;
       }
-      if (!response.ok) {
-        if (response.status === 429 && body.retryAfterSeconds) {
-          setMessage(`${body.discovery?.name ?? "This clue"} was already claimed.`);
+      if (result.state === "rejected") {
+        commandId.current = crypto.randomUUID();
+        const retryAfterSeconds = result.body?.retryAfterSeconds;
+        const discovery = result.body?.discovery;
+        if (result.status === 429 && typeof retryAfterSeconds === "number") {
+          startCooldown(retryAfterSeconds);
+          const discoveryName =
+            discovery && typeof discovery === "object" && "name" in discovery
+              ? String(discovery.name)
+              : "This clue";
+          setMessage(`${discoveryName} was already claimed.`);
           return;
         }
-        throw new Error(body.error ?? "The clue could not be claimed");
+        throw new Error(result.error);
       }
-      setMessage(
-        `${body.discovery?.name ?? "Clue"} claimed.${
-          (body.points ?? 0) > 0 ? ` ${body.points} points.` : ""
-        }${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} found.` : ""}`,
-      );
+      commandId.current = crypto.randomUUID();
+      setMessage(confirmedDiscoveryMessage(result.body));
       setPresented("");
       setCameraOpen(false);
     } catch (error) {

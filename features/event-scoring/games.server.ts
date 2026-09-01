@@ -469,34 +469,22 @@ async function ensureGamePlayerLinks(
   const participantByPlayer = new Map(
     links.rows.map((link) => [link.game_player_id, link.participant_id]),
   );
+  // Family Feud publishes fixed team slots rather than attendee identities. Hidden internal
+  // participants hold those slot postings until a checked-in representative claims one; they
+  // never appear on the public leaderboard. Pooled games intentionally do not get this fallback.
+  if (row.game_kind !== "family-feud") return participantByPlayer;
   for (const player of players) {
     if (participantByPlayer.has(player.playerId)) continue;
     const participantId = opaqueId("ep");
-    const publicAlias = `player-${randomBytes(5).toString("hex")}`;
     await client.query(
-      `insert into event_participants (id, event_slug, generated_alias)
-       values ($1,$2,$3)`,
-      [participantId, row.event_slug, publicAlias],
+      `insert into event_participants (id, event_slug, generated_alias, display_mode)
+       values ($1,$2,$3,'hidden')`,
+      [participantId, row.event_slug, `team-slot-${randomBytes(5).toString("hex")}`],
     );
     await client.query(
       `insert into event_game_player_links (channel_id, game_player_id, participant_id)
        values ($1,$2,$3)`,
       [row.channel_id, player.playerId, participantId],
-    );
-    await client.query(
-      `insert into score_audit_events
-         (event_slug, action, actor_type, entity_type, entity_id, metadata)
-       values ($1,'game.player.placeholder-created','system','participant',$2,$3::jsonb)`,
-      [
-        row.event_slug,
-        participantId,
-        JSON.stringify({
-          channelId: row.channel_id,
-          gameKind: row.game_kind,
-          gameInstanceId: row.game_instance_id,
-          gamePlayerId: player.playerId,
-        }),
-      ],
     );
     participantByPlayer.set(player.playerId, participantId);
   }
@@ -611,7 +599,7 @@ async function processResult(
           return points > 0 && participantId ? [{ participantId, points }] : [];
         })
       : [];
-  if (row.operation === "record" && postings.length === 0) {
+  if (row.operation === "record" && participantByPlayer.size > 0 && postings.length === 0) {
     return holdResult(client, row, "The configured rule awarded no points");
   }
 
@@ -653,7 +641,7 @@ async function processResult(
   }
 
   let transactionId: string | null = null;
-  if (row.operation === "record") {
+  if (row.operation === "record" && postings.length > 0) {
     const scored = await recordScoreInTransaction(client, {
       eventSlug: row.event_slug,
       activityId: row.activity_id,
@@ -676,7 +664,13 @@ async function processResult(
   }
 
   const receiptStatus =
-    row.operation === "cancel" ? "cancelled" : row.revision > 1 ? "corrected" : "processed";
+    row.operation === "cancel"
+      ? "cancelled"
+      : postings.length === 0
+        ? "ignored"
+        : row.revision > 1
+          ? "corrected"
+          : "processed";
   await client.query(
     `insert into score_game_receipts
        (id, official_result_id, event_id, activity_id, transaction_id,

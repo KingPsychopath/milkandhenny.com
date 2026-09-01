@@ -426,6 +426,28 @@ export async function getParticipant(
   return row ? toParticipant(row) : null;
 }
 
+/** Active ticket-backed participants that a verified person can recover on another device. */
+export async function ticketParticipantsForPerson(
+  personId: string,
+): Promise<Array<{ id: string; eventSlug: string; ticketId: string }>> {
+  if (!personId) return [];
+  const rows = await query<{ id: string; event_slug: string; ticket_id: string }>(
+    `select participants.id, participants.event_slug, participants.ticket_id
+       from event_participants participants
+       join tickets on tickets.id = participants.ticket_id
+      where participants.person_id = $1
+        and participants.status = 'active'
+        and tickets.status = 'valid'
+      order by participants.created_at, participants.id`,
+    [personId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    eventSlug: row.event_slug,
+    ticketId: row.ticket_id,
+  }));
+}
+
 export async function listLeaderboardParticipants(
   eventSlug: string,
 ): Promise<(ScoreParticipant & ScoreProjection & { teamId?: string })[]> {

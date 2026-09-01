@@ -1,5 +1,6 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
+import { refreshPersonAchievements } from "@/features/achievements/achievements.server";
 import {
   adminPitchAssets,
   cleanupStalePitchAssets,
@@ -228,6 +229,14 @@ export async function publishPitch(input: {
   }
   const published = await publishPitchDeck(input);
   if (!published.ok) return published;
+  if (published.value.ownerPersonId) {
+    await refreshPersonAchievements(published.value.ownerPersonId).catch((error) =>
+      log.warn("pitches.achievement", "Pitch published but achievements could not be refreshed", {
+        deckId: published.value.id,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
   const delivery = await sendPitchPublishedEmail({
     email: published.value.ownerEmail,
     origin: input.origin,

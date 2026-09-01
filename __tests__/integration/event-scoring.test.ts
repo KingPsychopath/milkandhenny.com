@@ -39,10 +39,6 @@ import {
   retryHeldOfficialGameResult,
 } from "@/features/event-scoring/games.server";
 import {
-  claimGamePlayerResult,
-  issueGamePlayerClaimToken,
-} from "@/features/event-scoring/game-claims.server";
-import {
   claimDiscovery,
   copyDiscovery,
   createDiscovery,
@@ -58,6 +54,7 @@ import {
 } from "@/features/event-scoring/print.server";
 import {
   adjustStaffPool,
+  archiveEventStaffRole,
   assignEventStaffRole,
   createEventStaffRole,
   createStaffAccess,
@@ -66,6 +63,7 @@ import {
   revokeStaffAccess,
   revokeStaffAccessDevice,
   staffAssignmentForPermission,
+  updateEventStaffRoleScope,
 } from "@/features/event-scoring/staff.server";
 import { actionEmailHash } from "@/features/attendee-operations/action-links.server";
 import { acceptAccessAction } from "@/features/attendee-operations/access-grants.server";
@@ -73,7 +71,10 @@ import {
   awardStaffPoints,
   getStaffScoringPage,
   mintStaffAwardClaim,
+  setStaffGuestPhotos,
 } from "@/features/event-scoring/staff-scoring.server";
+import { updateEventOperationsPolicy } from "@/features/attendee-operations/capabilities.server";
+import { getEventDropSchedule } from "@/features/events/drop.server";
 import {
   claimStaffAward,
   getStaffAwardClaimPreview,
@@ -99,8 +100,10 @@ import {
 import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
 import {
   applyPenalty,
+  adminParticipantScore,
   awardPoints,
   changeScoringState,
+  configureScoring,
   createActivityFromPersonalTemplate,
   createScoringActivity,
   correctPointsAfterClose,
@@ -108,6 +111,7 @@ import {
   mergeParticipants,
   listPersonalActivityTemplates,
   processScheduledScoringTransitions,
+  personalScore,
   publicLeaderboard,
   reverseParticipantMerge,
   savePersonalActivityTemplate,
@@ -281,7 +285,7 @@ describeWithDatabase("event scoring postgres", () => {
     ).toEqual([3, 3]);
     expect(teams.filter((team) => team.status === "active").map((team) => team.colourKey)).toEqual([
       "amber",
-      "plum",
+      "sage",
     ]);
     expect(teams.filter((team) => team.status === "archived")).toHaveLength(1);
     expect(
@@ -475,6 +479,59 @@ describeWithDatabase("event scoring postgres", () => {
     const canonical = await publicLeaderboard({ eventSlug: "scoring-night" });
     expect(canonical.ok && canonical.value.rows[0]?.publicAlias).toBe("Alice Smith");
     expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.id).toBe(participant!.id);
+  });
+
+  it("exposes one ledger as private history and a privacy-safe public breakdown", async () => {
+    const participant = await participantForTicket("01ARZ3NDEKTSV4RR");
+    expect(participant).toBeTruthy();
+    await getOrCreateSettings("scoring-night");
+    await query(
+      `update event_scoring_settings
+          set state = 'live', leaderboard_visibility = 'public-live'
+        where event_slug = 'scoring-night'`,
+    );
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Best dancer",
+      template: "participation",
+      status: "live",
+      rule: { mode: "fixed", fixedPoints: 5, repeat: "once", requiresCheckIn: false },
+    });
+    expect(
+      (
+        await recordScore({
+          eventSlug: "scoring-night",
+          activityId: activity.id,
+          sourceType: "manual",
+          sourceId: "dance-floor",
+          idempotencyKey: "dance-floor-winner",
+          reasonCode: "other",
+          actorType: "admin",
+          postings: [{ participantId: participant!.id, points: 5 }],
+        })
+      ).ok,
+    ).toBe(true);
+
+    const own = await personalScore({
+      eventSlug: "scoring-night",
+      ticketId: "01ARZ3NDEKTSV4RR",
+    });
+    expect(own.ok && own.value.transactions[0]).toMatchObject({
+      activityName: "Best dancer",
+      sourceType: "manual",
+      points: 5,
+    });
+
+    const admin = await adminParticipantScore({
+      eventSlug: "scoring-night",
+      participantId: participant!.id,
+    });
+    expect(admin.ok && admin.value.transactions[0]?.activityName).toBe("Best dancer");
+
+    const publicBoard = await publicLeaderboard({ eventSlug: "scoring-night" });
+    expect(publicBoard.ok && publicBoard.value.rows[0]?.breakdown).toEqual([
+      { label: "Best dancer", points: 5 },
+    ]);
   });
 
   it("merges and splits projections without rewriting ledger postings", async () => {
@@ -1063,8 +1120,7 @@ describeWithDatabase("event scoring postgres", () => {
     },
   );
 
-  it("creates event-local placeholders for unclaimed official game players", async () => {
-    const ticketParticipant = await participantForTicket("01ARZ3NDEKTSV4RR");
+  it("ignores unidentified official players without creating leaderboard participants", async () => {
     const activity = await createActivity({
       eventSlug: "scoring-night",
       name: "Unclaimed players",
@@ -1102,50 +1158,33 @@ describeWithDatabase("event scoring postgres", () => {
       }),
     );
     expect(ingested.ok).toBe(true);
-    expect(
-      await processOfficialGameResult(ingested.ok ? ingested.value.id : "missing"),
-    ).toMatchObject({ state: "processed" });
-    expect(
-      await query<{
-        game_player_id: string;
-        ticket_id: string | null;
-        points: number;
-      }>(
-        `select links.game_player_id, participants.ticket_id, postings.points
-           from event_game_player_links links
-           join event_participants participants on participants.id = links.participant_id
-           join score_postings postings on postings.participant_id = participants.id
-          where links.channel_id = $1
-          order by links.game_player_id`,
-        [channelId],
-      ),
-    ).toEqual([
-      { game_player_id: "unclaimed-one", ticket_id: null, points: 7 },
-      { game_player_id: "unclaimed-two", ticket_id: null, points: 3 },
-    ]);
-    const claimToken = await issueGamePlayerClaimToken({
-      channelId,
-      gamePlayerId: "unclaimed-one",
+    expect(await processOfficialGameResult(ingested.ok ? ingested.value.id : "missing")).toEqual({
+      state: "ignored",
+      resultId: ingested.ok ? ingested.value.id : "missing",
     });
-    expect(claimToken.ok).toBe(true);
-    const token = claimToken.ok ? claimToken.value.token : "missing";
     expect(
-      await claimGamePlayerResult({
-        token: `${token}tampered`,
-        targetParticipantId: ticketParticipant!.id,
-      }),
-    ).toMatchObject({ ok: false, status: 400 });
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from event_participants where event_slug = 'scoring-night'`,
+        )
+      )[0]?.count,
+    ).toBe("1");
     expect(
-      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
-    ).toMatchObject({ ok: false, status: 403 });
-    await markParticipantCheckedIn(ticketParticipant!.id);
+      (
+        await query<{ count: string }>(
+          `select count(*)::text as count from event_game_player_links where channel_id = $1`,
+          [channelId],
+        )
+      )[0]?.count,
+    ).toBe("0");
     expect(
-      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
-    ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
-    expect(
-      await claimGamePlayerResult({ token, targetParticipantId: ticketParticipant!.id }),
-    ).toEqual({ ok: true, value: { participantId: ticketParticipant!.id } });
-    expect((await participantForTicket("01ARZ3NDEKTSV4RR"))?.balance).toBe(7);
+      (
+        await query<{ status: string; transaction_id: string | null }>(
+          `select status, transaction_id from score_game_receipts where official_result_id = $1`,
+          [ingested.ok ? ingested.value.id : "missing"],
+        )
+      )[0],
+    ).toEqual({ status: "ignored", transaction_id: null });
   });
 
   it("settles collected clues and the completion bonus exactly once", async () => {
@@ -1637,6 +1676,183 @@ describeWithDatabase("event scoring postgres", () => {
     expect(counts.find((entry) => entry.role_id === food.id)?.count).toBe("2");
   });
 
+  it("archives obsolete roles while revoking their active access", async () => {
+    const role = await createEventStaffRole({
+      eventSlug: "scoring-night",
+      label: "Temporary marshal",
+      preset: "points-marshal",
+      actorId: "admin-test",
+      reason: "temporary role test",
+    });
+    const station = await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: role.id,
+      delivery: "station",
+      actorId: "admin-test",
+      reason: "temporary station test",
+    });
+
+    await expect(
+      archiveEventStaffRole({
+        eventSlug: "scoring-night",
+        roleId: role.id,
+        actorId: "admin-test",
+        reason: "temporary staffing is finished",
+      }),
+    ).resolves.toEqual({ roleId: role.id, revokedAssignments: 1 });
+    await expect(
+      resolveStaffAccess({ eventSlug: "scoring-night", token: station.token! }),
+    ).resolves.toBeNull();
+    await expect(
+      assignEventStaffRole({
+        eventSlug: "scoring-night",
+        roleId: role.id,
+        delivery: "station",
+        actorId: "admin-test",
+        reason: "archived role must stay unavailable",
+      }),
+    ).rejects.toThrow("unavailable or expired");
+    await expect(
+      archiveEventStaffRole({
+        eventSlug: "scoring-night",
+        roleId: role.id,
+        actorId: "admin-test",
+        reason: "second retirement attempt",
+      }),
+    ).resolves.toBeNull();
+
+    const [storedRole] = await query<{ status: string }>(
+      `select status from event_staff_roles where id = $1`,
+      [role.id],
+    );
+    const [storedAssignment] = await query<{ status: string; invitation_state: string }>(
+      `select status,invitation_state from score_staff_assignments where id = $1`,
+      [station.id],
+    );
+    expect(storedRole?.status).toBe("archived");
+    expect(storedAssignment).toEqual({ status: "revoked", invitation_state: "active" });
+  });
+
+  it("updates a role scope and every active assignment without replacing its link", async () => {
+    const activity = await createActivity({
+      eventSlug: "scoring-night",
+      name: "Late award",
+      template: "participation",
+      status: "live",
+      rule: {
+        mode: "participation",
+        repeat: "once",
+        participationPoints: 3,
+        requiresCheckIn: true,
+      },
+    });
+    const role = await createEventStaffRole({
+      eventSlug: "scoring-night",
+      label: "Scope marshal",
+      preset: "points-marshal",
+      scope: { activityIds: [] },
+      actorId: "admin-test",
+      reason: "scope update test",
+    });
+    const station = await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: role.id,
+      delivery: "station",
+      actorId: "admin-test",
+      reason: "scope update station",
+    });
+
+    await expect(
+      updateEventStaffRoleScope({
+        eventSlug: "scoring-night",
+        roleId: role.id,
+        scope: { activityIds: [activity.id] },
+        actorId: "admin-test",
+        reason: "include the late award",
+      }),
+    ).resolves.toMatchObject({ updatedAssignments: 1 });
+
+    const resolved = await resolveStaffAccess({
+      eventSlug: "scoring-night",
+      token: station.token!,
+    });
+    expect(resolved?.scope.activityIds).toEqual([activity.id]);
+
+    await updateEventStaffRoleScope({
+      eventSlug: "scoring-night",
+      roleId: role.id,
+      scope: { activityIds: [] },
+      actorId: "admin-test",
+      reason: "all live activities",
+    });
+    const page = await getStaffScoringPage({
+      eventSlug: "scoring-night",
+      token: station.token!,
+      deviceId: "scope-update-device",
+    });
+    expect(page.found && page.activities.some((entry) => entry.id === activity.id)).toBe(true);
+  });
+
+  it("lets an authorised event lead schedule, cancel, and open the shared album", async () => {
+    await updateEventOperationsPolicy({
+      eventSlug: "scoring-night",
+      capabilities: { guestPhotos: true },
+      actorId: "admin-test",
+      actorType: "admin",
+      reason: "prepare the event album",
+    });
+    const access = await createStaffAccess({
+      eventSlug: "scoring-night",
+      label: "Event lead",
+      assignmentType: "station",
+      preset: "event-manager",
+      actorId: "admin-test",
+      reason: "event lead photo controls",
+    });
+    const opensAt = new Date(Date.now() + 60_000).toISOString();
+
+    const scheduled = await setStaffGuestPhotos({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "event-lead-device",
+      enabled: true,
+      opensAt,
+    });
+    expect(scheduled).toMatchObject({
+      ok: true,
+      value: { schedule: { opensAt } },
+    });
+    expect(
+      await getStaffScoringPage({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "event-lead-device",
+      }),
+    ).toMatchObject({ found: true, mediaSchedule: { opensAt } });
+
+    await expect(
+      setStaffGuestPhotos({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "event-lead-device",
+        enabled: false,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { schedule: { cancelledAt: expect.any(String) } },
+    });
+    expect((await getEventDropSchedule("scoring-night"))?.cancelledAt).toBeDefined();
+
+    await expect(
+      setStaffGuestPhotos({
+        eventSlug: "scoring-night",
+        token: access.token!,
+        deviceId: "event-lead-device",
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ ok: true, value: { drop: { live: true, available: true } } });
+  });
+
   it("does not let a copied staff invitation prove ownership of an email", async () => {
     const role = await createEventStaffRole({
       eventSlug: "scoring-night",
@@ -1787,6 +2003,35 @@ describeWithDatabase("event scoring postgres", () => {
       (await participantForTicket("01ARZ3NDEKTSV4RR"))!.balance +
         (await participantForTicket("01ARZ3NDEKTSV4R3"))!.balance,
     ).toBe(3);
+
+    const replayable = await mintStaffAwardClaim({
+      eventSlug: "scoring-night",
+      token: access.token!,
+      deviceId: "qr-device",
+      activityId: activity.id,
+      expiresInSeconds: 60,
+    });
+    expect(replayable.ok).toBe(true);
+    if (!replayable.ok) return;
+    const confirmed = await claimStaffAward({
+      eventSlug: "scoring-night",
+      token: replayable.value.token,
+      participantId: first.id,
+    });
+    const recovered = await claimStaffAward({
+      eventSlug: "scoring-night",
+      token: replayable.value.token,
+      participantId: first.id,
+    });
+    expect(confirmed).toMatchObject({ ok: true, value: { points: 3 } });
+    expect(recovered).toMatchObject({ ok: true, value: { points: 3 } });
+    if (confirmed.ok && recovered.ok) {
+      expect(recovered.value.transaction.id).toBe(confirmed.value.transaction.id);
+    }
+    expect(
+      (await participantForTicket("01ARZ3NDEKTSV4RR"))!.balance +
+        (await participantForTicket("01ARZ3NDEKTSV4R3"))!.balance,
+    ).toBe(6);
 
     const expired = await mintStaffAwardClaim({
       eventSlug: "scoring-night",
@@ -2318,24 +2563,74 @@ describeWithDatabase("event scoring postgres", () => {
     await getOrCreateSettings("scoring-night");
     await query(
       `update event_scoring_settings
-          set state = 'ready', scheduled_start = $2, scheduled_end = $3
+          set state = 'ready', leaderboard_visibility = 'preview',
+              scheduled_start = $2, scheduled_freeze = $3, scheduled_end = $4
         where event_slug = $1`,
       [
         "scoring-night",
         new Date("2026-10-25T01:30:00+01:00"),
+        new Date("2026-10-25T01:15:00+00:00"),
         new Date("2026-10-25T01:30:00+00:00"),
       ],
     );
     expect(await processScheduledScoringTransitions(new Date("2026-10-25T00:45:00Z"))).toBe(1);
-    expect((await findSettings("scoring-night"))?.state).toBe("live");
+    expect(await findSettings("scoring-night")).toMatchObject({
+      state: "live",
+      leaderboardVisibility: "public-live",
+    });
+    expect(await processScheduledScoringTransitions(new Date("2026-10-25T01:20:00Z"))).toBe(1);
+    expect((await findSettings("scoring-night"))?.state).toBe("frozen");
     expect(await processScheduledScoringTransitions(new Date("2026-10-25T01:45:00Z"))).toBe(1);
-    expect((await findSettings("scoring-night"))?.state).toBe("closed");
+    expect(await findSettings("scoring-night")).toMatchObject({
+      state: "closed",
+      leaderboardVisibility: "public-final",
+    });
     expect(
       (
         await query<{ count: string }>(
           `select count(*)::text as count from score_audit_events where action = 'scoring.state.scheduled'`,
         )
       )[0]?.count,
-    ).toBe("2");
+    ).toBe("3");
+  });
+
+  it("stores, changes, and clears the complete event-night schedule", async () => {
+    const first = await configureScoring({
+      eventSlug: "scoring-night",
+      actorId: "admin-test",
+      leaderboardVisibility: "preview",
+      gamesOpenAt: "2026-09-01T18:00:00.000Z",
+      gamesCloseAt: "2026-09-01T20:00:00.000Z",
+      scheduledStart: "2026-09-01T18:00:00.000Z",
+      scheduledFreeze: "2026-09-01T21:55:00.000Z",
+      scheduledEnd: "2026-09-01T22:00:00.000Z",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      value: {
+        gamesOpenAt: "2026-09-01T18:00:00.000Z",
+        gamesCloseAt: "2026-09-01T20:00:00.000Z",
+        scheduledStart: "2026-09-01T18:00:00.000Z",
+        scheduledFreeze: "2026-09-01T21:55:00.000Z",
+        scheduledEnd: "2026-09-01T22:00:00.000Z",
+      },
+    });
+
+    const cleared = await configureScoring({
+      eventSlug: "scoring-night",
+      actorId: "admin-test",
+      gamesOpenAt: null,
+      gamesCloseAt: null,
+      scheduledStart: null,
+      scheduledFreeze: null,
+      scheduledEnd: null,
+    });
+    expect(cleared).toMatchObject({ ok: true, value: { eventSlug: "scoring-night" } });
+    if (!cleared.ok) return;
+    expect(cleared.value.gamesOpenAt).toBeUndefined();
+    expect(cleared.value.gamesCloseAt).toBeUndefined();
+    expect(cleared.value.scheduledStart).toBeUndefined();
+    expect(cleared.value.scheduledFreeze).toBeUndefined();
+    expect(cleared.value.scheduledEnd).toBeUndefined();
   });
 });

@@ -16,6 +16,7 @@ import { ScoringStaffPanel } from "./ScoringStaffPanel";
 import { ScoringTestModePanel } from "./ScoringTestModePanel";
 import { ScoringOperationsPanel } from "./ScoringOperationsPanel";
 import { ScoringTeamsPanel } from "./ScoringTeamsPanel";
+import { ScoringGamesPanel } from "./ScoringGamesPanel";
 import type { ScoringData } from "./event-scoring-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 import { pickDefaultAdminEvent } from "./event-admin-selection";
@@ -26,7 +27,15 @@ type StepUp = () => Promise<
 >;
 type StepUpHeaders = (token: string, extra?: Record<string, string>) => Record<string, string>;
 
-type ScoringWorkspace = "setup" | "content" | "live" | "media" | "review" | "people" | "pools";
+type ScoringWorkspace =
+  | "setup"
+  | "games"
+  | "content"
+  | "live"
+  | "media"
+  | "review"
+  | "people"
+  | "pools";
 
 const SCORING_WORKSPACES: Array<{
   id: ScoringWorkspace;
@@ -34,6 +43,7 @@ const SCORING_WORKSPACES: Array<{
   description: string;
 }> = [
   { id: "setup", label: "setup", description: "Activities and event lifecycle" },
+  { id: "games", label: "games", description: "Included games, entrances, and award methods" },
   { id: "content", label: "discoveries", description: "Discoveries and print packs" },
   { id: "live", label: "live desk", description: "Test mode and live operations" },
   { id: "media", label: "media", description: "Scoring media and assets" },
@@ -367,8 +377,16 @@ export function EventScoringPanel({
                   personalTemplates={data.personalTemplates}
                   onAction={performAction}
                 />
-                <ScoringLifecyclePanel data={data} onAction={performAction} />
+                <ScoringLifecyclePanel data={data} event={selectedEvent} onAction={performAction} />
               </>
+            ) : null}
+            {workspace === "games" ? (
+              <ScoringGamesPanel
+                authFetch={authFetch}
+                eventGames={data.eventGames}
+                activities={data.activities}
+                onAction={performAction}
+              />
             ) : null}
             {workspace === "content" ? (
               <>

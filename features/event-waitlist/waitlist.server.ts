@@ -59,6 +59,8 @@ interface WaitlistRow {
   confirmation_version: number;
   confirmed_at: Date | null;
   notified_at: Date | null;
+  converted_at: Date | null;
+  converted_order_id: string | null;
   left_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -66,6 +68,7 @@ interface WaitlistRow {
 
 interface AdminWaitlistRow extends WaitlistRow {
   ticket_type_name: string | null;
+  conversion_order_status: "valid" | "mixed" | "refunded" | "void" | null;
 }
 
 interface InventorySnapshot {
@@ -829,10 +832,23 @@ export async function listEventWaitlist(eventSlug: string): Promise<WaitlistAdmi
       [eventSlug],
     ),
     query<AdminWaitlistRow>(
-      `select entry.*, coalesce(type.name, entry.scope_label) as ticket_type_name
+      `select entry.*, coalesce(type.name, entry.scope_label) as ticket_type_name,
+              conversion.status as conversion_order_status
          from event_waitlist_entries entry
          left join ticket_types type
            on type.event_slug = entry.event_slug and type.id = entry.ticket_type_id
+         left join lateral (
+           select case
+                    when count(*) filter (where ticket.status = 'valid') > 0
+                     and count(*) filter (where ticket.status <> 'valid') > 0 then 'mixed'
+                    when count(*) filter (where ticket.status = 'valid') > 0 then 'valid'
+                    when count(*) > 0
+                     and count(*) filter (where ticket.status = 'refunded') = count(*) then 'refunded'
+                    when count(*) > 0 then 'void'
+                  end as status
+             from tickets ticket
+            where ticket.order_id = entry.converted_order_id
+         ) conversion on entry.converted_order_id is not null
         where entry.event_slug = $1
         order by case entry.status when 'active' then 0 when 'pending' then 1 else 2 end,
                  entry.created_at desc
@@ -854,6 +870,9 @@ export async function listEventWaitlist(eventSlug: string): Promise<WaitlistAdmi
     createdAt: row.created_at.toISOString(),
     ...(row.confirmed_at ? { confirmedAt: row.confirmed_at.toISOString() } : {}),
     ...(row.notified_at ? { notifiedAt: row.notified_at.toISOString() } : {}),
+    ...(row.converted_at ? { convertedAt: row.converted_at.toISOString() } : {}),
+    ...(row.converted_order_id ? { convertedOrderId: row.converted_order_id } : {}),
+    ...(row.conversion_order_status ? { conversionOrderStatus: row.conversion_order_status } : {}),
     ...(row.left_at ? { leftAt: row.left_at.toISOString() } : {}),
   }));
   return { counts, entries: views };

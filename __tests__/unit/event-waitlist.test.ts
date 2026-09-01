@@ -69,6 +69,8 @@ function candidate(
     confirmation_version: 1,
     confirmed_at: confirmedAt,
     notified_at: null,
+    converted_at: null,
+    converted_order_id: null,
     left_at: null,
     created_at: confirmedAt,
     updated_at: confirmedAt,

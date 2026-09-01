@@ -15,6 +15,7 @@ export type AdminRequestOptions = {
   path: string;
   body?: unknown;
   stepUpToken?: string;
+  outputPath?: string;
 };
 
 export function normaliseControlPath(path: string, method: AdminHttpMethod): string {
@@ -67,6 +68,20 @@ export async function requestAdminApi(options: AdminRequestOptions): Promise<unk
     },
     ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
   });
+
+  if (response.ok && options.outputPath) {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname, resolve } = await import("node:path");
+    const outputPath = resolve(options.outputPath);
+    await mkdir(dirname(outputPath), { recursive: true });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await writeFile(outputPath, bytes);
+    return {
+      outputPath,
+      bytes: bytes.length,
+      contentType: response.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }
 
   const text = await response.text();
   let data: unknown = null;

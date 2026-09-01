@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useRouterState } from "@tanstack/react-router";
 
 import {
   SCORE_SESSION_EVENT,
@@ -180,20 +180,22 @@ export function ClaimedScoreLinks() {
         const nextTransactionId = pendingTransactionIds.values().next().value as string | undefined;
         if (nextTransactionId) {
           pendingTransactionIds.delete(nextTransactionId);
-          if (active) void refresh(nextTransactionId);
+          if (active) void refresh(nextTransactionId).catch(() => undefined);
         }
       });
       return refreshing;
     }
 
-    const reconnect = () => void refresh();
+    const reconcile = (transactionId?: string) =>
+      void refresh(transactionId).catch(() => undefined);
+    const reconnect = () => reconcile();
     const unsubscribers = links.map((link) =>
       subscribeScoreStream(link.ticketId, (event) => {
-        if (event.kind !== "unavailable") void refresh(event.transactionId);
+        if (event.kind !== "unavailable") reconcile(event.transactionId);
       }),
     );
-    void refresh();
-    const fallback = window.setInterval(() => void refresh(), FALLBACK_REFRESH_MS);
+    reconcile();
+    const fallback = window.setInterval(reconcile, FALLBACK_REFRESH_MS);
     window.addEventListener("online", reconnect);
     window.addEventListener("mah-score-wake", reconnect);
     return () => {
@@ -206,40 +208,8 @@ export function ClaimedScoreLinks() {
     };
   }, [links, onGame, onTicket, safeGameScreen]);
 
-  const onThings = pathname === "/things" || onGame;
-  const eventLink = links.at(-1);
-  const showEventNavigation = Boolean(
-    eventLink && onThings && (!onGame || safeGameScreen) && celebrations.length === 0,
-  );
   const showCelebration = celebrations.length > 0 && (!onGame || safeGameScreen);
-  if (onTicket || (!showEventNavigation && !showCelebration)) return null;
+  if (onTicket || !showCelebration) return null;
   const confirmedBalance = celebrations.at(-1)?.balance;
-  return (
-    <>
-      {showEventNavigation && eventLink ? (
-        <nav
-          aria-label="Your event"
-          className="event-night-nav themed-floating-notice fixed left-3 z-30 flex min-h-11 items-center gap-1 rounded-full border p-1 font-mono text-micro"
-        >
-          <Link
-            to="/ticket/$id"
-            params={{ id: eventLink.ticketId }}
-            className="themed-floating-notice-muted inline-flex min-h-11 items-center rounded-full px-3 underline underline-offset-4 hover:text-[var(--floating-notice-foreground)]"
-          >
-            ticket &amp; points
-          </Link>
-          <Link
-            to="/events/$slug/score"
-            params={{ slug: eventLink.eventSlug }}
-            className="themed-floating-notice-muted inline-flex min-h-11 items-center rounded-full px-3 underline underline-offset-4 hover:text-[var(--floating-notice-foreground)]"
-          >
-            leaderboard
-          </Link>
-        </nav>
-      ) : null}
-      {showCelebration ? (
-        <ScoreBalanceChange notices={celebrations} balance={confirmedBalance} />
-      ) : null}
-    </>
-  );
+  return <ScoreBalanceChange notices={celebrations} balance={confirmedBalance} />;
 }

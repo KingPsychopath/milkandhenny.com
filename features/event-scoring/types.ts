@@ -106,7 +106,10 @@ export type ScoringSettings = {
   eventSlug: string;
   state: ScoringState;
   leaderboardVisibility: LeaderboardVisibility;
+  gamesOpenAt?: string;
+  gamesCloseAt?: string;
   scheduledStart?: string;
+  scheduledFreeze?: string;
   scheduledEnd?: string;
   allowPreCheckinOnlinePoints: boolean;
   publicNames: "generated" | "choice" | "canonical";
@@ -208,6 +211,18 @@ export type ScorePosting = {
   participantId: string;
   points: number;
   teamId?: string;
+};
+
+export type PublicLeaderboardRow = {
+  rank: number;
+  publicAlias: string;
+  /** Stable public discriminator for separate ticket participants with similar display names. */
+  entryCode: string;
+  points: number;
+  team?: string;
+  teamColourKey?: import("./team-palette").TeamColourKey;
+  isCurrentAttendee?: boolean;
+  breakdown: Array<{ label: string; points: number }>;
 };
 
 export type ScoreTransaction = {

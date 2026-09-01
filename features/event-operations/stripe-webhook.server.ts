@@ -24,6 +24,7 @@ import {
 import { log } from "@/lib/platform/logger.server";
 import { retrievePaymentMetadata } from "@/lib/platform/payment-provider-context.server";
 import { constructWebhookEvent } from "@/lib/platform/stripe.server";
+import { recordWaitlistConversionForCheckout } from "./waitlist-conversion.server";
 
 export type StripeWebhookEvent = ReturnType<typeof constructWebhookEvent>;
 
@@ -57,6 +58,7 @@ export async function handleStripeWebhookEvent(
           result.outcome === "failed" ? result.error : "Checkout session is not in the ledger",
         );
       }
+      await recordWaitlistConversionForCheckout(session.id);
       break;
     }
 
@@ -171,6 +173,7 @@ export async function handleStripeWebhookEvent(
         if (result.outcome === "failed" || result.outcome === "unknown-session") {
           throw new Error("Could not fulfil checkout after a won dispute");
         }
+        await recordWaitlistConversionForCheckout(sessionId);
       }
       break;
     }

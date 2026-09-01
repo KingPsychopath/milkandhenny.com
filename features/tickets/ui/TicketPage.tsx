@@ -24,10 +24,15 @@ import { TicketScoringControl, type TicketMode } from "./TicketScoringControl";
 import { ScoreSyncStatus } from "./ScoreSyncStatus";
 import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
 import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
+import { AttendeeClaimStatus } from "@/features/event-scoring/ui/AttendeeClaimStatus";
 import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
 import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
+import { isTeamColourKey, type TeamColourKey } from "@/features/event-scoring/team-palette";
 import { TicketArrivalHandoff } from "./TicketArrivalHandoff";
+import { useTicketAdmissionState } from "../useTicketAdmissionState";
+import type { AchievementView } from "@/features/achievements/types";
+import { TicketAchievementCollection } from "@/features/achievements/ui/AchievementCollection";
 
 /**
  * The ticket itself.
@@ -59,6 +64,7 @@ export function TicketPage({
   embedded = false,
   attendeeIdentity,
   initialTicketPointSelection,
+  achievements,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -85,6 +91,7 @@ export function TicketPage({
     active: boolean;
     eventHasActive: boolean;
   };
+  achievements?: AchievementView;
   score?: {
     participantId: string;
     publicAlias: string;
@@ -101,6 +108,8 @@ export function TicketPage({
     transactions: Array<{
       status: string;
       reasonCode: string;
+      activityName?: string;
+      sourceType?: string;
       points: number;
       createdAt: string;
     }>;
@@ -108,6 +117,17 @@ export function TicketPage({
 }) {
   const [confirmedScore, setConfirmedScore] = useState(score?.points);
   const [confirmedOrderPoints, setConfirmedOrderPoints] = useState(score?.orderPoints);
+  const [confirmedSynchronizedAt, setConfirmedSynchronizedAt] = useState(score?.synchronizedAt);
+  const [confirmedTeam, setConfirmedTeam] = useState<{
+    name: string;
+    colourKey?: TeamColourKey;
+  } | null>(() =>
+    team
+      ? { name: team.name, colourKey: team.colourKey }
+      : score?.teamName
+        ? { name: score.teamName, colourKey: score.teamColourKey }
+        : null,
+  );
   const [ticketMode, setTicketMode] = useState<TicketMode | null>(
     initialTicketPointSelection
       ? initialTicketPointSelection.mode === "scoring" && initialTicketPointSelection.active
@@ -116,10 +136,15 @@ export function TicketPage({
       : null,
   );
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
-  const redeemed = Boolean(ticket.redeemedAt);
   const eventCancelled = event.status === "cancelled";
   const invalid = ticket.status !== "valid" || eventCancelled;
   const ticketReference = ticket.publicId ?? ticket.id;
+  const redeemedAt = useTicketAdmissionState({
+    ticketReference,
+    initialRedeemedAt: ticket.redeemedAt,
+    enabled: !preview && !invalid,
+  });
+  const redeemed = Boolean(redeemedAt);
   // Self-serve refunds close when doors open; after that it is a conversation.
   const doorsOpen = Date.now() >= Date.parse(event.doorsAt ?? event.startsAt);
   const checkpoints = describeCheckpoints(checkpointNames);
@@ -128,6 +153,9 @@ export function TicketPage({
   // the one ticket in the order that must not have a "share" next to it.
   const isManagerTicket = ticket.id === managerTicketId || ticket.publicId === managerTicketId;
   const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null);
+  const teamColour = isTeamColourKey(confirmedTeam?.colourKey)
+    ? confirmedTeam.colourKey
+    : undefined;
 
   useEffect(() => {
     const pending = sessionStorage.getItem("mah-pending-discovery");
@@ -258,10 +286,8 @@ export function TicketPage({
         {redeemed && !invalid && (
           <p className="mt-6 px-4 py-3 border theme-border rounded-lg font-mono text-xs theme-subtle">
             Scanned in
-            {ticket.redeemedAt
-              ? ` at ${formatEventTime(ticket.redeemedAt, event.timezone)}`
-              : ""} —
-            you&apos;re through.{" "}
+            {redeemedAt ? ` at ${formatEventTime(redeemedAt, event.timezone)}` : ""} — you&apos;re
+            through.{" "}
             {checkpoints
               ? `Keep this open: ${checkpoints} scan the same code.`
               : "This code still works if anyone needs to check it again."}
@@ -272,42 +298,50 @@ export function TicketPage({
           <TicketArrivalHandoff
             ticketReference={ticketReference}
             eventSlug={event.slug}
-            initialRedeemedAt={ticket.redeemedAt}
+            redeemedAt={redeemedAt}
           />
         ) : null}
 
         {/* The QR — deliberately the largest element on the page. */}
         <div className="mt-8 flex items-center justify-center">
           <div
-            className={`w-full aspect-square max-w-xs rounded-xl bg-white p-4 ${
+            className={`team-ticket-frame ${teamColour ? `team-colour--${teamColour}` : ""} w-full aspect-square max-w-xs rounded-xl border-[3px] p-1 ${
               invalid ? "opacity-30" : ""
             }`}
           >
-            {qr ? (
-              <AppImage
-                src={qr}
-                alt="Your ticket QR code. Show this at the door."
-                width={512}
-                height={512}
-                className="w-full h-full"
-              />
-            ) : failed ? (
-              <div className="w-full h-full flex items-center justify-center text-center">
-                <p className="font-mono text-xs text-stone-600 px-4">
-                  Couldn&apos;t draw the code. Show the reference below to staff.
-                </p>
-              </div>
-            ) : (
-              <div className="w-full h-full" aria-hidden="true" />
-            )}
+            <div className="h-full w-full rounded-lg bg-white p-4">
+              {qr ? (
+                <AppImage
+                  src={qr}
+                  alt="Your ticket QR code. Show this at the door."
+                  width={512}
+                  height={512}
+                  className="h-full w-full"
+                />
+              ) : failed ? (
+                <div className="flex h-full w-full items-center justify-center text-center">
+                  <p className="px-4 font-mono text-xs text-stone-600">
+                    Couldn&apos;t draw the code. Show the reference below to staff.
+                  </p>
+                </div>
+              ) : (
+                <div className="h-full w-full" aria-hidden="true" />
+              )}
+            </div>
           </div>
         </div>
 
         <div className="mt-6 text-center">
           <p className="font-serif text-xl text-foreground">{ticket.holderName}</p>
-          {team ? (
-            <TeamBadge name={`Team ${team.name}`} colourKey={team.colourKey} className="mt-2" />
-          ) : null}
+          <span aria-live="polite">
+            {confirmedTeam ? (
+              <TeamBadge
+                name={`Team ${confirmedTeam.name}`}
+                colourKey={confirmedTeam.colourKey}
+                className="mt-2"
+              />
+            ) : null}
+          </span>
           {/* Only the kinds that tell the holder something. A paid ticket
               being paid is the unremarkable case, and labelling it invites
               the reader to wonder what it would mean if it were missing. */}
@@ -417,7 +451,7 @@ export function TicketPage({
                 ) : (
                   <span className="block theme-subtle">
                     {album.reason === "expired"
-                      ? "The album has expired."
+                      ? "This temporary event album has expired, so it is no longer available. Ask the event lead if that is unexpected."
                       : "The shared album is not open."}
                   </span>
                 ))}
@@ -482,6 +516,7 @@ export function TicketPage({
             {!preview && !eventCancelled && initialTicketPointSelection ? (
               <TicketScoringControl
                 ticketId={ticketReference}
+                eventSlug={event.slug}
                 initialSelection={initialTicketPointSelection}
                 onModeChange={setTicketMode}
               />
@@ -521,19 +556,27 @@ export function TicketPage({
                   }}
                   onSnapshot={(next) => {
                     setConfirmedScore(next.balance);
+                    setConfirmedSynchronizedAt(next.synchronizedAt);
                     if (next.orderPoints !== undefined) setConfirmedOrderPoints(next.orderPoints);
+                    setConfirmedTeam(
+                      next.teamName ? { name: next.teamName, colourKey: next.teamColourKey } : null,
+                    );
                   }}
                 />
               )}{" "}
-              · last synchronized {formatEventTime(score.synchronizedAt, event.timezone)}
+              · last confirmed{" "}
+              {formatEventTime(confirmedSynchronizedAt ?? score.synchronizedAt, event.timezone)}
             </p>
+            {!preview && !eventCancelled ? (
+              <AttendeeClaimStatus eventSlug={event.slug} participantId={score.participantId} />
+            ) : null}
             {!preview && !eventCancelled && ticketMode === "scoring" ? (
               <ScoreNotificationNotice ticketId={ticketReference} />
             ) : null}
             {score.transactions.length > 0 && (
               <details className="mt-4">
                 <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
-                  score history
+                  where your points came from
                 </summary>
                 <ol className="divide-y theme-border border-y theme-border">
                   {score.transactions.map((transaction, index) => (
@@ -541,10 +584,16 @@ export function TicketPage({
                       key={`${transaction.createdAt}-${index}`}
                       className="flex items-baseline justify-between gap-4 py-3"
                     >
-                      <span className="font-mono text-xs">
-                        {transaction.reasonCode.replaceAll("-", " ")}
-                        {transaction.status === "held" ? " · pending review" : ""}
-                        {transaction.status === "reversed" ? " · reversed" : ""}
+                      <span className="min-w-0 font-mono text-xs">
+                        <span className="block text-foreground">
+                          {transaction.activityName ?? transaction.reasonCode.replaceAll("-", " ")}
+                          {transaction.status === "held" ? " · pending review" : ""}
+                          {transaction.status === "reversed" ? " · reversed" : ""}
+                        </span>
+                        <time className="mt-1 block theme-muted" dateTime={transaction.createdAt}>
+                          {formatEventDate(transaction.createdAt, event.timezone)} ·{" "}
+                          {formatEventTime(transaction.createdAt, event.timezone)}
+                        </time>
                       </span>
                       <span className="font-mono text-xs">
                         {transaction.points > 0 ? "+" : ""}
@@ -557,6 +606,8 @@ export function TicketPage({
             )}
           </section>
         )}
+
+        {achievements ? <TicketAchievementCollection view={achievements} /> : null}
 
         {hasDiscoveries && !eventCancelled && (
           <section
@@ -613,14 +664,14 @@ export function TicketPage({
             carries the ticket reference so the reply does not start with
             "which ticket?". */}
         <p className="mt-6 text-center font-mono text-micro theme-muted leading-relaxed">
-          Trouble getting in, or need access help?{" "}
+          At the event, show this ticket and its reference to the event lead. For anything else,{" "}
           <a
             href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
               `${event.title} — ticket ${ticketReference}`,
             )}`}
             className="inline-flex min-h-11 items-center underline hover:text-foreground transition-colors"
           >
-            {CONTACT_EMAIL}
+            email {CONTACT_EMAIL}
           </a>
         </p>
 

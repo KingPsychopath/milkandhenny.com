@@ -23,6 +23,12 @@ function optionalInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
 }
 
+function optionalDate(value: unknown) {
+  if (value === null) return null;
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return undefined;
+  return new Date(value).toISOString();
+}
+
 function nameVisibility(value: unknown): GamePoolNameVisibility | undefined {
   return value === "first-names" || value === "initials" || value === "counts" ? value : undefined;
 }
@@ -68,6 +74,8 @@ export async function updateGamePoolForAdmin(id: string, value: unknown) {
     allowRoomChoice: optionalBoolean(input.allowRoomChoice),
     allowNewRooms: optionalBoolean(input.allowNewRooms),
     nameVisibility: nameVisibility(input.nameVisibility),
+    scheduledOpenAt: optionalDate(input.scheduledOpenAt),
+    scheduledCloseAt: optionalDate(input.scheduledCloseAt),
     rotateToken: input.rotateToken === true,
     retire: typeof input.retire === "boolean" ? input.retire : undefined,
   });

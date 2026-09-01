@@ -216,7 +216,13 @@ export const acceptStaffHeldActionFn = createServerFn({ method: "POST" })
 
 export const setStaffGuestPhotosFn = createServerFn({ method: "POST" })
   .validator(
-    (data: { eventSlug: string; token: string; enabled: boolean; expirySeconds?: number }) => data,
+    (data: {
+      eventSlug: string;
+      token: string;
+      enabled: boolean;
+      expirySeconds?: number;
+      opensAt?: string;
+    }) => data,
   )
   .handler(({ data }) =>
     runScoring((scoring) => scoring.setStaffGuestPhotos({ ...data, deviceId: ensureDeviceId() })),

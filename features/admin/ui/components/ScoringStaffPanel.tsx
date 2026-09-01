@@ -178,7 +178,12 @@ export function ScoringStaffPanel({
   const [issuedUrl, setIssuedUrl] = useState("");
   const [issuedLabel, setIssuedLabel] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [scopeReason, setScopeReason] = useState("");
+  const [retireReason, setRetireReason] = useState("");
   const { dataUrl: issuedQr, failed: issuedQrFailed } = useQrCode(issuedUrl || null, 320);
+
+  const activeRoles = roles.filter((role) => role.status === "active");
+  const archivedRoles = roles.filter((role) => role.status === "archived");
 
   const assignmentsByRole = useMemo(() => {
     const grouped = new Map<string, AdminStaffAssignment[]>();
@@ -246,6 +251,38 @@ export function ScoringStaffPanel({
     setCopyMessage("");
     setRecipientEmail("");
     setInviteReason("");
+  }
+
+  async function retireRole(role: AdminStaffRole) {
+    const reason = retireReason.trim();
+    if (!reason) return;
+    if (
+      !window.confirm(
+        `Retire ${role.label}? This revokes every remaining link for this role and removes it from the active register.`,
+      )
+    )
+      return;
+    const result = await onAction({
+      action: "archive-staff-role",
+      roleId: role.id,
+      reason,
+    });
+    if (!result?.archived) return;
+    setRetireReason("");
+    setOpenRoleId(undefined);
+  }
+
+  async function includeAllLiveActivities(role: AdminStaffRole) {
+    const reason = scopeReason.trim();
+    if (!reason) return;
+    const result = await onAction({
+      action: "update-staff-role-scope",
+      roleId: role.id,
+      scope: { activityIds: [] },
+      reason,
+    });
+    if (!result?.updated) return;
+    setScopeReason("");
   }
 
   return (
@@ -414,7 +451,7 @@ export function ScoringStaffPanel({
           <span>status</span>
           <span className="w-16">control</span>
         </div>
-        {roles.map((role) => {
+        {activeRoles.map((role) => {
           const assignments = assignmentsByRole.get(role.id) ?? [];
           const active = assignments.filter(assignmentIsActive);
           const activePeople = active.filter(
@@ -562,12 +599,77 @@ export function ScoringStaffPanel({
                             : "send invitation"}
                     </button>
                   </form>
+                  {(role.permissions.awardPoints || role.permissions.runActivities) &&
+                    stringIds(role.scope.activityIds).length > 0 && (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void includeAllLiveActivities(role);
+                        }}
+                        className="mt-5 grid gap-3 border-t theme-border pt-4 sm:grid-cols-[minmax(0,1fr)_auto]"
+                      >
+                        <label className="font-mono text-xs">
+                          scope-change reason
+                          <input
+                            required
+                            value={scopeReason}
+                            onChange={(event) => setScopeReason(event.target.value)}
+                            placeholder="include activities added after crew setup"
+                            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                          />
+                        </label>
+                        <button className="mh-action self-end">include every live activity</button>
+                        <p className="font-mono text-micro leading-relaxed theme-muted sm:col-span-2">
+                          Updates this role and its active links. Future live activities are
+                          included automatically.
+                        </p>
+                      </form>
+                    )}
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void retireRole(role);
+                    }}
+                    className="mt-5 grid gap-3 border-t theme-border pt-4 sm:grid-cols-[minmax(0,1fr)_auto]"
+                  >
+                    <label className="font-mono text-xs">
+                      retirement reason
+                      <input
+                        required
+                        value={retireReason}
+                        onChange={(event) => setRetireReason(event.target.value)}
+                        placeholder="superseded after final crew setup"
+                        className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                      />
+                    </label>
+                    <button className="mh-action mh-action--danger self-end">retire role</button>
+                    <p className="font-mono text-micro leading-relaxed theme-muted sm:col-span-2">
+                      Retiring preserves the audit history while revoking every remaining person,
+                      invite and shared-device link attached to this role.
+                    </p>
+                  </form>
                 </div>
               )}
             </article>
           );
         })}
       </div>
+
+      {archivedRoles.length > 0 ? (
+        <details className="mt-4 border-b theme-border pb-4">
+          <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs theme-muted">
+            archived roles ({archivedRoles.length})
+          </summary>
+          <ul className="mt-2 divide-y theme-border border-y theme-border">
+            {archivedRoles.map((role) => (
+              <li key={role.id} className="flex min-h-11 items-center justify-between gap-4 py-2">
+                <span className="font-serif text-base">{role.label}</span>
+                <AdminStatus tone="neutral">retired</AdminStatus>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {issuedLabel && (
         <div className="mt-6 border-y theme-border py-4" role="status">

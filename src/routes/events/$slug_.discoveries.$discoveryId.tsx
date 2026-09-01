@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -8,6 +8,11 @@ import {
   useDiscoveryCooldown,
 } from "@/features/event-scoring/ui/useDiscoveryCooldown";
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
+import {
+  ATTENDEE_CLAIMS_EVENT,
+  attendeeClaimResultFromEvent,
+  submitAttendeeClaim,
+} from "@/features/event-scoring/ui/submitAttendeeClaim";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 function clueCredential(raw: string): string {
@@ -18,6 +23,17 @@ function clueCredential(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+function confirmedDiscoveryMessage(body: Record<string, unknown>) {
+  const points = typeof body.points === "number" ? body.points : 0;
+  const progress =
+    body.progress && typeof body.progress === "object"
+      ? (body.progress as { claimed?: unknown; total?: unknown; complete?: unknown })
+      : undefined;
+  return body.state === "held"
+    ? "Saved for review while scoring is frozen."
+    : `Claimed.${points > 0 ? ` ${points} points added.` : ""}${progress ? ` ${String(progress.claimed)} of ${String(progress.total)} clues found${progress.complete ? ". Collection complete." : "."}` : ""}`;
 }
 
 export const Route = createFileRoute("/events/$slug_/discoveries/$discoveryId")({
@@ -46,6 +62,8 @@ function DiscoveryRoute() {
   const [isError, setIsError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [claimPending, setClaimPending] = useState(false);
+  const commandId = useRef(crypto.randomUUID());
   const { coolingDown, remainingSeconds, startCooldown } = useDiscoveryCooldown();
 
   useEffect(() => {
@@ -56,6 +74,26 @@ function DiscoveryRoute() {
     }
   }, [activeParticipantId, tickets.length]);
 
+  useEffect(() => {
+    if (!claimPending) return;
+    const settle = (event: Event) => {
+      const detail = attendeeClaimResultFromEvent(event, commandId.current);
+      if (!detail || detail.result.state === "pending") return;
+      setClaimPending(false);
+      commandId.current = crypto.randomUUID();
+      if (detail.result.state === "rejected") {
+        setIsError(true);
+        setMessage(detail.result.error);
+        return;
+      }
+      setIsError(false);
+      setMessage(confirmedDiscoveryMessage(detail.result.body));
+      setCameraOpen(false);
+    };
+    window.addEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+    return () => window.removeEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+  }, [claimPending]);
+
   async function claim() {
     if (!activeParticipantId && tickets.length > 1 && !ticketId) {
       setIsError(true);
@@ -65,42 +103,43 @@ function DiscoveryRoute() {
     setBusy(true);
     setMessage(null);
     setIsError(false);
-    if (!navigator.onLine) {
-      setBusy(false);
-      setIsError(true);
-      setMessage("No connection. Keep this page open and try again when the network returns.");
-      return;
-    }
+    setClaimPending(false);
     try {
-      const response = await fetch(
-        `/api/events/${encodeURIComponent(discovery.eventSlug)}/discoveries/${encodeURIComponent(discovery.id)}/claim`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ presented, commandId: crypto.randomUUID(), ticketId }),
+      const selectedTicket = tickets.find((ticket) => ticket.ticketId === ticketId);
+      const participantId = activeParticipantId ?? selectedTicket?.participantId;
+      if (!participantId) throw new Error("Choose the ticket playing this hunt");
+      const result = await submitAttendeeClaim({
+        commandId: commandId.current,
+        eventSlug: discovery.eventSlug,
+        participantId,
+        ticketId: ticketId || tickets.find((ticket) => ticket.active)?.ticketId,
+        url: `/api/events/${encodeURIComponent(discovery.eventSlug)}/discoveries/${encodeURIComponent(discovery.id)}/claim`,
+        label: "Clue claim",
+        body: {
+          presented,
+          commandId: commandId.current,
+          ticketId: ticketId || undefined,
         },
-      );
-      const body = (await response.json()) as {
-        error?: string;
-        state?: string;
-        points?: number;
-        progress?: { claimed: number; total: number; complete: boolean };
-        retryAfterSeconds?: number;
-      };
-      startCooldown(body.retryAfterSeconds);
-      if (!response.ok) {
-        if (response.status === 429 && body.retryAfterSeconds) {
+      });
+      if (result.state === "pending") {
+        setClaimPending(true);
+        setMessage("Claim saved on this device. It will confirm automatically when connected.");
+        return;
+      }
+      if (result.state === "rejected") {
+        const retryAfter = result.body?.retryAfterSeconds;
+        if (result.status === 429 && typeof retryAfter === "number") {
+          commandId.current = crypto.randomUUID();
+          startCooldown(retryAfter);
           setIsError(false);
           setMessage("You’ve already claimed this discovery.");
           return;
         }
-        throw new Error(body.error ?? "The clue could not be claimed");
+        commandId.current = crypto.randomUUID();
+        throw new Error(result.error);
       }
-      setMessage(
-        body.state === "held"
-          ? "Saved for review while scoring is frozen."
-          : `Claimed.${(body.points ?? 0) > 0 ? ` ${body.points} points added.` : ""}${body.progress ? ` ${body.progress.claimed} of ${body.progress.total} clues found${body.progress.complete ? ". Collection complete." : "."}` : ""}`,
-      );
+      commandId.current = crypto.randomUUID();
+      setMessage(confirmedDiscoveryMessage(result.body));
       setCameraOpen(false);
     } catch (error) {
       setIsError(true);

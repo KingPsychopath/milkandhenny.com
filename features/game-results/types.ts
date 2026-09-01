@@ -11,6 +11,7 @@ export const OFFICIAL_GAME_KINDS = [
   "spelling-bee",
   "icebreaker",
   "family-feud",
+  "hot-and-cold",
 ] as const;
 
 export type OfficialGameKind = (typeof OFFICIAL_GAME_KINDS)[number];

@@ -3,33 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
-import { getTicketArrivalStateFn } from "@/features/event-operations/ticket-arrival.functions";
 import {
   markTicketArrivalHandoffOffered,
   shouldOfferTicketArrivalHandoff,
   wasTicketArrivalHandoffOffered,
 } from "../ticket-arrival-handoff.client";
-import { subscribeTicketStream } from "../ticket-event-stream";
 
-const FALLBACK_POLL_MS = 7_000;
-const MIN_RECONCILE_GAP_MS = 1_500;
 const HANDOFF_DELAY_MS = 1_800;
 
 export function TicketArrivalHandoff({
   ticketReference,
   eventSlug,
-  initialRedeemedAt,
+  redeemedAt,
 }: {
   ticketReference: string;
   eventSlug: string;
-  initialRedeemedAt?: string;
+  redeemedAt?: string;
 }) {
-  const [checkedIn, setCheckedIn] = useState(Boolean(initialRedeemedAt));
+  const checkedIn = Boolean(redeemedAt);
   const [transitioning, setTransitioning] = useState(false);
-  const checkedInOnLoad = useRef(Boolean(initialRedeemedAt));
-  const handoffOffered = useRef(Boolean(initialRedeemedAt));
-  const lastCheckedAt = useRef(0);
-  const stopped = useRef(false);
+  const checkedInOnLoad = useRef(Boolean(redeemedAt));
+  const handoffOffered = useRef(Boolean(redeemedAt));
   const navigationTimer = useRef<number | null>(null);
   const stayButton = useRef<HTMLButtonElement>(null);
   const destination = `/events/${encodeURIComponent(eventSlug)}/icebreaker?ticket=${encodeURIComponent(ticketReference)}`;
@@ -42,25 +36,13 @@ export function TicketArrivalHandoff({
     setTransitioning(false);
   }, []);
 
-  const reconcile = useCallback(async () => {
-    if (stopped.current || Date.now() - lastCheckedAt.current < MIN_RECONCILE_GAP_MS) return;
-    lastCheckedAt.current = Date.now();
-    const state = await getTicketArrivalStateFn({ data: { ticketReference } }).catch(() => null);
-    if (!state?.found) {
-      if (state && !state.found) stopped.current = true;
-      return;
-    }
-    if (state.arrivalExperience !== "icebreaker") {
-      stopped.current = true;
-      return;
-    }
-    if (!state.redeemedAt) return;
-    setCheckedIn(true);
+  useEffect(() => {
+    if (!redeemedAt) return;
     if (
       !shouldOfferTicketArrivalHandoff({
         checkedInOnLoad: checkedInOnLoad.current,
         alreadyOffered: handoffOffered.current,
-        redeemedAt: state.redeemedAt,
+        redeemedAt,
       })
     ) {
       return;
@@ -72,29 +54,12 @@ export function TicketArrivalHandoff({
       navigationTimer.current = null;
       window.location.assign(destination);
     }, HANDOFF_DELAY_MS);
-  }, [destination, ticketReference]);
+  }, [destination, redeemedAt, ticketReference]);
 
   useEffect(() => {
     if (checkedInOnLoad.current) return;
     handoffOffered.current = wasTicketArrivalHandoffOffered(window.sessionStorage, ticketReference);
-    const unsubscribe = subscribeTicketStream(ticketReference, (event) => {
-      if (event.kind === "ready" || event.kind === "checked-in") void reconcile();
-    });
-    void reconcile();
-    const timer = window.setInterval(() => void reconcile(), FALLBACK_POLL_MS);
-    const onFocus = () => void reconcile();
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") void reconcile();
-    };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      unsubscribe();
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [reconcile, ticketReference]);
+  }, [ticketReference]);
 
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {

@@ -1,10 +1,12 @@
 import type { PersonGameHistoryItem, PersonGameStats } from "@/features/person-games/types";
 import type { PersonalPitchSummary } from "@/features/things/pitches/types";
+import type { AchievementProgress } from "@/features/achievements/types";
 
 export type AttendeeAccount = {
   name: string | null;
   gameHistory: PersonGameHistoryItem[];
   gameStats: PersonGameStats[];
+  achievements: AchievementProgress[];
   emails: Array<{ id: string; masked: string; verifiedAt: string }>;
   pitches: PersonalPitchSummary[];
   tickets: Array<{

@@ -18,7 +18,10 @@ import { WorkAccessReturnPrompt } from "@/components/WorkAccessReturnPrompt";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { ActiveRoomNotice } from "@/features/things/shared/ActiveRoomNotice";
 import { ClaimedScoreLinks } from "@/features/event-scoring/ui/ClaimedScoreLinks";
-import { AttendeeAccessLink } from "@/features/attendee-access/ui/AttendeeAccessLink";
+import { AttendeeClaimReconciler } from "@/features/event-scoring/ui/AttendeeClaimReconciler";
+import { GlobalAchievementNotice } from "@/features/achievements/ui/GlobalAchievementNotice";
+import { getEventNightContextsFn } from "@/features/event-operations/event-night.functions";
+import { EventNightNavigation } from "@/features/event-operations/ui/EventNightNavigation";
 import { ApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
 import { getAttendeeShellFn } from "@/features/attendee-access/access.functions";
 import { recordDiagnosticAction } from "@/features/reports/diagnostics";
@@ -35,7 +38,13 @@ const LostGuest404 = lazy(() =>
 );
 
 export const Route = createRootRoute({
-  loader: () => getAttendeeShellFn(),
+  loader: async () => {
+    const [shell, eventNightContexts] = await Promise.all([
+      getAttendeeShellFn(),
+      getEventNightContextsFn(),
+    ]);
+    return { ...shell, eventNightContexts };
+  },
   staleTime: Infinity,
   head: () => {
     const seo = buildSeoHead({
@@ -68,7 +77,7 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
-  const { authenticated } = Route.useLoaderData();
+  const { authenticated, eventNightContexts } = Route.useLoaderData();
   useEffect(() => {
     document.documentElement.setAttribute("data-app-hydrated", "");
     const onError = (event: ErrorEvent) => {
@@ -100,7 +109,7 @@ function RootComponent() {
     };
   }, []);
   return (
-    <RootDocument authenticated={authenticated}>
+    <RootDocument authenticated={authenticated} eventNightContexts={eventNightContexts}>
       <Outlet />
     </RootDocument>
   );
@@ -108,8 +117,13 @@ function RootComponent() {
 
 function RootDocument({
   authenticated = false,
+  eventNightContexts = [],
   children,
-}: Readonly<{ authenticated?: boolean; children: ReactNode }>) {
+}: Readonly<{
+  authenticated?: boolean;
+  eventNightContexts?: import("@/features/event-operations/event-night.types").EventNightContext[];
+  children: ReactNode;
+}>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -131,8 +145,10 @@ function RootDocument({
         <ApplicationFileDrop />
         <OfflinePlatform />
         <WorkAccessReturnPrompt />
-        <AttendeeAccessLink authenticated={authenticated} />
+        <EventNightNavigation authenticated={authenticated} initialContexts={eventNightContexts} />
+        <AttendeeClaimReconciler />
         <ClaimedScoreLinks />
+        <GlobalAchievementNotice authenticated={authenticated} />
         {children}
         <ActiveRoomNotice />
         <Scripts />

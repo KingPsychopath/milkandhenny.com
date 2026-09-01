@@ -5,6 +5,7 @@ import { getRequestIP } from "@tanstack/react-start/server";
 import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
 import {
   activeParticipantForEvent,
+  openAttendeeTicket,
   openedParticipantForEvent,
 } from "@/features/event-scoring/session.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -36,10 +37,18 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
     if (!discovery || discovery.eventSlug !== slug)
       return Response.json({ error: "Discovery not found" }, { status: 404 });
     const ticketId = typeof record.ticketId === "string" ? record.ticketId : undefined;
+    const selected = ticketId
+      ? await openAttendeeTicket({
+          ticketId,
+          eventSlug: slug,
+          mode: discovery.rule.pointMode === "none" ? "view-only" : "scoring",
+        })
+      : null;
     const participantId =
-      discovery.rule.pointMode === "none"
+      selected?.ticket.participantId ??
+      (discovery.rule.pointMode === "none"
         ? await openedParticipantForEvent(slug, ticketId)
-        : await activeParticipantForEvent(slug);
+        : await activeParticipantForEvent(slug));
     if (!participantId)
       return Response.json(
         {

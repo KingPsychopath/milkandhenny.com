@@ -11,13 +11,14 @@ const EMPTY_COUNTS: WaitlistAdminView["counts"] = {
   pending: 0,
   active: 0,
   notified: 0,
+  converted: 0,
   left: 0,
   expired: 0,
   undeliverable: 0,
 };
 
 function statusTone(status: WaitlistStatus): AdminStatusTone {
-  if (status === "active") return "positive";
+  if (status === "active" || status === "converted") return "positive";
   if (status === "pending") return "attention";
   if (status === "undeliverable") return "danger";
   return "neutral";
@@ -94,7 +95,7 @@ export function EventWaitlistPanel({
         </button>
       </div>
 
-      <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+      <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-5">
         <div>
           <dt className="font-mono text-micro theme-muted">waiting</dt>
           <dd className="font-mono text-lg">{view.counts.active}</dd>
@@ -106,6 +107,10 @@ export function EventWaitlistPanel({
         <div>
           <dt className="font-mono text-micro theme-muted">alerted</dt>
           <dd className="font-mono text-lg">{view.counts.notified}</dd>
+        </div>
+        <div>
+          <dt className="font-mono text-micro theme-muted">converted</dt>
+          <dd className="font-mono text-lg">{view.counts.converted}</dd>
         </div>
         <div>
           <dt className="font-mono text-micro theme-muted">delivery blocked</dt>
@@ -136,6 +141,13 @@ export function EventWaitlistPanel({
                 {entry.notifiedAt ? (
                   <p className="mt-1 font-mono text-micro theme-faint">
                     alert queued {dateLabel(entry.notifiedAt)}
+                  </p>
+                ) : null}
+                {entry.convertedAt ? (
+                  <p className="mt-1 font-mono text-micro theme-faint">
+                    bought {dateLabel(entry.convertedAt)}
+                    {entry.convertedOrderId ? ` · order ${entry.convertedOrderId}` : ""}
+                    {entry.conversionOrderStatus ? ` · ${entry.conversionOrderStatus}` : ""}
                   </p>
                 ) : null}
               </div>

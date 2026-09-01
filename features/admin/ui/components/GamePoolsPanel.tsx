@@ -3,6 +3,10 @@ import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import {
+  eventLocalInputToIso,
+  isoToEventLocalInput,
+} from "@/features/event-operations/night-schedule";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import {
   recommendedGamePoolSettingsBundle,
@@ -267,6 +271,33 @@ function PoolCheck({
   );
 }
 
+function PoolScheduleField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+}) {
+  return (
+    <label className="font-mono text-xs theme-muted">
+      {label}
+      <input
+        type="datetime-local"
+        step={60}
+        value={isoToEventLocalInput(value ?? undefined, "Europe/London")}
+        onChange={(event) =>
+          onChange(
+            event.target.value ? eventLocalInputToIso(event.target.value, "Europe/London") : null,
+          )
+        }
+        className="mt-1 min-h-11 w-full border-b theme-border bg-transparent text-[var(--foreground)]"
+      />
+    </label>
+  );
+}
+
 export function GamePoolsPanel({
   authFetch,
   onError,
@@ -431,6 +462,8 @@ export function GamePoolsPanel({
           allowRoomChoice: draft.allowRoomChoice,
           allowNewRooms: draft.allowNewRooms,
           nameVisibility: draft.nameVisibility,
+          scheduledOpenAt: draft.scheduledOpenAt,
+          scheduledCloseAt: draft.scheduledCloseAt,
         }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -694,6 +727,35 @@ export function GamePoolsPanel({
                         ? "These are tonight’s locked settings. Saving changes the next room and future joins; rooms that already exist keep their game settings."
                         : "These defaults are copied into the next activation when you open it."}
                     </p>
+                    <div className="border-y theme-border py-4">
+                      <p className="font-mono text-xs font-semibold">optional schedule override</p>
+                      <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                        Leave both blank to inherit the event Night Schedule. Overrides use
+                        Europe/London time.
+                      </p>
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <PoolScheduleField
+                          label="games open override"
+                          value={draft.scheduledOpenAt}
+                          onChange={(scheduledOpenAt) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [entrance.id]: { ...draft, scheduledOpenAt },
+                            }))
+                          }
+                        />
+                        <PoolScheduleField
+                          label="games close override"
+                          value={draft.scheduledCloseAt}
+                          onChange={(scheduledCloseAt) =>
+                            setDrafts((current) => ({
+                              ...current,
+                              [entrance.id]: { ...draft, scheduledCloseAt },
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <label className="font-mono text-xs theme-muted">
                         label

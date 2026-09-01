@@ -51,6 +51,7 @@ function TicketRoute() {
       preview={data.preview}
       attendeeIdentity={data.attendeeIdentity}
       initialTicketPointSelection={data.ticketPointSelection}
+      achievements={data.achievements}
     />
   );
 }

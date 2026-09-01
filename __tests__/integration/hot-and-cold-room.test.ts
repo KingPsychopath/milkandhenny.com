@@ -1,4 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { subscribeOfficialResultWake } from "@/features/game-results/outbox.server";
+import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/features/things/hot-and-cold/hot-and-cold-scorer.server", () => ({
@@ -130,6 +132,64 @@ describe("Hot and Cold room", () => {
       currentPlayerId: guest.playerId,
       openingGuess: true,
     });
+  });
+
+  it("publishes one authoritative final result for event scoring", async () => {
+    let resolveEnvelope!: (value: OfficialGameResultEnvelope) => void;
+    const envelope = new Promise<OfficialGameResultEnvelope>((resolve) => {
+      resolveEnvelope = resolve;
+    });
+    const unsubscribe = subscribeOfficialResultWake((envelopes) => {
+      const result = envelopes.find(({ channelId }) => channelId === "channel-hot-cold");
+      if (result) resolveEnvelope(result);
+    });
+    try {
+      const host = await roomEngine.createHotAndColdRoom({
+        hostName: "Ada",
+        rounds: 1,
+        turnSeconds: 0,
+        officialResultChannelId: "channel-hot-cold",
+      });
+      const guest = await roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Bea" });
+      if (!guest.ok) throw new Error("Could not join the test room");
+      const started = await roomEngine.applyHotAndColdAction({
+        roomId: host.roomId,
+        playerId: host.playerId,
+        playerToken: host.playerToken,
+        action: { type: "game.start", actionId: "official-start" },
+      });
+      const exact = await roomEngine.applyHotAndColdAction({
+        roomId: host.roomId,
+        playerId: host.playerId,
+        playerToken: host.playerToken,
+        action: {
+          type: "guess.submit",
+          actionId: "official-exact",
+          roundId: started.snapshot?.round?.id ?? "",
+          word: "exact",
+        },
+      });
+      await roomEngine.applyHotAndColdAction({
+        roomId: host.roomId,
+        playerId: host.playerId,
+        playerToken: host.playerToken,
+        action: { type: "round.next", actionId: "official-finish" },
+      });
+
+      await expect(envelope).resolves.toMatchObject({
+        channelId: "channel-hot-cold",
+        gameKind: "hot-and-cold",
+        gameInstanceId: host.roomId,
+        resultId: "game:1",
+        players: expect.arrayContaining([
+          expect.objectContaining({ playerId: host.playerId, outcome: "completed", placement: 1 }),
+          expect.objectContaining({ playerId: guest.playerId, outcome: "completed", placement: 2 }),
+        ]),
+      });
+      expect(exact.snapshot?.phase).toBe("reveal");
+    } finally {
+      await unsubscribe();
+    }
   });
 
   it("does not interrupt the active turn when another player gives up", async () => {

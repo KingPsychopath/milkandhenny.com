@@ -42,27 +42,39 @@ export async function updateSettings(
       ScoringSettings,
       | "state"
       | "leaderboardVisibility"
-      | "scheduledStart"
-      | "scheduledEnd"
       | "allowPreCheckinOnlinePoints"
       | "publicNames"
       | "publicRankingPolicy"
       | "photoConsentPolicy"
       | "allowStaffSelfAwards"
     >
-  >,
+  > & {
+    gamesOpenAt?: string | null;
+    gamesCloseAt?: string | null;
+    scheduledStart?: string | null;
+    scheduledFreeze?: string | null;
+    scheduledEnd?: string | null;
+  },
 ): Promise<ScoringSettings> {
+  const hasGamesOpenAt = Object.hasOwn(changes, "gamesOpenAt");
+  const hasGamesCloseAt = Object.hasOwn(changes, "gamesCloseAt");
+  const hasScheduledStart = Object.hasOwn(changes, "scheduledStart");
+  const hasScheduledFreeze = Object.hasOwn(changes, "scheduledFreeze");
+  const hasScheduledEnd = Object.hasOwn(changes, "scheduledEnd");
   const row = await queryOne<ScoringSettingsRow>(
     `update event_scoring_settings
         set state = coalesce($2, state),
             leaderboard_visibility = coalesce($3, leaderboard_visibility),
-            scheduled_start = coalesce($4::timestamptz, scheduled_start),
-            scheduled_end = coalesce($5::timestamptz, scheduled_end),
-            allow_precheckin_online_points = coalesce($6, allow_precheckin_online_points),
-            public_names = coalesce($7, public_names),
-            public_ranking_policy = coalesce($8, public_ranking_policy),
-            photo_consent_policy = coalesce($9, photo_consent_policy),
-            allow_staff_self_awards = coalesce($10, allow_staff_self_awards),
+            games_open_at = case when $4 then $5::timestamptz else games_open_at end,
+            games_close_at = case when $6 then $7::timestamptz else games_close_at end,
+            scheduled_start = case when $8 then $9::timestamptz else scheduled_start end,
+            scheduled_freeze = case when $10 then $11::timestamptz else scheduled_freeze end,
+            scheduled_end = case when $12 then $13::timestamptz else scheduled_end end,
+            allow_precheckin_online_points = coalesce($14, allow_precheckin_online_points),
+            public_names = coalesce($15, public_names),
+            public_ranking_policy = coalesce($16, public_ranking_policy),
+            photo_consent_policy = coalesce($17, photo_consent_policy),
+            allow_staff_self_awards = coalesce($18, allow_staff_self_awards),
             revision = revision + 1,
             updated_at = now()
       where event_slug = $1
@@ -71,7 +83,15 @@ export async function updateSettings(
       eventSlug,
       changes.state ?? null,
       changes.leaderboardVisibility ?? null,
+      hasGamesOpenAt,
+      changes.gamesOpenAt ?? null,
+      hasGamesCloseAt,
+      changes.gamesCloseAt ?? null,
+      hasScheduledStart,
       changes.scheduledStart ?? null,
+      hasScheduledFreeze,
+      changes.scheduledFreeze ?? null,
+      hasScheduledEnd,
       changes.scheduledEnd ?? null,
       changes.allowPreCheckinOnlinePoints ?? null,
       changes.publicNames ?? null,

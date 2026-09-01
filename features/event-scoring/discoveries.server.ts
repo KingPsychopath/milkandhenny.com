@@ -576,6 +576,34 @@ export async function claimDiscovery(input: {
 }): Promise<DiscoveryResult<DiscoveryClaimValue>> {
   const discovery = await getDiscovery(input.discoveryId);
   if (!discovery) return { ok: false, status: 404, error: "Discovery not found" };
+  const priorCommand = await queryOne<{
+    state: DiscoveryClaimState;
+    points: number;
+    transaction_id: string | null;
+    created_at: Date;
+  }>(
+    `select state,points,transaction_id,created_at
+       from score_discovery_claims
+      where discovery_id = $1 and participant_id = $2 and command_id = $3`,
+    [input.discoveryId, input.participantId, input.commandId],
+  );
+  if (
+    priorCommand?.state === "accepted" ||
+    (priorCommand?.state === "held" && priorCommand.transaction_id)
+  ) {
+    return {
+      ok: true,
+      value: {
+        state: priorCommand.state,
+        points: priorCommand.points,
+        transaction: priorCommand.transaction_id ?? undefined,
+        ...cooldownResult(discovery.rule, priorCommand.created_at),
+      },
+    };
+  }
+  if (priorCommand?.state === "rejected") {
+    return { ok: false, status: 409, error: "This saved clue claim was not accepted" };
+  }
   if (!(await isCapabilityEffective(discovery.eventSlug, "discoveries"))) {
     return { ok: false, status: 409, error: "Discoveries are paused for this event" };
   }

@@ -1,7 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
+import { AppSelect } from "@/components/AppSelect";
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
+import {
+  ATTENDEE_CLAIMS_EVENT,
+  attendeeClaimResultFromEvent,
+  submitAttendeeClaim,
+} from "../attendee-claims.client";
 
 type Preview = {
   groupName: string;
@@ -28,7 +34,20 @@ function tokenFromFragment(eventSlug: string) {
   return sessionStorage.getItem(storageKey) ?? "";
 }
 
-export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
+export function GroupGameClaimApp({
+  eventSlug,
+  activeParticipantId,
+  tickets,
+}: {
+  eventSlug: string;
+  activeParticipantId?: string;
+  tickets: Array<{
+    ticketId: string;
+    participantId: string;
+    holderName: string;
+    active: boolean;
+  }>;
+}) {
   const [token, setToken] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -37,7 +56,10 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
   const [claiming, setClaiming] = useState(false);
   const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [ticketId, setTicketId] = useState(tickets.length === 1 ? tickets[0]!.ticketId : "");
   const animationRef = useRef<number | null>(null);
+  const commandId = useRef(crypto.randomUUID());
   useEffect(() => {
     const nextToken = tokenFromFragment(eventSlug);
     setToken(nextToken);
@@ -64,26 +86,99 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     };
   }, [eventSlug]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const settle = (event: Event) => {
+      const detail = attendeeClaimResultFromEvent(event, commandId.current);
+      if (!detail || detail.result.state === "pending") return;
+      setPending(false);
+      commandId.current = crypto.randomUUID();
+      if (detail.result.state === "rejected") {
+        setError(detail.result.error);
+        return;
+      }
+      const body = detail.result.body;
+      if (
+        typeof body.groupName !== "string" ||
+        typeof body.pointsAwarded !== "number" ||
+        typeof body.previousBalance !== "number" ||
+        typeof body.balance !== "number"
+      ) {
+        setError("The server confirmed the claim. Open your ticket to check the exact total.");
+        return;
+      }
+      setReceipt({
+        groupName: body.groupName,
+        pointsAwarded: body.pointsAwarded,
+        previousBalance: body.previousBalance,
+        balance: body.balance,
+      });
+      setDisplayBalance(body.balance);
+      setSettled(true);
+    };
+    window.addEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+    return () => window.removeEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+  }, [pending]);
+
   const claim = async () => {
     if (!token || claiming) return;
+    const activeTicket = tickets.find((ticket) => ticket.active);
+    const selectedTicket = tickets.find((ticket) => ticket.ticketId === ticketId);
+    const target =
+      activeTicket ?? selectedTicket ?? (tickets.length === 1 ? tickets[0] : undefined);
+    const participantId = activeParticipantId ?? target?.participantId;
+    if (!participantId) {
+      setError(
+        tickets.length > 1
+          ? "Choose the ticket receiving these points."
+          : "Open your event ticket on this phone, then scan the team code again.",
+      );
+      return;
+    }
     setClaiming(true);
     setError(null);
+    setPending(false);
     try {
-      const response = await fetch(
-        `/api/events/${encodeURIComponent(eventSlug)}/game-results/group-claims`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ operation: "claim", token }),
-        },
-      );
-      const body = (await response.json().catch(() => null)) as Receipt & { error?: string };
-      if (!response.ok) throw new Error(body?.error ?? "Those points could not be claimed.");
-      setReceipt(body);
-      setDisplayBalance(body.previousBalance);
+      const result = await submitAttendeeClaim({
+        commandId: commandId.current,
+        eventSlug,
+        participantId,
+        ticketId: target?.ticketId,
+        url: `/api/events/${encodeURIComponent(eventSlug)}/game-results/group-claims`,
+        label: "Team points claim",
+        expiresAt: preview ? new Date(preview.expiresAt).toISOString() : undefined,
+        body: { operation: "claim", token, ticketId: target?.ticketId },
+      });
+      if (result.state === "pending") {
+        setPending(true);
+        return;
+      }
+      if (result.state === "rejected") {
+        commandId.current = crypto.randomUUID();
+        throw new Error(result.error);
+      }
+      commandId.current = crypto.randomUUID();
+      const body = result.body;
+      if (
+        typeof body.groupName !== "string" ||
+        typeof body.pointsAwarded !== "number" ||
+        typeof body.previousBalance !== "number" ||
+        typeof body.balance !== "number"
+      ) {
+        throw new Error("The confirmed points receipt was incomplete. Open your ticket to check.");
+      }
+      const confirmed: Receipt = {
+        groupName: body.groupName,
+        pointsAwarded: body.pointsAwarded,
+        previousBalance: body.previousBalance,
+        balance: body.balance,
+      };
+      setReceipt(confirmed);
+      setDisplayBalance(confirmed.previousBalance);
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (reduced) {
-        setDisplayBalance(body.balance);
+        setDisplayBalance(confirmed.balance);
         setSettled(true);
         navigator.vibrate?.(18);
         return;
@@ -94,11 +189,13 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
         const progress = Math.min(1, (now - startedAt) / duration);
         const eased = 1 - (1 - progress) ** 4;
         setDisplayBalance(
-          Math.round(body.previousBalance + (body.balance - body.previousBalance) * eased),
+          Math.round(
+            confirmed.previousBalance + (confirmed.balance - confirmed.previousBalance) * eased,
+          ),
         );
         if (progress < 1) animationRef.current = requestAnimationFrame(tick);
         else {
-          setDisplayBalance(body.balance);
+          setDisplayBalance(confirmed.balance);
           setSettled(true);
           navigator.vibrate?.([14, 35, 18]);
         }
@@ -169,6 +266,28 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
               </Link>
             </div>
           </section>
+        ) : pending ? (
+          <section className="max-w-lg" role="status">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
+              confirmation pending
+            </p>
+            <h1 className="mt-4 font-serif text-4xl font-semibold sm:text-5xl">
+              Claim saved on this phone.
+            </h1>
+            <p className="mt-5 text-lg text-white/55">
+              No total is being guessed. The same claim will retry until the server returns its
+              definitive result.
+            </p>
+            {ticketId || tickets.find((ticket) => ticket.active)?.ticketId ? (
+              <Link
+                to="/ticket/$id"
+                params={{ id: ticketId || tickets.find((ticket) => ticket.active)!.ticketId }}
+                className="mt-8 inline-flex min-h-12 items-center rounded-full bg-[var(--things-amber)] px-6 font-mono text-xs font-semibold text-black"
+              >
+                open ticket &amp; points
+              </Link>
+            ) : null}
+          </section>
         ) : error ? (
           <section className="max-w-lg">
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
@@ -201,6 +320,25 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
             <p className="mt-5 text-lg text-white/55">
               Only continue if you played on this team in the match that just finished.
             </p>
+            {!activeParticipantId && tickets.length > 1 ? (
+              <label className="mt-7 block text-left font-mono text-xs text-white/65">
+                ticket receiving the points
+                <AppSelect
+                  value={ticketId}
+                  onValueChange={setTicketId}
+                  options={[
+                    { value: "", label: "choose a ticket" },
+                    ...tickets.map((ticket) => ({
+                      value: ticket.ticketId,
+                      label: ticket.holderName,
+                    })),
+                  ]}
+                  variant="field"
+                  ariaLabel="Ticket receiving the points"
+                  className="mt-2"
+                />
+              </label>
+            ) : null}
             <div className="mt-7 flex justify-center gap-3 font-mono text-xs text-white/40">
               <span>
                 {preview.claimed}/{preview.maximumClaims} claimed
@@ -210,7 +348,7 @@ export function GroupGameClaimApp({ eventSlug }: { eventSlug: string }) {
             </div>
             <button
               type="button"
-              disabled={claiming}
+              disabled={claiming || (!activeParticipantId && tickets.length > 1 && !ticketId)}
               onClick={() => void claim()}
               className="mt-9 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black disabled:opacity-45"
             >

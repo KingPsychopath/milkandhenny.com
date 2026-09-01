@@ -77,8 +77,27 @@ export type AdminStaffRole = {
 };
 
 export type ScoringData = {
-  settings: { state: string; leaderboardVisibility: string; revision: number };
+  settings: {
+    state: string;
+    leaderboardVisibility: string;
+    gamesOpenAt?: string;
+    gamesCloseAt?: string;
+    scheduledStart?: string;
+    scheduledFreeze?: string;
+    scheduledEnd?: string;
+    revision: number;
+  };
   activities: AdminScoringActivity[];
+  eventGames: Array<{
+    id: string;
+    gameKey: string;
+    label: string;
+    playMode: "pooled" | "hosted" | "table";
+    poolEntranceId?: string;
+    awardMethod: "staff" | "automatic";
+    activityIds: string[];
+    status: "included" | "paused";
+  }>;
   personalTemplates: Array<{
     id: string;
     name: string;

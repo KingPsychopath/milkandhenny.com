@@ -3770,6 +3770,210 @@ const MIGRATIONS: Migration[] = [
           );
     `,
   },
+  {
+    id: "0081_event_game_register",
+    sql: `
+      create table event_game_register (
+        id                 text primary key,
+        event_slug         text not null references events (slug)
+                           on update cascade on delete cascade,
+        game_key           text not null check (char_length(game_key) between 1 and 80),
+        label              text not null check (char_length(label) between 1 and 120),
+        play_mode          text not null check (play_mode in ('pooled','hosted','table')),
+        pool_entrance_id   text,
+        award_method       text not null check (award_method in ('staff','automatic')),
+        activity_ids       text[] not null default '{}',
+        status             text not null default 'included'
+                           check (status in ('included','paused')),
+        created_by         text not null,
+        created_at         timestamptz not null default now(),
+        updated_at         timestamptz not null default now(),
+        unique (event_slug, game_key),
+        check ((play_mode = 'pooled') = (pool_entrance_id is not null)),
+        check (play_mode <> 'pooled' or award_method = 'staff')
+      );
+
+      create index event_game_register_event_idx
+        on event_game_register (event_slug, status, label);
+    `,
+  },
+  {
+    id: "0082_automatic_pooled_game_results",
+    sql: `
+      do $$
+      declare constraint_name text;
+      begin
+        for constraint_name in
+          select conname
+            from pg_constraint
+           where conrelid = 'event_game_register'::regclass
+             and contype = 'c'
+             and pg_get_constraintdef(oid) like '%award_method%staff%'
+        loop
+          execute format('alter table event_game_register drop constraint %I', constraint_name);
+        end loop;
+      end $$;
+
+      alter table event_game_score_bindings
+        drop constraint event_game_score_bindings_game_kind_check;
+      alter table event_game_score_bindings
+        add constraint event_game_score_bindings_game_kind_check check (game_kind in (
+          'centre', 'twin', 'draw-country', 'same-brain', 'spelling-party',
+          'liars', 'pitches', 'heads-up', 'spelling-bee', 'icebreaker', 'family-feud',
+          'hot-and-cold'
+        ));
+    `,
+  },
+  {
+    id: "0083_event_night_schedules",
+    sql: `
+      alter table event_scoring_settings
+        add column scheduled_freeze timestamptz;
+
+      alter table game_pool_entrances
+        add column scheduled_open_at timestamptz,
+        add column scheduled_close_at timestamptz;
+
+      alter table game_pool_entrances
+        add constraint game_pool_entrances_schedule_check check (
+          scheduled_open_at is null
+          or scheduled_close_at is null
+          or scheduled_close_at > scheduled_open_at
+        );
+
+      create index game_pool_entrances_schedule_idx
+        on game_pool_entrances (scheduled_open_at, scheduled_close_at)
+        where retired_at is null and scheduled_open_at is not null;
+    `,
+  },
+  {
+    id: "0084_event_night_schedule_source",
+    sql: `
+      alter table event_scoring_settings
+        add column games_open_at timestamptz,
+        add column games_close_at timestamptz;
+
+      alter table event_scoring_settings
+        add constraint event_scoring_night_schedule_check check (
+          (games_open_at is null or games_close_at is null or games_close_at > games_open_at)
+          and (scheduled_start is null or scheduled_freeze is null or scheduled_freeze > scheduled_start)
+          and (scheduled_freeze is null or scheduled_end is null or scheduled_end > scheduled_freeze)
+          and (scheduled_start is null or scheduled_end is null or scheduled_end > scheduled_start)
+        );
+
+      create index event_scoring_games_schedule_idx
+        on event_scoring_settings (games_open_at, games_close_at)
+        where games_open_at is not null;
+    `,
+  },
+  {
+    id: "0085_achievements",
+    sql: `
+      create table achievement_progress (
+        id                text primary key,
+        achievement_key   text not null,
+        participant_id    text references event_participants (id) on delete restrict,
+        person_id         uuid references event_people (id) on delete restrict,
+        ticket_id         text references tickets (id) on delete restrict,
+        event_slug        text references events (slug) on update cascade on delete restrict,
+        current_value     integer not null default 0 check (current_value >= 0),
+        target_value      integer not null check (target_value > 0),
+        source_key        text,
+        created_at        timestamptz not null default now(),
+        updated_at        timestamptz not null default now(),
+        check (participant_id is not null or person_id is not null)
+      );
+
+      create unique index achievement_progress_participant_idx
+        on achievement_progress (achievement_key, participant_id)
+        where participant_id is not null;
+      create unique index achievement_progress_person_idx
+        on achievement_progress (achievement_key, person_id)
+        where participant_id is null and person_id is not null;
+      create index achievement_progress_person_lookup_idx
+        on achievement_progress (person_id, updated_at desc)
+        where person_id is not null;
+
+      create table achievement_unlocks (
+        id                    text primary key,
+        achievement_key       text not null,
+        participant_id        text references event_participants (id) on delete restrict,
+        person_id             uuid references event_people (id) on delete restrict,
+        ticket_id             text references tickets (id) on delete restrict,
+        event_slug            text references events (slug) on update cascade on delete restrict,
+        source_type           text not null,
+        source_id             text not null,
+        source_transaction_id text references score_transactions (id) on delete restrict,
+        unlocked_at           timestamptz not null default now(),
+        delivered_at          timestamptz,
+        check (participant_id is not null or person_id is not null)
+      );
+
+      create unique index achievement_unlocks_participant_idx
+        on achievement_unlocks (achievement_key, participant_id)
+        where participant_id is not null;
+      create unique index achievement_unlocks_person_idx
+        on achievement_unlocks (achievement_key, person_id)
+        where participant_id is null and person_id is not null;
+      create index achievement_unlocks_delivery_idx
+        on achievement_unlocks (participant_id, person_id, delivered_at, unlocked_at);
+    `,
+  },
+  {
+    id: "0086_waitlist_conversions",
+    sql: `
+      alter table event_waitlist_entries
+        drop constraint event_waitlist_entries_status_check;
+      alter table event_waitlist_entries
+        add column converted_at timestamptz,
+        add column converted_order_id text,
+        add constraint event_waitlist_entries_status_check check (status in (
+          'pending', 'active', 'notified', 'converted', 'left', 'expired', 'undeliverable'
+        )),
+        add constraint event_waitlist_entries_conversion_check check (
+          (status = 'converted' and converted_at is not null and converted_order_id is not null)
+          or (status <> 'converted' and converted_at is null and converted_order_id is null)
+        );
+
+      do $backfill$
+      declare
+        purchase record;
+        entry_id uuid;
+      begin
+        for purchase in
+          select event_slug, ticket_type_id, email, order_id, min(issued_at) as issued_at
+            from tickets
+           where kind = 'paid' and email is not null
+             and issued_at >= now() - interval '90 days'
+           group by event_slug, ticket_type_id, email, order_id
+           order by min(issued_at), order_id
+        loop
+          select entry.id into entry_id
+            from event_waitlist_entries entry
+           where entry.event_slug = purchase.event_slug
+             and lower(trim(entry.email)) = lower(trim(purchase.email))
+             and (entry.scope_kind = 'event' or entry.ticket_type_id = purchase.ticket_type_id)
+             and entry.status = 'notified'
+             and entry.notified_at <= purchase.issued_at
+           order by entry.notified_at desc, entry.created_at desc, entry.id desc
+           limit 1;
+
+          if entry_id is not null then
+            update event_waitlist_entries
+               set status = 'converted', converted_at = purchase.issued_at,
+                   converted_order_id = purchase.order_id, updated_at = now()
+             where id = entry_id;
+          end if;
+          entry_id := null;
+        end loop;
+      end
+      $backfill$;
+
+      create unique index event_waitlist_conversion_order_idx
+        on event_waitlist_entries (converted_order_id)
+        where converted_order_id is not null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

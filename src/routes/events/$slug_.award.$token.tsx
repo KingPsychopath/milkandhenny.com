@@ -3,6 +3,11 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
 import { getPublicStaffAwardClaimFn } from "@/features/event-scoring/public.functions";
+import {
+  ATTENDEE_CLAIMS_EVENT,
+  attendeeClaimResultFromEvent,
+  submitAttendeeClaim,
+} from "@/features/event-scoring/ui/submitAttendeeClaim";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/$slug_/award/$token")({
@@ -30,12 +35,14 @@ function StaffAwardClaimPage() {
   const [ticketId, setTicketId] = useState(tickets.length === 1 ? tickets[0]!.ticketId : "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState("");
   const [busy, setBusy] = useState(false);
   const [claimedTicketId, setClaimedTicketId] = useState<string | null>(null);
   const [remaining, setRemaining] = useState(() =>
     Math.max(0, Math.ceil((Date.parse(preview.expiresAt) - Date.now()) / 1_000)),
   );
   const attempted = useRef(false);
+  const commandId = useRef(crypto.randomUUID());
 
   const claim = useCallback(
     async (selectedTicket = ticketId) => {
@@ -46,23 +53,38 @@ function StaffAwardClaimPage() {
       }
       setBusy(true);
       setError("");
+      setPending("");
       try {
-        const response = await fetch(
-          `/api/events/${encodeURIComponent(slug)}/award-claims/${encodeURIComponent(token)}`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ ticketId: selectedTicket || undefined }),
-          },
-        );
-        const body = (await response.json()) as { points?: number; error?: string };
-        if (!response.ok) throw new Error(body.error ?? "The points could not be claimed");
         const activeTicket = tickets.find((ticket) => ticket.active);
+        const chosenTicket = tickets.find((ticket) => ticket.ticketId === selectedTicket);
+        const participantId = activeParticipantId ?? chosenTicket?.participantId;
+        if (!participantId) throw new Error("Choose the ticket receiving these points");
+        const result = await submitAttendeeClaim({
+          commandId: commandId.current,
+          eventSlug: slug,
+          participantId,
+          ticketId: selectedTicket || activeTicket?.ticketId,
+          url: `/api/events/${encodeURIComponent(slug)}/award-claims/${encodeURIComponent(token)}`,
+          label: preview.activityName,
+          expiresAt: preview.expiresAt,
+          body: { ticketId: selectedTicket || undefined },
+        });
+        if (result.state === "pending") {
+          setPending(
+            "Claim saved on this device. Keep the ticket: confirmation will retry automatically while this award remains valid.",
+          );
+          return;
+        }
+        if (result.state === "rejected") {
+          commandId.current = crypto.randomUUID();
+          throw new Error(result.error);
+        }
+        commandId.current = crypto.randomUUID();
+        const points = typeof result.body.points === "number" ? result.body.points : preview.points;
         setClaimedTicketId(
           selectedTicket || activeTicket?.ticketId || tickets[0]?.ticketId || null,
         );
-        setMessage(`+${body.points ?? preview.points} points confirmed.`);
-        window.dispatchEvent(new Event("mah-score-wake"));
+        setMessage(`+${points} points confirmed.`);
       } catch (claimError) {
         setError(
           claimError instanceof Error ? claimError.message : "The points could not be claimed",
@@ -71,7 +93,18 @@ function StaffAwardClaimPage() {
         setBusy(false);
       }
     },
-    [activeParticipantId, busy, preview.points, preview.state, slug, ticketId, tickets, token],
+    [
+      activeParticipantId,
+      busy,
+      preview.activityName,
+      preview.expiresAt,
+      preview.points,
+      preview.state,
+      slug,
+      ticketId,
+      tickets,
+      token,
+    ],
   );
 
   useEffect(() => {
@@ -91,6 +124,28 @@ function StaffAwardClaimPage() {
     attempted.current = true;
     void claim(tickets.length === 1 ? tickets[0]!.ticketId : "");
   }, [activeParticipantId, claim, preview.requiresCheckIn, preview.state, tickets]);
+
+  useEffect(() => {
+    if (!pending) return;
+    const settle = (event: Event) => {
+      const detail = attendeeClaimResultFromEvent(event, commandId.current);
+      if (!detail || detail.result.state === "pending") return;
+      setPending("");
+      commandId.current = crypto.randomUUID();
+      if (detail.result.state === "rejected") {
+        setError(detail.result.error);
+        return;
+      }
+      const points =
+        typeof detail.result.body.points === "number" ? detail.result.body.points : preview.points;
+      setClaimedTicketId(
+        detail.ticketId ?? tickets.find((ticket) => ticket.active)?.ticketId ?? null,
+      );
+      setMessage(`+${points} points confirmed.`);
+    };
+    window.addEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+    return () => window.removeEventListener(ATTENDEE_CLAIMS_EVENT, settle);
+  }, [pending, preview.points, tickets]);
 
   const targetTicket = activeParticipantId
     ? tickets.find((ticket) => ticket.active)
@@ -146,6 +201,20 @@ function StaffAwardClaimPage() {
               leaderboard
             </Link>
           </nav>
+        </section>
+      ) : pending ? (
+        <section className="mt-10 border-y theme-border py-6" role="status">
+          <p className="font-serif text-xl">Confirmation pending.</p>
+          <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">{pending}</p>
+          {targetTicket ? (
+            <Link
+              to="/ticket/$id"
+              params={{ id: targetTicket.ticketId }}
+              className="mh-action mh-action--primary mt-5"
+            >
+              open ticket &amp; points
+            </Link>
+          ) : null}
         </section>
       ) : preview.state !== "active" || remaining === 0 ? (
         <p className="mt-10 border-y theme-border py-6 font-serif text-xl">

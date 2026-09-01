@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { awardPoints, type ScoringOperationResult } from "./scoring.server";
 import { SCORE_ECONOMY, type ScoreActivity, type ScoreTransaction } from "./types";
-import type { StoredStaffAssignment } from "./store.server";
+import { getScoreTransaction, type StoredStaffAssignment } from "./store.server";
 
 type ClaimRow = {
   id: string;
@@ -15,6 +15,7 @@ type ClaimRow = {
   note: string | null;
   status: string;
   participant_id: string | null;
+  transaction_id: string | null;
   processing_started_at: Date | null;
   expires_at: Date;
   activity_name: string;
@@ -132,6 +133,7 @@ async function claimRow(token: string): Promise<ClaimRow | null> {
   return queryOne<ClaimRow>(
     `select claims.id,claims.event_slug,claims.assignment_id,claims.activity_id,claims.pool_id,
             claims.points_override,claims.note,claims.status,claims.participant_id,
+            claims.transaction_id,
             claims.processing_started_at,claims.expires_at,
             activities.name as activity_name,activities.template as activity_template,
             activities.rule as activity_rule,assignments.assignment_type,
@@ -177,6 +179,7 @@ export async function claimStaffAward(input: {
     const selected = await client.query<ClaimRow>(
       `select claims.id,claims.event_slug,claims.assignment_id,claims.activity_id,claims.pool_id,
               claims.points_override,claims.note,claims.status,claims.participant_id,
+              claims.transaction_id,
               claims.processing_started_at,claims.expires_at,
               activities.name as activity_name,activities.template as activity_template,
               activities.rule as activity_rule,assignments.assignment_type,
@@ -233,10 +236,18 @@ export async function claimStaffAward(input: {
   if (!locked) return { ok: false, status: 404, error: "Award QR not found" };
   const { row } = locked;
   if (row.status === "claimed") {
-    return { ok: false, status: 409, error: "Those points have already been claimed" };
+    if (row.participant_id !== input.participantId || !row.transaction_id) {
+      return { ok: false, status: 409, error: "Those points have already been claimed" };
+    }
+    const original = await getScoreTransaction(row.transaction_id);
+    return original
+      ? { ok: true, value: { transaction: original, points: claimPoints(row) } }
+      : { ok: false, status: 409, error: "Those points were claimed; refresh your ticket score" };
   }
   if (!locked.acquired && row.status === "processing") {
-    return { ok: false, status: 409, error: "Those points are being claimed already" };
+    return row.participant_id === input.participantId
+      ? { ok: false, status: 425, error: "Those points are still being confirmed" }
+      : { ok: false, status: 409, error: "Those points are being claimed already" };
   }
   if (!locked.acquired && row.status === "active") {
     return { ok: false, status: 410, error: "This award QR is no longer available" };

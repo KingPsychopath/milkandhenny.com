@@ -62,11 +62,13 @@ function WaitlistManagementPage() {
       ? "You’re on the waitlist"
       : view.status === "notified"
         ? "Your availability alert was sent"
-        : view.status === "left"
-          ? "You’ve left the waitlist"
-          : view.status === "undeliverable"
-            ? "This email cannot receive alerts"
-            : "This waitlist request has expired";
+        : view.status === "converted"
+          ? "You bought your ticket"
+          : view.status === "left"
+            ? "You’ve left the waitlist"
+            : view.status === "undeliverable"
+              ? "This email cannot receive alerts"
+              : "This waitlist request has expired";
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
@@ -140,11 +142,13 @@ function WaitlistManagementPage() {
           <p className="mt-8 font-serif leading-relaxed theme-subtle">
             {view.status === "notified"
               ? "The alert was one-shot, so this address is no longer waiting. Join again from the event page if tickets sold out before you got one."
-              : view.status === "left"
-                ? "No availability alert will be sent. You can join again from the event page."
-                : view.status === "undeliverable"
-                  ? "Delivery to this address was previously blocked after an email failure. Contact us if the address is now working."
-                  : "Open the event page to make a fresh request if the waitlist is still available."}
+              : view.status === "converted"
+                ? "Your purchase was matched to this availability alert. Your ticket or order page has the current admission status."
+                : view.status === "left"
+                  ? "No availability alert will be sent. You can join again from the event page."
+                  : view.status === "undeliverable"
+                    ? "Delivery to this address was previously blocked after an email failure. Contact us if the address is now working."
+                    : "Open the event page to make a fresh request if the waitlist is still available."}
           </p>
         )}
 

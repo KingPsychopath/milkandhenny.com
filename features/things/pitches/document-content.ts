@@ -1,6 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
-import type { PitchDocument } from "./types";
+import type { PitchDocument, PitchSlide } from "./types";
 
 function isMeaningfulElement(element: ExcalidrawElement): boolean {
   if (element.isDeleted) return false;
@@ -16,12 +16,16 @@ function isMeaningfulElement(element: ExcalidrawElement): boolean {
 
 export function pitchDocumentContentCount(document: PitchDocument): number {
   return document.slides.reduce((total, slide) => {
-    if (slide.deletedAt) return total;
-    const elements = slide.elements.filter(isMeaningfulElement).length;
-    const media = slide.mediaClips.length;
-    const ink = (slide.inkLayers ?? []).filter((layer) => layer.strokes.length > 0).length;
-    return total + elements + media + ink;
+    return total + pitchSlideContentCount(slide);
   }, 0);
+}
+
+export function pitchSlideContentCount(slide: PitchSlide): number {
+  if (slide.deletedAt) return 0;
+  const elements = slide.elements.filter(isMeaningfulElement).length;
+  const media = slide.mediaClips.length;
+  const ink = (slide.inkLayers ?? []).filter((layer) => layer.strokes.length > 0).length;
+  return elements + media + ink;
 }
 
 export function hasPitchDocumentContent(document: PitchDocument): boolean {

@@ -1,4 +1,5 @@
 import { reconcileCommands, type ClientCommand, type ClientCommandState } from "./types";
+import type { TeamColourKey } from "./team-palette";
 
 export type ScoreSnapshot = {
   eventSlug: string;
@@ -7,6 +8,8 @@ export type ScoreSnapshot = {
   revision: number;
   synchronizedAt: string;
   orderPoints?: number;
+  teamName?: string;
+  teamColourKey?: TeamColourKey;
 };
 
 export type PendingScoreCommand = ClientCommand & {
@@ -141,6 +144,8 @@ export type ScoreSyncResponse = {
     balance: number;
     revision: number;
     lastTransactionAt?: string;
+    teamName?: string;
+    teamColourKey?: TeamColourKey;
   };
   orderPoints?: number;
 };
@@ -157,6 +162,8 @@ export function scoreSnapshotFromResponse(
     revision: response.participant.revision,
     synchronizedAt,
     orderPoints: response.orderPoints,
+    teamName: response.participant.teamName,
+    teamColourKey: response.participant.teamColourKey,
   };
 }
 
@@ -166,6 +173,8 @@ export function isScoreSyncResponse(value: unknown): value is ScoreSyncResponse 
   if (!participant || typeof participant !== "object" || Array.isArray(participant)) return false;
   const record = participant as Record<string, unknown>;
   const orderPoints = (value as { orderPoints?: unknown }).orderPoints;
+  const teamName = record.teamName;
+  const teamColourKey = record.teamColourKey;
   return (
     typeof record.id === "string" &&
     typeof record.balance === "number" &&
@@ -173,6 +182,12 @@ export function isScoreSyncResponse(value: unknown): value is ScoreSyncResponse 
     typeof record.revision === "number" &&
     Number.isInteger(record.revision) &&
     record.revision >= 0 &&
+    (teamName === undefined || typeof teamName === "string") &&
+    (teamColourKey === undefined ||
+      teamColourKey === "amber" ||
+      teamColourKey === "sage" ||
+      teamColourKey === "plum" ||
+      teamColourKey === "sky") &&
     (orderPoints === undefined ||
       (typeof orderPoints === "number" && Number.isInteger(orderPoints)))
   );

@@ -22,6 +22,8 @@ import {
   privateOrderScore,
 } from "@/features/event-scoring/store.server";
 import { getEventAlbumView } from "@/features/events/drop.server";
+import { achievementViewForParticipant } from "@/features/achievements/achievements.server";
+import type { AchievementView } from "@/features/achievements/types";
 import { EventsService } from "@/features/events/events-service.server";
 import {
   toTicketHolderEvent,
@@ -69,6 +71,7 @@ export type TicketPageResult =
       preview?: true;
       attendeeIdentity?: AttendeeTicketIdentity;
       ticketPointSelection?: Awaited<ReturnType<typeof ticketPointSelection>>;
+      achievements?: AchievementView;
       score?: {
         participantId: string;
         publicAlias: string;
@@ -85,6 +88,8 @@ export type TicketPageResult =
         transactions: Array<{
           status: string;
           reasonCode: string;
+          activityName?: string;
+          sourceType?: string;
           points: number;
           createdAt: string;
         }>;
@@ -175,6 +180,10 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
             includeHistory: true,
           })
         : null;
+    const achievements =
+      participant && !data.preview
+        ? await achievementViewForParticipant(participant.id).catch(() => undefined)
+        : undefined;
     const orderScore =
       scoreResult?.ok && access.canManageOrder
         ? await privateOrderScore({ eventSlug: event.slug, orderId: ticket.orderId })
@@ -245,6 +254,7 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       preview: data.preview ? true : undefined,
       attendeeIdentity,
       ticketPointSelection: pointSelection,
+      achievements,
       score: scoreResult?.ok
         ? {
             participantId: scoreResult.value.participant.id,

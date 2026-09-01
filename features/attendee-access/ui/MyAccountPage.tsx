@@ -17,6 +17,7 @@ import {
 import type { AttendeeAccount } from "../types";
 import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
+import { AchievementCabinet } from "@/features/achievements/ui/AchievementCollection";
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   const groups = new Map<
@@ -415,6 +416,8 @@ export function MyAccountPage({
           </ul>
         )}
       </section>
+
+      <AchievementCabinet achievements={account.achievements} />
 
       <section className="mt-10 border-t theme-border pt-6" aria-labelledby="my-pitches-heading">
         <div className="flex items-end justify-between gap-4">

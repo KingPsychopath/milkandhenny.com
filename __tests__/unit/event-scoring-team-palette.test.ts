@@ -9,7 +9,7 @@ import {
 
 describe("event team palette", () => {
   it("provides distinct stable palettes for each supported team count", () => {
-    expect(teamPaletteForCount(2).map((entry) => entry.colourKey)).toEqual(["amber", "plum"]);
+    expect(teamPaletteForCount(2).map((entry) => entry.colourKey)).toEqual(["amber", "sage"]);
     expect(teamPaletteForCount(3).map((entry) => entry.colourKey)).toEqual([
       "amber",
       "sage",

@@ -21,6 +21,8 @@ export interface GamePoolEntrance {
   allowRoomChoice: boolean;
   allowNewRooms: boolean;
   nameVisibility: GamePoolNameVisibility;
+  scheduledOpenAt: string | null;
+  scheduledCloseAt: string | null;
   createdAt: string;
   updatedAt: string;
   retiredAt: string | null;
@@ -76,6 +78,11 @@ export interface GamePoolPublicView {
   run?: GamePoolRun | null;
   rooms?: GamePoolRoomSummary[];
   message?: string;
+  scoring?: {
+    completionPoints: number;
+    winnerTotalPoints: number;
+    eligible: boolean;
+  };
 }
 
 export interface GamePoolOperatorView {

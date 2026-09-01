@@ -28,6 +28,8 @@ interface EntranceRow {
   allow_room_choice: boolean;
   allow_new_rooms: boolean;
   name_visibility: string;
+  scheduled_open_at: Date | null;
+  scheduled_close_at: Date | null;
   created_at: Date;
   updated_at: Date;
   retired_at: Date | null;
@@ -131,6 +133,8 @@ function entranceFromRow(row: EntranceRow): GamePoolEntrance {
     allowRoomChoice: row.allow_room_choice,
     allowNewRooms: row.allow_new_rooms,
     nameVisibility: visibility(row.name_visibility),
+    scheduledOpenAt: row.scheduled_open_at?.toISOString() ?? null,
+    scheduledCloseAt: row.scheduled_close_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     retiredAt: row.retired_at?.toISOString() ?? null,
@@ -339,6 +343,8 @@ export async function updateGamePoolEntrance(
     allowRoomChoice?: boolean;
     allowNewRooms?: boolean;
     nameVisibility?: GamePoolNameVisibility;
+    scheduledOpenAt?: string | null;
+    scheduledCloseAt?: string | null;
     rotateToken?: boolean;
     retire?: boolean;
   },
@@ -358,6 +364,20 @@ export async function updateGamePoolEntrance(
   const allowRoomChoice = input.allowRoomChoice ?? current.allowRoomChoice;
   const allowNewRooms = input.allowNewRooms ?? current.allowNewRooms;
   const nameVisibility = input.nameVisibility ?? current.nameVisibility;
+  const scheduledOpenAt =
+    input.scheduledOpenAt === undefined ? current.scheduledOpenAt : input.scheduledOpenAt;
+  const scheduledCloseAt =
+    input.scheduledCloseAt === undefined ? current.scheduledCloseAt : input.scheduledCloseAt;
+  if (scheduledOpenAt && Number.isNaN(Date.parse(scheduledOpenAt)))
+    throw new Error("The scheduled opening is not a valid date");
+  if (scheduledCloseAt && Number.isNaN(Date.parse(scheduledCloseAt)))
+    throw new Error("The scheduled closing is not a valid date");
+  if (
+    scheduledOpenAt &&
+    scheduledCloseAt &&
+    Date.parse(scheduledCloseAt) <= Date.parse(scheduledOpenAt)
+  )
+    throw new Error("The scheduled closing must be after the opening");
   await transaction(async (client) => {
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [
       `game-pool-default:${current.game}`,
@@ -402,10 +422,12 @@ export async function updateGamePoolEntrance(
         allow_room_choice = $7,
         allow_new_rooms = $8,
         name_visibility = $9,
-        token = case when $10 then $11 else token end,
+        scheduled_open_at = $10::timestamptz,
+        scheduled_close_at = $11::timestamptz,
+        token = case when $12 then $13 else token end,
         retired_at = case
-          when $12::boolean is null then retired_at
-          when $12 then coalesce(retired_at, now())
+          when $14::boolean is null then retired_at
+          when $14 then coalesce(retired_at, now())
           else null
         end,
         updated_at = now()
@@ -420,6 +442,8 @@ export async function updateGamePoolEntrance(
         allowRoomChoice,
         allowNewRooms,
         nameVisibility,
+        scheduledOpenAt,
+        scheduledCloseAt,
         input.rotateToken === true,
         publicToken(),
         input.retire ?? null,

@@ -16,6 +16,85 @@ import {
   type TransactionRow,
 } from "./common.server";
 
+export type ParticipantScoreEntry = {
+  transactionId: string;
+  activityName?: string;
+  sourceType: ScoreSourceType;
+  reasonCode: ScoreTransaction["reasonCode"];
+  status: ScoreTransactionStatus;
+  points: number;
+  createdAt: string;
+};
+
+/** A participant-facing ledger view. Deliberately omits actor, note, and source identifiers. */
+export async function listParticipantScoreEntries(
+  eventSlug: string,
+  participantId: string,
+  limit = 100,
+): Promise<ParticipantScoreEntry[]> {
+  const rows = await query<{
+    transaction_id: string;
+    activity_name: string | null;
+    source_type: ScoreSourceType;
+    reason_code: ScoreTransaction["reasonCode"];
+    status: ScoreTransactionStatus;
+    points: number;
+    created_at: Date;
+  }>(
+    `select transaction.id as transaction_id, activity.name as activity_name,
+            transaction.source_type, transaction.reason_code, transaction.status,
+            sum(posting.points)::integer as points, transaction.created_at
+       from score_transactions transaction
+       join score_postings posting on posting.transaction_id = transaction.id
+       left join score_activities activity on activity.id = transaction.activity_id
+      where transaction.event_slug = $1 and posting.participant_id = $2
+      group by transaction.id, activity.name
+      order by transaction.created_at desc, transaction.id desc
+      limit $3`,
+    [eventSlug, participantId, Math.min(Math.max(limit, 1), 200)],
+  );
+  return rows.map((row) => ({
+    transactionId: row.transaction_id,
+    activityName: row.activity_name ?? undefined,
+    sourceType: row.source_type,
+    reasonCode: row.reason_code,
+    status: row.status,
+    points: row.points,
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+
+/** Public totals are aggregated by activity and never expose a person's event timeline. */
+export async function listPublicScoreBreakdowns(
+  eventSlug: string,
+): Promise<Map<string, Array<{ label: string; points: number }>>> {
+  const rows = await query<{
+    participant_id: string;
+    label: string;
+    points: number;
+  }>(
+    `select posting.participant_id,
+            coalesce(activity.name, replace(transaction.reason_code, '-', ' ')) as label,
+            sum(posting.points)::integer as points
+       from score_transactions transaction
+       join score_postings posting on posting.transaction_id = transaction.id
+       left join score_activities activity on activity.id = transaction.activity_id
+      where transaction.event_slug = $1 and transaction.status = 'accepted'
+      group by posting.participant_id,
+               coalesce(activity.name, replace(transaction.reason_code, '-', ' '))
+      order by sum(posting.points) desc,
+               coalesce(activity.name, replace(transaction.reason_code, '-', ' '))`,
+    [eventSlug],
+  );
+  const breakdowns = new Map<string, Array<{ label: string; points: number }>>();
+  for (const row of rows) {
+    const entries = breakdowns.get(row.participant_id) ?? [];
+    entries.push({ label: row.label, points: row.points });
+    breakdowns.set(row.participant_id, entries);
+  }
+  return breakdowns;
+}
+
 export async function listTransactionsForParticipant(
   participantId: string,
   limit = 100,

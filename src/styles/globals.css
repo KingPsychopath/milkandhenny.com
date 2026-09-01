@@ -838,6 +838,25 @@
     border-radius: 9999px;
     background: var(--team-colour);
     box-shadow: 0 0 0 1px color-mix(in oklch, var(--team-colour) 60%, var(--foreground));
+    transition:
+      background-color 400ms ease,
+      box-shadow 400ms ease;
+  }
+
+  .team-ticket-frame {
+    --team-colour: var(--stone-300);
+    border-color: var(--team-colour);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--team-colour) 24%, transparent);
+    transition:
+      border-color 400ms ease,
+      box-shadow 400ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .team-badge__mark,
+    .team-ticket-frame {
+      transition: none;
+    }
   }
 
   .mh-status--positive {

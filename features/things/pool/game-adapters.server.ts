@@ -21,10 +21,16 @@ import { GAME_POOL_DEFAULTS } from "./presets";
 import type { GameSettingsDocument } from "../shared/game-settings";
 import type { GamePoolAssignment, GamePoolGame } from "./types";
 
-interface CreatedPoolRoom {
+export interface CreatedPoolRoom {
   assignment: GamePoolAssignment;
   joinToken: string;
 }
+
+export type GamePoolRoomFactory = (input: {
+  gameSettings: GameSettingsDocument;
+  name: string;
+  joinId: string;
+}) => Promise<CreatedPoolRoom>;
 
 export class GamePoolJoinError extends Error {
   constructor(

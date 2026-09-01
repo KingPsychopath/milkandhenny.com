@@ -13,6 +13,18 @@ type Participant = {
   teamName?: string;
 };
 
+type ParticipantScore = {
+  participant: { name: string; publicAlias: string; points: number; teamName?: string };
+  transactions: Array<{
+    transactionId: string;
+    activityName?: string;
+    reasonCode: string;
+    status: string;
+    points: number;
+    createdAt: string;
+  }>;
+};
+
 export function ScoringTeamsPanel({
   eventSlug,
   teams,
@@ -36,6 +48,8 @@ export function ScoringTeamsPanel({
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [teamId, setTeamId] = useState(activeTeams[0]?.id ?? "");
   const [searchMessage, setSearchMessage] = useState("");
+  const [participantScore, setParticipantScore] = useState<ParticipantScore | null>(null);
+  const [scoreMessage, setScoreMessage] = useState("");
 
   useEffect(() => {
     const selectable = teams.filter((team) => team.status === "active");
@@ -84,6 +98,26 @@ export function ScoringTeamsPanel({
       setParticipants([]);
       setTerm("");
     }
+  }
+
+  async function selectParticipant(entry: Participant) {
+    setParticipant(entry);
+    setParticipants([]);
+    setParticipantScore(null);
+    setScoreMessage("Loading point history…");
+    const response = await authFetch(
+      `/api/admin/events/${encodeURIComponent(eventSlug)}/scoring?scoreParticipant=${encodeURIComponent(entry.id)}`,
+    );
+    const body = (await response.json().catch(() => null)) as {
+      participantScore?: ParticipantScore;
+      error?: string;
+    } | null;
+    if (!response.ok || !body?.participantScore) {
+      setScoreMessage(body?.error ?? "Could not load point history.");
+      return;
+    }
+    setParticipantScore(body.participantScore);
+    setScoreMessage("");
   }
 
   return (
@@ -136,7 +170,7 @@ export function ScoringTeamsPanel({
 
       <details className="mt-6 border-t theme-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
-          move one person or create a custom team
+          find a person, view points or move teams
         </summary>
         <form onSubmit={(event) => void create(event)} className="mt-3 flex gap-2">
           <label htmlFor="scoring-new-team" className="sr-only">
@@ -184,10 +218,7 @@ export function ScoringTeamsPanel({
               <li key={entry.id}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setParticipant(entry);
-                    setParticipants([]);
-                  }}
+                  onClick={() => void selectParticipant(entry)}
                   className="flex min-h-11 w-full flex-wrap items-center justify-between gap-2 py-2 text-left hover:opacity-70"
                 >
                   <span className="font-serif">{entry.displayName ?? entry.publicAlias}</span>
@@ -199,6 +230,56 @@ export function ScoringTeamsPanel({
               </li>
             ))}
           </ul>
+        ) : null}
+
+        {participant ? (
+          <section
+            aria-labelledby="participant-score-heading"
+            className="mt-5 border-y theme-border py-4"
+          >
+            <div className="flex items-baseline justify-between gap-4">
+              <h5 id="participant-score-heading" className="font-serif text-lg">
+                {participant.displayName ?? participant.publicAlias}
+              </h5>
+              <span className="font-mono text-sm">
+                {participantScore?.participant.points ?? participant.balance} points
+              </span>
+            </div>
+            {scoreMessage ? (
+              <p role="status" className="mt-3 font-mono text-xs theme-muted">
+                {scoreMessage}
+              </p>
+            ) : participantScore?.transactions.length ? (
+              <ol className="mt-3 divide-y theme-border">
+                {participantScore.transactions.map((entry) => (
+                  <li
+                    key={entry.transactionId}
+                    className="flex items-start justify-between gap-4 py-3"
+                  >
+                    <span className="min-w-0 font-mono text-xs">
+                      <span className="block">
+                        {entry.activityName ?? entry.reasonCode.replaceAll("-", " ")}
+                        {entry.status === "held" ? " · pending review" : ""}
+                        {entry.status === "reversed" ? " · reversed" : ""}
+                      </span>
+                      <time className="mt-1 block theme-muted" dateTime={entry.createdAt}>
+                        {new Intl.DateTimeFormat("en-GB", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        }).format(new Date(entry.createdAt))}
+                      </time>
+                    </span>
+                    <span className="font-mono text-xs">
+                      {entry.points > 0 ? "+" : ""}
+                      {entry.points}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : participantScore ? (
+              <p className="mt-3 font-mono text-xs theme-muted">No score entries yet.</p>
+            ) : null}
+          </section>
         ) : null}
 
         {participant && activeTeams.length > 0 ? (

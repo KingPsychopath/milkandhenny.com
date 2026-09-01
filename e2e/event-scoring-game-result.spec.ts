@@ -60,6 +60,11 @@ test("an official game result awards, corrects, and cancels attendee points live
     });
     expect(binding.ok).toBe(true);
     if (!binding.ok || !participant) return;
+    await pool.query(
+      `update event_participants set checked_in_at = now()
+        where id = $1 and event_slug = $2`,
+      [participant.id, eventSlug],
+    );
     await games.activateGameScoreBinding({
       channelId: binding.value.channelId,
       gameInstanceId: `centre-${suffix}`,
@@ -72,7 +77,9 @@ test("an official game result awards, corrects, and cancels attendee points live
 
     await page.goto(`/ticket/${ticketId}`);
     await page.getByRole("button", { name: "use this ticket for points" }).click();
-    await expect(page.getByText("Event points now go to this ticket")).toBeVisible();
+    await expect(
+      page.getByText("This device will use this ticket for event points."),
+    ).toBeVisible();
 
     const process = async (revision: number, placement?: number, operation = "record") => {
       const envelope = results.sealOfficialGameResult({
@@ -102,8 +109,13 @@ test("an official game result awards, corrects, and cancels attendee points live
     };
 
     await process(1, 1);
-    await expect(page.getByText("score confirmed")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("7 points total")).toBeVisible();
+    const eventScore = page.getByRole("region", { name: "event score" });
+    await expect(
+      eventScore.getByRole("status").filter({ hasText: "server confirmed" }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(eventScore.getByText("7 points", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect.poll(() => balance(pool, participant.id)).toBe(7);
 
     await process(2, 2);

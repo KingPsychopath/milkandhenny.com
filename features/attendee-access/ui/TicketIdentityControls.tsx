@@ -127,7 +127,7 @@ export function TicketIdentityControlsView({
   onToggleSend: () => void;
 }) {
   return (
-    <section aria-label="Keep this ticket across devices" className="mt-3">
+    <section id="ticket-recovery" aria-label="Keep this ticket across devices" className="mt-3">
       {personallyClaimed ? (
         <div>
           <p className="font-mono text-micro theme-muted">
@@ -153,14 +153,14 @@ export function TicketIdentityControlsView({
             className="min-h-11 py-3 font-mono text-micro theme-muted underline hover:opacity-70 disabled:opacity-50"
           >
             {busy
-              ? "connecting…"
+              ? "saving…"
               : anotherClaimedTicketName
-                ? "use this ticket instead"
-                : "use this ticket"}
+                ? "save this ticket instead"
+                : "save this ticket"}
           </button>
           {anotherClaimedTicketName ? (
             <span className="inline-flex min-h-11 items-center font-mono text-micro theme-faint">
-              keep using {anotherClaimedTicketName}
+              keep {anotherClaimedTicketName} saved
             </span>
           ) : null}
           {canManageOrder ? (

@@ -92,6 +92,10 @@ keys make staging safe to repeat. The communication worker owns bounded concurre
 delivery, deadlines, suppression, retries, feedback, and retention. Provider acceptance is not
 inbox delivery.
 
+A paid checkout converts the most recent compatible alert for the same event and normalized email.
+Event-wide alerts match any ticket type; ticket-specific alerts match only that type. Converted
+entries remain as history and link to the order, whose live ticket state remains authoritative.
+
 ## Scoring and event-night games
 
 Games publish versioned, neutral official results. They do not import the scoring ledger or know

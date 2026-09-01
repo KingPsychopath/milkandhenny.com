@@ -9,7 +9,7 @@ export type TeamPaletteEntry = {
 const TEAM_PALETTES: Record<2 | 3 | 4, readonly TeamPaletteEntry[]> = {
   2: [
     { colourKey: "amber", defaultName: "Amber" },
-    { colourKey: "plum", defaultName: "Plum" },
+    { colourKey: "sage", defaultName: "Sage" },
   ],
   3: [
     { colourKey: "amber", defaultName: "Amber" },

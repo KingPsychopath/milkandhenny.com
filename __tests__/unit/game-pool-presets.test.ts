@@ -89,6 +89,8 @@ describe("game-pool presets", () => {
       allowRoomChoice: true,
       allowNewRooms: true,
       nameVisibility: "initials",
+      scheduledOpenAt: null,
+      scheduledCloseAt: null,
       createdAt: "2026-08-23T00:00:00.000Z",
       updatedAt: "2026-08-23T00:00:00.000Z",
       retiredAt: null,

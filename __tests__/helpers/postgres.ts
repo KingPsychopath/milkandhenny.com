@@ -56,6 +56,8 @@ export async function applySchema(): Promise<void> {
 
   await query(`
     drop table if exists application_scheduled_jobs cascade;
+    drop table if exists achievement_unlocks cascade;
+    drop table if exists achievement_progress cascade;
     drop table if exists event_waitlist_inventory cascade;
     drop table if exists event_waitlist_entries cascade;
     drop table if exists attendee_operations_audit_events cascade;
@@ -99,6 +101,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists official_game_results cascade;
     drop table if exists event_game_player_links cascade;
     drop table if exists event_game_score_bindings cascade;
+    drop table if exists event_game_register cascade;
     drop table if exists score_postings cascade;
     drop table if exists score_transactions cascade;
     drop table if exists score_projections cascade;

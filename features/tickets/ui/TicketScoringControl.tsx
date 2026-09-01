@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { StatusNotice } from "@/components/StatusNotice";
+import { rememberScoreSession } from "@/features/event-scoring/client-sync";
 import { useTicketForScoringFn } from "../ticket-session.functions";
 
 export type TicketMode = "scoring" | "view-only";
 
 export function TicketScoringControl({
   ticketId,
+  eventSlug,
   initialSelection,
   onModeChange,
 }: {
   ticketId: string;
+  eventSlug: string;
   initialSelection: { mode: TicketMode; active: boolean; eventHasActive: boolean };
   onModeChange?: (mode: TicketMode) => void;
 }) {
@@ -34,7 +37,8 @@ export function TicketScoringControl({
       setActive(true);
       setAnotherTicketActive(false);
       onModeChange?.("scoring");
-      setMessage("Event points now go to this ticket.");
+      rememberScoreSession({ eventSlug, ticketId });
+      setMessage("This device will use this ticket for event points.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not use this ticket for points");
     } finally {
@@ -45,8 +49,12 @@ export function TicketScoringControl({
   return (
     <div className="mt-4 border-t theme-border pt-4">
       {active ? (
-        <StatusNotice tone="positive" label="Scoring ticket" announce={false}>
-          Event points go to this ticket.
+        <StatusNotice
+          tone="positive"
+          label={message ? "Ticket selected" : "Scoring ticket"}
+          announce={Boolean(message)}
+        >
+          {message || "This device uses this ticket for event points."}
         </StatusNotice>
       ) : (
         <>
@@ -61,16 +69,12 @@ export function TicketScoringControl({
           <p className="mt-2 font-mono text-micro theme-muted">
             {anotherTicketActive
               ? "This switches event points from your other ticket."
-              : "Choose once before a game or clue can award points."}
+              : "Choose once before a game or clue can award points on this device."}
           </p>
         </>
       )}
-      {message && (
-        <StatusNotice
-          tone={active ? "positive" : "danger"}
-          label={active ? "Ticket selected" : "Could not switch"}
-          className="mt-2"
-        >
+      {message && !active && (
+        <StatusNotice tone="danger" label="Could not switch" className="mt-2">
           {message}
         </StatusNotice>
       )}

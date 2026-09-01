@@ -107,6 +107,47 @@ export const staffingActions: AdminScoringActionHandlers = {
       : Response.json({ error: result.error }, { status: result.status });
   },
 
+  "archive-staff-role": async ({ eventSlug, actorId, body }) => {
+    const roleId = stringValue(body.roleId);
+    const reason = stringValue(body.reason);
+    if (!roleId || !reason)
+      return Response.json(
+        { error: "Staff role and retirement reason are required" },
+        { status: 400 },
+      );
+    const result = await runEventsResult(
+      Effect.gen(function* () {
+        const service = yield* StaffAccessService;
+        return yield* service.archiveRole({ eventSlug, roleId, actorId, reason });
+      }),
+    );
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return result.value
+      ? Response.json({ archived: result.value })
+      : Response.json({ error: "Active staff role not found" }, { status: 404 });
+  },
+
+  "update-staff-role-scope": async ({ eventSlug, actorId, body }) => {
+    const roleId = stringValue(body.roleId);
+    const reason = stringValue(body.reason);
+    const scope = staffScope(body);
+    if (!roleId || !reason || !scope)
+      return Response.json(
+        { error: "Staff role, scope, and audit reason are required" },
+        { status: 400 },
+      );
+    const result = await runEventsResult(
+      Effect.gen(function* () {
+        const service = yield* StaffAccessService;
+        return yield* service.updateRoleScope({ eventSlug, roleId, scope, actorId, reason });
+      }),
+    );
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return result.value
+      ? Response.json({ updated: result.value })
+      : Response.json({ error: "Active staff role not found" }, { status: 404 });
+  },
+
   "shuffle-teams": async ({ eventSlug, actorId, body }) => {
     return resultResponse(
       await shuffleCheckedInTeams({

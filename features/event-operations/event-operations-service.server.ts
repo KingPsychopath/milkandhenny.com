@@ -40,6 +40,7 @@ import {
 } from "./admin-ticket-operations.server";
 import { eventCancellationPending, runEventCancellation } from "./cancellation.server";
 import { handleStripeWebhookEvent } from "./stripe-webhook.server";
+import { recordWaitlistConversionForCheckout } from "./waitlist-conversion.server";
 
 function mutation<A>(
   operation: string,
@@ -79,7 +80,16 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
   const undoCheckpoint = (...args: Parameters<typeof undoCheckpointUse>) =>
     mutation("undo_checkpoint", () => withPayments(() => undoCheckpointUse(...args)), 8_000);
   const fulfilTicketCheckout = (...args: Parameters<typeof fulfilCheckout>) =>
-    idempotent("fulfil_checkout", () => withPayments(() => fulfilCheckout(...args)), 60_000);
+    idempotent(
+      "fulfil_checkout",
+      () =>
+        withPayments(async () => {
+          const result = await fulfilCheckout(...args);
+          await recordWaitlistConversionForCheckout(args[0]);
+          return result;
+        }),
+      60_000,
+    );
   const inviteTicket = (...args: Parameters<typeof inviteAdminTicket>) =>
     mutation("invite_ticket", () => withPayments(() => inviteAdminTicket(...args)), 45_000);
   const issueComp = (...args: Parameters<typeof issueAdminComp>) =>
@@ -158,7 +168,12 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
   const resolveCheckout = (...args: Parameters<typeof resolveCheckoutOutcome>) =>
     idempotent(
       "resolve_checkout",
-      () => withPayments(() => resolveCheckoutOutcome(...args)),
+      () =>
+        withPayments(async () => {
+          const result = await resolveCheckoutOutcome(...args);
+          if (result.state === "complete") await recordWaitlistConversionForCheckout(args[0]);
+          return result;
+        }),
       60_000,
     );
   const resolveExchange = (...args: Parameters<typeof resolveTicketExchangeOutcome>) =>

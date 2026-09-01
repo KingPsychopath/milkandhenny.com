@@ -199,6 +199,149 @@ export async function createEventStaffRole(input: {
   return role;
 }
 
+export async function updateEventStaffRoleScope(input: {
+  eventSlug: string;
+  roleId: string;
+  scope: Record<string, unknown>;
+  actorId: string;
+  reason: string;
+}): Promise<{ role: StoredStaffRole; updatedAssignments: number } | null> {
+  if (!input.reason.trim()) throw new Error("A reason is required to update a staff role");
+  await validateRoleScope(input.eventSlug, input.scope);
+  const updatedAssignments = await transaction(async (client) => {
+    const roleResult = await client.query<{
+      label: string;
+      role_preset: string;
+      scope: Record<string, unknown>;
+    }>(
+      `select label,role_preset,scope from event_staff_roles
+        where id = $1 and event_slug = $2 and status = 'active' and expires_at > now()
+        for update`,
+      [input.roleId, input.eventSlug],
+    );
+    const role = roleResult.rows[0];
+    if (!role) return null;
+    const before = role.scope ?? {};
+    const scope = { ...before, ...input.scope, rolePreset: role.role_preset };
+    await client.query(
+      `update event_staff_roles set scope = $1::jsonb,updated_at = now() where id = $2`,
+      [JSON.stringify(scope), input.roleId],
+    );
+    const assignments = await client.query(
+      `update score_staff_assignments set scope = $1::jsonb
+        where role_id = $2 and event_slug = $3 and status in ('active','paused')
+        returning id`,
+      [JSON.stringify(scope), input.roleId, input.eventSlug],
+    );
+    await client.query(
+      `insert into score_audit_events
+         (event_slug,action,actor_type,actor_id,entity_type,entity_id,metadata)
+       values ($1,'staff.role.scope.updated','admin',$2,'staff_role',$3,$4::jsonb)`,
+      [
+        input.eventSlug,
+        input.actorId,
+        input.roleId,
+        JSON.stringify({
+          label: role.label,
+          before,
+          after: scope,
+          updatedAssignments: assignments.rowCount ?? 0,
+          reason: input.reason.trim(),
+        }),
+      ],
+    );
+    return assignments.rowCount ?? 0;
+  });
+  if (updatedAssignments === null) return null;
+  const role = await getStaffRole(input.eventSlug, input.roleId);
+  return role ? { role, updatedAssignments } : null;
+}
+
+export async function archiveEventStaffRole(input: {
+  eventSlug: string;
+  roleId: string;
+  actorId: string;
+  reason: string;
+}): Promise<{ roleId: string; revokedAssignments: number } | null> {
+  if (!input.reason.trim()) throw new Error("A reason is required to retire a staff role");
+  return transaction(async (client) => {
+    const roleResult = await client.query<{ id: string; label: string; status: string }>(
+      `select id,label,status from event_staff_roles
+        where id = $1 and event_slug = $2 and status = 'active'
+        for update`,
+      [input.roleId, input.eventSlug],
+    );
+    const role = roleResult.rows[0];
+    if (!role) return null;
+
+    const assignments = await client.query<{
+      id: string;
+      invitation_link_id: string | null;
+    }>(
+      `select id,invitation_link_id from score_staff_assignments
+        where role_id = $1 and event_slug = $2
+          and status in ('active','paused')
+        for update`,
+      [input.roleId, input.eventSlug],
+    );
+    const assignmentIds = assignments.rows.map((assignment) => assignment.id);
+    if (assignmentIds.length > 0) {
+      await client.query(
+        `update score_staff_assignments
+            set status = 'revoked',
+                invitation_state = case
+                  when assignment_type = 'personal' then 'revoked'
+                  else invitation_state
+                end,
+                revoked_at = now()
+          where id = any($1::text[])`,
+        [assignmentIds],
+      );
+      await client.query(
+        `update score_staff_devices set revoked_at = now()
+          where assignment_id = any($1::text[]) and revoked_at is null`,
+        [assignmentIds],
+      );
+    }
+    for (const assignment of assignments.rows) {
+      if (assignment.invitation_link_id) {
+        await revokeActionLink(client, assignment.invitation_link_id, "staff-role-retired");
+      }
+    }
+
+    await client.query(
+      `update event_staff_roles set status = 'archived',updated_at = now() where id = $1`,
+      [input.roleId],
+    );
+    const after = { status: "archived", revokedAssignments: assignmentIds.length };
+    await client.query(
+      `insert into score_audit_events
+         (event_slug,action,actor_type,actor_id,entity_type,entity_id,metadata)
+       values ($1,'staff.role.archived','admin',$2,'staff_role',$3,$4::jsonb)`,
+      [
+        input.eventSlug,
+        input.actorId,
+        input.roleId,
+        JSON.stringify({ label: role.label, ...after, reason: input.reason.trim() }),
+      ],
+    );
+    await client.query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason)
+       values ('staff.role.archived','admin',$1,$2,'staff-role',$3,$4::jsonb,$5::jsonb,$6)`,
+      [
+        input.actorId,
+        input.eventSlug,
+        input.roleId,
+        JSON.stringify({ label: role.label, status: role.status }),
+        JSON.stringify(after),
+        input.reason.trim(),
+      ],
+    );
+    return { roleId: input.roleId, revokedAssignments: assignmentIds.length };
+  });
+}
+
 function staffInvitationEmail(input: {
   origin: string;
   eventSlug: string;

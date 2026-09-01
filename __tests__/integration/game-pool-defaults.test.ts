@@ -11,6 +11,7 @@ import { listGamePoolsForAdmin } from "@/features/things/pool/admin.server";
 import { getGamePoolOperatorView } from "@/features/things/pool/operator.server";
 import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import { getGamePoolPublicView } from "@/features/things/pool/pool.server";
+import { cleanupGamePools } from "@/features/things/pool/operations.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
@@ -182,6 +183,79 @@ describeWithDatabase("game-pool public defaults (postgres)", () => {
     });
     expect(next?.run).toMatchObject({ status: "open" });
     expect(next?.run?.id).not.toBe(expired.run.id);
+  });
+
+  it("opens and closes a scheduled entrance without an admin session", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "centre",
+      label: "Scheduled Centre",
+      actionId: "scheduled-centre-entrance",
+    });
+    const scheduledOpenAt = new Date(Date.now() - 60_000).toISOString();
+    const scheduledCloseAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    await updateGamePoolEntrance(entrance.id, { scheduledOpenAt, scheduledCloseAt });
+
+    await expect(cleanupGamePools()).resolves.toMatchObject({ openedRuns: 1 });
+    expect((await listGamePoolEntrances()).find(({ id }) => id === entrance.id)).toMatchObject({
+      scheduledOpenAt,
+      scheduledCloseAt,
+      run: { status: "open", closesAt: scheduledCloseAt },
+    });
+
+    await updateGamePoolEntrance(entrance.id, {
+      scheduledCloseAt: new Date(Date.now() - 1_000).toISOString(),
+    });
+    await expect(cleanupGamePools()).resolves.toMatchObject({ closedRuns: 1, openedRuns: 0 });
+    expect((await listGamePoolEntrances()).find(({ id }) => id === entrance.id)?.run).toBeNull();
+  });
+
+  it("inherits its event game window and reconciles a changed closing time", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "draw-country",
+      label: "Inherited Draw",
+      actionId: "inherited-draw-entrance",
+    });
+    const gamesOpenAt = new Date(Date.now() - 60_000).toISOString();
+    const firstCloseAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const revisedCloseAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    await query(
+      `insert into events (slug,title,status,starts_at,timezone)
+       values ('pool-schedule-night','Pool Schedule Night','published',now(),'Europe/London')`,
+    );
+    await query(
+      `insert into event_scoring_settings
+         (event_slug,state,games_open_at,games_close_at)
+       values ('pool-schedule-night','ready',$1,$2)`,
+      [gamesOpenAt, firstCloseAt],
+    );
+    await query(
+      `insert into score_activities
+         (id,event_slug,name,template,status,rule)
+       values ('pool-schedule-activity','pool-schedule-night','Draw','completion','live',
+               '{"mode":"fixed","fixedPoints":2,"repeat":"repeat","requiresCheckIn":false}')`,
+    );
+    await query(
+      `insert into event_game_register
+         (id,event_slug,game_key,label,play_mode,pool_entrance_id,award_method,
+          activity_ids,status,created_by)
+       values ('pool-schedule-register','pool-schedule-night','draw-country','Draw the Country',
+               'pooled',$1,'automatic',array['pool-schedule-activity'],'included','test')`,
+      [entrance.id],
+    );
+
+    await expect(cleanupGamePools()).resolves.toMatchObject({ openedRuns: 1 });
+    expect((await listGamePoolEntrances()).find(({ id }) => id === entrance.id)?.run).toMatchObject(
+      { status: "open", closesAt: firstCloseAt },
+    );
+
+    await query(`update event_scoring_settings set games_close_at = $2 where event_slug = $1`, [
+      "pool-schedule-night",
+      revisedCloseAt,
+    ]);
+    await expect(cleanupGamePools()).resolves.toMatchObject({ openedRuns: 0 });
+    expect((await listGamePoolEntrances()).find(({ id }) => id === entrance.id)?.run).toMatchObject(
+      { status: "open", closesAt: revisedCloseAt },
+    );
   });
 
   it("exposes stable per-run sprite identities without exposing assignment ids", async () => {

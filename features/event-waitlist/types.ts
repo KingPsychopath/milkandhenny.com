@@ -2,12 +2,15 @@ export const WAITLIST_STATUSES = [
   "pending",
   "active",
   "notified",
+  "converted",
   "left",
   "expired",
   "undeliverable",
 ] as const;
 
 export type WaitlistStatus = (typeof WAITLIST_STATUSES)[number];
+
+export type WaitlistConversionOrderStatus = "valid" | "mixed" | "refunded" | "void";
 
 export type WaitlistScope = { kind: "event" } | { kind: "ticket-type"; ticketTypeId: string };
 
@@ -30,6 +33,9 @@ export interface AdminWaitlistEntry {
   createdAt: string;
   confirmedAt?: string;
   notifiedAt?: string;
+  convertedAt?: string;
+  convertedOrderId?: string;
+  conversionOrderStatus?: WaitlistConversionOrderStatus;
   leftAt?: string;
 }
 

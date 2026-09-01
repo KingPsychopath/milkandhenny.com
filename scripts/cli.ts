@@ -66,11 +66,14 @@ import {
 } from "./auth-ops";
 import {
   deleteCliAdminToken,
+  deleteCliStepUpToken,
   cliCredentialStoreLabel,
   readCliAdminToken,
+  readCliStepUpToken,
   writeCliAdminToken,
+  writeCliStepUpToken,
 } from "./cli-keychain";
-import { requestAdminApi, type AdminHttpMethod } from "./admin-control";
+import { normaliseControlPath, requestAdminApi, type AdminHttpMethod } from "./admin-control";
 import {
   cleanupWordShares,
   createWordRecord,
@@ -1105,6 +1108,60 @@ function decodeJwtExp(token: string): number | null {
   }
 }
 
+function decodeStepUpClaims(token: string): { exp: number; parentJti: string } | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8")) as {
+      kind?: string;
+      exp?: number;
+      parentJti?: string;
+    };
+    if (
+      payload.kind !== "admin-step-up" ||
+      !Number.isFinite(payload.exp) ||
+      typeof payload.parentJti !== "string"
+    )
+      return null;
+    return { exp: Math.floor(payload.exp as number), parentJti: payload.parentJti };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveStepUpTokenForCli(input: {
+  baseUrl: string;
+  adminToken: string;
+  adminPassword?: string;
+}): Promise<string> {
+  const adminClaims = decodeAdminTokenClaims(input.adminToken);
+  const cached = await readCliStepUpToken(input.baseUrl);
+  const cachedClaims = cached ? decodeStepUpClaims(cached) : null;
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    cached &&
+    cachedClaims &&
+    adminClaims?.jti === cachedClaims.parentJti &&
+    cachedClaims.exp > now + 5
+  ) {
+    progress(`Reusing protected session until ${formatUnixSecondsForCli(cachedClaims.exp)}.`);
+    return cached;
+  }
+  if (cached) await deleteCliStepUpToken(input.baseUrl);
+
+  const token = input.adminPassword
+    ? (
+        await createStepUpToken({
+          baseUrl: input.baseUrl,
+          adminToken: input.adminToken,
+          adminPassword: input.adminPassword,
+        })
+      ).token
+    : await authorizeWithBrowser(input.baseUrl, "step-up", input.adminToken);
+  await writeCliStepUpToken(input.baseUrl, token);
+  return token;
+}
+
 function getCachedAdminToken(baseUrl: string): string | null {
   const cached = cliAdminTokenCache.get(baseUrl);
   if (!cached) return null;
@@ -1247,34 +1304,34 @@ async function resolvedAdminRequest(options: {
   method: AdminHttpMethod;
   path: string;
   body?: unknown;
+  outputPath?: string;
 }): Promise<unknown> {
   const requestedBaseUrl = normalizeBaseUrl(options.baseUrl || adminBaseUrl());
   const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
   const adminPasswordArg = getArg("admin-password")?.trim() || undefined;
   const adminToken = getArg("admin-token");
-  let stepUpToken = getArg("step-up-token");
+  const explicitStepUpToken = getArg("step-up-token");
 
-  if (hasFlag("step-up")) {
-    const token = await resolveAdminTokenForCli({
-      baseUrl,
-      adminToken,
-      adminPassword: adminPasswordArg,
-    });
-    stepUpToken = adminPasswordArg
-      ? (await createStepUpToken({ baseUrl, adminToken: token, adminPassword: adminPasswordArg }))
-          .token
-      : await authorizeWithBrowser(baseUrl, "step-up", token);
-  }
-
-  return withResolvedAdminToken({ baseUrl, adminToken, adminPassword: adminPasswordArg }, (token) =>
-    requestAdminApi({
-      baseUrl,
-      adminToken: token,
-      method: options.method,
-      path: options.path,
-      body: options.body,
-      stepUpToken,
-    }),
+  return withResolvedAdminToken(
+    { baseUrl, adminToken, adminPassword: adminPasswordArg },
+    async (token) => {
+      const stepUpToken = hasFlag("step-up")
+        ? await resolveStepUpTokenForCli({
+            baseUrl,
+            adminToken: token,
+            adminPassword: adminPasswordArg,
+          })
+        : explicitStepUpToken;
+      return requestAdminApi({
+        baseUrl,
+        adminToken: token,
+        method: options.method,
+        path: options.path,
+        body: options.body,
+        stepUpToken,
+        outputPath: options.outputPath,
+      });
+    },
   );
 }
 
@@ -1300,8 +1357,87 @@ async function cmdAdminRequest(methodRaw: string, requestPath: string) {
   }
   const body = readAdminJsonInput();
   if (!(await confirmAdminMutation(method, requestPath, body))) return;
-  const result = await resolvedAdminRequest({ method, path: requestPath, body });
+  const result = await resolvedAdminRequest({
+    method,
+    path: requestPath,
+    body,
+    outputPath: getArg("output"),
+  });
   printAdminJson(result);
+}
+
+type AdminBatchItem = {
+  method: AdminHttpMethod;
+  path: string;
+  body?: unknown;
+  output?: string;
+};
+
+function readAdminBatch(): AdminBatchItem[] {
+  const file = getArg("file") ?? getArg("body-file");
+  if (!file) throw new Error("Admin batch requires --file <path>.");
+  const parsed = JSON.parse(fs.readFileSync(path.resolve(file), "utf8")) as unknown;
+  if (!Array.isArray(parsed) || parsed.length === 0)
+    throw new Error("Admin batch file must contain a non-empty JSON array.");
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      throw new Error(`Admin batch item ${index + 1} must be an object.`);
+    const item = entry as Record<string, unknown>;
+    const method = String(item.method ?? "").toUpperCase() as AdminHttpMethod;
+    if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method))
+      throw new Error(`Admin batch item ${index + 1} has an invalid method.`);
+    if (typeof item.path !== "string" || !item.path.trim())
+      throw new Error(`Admin batch item ${index + 1} requires a path.`);
+    normaliseControlPath(item.path, method);
+    if (item.output !== undefined && typeof item.output !== "string")
+      throw new Error(`Admin batch item ${index + 1} output must be a path.`);
+    return { method, path: item.path, body: item.body, output: item.output as string | undefined };
+  });
+}
+
+async function cmdAdminBatch() {
+  const items = readAdminBatch();
+  if (hasFlag("dry-run")) {
+    log(yellow("dry run — batch not sent"));
+    printAdminJson(items);
+    return;
+  }
+  if (
+    !hasFlag("yes") &&
+    !(await confirm(`Run ${items.length} admin operations as one reviewed batch?`))
+  )
+    return;
+
+  const results: Array<{
+    index: number;
+    method: string;
+    path: string;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  }> = [];
+  for (const [index, item] of items.entries()) {
+    try {
+      const result = await resolvedAdminRequest({
+        method: item.method,
+        path: item.path,
+        body: item.body,
+        outputPath: item.output,
+      });
+      results.push({ index: index + 1, method: item.method, path: item.path, ok: true, result });
+    } catch (error) {
+      results.push({
+        index: index + 1,
+        method: item.method,
+        path: item.path,
+        ok: false,
+        error: error instanceof Error ? error.message : "Admin request failed",
+      });
+      if (!hasFlag("continue-on-error")) break;
+    }
+  }
+  printAdminJson({ ok: results.every((result) => result.ok), results });
+  if (results.some((result) => !result.ok)) process.exitCode = 1;
 }
 
 function emailListPath(overrides: { query?: string; limit?: string } = {}): string {
@@ -1409,6 +1545,38 @@ async function cmdEventsDelete(slug: string) {
   const requestPath = adminEventPath(slug);
   if (!(await confirmAdminMutation("DELETE", requestPath, undefined))) return;
   printAdminJson(await resolvedAdminRequest({ method: "DELETE", path: requestPath }));
+}
+
+async function cmdEventsStaffRoleArchive(slug: string, roleId: string) {
+  const reason = getArg("reason")?.trim();
+  if (!reason) throw new Error("events staff role archive requires --reason.");
+  if (!hasFlag("step-up") && !getArg("step-up-token")) {
+    throw new Error("Retiring a staff role requires --step-up or --step-up-token.");
+  }
+  const path = `${adminEventPath(slug)}/scoring`;
+  const body = { action: "archive-staff-role", roleId, reason };
+  if (!(await confirmAdminMutation("POST", path, body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "POST", path, body }));
+}
+
+async function cmdEventsStaffRoleActivities(slug: string, roleId: string) {
+  const reason = getArg("reason")?.trim();
+  if (!reason) throw new Error("events staff role activities requires --reason.");
+  if (!hasFlag("all")) {
+    throw new Error("events staff role activities currently requires --all.");
+  }
+  if (!hasFlag("step-up") && !getArg("step-up-token")) {
+    throw new Error("Updating a staff role requires --step-up or --step-up-token.");
+  }
+  const path = `${adminEventPath(slug)}/scoring`;
+  const body = {
+    action: "update-staff-role-scope",
+    roleId,
+    scope: { activityIds: [] },
+    reason,
+  };
+  if (!(await confirmAdminMutation("POST", path, body))) return;
+  printAdminJson(await resolvedAdminRequest({ method: "POST", path, body }));
 }
 
 function updatedTicketType(existing: TicketType): TicketType {
@@ -1717,12 +1885,30 @@ async function cmdAuthLogout(opts: { baseUrl?: string }) {
 
   for (const baseUrl of baseUrls) {
     removed = (await deleteCliAdminToken(baseUrl)) || removed;
+    await deleteCliStepUpToken(baseUrl);
     clearCachedAdminToken(baseUrl);
   }
 
   console.log();
   log(removed ? green("✓ Signed out. Local CLI token removed.") : dim("No local CLI token found."));
   console.log();
+}
+
+async function cmdAuthStepUp(opts: { baseUrl?: string; adminPassword?: string }) {
+  const requestedBaseUrl = normalizeBaseUrl(opts.baseUrl || BASE_URL || "http://localhost:3000");
+  const baseUrl = await resolveCanonicalBaseUrl(requestedBaseUrl);
+  const adminToken = await resolveAdminTokenForCli({
+    baseUrl,
+    adminPassword: opts.adminPassword,
+  });
+  const token = await resolveStepUpTokenForCli({
+    baseUrl,
+    adminToken,
+    adminPassword: opts.adminPassword,
+  });
+  const claims = decodeStepUpClaims(token);
+  log(green("✓ Protected CLI session ready."));
+  if (claims?.exp) log(dim(`Reusable until ${formatUnixSecondsForCli(claims.exp)}.`));
 }
 
 async function cmdAuthRevoke(opts: {
@@ -1773,6 +1959,7 @@ async function cmdAuthRevoke(opts: {
       jti: claims.jti,
     });
     if (storedToken) await deleteCliAdminToken(baseUrl);
+    await deleteCliStepUpToken(baseUrl);
     clearCachedAdminToken(baseUrl);
     console.log();
     log(green(`✓ Session revoked remotely and removed from ${cliCredentialStoreLabel()}.`));
@@ -1817,6 +2004,7 @@ async function cmdAuthRevoke(opts: {
   if (role === "admin" || role === "all") {
     clearCachedAdminToken(baseUrl);
     await deleteCliAdminToken(baseUrl);
+    await deleteCliStepUpToken(baseUrl);
     log(dim("Cleared the local admin session for this base URL."));
   }
   console.log();
@@ -2862,8 +3050,12 @@ function showHelp() {
       --file ${dim("<path>")}                             Read JSON request body from a file
       --step-up                                      Approve a protected action in the browser
       --step-up-token ${dim("<token>")}                   Send an existing step-up token
+      --output ${dim("<path>")}                          Save binary or text responses byte-for-byte
       --dry-run                                      Print the mutation without sending it
       --yes                                          Skip the mutation confirmation prompt
+    admin batch --file ${dim("<plan.json>")}              Run a reviewed list of admin requests
+      --step-up --yes                               Reuses one protected session for the batch
+      --continue-on-error                           Continue after an operation fails
     ${dim("Supports every /api/admin/* route, system diagnostics, and best-dressed admin controls without SQL.")}
 
   ${bold("Email operations")} ${dim("(authenticated, short-retention ledger)")}
@@ -2891,6 +3083,10 @@ function showHelp() {
     events show ${dim("<slug>")}                           Show event and ticket operations
     events update ${dim("<slug>")} --json ${dim("<object>")}       Patch event settings
     events delete ${dim("<slug>")} --step-up --yes            Delete an event after step-up auth
+    events staff role archive ${dim("<slug> <role-id>")}      Retire a role and revoke its access
+      --reason ${dim("<text>")} --step-up --yes
+    events staff role activities ${dim("<slug> <role-id>")}   Include every live activity
+      --all --reason ${dim("<text>")} --step-up --yes
     events ticket list ${dim("<slug>")}                     List ticket types and sold counts
     events ticket add ${dim("<slug>")}                     Add a ticket type
       --id, --name, --price, --quantity, --per-person-limit
@@ -2974,6 +3170,8 @@ function showHelp() {
     auth login ${dim("[--base-url http://localhost:3000]")} ${dim("(opens browser)")}
       ${dim("Use --admin-password only for headless or one-off login.")}
       ${dim("Approve in the browser and store the short-lived admin JWT in the OS credential store.")}
+    auth step-up ${dim("[--base-url http://localhost:3000]")} ${dim("(opens browser once)")}
+      ${dim("Cache a parent-bound protected session for up to five minutes.")}
     auth logout ${dim("[--base-url http://localhost:3000]")}
       ${dim("Remove the local CLI JWT. This does not revoke the remote session.")}
     auth revoke ${dim("[--base-url http://localhost:3000]")}
@@ -4277,9 +4475,10 @@ async function direct() {
     await (async () => {
       switch (command) {
         case "admin": {
+          if (subcommand === "batch") return cmdAdminBatch();
           if (subcommand !== "request" && subcommand !== "api") {
             throw new Error(
-              "Usage: pnpm cli admin request <GET|POST|PUT|PATCH|DELETE> <path> [--json <object> | --file <path>]",
+              "Usage: pnpm cli admin request <GET|POST|PUT|PATCH|DELETE> <path> [options] | pnpm cli admin batch --file <plan.json>",
             );
           }
           const method = args[2];
@@ -4398,6 +4597,20 @@ async function direct() {
                 default:
                   throw new Error(`Unknown ticket action: ${action}`);
               }
+            }
+            case "staff": {
+              const area = args[2];
+              const action = args[3];
+              const slug = args[4];
+              const roleId = args[5];
+              if (area !== "role" || !slug || !roleId) {
+                throw new Error(
+                  "Usage: pnpm cli events staff role <archive|activities> <slug> <role-id> [options]",
+                );
+              }
+              if (action === "archive") return cmdEventsStaffRoleArchive(slug, roleId);
+              if (action === "activities") return cmdEventsStaffRoleActivities(slug, roleId);
+              throw new Error(`Unknown staff role action: ${action ?? ""}`);
             }
             default:
               throw new Error(`Unknown: events ${subcommand ?? ""}. Run 'pnpm cli help'.`);
@@ -4796,6 +5009,11 @@ async function direct() {
             case "logout": {
               const baseUrl = getArg("base-url");
               return cmdAuthLogout({ baseUrl: baseUrl ?? undefined });
+            }
+            case "step-up": {
+              const baseUrl = getArg("base-url");
+              const adminPassword = getArg("admin-password");
+              return cmdAuthStepUp({ baseUrl: baseUrl ?? undefined, adminPassword });
             }
             case "diagnose": {
               const adminToken = getArg("admin-token");

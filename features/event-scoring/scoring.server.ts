@@ -14,6 +14,7 @@ import {
   type ActivityStatus,
   type ActivityTemplate,
   type LeaderboardVisibility,
+  type PublicLeaderboardRow,
   type RankedScore,
   type ScoreActivity,
   type ScoreParticipant,
@@ -34,8 +35,9 @@ import {
   getParticipant,
   listActivities,
   listLeaderboardParticipants,
+  listParticipantScoreEntries,
+  listPublicScoreBreakdowns,
   listTeamLeaderboardTotals,
-  listTransactionsForParticipant,
   markParticipantCheckedIn,
   participantForTicket,
   recordScore,
@@ -75,27 +77,42 @@ export async function processScheduledScoringTransitions(now = new Date()): Prom
       event_slug: string;
       from_state: ScoringState;
       to_state: ScoringState;
+      from_leaderboard_visibility: LeaderboardVisibility;
+      leaderboard_visibility: LeaderboardVisibility;
     }>(
       `with due as (
          select event_slug, state as from_state,
+                leaderboard_visibility as from_leaderboard_visibility,
                 case
                   when scheduled_end is not null and scheduled_end <= $1
                     and state in ('ready', 'live', 'frozen') then 'closed'
+                  when scheduled_freeze is not null and scheduled_freeze <= $1
+                    and state = 'live' then 'frozen'
                   when scheduled_start is not null and scheduled_start <= $1
                     and state = 'ready' then 'live'
                   else state
                 end as to_state
            from event_scoring_settings
           where (scheduled_start is not null and scheduled_start <= $1 and state = 'ready')
+             or (scheduled_freeze is not null and scheduled_freeze <= $1 and state = 'live')
              or (scheduled_end is not null and scheduled_end <= $1
                  and state in ('ready', 'live', 'frozen'))
           for update
        )
        update event_scoring_settings settings
-          set state = due.to_state, revision = settings.revision + 1, updated_at = now()
+          set state = due.to_state,
+              leaderboard_visibility = case
+                when due.to_state = 'closed' then 'public-final'
+                when due.to_state = 'live' and settings.leaderboard_visibility = 'preview'
+                  then 'public-live'
+                else settings.leaderboard_visibility
+              end,
+              revision = settings.revision + 1,
+              updated_at = now()
          from due
         where settings.event_slug = due.event_slug and due.from_state <> due.to_state
-       returning settings.event_slug, due.from_state, due.to_state`,
+       returning settings.event_slug, due.from_state, due.to_state,
+                 due.from_leaderboard_visibility, settings.leaderboard_visibility`,
       [now],
     );
     for (const row of changed.rows) {
@@ -108,6 +125,10 @@ export async function processScheduledScoringTransitions(now = new Date()): Prom
           JSON.stringify({
             from: row.from_state,
             to: row.to_state,
+            leaderboardVisibility: {
+              from: row.from_leaderboard_visibility,
+              to: row.leaderboard_visibility,
+            },
             evaluatedAt: now.toISOString(),
           }),
         ],
@@ -160,8 +181,11 @@ export async function changeScoringState(input: {
 export async function configureScoring(input: {
   eventSlug: string;
   leaderboardVisibility?: LeaderboardVisibility;
-  scheduledStart?: string;
-  scheduledEnd?: string;
+  gamesOpenAt?: string | null;
+  gamesCloseAt?: string | null;
+  scheduledStart?: string | null;
+  scheduledFreeze?: string | null;
+  scheduledEnd?: string | null;
   allowPreCheckinOnlinePoints?: boolean;
   publicNames?: ScoringSettings["publicNames"];
   publicRankingPolicy?: ScoringSettings["publicRankingPolicy"];
@@ -171,12 +195,32 @@ export async function configureScoring(input: {
 }): Promise<ScoringOperationResult<ScoringSettings>> {
   const event = await getEvent(input.eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
+  if (input.gamesOpenAt && Number.isNaN(Date.parse(input.gamesOpenAt))) {
+    return { ok: false, status: 400, error: "The games opening is not a valid date" };
+  }
+  if (input.gamesCloseAt && Number.isNaN(Date.parse(input.gamesCloseAt))) {
+    return { ok: false, status: 400, error: "The games closing is not a valid date" };
+  }
   if (input.scheduledStart && Number.isNaN(Date.parse(input.scheduledStart))) {
     return { ok: false, status: 400, error: "The scoring start is not a valid date" };
   }
   if (input.scheduledEnd && Number.isNaN(Date.parse(input.scheduledEnd))) {
     return { ok: false, status: 400, error: "The scoring end is not a valid date" };
   }
+  if (input.scheduledFreeze && Number.isNaN(Date.parse(input.scheduledFreeze))) {
+    return { ok: false, status: 400, error: "The scoring freeze is not a valid date" };
+  }
+  const start = input.scheduledStart ? Date.parse(input.scheduledStart) : null;
+  const freeze = input.scheduledFreeze ? Date.parse(input.scheduledFreeze) : null;
+  const end = input.scheduledEnd ? Date.parse(input.scheduledEnd) : null;
+  const gamesOpen = input.gamesOpenAt ? Date.parse(input.gamesOpenAt) : null;
+  const gamesClose = input.gamesCloseAt ? Date.parse(input.gamesCloseAt) : null;
+  if (gamesOpen !== null && gamesClose !== null && gamesClose <= gamesOpen)
+    return { ok: false, status: 400, error: "Games must close after they open" };
+  if (start !== null && freeze !== null && freeze <= start)
+    return { ok: false, status: 400, error: "The scoring freeze must follow the start" };
+  if (freeze !== null && end !== null && freeze >= end)
+    return { ok: false, status: 400, error: "The scoring freeze must precede the end" };
   await getOrCreateSettings(input.eventSlug);
   const settings = await updateSettings(input.eventSlug, input);
   await query(
@@ -614,15 +658,6 @@ export async function reversePoints(input: {
   });
 }
 
-export type PublicLeaderboardRow = {
-  rank: number;
-  publicAlias: string;
-  points: number;
-  team?: string;
-  teamColourKey?: import("./team-palette").TeamColourKey;
-  isCurrentAttendee?: boolean;
-};
-
 export async function publicLeaderboard(input: {
   eventSlug: string;
   currentParticipantId?: string;
@@ -699,6 +734,7 @@ export async function publicLeaderboard(input: {
       publicAlias: leaderboardNameFor(settings.publicNames, participant),
     })),
   );
+  const breakdowns = await listPublicScoreBreakdowns(input.eventSlug);
   return {
     ok: true,
     value: {
@@ -709,10 +745,12 @@ export async function publicLeaderboard(input: {
       rows: ranked.map((score) => ({
         rank: score.rank,
         publicAlias: score.displayMode === "anonymous" ? "Anonymous" : score.publicAlias,
+        entryCode: score.participantId.slice(-6).toUpperCase(),
         points: score.balance,
         team: score.teamName,
         teamColourKey: score.teamColourKey,
         isCurrentAttendee: score.participantId === input.currentParticipantId,
+        breakdown: breakdowns.get(score.participantId) ?? [],
       })),
     },
   };
@@ -735,6 +773,8 @@ export async function personalScore(input: {
     transactions: Array<{
       status: ScoreTransaction["status"];
       reasonCode: ScoreTransaction["reasonCode"];
+      activityName?: string;
+      sourceType: ScoreTransaction["sourceType"];
       points: number;
       createdAt: string;
     }>;
@@ -762,14 +802,7 @@ export async function personalScore(input: {
   const transactions =
     input.includeHistory === false
       ? []
-      : (await listTransactionsForParticipant(participant.id)).map((transaction) => ({
-          status: transaction.status,
-          reasonCode: transaction.reasonCode,
-          points: transaction.postings
-            .filter((posting) => posting.participantId === participant.id)
-            .reduce((sum, posting) => sum + posting.points, 0),
-          createdAt: transaction.createdAt,
-        }));
+      : await listParticipantScoreEntries(input.eventSlug, participant.id);
   return {
     ok: true,
     value: {
@@ -789,6 +822,40 @@ export async function personalScore(input: {
       rank: current?.rank ?? ranked.length + 1,
       teamRank,
       transactions,
+    },
+  };
+}
+
+export async function adminParticipantScore(input: {
+  eventSlug: string;
+  participantId: string;
+}): Promise<
+  ScoringOperationResult<{
+    participant: {
+      id: string;
+      name: string;
+      publicAlias: string;
+      points: number;
+      teamName?: string;
+    };
+    transactions: Awaited<ReturnType<typeof listParticipantScoreEntries>>;
+  }>
+> {
+  const participant = await getParticipant(input.participantId);
+  if (!participant || participant.eventSlug !== input.eventSlug) {
+    return { ok: false, status: 404, error: "Participant not found" };
+  }
+  return {
+    ok: true,
+    value: {
+      participant: {
+        id: participant.id,
+        name: participant.displayName ?? participant.publicAlias,
+        publicAlias: participant.publicAlias,
+        points: participant.balance,
+        teamName: participant.teamName,
+      },
+      transactions: await listParticipantScoreEntries(input.eventSlug, participant.id, 200),
     },
   };
 }

@@ -117,9 +117,12 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
   });
 
   try {
+    await expectTicketFixtures(pool, eventSlug, [firstTicket, secondTicket]);
     await attendee.goto(`/ticket/${secondTicket}`);
     await chooseTicketForPoints(attendee);
+    await expectTicketFixtures(pool, eventSlug, [firstTicket, secondTicket]);
     await attendee.goto(`/ticket/${firstTicket}`);
+    await expectTicketFixtures(pool, eventSlug, [firstTicket, secondTicket]);
     await chooseTicketForPoints(attendee);
     await expect.poll(() => attendeeNotificationRequests).toBeGreaterThan(0);
 
@@ -178,7 +181,18 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
         where ticket_id = $1 and event_slug = $2`,
       [firstTicket, eventSlug],
     );
+    let loseFirstClaimResponse = true;
+    await attendee.route("**/award-claims/**", async (route) => {
+      if (!loseFirstClaimResponse) {
+        await route.continue();
+        return;
+      }
+      loseFirstClaimResponse = false;
+      await route.fetch();
+      await route.abort("failed");
+    });
     await attendee.getByRole("button", { name: "check again and claim 3 points" }).click();
+    await expect(attendee.getByText("Confirmation pending.")).toBeVisible({ timeout: 15_000 });
     await expect(attendee.getByText("+3 points confirmed.")).toBeVisible({ timeout: 15_000 });
     await expect(attendee.getByRole("link", { name: "ticket & points" })).toBeVisible();
     await expect(attendee.getByRole("link", { name: "leaderboard" })).toBeVisible();
@@ -186,10 +200,12 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
       .poll(async () => balances(pool, eventSlug))
       .toEqual({ "First guest": 6, "Second guest": 3 });
 
-    await attendee.goto("/things/mafia");
-    await expect(attendee.getByRole("navigation", { name: "Your event" })).toBeVisible();
-    await expect(attendee.getByRole("link", { name: "ticket & points" })).toBeVisible();
-    await attendee.getByRole("link", { name: "leaderboard" }).click();
+    await attendee.goto("/things");
+    const eventNavigation = attendee.getByRole("navigation", { name: "Your event ticket" });
+    await expect(eventNavigation).toBeVisible();
+    await expect(eventNavigation.getByRole("link", { name: "ticket", exact: true })).toBeVisible();
+    await expect(eventNavigation.getByRole("link", { name: "save", exact: true })).toBeVisible();
+    await eventNavigation.getByRole("link", { name: "score", exact: true }).click();
     await expect(attendee).toHaveURL(new RegExp(`/events/${eventSlug}/score$`));
     await expect(attendee.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
 
@@ -208,6 +224,18 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
   }
 });
 
+async function expectTicketFixtures(pool: Pool, eventSlug: string, ticketIds: string[]) {
+  await expect
+    .poll(async () => {
+      const result = await pool.query<{ id: string }>(
+        `select id from tickets where event_slug = $1 order by id`,
+        [eventSlug],
+      );
+      return result.rows.map((row) => row.id);
+    })
+    .toEqual([...ticketIds].sort());
+}
+
 async function chooseTicketForPoints(page: import("@playwright/test").Page) {
   const button = page.getByRole("button", { name: "use this ticket for points" });
   await expect(button).toBeVisible({ timeout: 15_000 });
@@ -219,9 +247,11 @@ async function chooseTicketForPoints(page: import("@playwright/test").Page) {
     )
     .toBe(true);
   await button.click();
-  await expect(page.getByRole("status")).toContainText("Event points now go to this ticket", {
-    timeout: 15_000,
-  });
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "This device will use this ticket for event points." }),
+  ).toBeVisible({ timeout: 15_000 });
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("mah-has-score-session")))
     .toBe("1");

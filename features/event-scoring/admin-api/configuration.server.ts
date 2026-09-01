@@ -10,8 +10,55 @@ import {
 } from "../scoring.server";
 import { isLeaderboardVisibility, isScoringState, type ScoreRule } from "../types";
 import { resultResponse, stringValue, type AdminScoringActionHandlers } from "./shared";
+import { removeEventGameRegisterItem, upsertEventGameRegisterItem } from "../event-games.server";
+
+function nullableScheduleValue(body: Record<string, unknown>, key: string) {
+  if (!Object.hasOwn(body, key)) return undefined;
+  const value = body[key];
+  if (value === null || value === "") return null;
+  return typeof value === "string" ? value : undefined;
+}
 
 export const configurationActions: AdminScoringActionHandlers = {
+  "upsert-event-game": async ({ eventSlug, actorId, body }) => {
+    const gameKey = stringValue(body.gameKey);
+    const label = stringValue(body.label);
+    const playMode = body.playMode;
+    const awardMethod = body.awardMethod;
+    const status = body.status;
+    if (
+      !gameKey ||
+      !label ||
+      (playMode !== "pooled" && playMode !== "hosted" && playMode !== "table") ||
+      (awardMethod !== "staff" && awardMethod !== "automatic") ||
+      (status !== "included" && status !== "paused")
+    ) {
+      return Response.json({ error: "Complete the game setup" }, { status: 400 });
+    }
+    return resultResponse(
+      await upsertEventGameRegisterItem({
+        eventSlug,
+        actorId,
+        gameKey,
+        label,
+        playMode,
+        poolEntranceId: stringValue(body.poolEntranceId),
+        awardMethod,
+        activityIds: Array.isArray(body.activityIds)
+          ? body.activityIds.filter((value): value is string => typeof value === "string")
+          : [],
+        status,
+      }),
+      "eventGame",
+    );
+  },
+
+  "remove-event-game": async ({ eventSlug, body }) => {
+    const gameKey = stringValue(body.gameKey);
+    if (!gameKey) return Response.json({ error: "Choose a game" }, { status: 400 });
+    return resultResponse(await removeEventGameRegisterItem({ eventSlug, gameKey }), "eventGame");
+  },
+
   state: async ({ eventSlug, actorId, body }) => {
     if (!isScoringState(body.state))
       return Response.json({ error: "Unknown scoring state" }, { status: 400 });
@@ -36,8 +83,11 @@ export const configurationActions: AdminScoringActionHandlers = {
         eventSlug,
         actorId,
         leaderboardVisibility: visibility,
-        scheduledStart: stringValue(body.scheduledStart),
-        scheduledEnd: stringValue(body.scheduledEnd),
+        gamesOpenAt: nullableScheduleValue(body, "gamesOpenAt"),
+        gamesCloseAt: nullableScheduleValue(body, "gamesCloseAt"),
+        scheduledStart: nullableScheduleValue(body, "scheduledStart"),
+        scheduledFreeze: nullableScheduleValue(body, "scheduledFreeze"),
+        scheduledEnd: nullableScheduleValue(body, "scheduledEnd"),
         allowPreCheckinOnlinePoints:
           typeof body.allowPreCheckinOnlinePoints === "boolean"
             ? body.allowPreCheckinOnlinePoints

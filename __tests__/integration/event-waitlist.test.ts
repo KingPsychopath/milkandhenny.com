@@ -18,6 +18,7 @@ import {
 } from "@/features/event-waitlist/waitlist.server";
 import { normaliseEventInput, updateEvent } from "@/features/events/events.server";
 import { putEvent } from "@/features/events/store.server";
+import { recordWaitlistConversionForCheckout } from "@/features/event-operations/waitlist-conversion.server";
 import { issueTickets } from "@/features/tickets/tickets.server";
 import { markTicketStatus } from "@/features/tickets/store.server";
 import { memoryWindows } from "@/lib/platform/rate-limit.server";
@@ -247,6 +248,55 @@ describeWithDatabase("event waitlists (postgres)", () => {
         deliverNow: false,
       }),
     ).resolves.toMatchObject({ ok: true, value: { status: "active" } });
+  });
+
+  it("keeps a paid waitlist conversion as history with the current order status", async () => {
+    const event = await seedEvent();
+    await sell();
+    const waiter = await joinAndConfirm("buyer@example.com");
+    const updated = await updateEvent(event.slug, {
+      ticketTypes: [{ ...event.ticketTypes[0]!, quantity: 2 }],
+    });
+    if (!updated.ok) throw new Error(updated.error);
+    await reconcileEventWaitlist({ eventSlug: event.slug, origin: ORIGIN, deliverNow: false });
+
+    const issued = await issueTickets({
+      eventSlug: event.slug,
+      ticketTypeId: "entry",
+      holderName: "Converted buyer",
+      email: "buyer@example.com",
+      quantity: 1,
+      kind: "paid",
+      checkoutRef: "cs_waitlist_conversion_test",
+    });
+    if (!issued.ok) throw new Error(issued.error);
+
+    await expect(recordWaitlistConversionForCheckout("cs_waitlist_conversion_test")).resolves.toBe(
+      true,
+    );
+    await expect(recordWaitlistConversionForCheckout("cs_waitlist_conversion_test")).resolves.toBe(
+      false,
+    );
+    await expect(getWaitlistManagement(waiter.token)).resolves.toMatchObject({
+      ok: true,
+      value: { status: "converted" },
+    });
+    await expect(listEventWaitlist(event.slug)).resolves.toMatchObject({
+      counts: { notified: 0, converted: 1 },
+      entries: [
+        {
+          email: "buyer@example.com",
+          status: "converted",
+          convertedOrderId: issued.value.orderId,
+          conversionOrderStatus: "valid",
+        },
+      ],
+    });
+
+    await markTicketStatus(issued.value.tickets[0]!.id, "refunded", "conversion-refund");
+    await expect(listEventWaitlist(event.slug)).resolves.toMatchObject({
+      entries: [{ status: "converted", conversionOrderStatus: "refunded" }],
+    });
   });
 
   it("keeps one notification credit for pending confirmations without over-alerting", async () => {

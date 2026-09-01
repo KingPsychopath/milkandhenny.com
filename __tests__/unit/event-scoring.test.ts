@@ -24,6 +24,7 @@ import {
   nextRetryDelayMs,
   reconcileSnapshot,
   rememberScoreSession,
+  scoreSnapshotFromResponse,
   shouldRetryScoreResponse,
 } from "@/features/event-scoring/client-sync";
 import { discoveryCredential } from "@/features/event-scoring/discoveries.server";
@@ -222,6 +223,17 @@ describe("event scoring rules", () => {
     expect(shouldRetryScoreResponse(400, 0)).toBe(false);
     expect(shouldRetryScoreResponse(503, 0)).toBe(true);
     expect(nextRetryDelayMs(2, 0)).toBe(1500);
+    expect(
+      scoreSnapshotFromResponse("party", {
+        participant: {
+          id: "p",
+          balance: 9,
+          revision: 2,
+          teamName: "Sage",
+          teamColourKey: "sage",
+        },
+      }),
+    ).toMatchObject({ teamName: "Sage", teamColourKey: "sage" });
   });
 
   it("rehearses every test mode outcome without a live mutation", () => {

@@ -99,6 +99,8 @@ function toDrop(row: EventDropRow): EventDropRecord {
 export type EventDropStatus = EventDropRecord & {
   /** Live means guests can upload right now. */
   live: boolean;
+  /** Available means the temporary transfer still exists and can be viewed. */
+  available: boolean;
   fileCount: number;
 };
 
@@ -114,6 +116,7 @@ export async function getEventDrop(eventSlug: string): Promise<EventDropStatus |
   return {
     ...record,
     live: !record.disabledAt && transfer !== null && Date.parse(record.expiresAt) > Date.now(),
+    available: transfer !== null,
     fileCount: transfer?.files.length ?? 0,
   };
 }

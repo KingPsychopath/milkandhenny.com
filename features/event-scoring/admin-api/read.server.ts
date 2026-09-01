@@ -2,8 +2,10 @@ import { getEventDrop } from "@/features/events/drop.server";
 import { listCheckpoints } from "@/features/tickets/checkpoints.server";
 import { listDiscoveryClues, listDiscoveries } from "../discoveries.server";
 import { listHeldOfficialGameResults } from "../games.server";
+import { listEventGameRegister } from "../event-games.server";
 import { getScoringOperationsSnapshot } from "../operations.server";
 import {
+  adminParticipantScore,
   getScoring,
   listPersonalActivityTemplates,
   listScoringActivities,
@@ -33,6 +35,12 @@ export async function readAdminScoring(
   if (search) {
     return Response.json({ participants: await searchEventParticipants(eventSlug, search) });
   }
+  const scoreParticipant = params.get("scoreParticipant");
+  if (scoreParticipant) {
+    const result = await adminParticipantScore({ eventSlug, participantId: scoreParticipant });
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ participantScore: result.value });
+  }
 
   const [
     settings,
@@ -53,6 +61,7 @@ export async function readAdminScoring(
     merges,
     personalTemplates,
     operations,
+    eventGames,
   ] = await Promise.all([
     getScoring(eventSlug),
     listScoringActivities(eventSlug),
@@ -86,6 +95,7 @@ export async function readAdminScoring(
     listParticipantMerges(eventSlug),
     listPersonalActivityTemplates(actorId),
     getScoringOperationsSnapshot(eventSlug),
+    listEventGameRegister(eventSlug),
   ]);
 
   return Response.json({
@@ -123,5 +133,6 @@ export async function readAdminScoring(
     merges,
     personalTemplates,
     operations,
+    eventGames,
   });
 }

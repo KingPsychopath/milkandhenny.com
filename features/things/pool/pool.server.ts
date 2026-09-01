@@ -10,6 +10,7 @@ import {
   gamePoolCapacity,
   joinPoolRoom,
   leavePoolRoom,
+  type GamePoolRoomFactory,
 } from "./game-adapters.server";
 import { gamePoolAssignmentReceiptKey, gamePoolRoomSecretKey } from "./pool-keys";
 import {
@@ -228,6 +229,8 @@ export interface AssignGamePoolRoomInput {
   name: string;
   choice: "auto" | "new" | { roomId: string };
   moveExisting: boolean;
+  createRoom?: GamePoolRoomFactory;
+  afterAssignment?: (assignment: GamePoolAssignment) => Promise<void>;
 }
 
 export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
@@ -373,7 +376,7 @@ export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
       if (input.choice === "new" && !current.allow_new_rooms)
         throw new Error("Starting another room is not available.");
       if (input.choice === "auto" || input.choice === "new") {
-        const created = await createPoolRoomAndJoin({
+        const created = await (input.createRoom ?? createPoolRoomAndJoin)({
           gameSettings: poolGameSettings(current.preset, entrance.game),
           name,
           joinId: clientId,
@@ -424,6 +427,7 @@ export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
       });
     }
     await clearAssignmentReceipts(staleReceipts);
+    await input.afterAssignment?.(assignment);
     failed = false;
     return { assignment, runId: run.id };
   } finally {

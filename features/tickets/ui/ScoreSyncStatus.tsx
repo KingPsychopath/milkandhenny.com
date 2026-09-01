@@ -47,7 +47,9 @@ export function ScoreSyncStatus({
   ticketId: string;
   onSnapshot?: (snapshot: ScoreSnapshot) => void;
 }) {
-  const [online, setOnline] = useState(true);
+  const [status, setStatus] = useState<"checking" | "confirmed" | "offline" | "reconnecting">(
+    "confirmed",
+  );
   const onSnapshotRef = useRef(onSnapshot);
   const snapshotRef = useRef(snapshot);
   onSnapshotRef.current = onSnapshot;
@@ -55,7 +57,7 @@ export function ScoreSyncStatus({
   const { eventSlug, participantId } = snapshot;
   useEffect(() => {
     rememberScoreSession({ eventSlug, ticketId });
-    setOnline(navigator.onLine);
+    setStatus(navigator.onLine ? "confirmed" : "offline");
     const store = new EventScoringClientStore();
     const initial = snapshotRef.current;
     let current = initial;
@@ -95,23 +97,24 @@ export function ScoreSyncStatus({
         const incoming = scoreSnapshotFromResponse(eventSlug, body);
         current = reconcileSnapshot(current, incoming);
         attempts = 0;
-        setOnline(true);
+        setStatus("confirmed");
         await store.saveSnapshot(current).catch(() => undefined);
         onSnapshotRef.current?.(current);
         if (current.revision > previousRevision) window.dispatchEvent(new Event("mah-score-wake"));
         schedule();
       } catch {
         if (!active) return;
-        setOnline(navigator.onLine);
+        setStatus(navigator.onLine ? "reconnecting" : "offline");
         attempts += 1;
         if (shouldRetryScoreResponse(status, attempts)) schedule(nextRetryDelayMs(attempts));
+        else if (status === undefined || status >= 500) schedule(30_000);
       } finally {
         deadline.clear();
         if (requestDeadline === deadline) requestDeadline = undefined;
       }
     };
     const updateNetwork = () => {
-      setOnline(navigator.onLine);
+      setStatus(navigator.onLine ? "checking" : "offline");
       if (navigator.onLine) void refresh(true);
     };
     const updateVisibility = () => {
@@ -146,10 +149,23 @@ export function ScoreSyncStatus({
       store.close();
     };
   }, [eventSlug, participantId, ticketId]);
+  const label =
+    status === "confirmed"
+      ? "server confirmed"
+      : status === "offline"
+        ? "offline — showing last confirmed score"
+        : status === "reconnecting"
+          ? "server unavailable — checking again"
+          : "checking server confirmation";
   return (
-    <span className={online ? "text-[var(--status-positive)]" : "text-[var(--status-attention)]"}>
+    <span
+      role="status"
+      className={
+        status === "confirmed" ? "text-[var(--status-positive)]" : "text-[var(--status-attention)]"
+      }
+    >
       <span aria-hidden="true">● </span>
-      {online ? "synchronized" : "offline — showing last confirmed score"}
+      {label}
     </span>
   );
 }

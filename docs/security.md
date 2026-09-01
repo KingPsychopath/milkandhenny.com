@@ -80,6 +80,7 @@ Recommended daily workflow:
 
 ```bash
 pnpm cli auth login --base-url https://milkandhenny.com
+pnpm cli auth step-up --base-url https://milkandhenny.com
 pnpm cli events list --base-url https://milkandhenny.com
 pnpm cli auth logout --base-url https://milkandhenny.com
 ```
@@ -90,6 +91,8 @@ password stays in the browser; the CLI receives only a one-time code and then a
 short-lived admin JWT. The JWT is stored in the operating system's protected
 credential store. macOS uses Keychain, Linux uses Secret Service, and Windows
 uses user-scoped DPAPI storage. Other CLI commands load that JWT automatically.
+Protected CLI actions store their separate parent-bound step-up token in the same
+operating-system credential facility and reuse it only until its five-minute expiry.
 When it is close to expiry or the server rejects it as revoked, the CLI starts
 the browser approval flow again. `auth logout` removes the local value but does
 not revoke the remote session.

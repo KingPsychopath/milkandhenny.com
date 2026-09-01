@@ -11,6 +11,7 @@ in the operating system's protected credential store:
 
 ```sh
 pnpm cli auth login --base-url https://milkandhenny.com
+pnpm cli auth step-up --base-url https://milkandhenny.com
 pnpm cli events list --base-url https://milkandhenny.com
 pnpm cli auth logout --base-url https://milkandhenny.com
 ```
@@ -46,6 +47,38 @@ pnpm cli admin request PATCH /api/admin/events/after-school-club-2026-09-01 \
 pnpm cli admin request POST /api/admin/events/after-school-club-2026-09-01/tickets \
   --json '{"action":"resend","ticketId":"TICKET_ID"}' \
   --admin-token "$TOKEN" --yes
+```
+
+Use `--output` for PDFs, CSV files, images, or any response that must be preserved
+byte-for-byte:
+
+```sh
+pnpm cli admin request POST /api/admin/events/EVENT/scoring \
+  --json '{"action":"print-pdf","kind":"hunt","layout":"eight-clues","paper":"a4"}' \
+  --step-up --output ./hunt-pack.pdf --yes
+```
+
+For a multi-operation setup, put requests in one JSON array and approve the whole
+reviewed batch once. Each route still performs its normal authorization, validation,
+audit, and idempotency checks:
+
+```json
+[
+  {
+    "method": "POST",
+    "path": "/api/admin/events/EVENT/scoring",
+    "body": { "action": "settings", "leaderboardVisibility": "preview" }
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/events/EVENT/scoring",
+    "body": { "action": "state", "state": "ready", "reason": "Event setup" }
+  }
+]
+```
+
+```sh
+pnpm cli admin batch --file ./event-setup.json --step-up --yes
 ```
 
 Useful controls include:
@@ -89,10 +122,24 @@ pnpm cli events ticket update EVENT_SLUG standard \
   --price 15 \
   --quantity 50 \
   --admin-token "$TOKEN" --yes
+
+pnpm cli events staff role archive EVENT_SLUG ROLE_ID \
+  --reason 'superseded after final crew setup' \
+  --step-up --yes
+
+pnpm cli events staff role activities EVENT_SLUG ROLE_ID \
+  --all \
+  --reason 'include activities added after crew setup' \
+  --step-up --yes
 ```
 
 Ticket updates preserve the ticket type ID. Removing a sold ticket type is
 still rejected by the database, as it should be.
+
+Retiring a staff role preserves its audit history while revoking every active
+assignment, invitation, device, and shared station attached to it.
+Updating a role to include all live activities also updates its active assignments,
+so existing staff links keep working without being reissued.
 
 ## Safety controls
 
@@ -100,8 +147,10 @@ still rejected by the database, as it should be.
 - Mutations show a confirmation prompt by default.
 - `--dry-run` prints the exact method, path, and body without sending it.
 - `--yes` skips the prompt for scripts and agent workflows.
-- `--step-up` opens a browser approval page and obtains a short-lived token bound
-  to the current CLI session. `--admin-password` remains an explicit noninteractive
+- `--step-up` reuses a valid protected session from the operating-system credential
+  store, or opens one browser approval when needed. The token is bound to the current
+  CLI login and expires after at most five minutes. `auth step-up` can establish it
+  before a batch. `--admin-password` remains an explicit noninteractive
   fallback; the CLI never prompts for a password during browser step-up.
 - `--yes` skips only the mutation confirmation. It never skips authentication or
   browser approval.

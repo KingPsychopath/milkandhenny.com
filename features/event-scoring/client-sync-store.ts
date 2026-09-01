@@ -108,6 +108,13 @@ export class EventScoringClientStore {
     return (await requestResult(index.getAll(range))) as PendingScoreCommand[];
   }
 
+  async listAllCommands(): Promise<PendingScoreCommand[]> {
+    const database = await this.open();
+    return (await requestResult(
+      database.transaction(COMMANDS).objectStore(COMMANDS).getAll(),
+    )) as PendingScoreCommand[];
+  }
+
   async removeCommand(commandId: string): Promise<void> {
     const database = await this.open();
     const transaction = database.transaction(COMMANDS, "readwrite");

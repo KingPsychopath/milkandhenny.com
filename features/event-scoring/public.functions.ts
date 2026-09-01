@@ -9,6 +9,7 @@ import {
   openedTicketsForEvent,
 } from "./session.server";
 import { getTicket } from "@/features/tickets/store.server";
+import { ticketPublicId } from "@/features/tickets/types";
 import { getParticipant } from "./store.server";
 import { EventScoringService } from "./event-scoring-service.server";
 
@@ -32,7 +33,8 @@ async function openedTicketChoices(eventSlug: string, activeParticipantId?: stri
         getParticipant(access.participantId),
       ]);
       return {
-        ticketId: access.ticketId,
+        ticketId: ticket ? ticketPublicId(ticket) : access.ticketId,
+        participantId: access.participantId,
         holderName: ticket?.holderName ?? "Event ticket",
         active: access.participantId === activeParticipantId,
         checkedIn: Boolean(participant?.checkedInAt),

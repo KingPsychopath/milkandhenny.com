@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 const STORE_SERVICE = "milkandhenny.com CLI admin";
+const STEP_UP_STORE_SERVICE = "milkandhenny.com CLI admin step-up";
 const MISSING_ITEM_EXIT_CODE = 44;
 
 type CommandResult = {
@@ -51,19 +52,19 @@ function shellLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function windowsTokenPath(baseUrl: string): string {
+function windowsTokenPath(baseUrl: string, suffix = ""): string {
   const root = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
   const accountHash = createHash("sha256").update(credentialAccount(baseUrl)).digest("hex");
-  return path.join(root, "milkandhenny", `cli-admin-${accountHash}.dat`);
+  return path.join(root, "milkandhenny", `cli-admin${suffix}-${accountHash}.dat`);
 }
 
-async function readMacOS(baseUrl: string): Promise<string | null> {
+async function readMacOS(baseUrl: string, service: string): Promise<string | null> {
   const result = await runCommand("/usr/bin/security", [
     "find-generic-password",
     "-a",
     credentialAccount(baseUrl),
     "-s",
-    STORE_SERVICE,
+    service,
     "-w",
   ]);
   if (result.code === MISSING_ITEM_EXIT_CODE) return null;
@@ -71,38 +72,38 @@ async function readMacOS(baseUrl: string): Promise<string | null> {
   return result.stdout.trim() || null;
 }
 
-async function writeMacOS(baseUrl: string, token: string): Promise<void> {
+async function writeMacOS(baseUrl: string, token: string, service: string): Promise<void> {
   const result = await runCommand("/usr/bin/security", [
     "add-generic-password",
     "-U",
     "-a",
     credentialAccount(baseUrl),
     "-s",
-    STORE_SERVICE,
+    service,
     "-w",
     token,
   ]);
   if (result.code !== 0) throw commandError("write", result);
 }
 
-async function deleteMacOS(baseUrl: string): Promise<boolean> {
+async function deleteMacOS(baseUrl: string, service: string): Promise<boolean> {
   const result = await runCommand("/usr/bin/security", [
     "delete-generic-password",
     "-a",
     credentialAccount(baseUrl),
     "-s",
-    STORE_SERVICE,
+    service,
   ]);
   if (result.code === MISSING_ITEM_EXIT_CODE) return false;
   if (result.code !== 0) throw commandError("delete", result);
   return true;
 }
 
-async function readLinux(baseUrl: string): Promise<string | null> {
+async function readLinux(baseUrl: string, service: string): Promise<string | null> {
   const result = await runCommand("secret-tool", [
     "lookup",
     "service",
-    STORE_SERVICE,
+    service,
     "account",
     credentialAccount(baseUrl),
   ]);
@@ -111,28 +112,20 @@ async function readLinux(baseUrl: string): Promise<string | null> {
   return result.stdout.trim() || null;
 }
 
-async function writeLinux(baseUrl: string, token: string): Promise<void> {
+async function writeLinux(baseUrl: string, token: string, service: string): Promise<void> {
   const result = await runCommand(
     "secret-tool",
-    [
-      "store",
-      "--label",
-      STORE_SERVICE,
-      "service",
-      STORE_SERVICE,
-      "account",
-      credentialAccount(baseUrl),
-    ],
+    ["store", "--label", service, "service", service, "account", credentialAccount(baseUrl)],
     `${token}\n`,
   );
   if (result.code !== 0) throw commandError("write", result);
 }
 
-async function deleteLinux(baseUrl: string): Promise<boolean> {
+async function deleteLinux(baseUrl: string, service: string): Promise<boolean> {
   const result = await runCommand("secret-tool", [
     "clear",
     "service",
-    STORE_SERVICE,
+    service,
     "account",
     credentialAccount(baseUrl),
   ]);
@@ -149,8 +142,8 @@ function runWindowsPowerShell(script: string, input?: string): Promise<CommandRe
   );
 }
 
-async function readWindows(baseUrl: string): Promise<string | null> {
-  const file = shellLiteral(windowsTokenPath(baseUrl));
+async function readWindows(baseUrl: string, suffix = ""): Promise<string | null> {
+  const file = shellLiteral(windowsTokenPath(baseUrl, suffix));
   const result = await runWindowsPowerShell(`
     $ErrorActionPreference = 'Stop'
     $file = ${file}
@@ -168,8 +161,8 @@ async function readWindows(baseUrl: string): Promise<string | null> {
   return result.stdout.trim() || null;
 }
 
-async function writeWindows(baseUrl: string, token: string): Promise<void> {
-  const file = shellLiteral(windowsTokenPath(baseUrl));
+async function writeWindows(baseUrl: string, token: string, suffix = ""): Promise<void> {
+  const file = shellLiteral(windowsTokenPath(baseUrl, suffix));
   const result = await runWindowsPowerShell(
     `
     $ErrorActionPreference = 'Stop'
@@ -189,8 +182,8 @@ async function writeWindows(baseUrl: string, token: string): Promise<void> {
   if (result.code !== 0) throw commandError("write", result);
 }
 
-async function deleteWindows(baseUrl: string): Promise<boolean> {
-  const file = shellLiteral(windowsTokenPath(baseUrl));
+async function deleteWindows(baseUrl: string, suffix = ""): Promise<boolean> {
+  const file = shellLiteral(windowsTokenPath(baseUrl, suffix));
   const result = await runWindowsPowerShell(`
     $ErrorActionPreference = 'Stop'
     $file = ${file}
@@ -203,24 +196,45 @@ async function deleteWindows(baseUrl: string): Promise<boolean> {
 }
 
 export async function readCliAdminToken(baseUrl: string): Promise<string | null> {
-  if (process.platform === "darwin") return readMacOS(baseUrl);
-  if (process.platform === "linux") return readLinux(baseUrl);
+  if (process.platform === "darwin") return readMacOS(baseUrl, STORE_SERVICE);
+  if (process.platform === "linux") return readLinux(baseUrl, STORE_SERVICE);
   if (process.platform === "win32") return readWindows(baseUrl);
   throw new Error("CLI admin sessions are not supported on this operating system.");
 }
 
 export async function writeCliAdminToken(baseUrl: string, token: string): Promise<void> {
-  if (process.platform === "darwin") return writeMacOS(baseUrl, token);
-  if (process.platform === "linux") return writeLinux(baseUrl, token);
+  if (process.platform === "darwin") return writeMacOS(baseUrl, token, STORE_SERVICE);
+  if (process.platform === "linux") return writeLinux(baseUrl, token, STORE_SERVICE);
   if (process.platform === "win32") return writeWindows(baseUrl, token);
   throw new Error("CLI admin sessions are not supported on this operating system.");
 }
 
 export async function deleteCliAdminToken(baseUrl: string): Promise<boolean> {
-  if (process.platform === "darwin") return deleteMacOS(baseUrl);
-  if (process.platform === "linux") return deleteLinux(baseUrl);
+  if (process.platform === "darwin") return deleteMacOS(baseUrl, STORE_SERVICE);
+  if (process.platform === "linux") return deleteLinux(baseUrl, STORE_SERVICE);
   if (process.platform === "win32") return deleteWindows(baseUrl);
   throw new Error("CLI admin sessions are not supported on this operating system.");
+}
+
+export async function readCliStepUpToken(baseUrl: string): Promise<string | null> {
+  if (process.platform === "darwin") return readMacOS(baseUrl, STEP_UP_STORE_SERVICE);
+  if (process.platform === "linux") return readLinux(baseUrl, STEP_UP_STORE_SERVICE);
+  if (process.platform === "win32") return readWindows(baseUrl, "-step-up");
+  throw new Error("CLI step-up sessions are not supported on this operating system.");
+}
+
+export async function writeCliStepUpToken(baseUrl: string, token: string): Promise<void> {
+  if (process.platform === "darwin") return writeMacOS(baseUrl, token, STEP_UP_STORE_SERVICE);
+  if (process.platform === "linux") return writeLinux(baseUrl, token, STEP_UP_STORE_SERVICE);
+  if (process.platform === "win32") return writeWindows(baseUrl, token, "-step-up");
+  throw new Error("CLI step-up sessions are not supported on this operating system.");
+}
+
+export async function deleteCliStepUpToken(baseUrl: string): Promise<boolean> {
+  if (process.platform === "darwin") return deleteMacOS(baseUrl, STEP_UP_STORE_SERVICE);
+  if (process.platform === "linux") return deleteLinux(baseUrl, STEP_UP_STORE_SERVICE);
+  if (process.platform === "win32") return deleteWindows(baseUrl, "-step-up");
+  throw new Error("CLI step-up sessions are not supported on this operating system.");
 }
 
 export function cliCredentialStoreLabel(): string {

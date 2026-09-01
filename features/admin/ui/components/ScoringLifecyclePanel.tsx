@@ -1,27 +1,53 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
+import {
+  eventLocalInputToIso,
+  isoToEventLocalInput,
+} from "@/features/event-operations/night-schedule";
+import type { EventRecord } from "@/features/events/types";
 import type { ScoringAction, ScoringData } from "./event-scoring-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 export function ScoringLifecyclePanel({
   data,
+  event,
   onAction,
 }: {
   data: ScoringData;
+  event?: EventRecord;
   onAction: ScoringAction;
 }) {
   const [visibility, setVisibility] = useState(data.settings.leaderboardVisibility);
+  const [gamesOpenAt, setGamesOpenAt] = useState("");
+  const [gamesCloseAt, setGamesCloseAt] = useState("");
   const [scheduledStart, setScheduledStart] = useState("");
+  const [scheduledFreeze, setScheduledFreeze] = useState("");
   const [scheduledEnd, setScheduledEnd] = useState("");
   const [prizeSlots, setPrizeSlots] = useState(3);
   const [reason, setReason] = useState("");
+  const timeZone = event?.timezone ?? "Europe/London";
+
+  useEffect(() => {
+    setVisibility(data.settings.leaderboardVisibility);
+    setGamesOpenAt(isoToEventLocalInput(data.settings.gamesOpenAt, timeZone));
+    setGamesCloseAt(isoToEventLocalInput(data.settings.gamesCloseAt, timeZone));
+    setScheduledStart(isoToEventLocalInput(data.settings.scheduledStart, timeZone));
+    setScheduledFreeze(isoToEventLocalInput(data.settings.scheduledFreeze, timeZone));
+    setScheduledEnd(isoToEventLocalInput(data.settings.scheduledEnd, timeZone));
+  }, [data.settings, timeZone]);
+
+  const instant = (value: string) => (value ? eventLocalInputToIso(value, timeZone) : null);
 
   return (
     <section aria-labelledby="scoring-lifecycle-heading" className="border-t theme-border pt-6">
       <h4 id="scoring-lifecycle-heading" className="font-serif text-xl">
-        Schedule and final board
+        Night schedule and final board
       </h4>
+      <p className="mt-2 max-w-2xl font-mono text-xs leading-relaxed theme-muted">
+        One schedule for this event. Included pooled games inherit the game window unless a pool has
+        its own override. Times below are shown in {timeZone}.
+      </p>
       <AdminStatus
         tone={
           data.settings.state === "frozen" ? "attention" : adminToneForStatus(data.settings.state)
@@ -33,17 +59,33 @@ export function ScoringLifecyclePanel({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          void onAction({
-            action: "settings",
-            leaderboardVisibility: visibility,
-            scheduledStart: scheduledStart || undefined,
-            scheduledEnd: scheduledEnd || undefined,
-          });
+          try {
+            void onAction({
+              action: "settings",
+              leaderboardVisibility: visibility,
+              gamesOpenAt: instant(gamesOpenAt),
+              gamesCloseAt: instant(gamesCloseAt),
+              scheduledStart: instant(scheduledStart),
+              scheduledFreeze: instant(scheduledFreeze),
+              scheduledEnd: instant(scheduledEnd),
+            });
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : "Choose valid event times");
+          }
         }}
-        className="mt-4 grid gap-4 sm:grid-cols-3"
+        className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
       >
+        <ScheduleField label="games open" value={gamesOpenAt} onChange={setGamesOpenAt} />
+        <ScheduleField label="games close" value={gamesCloseAt} onChange={setGamesCloseAt} />
+        <ScheduleField label="scoring opens" value={scheduledStart} onChange={setScheduledStart} />
+        <ScheduleField
+          label="leaderboard freezes"
+          value={scheduledFreeze}
+          onChange={setScheduledFreeze}
+        />
+        <ScheduleField label="event closes" value={scheduledEnd} onChange={setScheduledEnd} />
         <label className="font-mono text-xs">
-          visibility
+          leaderboard before opening
           <AppSelect
             value={visibility}
             onValueChange={setVisibility}
@@ -58,29 +100,7 @@ export function ScoringLifecyclePanel({
             className="mt-2"
           />
         </label>
-        <label className="font-mono text-xs">
-          scheduled start (ISO time with event offset)
-          <input
-            type="text"
-            placeholder="2026-08-25T19:00:00+01:00"
-            value={scheduledStart}
-            onChange={(event) => setScheduledStart(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-          />
-        </label>
-        <label className="font-mono text-xs">
-          scheduled end (ISO time with event offset)
-          <input
-            type="text"
-            placeholder="2026-08-25T23:00:00+01:00"
-            value={scheduledEnd}
-            onChange={(event) => setScheduledEnd(event.target.value)}
-            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-          />
-        </label>
-        <button className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70">
-          save schedule
-        </button>
+        <button className="mh-action mh-action--primary self-end">save schedule</button>
       </form>
       {data.held.length > 0 && (
         <div className="mt-5">
@@ -183,5 +203,28 @@ export function ScoringLifecyclePanel({
         </button>
       </form>
     </section>
+  );
+}
+
+function ScheduleField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="font-mono text-xs">
+      {label}
+      <input
+        type="datetime-local"
+        step={60}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+      />
+    </label>
   );
 }

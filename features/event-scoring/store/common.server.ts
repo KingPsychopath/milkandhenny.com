@@ -27,7 +27,10 @@ export type ScoringSettingsRow = {
   event_slug: string;
   state: string;
   leaderboard_visibility: string;
+  games_open_at: Date | null;
+  games_close_at: Date | null;
   scheduled_start: Date | null;
+  scheduled_freeze: Date | null;
   scheduled_end: Date | null;
   allow_precheckin_online_points: boolean;
   public_names: string;
@@ -225,7 +228,10 @@ export function toSettings(row: ScoringSettingsRow): ScoringSettings {
     eventSlug: row.event_slug,
     state: textValue(row.state, "off") as ScoringState,
     leaderboardVisibility: textValue(row.leaderboard_visibility, "hidden") as LeaderboardVisibility,
+    gamesOpenAt: iso(row.games_open_at),
+    gamesCloseAt: iso(row.games_close_at),
     scheduledStart: iso(row.scheduled_start),
+    scheduledFreeze: iso(row.scheduled_freeze),
     scheduledEnd: iso(row.scheduled_end),
     allowPreCheckinOnlinePoints: row.allow_precheckin_online_points,
     publicNames: textValue(row.public_names, "generated") as ScoringSettings["publicNames"],

@@ -1,5 +1,11 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  persistRoomWithOfficialResults,
+  publishOfficialResultsAfterCommit,
+  sealOfficialGameResult,
+} from "@/features/game-results/outbox.server";
+import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
+import {
   applyGameCommand,
   gameRandomInt,
   replaceGameState,
@@ -103,6 +109,7 @@ interface RoundState {
 interface RoomState {
   roomId: string;
   managed?: boolean;
+  officialResultChannelId?: string;
   expiresAt: number;
   revision: number;
   sequence: number;
@@ -199,20 +206,66 @@ async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise
     const room = await loadRoom(roomId);
     if (!room) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
     if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    const envelope =
+      !wasFinished && room.phase === "finished" ? hotAndColdOfficialResult(room) : null;
+    if (envelope)
+      publishOfficialResultsAfterCommit([{ key: `memory:${envelope.payloadHash}`, envelope }]);
     return result;
   }
   const initial = await loadRoom(roomId);
   if (!initial) return null;
   const keys = hotAndColdRoomRedisKeys(roomId);
-  return withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
+  let queued: Array<{ key: string; envelope: OfficialGameResultEnvelope }> = [];
+  const result = await withMultiplayerRoomLock(redis, { roomId, lockKey: keys.lock }, async () => {
     const room = await redis.get<RoomState>(keys.state);
     if (!room) return null;
     const before = JSON.stringify(room);
+    const wasFinished = room.phase === "finished";
     const result = await use(room);
-    if (multiplayerRoomStateChanged(before, room)) await saveRoom(room);
+    if (multiplayerRoomStateChanged(before, room)) {
+      applyRoomExpiry(room);
+      const envelope =
+        !wasFinished && room.phase === "finished" ? hotAndColdOfficialResult(room) : null;
+      queued = await persistRoomWithOfficialResults({
+        redis,
+        stateKey: keys.state,
+        room,
+        ttlSeconds: remainingMultiplayerRoomTtlSeconds(room.expiresAt),
+        envelopes: envelope ? [envelope] : [],
+      });
+    }
     return result;
+  });
+  publishOfficialResultsAfterCommit(queued);
+  return result;
+}
+
+function hotAndColdOfficialResult(room: RoomState): OfficialGameResultEnvelope | null {
+  if (!room.officialResultChannelId || room.phase !== "finished") return null;
+  const active = activePlayers(room);
+  const topScore = Math.max(...active.map((player) => player.score));
+  return sealOfficialGameResult({
+    channelId: room.officialResultChannelId,
+    revision: 1,
+    result: {
+      gameKind: "hot-and-cold",
+      gameInstanceId: room.roomId,
+      resultId: `game:${room.gameNumber}`,
+      scope: "game",
+      players: room.players.map((player) => {
+        const won = !player.withdrawn && player.score === topScore;
+        return {
+          playerId: player.id,
+          outcome: player.withdrawn ? "withdrawn" : "completed",
+          placement: player.withdrawn ? undefined : won ? 1 : 2,
+          score: player.score,
+          won,
+        };
+      }),
+    },
   });
 }
 function validPlayer(room: RoomState, id: string, token: string) {
@@ -362,6 +415,7 @@ export async function createHotAndColdRoom(input: {
   guessesPerPlayer?: number;
   turnSeconds?: number;
   managed?: boolean;
+  officialResultChannelId?: string;
 }) {
   if (!input.hostName.trim()) throw new Error("Add your name");
   const roomId = await createAvailableMultiplayerRoomId(async (id) => Boolean(await loadRoom(id)));
@@ -376,6 +430,7 @@ export async function createHotAndColdRoom(input: {
   const room: RoomState = {
     roomId,
     managed: input.managed,
+    officialResultChannelId: input.officialResultChannelId,
     expiresAt: multiplayerLobbyExpiresAt(now, 1),
     revision: 1,
     sequence: 1,
