@@ -112,11 +112,6 @@ export function AdminSectionNav({
   onChange: (section: AdminSection) => void;
   permissions: GlobalAdminPermissionSet;
 }) {
-  const availableSections = ADMIN_SECTIONS.filter((section) =>
-    canAccessAdminSection(section.id, permissions),
-  );
-  const current =
-    availableSections.find((section) => section.id === active) ?? availableSections[0];
   const primaryActive = active === "best-dressed" ? "events" : active;
   const primarySections = ADMIN_SECTIONS.filter(
     (section) =>
@@ -129,11 +124,16 @@ export function AdminSectionNav({
       canAccessAdminSection(section.id, permissions),
   );
 
+  const relatedEventSection =
+    active === "best-dressed"
+      ? ADMIN_SECTIONS.find((section) => section.id === "events")
+      : ADMIN_SECTIONS.find((section) => section.id === "best-dressed");
+
   return (
-    <div className="mt-8 border-y theme-border">
+    <div className="mt-7 border-y theme-border py-2">
       <nav
         aria-label="Primary admin work areas"
-        className="-mx-6 flex overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-6"
+        className="grid grid-cols-2 gap-x-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-2"
       >
         {primarySections.map((section) => {
           const selected = section.id === primaryActive;
@@ -143,29 +143,29 @@ export function AdminSectionNav({
               type="button"
               onClick={() => onChange(section.id)}
               aria-current={selected ? "page" : undefined}
-              className={`relative min-h-12 shrink-0 px-4 py-3 text-left font-mono text-xs transition-opacity first:pl-0 sm:px-3 sm:first:pl-3 ${
-                selected ? "font-bold text-[var(--foreground)]" : "theme-muted hover:opacity-70"
+              className={`relative min-h-12 px-1 py-3 text-left font-mono text-xs transition-opacity hover:opacity-70 ${
+                selected ? "font-bold text-[var(--foreground)]" : "theme-subtle"
               }`}
             >
-              {section.label}
-              {selected ? (
+              <span className="inline-flex items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className="absolute inset-x-3 bottom-0 h-0.5 bg-[var(--prose-hashtag)] first:left-0 sm:first:left-3"
+                  className={`h-1.5 w-1.5 rounded-full transition-opacity ${
+                    selected ? "bg-[var(--prose-hashtag)] opacity-100" : "opacity-0"
+                  }`}
                 />
-              ) : null}
+                {section.label}
+              </span>
             </button>
           );
         })}
       </nav>
       {utilitySections.length > 0 ? (
-        <div className="flex items-stretch border-t theme-border-faint">
-          <p className="hidden shrink-0 items-center px-3 font-mono text-micro uppercase tracking-widest theme-faint sm:flex">
-            utilities
-          </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-5 border-t theme-border-faint pt-2">
+          <p className="font-mono text-micro uppercase tracking-widest theme-faint">more</p>
           <nav
             aria-label="Admin utilities and policies"
-            className="-mx-6 flex min-w-0 flex-1 overflow-x-auto px-6 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0"
+            className="flex min-w-0 flex-1 flex-wrap gap-x-5"
           >
             {utilitySections.map((section) => {
               const selected = section.id === active;
@@ -175,61 +175,41 @@ export function AdminSectionNav({
                   type="button"
                   onClick={() => onChange(section.id)}
                   aria-current={selected ? "page" : undefined}
-                  className={`relative min-h-11 shrink-0 px-4 py-3 text-left font-mono text-micro transition-opacity sm:px-3 ${
-                    selected ? "font-bold text-[var(--foreground)]" : "theme-muted hover:opacity-70"
+                  className={`inline-flex min-h-11 items-center gap-2 font-mono text-micro transition-opacity hover:opacity-70 ${
+                    selected ? "font-bold text-[var(--foreground)]" : "theme-subtle"
                   }`}
                 >
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 rounded-full transition-opacity ${
+                      selected ? "bg-[var(--prose-hashtag)] opacity-100" : "opacity-0"
+                    }`}
+                  />
                   {section.label}
-                  {selected ? (
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-x-3 bottom-0 h-0.5 bg-[var(--prose-hashtag)]"
-                    />
-                  ) : null}
                 </button>
               );
             })}
           </nav>
         </div>
       ) : null}
-      {(active === "events" || active === "best-dressed") && (
-        <div className="border-t theme-border-faint py-3">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
-              event tools
-            </p>
-            <nav aria-label="Event tools" className="flex flex-wrap gap-x-4 gap-y-2">
-              {(["events", "best-dressed"] as const).map((sectionId) => {
-                const section = ADMIN_SECTIONS.find((item) => item.id === sectionId);
-                if (!section || !canAccessAdminSection(section.id, permissions)) return null;
-                const selected = section.id === active;
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => onChange(section.id)}
-                    aria-current={selected ? "page" : undefined}
-                    className={`inline-flex min-h-11 items-center font-mono text-xs underline-offset-4 transition-opacity hover:opacity-70 ${
-                      selected ? "font-bold underline" : "theme-muted"
-                    }`}
-                  >
-                    {section.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-      )}
-      {current ? (
-        <p
-          className="border-t theme-border-faint py-3 font-mono text-micro theme-muted"
-          aria-live="polite"
+      {(active === "events" || active === "best-dressed") &&
+      relatedEventSection &&
+      canAccessAdminSection(relatedEventSection.id, permissions) ? (
+        <nav
+          aria-label="Related event tool"
+          className="mt-1 flex items-center gap-x-5 border-t theme-border-faint pt-2"
         >
-          <span className="font-bold text-foreground">{current.label}</span>
-          <span aria-hidden="true"> · </span>
-          {current.description}
-        </p>
+          <span className="font-mono text-micro uppercase tracking-widest theme-faint">
+            related
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange(relatedEventSection.id)}
+            className="inline-flex min-h-11 items-center font-mono text-micro theme-subtle underline decoration-transparent underline-offset-4 transition-all hover:decoration-current"
+          >
+            {relatedEventSection.label}
+          </button>
+        </nav>
       ) : null}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -1975,6 +1975,8 @@ function EventOperations({
   permissions: GlobalAdminPermissionSet;
 }) {
   const [activeTool, setActiveTool] = useState<EventOperationsTool>("overview");
+  const toolsNavRef = useRef<HTMLElement>(null);
+  const pendingToolsNavTop = useRef<number | null>(null);
   const [query, setQuery] = useState("");
   const [ticketFilter, setTicketFilter] = useState<TicketListFilter>("all");
   const [ticketSort, setTicketSort] = useState<TicketListSort>("newest");
@@ -1999,6 +2001,21 @@ function EventOperations({
   const [invitationsLoaded, setInvitationsLoaded] = useState(false);
   const [showInvitations, setShowInvitations] = useState(false);
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    const previousTop = pendingToolsNavTop.current;
+    if (previousTop === null) return;
+    pendingToolsNavTop.current = null;
+    const nextTop = toolsNavRef.current?.getBoundingClientRect().top;
+    if (nextTop === undefined) return;
+    window.scrollBy(0, nextTop - previousTop);
+  }, [activeTool]);
+
+  const handleToolChange = (tool: EventOperationsTool) => {
+    if (tool === activeTool) return;
+    pendingToolsNavTop.current = toolsNavRef.current?.getBoundingClientRect().top ?? null;
+    setActiveTool(tool);
+  };
 
   const loadInvitations = useCallback(
     async (isCurrent: () => boolean = () => true) => {
@@ -2285,7 +2302,7 @@ function EventOperations({
     { value: "overview", label: "overview" },
     { value: "tickets", label: "tickets" },
     ...(permissions.manageEvents ? [{ value: "waitlist" as const, label: "waitlist" }] : []),
-    ...(permissions.manageEvents ? [{ value: "door" as const, label: "staff & checkpoints" }] : []),
+    ...(permissions.manageEvents ? [{ value: "door" as const, label: "staff" }] : []),
     ...(permissions.manageCommunications
       ? [{ value: "messages" as const, label: "messages" }]
       : []),
@@ -2295,22 +2312,27 @@ function EventOperations({
   return (
     <div className="mt-4 border-t theme-border pt-4">
       <nav
+        ref={toolsNavRef}
         aria-label={`${event.title} tools`}
-        className="mb-5 flex gap-1 overflow-x-auto border-b theme-border"
+        className="sticky top-14 z-10 -mx-2 mb-5 flex gap-x-1 overflow-x-auto border-b theme-border bg-background px-2"
       >
         {operationTools.map((tool) => (
           <button
             key={tool.value}
             type="button"
-            onClick={() => setActiveTool(tool.value)}
+            onClick={() => handleToolChange(tool.value)}
             aria-current={activeTool === tool.value ? "page" : undefined}
-            className={`min-h-11 shrink-0 border-b-2 px-3 font-mono text-micro transition-opacity hover:opacity-70 ${
-              activeTool === tool.value
-                ? "border-[var(--prose-hashtag)] text-foreground"
-                : "border-transparent theme-muted"
+            className={`relative min-h-11 shrink-0 px-3 font-mono text-micro transition-opacity hover:opacity-70 ${
+              activeTool === tool.value ? "font-bold text-foreground" : "theme-subtle"
             }`}
           >
             {tool.label}
+            {activeTool === tool.value ? (
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-3 bottom-0 h-0.5 bg-[var(--prose-hashtag)]"
+              />
+            ) : null}
           </button>
         ))}
       </nav>
@@ -2952,6 +2974,9 @@ export function EventsPanel({
   const openedTarget = useRef<string | undefined>(undefined);
   const operationsRequest = useRef(0);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const eventWorkspaceTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const returnFocusSlug = useRef<string | null>(null);
+  const returnFocusViewportTop = useRef<number | null>(null);
   const { confirm, prompt, dialog } = useActionDialog();
   const editing =
     selection?.kind === "create" ? "__new__" : selection?.kind === "edit" ? selection.slug : null;
@@ -2988,8 +3013,42 @@ export function EventsPanel({
   }, [load]);
 
   useEffect(() => {
-    if (selection) workspaceHeadingRef.current?.focus();
-  }, [selection]);
+    let settleFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      settleFrame = window.requestAnimationFrame(() => {
+        if (selection) {
+          const heading = workspaceHeadingRef.current;
+          if (!heading) return;
+          heading.focus({ preventScroll: true });
+          const targetTop = returnFocusViewportTop.current;
+          if (selection.kind === "operations" && targetTop !== null) {
+            window.scrollBy(0, heading.getBoundingClientRect().top - targetTop);
+          } else {
+            heading.scrollIntoView({ block: "nearest" });
+          }
+          return;
+        }
+
+        const slug = returnFocusSlug.current;
+        if (!slug) return;
+        const trigger = eventWorkspaceTriggerRefs.current.get(slug);
+        if (!trigger) return;
+        const targetTop = returnFocusViewportTop.current;
+        returnFocusSlug.current = null;
+        returnFocusViewportTop.current = null;
+        trigger.focus({ preventScroll: true });
+        if (targetTop !== null) {
+          window.scrollBy(0, trigger.getBoundingClientRect().top - targetTop);
+        } else {
+          trigger.scrollIntoView({ block: "nearest" });
+        }
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(settleFrame);
+    };
+  }, [operationsLoading, selection]);
 
   const loadOperations = useCallback(
     async (slug: string) => {
@@ -3015,6 +3074,10 @@ export function EventsPanel({
       return;
     }
 
+    const triggerTop = eventWorkspaceTriggerRefs.current.get(slug)?.getBoundingClientRect().top;
+    returnFocusSlug.current = slug;
+    returnFocusViewportTop.current =
+      triggerTop === undefined ? 96 : Math.min(180, Math.max(96, triggerTop));
     setSelection({ kind: "operations", slug });
     setDraft(null);
     setOperations(null);
@@ -3345,6 +3408,10 @@ export function EventsPanel({
                       view
                     </Link>
                     <button
+                      ref={(node) => {
+                        if (node) eventWorkspaceTriggerRefs.current.set(event.slug, node);
+                        else eventWorkspaceTriggerRefs.current.delete(event.slug);
+                      }}
                       type="button"
                       onClick={() => void toggleOperations(event.slug)}
                       aria-expanded={operationsSlug === event.slug}

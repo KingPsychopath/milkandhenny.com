@@ -1,6 +1,15 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "@tanstack/react-router";
 import type { SystemCapabilities } from "@/features/system/capabilities";
 import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
@@ -231,6 +240,8 @@ export function AdminDashboard({
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [eventWorkspace, setEventWorkspace] = useState<EventWorkspace>("events");
+  const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
+  const pendingEventWorkspaceTop = useRef<number | null>(null);
   const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
   const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
 
@@ -297,6 +308,15 @@ export function AdminDashboard({
   useEffect(() => {
     if (targetEvent) setEventWorkspace("events");
   }, [targetEvent]);
+
+  useLayoutEffect(() => {
+    const previousTop = pendingEventWorkspaceTop.current;
+    if (previousTop === null) return;
+    pendingEventWorkspaceTop.current = null;
+    const nextTop = eventWorkspaceNavRef.current?.getBoundingClientRect().top;
+    if (nextTop === undefined) return;
+    window.scrollBy(0, nextTop - previousTop);
+  }, [eventWorkspace]);
 
   useEffect(() => {
     setStatusMessage("");
@@ -387,6 +407,13 @@ export function AdminDashboard({
     [onViewChange],
   );
 
+  const handleEventWorkspaceChange = (workspace: EventWorkspace) => {
+    if (workspace === activeEventWorkspace) return;
+    pendingEventWorkspaceTop.current =
+      eventWorkspaceNavRef.current?.getBoundingClientRect().top ?? null;
+    setEventWorkspace(workspace);
+  };
+
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
     if (item.unread) {
       await authFetch("/api/admin/operations/inbox", {
@@ -464,9 +491,9 @@ export function AdminDashboard({
   };
 
   const availableEventWorkspaces: Array<{ id: EventWorkspace; label: string }> = [
-    ...(permissions.viewOperations ? [{ id: "events" as const, label: "events & tickets" }] : []),
+    ...(permissions.viewOperations ? [{ id: "events" as const, label: "tickets" }] : []),
     ...(permissions.manageScoring ? [{ id: "scoring" as const, label: "scoring" }] : []),
-    ...(permissions.manageContent ? [{ id: "pitches" as const, label: "pitch night" }] : []),
+    ...(permissions.manageContent ? [{ id: "pitches" as const, label: "pitches" }] : []),
   ];
   const activeEventWorkspace = availableEventWorkspaces.some(
     (workspace) => workspace.id === eventWorkspace,
@@ -590,10 +617,14 @@ export function AdminDashboard({
         <section aria-label="Events and tickets" className="space-y-10">
           {availableEventWorkspaces.length > 1 ? (
             <div
-              className="flex flex-wrap gap-x-5 gap-y-2 border-y theme-border py-3"
+              ref={eventWorkspaceNavRef}
+              className="sticky top-0 z-20 -mx-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-b theme-border bg-background px-2 py-2"
               role="tablist"
               aria-label="Event workspaces"
             >
+              <span className="mr-1 font-mono text-micro uppercase tracking-widest theme-faint">
+                workspace
+              </span>
               {availableEventWorkspaces.map((workspace) => (
                 <button
                   key={workspace.id}
@@ -601,13 +632,21 @@ export function AdminDashboard({
                   role="tab"
                   aria-selected={activeEventWorkspace === workspace.id}
                   aria-controls="event-workspace-panel"
-                  onClick={() => setEventWorkspace(workspace.id)}
-                  className={`min-h-11 border-b font-mono text-xs hover:opacity-70 ${
+                  onClick={() => handleEventWorkspaceChange(workspace.id)}
+                  className={`inline-flex min-h-11 items-center gap-2 font-mono text-xs transition-opacity hover:opacity-70 ${
                     activeEventWorkspace === workspace.id
-                      ? "theme-border-strong text-foreground"
-                      : "border-transparent theme-muted"
+                      ? "font-bold text-foreground"
+                      : "theme-subtle"
                   }`}
                 >
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      activeEventWorkspace === workspace.id
+                        ? "bg-[var(--prose-hashtag)]"
+                        : "opacity-0"
+                    }`}
+                  />
                   {workspace.label}
                 </button>
               ))}
