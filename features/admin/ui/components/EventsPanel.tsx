@@ -1985,29 +1985,31 @@ function ScanningSection({
             formEvent.preventDefault();
             if (newCheckpointName.trim()) void addCheckpoint();
           }}
-          className="admin-form-row mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]"
+          className="mt-3 grid gap-x-2 gap-y-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-start"
         >
           <Field
             label="new checkpoint"
             value={newCheckpointName}
             onChange={setNewCheckpointName}
             hint="e.g. Dinner, Welcome drink, Merch"
+            className="min-w-0"
           />
           <Field
             label="standard allowance"
             value={newCheckpointAllowance}
             onChange={setNewCheckpointAllowance}
             type="number"
+            className="min-w-0"
           />
-          <AdminFormAction>
+          <div className="sm:pt-7">
             <button
               type="submit"
               disabled={busy || !newCheckpointName.trim()}
-              className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
+              className="min-h-10 w-full rounded border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50 sm:w-auto"
             >
               add checkpoint
             </button>
-          </AdminFormAction>
+          </div>
         </form>
       </div>
     </div>

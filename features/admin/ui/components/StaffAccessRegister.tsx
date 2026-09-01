@@ -54,16 +54,16 @@ function groupAssignments(assignments: AdminStaffAssignment[]): AccessGroup[] {
 }
 
 function revokeLabel(assignment: AdminStaffAssignment) {
-  if (assignment.invitationState === "pending") return "cancel invite";
-  if (assignment.assignmentType === "station") return "turn off station";
-  return "remove role";
+  if (assignment.invitationState === "pending") return "cancel invitation";
+  if (assignment.assignmentType === "station") return "disable shared link";
+  return "remove this person";
 }
 
 function deliveryLabel(assignment: AdminStaffAssignment) {
   if (assignment.invitationDelivery === "email") return "email invite";
-  if (assignment.invitationDelivery === "copy") return "copied invite";
-  if (assignment.invitationDelivery === "direct") return "assigned directly";
-  return "shared station";
+  if (assignment.invitationDelivery === "copy") return "private invite link";
+  if (assignment.invitationDelivery === "direct") return "verified account";
+  return "shared-device link";
 }
 
 export function StaffRoleAccess({
@@ -79,6 +79,16 @@ export function StaffRoleAccess({
   const current = assignments.filter(isCurrent);
   const history = assignments.filter((assignment) => !isCurrent(assignment));
   const groups = groupAssignments(current);
+  const people = groups.filter((group) =>
+    group.assignments.every((assignment) => assignment.assignmentType === "personal"),
+  );
+  const stations = groups.filter((group) =>
+    group.assignments.some((assignment) => assignment.assignmentType === "station"),
+  );
+  const pendingPeople = people.filter((group) =>
+    group.assignments.some((assignment) => assignment.invitationState === "pending"),
+  );
+  const activePeople = people.filter((group) => !pendingPeople.includes(group));
   const hasPendingInvitation = current.some(
     (assignment) => assignment.invitationState === "pending",
   );
@@ -93,53 +103,85 @@ export function StaffRoleAccess({
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-mono text-xs text-foreground">who has this role now</p>
-        <AdminStatus tone={groups.length > 0 ? "positive" : "neutral"}>
-          {groups.length} {groups.length === 1 ? "person / station" : "people / stations"}
-        </AdminStatus>
+        <div>
+          <p className="font-mono text-xs text-foreground">current access</p>
+          <p className="mt-1 max-w-xl font-mono text-micro leading-relaxed theme-muted">
+            People have personal access tied to an email. A shared-device link is reusable and is
+            not a person.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {activePeople.length > 0 ? (
+            <AdminStatus tone="positive">
+              {activePeople.length} {activePeople.length === 1 ? "person" : "people"}
+            </AdminStatus>
+          ) : null}
+          {pendingPeople.length > 0 ? (
+            <AdminStatus tone="attention">
+              {pendingPeople.length} pending {pendingPeople.length === 1 ? "invite" : "invites"}
+            </AdminStatus>
+          ) : null}
+          {stations.length > 0 ? (
+            <AdminStatus tone="positive">
+              {stations.length} shared {stations.length === 1 ? "link" : "links"}
+            </AdminStatus>
+          ) : null}
+          {groups.length === 0 ? <AdminStatus tone="neutral">no access</AdminStatus> : null}
+        </div>
       </div>
 
       {groups.length === 0 ? (
         <p className="mt-3 font-mono text-micro theme-muted">No current access.</p>
       ) : (
         <ul className="mt-3 divide-y theme-border border-y theme-border">
-          {groups.map((group) => (
-            <li
-              key={group.key}
-              className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate font-mono text-xs text-foreground">{group.name}</p>
-                  {group.assignments.some(
-                    (assignment) => assignment.invitationState === "pending",
-                  ) ? (
-                    <AdminStatus tone="attention">invited</AdminStatus>
-                  ) : (
-                    <AdminStatus tone="positive">active</AdminStatus>
-                  )}
+          {groups.map((group) => {
+            const isStation = group.assignments.some(
+              (assignment) => assignment.assignmentType === "station",
+            );
+            const isPending = group.assignments.some(
+              (assignment) => assignment.invitationState === "pending",
+            );
+            const activeDevices = group.assignments
+              .flatMap((assignment) => assignment.devices)
+              .filter((device) => !device.revokedAt).length;
+            return (
+              <li
+                key={group.key}
+                className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-mono text-xs text-foreground">
+                      {isStation ? "shared-device link" : group.name}
+                    </p>
+                    <AdminStatus tone={isPending ? "attention" : "positive"}>
+                      {isPending ? "awaiting acceptance" : "active"}
+                    </AdminStatus>
+                  </div>
+                  {group.email && group.email !== group.name ? (
+                    <p className="mt-1 truncate font-mono text-micro theme-muted">{group.email}</p>
+                  ) : null}
+                  <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                    {isStation
+                      ? `Reusable by multiple helpers · ${activeDevices} active ${activeDevices === 1 ? "device" : "devices"} · no person or email assigned`
+                      : `${group.assignments.map(deliveryLabel).join(" · ")} · ${isPending ? "reserved for this email until accepted" : "personal access"}`}
+                  </p>
                 </div>
-                {group.email && group.email !== group.name ? (
-                  <p className="mt-1 truncate font-mono text-micro theme-muted">{group.email}</p>
-                ) : null}
-                <p className="mt-1 font-mono text-micro theme-muted">
-                  {group.assignments.map(deliveryLabel).join(" · ")}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3 sm:justify-end">
-                {group.assignments.map((assignment) => (
-                  <button
-                    key={assignment.id}
-                    type="button"
-                    onClick={() => void revoke(assignment)}
-                    className="min-h-11 font-mono text-micro underline underline-offset-4 hover:opacity-70"
-                  >
-                    {revokeLabel(assignment)}
-                  </button>
-                ))}
-              </div>
-            </li>
-          ))}
+                <div className="flex flex-wrap gap-3 sm:justify-end">
+                  {group.assignments.map((assignment) => (
+                    <button
+                      key={assignment.id}
+                      type="button"
+                      onClick={() => void revoke(assignment)}
+                      className="min-h-11 font-mono text-micro underline underline-offset-4 hover:opacity-70"
+                    >
+                      {revokeLabel(assignment)}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 

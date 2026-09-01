@@ -58,7 +58,7 @@ describe("admin events panel", () => {
         permissions: role.permissions,
         scope: {},
         invitationDelivery: "station" as const,
-        devices: [],
+        devices: [{ deviceId: "door-phone", lastSeenAt: "2026-09-01T06:00:00.000Z" }],
       },
       {
         id: "assignment-old",
@@ -110,11 +110,15 @@ describe("admin events panel", () => {
     expect(html).toContain("role &amp; access");
     expect(html).toContain("manage ↓");
     expect(accessHtml).toContain("a***@example.com");
-    expect(accessHtml).toContain("shared station");
-    expect(accessHtml).toContain("who has this role now");
+    expect(accessHtml).toContain("shared-device link");
+    expect(accessHtml).toContain("current access");
+    expect(accessHtml).toContain("Reusable by multiple helpers · 1 active device");
+    expect(accessHtml).toContain("no person or email assigned");
+    expect(accessHtml).toContain("disable shared link");
+    expect(accessHtml).toContain("remove this person");
     expect(accessHtml).toContain("recent access history · 1");
     expect(accessHtml).toContain("no longer work");
-    expect(accessHtml).toContain("cancel invite");
+    expect(accessHtml).toContain("cancel invitation");
     expect(accessHtml).toContain("older link is revoked automatically");
     expect(html).toContain("check guests in at entry");
   });

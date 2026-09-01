@@ -238,8 +238,8 @@ export function ScoringStaffPanel({
         : delivery === "direct"
           ? "Role added to the existing verified identity."
           : delivery === "copy"
-            ? "Copy this one-use invitation now. They must sign in with the invited email."
-            : "Copy this reusable station link now. It is not tied to one person.",
+            ? "Copy this private one-use invitation now. Only the named email can accept it."
+            : "Copy this reusable shared-device link now. It is not tied to a person or email.",
     );
     setCopyMessage("");
     setRecipientEmail("");
@@ -415,6 +415,12 @@ export function ScoringStaffPanel({
         {roles.map((role) => {
           const assignments = assignmentsByRole.get(role.id) ?? [];
           const active = assignments.filter(assignmentIsActive);
+          const activePeople = active.filter(
+            (assignment) => assignment.assignmentType === "personal",
+          );
+          const activeStations = active.filter(
+            (assignment) => assignment.assignmentType === "station",
+          );
           const pending = assignments.filter(
             (assignment) =>
               assignment.status === "active" && assignment.invitationState === "pending",
@@ -440,11 +446,24 @@ export function ScoringStaffPanel({
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-2">
-                  <AdminStatus tone={role.status === "active" ? "positive" : "neutral"}>
-                    {active.length} active
-                  </AdminStatus>
+                  {activePeople.length > 0 ? (
+                    <AdminStatus tone="positive">
+                      {activePeople.length} {activePeople.length === 1 ? "person" : "people"}
+                    </AdminStatus>
+                  ) : null}
+                  {activeStations.length > 0 ? (
+                    <AdminStatus tone="positive">
+                      {activeStations.length} shared{" "}
+                      {activeStations.length === 1 ? "link" : "links"}
+                    </AdminStatus>
+                  ) : null}
                   {pending.length > 0 ? (
-                    <AdminStatus tone="attention">{pending.length} pending</AdminStatus>
+                    <AdminStatus tone="attention">
+                      {pending.length} pending {pending.length === 1 ? "invite" : "invites"}
+                    </AdminStatus>
+                  ) : null}
+                  {active.length === 0 && pending.length === 0 ? (
+                    <AdminStatus tone="neutral">no access</AdminStatus>
                   ) : null}
                 </span>
                 <span className="font-mono text-xs text-foreground sm:w-16 sm:text-right">
@@ -469,10 +488,10 @@ export function ScoringStaffPanel({
                         value={delivery}
                         onValueChange={(value) => setDelivery(value as Delivery)}
                         options={[
-                          { value: "email", label: "email one-use invite" },
-                          { value: "copy", label: "copy one-use invite" },
-                          { value: "direct", label: "assign verified identity" },
-                          { value: "station", label: "shared station link" },
+                          { value: "email", label: "email a one-use invite" },
+                          { value: "copy", label: "copy a private invite link" },
+                          { value: "direct", label: "assign an existing account" },
+                          { value: "station", label: "create a shared-device link" },
                         ]}
                         variant="field"
                         ariaLabel="Invitation method"
@@ -482,7 +501,7 @@ export function ScoringStaffPanel({
                     {delivery !== "station" ? (
                       <div>
                         <label className="font-mono text-xs">
-                          email / identity
+                          {delivery === "direct" ? "verified account email" : "recipient email"}
                           <input
                             required
                             type="email"
@@ -496,11 +515,18 @@ export function ScoringStaffPanel({
                           email={recipientEmail}
                           onAcceptSuggestion={setRecipientEmail}
                         />
+                        <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+                          {delivery === "email"
+                            ? "We send a one-use link. They sign in or verify this email to accept it."
+                            : delivery === "copy"
+                              ? "The link works once and is reserved for this email. Send it privately."
+                              : "Access is added immediately. This email must already belong to a verified account."}
+                        </p>
                       </div>
                     ) : (
                       <p className="font-mono text-xs leading-relaxed theme-muted">
-                        Explicit exception: this reusable link is not tied to a person. Use it only
-                        on a supervised device.
+                        No email is needed. This reusable link can be opened by multiple helpers, so
+                        use it only on supervised shared devices. You can disable it from this role.
                       </p>
                     )}
                     <label className="font-mono text-xs">
@@ -526,10 +552,12 @@ export function ScoringStaffPanel({
                     )}
                     <button className="min-h-11 border border-foreground px-4 font-mono text-xs sm:col-span-2 sm:w-fit">
                       {delivery === "direct"
-                        ? "assign role"
+                        ? "assign account"
                         : delivery === "station"
-                          ? "create station link"
-                          : "create invitation"}
+                          ? "create shared-device link"
+                          : delivery === "copy"
+                            ? "create private invite link"
+                            : "send invitation"}
                     </button>
                   </form>
                 </div>
