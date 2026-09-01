@@ -6,7 +6,7 @@ import {
   headObject,
   listObjects,
   uploadBuffer,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
 import {
   RawPreviewUnavailableError,
   getFileKind,

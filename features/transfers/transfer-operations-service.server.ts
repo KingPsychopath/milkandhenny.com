@@ -1,0 +1,662 @@
+import { Context, Data, Effect, Layer } from "effect";
+
+import {
+  ObjectStorageService,
+  RedisService,
+  type InfrastructureError,
+} from "@/lib/platform/provider-services.server";
+import { isTransferStorageConfigured } from "@/lib/platform/r2.server";
+import { withOperationSignal } from "@/lib/platform/operation-context.server";
+import { withObjectStorageProvider } from "@/lib/platform/object-storage-provider-context.server";
+import { isSafeTransferId } from "./admin.server";
+import { getTransferFileDeleteKeys } from "./delete";
+import { getMimeType } from "@/features/media/processing.server";
+import { buildTransferProcessingCounts, type TransferProcessingCounts } from "./media-state";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "./storage";
+import {
+  appendTransferFiles,
+  createTransfer,
+  deleteTransferData,
+  getTransfer,
+  normaliseTransferTitle,
+  removeTransferFileAtomic,
+  updateTransferGrouping,
+  validateDeleteToken,
+} from "./store.server";
+import type { TransferData } from "./types";
+import type { TransferUploadFileInput } from "./upload-types";
+import {
+  createTransferUploadReservation,
+  deleteTransferUploadReservation,
+  getTransferUploadReservation,
+  transferUploadFilesFingerprint,
+} from "./upload-reservation.server";
+import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
+
+export class TransferOperationError extends Data.TaggedError("TransferOperationError")<{
+  readonly cause: unknown;
+  readonly operation: string;
+}> {}
+
+function attempt<A>(operation: string, run: (signal: AbortSignal) => Promise<A>) {
+  return Effect.tryPromise({
+    try: (signal) => withOperationSignal(signal, () => run(signal)),
+    catch: (cause) => new TransferOperationError({ cause, operation }),
+  }).pipe(
+    Effect.timeout(45_000),
+    Effect.mapError((cause) =>
+      cause instanceof TransferOperationError
+        ? cause
+        : new TransferOperationError({ cause, operation }),
+    ),
+    Effect.withSpan(`transfers.${operation}`, { attributes: { operation } }),
+  );
+}
+
+function redisCommand<A>(operation: string, run: () => Promise<A>) {
+  return attempt(`redis.${operation}`, run);
+}
+
+export type TransferCleanupResult = {
+  mode: "deep" | "index";
+  expiredIndexEntries: number;
+  scannedPrefixes: number;
+  deletedObjects: number;
+};
+
+type TransferFileCounts = {
+  images: number;
+  videos: number;
+  gifs: number;
+  audio: number;
+  other: number;
+};
+
+function countTransferFiles(files: TransferData["files"]): TransferFileCounts {
+  const counts: TransferFileCounts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
+  for (const file of files) {
+    if (file.kind === "image") counts.images += 1;
+    else if (file.kind === "video") counts.videos += 1;
+    else if (file.kind === "gif") counts.gifs += 1;
+    else if (file.kind === "audio") counts.audio += 1;
+    else counts.other += 1;
+  }
+  return counts;
+}
+
+export type TransferPresignResult =
+  | {
+      status: "ready";
+      urls: Array<{
+        name: string;
+        mediaId?: string;
+        contentType: string;
+        primaryUrl: string;
+        archivedOriginalUrl?: string;
+      }>;
+    }
+  | { status: "reservation-conflict" };
+
+export type TransferFinalizeResult =
+  | {
+      status: "completed";
+      transfer: TransferData;
+      totalSize: number;
+      fileCounts: TransferFileCounts;
+      processingCounts: TransferProcessingCounts;
+      deduplicated: boolean;
+    }
+  | { status: "missing-reservation" }
+  | { status: "reservation-mismatch" }
+  | { status: "size-mismatch"; filename: string; archivedOriginal: boolean }
+  | { status: "too-large"; actualUploadedBytes: number }
+  | { status: "transfer-conflict" };
+
+export type TransferAppendResult =
+  | {
+      status: "completed";
+      transfer: TransferData;
+      addedCount: number;
+      totalSize: number;
+      fileCounts: TransferFileCounts;
+      processingCounts: TransferProcessingCounts;
+    }
+  | { status: "missing" | "conflict" | "limit" }
+  | { status: "size-mismatch"; filename: string; archivedOriginal: boolean };
+
+export type TransferFileRemovalResult =
+  | { status: "unauthorised" }
+  | { status: "missing" }
+  | { status: "file-missing" }
+  | { status: "deleted"; deletedObjects: number }
+  | { status: "updated"; deletedObjects: number; transfer: TransferData };
+
+/** Private-transfer side effects; validation and transfer policy remain ordinary TypeScript. */
+export class TransferOperationsService extends Context.Service<
+  TransferOperationsService,
+  {
+    readonly adminDelete: (
+      id: string,
+    ) => Effect.Effect<{ deletedFiles: number; dataDeleted: boolean }, unknown>;
+    readonly cleanup: (mode: "deep" | "index") => Effect.Effect<TransferCleanupResult, unknown>;
+    readonly finalizeAppend: (input: {
+      transferId: string;
+      files: TransferUploadFileInput[];
+      maxFiles?: number;
+      maxTotalBytes?: number;
+    }) => Effect.Effect<TransferAppendResult, unknown>;
+    readonly finalizeUpload: (input: {
+      transferId: string;
+      deleteToken: string;
+      actorJti: string;
+      title?: string;
+      expiresSeconds: number;
+      files: TransferUploadFileInput[];
+      maxTotalBytes?: number;
+    }) => Effect.Effect<TransferFinalizeResult, unknown>;
+    readonly presignUpload: (input: {
+      transferId: string;
+      deleteToken: string;
+      actorJti: string;
+      expiresSeconds: number;
+      files: TransferUploadFileInput[];
+      uploadUrlTtlSeconds: number;
+    }) => Effect.Effect<TransferPresignResult, unknown>;
+    readonly presignAppend: (input: {
+      transferId: string;
+      files: TransferUploadFileInput[];
+      uploadUrlTtlSeconds: number;
+    }) => Effect.Effect<Extract<TransferPresignResult, { status: "ready" }>, unknown>;
+    readonly removeFile: (input: {
+      id: string;
+      fileId: string;
+      token: string;
+    }) => Effect.Effect<TransferFileRemovalResult, unknown>;
+    readonly nuke: Effect.Effect<
+      | { configured: false }
+      | {
+          configured: true;
+          deletedFiles: number;
+          deletedTransfers: number;
+          timestamp: string;
+        },
+      unknown
+    >;
+    readonly takedown: (input: {
+      id: string;
+      token: string;
+    }) => Effect.Effect<
+      { authorised: boolean; deletedFiles: number; dataDeleted: boolean },
+      unknown
+    >;
+  }
+>()("TransferOperationsService") {
+  static readonly layer = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const storage = yield* ObjectStorageService;
+      const redis = yield* RedisService;
+
+      const removeObjects = (id: string) =>
+        Effect.gen(function* () {
+          if (!isTransferStorageConfigured()) return 0;
+          const prefix = `transfers/${id}/`;
+          const objects = yield* storage.listObjects(prefix, { scope: "private" });
+          const keys = objects.map(({ key }) => key).filter((key) => key.startsWith(prefix));
+          return keys.length > 0 ? yield* storage.deleteObjects(keys, { scope: "private" }) : 0;
+        });
+
+      const takedown = (input: { id: string; token: string }) =>
+        Effect.gen(function* () {
+          const authorised = yield* attempt("authorise_takedown", () =>
+            validateDeleteToken(input.id, input.token),
+          );
+          if (!authorised) return { authorised: false, deletedFiles: 0, dataDeleted: false };
+          const deletedFiles = yield* removeObjects(input.id);
+          const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(input.id));
+          return { authorised: true, deletedFiles, dataDeleted };
+        }).pipe(Effect.withSpan("transfers.takedown"));
+
+      const cleanup = (mode: "deep" | "index") =>
+        Effect.gen(function* () {
+          const client = yield* redis.client;
+          if (!client) {
+            return yield* Effect.fail(
+              new TransferOperationError({
+                cause: new Error("Redis is not configured"),
+                operation: "cleanup",
+              }),
+            );
+          }
+          const indexedIds = yield* redisCommand("list_index", () =>
+            client.smembers("transfer:index"),
+          );
+          const expiredIds = yield* Effect.forEach(
+            indexedIds,
+            (id) =>
+              redisCommand("check_transfer", () => client.exists(`transfer:${id}`)).pipe(
+                Effect.map((exists) => (exists === 0 ? id : null)),
+              ),
+            { concurrency: 8 },
+          ).pipe(Effect.map((ids) => ids.filter((id): id is string => id !== null)));
+          if (expiredIds.length > 0) {
+            yield* redisCommand("prune_index", async () => {
+              const pipeline = client.pipeline();
+              expiredIds.forEach((id) => pipeline.srem("transfer:index", id));
+              await pipeline.exec();
+            });
+          }
+          if (mode === "index") {
+            return {
+              mode,
+              expiredIndexEntries: expiredIds.length,
+              scannedPrefixes: 0,
+              deletedObjects: 0,
+            };
+          }
+
+          const prefixes = yield* storage.listPrefixes("transfers/", { scope: "private" });
+          const ids = prefixes
+            .map((prefix) => prefix.replace("transfers/", "").replace(/\/$/, ""))
+            .filter(Boolean);
+          const orphanIds = yield* Effect.forEach(
+            ids,
+            (id) =>
+              redisCommand("check_orphan", () => client.exists(`transfer:${id}`)).pipe(
+                Effect.map((exists) => (exists === 0 ? id : null)),
+              ),
+            { concurrency: 8 },
+          ).pipe(Effect.map((values) => values.filter((id): id is string => id !== null)));
+          const deleted = yield* Effect.forEach(
+            orphanIds,
+            (id) =>
+              removeObjects(id).pipe(
+                Effect.tap(() =>
+                  redisCommand("prune_orphan", () => client.srem("transfer:index", id)),
+                ),
+              ),
+            { concurrency: 2 },
+          );
+          return {
+            mode,
+            expiredIndexEntries: expiredIds.length,
+            scannedPrefixes: ids.length,
+            deletedObjects: deleted.reduce((sum, count) => sum + count, 0),
+          };
+        }).pipe(Effect.withSpan("transfers.cleanup", { attributes: { mode } }));
+
+      const completed = (transfer: TransferData, deduplicated: boolean): TransferFinalizeResult => {
+        return {
+          status: "completed",
+          transfer,
+          totalSize: transfer.files.reduce((sum, file) => sum + (file.storedBytes ?? file.size), 0),
+          fileCounts: countTransferFiles(transfer.files),
+          processingCounts: buildTransferProcessingCounts(transfer.files),
+          deduplicated,
+        };
+      };
+
+      const findCompleted = (transferId: string, deleteToken: string) =>
+        Effect.gen(function* () {
+          const existing = yield* attempt("read_existing", () => getTransfer(transferId));
+          if (!existing) return null;
+          const authorised = yield* attempt("authorise_existing", () =>
+            validateDeleteToken(transferId, deleteToken),
+          );
+          return authorised ? completed(existing, true) : null;
+        });
+
+      const presignFiles = (
+        transferId: string,
+        files: TransferUploadFileInput[],
+        uploadUrlTtlSeconds: number,
+      ) =>
+        Effect.forEach(
+          files,
+          (file) => {
+            const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
+            const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+            return Effect.all(
+              {
+                primaryUrl: storage.presignPutUrl(
+                  primaryKey,
+                  getMimeType(file.name),
+                  uploadUrlTtlSeconds,
+                  { scope: "private" },
+                ),
+                archivedOriginalUrl:
+                  archivedOriginalKey && file.originalName
+                    ? storage.presignPutUrl(
+                        archivedOriginalKey,
+                        getMimeType(file.originalName),
+                        uploadUrlTtlSeconds,
+                        { scope: "private" },
+                      )
+                    : Effect.succeed(undefined),
+              },
+              { concurrency: 2 },
+            ).pipe(
+              Effect.map(({ primaryUrl, archivedOriginalUrl }) => ({
+                name: file.name,
+                mediaId: file.mediaId,
+                contentType: getMimeType(file.name),
+                primaryUrl,
+                archivedOriginalUrl,
+              })),
+            );
+          },
+          { concurrency: 4 },
+        );
+
+      const inspectUploadedFiles = (transferId: string, files: TransferUploadFileInput[]) =>
+        Effect.forEach(
+          files,
+          (file) =>
+            Effect.gen(function* () {
+              const primary = yield* storage.headObject(
+                buildTransferPrimaryStorageKey(transferId, file),
+                { scope: "private" },
+              );
+              if (!primary.exists || primary.size !== file.size) {
+                return {
+                  mismatch: { filename: file.name, archivedOriginal: false },
+                  bytes: 0,
+                };
+              }
+              const archivedKey = buildTransferArchivedOriginalStorageKey(transferId, file);
+              if (!archivedKey) return { mismatch: null, bytes: primary.size };
+              const archived = yield* storage.headObject(archivedKey, { scope: "private" });
+              if (!archived.exists || archived.size !== file.originalSize) {
+                return {
+                  mismatch: { filename: file.name, archivedOriginal: true },
+                  bytes: primary.size,
+                };
+              }
+              return { mismatch: null, bytes: primary.size + (archived.size ?? 0) };
+            }),
+          { concurrency: 2 },
+        );
+
+      const processFiles = (transferId: string, files: TransferUploadFileInput[]) =>
+        Effect.forEach(
+          files,
+          (file) =>
+            attempt("process_uploaded_file", () =>
+              withObjectStorageProvider(storage.port, () => processUploadedFile(file, transferId)),
+            ).pipe(
+              Effect.map((result) => ({
+                ...result,
+                file: {
+                  ...result.file,
+                  storedBytes: file.size + (file.originalSize ?? 0),
+                },
+              })),
+            ),
+          { concurrency: 2 },
+        );
+
+      const presignUpload = (input: {
+        transferId: string;
+        deleteToken: string;
+        actorJti: string;
+        expiresSeconds: number;
+        files: TransferUploadFileInput[];
+        uploadUrlTtlSeconds: number;
+      }) =>
+        Effect.gen(function* () {
+          const reserved = yield* attempt("reserve_upload", () =>
+            createTransferUploadReservation({
+              transferId: input.transferId,
+              deleteToken: input.deleteToken,
+              actorJti: input.actorJti,
+              expiresSeconds: input.expiresSeconds,
+              filesFingerprint: transferUploadFilesFingerprint(input.files),
+              createdAt: new Date().toISOString(),
+            }),
+          );
+          if (!reserved) return { status: "reservation-conflict" } as const;
+
+          return yield* presignFiles(input.transferId, input.files, input.uploadUrlTtlSeconds).pipe(
+            Effect.map((urls) => ({ status: "ready", urls }) as const),
+            Effect.tapError(() =>
+              attempt("release_failed_reservation", () =>
+                deleteTransferUploadReservation(input.transferId),
+              ).pipe(Effect.catch(() => Effect.void)),
+            ),
+            Effect.withSpan("transfers.presign_upload", {
+              attributes: { fileCount: input.files.length },
+            }),
+          );
+        });
+
+      const finalizeUpload = (input: {
+        transferId: string;
+        deleteToken: string;
+        actorJti: string;
+        title?: string;
+        expiresSeconds: number;
+        files: TransferUploadFileInput[];
+        maxTotalBytes?: number;
+      }) =>
+        Effect.gen(function* () {
+          const reservation = yield* attempt("read_reservation", () =>
+            getTransferUploadReservation(input.transferId),
+          );
+          if (!reservation) {
+            return (
+              (yield* findCompleted(input.transferId, input.deleteToken)) ??
+              ({
+                status: "missing-reservation",
+              } as const)
+            );
+          }
+          if (
+            reservation.actorJti !== input.actorJti ||
+            reservation.deleteToken !== input.deleteToken ||
+            reservation.expiresSeconds !== input.expiresSeconds ||
+            reservation.filesFingerprint !== transferUploadFilesFingerprint(input.files)
+          ) {
+            return { status: "reservation-mismatch" } as const;
+          }
+
+          const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
+          const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
+          if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
+          const actualUploadedBytes = inspected.reduce((sum, entry) => sum + entry.bytes, 0);
+          if (input.maxTotalBytes !== undefined && actualUploadedBytes > input.maxTotalBytes) {
+            return { status: "too-large", actualUploadedBytes } as const;
+          }
+
+          const results = yield* processFiles(input.transferId, input.files);
+          const grouped = applyTransferAssetGroups(
+            sortTransferFiles(results.map(({ file }) => file)),
+          );
+          const now = new Date();
+          const transfer: TransferData = {
+            id: input.transferId,
+            title: normaliseTransferTitle(input.title),
+            files: grouped.files,
+            groups: grouped.groups,
+            createdAt: now.toISOString(),
+            expiresAt: new Date(now.getTime() + input.expiresSeconds * 1000).toISOString(),
+            deleteToken: input.deleteToken,
+          };
+          const created = yield* attempt("create_transfer", () =>
+            createTransfer(transfer, input.expiresSeconds),
+          );
+          if (!created) {
+            return (
+              (yield* findCompleted(input.transferId, input.deleteToken)) ??
+              ({
+                status: "transfer-conflict",
+              } as const)
+            );
+          }
+          yield* attempt("release_reservation", () =>
+            deleteTransferUploadReservation(input.transferId),
+          ).pipe(Effect.catch(() => Effect.void));
+          const result = completed(transfer, false);
+          if (result.status !== "completed") return result;
+          return {
+            ...result,
+            totalSize: results.reduce((sum, entry) => sum + entry.uploadedBytes, 0),
+          };
+        }).pipe(
+          Effect.timeout(5 * 60_000),
+          Effect.withSpan("transfers.finalize_upload", {
+            attributes: { fileCount: input.files.length },
+          }),
+        );
+
+      const presignAppend = (input: {
+        transferId: string;
+        files: TransferUploadFileInput[];
+        uploadUrlTtlSeconds: number;
+      }) =>
+        presignFiles(input.transferId, input.files, input.uploadUrlTtlSeconds).pipe(
+          Effect.map((urls) => ({ status: "ready", urls }) as const),
+          Effect.withSpan("transfers.presign_append", {
+            attributes: { fileCount: input.files.length },
+          }),
+        );
+
+      const finalizeAppend = (input: {
+        transferId: string;
+        files: TransferUploadFileInput[];
+        maxFiles?: number;
+        maxTotalBytes?: number;
+      }) =>
+        Effect.gen(function* () {
+          const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
+          const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
+          if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
+
+          const results = yield* processFiles(input.transferId, input.files);
+          const appended = yield* attempt("append_files", () =>
+            appendTransferFiles(
+              input.transferId,
+              results.map(({ file }) => file),
+              { maxFiles: input.maxFiles, maxTotalBytes: input.maxTotalBytes },
+            ),
+          );
+          if (appended.status !== "updated") return { status: appended.status } as const;
+
+          let latest = appended.transfer;
+          for (let groupingAttempt = 0; groupingAttempt < 3; groupingAttempt += 1) {
+            const grouped = applyTransferAssetGroups(sortTransferFiles(latest.files));
+            const updated = yield* attempt("group_appended_files", () =>
+              updateTransferGrouping(input.transferId, grouped.files, grouped.groups),
+            );
+            if (updated) break;
+            const refreshed = yield* attempt("refresh_appended_files", () =>
+              getTransfer(input.transferId),
+            );
+            if (!refreshed) return { status: "missing" } as const;
+            latest = refreshed;
+          }
+          const transfer =
+            (yield* attempt("read_appended_transfer", () => getTransfer(input.transferId))) ??
+            latest;
+          const files = results.map(({ file }) => file);
+          return {
+            status: "completed",
+            transfer,
+            addedCount: results.length,
+            totalSize: results.reduce((sum, result) => sum + result.uploadedBytes, 0),
+            fileCounts: countTransferFiles(files),
+            processingCounts: buildTransferProcessingCounts(files),
+          } as const;
+        }).pipe(
+          Effect.timeout(5 * 60_000),
+          Effect.withSpan("transfers.finalize_append", {
+            attributes: { fileCount: input.files.length },
+          }),
+        );
+
+      const removeFile = (input: { id: string; fileId: string; token: string }) =>
+        Effect.gen(function* () {
+          const authorised = yield* attempt("authorise_file_removal", () =>
+            validateDeleteToken(input.id, input.token),
+          );
+          if (!authorised) return { status: "unauthorised" } as const;
+          const transfer = yield* attempt("read_file_removal", () => getTransfer(input.id));
+          if (!transfer) return { status: "missing" } as const;
+          const file = transfer.files.find(({ id }) => id === input.fileId);
+          if (!file) return { status: "file-missing" } as const;
+
+          const keys = isTransferStorageConfigured()
+            ? getTransferFileDeleteKeys(input.id, file)
+            : [];
+          let deletedObjects =
+            keys.length > 0 ? yield* storage.deleteObjects(keys, { scope: "private" }) : 0;
+          const removal = yield* attempt("remove_file_metadata", () =>
+            removeTransferFileAtomic(input.id, input.fileId),
+          );
+          if (removal.status === "deleted") {
+            return { status: "deleted", deletedObjects } as const;
+          }
+          if ("transfer" in removal) {
+            if (keys.length > 0) {
+              deletedObjects += yield* storage.deleteObjects(keys, { scope: "private" });
+            }
+            return { status: "updated", deletedObjects, transfer: removal.transfer } as const;
+          }
+          if (removal.status === "missing") return { status: "missing" } as const;
+          return { status: "file-missing" } as const;
+        }).pipe(Effect.withSpan("transfers.remove_file"));
+
+      const nuke = Effect.gen(function* () {
+        const client = yield* redis.client;
+        if (!client || !isTransferStorageConfigured()) {
+          return { configured: false } as const;
+        }
+        const objects = yield* storage.listObjects("transfers/", { scope: "private" });
+        const keys = objects.map(({ key }) => key).filter((key) => key.startsWith("transfers/"));
+        const deletedFiles =
+          keys.length > 0 ? yield* storage.deleteObjects(keys, { scope: "private" }) : 0;
+        const indexedIds = yield* redisCommand("nuke_list", () =>
+          client.smembers("transfer:index"),
+        );
+        yield* redisCommand("nuke_metadata", async () => {
+          const pipeline = client.pipeline();
+          indexedIds.forEach((id) => pipeline.del(`transfer:${id}`));
+          pipeline.del("transfer:index");
+          await pipeline.exec();
+        });
+        return {
+          configured: true,
+          deletedFiles,
+          deletedTransfers: indexedIds.length,
+          timestamp: new Date().toISOString(),
+        };
+      }).pipe(Effect.withSpan("transfers.nuke"));
+
+      return {
+        adminDelete: (id) =>
+          Effect.gen(function* () {
+            if (!isSafeTransferId(id)) {
+              return yield* Effect.fail(
+                new TransferOperationError({
+                  cause: new Error("Invalid transfer id"),
+                  operation: "admin_delete",
+                }),
+              );
+            }
+            const deletedFiles = yield* removeObjects(id);
+            const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(id));
+            return { deletedFiles, dataDeleted };
+          }),
+        cleanup,
+        finalizeAppend,
+        finalizeUpload,
+        nuke,
+        presignAppend,
+        presignUpload,
+        removeFile,
+        takedown,
+      };
+    }),
+  );
+}
+
+export type TransferOperationsFailure = InfrastructureError | TransferOperationError;

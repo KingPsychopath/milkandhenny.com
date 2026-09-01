@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 
+import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { getEvent } from "@/features/events/store.server";
 import {
   isValidScannerToken,
@@ -20,19 +23,13 @@ import {
   listGuestRequests,
   listGuestRequestsForToken,
 } from "./guest-requests.server";
-import { issueTickets } from "./tickets.server";
-import {
-  checkpointScan,
-  getCheckpoint,
-  getCheckpointSummaries,
-  listCheckpointUsage,
-  undoCheckpointUse,
-} from "./checkpoints.server";
+import { getCheckpoint, getCheckpointSummaries, listCheckpointUsage } from "./checkpoints.server";
 import { checkpointAllowanceFor } from "./checkpoint-types";
 import { recordScannerDevice, resolveScannerLink } from "./scanner-links.server";
 import { listTicketsForEvent } from "./store.server";
 import { getDoorDataFn } from "./tickets.functions";
 import type { DoorDataResult } from "./tickets.functions";
+import { TicketsService } from "./tickets-service.server";
 import { ticketPublicId } from "./types";
 
 /**
@@ -222,13 +219,18 @@ export const checkpointScanFn = createServerFn({ method: "POST" })
     const auth = await authoriseCheckpoint(data.token, data.eventSlug, data.checkpointId);
     if (!auth.ok) return { authorised: false };
 
-    const outcome = await checkpointScan({
-      scanned: data.scanned,
-      eventSlug: data.eventSlug,
-      checkpointId: data.checkpointId,
-      consume: data.consume,
-      scannedBy: auth.scannedBy,
-    });
+    const outcome = await runEventsEffect(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.checkpointScan({
+          scanned: data.scanned,
+          eventSlug: data.eventSlug,
+          checkpointId: data.checkpointId,
+          consume: data.consume,
+          scannedBy: auth.scannedBy,
+        });
+      }),
+    );
     return { authorised: true, outcome };
   });
 
@@ -261,16 +263,21 @@ export const guestSubmitFn = createServerFn({ method: "POST" })
       if (!ticketTypeId) {
         return { authorised: true, ok: false, error: "No ticket type to issue against" };
       }
-      const issued = await issueTickets({
-        eventSlug: link.eventSlug,
-        ticketTypeId,
-        holderName: name,
-        quantity: 1,
-        kind: "comp",
-        notes: `added at the door by ${link.label}`,
-        bypassSalesWindow: true,
-        bypassCapacity: true,
-      });
+      const issued = await runEventsEffect(
+        Effect.gen(function* () {
+          const tickets = yield* TicketsService;
+          return yield* tickets.issue({
+            eventSlug: link.eventSlug,
+            ticketTypeId,
+            holderName: name,
+            quantity: 1,
+            kind: "comp",
+            notes: `added at the door by ${link.label}`,
+            bypassSalesWindow: true,
+            bypassCapacity: true,
+          });
+        }),
+      );
       if (!issued.ok) return { authorised: true, ok: false, error: issued.error };
       return { authorised: true, ok: true, mode: "added", holderName: name };
     }
@@ -354,11 +361,16 @@ export const checkpointUndoFn = createServerFn({ method: "POST" })
     const auth = await authoriseCheckpoint(data.token, data.eventSlug, data.checkpointId);
     if (!auth.ok) return { authorised: false };
 
-    const result = await undoCheckpointUse({
-      eventSlug: data.eventSlug,
-      checkpointId: data.checkpointId,
-      ticketId: data.ticketId,
-    });
+    const result = await runEventsEffect(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.undoCheckpointUse({
+          eventSlug: data.eventSlug,
+          checkpointId: data.checkpointId,
+          ticketId: data.ticketId,
+        });
+      }),
+    );
     if (!result.ok) return { authorised: true, ok: false, error: result.error };
     return { authorised: true, ok: true, used: result.value.used };
   });

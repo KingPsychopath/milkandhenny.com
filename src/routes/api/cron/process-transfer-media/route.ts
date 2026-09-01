@@ -1,8 +1,9 @@
+import { Effect } from "effect";
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
+import { MediaWorkerService, runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin.server";
-import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -61,7 +62,13 @@ async function handlePOST(request: Request) {
   const startedAtMs = Date.now();
 
   try {
-    const result = await reconcileTransferMedia();
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const media = yield* MediaWorkerService;
+        return yield* media.reconcile;
+      }),
+      request.signal,
+    );
     log.info("cron.transfers.process-media", "Reconcile sweep finished", {
       ...result,
       durationMs: Date.now() - startedAtMs,

@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
-import { subscribeToScoreEvents } from "@/features/event-scoring/score-events.server";
 import { openedTicketForReference } from "@/features/event-scoring/session.server";
+import { EventsRealtimeService } from "@/features/events/events-resources.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 const KEEPALIVE_INTERVAL_MS = 25_000;
@@ -44,14 +46,20 @@ async function handleGET(request: Request, ticketId: string) {
         };
         request.signal.addEventListener("abort", cleanup, { once: true });
         try {
-          unsubscribe = await subscribeToScoreEvents(
-            access.eventSlug,
-            access.participantId,
-            (event) => {
-              send(
-                `id: ${event.transactionId}\nevent: score\ndata: ${JSON.stringify({ transactionId: event.transactionId })}\n\n`,
+          unsubscribe = await runEventsEffect(
+            Effect.gen(function* () {
+              const realtime = yield* EventsRealtimeService;
+              return yield* realtime.subscribeScore(
+                access.eventSlug,
+                access.participantId,
+                (event) => {
+                  send(
+                    `id: ${event.transactionId}\nevent: score\ndata: ${JSON.stringify({ transactionId: event.transactionId })}\n\n`,
+                  );
+                },
               );
-            },
+            }),
+            request.signal,
           );
         } catch {
           send("event: unavailable\ndata: {}\n\n");

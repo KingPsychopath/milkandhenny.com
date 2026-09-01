@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { Effect } from "effect";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 import { expandDueCommunicationStages } from "@/features/communications/communication-plans.server";
 import { enqueueEmail, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
-import { describeScheduledJobs, runLeasedScheduledJob } from "@/lib/platform/scheduled-jobs.server";
+import {
+  describeScheduledJobs,
+  runLeasedScheduledJob,
+  runLeasedScheduledJobEffect,
+} from "@/lib/platform/scheduled-jobs.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -104,6 +109,27 @@ describeWithDatabase("application scheduler (postgres)", () => {
         run: () => Promise.resolve(1),
       }),
     ).resolves.toMatchObject({ ran: true, value: 1 });
+  });
+
+  it("records Effect failures and releases the durable lease", async () => {
+    await expect(
+      Effect.runPromise(
+        runLeasedScheduledJobEffect({
+          jobKey: "test-effect-failure",
+          intervalMs: 60_000,
+          retryMs: 1_000,
+          leaseMs: 30_000,
+          run: Effect.fail(new Error("effect failure")),
+        }),
+      ),
+    ).rejects.toThrow("effect failure");
+
+    const [failed] = await describeScheduledJobs();
+    expect(failed).toMatchObject({
+      jobKey: "test-effect-failure",
+      failureCount: 1,
+      leaseUntil: null,
+    });
   });
 
   it("resumes an interrupted communication fan-out without losing or duplicating recipients", async () => {

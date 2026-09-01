@@ -5,7 +5,7 @@ import { getEvent } from "@/features/events/store.server";
 import { sendRefundEmail, sendTicketEmail } from "@/features/tickets/email.server";
 import { listTicketsForOrder, updateTicketOrderEmail } from "@/features/tickets/store.server";
 import { assessEmailAddress, normaliseEmail } from "@/lib/shared/email-address";
-import { drainEmailOutbox, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
+import { hashEmailRecipient, wakeEmailOutbox } from "@/lib/platform/email-outbox.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { isDatabaseConfigured, query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
@@ -450,7 +450,7 @@ export async function retryEmailNow(id: string): Promise<void> {
       409,
       "Only a queued message with retained content can be retried",
     );
-  await drainEmailOutbox();
+  wakeEmailOutbox();
 }
 
 export async function cancelQueuedEmail(id: string): Promise<void> {

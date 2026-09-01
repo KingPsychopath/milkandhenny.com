@@ -1,26 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { runEventsResult } from "@/features/events/events-runtime.server";
+import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
-import { getEvent } from "@/features/events/store.server";
-import {
-  cancelAdminTicketInvitation,
-  createAdminTicketInvitation,
-  listAdminTicketInvitations,
-  resendAdminTicketInvitation,
-} from "@/features/attendee-operations/ticket-operations.server";
-import { refundTicket } from "@/features/tickets/checkout.server";
-import { beginTicketExchange } from "@/features/tickets/exchange.server";
-import { sendTicketEmail } from "@/features/tickets/email.server";
-import { listTicketsForOrder, updateTicketHolder } from "@/features/tickets/store.server";
-import {
-  getTicket,
-  issueTickets,
-  redeemTicket,
-  unredeemTicket,
-  voidTicket,
-} from "@/features/tickets/tickets.server";
+import { listAdminTicketInvitations } from "@/features/attendee-operations/ticket-operations.server";
+import { updateTicketHolder } from "@/features/tickets/store.server";
+import { getTicket } from "@/features/tickets/tickets.server";
 import { isValidTicketId } from "@/features/tickets/types";
 import { isValidEmail } from "@/lib/shared/email-address";
 
@@ -51,6 +41,42 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function runTicket<A, E>(
+  request: Request,
+  use: (tickets: typeof TicketsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsResult(
+    Effect.gen(function* () {
+      return yield* use(yield* TicketsService);
+    }),
+    request.signal,
+  );
+}
+
+function runAttendee<A, E>(
+  request: Request,
+  use: (operations: typeof AttendeeOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsResult(
+    Effect.gen(function* () {
+      return yield* use(yield* AttendeeOperationsService);
+    }),
+    request.signal,
+  );
+}
+
+function runOperation<A, E>(
+  request: Request,
+  use: (operations: typeof EventOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsResult(
+    Effect.gen(function* () {
+      return yield* use(yield* EventOperationsService);
+    }),
+    request.signal,
+  );
+}
+
 async function handlePOST(request: Request, slug: string) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
@@ -78,31 +104,28 @@ async function handlePOST(request: Request, slug: string) {
             { status: 400 },
           );
         }
-        const issued = await issueTickets({
-          eventSlug: slug,
-          ticketTypeId,
-          holderName,
-          email,
-          quantity: 1,
-          kind: "comp",
-          bypassSalesWindow: true,
-          bypassCapacity: body.overrideCapacity === true,
-        });
-        if (!issued.ok) return Response.json({ error: issued.error }, { status: issued.status });
-        const ticket = issued.value.tickets[0];
-        const invitation = await createAdminTicketInvitation({
-          eventSlug: slug,
-          ticketId: ticket.id,
-          recipientEmail: email,
-          actorType,
-          actorId,
-          origin: getBaseUrlForRequest(request),
-        });
-        if (!invitation.ok) {
-          await voidTicket(ticket.id);
-          return Response.json({ error: invitation.error }, { status: invitation.status });
+        const invitationOutcome = await runOperation(request, (operations) =>
+          operations.inviteTicket({
+            eventSlug: slug,
+            holderName,
+            email,
+            ticketTypeId,
+            bypassCapacity: body.overrideCapacity === true,
+            actorType,
+            actorId,
+            origin: getBaseUrlForRequest(request),
+          }),
+        );
+        if (!invitationOutcome.ok) {
+          return Response.json(
+            { error: invitationOutcome.error },
+            { status: invitationOutcome.status },
+          );
         }
-        return Response.json({ ok: true, ticketId: ticket.id, ...invitation.value });
+        const invitation = invitationOutcome.value;
+        if (!invitation.ok)
+          return Response.json({ error: invitation.error }, { status: invitation.status });
+        return Response.json({ ok: true, ...invitation.value });
       }
 
       case "cancel-invitation": {
@@ -112,12 +135,11 @@ async function handlePOST(request: Request, slug: string) {
         if (!invitationId) {
           return Response.json({ error: "Invitation not found" }, { status: 400 });
         }
-        const result = await cancelAdminTicketInvitation({
-          eventSlug: slug,
-          invitationId,
-          actorType,
-          actorId,
-        });
+        const outcome = await runAttendee(request, (operations) =>
+          operations.cancelInvitation({ eventSlug: slug, invitationId, actorType, actorId }),
+        );
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({ ok: true });
       }
@@ -127,13 +149,17 @@ async function handlePOST(request: Request, slug: string) {
         if (!invitationId) {
           return Response.json({ error: "Invitation not found" }, { status: 400 });
         }
-        const result = await resendAdminTicketInvitation({
-          eventSlug: slug,
-          invitationId,
-          actorType,
-          actorId,
-          origin: getBaseUrlForRequest(request),
-        });
+        const outcome = await runAttendee(request, (operations) =>
+          operations.resendInvitation({
+            eventSlug: slug,
+            invitationId,
+            actorType,
+            actorId,
+            origin: getBaseUrlForRequest(request),
+          }),
+        );
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({ ok: true, ...result.value });
       }
@@ -146,37 +172,34 @@ async function handlePOST(request: Request, slug: string) {
           return Response.json({ error: "A name and ticket type are required" }, { status: 400 });
         }
 
-        const issued = await issueTickets({
-          eventSlug: slug,
-          ticketTypeId,
-          holderName,
-          email: asString(body.email),
-          quantity,
-          kind: "comp",
-          notes: asString(body.notes),
-          // Door staff may issue outside the public sales window. Exceeding
-          // capacity remains a separate, explicit operator decision.
-          bypassSalesWindow: true,
-          bypassCapacity: body.overrideCapacity === true,
-        });
+        const issueOutcome = await runOperation(request, (operations) =>
+          operations.issueComp({
+            issue: {
+              eventSlug: slug,
+              ticketTypeId,
+              holderName,
+              email: asString(body.email),
+              quantity,
+              kind: "comp",
+              notes: asString(body.notes),
+              // Door staff may issue outside the public sales window. Exceeding
+              // capacity remains a separate, explicit operator decision.
+              bypassSalesWindow: true,
+              bypassCapacity: body.overrideCapacity === true,
+            },
+            notify: body.sendEmail !== false,
+            origin: getBaseUrlForRequest(request),
+          }),
+        );
+        if (!issueOutcome.ok)
+          return Response.json({ error: issueOutcome.error }, { status: issueOutcome.status });
+        const issued = issueOutcome.value;
         if (!issued.ok) return Response.json({ error: issued.error }, { status: issued.status });
 
-        let emailQueued = false;
-        if (body.sendEmail !== false && issued.value.tickets.some((ticket) => ticket.email)) {
-          const delivery = await sendTicketEmail({
-            event: issued.value.event,
-            tickets: issued.value.tickets,
-            origin: getBaseUrlForRequest(request),
-            idempotencyKey: `tickets:issued:${issued.value.orderId}`,
-            kind: "ticket-issued",
-            source: "admin",
-          });
-          emailQueued = delivery.queued;
-        }
         return Response.json({
           ok: true,
-          ticketIds: issued.value.tickets.map((ticket) => ticket.id),
-          emailQueued,
+          ticketIds: issued.value.ticketIds,
+          emailQueued: issued.value.emailQueued,
         });
       }
 
@@ -185,38 +208,19 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticketId || !isValidTicketId(ticketId)) {
           return Response.json({ error: "Unknown ticket" }, { status: 400 });
         }
-        const ticket = await getTicket(ticketId);
-        if (!ticket || ticket.eventSlug !== slug) {
-          return Response.json({ error: "Ticket not found" }, { status: 404 });
-        }
-        const [event, orderTickets] = await Promise.all([
-          getEvent(slug),
-          listTicketsForOrder(ticket.orderId),
-        ]);
-        if (!event) return Response.json({ error: "Event not found" }, { status: 404 });
-
-        const live = orderTickets.filter((entry) => entry.status === "valid");
-        if (live.length === 0) {
-          return Response.json({ error: "No live tickets on this order" }, { status: 409 });
-        }
-        const delivery = await sendTicketEmail({
-          event,
-          tickets: live,
-          origin: getBaseUrlForRequest(request),
-          idempotencyKey: `tickets:admin-resend:${ticket.orderId}:${Math.floor(Date.now() / 60_000)}`,
-          kind: "ticket-resend",
-          source: "admin",
-        });
-        if (!delivery.queued) {
-          return Response.json(
-            { error: delivery.error ?? "Email failed to send" },
-            { status: 502 },
-          );
-        }
+        const outcome = await runOperation(request, (operations) =>
+          operations.resendTicketOrder({
+            eventSlug: slug,
+            ticketId,
+            origin: getBaseUrlForRequest(request),
+          }),
+        );
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({
           ok: true,
-          queued: delivery.alreadyRequested ? 0 : live.length,
-          alreadyRequested: delivery.alreadyRequested === true,
+          ...result.value,
         });
       }
 
@@ -232,11 +236,19 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticket || ticket.eventSlug !== slug) {
           return Response.json({ error: "Ticket not found" }, { status: 404 });
         }
-        const result = await refundTicket({
-          ticketId,
-          reason: "admin",
-          actorId: auth.actorId ?? "root-owner",
-        });
+        const outcome = await runEventsResult(
+          Effect.gen(function* () {
+            const operations = yield* EventOperationsService;
+            return yield* operations.refundTicket({
+              ticketId,
+              reason: "admin",
+              actorId: auth.actorId ?? "root-owner",
+            });
+          }),
+          request.signal,
+        );
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({
           ok: true,
@@ -262,12 +274,20 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticket || ticket.eventSlug !== slug) {
           return Response.json({ error: "Ticket not found" }, { status: 404 });
         }
-        const result = await beginTicketExchange({
-          ticketId,
-          targetTicketTypeId,
-          actorType: "admin",
-          origin: getBaseUrlForRequest(request),
-        });
+        const outcome = await runEventsResult(
+          Effect.gen(function* () {
+            const operations = yield* EventOperationsService;
+            return yield* operations.startExchange({
+              ticketId,
+              targetTicketTypeId,
+              actorType: "admin",
+              origin: getBaseUrlForRequest(request),
+            });
+          }),
+          request.signal,
+        );
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({ ok: true, ...result.value });
       }
@@ -284,7 +304,9 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticket || ticket.eventSlug !== slug) {
           return Response.json({ error: "Ticket not found" }, { status: 404 });
         }
-        const result = await voidTicket(ticketId);
+        const outcome = await runTicket(request, (tickets) => tickets.void(ticketId));
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({ ok: true });
       }
@@ -298,7 +320,9 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticket || ticket.eventSlug !== slug) {
           return Response.json({ error: "Ticket not found" }, { status: 404 });
         }
-        const result = await unredeemTicket(ticketId);
+        const outcome = await runTicket(request, (tickets) => tickets.unredeem(ticketId));
+        if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+        const result = outcome.value;
         if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
         return Response.json({ ok: true });
       }
@@ -338,12 +362,15 @@ async function handlePOST(request: Request, slug: string) {
         if (!ticketId || !isValidTicketId(ticketId)) {
           return Response.json({ error: "Unknown ticket" }, { status: 400 });
         }
-        const outcome = await redeemTicket({
-          scanned: ticketId,
-          eventSlug: slug,
-          redeemedBy: "admin",
-        });
-        return Response.json({ ok: outcome.result === "admitted", outcome });
+        const result = await runTicket(request, (tickets) =>
+          tickets.redeem({
+            scanned: ticketId,
+            eventSlug: slug,
+            redeemedBy: "admin",
+          }),
+        );
+        if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+        return Response.json({ ok: result.value.result === "admitted", outcome: result.value });
       }
 
       default:

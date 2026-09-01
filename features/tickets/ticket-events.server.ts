@@ -1,7 +1,7 @@
 import type { Notification, PoolClient } from "pg";
 
 import { log } from "@/lib/platform/logger.server";
-import { getPool, query } from "@/lib/platform/postgres.server";
+import { getPool, query } from "@/lib/platform/postgres-provider-context.server";
 import {
   parseTicketRealtimeEvent,
   TICKET_REALTIME_CHANNEL,
@@ -12,6 +12,8 @@ type Listener = (event: TicketRealtimeEvent) => void;
 const listeners = new Map<string, Set<Listener>>();
 let subscriber: PoolClient | null = null;
 let connecting: Promise<void> | null = null;
+let reconnectWake: (() => void) | null = null;
+let closing = false;
 
 function key(eventSlug: string, ticketId: string) {
   return `${eventSlug}:${ticketId}`;
@@ -29,6 +31,21 @@ function notification(message: Notification) {
   }
 }
 
+function listenerCount(): number {
+  return [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0);
+}
+
+function scheduleReconnect(): void {
+  if (!closing && listenerCount() > 0) reconnectWake?.();
+}
+
+function releaseSubscriber(client: PoolClient): void {
+  if (subscriber !== client) return;
+  subscriber = null;
+  client.release(true);
+  scheduleReconnect();
+}
+
 async function ensureSubscriber() {
   if (subscriber) return;
   if (connecting) return connecting;
@@ -41,11 +58,16 @@ async function ensureSubscriber() {
       log.warn("tickets.realtime", "Ticket event subscriber connection failed", {
         error: error.message,
       });
-      if (subscriber === client) subscriber = null;
-      client.release(true);
+      releaseSubscriber(client);
     });
-    await client.query(`listen ${TICKET_REALTIME_CHANNEL}`);
-    subscriber = client;
+    client.once("end", () => releaseSubscriber(client));
+    try {
+      await client.query(`listen ${TICKET_REALTIME_CHANNEL}`);
+      subscriber = client;
+    } catch (error) {
+      client.release(true);
+      throw error;
+    }
   })();
   try {
     await connecting;
@@ -63,6 +85,7 @@ export async function subscribeToTicketEvents(
   ticketId: string,
   listener: Listener,
 ): Promise<() => void> {
+  closing = false;
   const subscriptionKey = key(eventSlug, ticketId);
   const current = listeners.get(subscriptionKey) ?? new Set<Listener>();
   current.add(listener);
@@ -81,6 +104,7 @@ export async function subscribeToTicketEvents(
 }
 
 export async function closeTicketEventSubscriber(): Promise<void> {
+  closing = true;
   listeners.clear();
   const client = subscriber;
   subscriber = null;
@@ -91,5 +115,22 @@ export async function closeTicketEventSubscriber(): Promise<void> {
     // The connection may already be gone.
   } finally {
     client.release(true);
+  }
+}
+
+/** Effect runtime hook: reconnect timing and retry ownership stay outside this adapter. */
+export function setTicketEventReconnectWake(wake: (() => void) | null): void {
+  reconnectWake = wake;
+}
+
+export async function reconnectTicketEventSubscriber(): Promise<void> {
+  if (closing || listenerCount() === 0) return;
+  try {
+    await ensureSubscriber();
+  } catch (error) {
+    log.warn("tickets.realtime", "Ticket event subscriber reconnect failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 }

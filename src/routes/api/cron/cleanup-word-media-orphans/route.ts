@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuth } from "@/features/auth/auth.server";
-import { cleanupOrphanWordMediaFolders } from "@/features/words/media-maintenance";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
@@ -14,7 +16,12 @@ async function handleGET(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? null;
 
   try {
-    const result = await cleanupOrphanWordMediaFolders();
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* MediaMaintenanceService).cleanupWordMedia;
+      }),
+      request.signal,
+    );
     const durationMs = Date.now() - startedAtMs;
 
     log.info("cron.cleanup-word-media-orphans", "Cron orphan word-media cleanup finished", {

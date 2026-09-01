@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { getRedis } from "@/lib/platform/redis.server";
-import { isTransferStorageConfigured, listObjects, deleteObjects } from "@/lib/platform/r2.server";
+import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 /**
@@ -14,31 +15,23 @@ async function handlePOST(request: Request) {
   const stepUpErr = await requireAdminStepUp(request);
   if (stepUpErr) return stepUpErr;
 
-  const redis = getRedis();
-  if (!redis || !isTransferStorageConfigured()) {
-    return Response.json({ error: "Redis or R2 not configured" }, { status: 503 });
-  }
-
   try {
-    // Delete all files under transfers/
-    const objects = await listObjects("transfers/", { scope: "private" });
-    const keys = objects.map((o) => o.key);
-    const deletedFiles = keys.length > 0 ? await deleteObjects(keys, { scope: "private" }) : 0;
-
-    // Delete all transfer metadata keys + index
-    const indexedIds: string[] = await redis.smembers("transfer:index");
-    const pipeline = redis.pipeline();
-    for (const id of indexedIds) {
-      pipeline.del(`transfer:${id}`);
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.nuke;
+      }),
+      request.signal,
+    );
+    if (!result.configured) {
+      return Response.json({ error: "Redis or R2 not configured" }, { status: 503 });
     }
-    pipeline.del("transfer:index");
-    await pipeline.exec();
 
     return Response.json({
       success: true,
-      deletedFiles,
-      deletedTransfers: indexedIds.length,
-      timestamp: new Date().toISOString(),
+      deletedFiles: result.deletedFiles,
+      deletedTransfers: result.deletedTransfers,
+      timestamp: result.timestamp,
     });
   } catch (error) {
     return apiErrorFromRequest(request, "admin.transfers.nuke", "Failed to nuke transfers", error);

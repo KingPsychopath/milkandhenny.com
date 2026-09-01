@@ -1,4 +1,5 @@
 import type Redis from "ioredis";
+import { Context, Data, Deferred, Effect, Fiber, Layer, Schedule } from "effect";
 
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { processWorkerJob } from "@/features/transfers/media-backends/worker.server";
@@ -10,7 +11,17 @@ import {
 } from "@/features/transfers/media-queue.server";
 import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status.server";
+import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import { MediaMaintenanceService } from "./media-maintenance-service.server";
+import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
 import { createDirectRedisClient } from "@/lib/platform/redis-direct.server";
+import { log } from "@/lib/platform/logger.server";
+import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
+import { withOperationSignal } from "@/lib/platform/operation-context.server";
+import {
+  withObjectStorageProvider,
+  type ObjectStorageProvider,
+} from "@/lib/platform/object-storage-provider-context.server";
 
 interface DrainMediaQueuesResult {
   disabled: boolean;
@@ -113,6 +124,14 @@ async function recordWorkerError(error: unknown): Promise<void> {
 
 function createBlockingClients(concurrency: number): Redis[] {
   return Array.from({ length: concurrency }, () => createDirectRedisClient());
+}
+
+const disconnectedBlockingClients = new WeakSet<Redis>();
+
+function disconnectBlockingClient(client: Redis): void {
+  if (disconnectedBlockingClients.has(client)) return;
+  disconnectedBlockingClients.add(client);
+  client.disconnect();
 }
 
 async function closeBlockingClients(clients: Redis[]): Promise<void> {
@@ -235,133 +254,233 @@ async function drainMediaQueuesUntilIdle(
   }
 }
 
-type MediaWorkerLoop = {
-  stop: () => void;
-  finished: Promise<void>;
-};
+export class MediaWorkerError extends Data.TaggedError("MediaWorkerError")<{
+  readonly cause: unknown;
+  readonly operation: string;
+}> {}
 
-let activeLoop: MediaWorkerLoop | null = null;
-
-async function runWorkerMaintenance(signal: AbortSignal, recoverStuckJobs: boolean): Promise<void> {
-  const heartbeatIntervalMs = getHeartbeatIntervalMs();
-  const reconcileIntervalMs = getReconcileIntervalMs();
-  let nextHeartbeatAt = Date.now() + heartbeatIntervalMs;
-  let nextReconcileAt = Date.now();
-
-  while (!signal.aborted) {
-    const now = Date.now();
-    if (now >= nextHeartbeatAt) {
-      try {
-        await heartbeat();
-      } catch (error) {
-        if (!signal.aborted)
-          console.error(`[media-worker] heartbeat failed\n${getErrorDetail(error)}`);
-      }
-      nextHeartbeatAt = Date.now() + heartbeatIntervalMs;
-    }
-
-    if (reconcileIntervalMs > 0 && now >= nextReconcileAt) {
-      try {
-        const recovered = recoverStuckJobs ? await recoverTransferMediaProcessingJobs() : 0;
-        const swept = await reconcileTransferMedia();
-        if (recovered > 0) {
-          console.log(`[media-worker] recovered ${recovered} expired processing job(s)`);
-        }
-        if (swept.transfersRepaired > 0) {
-          console.log(
-            `[media-worker] reconciled ${swept.filesRepaired} file(s) across ${swept.transfersRepaired} transfer(s)`,
-          );
-        }
-      } catch (error) {
-        if (!signal.aborted)
-          console.error(`[media-worker] reconciliation failed\n${getErrorDetail(error)}`);
-      }
-      nextReconcileAt = Date.now() + reconcileIntervalMs;
-    }
-
-    const nextWakeAt =
-      reconcileIntervalMs > 0 ? Math.min(nextHeartbeatAt, nextReconcileAt) : nextHeartbeatAt;
-    await sleepUntilAbort(Math.max(1, nextWakeAt - Date.now()), signal);
-  }
+function workerAttempt<A>(operation: string, run: (signal: AbortSignal) => Promise<A>) {
+  return Effect.tryPromise({
+    try: (signal) => withOperationSignal(signal, () => run(signal)),
+    catch: (cause) => new MediaWorkerError({ cause, operation }),
+  }).pipe(Effect.withSpan(`media.worker.${operation}`, { attributes: { operation } }));
 }
 
-/**
- * Start the long-running worker role.
- *
- * Every concurrency slot owns a Redis connection blocked indefinitely on the
- * queue. Idle time therefore produces no queue commands. Health and repair
- * work run on independent, deliberately low-frequency timers.
- */
-function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {
-  if (activeLoop) return;
-  if (getMediaProcessorMode() === "local") {
-    console.warn(
-      "[media-worker] MEDIA_PROCESSOR_MODE=local — the worker role has nothing to drain",
-    );
-    return;
-  }
-
-  const abortController = new AbortController();
-  const concurrency = positiveInteger(
-    options.concurrency ?? DEFAULT_WORKER_CONCURRENCY,
-    DEFAULT_WORKER_CONCURRENCY,
-  );
-  const errorBackoffMs = positiveInteger(
-    options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS,
-    DEFAULT_ERROR_BACKOFF_MS,
-  );
-  const blockingClients = createBlockingClients(concurrency);
-  const stop = () => {
-    if (abortController.signal.aborted) return;
-    abortController.abort();
-    for (const client of blockingClients) client.disconnect();
-  };
-
-  const finished = (async () => {
+function claimJob(client: Redis) {
+  return workerAttempt("claim", async (signal) => {
+    const disconnect = () => disconnectBlockingClient(client);
+    signal.addEventListener("abort", disconnect, { once: true });
     try {
-      while (!abortController.signal.aborted) {
-        try {
-          if (options.recoverStuckJobs !== false) await recoverTransferMediaProcessingJobs();
-          await heartbeat();
-          break;
-        } catch (error) {
-          await recordWorkerError(error);
-          await sleepUntilAbort(errorBackoffMs, abortController.signal);
-        }
-      }
-      if (abortController.signal.aborted) return;
-
-      await Promise.all([
-        ...blockingClients.map((blockingRedis) =>
-          consumeTransferQueue({
-            blockingRedis,
-            claimTimeoutSeconds: 0,
-            errorBackoffMs,
-            signal: abortController.signal,
-          }).then(() => undefined),
-        ),
-        runWorkerMaintenance(abortController.signal, options.recoverStuckJobs !== false),
-      ]);
-    } catch (error) {
-      if (!abortController.signal.aborted) await recordWorkerError(error);
+      return await claimTransferMediaJobBlocking(client, 0);
     } finally {
-      if (!abortController.signal.aborted) {
-        for (const client of blockingClients) client.disconnect();
-      }
+      signal.removeEventListener("abort", disconnect);
     }
-  })();
-
-  activeLoop = { stop, finished };
+  });
 }
 
-/** Interrupt idle blocking claims, then wait for any in-flight job to settle. */
+function consumeClaim(
+  claimed: NonNullable<Awaited<ReturnType<typeof claimTransferMediaJobBlocking>>>,
+  errorBackoffMs: number,
+  storage: ObjectStorageProvider,
+) {
+  return workerAttempt("process", () =>
+    withObjectStorageProvider(storage, () => processWorkerJob(claimed.job)),
+  ).pipe(
+    Effect.timeout(5 * 60_000),
+    Effect.flatMap((outcome) =>
+      workerAttempt("ack", () => ackTransferMediaJob(claimed.raw)).pipe(
+        Effect.andThen(workerAttempt("status", () => markMediaJobProcessed())),
+        Effect.as(outcome),
+      ),
+    ),
+    Effect.tap((outcome) =>
+      Effect.sync(() =>
+        log.info("media.worker", "Transfer media job completed", {
+          outcome,
+          deliveryAttempt: claimed.job.deliveryAttempt ?? 0,
+        }),
+      ),
+    ),
+    Effect.catch((error) => {
+      const deliveryAttempt = claimed.job.deliveryAttempt ?? 0;
+      const backoffMs = Math.min(120_000, errorBackoffMs * 2 ** deliveryAttempt);
+      return Effect.sleep(backoffMs).pipe(
+        Effect.andThen(workerAttempt("requeue", () => requeueTransferMediaJob(claimed.raw))),
+        Effect.andThen(workerAttempt("record_error", () => recordWorkerError(error))),
+        Effect.asVoid,
+      );
+    }),
+  );
+}
+
+function workerSlot(client: Redis, errorBackoffMs: number, storage: ObjectStorageProvider) {
+  return Effect.forever(
+    claimJob(client).pipe(
+      Effect.flatMap((claimed) =>
+        claimed ? consumeClaim(claimed, errorBackoffMs, storage) : Effect.void,
+      ),
+      Effect.catch((error) =>
+        workerAttempt("record_claim_error", () => recordWorkerError(error)).pipe(
+          Effect.andThen(Effect.sleep(errorBackoffMs)),
+        ),
+      ),
+    ),
+  );
+}
+
+function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) {
+  const heartbeatLoop = Effect.repeat(
+    workerAttempt("heartbeat", () => heartbeat()).pipe(
+      Effect.catch((error) =>
+        workerAttempt("record_heartbeat_error", () => recordWorkerError(error)),
+      ),
+    ),
+    Schedule.spaced(getHeartbeatIntervalMs()),
+  );
+  const reconcileIntervalMs = getReconcileIntervalMs();
+  const reconcileLoop =
+    reconcileIntervalMs <= 0
+      ? Effect.never
+      : Effect.gen(function* () {
+          const recovered = recoverStuckJobs
+            ? yield* workerAttempt("recover", () => recoverTransferMediaProcessingJobs())
+            : 0;
+          const swept = yield* workerAttempt("reconcile", () =>
+            withObjectStorageProvider(storage, reconcileTransferMedia),
+          );
+          if (recovered > 0 || swept.transfersRepaired > 0) {
+            yield* Effect.sync(() =>
+              log.info("media.worker", "Media queue recovery completed", {
+                recoveredJobs: recovered,
+                repairedFiles: swept.filesRepaired,
+                repairedTransfers: swept.transfersRepaired,
+              }),
+            );
+          }
+        }).pipe(
+          Effect.catch((error) =>
+            workerAttempt("record_reconcile_error", () => recordWorkerError(error)),
+          ),
+          Effect.repeat(Schedule.spaced(reconcileIntervalMs)),
+        );
+  return Effect.all([heartbeatLoop, reconcileLoop], { concurrency: 2, discard: true });
+}
+
+export class MediaWorkerService extends Context.Service<
+  MediaWorkerService,
+  {
+    readonly reconcile: Effect.Effect<Awaited<ReturnType<typeof reconcileTransferMedia>>, unknown>;
+    readonly start: Effect.Effect<void>;
+    readonly stop: Effect.Effect<void>;
+  }
+>()("MediaWorkerService") {
+  static layer(options: DrainMediaQueuesOptions = {}) {
+    return Layer.effect(
+      this,
+      Effect.gen(function* () {
+        const storage = yield* ObjectStorageService;
+        const concurrency = positiveInteger(
+          options.concurrency ?? DEFAULT_WORKER_CONCURRENCY,
+          DEFAULT_WORKER_CONCURRENCY,
+        );
+        const errorBackoffMs = positiveInteger(
+          options.errorBackoffMs ?? DEFAULT_ERROR_BACKOFF_MS,
+          DEFAULT_ERROR_BACKOFF_MS,
+        );
+        const startGate = yield* Deferred.make<void>();
+        const stopGate = yield* Deferred.make<void>();
+        const active = Deferred.await(startGate).pipe(
+          Effect.andThen(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const clients = yield* Effect.acquireRelease(
+                  Effect.sync(() => createBlockingClients(concurrency)),
+                  (active) => Effect.sync(() => active.forEach(disconnectBlockingClient)),
+                );
+                return yield* Effect.all(
+                  [
+                    ...clients.map((client) => workerSlot(client, errorBackoffMs, storage.port)),
+                    maintenance(options.recoverStuckJobs !== false, storage.port),
+                  ],
+                  { concurrency: "unbounded", discard: true },
+                );
+              }),
+            ),
+          ),
+        );
+        const fiber = yield* Effect.race(Deferred.await(stopGate), active).pipe(Effect.forkScoped);
+        return {
+          reconcile: workerAttempt("reconcile", () =>
+            withObjectStorageProvider(storage.port, reconcileTransferMedia),
+          ),
+          start:
+            getMediaProcessorMode() === "local"
+              ? Effect.void
+              : Deferred.succeed(startGate, undefined).pipe(Effect.asVoid),
+          stop: Deferred.succeed(stopGate, undefined).pipe(
+            Effect.andThen(Fiber.await(fiber)),
+            Effect.asVoid,
+          ),
+        };
+      }),
+    );
+  }
+}
+
+const transferInfrastructureLayer = Layer.mergeAll(ObjectStorageService.layer, RedisService.layer);
+
+function makeMediaLayer(options: DrainMediaQueuesOptions = {}) {
+  return Layer.mergeAll(
+    MediaWorkerService.layer(options).pipe(Layer.provide(transferInfrastructureLayer)),
+    MediaMaintenanceService.layer.pipe(Layer.provide(transferInfrastructureLayer)),
+    TransferOperationsService.layer.pipe(Layer.provide(transferInfrastructureLayer)),
+  );
+}
+
+export type MediaServices =
+  | MediaMaintenanceService
+  | MediaWorkerService
+  | TransferOperationsService;
+
+let mediaWorkerRuntime = makeManagedRuntimeHost(makeMediaLayer(), "Media and transfers");
+
+export function runMediaEffect<A, E>(
+  effect: Effect.Effect<A, E, MediaServices>,
+  signal?: AbortSignal,
+) {
+  return mediaWorkerRuntime.run(effect, signal);
+}
+
+function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): void {
+  if (getMediaProcessorMode() === "local") return;
+  if (options.concurrency !== undefined || options.errorBackoffMs !== undefined) {
+    mediaWorkerRuntime = makeManagedRuntimeHost(makeMediaLayer(options), "Media and transfers");
+  }
+  void mediaWorkerRuntime
+    .run(
+      Effect.gen(function* () {
+        yield* (yield* MediaWorkerService).start;
+      }),
+    )
+    .catch((error) => log.error("media.worker", "Could not start media worker", {}, error));
+}
+
 async function stopMediaWorkerLoop(): Promise<void> {
-  const loop = activeLoop;
-  if (!loop) return;
-  activeLoop = null;
-  loop.stop();
-  await loop.finished;
+  await mediaWorkerRuntime.run(
+    Effect.gen(function* () {
+      yield* (yield* MediaWorkerService).stop;
+    }),
+  );
 }
 
-export { drainMediaQueuesUntilIdle, startMediaWorkerLoop, stopMediaWorkerLoop };
+function disposeMediaWorkerRuntime(): Promise<void> {
+  return mediaWorkerRuntime.dispose();
+}
+
+export {
+  disposeMediaWorkerRuntime,
+  drainMediaQueuesUntilIdle,
+  startMediaWorkerLoop,
+  stopMediaWorkerLoop,
+};
 export type { DrainMediaQueuesOptions, DrainMediaQueuesResult };

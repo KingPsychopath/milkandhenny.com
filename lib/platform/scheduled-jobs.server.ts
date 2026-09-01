@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Cause, Data, Effect } from "effect";
 import type { QueryResultRow } from "pg";
 
 import { log } from "./logger.server";
@@ -25,6 +26,16 @@ interface RunScheduledJobOptions<T> {
   force?: boolean;
   run: () => Promise<T>;
 }
+
+interface RunScheduledJobEffectOptions<T, E, R> extends Omit<RunScheduledJobOptions<T>, "run"> {
+  run: Effect.Effect<T, E, R>;
+}
+
+export class ScheduledJobError extends Data.TaggedError("ScheduledJobError")<{
+  readonly cause: unknown;
+  readonly jobKey: string;
+  readonly operation: "claim" | "finish" | "validate";
+}> {}
 
 export type ScheduledJobRun<T> = { ran: false } | { ran: true; durationMs: number; value: T };
 
@@ -169,6 +180,85 @@ export async function runLeasedScheduledJob<T>(
     }
     throw error;
   }
+}
+
+function scheduledJobAttempt<A>(
+  jobKey: string,
+  operation: ScheduledJobError["operation"],
+  run: () => Promise<A>,
+) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (cause) => new ScheduledJobError({ cause, jobKey, operation }),
+  });
+}
+
+/** Effect-native leased execution for scoped schedulers and deterministic test Layers. */
+export function runLeasedScheduledJobEffect<T, E, R>(
+  options: RunScheduledJobEffectOptions<T, E, R>,
+): Effect.Effect<ScheduledJobRun<T>, E | ScheduledJobError, R> {
+  return Effect.gen(function* () {
+    const timings = yield* Effect.try({
+      try: () => ({
+        intervalMs: positiveMilliseconds(options.intervalMs, "Scheduled job interval"),
+        retryMs: positiveMilliseconds(options.retryMs, "Scheduled job retry delay"),
+        leaseMs: positiveMilliseconds(options.leaseMs, "Scheduled job lease"),
+      }),
+      catch: (cause) =>
+        new ScheduledJobError({ cause, jobKey: options.jobKey, operation: "validate" }),
+    });
+    const leaseToken = randomUUID();
+    const claimed = yield* scheduledJobAttempt(options.jobKey, "claim", () =>
+      claimScheduledJob({
+        jobKey: options.jobKey,
+        leaseToken,
+        leaseMs: timings.leaseMs,
+        force: options.force === true,
+      }),
+    );
+    if (!claimed) return { ran: false } as const;
+
+    const startedAt = Date.now();
+    const value = yield* options.run.pipe(
+      Effect.onError((cause) =>
+        scheduledJobAttempt(options.jobKey, "finish", () =>
+          finishScheduledJob({
+            jobKey: options.jobKey,
+            leaseToken,
+            delayMs: timings.retryMs,
+            durationMs: Date.now() - startedAt,
+            error: safeError(Cause.squash(cause)),
+          }),
+        ).pipe(
+          Effect.catch((finishError) =>
+            Effect.sync(() =>
+              log.error(
+                "scheduler.lease",
+                "Could not record scheduled job failure",
+                { jobKey: options.jobKey },
+                finishError,
+              ),
+            ),
+          ),
+          Effect.uninterruptible,
+        ),
+      ),
+    );
+    const durationMs = Date.now() - startedAt;
+    yield* scheduledJobAttempt(options.jobKey, "finish", () =>
+      finishScheduledJob({
+        jobKey: options.jobKey,
+        leaseToken,
+        delayMs: timings.intervalMs,
+        durationMs,
+      }),
+    );
+    return { ran: true, durationMs, value } as const;
+  }).pipe(
+    Effect.withSpan(`scheduler.${options.jobKey}`, {
+      attributes: { jobKey: options.jobKey },
+    }),
+  );
 }
 
 export async function describeScheduledJobs(): Promise<ScheduledJobSnapshot[]> {

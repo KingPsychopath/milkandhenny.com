@@ -36,12 +36,12 @@ TanStack / Nitro / CLI / worker edge
 One independently started and stopped subsystem owns one runtime. A feature folder or service does
 not get a runtime merely to expose an Effect API.
 
-| Runtime     | Current responsibilities                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------ |
-| Events      | Events, tickets, attendee and event operations, staff access, scoring, communications, scheduler |
-| Media       | Media-worker lifecycle, transfer media processing, expiry, takedown, and cleanup                 |
-| Multiplayer | Shared room workflows, realtime resources, deterministic command context, and telemetry          |
-| Pitches     | Pitch Night persistence, presentation, reminders, and provider coordination                      |
+| Runtime     | Current responsibilities                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Events      | Events, tickets, attendee and event operations, staff access, scoring, Postgres realtime, communications, scheduler                  |
+| Media       | Media-worker lifecycle, transfer creation/append/removal, transfer media processing, expiry, takedown, and bounded media maintenance |
+| Multiplayer | Shared room workflows, realtime resources, deterministic command context, and telemetry                                              |
+| Pitches     | Pitch Night persistence, presentation, reminders, and provider coordination                                                          |
 
 Services compose into the owning runtime Layer. A compatibility facade may delegate to that runtime
 but must not construct or dispose another `ManagedRuntime`. Add a new runtime only when the work has
@@ -87,7 +87,9 @@ Do not create facade services that no workflow uses. Do not translate every quer
 pipeline. Repositories continue to own SQL, Redis key shape, and provider-specific result mapping;
 the service boundary coordinates those capabilities.
 
-Test Layers substitute providers at the service boundary. They should preserve the same success,
+Test Layers substitute providers at the service boundary. Operation-scoped provider context lets the
+existing plain ticket, refund, realtime, and media engines use that Layer without translating their
+individual queries or SDK calls into Effect pipelines. Tests should preserve the same success,
 failure, cancellation, and idempotency contract instead of returning unconstrained mocks.
 
 ## Durable workers and schedules
@@ -99,6 +101,14 @@ outboxes, attempts, and completion records.
 On shutdown, stop claiming new work first. A claimed item either completes inside the drain window
 or remains recoverable through its lease or durable status. An in-memory fiber is never the only
 record that work exists.
+
+## Deliberate ordinary-TypeScript boundaries
+
+The audit leaves request-local SSE keepalives, SDK retry sleeps, test/development in-memory expiry
+timers, Redis lock backoff, validation, pure policies, simple CRUD, and repository query bodies
+outside Effect. They do not own a process lifecycle or coordinate enough independent effects to
+justify another service. There are four managed runtime owners—Events, Media, Multiplayer, and
+Pitches—and compatibility facades reuse them instead of creating per-folder runtimes.
 
 ## Review checklist
 

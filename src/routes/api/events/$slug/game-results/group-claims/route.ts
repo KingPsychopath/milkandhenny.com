@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
-import {
-  claimGroupGameResult,
-  readGroupGameClaimSession,
-} from "@/features/event-scoring/group-game-claims.server";
+import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
 import { activeParticipantForEvent } from "@/features/event-scoring/session.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 
 export const Route = createFileRoute("/api/events/$slug/game-results/group-claims")({
   server: {
@@ -16,11 +15,18 @@ export const Route = createFileRoute("/api/events/$slug/game-results/group-claim
         } | null;
         if (typeof body?.token !== "string")
           return Response.json({ error: "A team claim token is required" }, { status: 400 });
+        const token = body.token;
         if (body.operation === "preview") {
-          const result = await readGroupGameClaimSession({
-            eventSlug: params.slug,
-            token: body.token,
-          });
+          const result = await runEventsEffect(
+            Effect.gen(function* () {
+              const scoring = yield* EventScoringService;
+              return yield* scoring.readGroupClaim({
+                eventSlug: params.slug,
+                token,
+              });
+            }),
+            request.signal,
+          );
           return result.ok
             ? Response.json(result.value)
             : Response.json({ error: result.error }, { status: result.status });
@@ -34,11 +40,17 @@ export const Route = createFileRoute("/api/events/$slug/game-results/group-claim
               },
               { status: 401 },
             );
-          const result = await claimGroupGameResult({
-            eventSlug: params.slug,
-            token: body.token,
-            targetParticipantId: participantId,
-          });
+          const result = await runEventsEffect(
+            Effect.gen(function* () {
+              const scoring = yield* EventScoringService;
+              return yield* scoring.claimGroupResult({
+                eventSlug: params.slug,
+                token,
+                targetParticipantId: participantId,
+              });
+            }),
+            request.signal,
+          );
           return result.ok
             ? Response.json(result.value)
             : Response.json({ error: result.error }, { status: result.status });

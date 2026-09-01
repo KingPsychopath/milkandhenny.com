@@ -1,31 +1,21 @@
+import { Effect } from "effect";
+
 import { formatBytes } from "@/lib/shared/format";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { headObject, presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
-import { getMimeType } from "@/features/media/processing.server";
-import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
+import { isTransferStorageConfigured } from "@/lib/platform/r2.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+import { getTransfer, MAX_TRANSFER_FILES } from "./store.server";
+import { isSafeTransferFilename } from "./upload.server";
 import {
-  appendTransferFiles,
-  getTransfer,
-  MAX_TRANSFER_FILES,
-  updateTransferGrouping,
-} from "./store.server";
-import {
-  applyTransferAssetGroups,
-  isSafeTransferFilename,
-  processUploadedFile,
-  sortTransferFiles,
-} from "./upload.server";
-import {
-  buildTransferProcessingCounts,
   HEIF_TRANSFER_UPLOAD_ERROR,
   isHeifUploadLike,
   resolveTransferUploadIds,
 } from "./media-state";
-import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "./storage";
 import { getUploadUrlTtlSeconds, MAX_SINGLE_PUT_BYTES } from "./upload-window.server";
 import { buildTransferUrl } from "./routes";
 import type { TransferUploadFileInput } from "./upload-types";
+import { TransferOperationsService } from "./transfer-operations-service.server";
 
 /**
  * Appending files to an existing transfer, shared by two callers:
@@ -36,8 +26,6 @@ import type { TransferUploadFileInput } from "./upload-types";
  * Authorisation stays with the caller; everything below assumes the caller
  * already decided this request may touch this transfer.
  */
-
-const FINALIZE_CONCURRENCY = 2;
 
 type FileEntry = TransferUploadFileInput;
 
@@ -188,33 +176,12 @@ export async function appendPresign(
 
   const uploadUrlTtlSeconds = getUploadUrlTtlSeconds();
   try {
-    const urls = await Promise.all(
-      files.map(async (file) => {
-        const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-        const primaryUrl = await presignPutUrl(
-          primaryKey,
-          getMimeType(file.name),
-          uploadUrlTtlSeconds,
-          { scope: "private" },
-        );
-        const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-        const archivedOriginalUrl =
-          archivedOriginalKey && file.originalName
-            ? await presignPutUrl(
-                archivedOriginalKey,
-                getMimeType(file.originalName),
-                uploadUrlTtlSeconds,
-                { scope: "private" },
-              )
-            : undefined;
-        return {
-          name: file.name,
-          mediaId: file.mediaId,
-          contentType: getMimeType(file.name),
-          primaryUrl,
-          archivedOriginalUrl,
-        };
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.presignAppend({ transferId, files, uploadUrlTtlSeconds });
       }),
+      request.signal,
     );
 
     return Response.json({
@@ -224,7 +191,7 @@ export async function appendPresign(
         fileCount: transfer.files.length,
         expiresAt: transfer.expiresAt,
       },
-      urls,
+      urls: result.urls,
       remainingTtlSeconds,
     });
   } catch (error) {
@@ -250,57 +217,33 @@ export async function appendFinalize(
   const { files, transfer } = prepared;
 
   try {
-    const uploadedObjects = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
-      const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-      const archivedKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-      const [primary, archived] = await Promise.all([
-        headObject(primaryKey, { scope: "private" }),
-        archivedKey ? headObject(archivedKey, { scope: "private" }) : Promise.resolve(null),
-      ]);
-      return { file, primary, archived };
-    });
-    for (const { file, primary, archived } of uploadedObjects) {
-      if (!primary.exists || primary.size !== file.size) {
-        return Response.json(
-          { error: `Uploaded object size does not match the reservation for ${file.name}` },
-          { status: 409 },
-        );
-      }
-      if (file.originalName && (!archived?.exists || archived.size !== file.originalSize)) {
-        return Response.json(
-          { error: `Archived original size does not match the reservation for ${file.name}` },
-          { status: 409 },
-        );
-      }
-    }
-
-    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
-      const result = await processUploadedFile(file, transferId);
-      return {
-        ...result,
-        file: { ...result.file, storedBytes: file.size + (file.originalSize ?? 0) },
-      };
-    });
-    const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
-    for (const result of results) {
-      const k = result.file.kind;
-      if (k === "image") counts.images++;
-      else if (k === "gif") counts.gifs++;
-      else if (k === "video") counts.videos++;
-      else if (k === "audio") counts.audio++;
-      else counts.other++;
-    }
-
-    const appended = await appendTransferFiles(
-      transferId,
-      results.map((result) => result.file),
-      { maxFiles: MAX_TRANSFER_FILES, maxTotalBytes: limits.maxTotalBytes },
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.finalizeAppend({
+          transferId,
+          files,
+          maxFiles: MAX_TRANSFER_FILES,
+          maxTotalBytes: limits.maxTotalBytes,
+        });
+      }),
+      request.signal,
     );
-    if (!("transfer" in appended)) {
-      if (appended.status === "missing") {
+    if (result.status !== "completed") {
+      if (result.status === "size-mismatch") {
+        return Response.json(
+          {
+            error: result.archivedOriginal
+              ? `Archived original size does not match the reservation for ${result.filename}`
+              : `Uploaded object size does not match the reservation for ${result.filename}`,
+          },
+          { status: 409 },
+        );
+      }
+      if (result.status === "missing") {
         return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
       }
-      if (appended.status === "limit") {
+      if (result.status === "limit") {
         return Response.json(
           { error: "That upload would exceed this transfer's limits" },
           { status: 409 },
@@ -312,34 +255,19 @@ export async function appendFinalize(
       );
     }
 
-    let latest = appended.transfer;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const grouped = applyTransferAssetGroups(sortTransferFiles(latest.files));
-      if (await updateTransferGrouping(transferId, grouped.files, grouped.groups)) break;
-      const refreshed = await getTransfer(transferId);
-      if (!refreshed) {
-        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
-      }
-      latest = refreshed;
-    }
-    const updatedTransfer = (await getTransfer(transferId)) ?? latest;
-
-    const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
-    const processingCounts = buildTransferProcessingCounts(results.map((r) => r.file));
-
     return Response.json({
       shareUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId),
       adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId, transfer.deleteToken),
       transfer: {
         id: transferId,
         title: transfer.title,
-        fileCount: updatedTransfer.files.length,
+        fileCount: result.transfer.files.length,
         expiresAt: transfer.expiresAt,
       },
-      addedCount: results.length,
-      totalSize,
-      fileCounts: counts,
-      processingCounts,
+      addedCount: result.addedCount,
+      totalSize: result.totalSize,
+      fileCounts: result.fileCounts,
+      processingCounts: result.processingCounts,
     });
   } catch (error) {
     return apiErrorFromRequest(

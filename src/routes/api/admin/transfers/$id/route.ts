@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import {
-  adminDeleteTransfer,
-  getAdminTransfer,
-  isSafeTransferId,
-} from "@/features/transfers/admin.server";
+import { getAdminTransfer, isSafeTransferId } from "@/features/transfers/admin.server";
+import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
@@ -45,7 +44,13 @@ async function handleDELETE(request: Request, context: RouteContext) {
   }
 
   try {
-    const result = await adminDeleteTransfer(id);
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.adminDelete(id);
+      }),
+      request.signal,
+    );
     if (!result.dataDeleted && result.deletedFiles === 0) {
       return Response.json({ error: "Transfer not found" }, { status: 404 });
     }

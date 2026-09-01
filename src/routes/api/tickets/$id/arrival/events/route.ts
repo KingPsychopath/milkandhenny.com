@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { openedTicketForReference } from "@/features/event-scoring/session.server";
-import { subscribeToTicketEvents } from "@/features/tickets/ticket-events.server";
+import { EventsRealtimeService } from "@/features/events/events-resources.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 const KEEPALIVE_MS = 25_000;
@@ -32,8 +34,14 @@ async function handleGET(request: Request, reference: string) {
         };
         request.signal.addEventListener("abort", close, { once: true });
         try {
-          unsubscribe = await subscribeToTicketEvents(access.eventSlug, access.ticketId, (event) =>
-            send(`event: ${event.kind}\ndata: {}\n\n`),
+          unsubscribe = await runEventsEffect(
+            Effect.gen(function* () {
+              const realtime = yield* EventsRealtimeService;
+              return yield* realtime.subscribeTicket(access.eventSlug, access.ticketId, (event) =>
+                send(`event: ${event.kind}\ndata: {}\n\n`),
+              );
+            }),
+            request.signal,
           );
           send("event: ready\ndata: {}\n\n");
           keepalive = setInterval(() => send(": keepalive\n\n"), KEEPALIVE_MS);

@@ -2,8 +2,8 @@ import {
   deleteObjects,
   isConfigured,
   listObjects,
-  type StorageScope,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
+import type { StorageScope } from "@/lib/platform/r2.server";
 import { listAllWords, storageScopeForVisibility } from "@/features/words/store.server";
 
 type FolderAggregate = {

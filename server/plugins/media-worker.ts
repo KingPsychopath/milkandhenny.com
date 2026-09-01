@@ -1,6 +1,7 @@
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { isMediaWorkerRole } from "@/features/system/media-role.server";
 import {
+  disposeMediaWorkerRuntime,
   startMediaWorkerLoop,
   stopMediaWorkerLoop,
 } from "@/features/system/media-worker-runtime.server";
@@ -14,23 +15,25 @@ import { definePlugin } from "nitro";
  * loop just runs alongside.
  */
 export default definePlugin((nitroApp) => {
-  if (!isMediaWorkerRole()) return;
+  const workerRole = isMediaWorkerRole();
 
   const mode = getMediaProcessorMode();
-  if (mode === "local") {
+  if (workerRole && mode === "local") {
     log.warn(
       "media.worker",
       "MEDIA_WORKER_ROLE=worker with MEDIA_PROCESSOR_MODE=local — nothing will be queued to drain",
     );
-    return;
+  } else if (workerRole) {
+    startMediaWorkerLoop();
+    log.info("media.worker", "Media worker role started", { mode });
   }
 
-  startMediaWorkerLoop();
-  log.info("media.worker", "Media worker role started", { mode });
-
   nitroApp.hooks.hook("close", async () => {
-    await stopMediaWorkerLoop();
-    await closeDirectRedisConnections();
-    log.info("media.worker", "Media worker role stopped");
+    if (workerRole && mode !== "local") await stopMediaWorkerLoop();
+    await disposeMediaWorkerRuntime();
+    if (workerRole) {
+      await closeDirectRedisConnections();
+      log.info("media.worker", "Media worker role stopped");
+    }
   });
 });

@@ -1,19 +1,27 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
-import {
-  cancelPendingTicketOperation,
-  cancelTransferredTicketReturn,
-  requestTicketAssignment,
-  requestTicketTransfer,
-  resendPendingTicketOperation,
-  ticketOperationsForPerson,
-} from "@/features/attendee-operations/ticket-operations.server";
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
+import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function attendee() {
   const session = await getAttendeeSession();
   return session?.personId ? session : null;
+}
+
+function runOperation<A, E>(
+  request: Request,
+  use: (operations: typeof AttendeeOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* AttendeeOperationsService);
+    }),
+    request.signal,
+  );
 }
 
 async function handleGET(request: Request) {
@@ -51,12 +59,17 @@ async function handlePOST(request: Request) {
       (body.kind === "assignment" || body.kind === "transfer") &&
       typeof body.operationId === "string"
     ) {
-      const result = await resendPendingTicketOperation({
-        kind: body.kind,
-        operationId: body.operationId,
-        actorPersonId: session.personId,
-        origin,
-      });
+      const kind = body.kind;
+      const operationId = body.operationId;
+      const actorPersonId = session.personId;
+      const result = await runOperation(request, (operations) =>
+        operations.resendPending({
+          kind,
+          operationId,
+          actorPersonId,
+          origin,
+        }),
+      );
       return result.ok
         ? Response.json(result.value)
         : Response.json({ error: result.error }, { status: result.status });
@@ -64,21 +77,28 @@ async function handlePOST(request: Request) {
     if (typeof body.ticketId !== "string" || typeof body.recipientEmail !== "string") {
       return Response.json({ error: "Ticket and recipient email are required" }, { status: 400 });
     }
+    const ticketId = body.ticketId;
+    const recipientEmail = body.recipientEmail;
+    const actorPersonId = session.personId;
     const result =
       body.action === "assign"
-        ? await requestTicketAssignment({
-            ticketId: body.ticketId,
-            purchaserPersonId: session.personId,
-            recipientEmail: body.recipientEmail,
-            origin,
-          })
-        : body.action === "transfer"
-          ? await requestTicketTransfer({
-              ticketId: body.ticketId,
-              senderPersonId: session.personId,
-              recipientEmail: body.recipientEmail,
+        ? await runOperation(request, (operations) =>
+            operations.requestAssignment({
+              ticketId,
+              purchaserPersonId: actorPersonId,
+              recipientEmail,
               origin,
-            })
+            }),
+          )
+        : body.action === "transfer"
+          ? await runOperation(request, (operations) =>
+              operations.requestTransfer({
+                ticketId,
+                senderPersonId: actorPersonId,
+                recipientEmail,
+                origin,
+              }),
+            )
           : null;
     if (!result) return Response.json({ error: "Unknown ticket action" }, { status: 400 });
     return result.ok
@@ -110,17 +130,19 @@ async function handleDELETE(request: Request) {
     ) {
       return Response.json({ error: "Operation is required" }, { status: 400 });
     }
-    const result =
-      body.kind === "return"
-        ? await cancelTransferredTicketReturn({
-            returnRequestId: body.operationId,
-            actorPersonId: session.personId,
-          })
-        : await cancelPendingTicketOperation({
-            kind: body.kind,
-            operationId: body.operationId,
-            actorPersonId: session.personId,
-          });
+    const operationId = body.operationId;
+    const actorPersonId = session.personId;
+    let result;
+    if (body.kind === "return") {
+      result = await runOperation(request, (operations) =>
+        operations.cancelReturn({ returnRequestId: operationId, actorPersonId }),
+      );
+    } else {
+      const kind = body.kind;
+      result = await runOperation(request, (operations) =>
+        operations.cancelPending({ kind, operationId, actorPersonId }),
+      );
+    }
     return result.ok
       ? Response.json(result.value)
       : Response.json({ error: result.error }, { status: result.status });

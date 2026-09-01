@@ -1,22 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { formatBytes } from "@/lib/shared/format";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
-  createTransfer,
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILES,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
-  normaliseTransferTitle,
 } from "@/features/transfers/store.server";
+import { isSafeTransferFilename } from "@/features/transfers/upload.server";
 import {
-  applyTransferAssetGroups,
-  processUploadedFile,
-  sortTransferFiles,
-  isSafeTransferFilename,
-} from "@/features/transfers/upload.server";
-import {
-  buildTransferProcessingCounts,
   HEIF_TRANSFER_UPLOAD_ERROR,
   isHeifUploadLike,
   resolveTransferUploadIds,
@@ -25,23 +18,36 @@ import type { TransferUploadFileInput } from "@/features/transfers/upload-types"
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { buildTransferUrl } from "@/features/transfers/routes";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
-import { headObject } from "@/lib/platform/r2.server";
 import {
-  buildTransferArchivedOriginalStorageKey,
-  buildTransferPrimaryStorageKey,
-} from "@/features/transfers/storage";
-import {
-  deleteTransferUploadReservation,
-  getTransferUploadReservation,
-  transferUploadFilesFingerprint,
-} from "@/features/transfers/upload-reservation.server";
+  TransferOperationsService,
+  type TransferFinalizeResult,
+} from "@/features/transfers/transfer-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 
 export const maxDuration = 15;
 export const runtime = "nodejs";
-const FINALIZE_CONCURRENCY = 2;
-
 type FileEntry = TransferUploadFileInput;
+
+function completedResponse(
+  request: Request,
+  result: Extract<TransferFinalizeResult, { status: "completed" }>,
+): Response {
+  const transfer = result.transfer;
+  return Response.json({
+    shareUrl: buildTransferUrl(getBaseUrlForRequest(request), transfer.id),
+    adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transfer.id, transfer.deleteToken),
+    transfer: {
+      id: transfer.id,
+      title: transfer.title,
+      fileCount: transfer.files.length,
+      expiresAt: transfer.expiresAt,
+    },
+    totalSize: result.totalSize,
+    fileCounts: result.fileCounts,
+    processingCounts: result.processingCounts,
+    ...(result.deduplicated ? { deduplicated: true } : {}),
+  });
+}
 
 /**
  * POST /api/upload/transfer/finalize
@@ -178,109 +184,49 @@ async function handlePOST(request: Request) {
     );
   }
 
-  const reservation = await getTransferUploadReservation(transferId);
-  if (!reservation) {
-    return Response.json({ error: "Upload reservation is missing or expired" }, { status: 409 });
-  }
-  if (
-    reservation.actorJti !== payload.jti ||
-    reservation.deleteToken !== deleteToken ||
-    reservation.expiresSeconds !== expiresSeconds ||
-    reservation.filesFingerprint !== transferUploadFilesFingerprint(files)
-  ) {
-    return Response.json(
-      { error: "Upload reservation does not match this request" },
-      { status: 403 },
-    );
-  }
-
   try {
-    let actualUploadedBytes = 0;
-    for (const file of files) {
-      const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-      const primary = await headObject(primaryKey, { scope: "private" });
-      if (!primary.exists || primary.size !== file.size) {
-        return Response.json(
-          { error: `Uploaded object size does not match the reservation for ${file.name}` },
-          { status: 400 },
-        );
-      }
-      actualUploadedBytes += primary.size;
-
-      const archivedKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-      if (archivedKey) {
-        const archived = await headObject(archivedKey, { scope: "private" });
-        if (!archived.exists || archived.size !== file.originalSize) {
-          return Response.json(
-            { error: `Archived original size does not match the reservation for ${file.name}` },
-            { status: 400 },
-          );
-        }
-        actualUploadedBytes += archived.size ?? 0;
-      }
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.finalizeUpload({
+          transferId,
+          deleteToken,
+          actorJti: payload.jti,
+          title,
+          expiresSeconds,
+          files,
+          maxTotalBytes: isAdmin ? undefined : MAX_TRANSFER_TOTAL_BYTES,
+        });
+      }),
+      request.signal,
+    );
+    if (result.status === "completed") return completedResponse(request, result);
+    if (result.status === "missing-reservation") {
+      return Response.json({ error: "Upload reservation is missing or expired" }, { status: 409 });
     }
-    if (!isAdmin && actualUploadedBytes > MAX_TRANSFER_TOTAL_BYTES) {
+    if (result.status === "reservation-mismatch") {
+      return Response.json(
+        { error: "Upload reservation does not match this request" },
+        { status: 403 },
+      );
+    }
+    if (result.status === "size-mismatch") {
+      return Response.json(
+        {
+          error: result.archivedOriginal
+            ? `Archived original size does not match the reservation for ${result.filename}`
+            : `Uploaded object size does not match the reservation for ${result.filename}`,
+        },
+        { status: 400 },
+      );
+    }
+    if (result.status === "too-large") {
       return Response.json(
         { error: `Transfer too large. Max ${formatBytes(MAX_TRANSFER_TOTAL_BYTES)} total.` },
         { status: 400 },
       );
     }
-
-    const results = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
-      const result = await processUploadedFile(file, transferId);
-      return {
-        ...result,
-        file: { ...result.file, storedBytes: file.size + (file.originalSize ?? 0) },
-      };
-    });
-    const counts = { images: 0, videos: 0, gifs: 0, audio: 0, other: 0 };
-
-    for (const result of results) {
-      const k = result.file.kind;
-      if (k === "image") counts.images++;
-      else if (k === "gif") counts.gifs++;
-      else if (k === "video") counts.videos++;
-      else if (k === "audio") counts.audio++;
-      else counts.other++;
-    }
-
-    const sortedFiles = sortTransferFiles(results.map((r) => r.file));
-    const groupedTransfer = applyTransferAssetGroups(sortedFiles);
-    const totalSize = results.reduce((sum, r) => sum + r.uploadedBytes, 0);
-    const processingCounts = buildTransferProcessingCounts(groupedTransfer.files);
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + expiresSeconds * 1000);
-
-    const transfer = {
-      id: transferId,
-      title: normaliseTransferTitle(title),
-      files: groupedTransfer.files,
-      groups: groupedTransfer.groups,
-      createdAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      deleteToken,
-    };
-
-    const created = await createTransfer(transfer, expiresSeconds);
-    if (!created) {
-      return Response.json({ error: "Transfer ID already exists" }, { status: 409 });
-    }
-    await deleteTransferUploadReservation(transferId).catch(() => undefined);
-
-    return Response.json({
-      shareUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId),
-      adminUrl: buildTransferUrl(getBaseUrlForRequest(request), transferId, deleteToken),
-      transfer: {
-        id: transferId,
-        title: normaliseTransferTitle(title),
-        fileCount: groupedTransfer.files.length,
-        expiresAt: expiresAt.toISOString(),
-      },
-      totalSize,
-      fileCounts: counts,
-      processingCounts,
-    });
+    return Response.json({ error: "Transfer ID already exists" }, { status: 409 });
   } catch (e) {
     return apiErrorFromRequest(
       request,

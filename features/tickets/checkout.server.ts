@@ -11,13 +11,12 @@ import {
 import {
   createCheckoutSession,
   expireCheckoutSession,
-  isPaymentsConfigured,
   listPaymentRefunds,
   refundPayment,
   retrievePaymentBalance,
   retrieveSession,
-  type RefundResult,
-} from "@/lib/platform/stripe.server";
+} from "@/lib/platform/payment-provider-context.server";
+import { isPaymentsConfigured, type RefundResult } from "@/lib/platform/stripe.server";
 import { getEvent } from "@/features/events/store.server";
 import { formatMoney, ticketTypeSalesState, type EventRecord } from "@/features/events/types";
 import { buildEventBoughtUrl, buildEventUrl, ticketPath } from "@/features/events/routes";

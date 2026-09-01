@@ -1,15 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
+import { Effect } from "effect";
 
-import { getDiscovery } from "./discoveries.server";
-import { publicLeaderboard } from "./scoring.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import {
   activeParticipantForEvent,
   getAttendeeSession,
   openedTicketsForEvent,
 } from "./session.server";
 import { getTicket } from "@/features/tickets/store.server";
-import { getStaffAwardClaimPreview } from "./staff-award-claims.server";
 import { getParticipant } from "./store.server";
+import { EventScoringService } from "./event-scoring-service.server";
+
+function runScoring<A, E>(
+  use: (service: typeof EventScoringService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* EventScoringService);
+    }),
+  );
+}
 
 async function openedTicketChoices(eventSlug: string, activeParticipantId?: string) {
   const opened = await openedTicketsForEvent(eventSlug);
@@ -54,13 +64,16 @@ export const getPublicLeaderboardFn = createServerFn({ method: "GET" })
     const input = value as { eventSlug?: unknown } | null;
     return { eventSlug: identifier(input?.eventSlug, "Event") };
   })
-  .handler(async ({ data }) =>
-    publicLeaderboard({
-      eventSlug: data.eventSlug,
-      currentParticipantId: await activeParticipantForEvent(data.eventSlug),
-      includePreview: false,
-    }),
-  );
+  .handler(async ({ data }) => {
+    const currentParticipantId = await activeParticipantForEvent(data.eventSlug);
+    return runScoring((scoring) =>
+      scoring.publicLeaderboard({
+        eventSlug: data.eventSlug,
+        currentParticipantId,
+        includePreview: false,
+      }),
+    );
+  });
 
 export const getPublicDiscoveryFn = createServerFn({ method: "GET" })
   .validator((value: unknown) => {
@@ -71,7 +84,7 @@ export const getPublicDiscoveryFn = createServerFn({ method: "GET" })
     };
   })
   .handler(async ({ data }) => {
-    const discovery = await getDiscovery(data.discoveryId);
+    const discovery = await runScoring((scoring) => scoring.getDiscovery(data.discoveryId));
     if (!discovery || discovery.eventSlug !== data.eventSlug) return null;
     const activeParticipantId = await activeParticipantForEvent(data.eventSlug);
     return {
@@ -103,7 +116,9 @@ export const getPublicStaffAwardClaimFn = createServerFn({ method: "GET" })
     };
   })
   .handler(async ({ data }) => {
-    const preview = await getStaffAwardClaimPreview(data.eventSlug, data.token);
+    const preview = await runScoring((scoring) =>
+      scoring.getStaffAwardPreview(data.eventSlug, data.token),
+    );
     if (!preview) return null;
     const activeParticipantId = await activeParticipantForEvent(data.eventSlug);
     return {

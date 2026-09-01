@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import {
   listAlertRecipients,
   listAlertDeliveries,
-  revokeAlertRecipient,
-  saveAlertRecipient,
-  sendTestAlert,
 } from "@/features/attendee-operations/notifications.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -17,6 +17,18 @@ async function authenticate(request: Request) {
     actorId: auth.actorId ?? "root-owner",
     actorType: auth.actorType === "admin" ? "admin" : "root-owner",
   } as const;
+}
+
+function runOperation<A, E>(
+  request: Request,
+  use: (operations: typeof AttendeeOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* AttendeeOperationsService);
+    }),
+    request.signal,
+  );
 }
 
 async function handleGET(request: Request) {
@@ -53,26 +65,32 @@ async function handlePOST(request: Request) {
         { status: 400 },
       );
     }
-    const saved = await saveAlertRecipient({
-      email: body.email,
-      categories: body.categories,
-      eventSlugs:
-        Array.isArray(body.eventSlugs) &&
-        body.eventSlugs.every((value) => typeof value === "string")
-          ? body.eventSlugs
-          : [],
-      cadence: body.cadence,
-      digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
-      criticalOverride: body.criticalOverride !== false,
-      fallback: body.fallback === true,
-      quietHours:
-        body.quietHours && typeof body.quietHours === "object"
-          ? (body.quietHours as { start?: number; end?: number })
-          : undefined,
-      actorId,
-      actorType,
-      reason: body.reason,
-    });
+    const email = body.email;
+    const categories = body.categories;
+    const cadence = body.cadence;
+    const reason = body.reason;
+    const saved = await runOperation(request, (operations) =>
+      operations.saveAlerts({
+        email,
+        categories,
+        eventSlugs:
+          Array.isArray(body.eventSlugs) &&
+          body.eventSlugs.every((value) => typeof value === "string")
+            ? body.eventSlugs
+            : [],
+        cadence,
+        digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+        criticalOverride: body.criticalOverride !== false,
+        fallback: body.fallback === true,
+        quietHours:
+          body.quietHours && typeof body.quietHours === "object"
+            ? (body.quietHours as { start?: number; end?: number })
+            : undefined,
+        actorId,
+        actorType,
+        reason,
+      }),
+    );
     return Response.json(saved, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Alert recipient could not be saved";
@@ -91,7 +109,10 @@ async function handlePUT(request: Request) {
     const body = (await request.json().catch(() => null)) as { recipientId?: unknown } | null;
     if (!body || typeof body.recipientId !== "string")
       return Response.json({ error: "Recipient is required" }, { status: 400 });
-    return Response.json(await sendTestAlert({ recipientId: body.recipientId, actorId }));
+    const recipientId = body.recipientId;
+    return Response.json(
+      await runOperation(request, (operations) => operations.testAlert({ recipientId, actorId })),
+    );
   } catch (error) {
     return apiErrorFromRequest(
       request,
@@ -114,7 +135,11 @@ async function handleDELETE(request: Request) {
     } | null;
     if (!body || typeof body.id !== "string" || typeof body.reason !== "string")
       return Response.json({ error: "Recipient and reason are required" }, { status: 400 });
-    return (await revokeAlertRecipient({ id: body.id, actorId, actorType, reason: body.reason }))
+    const id = body.id;
+    const reason = body.reason;
+    return (await runOperation(request, (operations) =>
+      operations.revokeAlerts({ id, actorId, actorType, reason }),
+    ))
       ? Response.json({ revoked: true })
       : Response.json({ error: "Recipient not found" }, { status: 404 });
   } catch (error) {

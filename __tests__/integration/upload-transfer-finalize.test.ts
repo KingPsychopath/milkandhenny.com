@@ -170,4 +170,94 @@ describe("upload transfer finalize", () => {
     });
     expect(processUploadedFile).not.toHaveBeenCalled();
   });
+
+  it("returns an already completed transfer when finalization is retried", async () => {
+    const createTransfer = vi.fn();
+    const processUploadedFile = vi.fn();
+
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({
+        error: null,
+        payload: { role: "upload", jti: "upload-session" },
+      }),
+    }));
+    vi.doMock("@/features/transfers/store.server", () => ({
+      createTransfer,
+      getTransfer: vi.fn().mockResolvedValue({
+        id: "transfer-1",
+        title: "party",
+        createdAt: "2026-08-31T12:00:00.000Z",
+        expiresAt: "2026-09-01T12:00:00.000Z",
+        deleteToken: "delete-token",
+        files: [
+          {
+            id: "photo",
+            filename: "photo.jpg",
+            kind: "image",
+            size: 123,
+            mimeType: "image/jpeg",
+            storageKey: "transfers/transfer-1/original/photo.jpg",
+          },
+        ],
+      }),
+      validateDeleteToken: vi.fn().mockResolvedValue(true),
+      MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
+      MAX_TRANSFER_FILES: 500,
+      MAX_TRANSFER_FILE_BYTES: 250 * 1024 * 1024,
+      MAX_TRANSFER_TOTAL_BYTES: 1024 * 1024 * 1024,
+      normaliseTransferTitle: (value: unknown) =>
+        typeof value === "string" && value.trim() ? value.trim() : "untitled",
+    }));
+    vi.doMock("@/features/transfers/upload-reservation.server", () => ({
+      deleteTransferUploadReservation: vi.fn(),
+      getTransferUploadReservation: vi.fn().mockResolvedValue(null),
+      transferUploadFilesFingerprint: vi.fn().mockReturnValue("fingerprint"),
+    }));
+    vi.doMock("@/features/transfers/upload.server", () => ({
+      applyTransferAssetGroups: (files: unknown[]) => ({ files, groups: [] }),
+      processUploadedFile,
+      sortTransferFiles: (files: unknown[]) => files,
+      isSafeTransferFilename: () => true,
+    }));
+    vi.doMock("@/features/transfers/media-state", () => ({
+      HEIF_TRANSFER_UPLOAD_ERROR:
+        "HEIC/HIF transfer uploads must be converted in the browser before upload.",
+      buildTransferProcessingCounts: vi.fn().mockReturnValue({
+        readyCount: 1,
+        queuedCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        originalOnlyCount: 1,
+      }),
+      isHeifUploadLike: vi.fn().mockReturnValue(false),
+      resolveTransferUploadIds: (files: Array<{ name: string }>) =>
+        files.map((file) => ({ ...file, mediaId: file.name.replace(/\.[^.]+$/, "") })),
+    }));
+    vi.doMock("@/lib/shared/config", () => ({
+      getBaseUrlForRequest: (req: { url: string }) => new URL(req.url).origin,
+      hasMediaPublicUrl: () => true,
+    }));
+    vi.doMock("@/lib/platform/api-error", () => ({
+      apiErrorFromRequest: vi.fn(),
+    }));
+
+    const { POST } = await import("@/src/routes/api/upload/transfer/finalize/route");
+    const response = await POST(
+      makeRequest({
+        transferId: "transfer-1",
+        deleteToken: "delete-token",
+        title: "party",
+        expiresSeconds: 3600,
+        files: [{ name: "photo.jpg", size: 123, type: "image/jpeg" }],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      deduplicated: true,
+      transfer: { id: "transfer-1", fileCount: 1 },
+    });
+    expect(createTransfer).not.toHaveBeenCalled();
+    expect(processUploadedFile).not.toHaveBeenCalled();
+  });
 });

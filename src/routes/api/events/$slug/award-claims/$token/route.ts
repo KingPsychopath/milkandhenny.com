@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getRequestIP } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 
-import { claimStaffAward } from "@/features/event-scoring/staff-award-claims.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import {
   activeParticipantForEvent,
   openAttendeeTicket,
 } from "@/features/event-scoring/session.server";
+import { runEventsResult } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { rateLimitClaim } from "@/features/tickets/tickets.server";
 
@@ -34,13 +36,23 @@ async function handlePOST(request: Request, eventSlug: string, token: string) {
         { status: 401 },
       );
     }
-    const result = await claimStaffAward({ eventSlug, token, participantId });
-    return result.ok
+    const outcome = await runEventsResult(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.claimAward({ eventSlug, token, participantId });
+      }),
+      request.signal,
+    );
+    if (!outcome.ok) return Response.json({ error: outcome.error }, { status: outcome.status });
+    return outcome.value.ok
       ? Response.json(
-          { points: result.value.points, transactionId: result.value.transaction.id },
+          {
+            points: outcome.value.value.points,
+            transactionId: outcome.value.value.transaction.id,
+          },
           { headers: { "Cache-Control": "no-store" } },
         )
-      : Response.json({ error: result.error }, { status: result.status });
+      : Response.json({ error: outcome.value.error }, { status: outcome.value.status });
   } catch (error) {
     return apiErrorFromRequest(
       request,

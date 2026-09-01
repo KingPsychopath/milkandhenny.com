@@ -11,20 +11,16 @@ import {
 } from "@/features/communications/marketing-consent";
 import { EventsService } from "@/features/events/events-service.server";
 import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
-import { requestTransferredTicketReturn } from "@/features/attendee-operations/ticket-operations.server";
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
 import { toTicketHolderEvent } from "@/features/events/types";
 import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
 import { buildTicketQrPayload } from "./qr.server";
 import { rateLimitClaim } from "./tickets.server";
-import {
-  isCheckoutSessionId,
-  refundTicket,
-  resolveCheckoutOutcome,
-  startCheckout,
-} from "./checkout.server";
+import { isCheckoutSessionId } from "./checkout.server";
 import { rememberTicketHolder } from "./holder-cookie.server";
 import { readManagedTicketOrders, rememberManagedTicketOrder } from "./order-cookie.server";
 import { resolveScannerLink } from "./scanner-links.server";
@@ -348,7 +344,17 @@ export const startCheckoutFn = createServerFn({ method: "POST" })
       return { ok: false, status: 429, error: "Too many requests. Try again shortly." };
     }
 
-    const result = await startCheckout({ ...data, origin: getBaseUrlForRequest(request) });
+    const outcome = await runEventOperationsResult(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.startCheckout({
+          ...data,
+          origin: getBaseUrlForRequest(request),
+        });
+      }),
+    );
+    if (!outcome.ok) return { ok: false, status: outcome.status, error: outcome.error };
+    const result = outcome.value;
     if (!result.ok) return { ok: false, status: result.status, error: result.error };
     return { ok: true, url: result.value.url };
   });
@@ -392,7 +398,14 @@ export const getCheckoutOutcomeFn = createServerFn({ method: "GET" })
     if (!isCheckoutSessionId(data.sessionId)) return { state: "unknown" };
 
     const request = getRequest();
-    const outcome = await resolveCheckoutOutcome(data.sessionId, getBaseUrlForRequest(request));
+    const resolved = await runEventOperationsResult(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.resolveCheckout(data.sessionId, getBaseUrlForRequest(request));
+      }),
+    );
+    if (!resolved.ok) return { state: "problem", message: resolved.error };
+    const outcome = resolved.value;
     if (outcome.state !== "complete") return outcome;
 
     const { event, tickets, orderId } = outcome;
@@ -459,11 +472,18 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
     if (!managesOrder && !attendeePersonId)
       return { ok: false, error: "Verify your email before requesting this ticket return" };
     if (!managesOrder) {
-      const requested = await requestTransferredTicketReturn({
-        ticketId: ticket.id,
-        requesterPersonId: attendeePersonId!,
-        origin: getBaseUrlForRequest(getRequest()),
-      });
+      const requestOutcome = await runEventOperationsResult(
+        Effect.gen(function* () {
+          const operations = yield* AttendeeOperationsService;
+          return yield* operations.requestReturn({
+            ticketId: ticket.id,
+            requesterPersonId: attendeePersonId!,
+            origin: getBaseUrlForRequest(getRequest()),
+          });
+        }),
+      );
+      if (!requestOutcome.ok) return { ok: false, error: requestOutcome.error };
+      const requested = requestOutcome.value;
       return requested.ok
         ? {
             ok: true,
@@ -473,17 +493,31 @@ export const refundOwnTicketFn = createServerFn({ method: "POST" })
           }
         : { ok: false, error: requested.error };
     }
-    const result = await refundTicket({
-      ticketId: data.ticketId,
-      reason: "self-serve",
-      actorId: attendeePersonId,
-    });
+    const outcome = await runEventOperationsResult(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.refundTicket({
+          ticketId: data.ticketId,
+          reason: "self-serve",
+          actorId: attendeePersonId,
+        });
+      }),
+    );
+    if (!outcome.ok) return { ok: false, error: outcome.error };
+    const result = outcome.value;
     if (!result.ok && result.error.includes("current holder's consent") && attendeePersonId) {
-      const requested = await requestTransferredTicketReturn({
-        ticketId: data.ticketId,
-        requesterPersonId: attendeePersonId,
-        origin: getBaseUrlForRequest(getRequest()),
-      });
+      const requestOutcome = await runEventOperationsResult(
+        Effect.gen(function* () {
+          const operations = yield* AttendeeOperationsService;
+          return yield* operations.requestReturn({
+            ticketId: data.ticketId,
+            requesterPersonId: attendeePersonId,
+            origin: getBaseUrlForRequest(getRequest()),
+          });
+        }),
+      );
+      if (!requestOutcome.ok) return { ok: false, error: requestOutcome.error };
+      const requested = requestOutcome.value;
       return requested.ok
         ? {
             ok: true,

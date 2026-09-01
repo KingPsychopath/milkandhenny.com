@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import { CommunicationsService } from "@/features/communications/communications-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import {
   cancelQueuedEmail,
   cleanupEmailOperations,
@@ -14,7 +17,6 @@ import {
 } from "@/features/email-operations/email-operations.server";
 import type { EmailLedgerSort } from "@/features/email-operations/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { drainEmailOutbox } from "@/lib/platform/email-outbox.server";
 import {
   isEmailChannel,
   isEmailDeliveryStatus,
@@ -76,7 +78,13 @@ async function handlePOST(request: Request) {
   const id = typeof body.id === "string" ? body.id : "";
   try {
     if (action === "drain") {
-      return Response.json({ ok: true, handled: await drainEmailOutbox() });
+      const handled = await runEventsEffect(
+        Effect.gen(function* () {
+          return yield* (yield* CommunicationsService).drain;
+        }),
+        request.signal,
+      );
+      return Response.json({ ok: true, handled });
     }
     if (
       action === "cleanup" ||

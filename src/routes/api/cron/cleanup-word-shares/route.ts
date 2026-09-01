@@ -1,24 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { cleanupShareLinksForSlug, listTrackedShareSlugs } from "@/features/words/share.server";
-import { listAllWords } from "@/features/words/store.server";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { log } from "@/lib/platform/logger.server";
 
 export const dynamic = "force-dynamic";
-
-async function collectCleanupSlugs(): Promise<string[]> {
-  const [trackedSlugs, words] = await Promise.all([
-    listTrackedShareSlugs(),
-    listAllWords({ includeNonPublic: true }),
-  ]);
-  const slugs = new Set<string>(trackedSlugs);
-  for (const word of words) {
-    slugs.add(word.slug);
-  }
-  return [...slugs].sort();
-}
 
 async function handleGET(request: Request) {
   const authErr = await requireAuth(request, "cron");
@@ -32,42 +21,23 @@ async function handleGET(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? null;
 
   try {
-    const slugs = await collectCleanupSlugs();
-    let scanned = 0;
-    let removedExpired = 0;
-    let removedRevoked = 0;
-    let staleIndexRemoved = 0;
-    let remaining = 0;
-
-    for (const slug of slugs) {
-      const result = await cleanupShareLinksForSlug(slug);
-      scanned += result.scanned;
-      removedExpired += result.removedExpired;
-      removedRevoked += result.removedRevoked;
-      staleIndexRemoved += result.staleIndexRemoved;
-      remaining += result.remaining;
-    }
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* MediaMaintenanceService).cleanupWordShares;
+      }),
+      request.signal,
+    );
 
     const durationMs = Date.now() - startedAtMs;
     log.info("cron.cleanup-word-shares", "Cron word-share cleanup finished", {
       requestId,
       durationMs,
-      scannedSlugs: slugs.length,
-      scannedLinks: scanned,
-      removedExpired,
-      removedRevoked,
-      staleIndexRemoved,
-      remaining,
+      ...result,
     });
 
     return Response.json({
       success: true,
-      scannedSlugs: slugs.length,
-      scannedLinks: scanned,
-      removedExpired,
-      removedRevoked,
-      staleIndexRemoved,
-      remaining,
+      ...result,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

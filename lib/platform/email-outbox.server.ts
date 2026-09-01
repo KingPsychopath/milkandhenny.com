@@ -25,10 +25,9 @@ import {
 
 const CLAIM_LIMIT = 8;
 const LOCK_SECONDS = 45;
-const WORKER_BACKSTOP_INTERVAL_MS = 60_000;
 const ADMIN_RESEND_COOLDOWN_MINUTES = 5;
 
-interface OutboxRow {
+export interface EmailOutboxRow {
   id: string;
   idempotency_key: string;
   message: unknown;
@@ -297,9 +296,9 @@ export async function enqueueEmails(messages: readonly QueuedEmail[]): Promise<n
   return queued;
 }
 
-async function claimBatch(): Promise<OutboxRow[]> {
+export async function claimEmailOutboxBatch(): Promise<EmailOutboxRow[]> {
   return transaction(async (client) => {
-    const result = await client.query<OutboxRow>(
+    const result = await client.query<EmailOutboxRow>(
       `with claimable as (
          select id
            from email_outbox
@@ -333,7 +332,7 @@ async function claimBatch(): Promise<OutboxRow[]> {
   });
 }
 
-async function expireUndeliverableMessages(): Promise<number> {
+export async function expireUndeliverableEmailMessages(): Promise<number> {
   const rows = await query<{ id: string }>(
     `update email_outbox
         set status = 'failed', message = null, locked_until = null,
@@ -371,7 +370,10 @@ async function expireUndeliverableMessages(): Promise<number> {
   return rows.length;
 }
 
-async function finishAttempt(row: OutboxRow): Promise<void> {
+export async function finishEmailOutboxAttempt(
+  row: EmailOutboxRow,
+  deliver: typeof deliverEmailNow = deliverEmailNow,
+): Promise<void> {
   const message = parseMessage(row.message);
   if (!message) {
     const updated = await query<{ id: string }>(
@@ -393,7 +395,7 @@ async function finishAttempt(row: OutboxRow): Promise<void> {
     return;
   }
 
-  const result = await deliverEmailNow(message, row.idempotency_key);
+  const result = await deliver(message, row.idempotency_key);
   if (result.ok) {
     const updated = await query<{ id: string }>(
       `update email_outbox
@@ -468,11 +470,11 @@ let draining: Promise<number> | null = null;
 
 export function drainEmailOutbox(): Promise<number> {
   draining ??= (async () => {
-    let handled = await expireUndeliverableMessages();
+    let handled = await expireUndeliverableEmailMessages();
     for (;;) {
-      const rows = await claimBatch();
+      const rows = await claimEmailOutboxBatch();
       if (rows.length === 0) return handled;
-      await Promise.all(rows.map(finishAttempt));
+      await Promise.all(rows.map((row) => finishEmailOutboxAttempt(row)));
       handled += rows.length;
       if (rows.length < CLAIM_LIMIT) return handled;
     }
@@ -482,7 +484,18 @@ export function drainEmailOutbox(): Promise<number> {
   return draining;
 }
 
+let effectWake: (() => void) | null = null;
+
+/** Let the scoped communications service own wake-driven drains while its runtime is active. */
+export function setEmailOutboxEffectWake(wake: (() => void) | null): void {
+  effectWake = wake;
+}
+
 function triggerEmailOutboxDrain(): void {
+  if (effectWake) {
+    effectWake();
+    return;
+  }
   void drainEmailOutbox().catch((error) => {
     log.error(DURABLE_WORK_LOG_SCOPE.email, "Email delivery drain failed", {}, error);
   });
@@ -491,40 +504,6 @@ function triggerEmailOutboxDrain(): void {
 /** Wake delivery after a caller commits messages with `enqueueEmailInTransaction`. */
 export function wakeEmailOutbox(): void {
   triggerEmailOutboxDrain();
-}
-
-let workerTimer: ReturnType<typeof setTimeout> | null = null;
-let workerStarted = false;
-
-function scheduleEmailOutboxBackstop(): void {
-  if (!workerStarted || workerTimer) return;
-  workerTimer = setTimeout(() => {
-    workerTimer = null;
-    triggerEmailOutboxDrain();
-    scheduleEmailOutboxBackstop();
-  }, WORKER_BACKSTOP_INTERVAL_MS);
-  workerTimer.unref();
-}
-
-export function startEmailOutboxWorker(): void {
-  if (workerStarted || !isDatabaseConfigured()) return;
-  workerStarted = true;
-  triggerEmailOutboxDrain();
-  scheduleEmailOutboxBackstop();
-}
-
-export async function stopEmailOutboxWorker(): Promise<void> {
-  workerStarted = false;
-  if (workerTimer) clearTimeout(workerTimer);
-  workerTimer = null;
-  await draining?.catch((error) => {
-    log.error(
-      DURABLE_WORK_LOG_SCOPE.email,
-      "Email delivery drain failed during shutdown",
-      {},
-      error,
-    );
-  });
 }
 
 export async function describeEmailOutbox(): Promise<{

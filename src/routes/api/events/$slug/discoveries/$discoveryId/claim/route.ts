@@ -1,11 +1,13 @@
+import { Effect } from "effect";
 import { createFileRoute } from "@tanstack/react-router";
 import { getRequestIP } from "@tanstack/react-start/server";
 
-import { claimDiscovery, getDiscovery } from "@/features/event-scoring/discoveries.server";
+import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
 import {
   activeParticipantForEvent,
   openedParticipantForEvent,
 } from "@/features/event-scoring/session.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { rateLimitClaim } from "@/features/tickets/tickets.server";
 
@@ -24,7 +26,13 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
     if (!presented || !/^[A-Za-z0-9_-]{16,100}$/.test(commandId)) {
       return Response.json({ error: "Enter the clue and try again" }, { status: 400 });
     }
-    const discovery = await getDiscovery(discoveryId);
+    const discovery = await runEventsEffect(
+      Effect.gen(function* () {
+        const scoring = yield* EventScoringService;
+        return yield* scoring.getDiscovery(discoveryId);
+      }),
+      request.signal,
+    );
     if (!discovery || discovery.eventSlug !== slug)
       return Response.json({ error: "Discovery not found" }, { status: 404 });
     const ticketId = typeof record.ticketId === "string" ? record.ticketId : undefined;
@@ -42,12 +50,18 @@ async function handlePOST(request: Request, slug: string, discoveryId: string) {
         },
         { status: 401 },
       );
-    const result = await claimDiscovery({
-      discoveryId,
-      participantId,
-      presented,
-      commandId,
-    });
+    const result = await runEventsEffect(
+      Effect.gen(function* () {
+        const scoring = yield* EventScoringService;
+        return yield* scoring.claimDiscovery({
+          discoveryId,
+          participantId,
+          presented,
+          commandId,
+        });
+      }),
+      request.signal,
+    );
     if (!result.ok) {
       return Response.json(
         {

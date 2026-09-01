@@ -1,7 +1,7 @@
 import type { Notification, PoolClient } from "pg";
 
 import { log } from "@/lib/platform/logger.server";
-import { getPool } from "@/lib/platform/postgres.server";
+import { getPool } from "@/lib/platform/postgres-provider-context.server";
 import {
   parseScoreRealtimeEvent,
   SCORE_REALTIME_CHANNEL,
@@ -14,8 +14,8 @@ type Subscription = { participantId: string; listener: ScoreEventListener };
 const listeners = new Map<string, Set<Subscription>>();
 let subscriber: PoolClient | null = null;
 let connecting: Promise<void> | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let closing = false;
+let reconnectWake: (() => void) | null = null;
 
 function listenerCount(): number {
   return [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0);
@@ -49,17 +49,8 @@ function handleNotification(message: Notification): void {
 }
 
 function scheduleReconnect(): void {
-  if (closing || reconnectTimer || listenerCount() === 0) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    void ensureSubscribed().catch((error: unknown) => {
-      log.warn("event-scoring.realtime", "Score event subscriber reconnect failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      scheduleReconnect();
-    });
-  }, 1_000);
-  reconnectTimer.unref?.();
+  if (closing || listenerCount() === 0) return;
+  reconnectWake?.();
 }
 
 function releaseSubscriber(client: PoolClient): void {
@@ -125,8 +116,6 @@ export async function subscribeToScoreEvents(
 
 export async function closeScoreEventSubscriber(): Promise<void> {
   closing = true;
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = null;
   listeners.clear();
   const client = subscriber;
   subscriber = null;
@@ -137,5 +126,22 @@ export async function closeScoreEventSubscriber(): Promise<void> {
     // The connection may already be gone.
   } finally {
     client.release(true);
+  }
+}
+
+/** Effect runtime hook: reconnect timing and retry ownership stay outside this adapter. */
+export function setScoreEventReconnectWake(wake: (() => void) | null): void {
+  reconnectWake = wake;
+}
+
+export async function reconnectScoreEventSubscriber(): Promise<void> {
+  if (closing || listenerCount() === 0) return;
+  try {
+    await ensureSubscribed();
+  } catch (error) {
+    log.warn("event-scoring.realtime", "Score event subscriber reconnect failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   }
 }

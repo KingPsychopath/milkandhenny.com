@@ -6,15 +6,11 @@ import {
   requireAuth,
   requireAuthWithPayload,
 } from "@/features/auth/auth.server";
-import {
-  eventCancellationPending,
-  runEventCancellation,
-} from "@/features/event-operations/cancellation.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
-import { reconcileEventWaitlist } from "@/features/event-waitlist/waitlist.server";
 import { log } from "@/lib/platform/logger.server";
 
 /**
@@ -58,7 +54,18 @@ async function handlePATCH(request: Request, slug: string) {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
     const record = body as Record<string, unknown>;
-    const cancelling = await eventCancellationPending(slug, record.status);
+    const cancellationCheck = await runEventOperationsResult(
+      Effect.gen(function* () {
+        const operations = yield* EventOperationsService;
+        return yield* operations.cancellationPending(slug, record.status);
+      }),
+    );
+    if (!cancellationCheck.ok)
+      return Response.json(
+        { error: cancellationCheck.error },
+        { status: cancellationCheck.status },
+      );
+    const cancelling = cancellationCheck.value;
     if (cancelling) {
       const stepUp = await requireAdminStepUp(request);
       if (stepUp) return stepUp;
@@ -69,41 +76,52 @@ async function handlePATCH(request: Request, slug: string) {
     const result = await runEventOperationsResult(
       Effect.gen(function* () {
         const events = yield* EventsService;
-        return yield* events.update(slug, record);
+        const operations = yield* EventOperationsService;
+        const updated = yield* events.update(slug, record);
+        if (!updated.ok) return { updated } as const;
+        const cancellation = cancelling
+          ? yield* operations.cancelEvent({
+              eventSlug: updated.value.slug,
+              actorId: auth.actorId ?? "root-owner",
+              actorType: auth.actorType === "admin" ? "admin" : "root-owner",
+              reason: record.cancellationReason as string,
+              origin: new URL(request.url).origin,
+            })
+          : undefined;
+        const waitlistNotifications = yield* operations
+          .reconcileWaitlist({
+            eventSlug: updated.value.slug,
+            origin: new URL(request.url).origin,
+          })
+          .pipe(
+            Effect.map((outcome) => outcome.count),
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                log.error(
+                  "events.waitlist",
+                  "Immediate waitlist reconciliation failed",
+                  { eventSlug: updated.value.slug },
+                  error,
+                );
+                return 0;
+              }),
+            ),
+          );
+        return { updated, cancellation, waitlistNotifications } as const;
       }),
     );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-    if (!result.value.ok) {
-      return Response.json({ error: result.value.error }, { status: result.value.status });
-    }
-    const cancellation = cancelling
-      ? await runEventCancellation({
-          eventSlug: result.value.value.slug,
-          actorId: auth.actorId ?? "root-owner",
-          actorType: auth.actorType === "admin" ? "admin" : "root-owner",
-          reason: record.cancellationReason as string,
-          origin: new URL(request.url).origin,
-        })
-      : undefined;
-    let waitlistNotifications = 0;
-    try {
-      waitlistNotifications = (
-        await reconcileEventWaitlist({
-          eventSlug: result.value.value.slug,
-          origin: new URL(request.url).origin,
-        })
-      ).count;
-    } catch (error) {
-      // The scheduler retries from durable inventory and waitlist state. An
-      // email staging outage must not roll back a valid event capacity edit.
-      log.error(
-        "events.waitlist",
-        "Immediate waitlist reconciliation failed",
-        { eventSlug: result.value.value.slug },
-        error,
+    if (!result.value.updated.ok) {
+      return Response.json(
+        { error: result.value.updated.error },
+        { status: result.value.updated.status },
       );
     }
-    return Response.json({ event: result.value.value, cancellation, waitlistNotifications });
+    return Response.json({
+      event: result.value.updated.value,
+      cancellation: result.value.cancellation,
+      waitlistNotifications: result.value.waitlistNotifications,
+    });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.update", "Failed to update event", error);
   }

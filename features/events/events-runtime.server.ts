@@ -2,7 +2,19 @@ import { Effect, Layer } from "effect";
 
 import { runEffectResult, type EffectRunResult } from "@/lib/platform/effect-boundary.server";
 import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
+import {
+  EmailProviderService,
+  PaymentsService,
+  PostgresService,
+} from "@/lib/platform/provider-services.server";
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
+import { CommunicationsService } from "@/features/communications/communications-service.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
+import { StaffAccessService } from "@/features/event-scoring/staff-access-service.server";
+import { ApplicationSchedulerService } from "@/features/system/application-scheduler-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
+import { EventsRealtimeService } from "./events-resources.server";
 import { EventsService } from "./events-service.server";
 
 /**
@@ -13,11 +25,35 @@ import { EventsService } from "./events-service.server";
  * state — Redis remains the source of truth, so any replica can serve the
  * next request.
  */
-const eventsLayer = Layer.mergeAll(EventsService.layer, TicketsService.layer);
+const eventWorkflowLayer = Layer.mergeAll(
+  CommunicationsService.layer.pipe(Layer.provide(EmailProviderService.layer)),
+  EventScoringService.layer,
+);
+const scheduledEventWorkflowLayer = ApplicationSchedulerService.layer.pipe(
+  Layer.provideMerge(eventWorkflowLayer),
+);
+const eventsLayer = Layer.mergeAll(
+  EventsService.layer,
+  TicketsService.layer,
+  AttendeeOperationsService.layer,
+  EventOperationsService.layer.pipe(Layer.provide(PaymentsService.layer)),
+  StaffAccessService.layer,
+  scheduledEventWorkflowLayer,
+  EventsRealtimeService.layer.pipe(Layer.provide(PostgresService.layer)),
+);
 
 const eventsRuntime = makeManagedRuntimeHost(eventsLayer, "Events");
 
-export type EventsServices = EventsService | TicketsService;
+export type EventsServices =
+  | ApplicationSchedulerService
+  | AttendeeOperationsService
+  | CommunicationsService
+  | EventOperationsService
+  | EventScoringService
+  | EventsRealtimeService
+  | StaffAccessService
+  | EventsService
+  | TicketsService;
 
 /** The only sanctioned Promise boundary — call this from TanStack/Nitro edges. */
 export function runEventsEffect<A, E>(

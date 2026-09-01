@@ -23,4 +23,11 @@ export class EventsOperationError extends Data.TaggedError("EventsOperationError
   }
 }
 
-export type EventsDomain = "events" | "tickets";
+export type EventsDomain =
+  | "attendee-operations"
+  | "communications"
+  | "event-operations"
+  | "event-scoring"
+  | "events"
+  | "scheduler"
+  | "tickets";

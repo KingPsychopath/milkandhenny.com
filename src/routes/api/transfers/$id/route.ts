@@ -1,11 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  getTransfer,
-  deleteTransferData,
-  validateDeleteToken,
-} from "@/features/transfers/store.server";
-import { deleteObjects, isTransferStorageConfigured, listObjects } from "@/lib/platform/r2.server";
+import { Effect } from "effect";
+import { getTransfer } from "@/features/transfers/store.server";
 import { toPublicTransfer } from "@/features/transfers/public";
+import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -56,30 +55,31 @@ async function handleDELETE(request: Request, context: RouteContext) {
     return Response.json({ error: "Delete token is required" }, { status: 400 });
   }
 
-  // Validate the token
-  const valid = await validateDeleteToken(id, token);
-  if (!valid) {
-    return Response.json({ error: "Invalid delete token or transfer not found" }, { status: 403 });
+  try {
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.takedown({ id, token });
+      }),
+      request.signal,
+    );
+    if (!result.authorised) {
+      return Response.json(
+        { error: "Invalid delete token or transfer not found" },
+        { status: 403 },
+      );
+    }
+    return Response.json({
+      success: true,
+      deletedFiles: result.deletedFiles,
+      dataDeleted: result.dataDeleted,
+      message: "Transfer has been taken down.",
+    });
+  } catch (error) {
+    return apiErrorFromRequest(request, "transfers.takedown", "Transfer takedown failed", error, {
+      id,
+    });
   }
-
-  // Delete R2 objects
-  const prefix = `transfers/${id}/`;
-  let deletedFiles = 0;
-  if (isTransferStorageConfigured()) {
-    const objects = await listObjects(prefix, { scope: "private" });
-    const keys = objects.map((o) => o.key).filter((k) => k && k.startsWith(prefix));
-    deletedFiles = await deleteObjects(keys, { scope: "private" });
-  }
-
-  // Delete Redis metadata
-  const dataDeleted = await deleteTransferData(id);
-
-  return Response.json({
-    success: true,
-    deletedFiles,
-    dataDeleted,
-    message: "Transfer has been taken down.",
-  });
 }
 
 export const Route = createFileRoute("/api/transfers/$id")({

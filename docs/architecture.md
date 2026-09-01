@@ -100,12 +100,12 @@ conversion happens only at TanStack/Nitro edges.
 
 The runtime ownership map is deliberately small:
 
-| Runtime     | Responsibilities                                                                  |
-| ----------- | --------------------------------------------------------------------------------- |
-| Events      | Events, tickets, attendee operations, scoring, communications, and app scheduling |
-| Media       | Media-worker lifecycle and private-transfer orchestration                         |
-| Multiplayer | Shared room workflows, realtime resources, and command execution                  |
-| Pitches     | Pitch Night server workflows and presentation lifecycle                           |
+| Runtime     | Responsibilities                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| Events      | Events, tickets, attendee operations, scoring, realtime, communications, and app scheduling |
+| Media       | Media-worker lifecycle, private-transfer orchestration, and bounded media maintenance       |
+| Multiplayer | Shared room workflows, realtime resources, and command execution                            |
+| Pitches     | Pitch Night server workflows and presentation lifecycle                                     |
 
 Services compose into the owning runtime Layer. A feature service or compatibility facade does not
 create another `ManagedRuntime` or shutdown plugin. Score rules, eligibility, balance calculations,
@@ -115,7 +115,9 @@ delivery, scheduled fibers, spans, cancellation, finalizers, and shutdown.
 
 Postgres, Redis, R2, email, and Stripe adapters remain plain async implementations. Workflows use an
 injectable service only where substitution, cancellation, lifecycle, or typed failure handling
-provides a real boundary; individual SDK and query calls are not rewritten as pipelines.
+provides a real boundary. Provider context is scoped to the active Effect operation so existing
+plain ticket, refund, media, and realtime engines use the Layer-selected implementation without
+turning individual SDK and query calls into pipelines.
 
 Effect is pinned exactly in `package.json`; a prerelease version bump is coordinated rather than
 routine. The complete adoption, resource, cancellation, failure, retry, testing, and shutdown

@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getRequestIP } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 
-import {
-  claimDiscovery,
-  findDiscoveryForPresented,
-} from "@/features/event-scoring/discoveries.server";
+import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import {
   activeParticipantForEvent,
   openedParticipantForEvent,
@@ -27,7 +26,13 @@ async function handlePOST(request: Request, slug: string) {
     if (!presented || presented.length > 500 || !/^[A-Za-z0-9_-]{16,100}$/.test(commandId)) {
       return Response.json({ error: "Enter the clue and try again" }, { status: 400 });
     }
-    const discovery = await findDiscoveryForPresented(slug, presented);
+    const discovery = await runEventsEffect(
+      Effect.gen(function* () {
+        const scoring = yield* EventScoringService;
+        return yield* scoring.findDiscovery(slug, presented);
+      }),
+      request.signal,
+    );
     if (!discovery) {
       return Response.json(
         { error: "That clue does not match an active discovery" },
@@ -50,12 +55,18 @@ async function handlePOST(request: Request, slug: string) {
         { status: 401 },
       );
     }
-    const result = await claimDiscovery({
-      discoveryId: discovery.id,
-      participantId,
-      presented,
-      commandId,
-    });
+    const result = await runEventsEffect(
+      Effect.gen(function* () {
+        const scoring = yield* EventScoringService;
+        return yield* scoring.claimDiscovery({
+          discoveryId: discovery.id,
+          participantId,
+          presented,
+          commandId,
+        });
+      }),
+      request.signal,
+    );
     if (!result.ok) {
       return Response.json(
         {

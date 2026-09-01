@@ -1,16 +1,14 @@
 import { Effect } from "effect";
 
 import { runEffectResult, type EffectRunResult } from "@/lib/platform/effect-boundary.server";
-import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
+import { disposeEventsRuntime, runEventsEffect } from "@/features/events/events-runtime.server";
 import { StaffAccessService } from "./staff-access-service.server";
-
-const staffAccessRuntime = makeManagedRuntimeHost(StaffAccessService.layer, "EventStaffAccess");
 
 export function runStaffAccessEffect<A, E>(
   effect: Effect.Effect<A, E, StaffAccessService>,
   signal?: AbortSignal,
 ) {
-  return staffAccessRuntime.run(effect, signal);
+  return runEventsEffect(effect, signal);
 }
 
 export function runStaffAccessResult<A, E>(
@@ -21,5 +19,5 @@ export function runStaffAccessResult<A, E>(
 }
 
 export function disposeStaffAccessRuntime() {
-  return staffAccessRuntime.dispose();
+  return disposeEventsRuntime();
 }

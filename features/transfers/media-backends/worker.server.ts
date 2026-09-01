@@ -7,7 +7,11 @@ import {
   RawPreviewUnavailableError,
   resolveImageProcessingSource,
 } from "@/features/media/processing.server";
-import { deleteObjects, downloadBuffer, uploadBuffer } from "@/lib/platform/r2.server";
+import {
+  deleteObjects,
+  downloadBuffer,
+  uploadBuffer,
+} from "@/lib/platform/object-storage-provider-context.server";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,

@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { formatBytes } from "@/lib/shared/format";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
-import { presignPutUrl, isTransferStorageConfigured } from "@/lib/platform/r2.server";
+import { isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import {
   generateTransferId,
   generateDeleteToken,
@@ -12,27 +13,20 @@ import {
   MAX_TRANSFER_FILES,
   MAX_TRANSFER_TOTAL_BYTES,
 } from "@/features/transfers/store.server";
-import { getMimeType } from "@/features/media/processing.server";
 import {
   HEIF_TRANSFER_UPLOAD_ERROR,
   isHeifUploadLike,
   resolveTransferUploadIds,
 } from "@/features/transfers/media-state";
-import {
-  buildTransferArchivedOriginalStorageKey,
-  buildTransferPrimaryStorageKey,
-} from "@/features/transfers/storage";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
+import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
   getUploadUrlTtlSeconds,
   MAX_SINGLE_PUT_BYTES,
 } from "@/features/transfers/upload-window.server";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
-import {
-  createTransferUploadReservation,
-  transferUploadFilesFingerprint,
-} from "@/features/transfers/upload-reservation.server";
 
 type FileEntry = TransferUploadFileInput;
 
@@ -181,52 +175,29 @@ async function handlePOST(request: Request) {
   const deleteToken = generateDeleteToken();
   const boundedExpiresSeconds = Math.min(expiresSeconds, MAX_EXPIRY_SECONDS);
 
-  try {
-    const urls = await Promise.all(
-      files.map(async (file) => {
-        const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
-        const primaryUrl = await presignPutUrl(
-          primaryKey,
-          getMimeType(file.name),
-          uploadUrlTtlSeconds,
-          { scope: "private" },
-        );
-        const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-        const archivedOriginalUrl =
-          archivedOriginalKey && file.originalName
-            ? await presignPutUrl(
-                archivedOriginalKey,
-                getMimeType(file.originalName),
-                uploadUrlTtlSeconds,
-                { scope: "private" },
-              )
-            : undefined;
-
-        return {
-          name: file.name,
-          mediaId: file.mediaId,
-          contentType: getMimeType(file.name),
-          primaryUrl,
-          archivedOriginalUrl,
-        };
-      }),
+  if (!payload?.jti) {
+    return Response.json(
+      { error: "Authenticated upload session is missing an ID" },
+      { status: 401 },
     );
+  }
 
-    if (!payload?.jti) {
-      return Response.json(
-        { error: "Authenticated upload session is missing an ID" },
-        { status: 401 },
-      );
-    }
-    const reserved = await createTransferUploadReservation({
-      transferId,
-      deleteToken,
-      actorJti: payload.jti,
-      expiresSeconds: boundedExpiresSeconds,
-      filesFingerprint: transferUploadFilesFingerprint(files),
-      createdAt: new Date().toISOString(),
-    });
-    if (!reserved) {
+  try {
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.presignUpload({
+          transferId,
+          deleteToken,
+          actorJti: payload.jti,
+          expiresSeconds: boundedExpiresSeconds,
+          files,
+          uploadUrlTtlSeconds,
+        });
+      }),
+      request.signal,
+    );
+    if (result.status === "reservation-conflict") {
       return Response.json(
         { error: "Unable to reserve transfer ID. Please retry." },
         { status: 409 },
@@ -237,7 +208,7 @@ async function handlePOST(request: Request) {
       transferId,
       deleteToken,
       expiresSeconds: boundedExpiresSeconds,
-      urls,
+      urls: result.urls,
     });
   } catch (e) {
     return apiErrorFromRequest(

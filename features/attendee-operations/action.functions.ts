@@ -1,13 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
+import { Effect } from "effect";
 
-import { acceptAccessAction, inspectAccessAction } from "./access-grants.server";
-import {
-  acceptRefundConsent,
-  acceptTicketAction,
-  declineRefundConsent,
-  declineTicketTransfer,
-  inspectTicketAction,
-} from "./ticket-operations.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
+import { inspectAccessAction } from "./access-grants.server";
+import { AttendeeOperationsService } from "./attendee-operations-service.server";
+import { inspectTicketAction } from "./ticket-operations.server";
+
+function runAction<A, E>(
+  use: (operations: typeof AttendeeOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* AttendeeOperationsService);
+    }),
+  );
+}
 
 export const readAttendeeActionFn = createServerFn({ method: "GET" })
   .validator((data: { token: string }) => data)
@@ -22,11 +29,11 @@ export const acceptAttendeeActionFn = createServerFn({ method: "POST" })
   .validator((data: { token: string }) => data)
   .handler(async ({ data }) => {
     const access = await inspectAccessAction(data.token);
-    if (access) return acceptAccessAction(data.token);
+    if (access) return runAction((operations) => operations.acceptAccess(data.token));
     const ticket = await inspectTicketAction(data.token);
     return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
-      ? acceptRefundConsent(data.token)
-      : acceptTicketAction(data.token);
+      ? runAction((operations) => operations.acceptRefund(data.token))
+      : runAction((operations) => operations.acceptTicket(data.token));
   });
 
 export const declineAttendeeActionFn = createServerFn({ method: "POST" })
@@ -34,6 +41,6 @@ export const declineAttendeeActionFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const ticket = await inspectTicketAction(data.token);
     return ticket?.purpose === "refund-consent" || ticket?.purpose === "ticket-return"
-      ? declineRefundConsent(data.token)
-      : declineTicketTransfer(data.token);
+      ? runAction((operations) => operations.declineRefund(data.token))
+      : runAction((operations) => operations.declineTransfer(data.token));
   });

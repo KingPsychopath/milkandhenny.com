@@ -2,29 +2,11 @@ import { randomBytes } from "node:crypto";
 
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 
-import {
-  awardStaffPoints,
-  admitStaffTicket,
-  acceptStaffHeldAction,
-  decideStaffGuestRequest,
-  getStaffScoringPage,
-  mintStaffAwardClaim,
-  reverseStaffAward,
-  scanStaffCheckpoint,
-  resolveStaffScannedParticipant,
-  searchStaffParticipants,
-  shuffleStaffTeams,
-  submitStaffGuest,
-  transferStaffPoints,
-  moveStaffTeamParticipant,
-} from "./staff-scoring.server";
-import {
-  closeOfflineScoreReservation,
-  reconcileOfflineScoreCommands,
-  reserveOfflineScoreBudget,
-  type OfflineScoreCommand,
-} from "./offline.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
+import { type OfflineScoreCommand } from "./offline.server";
+import { EventScoringService } from "./event-scoring-service.server";
 
 const DEVICE_COOKIE = "mah-score-staff-device";
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
@@ -43,17 +25,37 @@ function ensureDeviceId(): string {
   return deviceId;
 }
 
+function runScoring<A, E>(
+  use: (service: typeof EventScoringService.Service) => Effect.Effect<A, E>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* EventScoringService);
+    }),
+  );
+}
+
 export const getStaffScoringPageFn = createServerFn({ method: "GET" })
   .validator((data: { eventSlug: string; token: string }) => data)
-  .handler(({ data }) => getStaffScoringPage({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.getStaffPage({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const searchStaffParticipantsFn = createServerFn({ method: "GET" })
   .validator((data: { eventSlug: string; token: string; term: string }) => data)
-  .handler(({ data }) => searchStaffParticipants({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) =>
+      scoring.searchStaffParticipants({ ...data, deviceId: ensureDeviceId() }),
+    ),
+  );
 
 export const resolveStaffScannedParticipantFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; scanned: string }) => data)
-  .handler(({ data }) => resolveStaffScannedParticipant({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) =>
+      scoring.resolveStaffParticipant({ ...data, deviceId: ensureDeviceId() }),
+    ),
+  );
 
 export const awardStaffPointsFn = createServerFn({ method: "POST" })
   .validator(
@@ -79,10 +81,15 @@ export const awardStaffPointsFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const deviceId = ensureDeviceId();
-    const result = await awardStaffPoints({ ...data, deviceId });
-    const page = result.ok
-      ? await getStaffScoringPage({ eventSlug: data.eventSlug, token: data.token, deviceId })
-      : null;
+    const { result, page } = await runScoring((scoring) =>
+      Effect.gen(function* () {
+        const result = yield* scoring.awardStaffPoints({ ...data, deviceId });
+        const page = result.ok
+          ? yield* scoring.getStaffPage({ eventSlug: data.eventSlug, token: data.token, deviceId })
+          : null;
+        return { result, page };
+      }),
+    );
     const pool = page?.found
       ? (page.pools.find((entry) => entry.activityId === data.activityId) ?? page.pools[0])
       : undefined;
@@ -111,27 +118,39 @@ export const mintStaffAwardClaimFn = createServerFn({ method: "POST" })
       expiresInSeconds?: number;
     }) => data,
   )
-  .handler(({ data }) => mintStaffAwardClaim({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.mintStaffAward({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const admitStaffTicketFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; scanned: string }) => data)
-  .handler(({ data }) => admitStaffTicket({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.admitStaffTicket({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const scanStaffCheckpointFn = createServerFn({ method: "POST" })
   .validator(
     (data: { eventSlug: string; token: string; checkpointId: string; scanned: string }) => data,
   )
-  .handler(({ data }) => scanStaffCheckpoint({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.scanStaffCheckpoint({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const shuffleStaffTeamsFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; teamCount: number }) => data)
-  .handler(({ data }) => shuffleStaffTeams({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.shuffleStaffTeams({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const moveStaffTeamParticipantFn = createServerFn({ method: "POST" })
   .validator(
     (data: { eventSlug: string; token: string; participantId: string; teamId: string }) => data,
   )
-  .handler(({ data }) => moveStaffTeamParticipant({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) =>
+      scoring.moveStaffTeamParticipant({ ...data, deviceId: ensureDeviceId() }),
+    ),
+  );
 
 export const reverseStaffAwardFn = createServerFn({ method: "POST" })
   .validator(
@@ -144,19 +163,25 @@ export const reverseStaffAwardFn = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const result = await reverseStaffAward({ ...data, deviceId: ensureDeviceId() });
+    const result = await runScoring((scoring) =>
+      scoring.reverseStaffAward({ ...data, deviceId: ensureDeviceId() }),
+    );
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
 
 export const submitStaffGuestFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; name: string; note?: string }) => data)
-  .handler(({ data }) => submitStaffGuest({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.submitStaffGuest({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const decideStaffGuestRequestFn = createServerFn({ method: "POST" })
   .validator(
     (data: { eventSlug: string; token: string; requestId: number; approve: boolean }) => data,
   )
-  .handler(({ data }) => decideStaffGuestRequest({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.decideStaffGuest({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const transferStaffPointsFn = createServerFn({ method: "POST" })
   .validator(
@@ -171,7 +196,9 @@ export const transferStaffPointsFn = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const result = await transferStaffPoints({ ...data, deviceId: ensureDeviceId() });
+    const result = await runScoring((scoring) =>
+      scoring.transferStaffPoints({ ...data, deviceId: ensureDeviceId() }),
+    );
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
 
@@ -180,7 +207,9 @@ export const acceptStaffHeldActionFn = createServerFn({ method: "POST" })
     (data: { eventSlug: string; token: string; transactionId: string; note: string }) => data,
   )
   .handler(async ({ data }) => {
-    const result = await acceptStaffHeldAction({ ...data, deviceId: ensureDeviceId() });
+    const result = await runScoring((scoring) =>
+      scoring.acceptStaffHeldAction({ ...data, deviceId: ensureDeviceId() }),
+    );
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
 
@@ -194,7 +223,9 @@ export const reserveOfflineScoreBudgetFn = createServerFn({ method: "POST" })
       expiresInMinutes?: number;
     }) => data,
   )
-  .handler(({ data }) => reserveOfflineScoreBudget({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.reserveOfflineBudget({ ...data, deviceId: ensureDeviceId() })),
+  );
 
 export const reconcileOfflineScoreCommandsFn = createServerFn({ method: "POST" })
   .validator(
@@ -205,8 +236,16 @@ export const reconcileOfflineScoreCommandsFn = createServerFn({ method: "POST" }
       commands: OfflineScoreCommand[];
     }) => data,
   )
-  .handler(({ data }) => reconcileOfflineScoreCommands({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) =>
+      scoring.reconcileOfflineCommands({ ...data, deviceId: ensureDeviceId() }),
+    ),
+  );
 
 export const closeOfflineScoreReservationFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; reservationId: string }) => data)
-  .handler(({ data }) => closeOfflineScoreReservation({ ...data, deviceId: ensureDeviceId() }));
+  .handler(({ data }) =>
+    runScoring((scoring) =>
+      scoring.closeOfflineReservation({ ...data, deviceId: ensureDeviceId() }),
+    ),
+  );

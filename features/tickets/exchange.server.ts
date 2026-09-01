@@ -9,11 +9,11 @@ import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import {
   createCheckoutSession,
   expireCheckoutSession,
-  isPaymentsConfigured,
   refundPayment,
   retrievePaymentBalance,
   retrieveSession,
-} from "@/lib/platform/stripe.server";
+} from "@/lib/platform/payment-provider-context.server";
+import { isPaymentsConfigured } from "@/lib/platform/stripe.server";
 import { sendTicketExchangeEmail, sendTicketExchangePaymentEmail } from "./email.server";
 import type {
   ManagedExchangeTicket,
