@@ -276,12 +276,15 @@ async function describeTransferMediaQueue() {
   ]);
   const oldestRaw = queuedJobs.at(-1) ?? null;
   const oldest = oldestRaw ? parseTransferMediaJob(oldestRaw) : null;
+  const oldestDeadRaw = deadJobs.at(-1) ?? null;
+  const oldestDead = oldestDeadRaw ? parseTransferMediaJob(oldestDeadRaw) : null;
   const oldestPendingAt = oldest?.enqueuedAt ?? null;
   return {
     enabled: true,
     queued: queuedJobs.length,
     leased: leasedJobs.length,
     permanentFailures: deadJobs.length,
+    oldestPermanentFailureAt: oldestDead?.enqueuedAt ?? null,
     backlogAgeMs: oldestPendingAt ? Math.max(0, Date.now() - Date.parse(oldestPendingAt)) : null,
     durableWork: durableWorkSnapshot({
       available: true,

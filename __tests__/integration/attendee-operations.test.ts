@@ -41,9 +41,11 @@ import {
 } from "@/features/attendee-operations/capabilities.server";
 import {
   emitDomainEvent,
+  hasActiveAdminNotification,
   listAdminInbox,
   listAlertRecipients,
   revokeAlertRecipient,
+  resolveAdminNotificationsByCategory,
   saveAlertRecipient,
   setAdminNotificationReadState,
   sendOperationsDigests,
@@ -460,6 +462,37 @@ describeWithDatabase("attendee operations workflows (postgres)", () => {
         `select count(*)::text as count from attendee_operations_audit_events`,
       ),
     ).toEqual({ count: expect.not.stringMatching(/^0$/) });
+  });
+
+  it("auto-resolves operational health notifications by category", async () => {
+    await emitDomainEvent({
+      kind: "media.worker.heartbeat",
+      deduplicationKey: "media-worker-health-test",
+      actorType: "system",
+      entityRefs: { component: "media-worker" },
+      severity: "warning",
+      admin: {
+        title: "Media processing needs attention",
+        body: "The worker heartbeat is stale.",
+        category: "media-worker-health",
+        createCase: true,
+      },
+    });
+    expect(await hasActiveAdminNotification("media-worker-health")).toBe(true);
+    expect(
+      await resolveAdminNotificationsByCategory("media-worker-health", "Heartbeat recovered."),
+    ).toBe(1);
+    expect(await hasActiveAdminNotification("media-worker-health")).toBe(false);
+
+    const inbox = await listAdminInbox({
+      viewer: { actorId: "root-owner", actorType: "root-owner" },
+      status: "resolved",
+      category: "media-worker-health",
+    });
+    expect(inbox.items[0]).toMatchObject({
+      status: "resolved",
+      resolutionReason: "Heartbeat recovered.",
+    });
   });
 
   it("rejects unsafe and incomplete operations without changing authority", async () => {

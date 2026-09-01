@@ -1,5 +1,11 @@
 export const ADMIN_ALERT_CATEGORIES = [
   {
+    id: "media-worker-health",
+    label: "media processing health",
+    description:
+      "The media worker stopped reporting, its queue is stuck, or processing failed permanently.",
+  },
+  {
     id: "refund-failed",
     label: "refund failed",
     description: "A ticket refund failed or only partly completed at the payment provider.",

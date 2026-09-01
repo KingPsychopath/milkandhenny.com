@@ -13,10 +13,12 @@ import {
 } from "@/lib/platform/scheduled-jobs.server";
 import { BASE_URL } from "@/lib/shared/config";
 import { isMediaWorkerRole } from "./media-role.server";
+import { monitorMediaWorkerHealth } from "./media-worker-monitor.server";
 
 const EMAIL_INTERVAL_MS = 15_000;
 const EVENT_SCORING_INTERVAL_MS = 30_000;
 const OPERATIONS_DIGEST_INTERVAL_MS = 5 * 60_000;
+const MEDIA_WORKER_HEALTH_INTERVAL_MS = 60_000;
 const PITCH_REMINDER_INTERVAL_MS = 15 * 60_000;
 const GAME_POOL_CLEANUP_INTERVAL_MS = 15 * 60_000;
 const JOB_LEASE_MS = 10 * 60_000;
@@ -80,6 +82,12 @@ export class ApplicationSchedulerService extends Context.Service<
     readonly runOperationsDigests: (
       force?: boolean,
     ) => Effect.Effect<ScheduledJobRun<Awaited<ReturnType<typeof sendOperationsDigests>>>, unknown>;
+    readonly runMediaWorkerHealth: (
+      force?: boolean,
+    ) => Effect.Effect<
+      ScheduledJobRun<Awaited<ReturnType<typeof monitorMediaWorkerHealth>>>,
+      unknown
+    >;
     readonly runGamePoolCleanup: (
       force?: boolean,
     ) => Effect.Effect<ScheduledJobRun<Awaited<ReturnType<typeof cleanupGamePools>>>, unknown>;
@@ -122,6 +130,13 @@ export class ApplicationSchedulerService extends Context.Service<
           jobKey: "operations-digests",
           intervalMs: OPERATIONS_DIGEST_INTERVAL_MS,
           run: schedulerOperation("operations_digests", () => sendOperationsDigests()),
+        });
+      const runMediaWorkerHealth = (force = false) =>
+        leased({
+          force,
+          jobKey: "media-worker-health",
+          intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS,
+          run: schedulerOperation("media_worker_health", () => monitorMediaWorkerHealth()),
         });
       const runGamePoolCleanup = (force = false) =>
         leased({
@@ -214,6 +229,22 @@ export class ApplicationSchedulerService extends Context.Service<
         ),
         forkJob(
           {
+            jobKey: "media-worker-health",
+            intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS,
+            run: runMediaWorkerHealth,
+            report: (outcome) => {
+              if (outcome.ran && (outcome.value.state === "alerted" || outcome.value.resolved > 0))
+                log.info(
+                  "scheduler.media-worker-health",
+                  "Media worker health changed",
+                  outcome.value,
+                );
+            },
+          },
+          2,
+        ),
+        forkJob(
+          {
             jobKey: "operations-digests",
             intervalMs: OPERATIONS_DIGEST_INTERVAL_MS,
             run: runOperationsDigests,
@@ -226,7 +257,7 @@ export class ApplicationSchedulerService extends Context.Service<
                 );
             },
           },
-          2,
+          3,
         ),
         forkJob(
           {
@@ -247,13 +278,14 @@ export class ApplicationSchedulerService extends Context.Service<
               }
             },
           },
-          3,
+          4,
         ),
       ]);
 
       const jobSummaries = [
         { jobKey: "communications-delivery", intervalMs: EMAIL_INTERVAL_MS },
         { jobKey: "event-scoring", intervalMs: EVENT_SCORING_INTERVAL_MS },
+        { jobKey: "media-worker-health", intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS },
         { jobKey: "operations-digests", intervalMs: OPERATIONS_DIGEST_INTERVAL_MS },
         { jobKey: "pitch-reminders", intervalMs: PITCH_REMINDER_INTERVAL_MS },
       ];
@@ -280,6 +312,7 @@ export class ApplicationSchedulerService extends Context.Service<
         runCommunications,
         runEventScoring,
         runGamePoolCleanup,
+        runMediaWorkerHealth,
         runOperationsDigests,
         runPitchReminders,
       };

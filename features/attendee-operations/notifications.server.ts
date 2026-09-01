@@ -150,6 +150,49 @@ export async function emitDomainEvent(
   return result;
 }
 
+export async function hasActiveAdminNotification(category: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `select id from admin_notifications
+      where category = $1 and status in ('new','in-progress') limit 1`,
+    [category],
+  );
+  return rows.length > 0;
+}
+
+export async function resolveAdminNotificationsByCategory(
+  category: string,
+  reason: string,
+): Promise<number> {
+  return transaction(async (client) => {
+    const rows = await client.query<{ id: string; case_id: string | null }>(
+      `update admin_notifications
+          set status = 'resolved',updated_at = now(),resolved_at = now()
+        where category = $1 and status in ('new','in-progress')
+      returning id,case_id`,
+      [category],
+    );
+    const caseIds = rows.rows.flatMap((row) => (row.case_id ? [row.case_id] : []));
+    if (caseIds.length > 0) {
+      await client.query(
+        `update admin_attention_cases
+            set status = 'resolved',resolution_reason = $2,updated_at = now(),resolved_at = now()
+          where id = any($1::text[])`,
+        [caseIds, reason],
+      );
+    }
+    for (const row of rows.rows) {
+      await client.query(
+        `insert into attendee_operations_audit_events
+           (action,actor_type,actor_id,entity_type,entity_id,before_state,after_state,reason)
+         values ('notification.auto-resolved','system','health-monitor','notification',$1,
+                 '{"status":"new-or-in-progress"}'::jsonb,'{"status":"resolved"}'::jsonb,$2)`,
+        [row.id, reason],
+      );
+    }
+    return rows.rowCount ?? 0;
+  });
+}
+
 async function deliverImmediateAlerts(input: {
   sourceEventId: string;
   category: string;
