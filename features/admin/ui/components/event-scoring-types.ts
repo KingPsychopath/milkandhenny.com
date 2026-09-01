@@ -54,6 +54,9 @@ export type AdminStaffAssignment = {
   invitationState?: string;
   rolePreset?: string;
   expiresAt?: string;
+  revokedAt?: string;
+  activatedAt?: string;
+  lastUsedAt?: string;
   permissions: Record<string, boolean>;
   scope: Record<string, unknown>;
   invitedEmailHint?: string;

@@ -37,6 +37,13 @@ import type { DoorTicketView } from "@/features/tickets/types";
 import { AdminFormAction } from "./AdminFormAction";
 import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 import { EventWaitlistPanel } from "./EventWaitlistPanel";
+import { ScoringStaffPanel } from "./ScoringStaffPanel";
+import type {
+  AdminScoringActivity,
+  AdminStaffAssignment,
+  AdminStaffRole,
+  ScoringAction,
+} from "./event-scoring-types";
 import {
   AdminStatus,
   adminToneBorderClass,
@@ -52,6 +59,12 @@ const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
 };
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+
+type EventStaffAccessData = {
+  activities: AdminScoringActivity[];
+  staff: AdminStaffAssignment[];
+  staffRoles: AdminStaffRole[];
+};
 
 /**
  * Event management.
@@ -1304,20 +1317,17 @@ function ScanningSection({
   }) => Promise<boolean>;
   stepUp: StepUpHelpers;
 }) {
-  const stationId = useId();
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [usage, setUsage] = useState<Record<string, { unitsUsed: number; ticketsServed: number }>>(
     {},
   );
   const [links, setLinks] = useState<ScannerLinkRecord[]>([]);
   const [devices, setDevices] = useState<Record<string, { count: number; lastSeen?: string }>>({});
+  const [staffAccess, setStaffAccess] = useState<EventStaffAccessData | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [newCheckpointName, setNewCheckpointName] = useState("");
   const [newCheckpointAllowance, setNewCheckpointAllowance] = useState("1");
-  const [newLinkLabel, setNewLinkLabel] = useState("");
-  const [newLinkStation, setNewLinkStation] = useState("door");
-  const [newLinkRole, setNewLinkRole] = useState<"scanner" | "manager">("scanner");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [allowancesOpenFor, setAllowancesOpenFor] = useState<string | null>(null);
@@ -1360,13 +1370,17 @@ function ScanningSection({
 
   const load = useCallback(async () => {
     try {
-      const [checkpointsRes, linksRes] = await Promise.all([
+      const [checkpointsRes, linksRes, staffRes] = await Promise.all([
         authFetch(`/api/admin/events/${event.slug}/checkpoints`),
         authFetch(`/api/admin/events/${event.slug}/scanner-links`),
+        authFetch(`/api/admin/events/${event.slug}/scoring`),
       ]);
       const checkpointsData: unknown = await checkpointsRes.json().catch(() => null);
       const linksData: unknown = await linksRes.json().catch(() => null);
-      if (!checkpointsRes.ok || !linksRes.ok) throw new Error("Failed to load scanning setup");
+      const staffData: unknown = await staffRes.json().catch(() => null);
+      if (!checkpointsRes.ok || !linksRes.ok || !staffRes.ok) {
+        throw new Error("Failed to load entry, checkpoint, and staff access setup");
+      }
 
       const nextCheckpoints =
         checkpointsData &&
@@ -1414,15 +1428,59 @@ function ScanningSection({
           ? (linksData.devices as Record<string, { count: number; lastSeen?: string }>)
           : {},
       );
+      if (!staffData || typeof staffData !== "object") {
+        throw new Error("Staff access data was unavailable");
+      }
+      const staffRecord = staffData as Record<string, unknown>;
+      setStaffAccess({
+        activities: Array.isArray(staffRecord.activities)
+          ? (staffRecord.activities as AdminScoringActivity[])
+          : [],
+        staff: Array.isArray(staffRecord.staff)
+          ? (staffRecord.staff as AdminStaffAssignment[])
+          : [],
+        staffRoles: Array.isArray(staffRecord.staffRoles)
+          ? (staffRecord.staffRoles as AdminStaffRole[])
+          : [],
+      });
       setLoaded(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to load scanning setup");
+      onError(error instanceof Error ? error.message : "Failed to load staff access setup");
     }
   }, [authFetch, event.slug, onError]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const performStaffAction: ScoringAction = async (body) => {
+    const token = await stepUp.ensureStepUpToken();
+    if (!token.ok) {
+      if (!token.cancelled) onError(token.error ?? "Step-up failed");
+      return null;
+    }
+    setBusy(true);
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/scoring`, {
+        method: "POST",
+        headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify(body),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | (Record<string, unknown> & { error?: string })
+        | null;
+      if (!response.ok) throw new Error(result?.error ?? "Staff access change failed");
+      await load();
+      onStatus("Staff access updated");
+      return result ?? {};
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Staff access change failed");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const addCheckpoint = async () => {
     setBusy(true);
@@ -1490,37 +1548,6 @@ function ScanningSection({
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to remove checkpoint");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createLink = async () => {
-    const token = await stepUp.ensureStepUpToken();
-    if (!token.ok) {
-      if (!token.cancelled) onError(token.error ?? "Step-up failed");
-      return;
-    }
-    setBusy(true);
-    onError("");
-    try {
-      const response = await authFetch(`/api/admin/events/${event.slug}/scanner-links`, {
-        method: "POST",
-        headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          label: newLinkLabel,
-          checkpointId: newLinkStation === "door" ? null : newLinkStation,
-          role: newLinkStation === "door" ? newLinkRole : "scanner",
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(await readErrorMessage(response, "Failed to create link"));
-      }
-      onStatus(`Scanner link for ${newLinkLabel.trim()} created — copy and send it`);
-      setNewLinkLabel("");
-      await load();
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to create link");
     } finally {
       setBusy(false);
     }
@@ -1600,234 +1627,167 @@ function ScanningSection({
     setQrToken((current) => (current === token ? null : token));
   };
 
-  if (!loaded) return <p className="mt-4 font-mono text-xs theme-muted">loading scanning setup…</p>;
+  if (!loaded) {
+    return <p className="mt-4 font-mono text-xs theme-muted">loading staff access…</p>;
+  }
 
   const liveLinks = links.filter((link) => !link.revokedAt);
-  const stationOptions = [
-    { value: "door", label: "door — entry scanning" },
-    ...checkpoints.map((checkpoint) => ({
-      value: checkpoint.id,
-      label: `${checkpoint.name} — counted per ticket`,
-    })),
-  ];
-
   return (
     <div className="mt-5 space-y-5 border-t theme-border pt-4">
-      <div>
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h4 className="font-mono text-micro theme-muted tracking-wide">scanner access</h4>
-            <p className="mt-1 font-mono text-micro theme-faint">
-              One private link per helper. They open it on their phone and scan without a PIN.
-            </p>
-          </div>
-          <AdminStatus tone={liveLinks.length > 0 ? "positive" : "neutral"}>
-            {liveLinks.length} active
-          </AdminStatus>
-        </div>
+      {staffAccess && (
+        <ScoringStaffPanel
+          eventSlug={event.slug}
+          activities={staffAccess.activities}
+          checkpoints={checkpoints.map(({ id, name }) => ({ id, name }))}
+          roles={staffAccess.staffRoles}
+          staff={staffAccess.staff}
+          onAction={performStaffAction}
+          defaultPreset="door-scanner"
+        />
+      )}
 
-        {liveLinks.length > 0 && (
-          <ul className="mt-3 divide-y theme-border border-y theme-border">
-            {liveLinks.map((link) => (
-              <li key={link.token} className="py-2">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm text-foreground">
-                      {link.label}
-                      {link.role === "manager" && (
-                        <span className="ml-2 rounded border theme-border-strong px-1.5 py-0.5 font-mono text-micro theme-muted">
-                          manager
-                        </span>
-                      )}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
-                      <span>{stationName(link.checkpointId)}</span>
-                      <span aria-hidden="true">·</span>
-                      {(() => {
-                        const info = devices[link.token];
-                        if (!info || info.count === 0) {
-                          return <AdminStatus tone="attention">not opened yet</AdminStatus>;
-                        }
-                        return (
-                          <AdminStatus tone="positive">
-                            {info.count} phone{info.count === 1 ? "" : "s"}
-                            {info.lastSeen
-                              ? ` · active ${new Date(info.lastSeen).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
-                              : ""}
-                          </AdminStatus>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => void copyLink(link)}
-                      className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
-                    >
-                      {copiedToken === link.token ? "copied ✓" : "copy link"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleQr(link.token)}
-                      aria-expanded={qrToken === link.token}
-                      className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
-                    >
-                      qr
-                    </button>
-                    {link.checkpointId === null && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAbilitiesOpenFor((current) =>
-                            current === link.token ? null : link.token,
-                          )
-                        }
-                        aria-expanded={abilitiesOpenFor === link.token}
-                        className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
-                      >
-                        abilities
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void revokeLink(link)}
-                      className="min-h-11 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
-                    >
-                      turn off
-                    </button>
-                  </div>
-                </div>
-                {qrToken === link.token && <ScannerLinkQr token={link.token} label={link.label} />}
-                {abilitiesOpenFor === link.token && (
-                  <div className="mt-2 rounded-lg border theme-border p-3">
-                    <p className="font-mono text-micro theme-muted">
-                      what {link.label} can do beyond scanning · defaults come from their level
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-                      {SCANNER_PERMISSIONS.map((permission) => (
-                        <label
-                          key={permission}
-                          className="flex min-h-9 cursor-pointer items-center gap-2"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={link.permissions[permission]}
-                            onChange={(inputEvent) =>
-                              void saveAbility(link, permission, inputEvent.target.checked)
-                            }
-                          />
-                          <span className="font-mono text-micro text-foreground">
-                            {SCANNER_PERMISSION_LABELS[permission]}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {liveLinks.length > 1 && (
-          <p className="mt-2 text-right">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void revokeAllLinks()}
-              className="font-mono text-micro theme-muted underline hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              turn off all {liveLinks.length} links
-            </button>
-          </p>
-        )}
-
-        <section className="mt-4 border-t theme-border pt-3" aria-labelledby="new-scanner-title">
-          <h5 id="new-scanner-title" className="font-mono text-xs text-foreground">
-            create scanner link
-          </h5>
-          <p className="mt-1 font-mono text-micro theme-faint">
-            Choose exactly where this helper works and what they can do. You can turn their link off
-            at any time.
-          </p>
-          <form
-            onSubmit={(formEvent) => {
-              formEvent.preventDefault();
-              if (newLinkLabel.trim()) void createLink();
-            }}
-            className="mt-3 space-y-3"
-          >
-            <div className="admin-form-row grid gap-3 sm:grid-cols-2">
-              <Field
-                label="helper name"
-                value={newLinkLabel}
-                onChange={setNewLinkLabel}
-                hint="Use a name you will recognise when revoking access."
-              />
-              <div className="admin-form-field">
-                <label
-                  htmlFor={stationId}
-                  className="font-mono text-micro theme-muted tracking-wide"
-                >
-                  station
-                </label>
-                <AppSelect
-                  id={stationId}
-                  value={newLinkStation}
-                  onValueChange={setNewLinkStation}
-                  options={stationOptions}
-                  variant="field"
-                  className="mt-1 rounded text-sm"
-                />
-                <span className="mt-1 block font-mono text-micro theme-faint">
-                  Door links check guests in; checkpoints count a specific allowance.
-                </span>
+      {liveLinks.length > 0 && (
+        <details className="border-y theme-border py-4">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 font-mono text-xs text-foreground">
+            <span>older shared scanner links</span>
+            <AdminStatus tone="attention">{liveLinks.length} to review</AdminStatus>
+          </summary>
+          <div className="pt-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h4 className="font-mono text-micro theme-muted tracking-wide">
+                  legacy shared access
+                </h4>
+                <p className="mt-1 font-mono text-micro theme-faint">
+                  These reusable links predate identity-based roles. Keep them only for supervised
+                  station devices; add new people through a role above.
+                </p>
               </div>
+              <AdminStatus tone="attention">{liveLinks.length} active</AdminStatus>
             </div>
 
-            {newLinkStation === "door" && (
-              <fieldset>
-                <legend className="font-mono text-micro theme-muted tracking-wide">
-                  access level
-                </legend>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewLinkRole("scanner")}
-                    aria-pressed={newLinkRole === "scanner"}
-                    className={`min-h-11 rounded border px-3 font-mono text-micro ${newLinkRole === "scanner" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
-                  >
-                    scanner — scans, can request guests
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewLinkRole("manager")}
-                    aria-pressed={newLinkRole === "manager"}
-                    className={`min-h-11 rounded border px-3 font-mono text-micro ${newLinkRole === "manager" ? "border-transparent bg-foreground text-background" : "theme-border-strong text-foreground"}`}
-                  >
-                    manager — adds guests, approves requests
-                  </button>
-                </div>
-              </fieldset>
+            {liveLinks.length > 0 && (
+              <ul className="mt-3 divide-y theme-border border-y theme-border">
+                {liveLinks.map((link) => (
+                  <li key={link.token} className="py-2">
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                      <div className="min-w-0">
+                        <p className="truncate font-mono text-sm text-foreground">
+                          {link.label}
+                          {link.role === "manager" && (
+                            <span className="ml-2 rounded border theme-border-strong px-1.5 py-0.5 font-mono text-micro theme-muted">
+                              manager
+                            </span>
+                          )}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-2 font-mono text-micro theme-muted">
+                          <span>{stationName(link.checkpointId)}</span>
+                          <span aria-hidden="true">·</span>
+                          {(() => {
+                            const info = devices[link.token];
+                            if (!info || info.count === 0) {
+                              return <AdminStatus tone="attention">not opened yet</AdminStatus>;
+                            }
+                            return (
+                              <AdminStatus tone="positive">
+                                {info.count} phone{info.count === 1 ? "" : "s"}
+                                {info.lastSeen
+                                  ? ` · active ${new Date(info.lastSeen).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}`
+                                  : ""}
+                              </AdminStatus>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void copyLink(link)}
+                          className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                        >
+                          {copiedToken === link.token ? "copied ✓" : "copy link"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleQr(link.token)}
+                          aria-expanded={qrToken === link.token}
+                          className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                        >
+                          qr
+                        </button>
+                        {link.checkpointId === null && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAbilitiesOpenFor((current) =>
+                                current === link.token ? null : link.token,
+                              )
+                            }
+                            aria-expanded={abilitiesOpenFor === link.token}
+                            className="min-h-11 rounded border theme-border-strong px-3 font-mono text-micro text-foreground"
+                          >
+                            abilities
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void revokeLink(link)}
+                          className="min-h-11 px-2 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
+                        >
+                          turn off
+                        </button>
+                      </div>
+                    </div>
+                    {qrToken === link.token && (
+                      <ScannerLinkQr token={link.token} label={link.label} />
+                    )}
+                    {abilitiesOpenFor === link.token && (
+                      <div className="mt-2 rounded-lg border theme-border p-3">
+                        <p className="font-mono text-micro theme-muted">
+                          what {link.label} can do beyond scanning · defaults come from their level
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+                          {SCANNER_PERMISSIONS.map((permission) => (
+                            <label
+                              key={permission}
+                              className="flex min-h-9 cursor-pointer items-center gap-2"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={link.permissions[permission]}
+                                onChange={(inputEvent) =>
+                                  void saveAbility(link, permission, inputEvent.target.checked)
+                                }
+                              />
+                              <span className="font-mono text-micro text-foreground">
+                                {SCANNER_PERMISSION_LABELS[permission]}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t theme-border-faint pt-3">
-              <p className="font-mono text-micro theme-faint">
-                Send the new link privately over chat or show its QR in person.
+            {liveLinks.length > 1 && (
+              <p className="mt-2 text-right">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void revokeAllLinks()}
+                  className="font-mono text-micro theme-muted underline hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  turn off all {liveLinks.length} links
+                </button>
               </p>
-              <button
-                type="submit"
-                disabled={busy || !newLinkLabel.trim()}
-                className="min-h-11 rounded bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
-              >
-                create link
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
+            )}
+          </div>
+        </details>
+      )}
 
       <div>
         <p className="font-mono text-micro theme-muted tracking-wide">checkpoints</p>
@@ -2325,7 +2285,7 @@ function EventOperations({
     { value: "overview", label: "overview" },
     { value: "tickets", label: "tickets" },
     ...(permissions.manageEvents ? [{ value: "waitlist" as const, label: "waitlist" }] : []),
-    ...(permissions.manageEvents ? [{ value: "door" as const, label: "entry & checkpoints" }] : []),
+    ...(permissions.manageEvents ? [{ value: "door" as const, label: "staff & checkpoints" }] : []),
     ...(permissions.manageCommunications
       ? [{ value: "messages" as const, label: "messages" }]
       : []),
@@ -3396,7 +3356,7 @@ export function EventsPanel({
                             permissions.manageTickets ||
                             permissions.executeRefunds ||
                             permissions.manageCommunications
-                          ? "tickets & door"
+                          ? "tickets & staff"
                           : "inspect"}
                     </button>
                     {permissions.manageEvents ? (
@@ -3441,7 +3401,7 @@ export function EventsPanel({
               <div>
                 <p className="font-mono text-micro theme-muted">
                   {selection.kind === "operations"
-                    ? "tickets & door"
+                    ? "tickets & staff"
                     : selection.kind === "create"
                       ? "new event"
                       : "event settings"}

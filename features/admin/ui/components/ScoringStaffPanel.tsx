@@ -10,7 +10,8 @@ import type {
   AdminStaffRole,
   ScoringAction,
 } from "./event-scoring-types";
-import { AdminStatus, adminToneForStatus } from "./AdminStatus";
+import { AdminStatus } from "./AdminStatus";
+import { StaffAccessRegister } from "./StaffAccessRegister";
 
 const PRESETS = [
   "door-scanner",
@@ -142,6 +143,7 @@ export function ScoringStaffPanel({
   roles,
   staff,
   onAction,
+  defaultPreset = "points-marshal",
 }: {
   eventSlug: string;
   activities: AdminScoringActivity[];
@@ -149,11 +151,12 @@ export function ScoringStaffPanel({
   roles: AdminStaffRole[];
   staff: AdminStaffAssignment[];
   onAction: ScoringAction;
+  defaultPreset?: Preset;
 }) {
   const [roleName, setRoleName] = useState("");
-  const [preset, setPreset] = useState<Preset>("points-marshal");
+  const [preset, setPreset] = useState<Preset>(defaultPreset);
   const [permissions, setPermissions] = useState<Record<string, boolean>>(() =>
-    presetState("points-marshal"),
+    presetState(defaultPreset),
   );
   const [activityIds, setActivityIds] = useState<string[]>([]);
   const [checkpointIds, setCheckpointIds] = useState<string[]>([]);
@@ -249,6 +252,8 @@ export function ScoringStaffPanel({
         Define a role once, then add as many people as needed. One person can hold several roles;
         every action still has to fit one complete role and its scope.
       </p>
+
+      <StaffAccessRegister roles={roles} staff={staff} onAction={onAction} />
 
       <details className="mt-6 border-y theme-border py-4" open={roles.length === 0}>
         <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs">
@@ -402,7 +407,11 @@ export function ScoringStaffPanel({
           const assignments = assignmentsByRole.get(role.id) ?? [];
           const active = assignments.filter(
             (assignment) =>
-              assignment.status === "active" && assignment.invitationState !== "revoked",
+              assignment.status === "active" && assignment.invitationState === "active",
+          );
+          const pending = assignments.filter(
+            (assignment) =>
+              assignment.status === "active" && assignment.invitationState === "pending",
           );
           const isOpen = openRoleId === role.id;
           return (
@@ -414,6 +423,9 @@ export function ScoringStaffPanel({
                     <AdminStatus tone={role.status === "active" ? "positive" : "neutral"}>
                       {active.length} active
                     </AdminStatus>
+                    {pending.length > 0 && (
+                      <AdminStatus tone="attention">{pending.length} pending</AdminStatus>
+                    )}
                   </div>
                   <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
                     <RoleSummary role={role} activities={activities} checkpoints={checkpoints} />
@@ -431,61 +443,6 @@ export function ScoringStaffPanel({
                   {isOpen ? "close" : "add someone"}
                 </button>
               </div>
-
-              {assignments.length > 0 && (
-                <ul className="mt-4 divide-y theme-border border-t theme-border">
-                  {assignments.map((assignment) => (
-                    <li
-                      key={assignment.id}
-                      className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-mono text-xs">
-                          {assignment.personName ||
-                            assignment.assignedEmailHint ||
-                            assignment.invitedEmailHint ||
-                            assignment.label}
-                        </p>
-                        <p className="mt-1 font-mono text-micro theme-muted">
-                          {assignment.assignedEmailHint ||
-                            assignment.invitedEmailHint ||
-                            "shared station"}{" "}
-                          · {assignment.invitationDelivery.replace("direct", "assigned directly")} ·{" "}
-                          <AdminStatus
-                            tone={adminToneForStatus(
-                              assignment.invitationState ?? assignment.status,
-                            )}
-                          >
-                            {assignment.invitationState ?? assignment.status}
-                          </AdminStatus>
-                        </p>
-                      </div>
-                      {assignment.status === "active" &&
-                        assignment.invitationState !== "revoked" && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void (async () => {
-                                const reason = window
-                                  .prompt("Why are you removing this role?")
-                                  ?.trim();
-                                if (!reason) return;
-                                await onAction({
-                                  action: "revoke-staff",
-                                  assignmentId: assignment.id,
-                                  reason,
-                                });
-                              })()
-                            }
-                            className="min-h-11 font-mono text-micro underline hover:opacity-70"
-                          >
-                            remove role
-                          </button>
-                        )}
-                    </li>
-                  ))}
-                </ul>
-              )}
 
               {isOpen && (
                 <form
