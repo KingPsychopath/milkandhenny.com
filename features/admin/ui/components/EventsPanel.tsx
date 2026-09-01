@@ -50,6 +50,7 @@ import {
   adminToneForStatus,
   adminToneTextClass,
 } from "./AdminStatus";
+import { pickDefaultAdminEvent } from "./event-admin-selection";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
   natural: "natural — the image's own height",
@@ -1976,7 +1977,8 @@ function EventOperations({
 }) {
   const [activeTool, setActiveTool] = useState<EventOperationsTool>("overview");
   const toolsNavRef = useRef<HTMLElement>(null);
-  const pendingToolsNavTop = useRef<number | null>(null);
+  const toolScrollPositions = useRef(new Map<EventOperationsTool, number>());
+  const pendingToolScrollTop = useRef<number | null>(null);
   const [query, setQuery] = useState("");
   const [ticketFilter, setTicketFilter] = useState<TicketListFilter>("all");
   const [ticketSort, setTicketSort] = useState<TicketListSort>("newest");
@@ -2003,17 +2005,24 @@ function EventOperations({
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    const previousTop = pendingToolsNavTop.current;
-    if (previousTop === null) return;
-    pendingToolsNavTop.current = null;
-    const nextTop = toolsNavRef.current?.getBoundingClientRect().top;
-    if (nextTop === undefined) return;
-    window.scrollBy(0, nextTop - previousTop);
+    const targetTop = pendingToolScrollTop.current;
+    if (targetTop === null) return;
+    pendingToolScrollTop.current = null;
+    window.scrollTo(0, targetTop);
+    let settleFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      settleFrame = window.requestAnimationFrame(() => window.scrollTo(0, targetTop));
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(settleFrame);
+    };
   }, [activeTool]);
 
   const handleToolChange = (tool: EventOperationsTool) => {
     if (tool === activeTool) return;
-    pendingToolsNavTop.current = toolsNavRef.current?.getBoundingClientRect().top ?? null;
+    toolScrollPositions.current.set(activeTool, window.scrollY);
+    pendingToolScrollTop.current = toolScrollPositions.current.get(tool) ?? window.scrollY;
     setActiveTool(tool);
   };
 
@@ -2310,7 +2319,7 @@ function EventOperations({
   ];
 
   return (
-    <div className="mt-4 border-t theme-border pt-4">
+    <div className="mt-4 min-h-[75vh] border-t theme-border pt-4 [overflow-anchor:none]">
       <nav
         ref={toolsNavRef}
         aria-label={`${event.title} tools`}
@@ -2947,6 +2956,7 @@ export function EventsPanel({
   ensureStepUpToken,
   withStepUpHeaders,
   initialEventSlug,
+  onSelectedEventChange,
   permissions,
 }: {
   authFetch: AuthFetch;
@@ -2957,6 +2967,7 @@ export function EventsPanel({
   >;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
   initialEventSlug?: string;
+  onSelectedEventChange?: (eventSlug?: string) => void;
   permissions: GlobalAdminPermissionSet;
 }) {
   const statusId = useId();
@@ -2972,6 +2983,7 @@ export function EventsPanel({
   const [operationsLoading, setOperationsLoading] = useState(false);
   const [operationsError, setOperationsError] = useState<string | null>(null);
   const openedTarget = useRef<string | undefined>(undefined);
+  const appliedDefaultSelection = useRef(false);
   const operationsRequest = useRef(0);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
   const eventWorkspaceTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -3146,6 +3158,44 @@ export function EventsPanel({
         if (request === operationsRequest.current) setOperationsLoading(false);
       });
   }, [events, initialEventSlug, loadOperations, onError]);
+
+  useEffect(() => {
+    if (
+      initialEventSlug ||
+      appliedDefaultSelection.current ||
+      loading ||
+      loadError ||
+      events.length === 0
+    ) {
+      return;
+    }
+    appliedDefaultSelection.current = true;
+    const preferred = pickDefaultAdminEvent(events);
+    if (!preferred) return;
+    setSelection({ kind: "operations", slug: preferred.slug });
+    setDraft(null);
+    setOperations(null);
+    setOperationsError(null);
+    setOperationsLoading(true);
+    const request = ++operationsRequest.current;
+    void loadOperations(preferred.slug)
+      .then((summary) => {
+        if (request === operationsRequest.current) setOperations(summary);
+      })
+      .catch((error) => {
+        if (request !== operationsRequest.current) return;
+        const message = error instanceof Error ? error.message : "Failed to load event operations";
+        setOperationsError(message);
+        onError(message);
+      })
+      .finally(() => {
+        if (request === operationsRequest.current) setOperationsLoading(false);
+      });
+  }, [events, initialEventSlug, loadError, loadOperations, loading, onError]);
+
+  useEffect(() => {
+    onSelectedEventChange?.(operationsSlug ?? undefined);
+  }, [onSelectedEventChange, operationsSlug]);
 
   const save = async () => {
     if (!draft) return;
@@ -3324,10 +3374,6 @@ export function EventsPanel({
         </div>
       </div>
 
-      {permissions.manageGlobalSettings && !selection ? (
-        <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
-      ) : null}
-
       <div
         className={
           selection
@@ -3457,6 +3503,17 @@ export function EventsPanel({
               </li>
             ))}
           </ul>
+
+          {permissions.manageGlobalSettings ? (
+            <details className="group mt-6">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 border-y theme-border py-3 font-mono text-xs text-foreground marker:content-none hover:opacity-70">
+                <span>public footer destination</span>
+                <span className="theme-muted group-open:hidden">site-wide setting · open</span>
+                <span className="hidden theme-muted group-open:inline">close</span>
+              </summary>
+              <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
+            </details>
+          ) : null}
         </div>
 
         {selection ? (

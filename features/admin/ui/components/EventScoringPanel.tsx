@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { AppSelect } from "@/components/AppSelect";
+import type { EventRecord } from "@/features/events/types";
 
 import { ScoringActivitiesPanel } from "./ScoringActivitiesPanel";
 import { ScoringDiscoveriesPanel } from "./ScoringDiscoveriesPanel";
@@ -15,6 +18,7 @@ import { ScoringOperationsPanel } from "./ScoringOperationsPanel";
 import { ScoringTeamsPanel } from "./ScoringTeamsPanel";
 import type { ScoringData } from "./event-scoring-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
+import { pickDefaultAdminEvent } from "./event-admin-selection";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type StepUp = () => Promise<
@@ -44,42 +48,90 @@ export function EventScoringPanel({
   onStatus,
   ensureStepUpToken,
   withStepUpHeaders,
+  initialEventSlug,
+  onEventChange,
 }: {
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
   ensureStepUpToken: StepUp;
   withStepUpHeaders: StepUpHeaders;
+  initialEventSlug?: string;
+  onEventChange?: (eventSlug: string) => void;
 }) {
-  const [eventSlug, setEventSlug] = useState("");
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventSlug, setEventSlug] = useState(initialEventSlug ?? "");
   const [data, setData] = useState<ScoringData | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<ScoringWorkspace>("setup");
 
-  async function load(showBusy = true, auditFilter?: Record<string, string>) {
-    if (!eventSlug.trim()) {
-      onError("Enter an event slug first.");
-      return;
-    }
-    if (showBusy) setBusy(true);
-    setLoadError(null);
-    onError("");
-    try {
-      const query = new URLSearchParams(auditFilter).toString();
-      const response = await authFetch(
-        `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring${query ? `?${query}` : ""}`,
-      );
-      if (!response.ok) throw new Error("Could not load scoring settings");
-      setData((await response.json()) as ScoringData);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load scoring settings";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      if (showBusy) setBusy(false);
-    }
-  }
+  const selectedEvent = events.find((event) => event.slug === eventSlug);
+  const eventOptions = useMemo(
+    () => events.map((event) => ({ value: event.slug, label: event.title })),
+    [events],
+  );
+
+  const load = useCallback(
+    async (showBusy = true, auditFilter?: Record<string, string>) => {
+      if (!eventSlug.trim()) {
+        return;
+      }
+      if (showBusy) setBusy(true);
+      setLoadError(null);
+      onError("");
+      try {
+        const query = new URLSearchParams(auditFilter).toString();
+        const response = await authFetch(
+          `/api/admin/events/${encodeURIComponent(eventSlug.trim())}/scoring${query ? `?${query}` : ""}`,
+        );
+        if (!response.ok) throw new Error("Could not load scoring settings");
+        setData((await response.json()) as ScoringData);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not load scoring settings";
+        setLoadError(message);
+        onError(message);
+      } finally {
+        if (showBusy) setBusy(false);
+      }
+    },
+    [authFetch, eventSlug, onError],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setEventsLoading(true);
+    void authFetch("/api/admin/events")
+      .then(async (response) => {
+        const result = (await response.json().catch(() => null)) as {
+          events?: EventRecord[];
+        } | null;
+        if (!response.ok || !Array.isArray(result?.events)) {
+          throw new Error("Could not load events");
+        }
+        if (cancelled) return;
+        setEvents(result.events);
+        const requested = result.events.find((event) => event.slug === initialEventSlug);
+        const preferred = requested ?? pickDefaultAdminEvent(result.events);
+        if (preferred) setEventSlug(preferred.slug);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) onError(error instanceof Error ? error.message : "Could not load events");
+      })
+      .finally(() => {
+        if (!cancelled) setEventsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, initialEventSlug, onError]);
+
+  useEffect(() => {
+    if (!eventSlug || eventsLoading) return;
+    onEventChange?.(eventSlug);
+    void load();
+  }, [eventSlug, eventsLoading, load, onEventChange]);
 
   async function performAction(body: Record<string, unknown>) {
     const stepUp = await ensureStepUpToken();
@@ -184,38 +236,31 @@ export function EventScoringPanel({
             event scoring
           </p>
           <h3 id="event-scoring-heading" className="mt-2 font-serif text-2xl font-semibold">
-            Score control
+            {selectedEvent ? `Scoring · ${selectedEvent.title}` : "Event scoring"}
           </h3>
           <p className="mt-2 max-w-xl font-mono text-xs leading-relaxed theme-muted">
             Start, freeze, and review one event without exposing participant identifiers or raw
             staff credentials.
           </p>
         </div>
-        <form
-          className="flex min-w-72 gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void load();
-          }}
-        >
-          <label className="sr-only" htmlFor="scoring-event-slug">
-            Event slug
+        <div className="w-full sm:w-72">
+          <label className="mb-1 block font-mono text-micro theme-muted" htmlFor="scoring-event">
+            event
           </label>
-          <input
-            id="scoring-event-slug"
+          <AppSelect
+            id="scoring-event"
             value={eventSlug}
-            onChange={(event) => setEventSlug(event.target.value)}
-            placeholder="event-slug"
-            className="min-h-11 min-w-0 flex-1 border-b theme-border bg-transparent px-0 font-mono text-xs outline-none focus:border-foreground"
+            options={eventOptions}
+            onValueChange={(value) => {
+              setData(null);
+              setLoadError(null);
+              setEventSlug(value);
+            }}
+            disabled={eventsLoading || events.length === 0}
+            ariaLabel="Choose event for scoring"
+            variant="field"
           />
-          <button
-            type="submit"
-            disabled={busy}
-            className="min-h-11 border theme-border px-3 font-mono text-xs hover:opacity-70 disabled:opacity-50"
-          >
-            load
-          </button>
-        </form>
+        </div>
       </div>
       {loadError ? (
         <div className="mt-5 border-y theme-border py-4" role="alert">

@@ -240,8 +240,10 @@ export function AdminDashboard({
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [eventWorkspace, setEventWorkspace] = useState<EventWorkspace>("events");
+  const [selectedEventSlug, setSelectedEventSlug] = useState(targetEvent);
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
-  const pendingEventWorkspaceTop = useRef<number | null>(null);
+  const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
+  const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
   const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
   const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
 
@@ -306,16 +308,25 @@ export function AdminDashboard({
   }, [refreshDashboard, view]);
 
   useEffect(() => {
-    if (targetEvent) setEventWorkspace("events");
+    if (targetEvent) {
+      setSelectedEventSlug(targetEvent);
+      setEventWorkspace("events");
+    }
   }, [targetEvent]);
 
   useLayoutEffect(() => {
-    const previousTop = pendingEventWorkspaceTop.current;
-    if (previousTop === null) return;
-    pendingEventWorkspaceTop.current = null;
-    const nextTop = eventWorkspaceNavRef.current?.getBoundingClientRect().top;
-    if (nextTop === undefined) return;
-    window.scrollBy(0, nextTop - previousTop);
+    const targetTop = pendingEventWorkspaceScrollTop.current;
+    if (targetTop === null) return;
+    pendingEventWorkspaceScrollTop.current = null;
+    window.scrollTo(0, targetTop);
+    let settleFrame = 0;
+    const frame = window.requestAnimationFrame(() => {
+      settleFrame = window.requestAnimationFrame(() => window.scrollTo(0, targetTop));
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.cancelAnimationFrame(settleFrame);
+    };
   }, [eventWorkspace]);
 
   useEffect(() => {
@@ -409,10 +420,17 @@ export function AdminDashboard({
 
   const handleEventWorkspaceChange = (workspace: EventWorkspace) => {
     if (workspace === activeEventWorkspace) return;
-    pendingEventWorkspaceTop.current =
-      eventWorkspaceNavRef.current?.getBoundingClientRect().top ?? null;
+    if (activeEventWorkspace) {
+      eventWorkspaceScrollPositions.current.set(activeEventWorkspace, window.scrollY);
+    }
+    pendingEventWorkspaceScrollTop.current =
+      eventWorkspaceScrollPositions.current.get(workspace) ?? window.scrollY;
     setEventWorkspace(workspace);
   };
+
+  const handleSelectedEventChange = useCallback((eventSlug?: string) => {
+    setSelectedEventSlug(eventSlug);
+  }, []);
 
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
     if (item.unread) {
@@ -651,7 +669,11 @@ export function AdminDashboard({
             </div>
           ) : null}
           <PanelBoundary label="event tools">
-            <div id="event-workspace-panel" role="tabpanel">
+            <div
+              id="event-workspace-panel"
+              role="tabpanel"
+              className="min-h-[75vh] [overflow-anchor:none]"
+            >
               {activeEventWorkspace === "events" && permissions.viewOperations ? (
                 <EventsPanel
                   authFetch={authFetch}
@@ -660,6 +682,7 @@ export function AdminDashboard({
                   ensureStepUpToken={ensureStepUpTokenResult}
                   withStepUpHeaders={withStepUpHeaders}
                   initialEventSlug={targetEvent}
+                  onSelectedEventChange={handleSelectedEventChange}
                   permissions={permissions}
                 />
               ) : null}
@@ -670,6 +693,8 @@ export function AdminDashboard({
                   onStatus={setStatusMessage}
                   ensureStepUpToken={ensureStepUpTokenResult}
                   withStepUpHeaders={withStepUpHeaders}
+                  initialEventSlug={selectedEventSlug}
+                  onEventChange={setSelectedEventSlug}
                 />
               ) : null}
               {activeEventWorkspace === "pitches" && permissions.manageContent ? (
