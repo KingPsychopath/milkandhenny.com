@@ -147,13 +147,11 @@ export function AdminSectionNav({
                 selected ? "font-bold text-[var(--foreground)]" : "theme-subtle"
               }`}
             >
-              <span className="inline-flex items-center gap-2">
-                <span
-                  aria-hidden="true"
-                  className={`h-1.5 w-1.5 rounded-full transition-opacity ${
-                    selected ? "bg-[var(--prose-hashtag)] opacity-100" : "opacity-0"
-                  }`}
-                />
+              <span
+                className={`inline-block border-b-2 pb-1 ${
+                  selected ? "border-[var(--prose-hashtag)]" : "border-transparent"
+                }`}
+              >
                 {section.label}
               </span>
             </button>
@@ -180,12 +178,12 @@ export function AdminSectionNav({
                   }`}
                 >
                   <span
-                    aria-hidden="true"
-                    className={`h-1.5 w-1.5 rounded-full transition-opacity ${
-                      selected ? "bg-[var(--prose-hashtag)] opacity-100" : "opacity-0"
+                    className={`border-b pb-0.5 ${
+                      selected ? "border-[var(--prose-hashtag)]" : "border-transparent"
                     }`}
-                  />
-                  {section.label}
+                  >
+                    {section.label}
+                  </span>
                 </button>
               );
             })}

@@ -11,6 +11,7 @@ import {
 } from "@/features/transfers/media-queue.server";
 import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
 import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status.server";
+import { summarizeMediaWorkerError } from "@/features/transfers/media-worker-health";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
@@ -110,12 +111,13 @@ async function markMediaJobProcessed(): Promise<void> {
 async function recordWorkerError(error: unknown): Promise<void> {
   const timestamp = new Date().toISOString();
   const errorDetail = getErrorDetail(error);
+  const errorSummary = summarizeMediaWorkerError(errorDetail);
   console.error(`[media-worker] error\n${errorDetail}`);
   try {
     await updateTransferMediaWorkerStatus({
       lastHeartbeatAt: timestamp,
       lastErrorAt: timestamp,
-      lastErrorMessage: errorDetail,
+      lastErrorMessage: errorSummary,
     });
   } catch (statusError) {
     console.error(`[media-worker] could not persist error status\n${getErrorDetail(statusError)}`);
@@ -271,7 +273,10 @@ function claimJob(client: Redis) {
     const disconnect = () => disconnectBlockingClient(client);
     signal.addEventListener("abort", disconnect, { once: true });
     try {
-      return await claimTransferMediaJobBlocking(client, 0);
+      // The direct Redis client has a 15-second command deadline. A finite
+      // Redis-side block returns normally before that deadline and keeps an
+      // idle worker from reporting a false infrastructure failure.
+      return await claimTransferMediaJobBlocking(client, DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS);
     } finally {
       signal.removeEventListener("abort", disconnect);
     }

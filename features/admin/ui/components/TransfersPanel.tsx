@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 
 import { buildTransferUrl } from "@/features/transfers/routes";
+import {
+  mediaWorkerErrorIsActive,
+  summarizeMediaWorkerError,
+} from "@/features/transfers/media-worker-health";
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { formatRemaining } from "../format";
@@ -130,6 +134,10 @@ export function TransfersPanel({
   const [transferNukeLoading, setTransferNukeLoading] = useState(false);
   const [transferStatusMessage, setTransferStatusMessage] = useState("");
   const [copiedTransferId, setCopiedTransferId] = useState<string | null>(null);
+
+  const workerErrorActive = transferMediaStats
+    ? mediaWorkerErrorIsActive(transferMediaStats.worker)
+    : false;
 
   const transfersSectionRef = useRef<HTMLDivElement | null>(null);
   const transferDetailRef = useRef<HTMLDivElement | null>(null);
@@ -638,13 +646,21 @@ export function TransfersPanel({
               </div>
             ) : null}
             {transferMediaStats?.worker.lastErrorMessage ? (
-              <p className="border-l-2 border-[var(--status-danger)] pl-3 font-mono text-xs">
-                <AdminStatus tone="danger">
-                  worker error{" "}
+              <p
+                className={`border-l-2 pl-3 font-mono text-xs ${
+                  workerErrorActive
+                    ? "border-[var(--status-attention)]"
+                    : "border-[var(--status-positive)] theme-muted"
+                }`}
+              >
+                <AdminStatus tone={workerErrorActive ? "attention" : "positive"}>
+                  {workerErrorActive ? "worker interrupted" : "worker recovered"}{" "}
                   {transferMediaStats.worker.lastErrorAt
                     ? `(${new Date(transferMediaStats.worker.lastErrorAt).toLocaleString("en-GB", { timeZone: "Europe/London" })})`
                     : ""}
-                  : {transferMediaStats.worker.lastErrorMessage}
+                  {workerErrorActive
+                    ? ` · ${summarizeMediaWorkerError(transferMediaStats.worker.lastErrorMessage)}`
+                    : " · the latest heartbeat is newer than this interruption"}
                 </AdminStatus>
               </p>
             ) : null}

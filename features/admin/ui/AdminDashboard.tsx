@@ -640,14 +640,14 @@ export function AdminDashboard({
                   }`}
                 >
                   <span
-                    aria-hidden="true"
-                    className={`h-1.5 w-1.5 rounded-full ${
+                    className={`border-b-2 pb-1 ${
                       activeEventWorkspace === workspace.id
-                        ? "bg-[var(--prose-hashtag)]"
-                        : "opacity-0"
+                        ? "border-[var(--prose-hashtag)]"
+                        : "border-transparent"
                     }`}
-                  />
-                  {workspace.label}
+                  >
+                    {workspace.label}
+                  </span>
                 </button>
               ))}
             </div>
