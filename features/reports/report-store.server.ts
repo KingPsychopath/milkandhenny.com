@@ -227,9 +227,9 @@ function diagnosticError(value: unknown): DiagnosticError | undefined {
   const error: DiagnosticError = {
     name: safeText(record.name, 100),
     code: safeText(record.code, 100),
+    message: safeText(record.message, 500),
   };
   if (process.env.NODE_ENV !== "production") {
-    error.message = safeText(record.message, 500);
     error.stack = safeText(record.stack, 4_000);
   }
   return error.name || error.code || error.message || error.stack ? error : undefined;
