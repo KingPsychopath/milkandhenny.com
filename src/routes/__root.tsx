@@ -25,6 +25,7 @@ import { recordDiagnosticAction } from "@/features/reports/diagnostics";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { LOCAL_KEYS } from "@/lib/shared/storage-keys";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
+import { isStaleAssetError, reloadForStaleAssets } from "@/lib/client/stale-asset-recovery";
 import "@/src/styles/globals.css";
 
 const LostGuest404 = lazy(() =>
@@ -84,12 +85,18 @@ function RootComponent() {
           : {}),
       });
     };
+    const onPreloadError = (event: Event) => {
+      recordDiagnosticAction("stale_asset_reload", { buildId: __BUILD_ID__ });
+      if (reloadForStaleAssets()) event.preventDefault();
+    };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
+    window.addEventListener("vite:preloadError", onPreloadError);
     return () => {
       document.documentElement.removeAttribute("data-app-hydrated");
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      window.removeEventListener("vite:preloadError", onPreloadError);
     };
   }, []);
   return (
@@ -172,6 +179,10 @@ function RootError({ error }: ErrorComponentProps) {
 
   useEffect(() => {
     console.error("Unhandled error:", error);
+    if (isStaleAssetError(error)) {
+      recordDiagnosticAction("stale_asset_error_boundary", { buildId: __BUILD_ID__ });
+      reloadForStaleAssets();
+    }
   }, [error]);
 
   return (
