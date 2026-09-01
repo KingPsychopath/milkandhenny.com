@@ -10,7 +10,14 @@ import {
   updateWaitlistManagement,
 } from "@/features/event-waitlist/waitlist.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
-import { disableEventDrop, enableEventDrop, getEventDrop } from "@/features/events/drop.server";
+import {
+  cancelEventDropSchedule,
+  disableEventDrop,
+  enableEventDrop,
+  getEventDrop,
+  getEventDropSchedule,
+  scheduleEventDrop,
+} from "@/features/events/drop.server";
 import {
   fulfilCheckout,
   refundOrder,
@@ -81,8 +88,19 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
     eventsOperation({ domain: "event-operations", operation: "get_event_drop", kind: "read" }, () =>
       withPayments(() => getEventDrop(...args)),
     );
+  const getDropSchedule = (...args: Parameters<typeof getEventDropSchedule>) =>
+    eventsOperation(
+      { domain: "event-operations", operation: "get_event_drop_schedule", kind: "read" },
+      () => withPayments(() => getEventDropSchedule(...args)),
+    );
   const enableDrop = (...args: Parameters<typeof enableEventDrop>) =>
     mutation("enable_event_drop", () => withPayments(() => enableEventDrop(...args)));
+  const scheduleDrop = (...args: Parameters<typeof scheduleEventDrop>) =>
+    idempotent("schedule_event_drop", () => withPayments(() => scheduleEventDrop(...args)));
+  const cancelDropSchedule = (...args: Parameters<typeof cancelEventDropSchedule>) =>
+    idempotent("cancel_event_drop_schedule", () =>
+      withPayments(() => cancelEventDropSchedule(...args)),
+    );
   const disableDrop = (...args: Parameters<typeof disableEventDrop>) =>
     idempotent("disable_event_drop", () => withPayments(() => disableEventDrop(...args)));
   const resendTicketOrder = (...args: Parameters<typeof resendAdminTicketOrder>) =>
@@ -160,6 +178,9 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
     disableDrop,
     enableDrop,
     getDrop,
+    getDropSchedule,
+    scheduleDrop,
+    cancelDropSchedule,
     handleStripeWebhook,
     inviteTicket,
     issueComp,

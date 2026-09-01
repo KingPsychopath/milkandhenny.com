@@ -377,7 +377,11 @@ export function TicketPage({
             </dt>
             <dd className="font-serif text-sm text-foreground leading-relaxed">
               {album.state === "pending" && (
-                <span className="block theme-subtle">The shared album opens on the night.</span>
+                <span className="block theme-subtle">
+                  {album.opensAt
+                    ? `The shared album opens ${formatEventDate(album.opensAt, event.timezone)}.`
+                    : "The shared album isn't open yet."}
+                </span>
               )}
 
               {album.state === "open" && (
@@ -411,7 +415,11 @@ export function TicketPage({
                     </a>
                   </>
                 ) : (
-                  <span className="block theme-subtle">The album has expired.</span>
+                  <span className="block theme-subtle">
+                    {album.reason === "expired"
+                      ? "The album has expired."
+                      : "The shared album is not open."}
+                  </span>
                 ))}
 
               {/* An album is a transfer: saying when it goes is not a detail. */}

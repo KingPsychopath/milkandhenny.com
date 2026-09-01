@@ -19,6 +19,7 @@ export function StaffOperationNav({
     ...(data.canRun && data.canAward ? [{ id: "run" as const, label: "game results" }] : []),
     ...(data.canAward ? [{ id: "award" as const, label: "give points" }] : []),
     ...(data.canManageTeams ? [{ id: "teams" as const, label: "teams" }] : []),
+    ...(data.canManageGuestPhotos ? [{ id: "photos" as const, label: "photos" }] : []),
   ];
 
   if (choices.length < 2) return null;

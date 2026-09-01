@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
-import { requireAuth } from "@/features/auth/auth.server";
+import { requireAuthWithPayload } from "@/features/auth/auth.server";
+import { updateEventOperationsPolicy } from "@/features/attendee-operations/capabilities.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -22,19 +23,22 @@ function runDrop<A>(
 }
 
 async function handleGET(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
-  if (authErr) return authErr;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
   try {
-    const drop = await runDrop(request, (service) => service.getDrop(slug));
-    return Response.json({ drop });
+    const [drop, schedule] = await Promise.all([
+      runDrop(request, (service) => service.getDrop(slug)),
+      runDrop(request, (service) => service.getDropSchedule(slug)),
+    ]);
+    return Response.json({ drop, schedule });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.drop", "Failed to load guest uploads", error);
   }
 }
 
 async function handlePOST(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
-  if (authErr) return authErr;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
   try {
     const body: unknown = await request.json().catch(() => null);
     const record = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
@@ -50,9 +54,26 @@ async function handlePOST(request: Request, slug: string) {
       );
     }
 
-    const result = await runDrop(request, (service) => service.enableDrop(slug, expirySeconds));
+    const actorId = auth.actorId ?? "root-owner";
+    await updateEventOperationsPolicy({
+      eventSlug: slug,
+      capabilities: { guestPhotos: true },
+      actorId,
+      actorType: auth.actorType === "admin" ? "admin" : "root-owner",
+      reason: "Guest album enabled from event controls",
+    });
+    const opensAt = typeof record.opensAt === "string" ? record.opensAt : undefined;
+    const result = opensAt
+      ? await runDrop(request, (service) =>
+          service.scheduleDrop({ eventSlug: slug, opensAt, expirySeconds, actorId }),
+        )
+      : await runDrop(request, (service) =>
+          service
+            .cancelDropSchedule(slug)
+            .pipe(Effect.andThen(service.enableDrop(slug, expirySeconds))),
+        );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ drop: result.value });
+    return Response.json(opensAt ? { schedule: result.value } : { drop: result.value });
   } catch (error) {
     return apiErrorFromRequest(
       request,
@@ -64,9 +85,10 @@ async function handlePOST(request: Request, slug: string) {
 }
 
 async function handleDELETE(request: Request, slug: string) {
-  const authErr = await requireAuth(request, "admin");
-  if (authErr) return authErr;
+  const auth = await requireAuthWithPayload(request, "admin");
+  if (auth.error) return auth.error;
   try {
+    await runDrop(request, (service) => service.cancelDropSchedule(slug));
     const result = await runDrop(request, (service) => service.disableDrop(slug));
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ ok: true });

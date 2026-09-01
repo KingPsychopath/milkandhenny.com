@@ -30,7 +30,7 @@ type OfflineReservation = {
   spent: number;
   expiresAt: string;
 };
-export type StaffOperation = "admit" | "checkpoint" | "run" | "award" | "teams";
+export type StaffOperation = "admit" | "checkpoint" | "run" | "award" | "teams" | "photos";
 
 export function useStaffScoringController(data: PageData, token: string) {
   const [activityId, setActivityId] = useState(data.activities[0]?.id ?? "");
@@ -69,7 +69,9 @@ export function useStaffScoringController(data: PageData, token: string) {
           ? "run"
           : data.canAward
             ? "award"
-            : "teams",
+            : data.canManageTeams
+              ? "teams"
+              : "photos",
   );
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();

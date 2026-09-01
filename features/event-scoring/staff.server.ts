@@ -70,6 +70,7 @@ export const STAFF_PRESETS = {
     "manageActivities",
     "manageDiscoveries",
     "uploadActivityPhotos",
+    "manageGuestPhotos",
     "manageStaffAndPools",
     "resolveIdentity",
     "finalizeLeaderboard",

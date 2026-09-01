@@ -17,11 +17,15 @@ import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from ".
 import { putEvent } from "@/features/events/store.server";
 import { normaliseEventInput } from "@/features/events/events.server";
 import {
+  cancelEventDropSchedule,
   disableEventDrop,
   enableEventDrop,
   getEventDrop,
+  getEventDropSchedule,
   isValidDropToken,
+  processScheduledEventDrops,
   resolveDropToken,
+  scheduleEventDrop,
 } from "@/features/events/drop.server";
 import { getTransfer } from "@/features/transfers/store.server";
 
@@ -98,6 +102,31 @@ describeWithDatabase("event drops (postgres)", () => {
     expect((await enableEventDrop(SLUG, 60)).ok).toBe(false);
     expect((await enableEventDrop(SLUG, 90 * DAY)).ok).toBe(false);
     expect((await enableEventDrop("no-such-event", 7 * DAY)).ok).toBe(false);
+  });
+
+  it("opens a scheduled album once the event start is reached", async () => {
+    const opensAt = new Date(Date.now() + 60_000);
+    const scheduled = await scheduleEventDrop({
+      eventSlug: SLUG,
+      opensAt: opensAt.toISOString(),
+      expirySeconds: 7 * DAY,
+      actorId: "admin-test",
+    });
+    expect(scheduled.ok).toBe(true);
+    expect(await getEventDrop(SLUG)).toBeNull();
+    expect(await processScheduledEventDrops(new Date(opensAt.getTime() - 1))).toBe(0);
+    await cancelEventDropSchedule(SLUG);
+    expect(await processScheduledEventDrops(opensAt)).toBe(0);
+    await scheduleEventDrop({
+      eventSlug: SLUG,
+      opensAt: opensAt.toISOString(),
+      expirySeconds: 7 * DAY,
+      actorId: "admin-test",
+    });
+    expect(await processScheduledEventDrops(opensAt)).toBe(1);
+    expect((await getEventDrop(SLUG))?.live).toBe(true);
+    expect((await getEventDropSchedule(SLUG))?.openedAt).toBeDefined();
+    expect(await processScheduledEventDrops(opensAt)).toBe(0);
   });
 
   it("garbage tokens never resolve", async () => {

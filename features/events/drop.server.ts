@@ -46,6 +46,36 @@ type EventDropRow = {
   disabled_at: Date | null;
 };
 
+type EventDropScheduleRow = {
+  event_slug: string;
+  opens_at: Date;
+  duration_seconds: number;
+  created_by: string;
+  created_at: Date;
+  opened_at: Date | null;
+  cancelled_at: Date | null;
+};
+
+export type EventDropSchedule = {
+  eventSlug: string;
+  opensAt: string;
+  durationSeconds: number;
+  createdBy: string;
+  openedAt?: string;
+  cancelledAt?: string;
+};
+
+function toDropSchedule(row: EventDropScheduleRow): EventDropSchedule {
+  return {
+    eventSlug: row.event_slug,
+    opensAt: row.opens_at.toISOString(),
+    durationSeconds: row.duration_seconds,
+    createdBy: row.created_by,
+    openedAt: row.opened_at?.toISOString(),
+    cancelledAt: row.cancelled_at?.toISOString(),
+  };
+}
+
 export type EventDropRecord = {
   eventSlug: string;
   token: string;
@@ -88,6 +118,15 @@ export async function getEventDrop(eventSlug: string): Promise<EventDropStatus |
   };
 }
 
+export async function getEventDropSchedule(eventSlug: string): Promise<EventDropSchedule | null> {
+  if (!isValidEventSlug(eventSlug)) return null;
+  const row = await queryOne<EventDropScheduleRow>(
+    `select * from event_drop_schedules where event_slug = $1`,
+    [eventSlug],
+  );
+  return row ? toDropSchedule(row) : null;
+}
+
 /**
  * The album as a ticket holder sees it.
  *
@@ -97,19 +136,27 @@ export async function getEventDrop(eventSlug: string): Promise<EventDropStatus |
 export async function getEventAlbumView(eventSlug: string): Promise<EventAlbumView> {
   if (!isValidEventSlug(eventSlug)) return { state: "pending", fileCount: 0 };
   if (!(await isCapabilityEffective(eventSlug, "guestPhotos"))) {
-    return { state: "closed", fileCount: 0 };
+    return { state: "closed", fileCount: 0, reason: "unavailable" };
   }
 
   const row = await queryOne<EventDropRow>(`select * from event_drops where event_slug = $1`, [
     eventSlug,
   ]);
-  if (!row) return { state: "pending", fileCount: 0 };
+  if (!row) {
+    const schedule = await getEventDropSchedule(eventSlug);
+    return {
+      state: "pending",
+      fileCount: 0,
+      opensAt:
+        schedule && !schedule.cancelledAt && !schedule.openedAt ? schedule.opensAt : undefined,
+    };
+  }
 
   const record = toDrop(row);
   const transfer = await getTransfer(record.transferId);
   // The transfer's own TTL is the real lifetime; once it lapses there is
   // nothing left to link to.
-  if (!transfer) return { state: "closed", fileCount: 0 };
+  if (!transfer) return { state: "closed", fileCount: 0, reason: "expired" };
 
   const live = !record.disabledAt && Date.parse(record.expiresAt) > Date.now();
 
@@ -120,6 +167,73 @@ export async function getEventAlbumView(eventSlug: string): Promise<EventAlbumVi
     fileCount: transfer.files.length,
     expiresAt: record.expiresAt,
   };
+}
+
+export async function scheduleEventDrop(input: {
+  eventSlug: string;
+  opensAt: string;
+  expirySeconds: number;
+  actorId: string;
+}): Promise<EventDropResult<EventDropSchedule>> {
+  const event = await getEvent(input.eventSlug);
+  if (!event) return { ok: false, status: 404, error: "Event not found" };
+  const opensAt = new Date(input.opensAt);
+  const durationSeconds = Math.floor(input.expirySeconds);
+  if (!Number.isFinite(opensAt.getTime())) {
+    return { ok: false, status: 400, error: "The album opening time is invalid" };
+  }
+  if (
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < 60 * 60 ||
+    durationSeconds > MAX_EXPIRY_SECONDS
+  ) {
+    return { ok: false, status: 400, error: "Pick an expiry between 1 hour and 30 days" };
+  }
+  const row = await queryOne<EventDropScheduleRow>(
+    `insert into event_drop_schedules (event_slug,opens_at,duration_seconds,created_by)
+     values ($1,$2,$3,$4)
+     on conflict (event_slug) do update
+       set opens_at = excluded.opens_at,
+           duration_seconds = excluded.duration_seconds,
+           created_by = excluded.created_by,
+           created_at = now(),
+           opened_at = null,
+           cancelled_at = null
+     returning *`,
+    [input.eventSlug, opensAt.toISOString(), durationSeconds, input.actorId],
+  );
+  if (!row) return { ok: false, status: 500, error: "Failed to schedule the album" };
+  return { ok: true, value: toDropSchedule(row) };
+}
+
+export async function cancelEventDropSchedule(eventSlug: string): Promise<void> {
+  if (!isValidEventSlug(eventSlug)) return;
+  await query(
+    `update event_drop_schedules set cancelled_at = now()
+      where event_slug = $1 and opened_at is null and cancelled_at is null`,
+    [eventSlug],
+  );
+}
+
+export async function processScheduledEventDrops(now = new Date()): Promise<number> {
+  const due = await query<EventDropScheduleRow>(
+    `select * from event_drop_schedules
+      where opens_at <= $1 and opened_at is null and cancelled_at is null
+      order by opens_at, event_slug`,
+    [now],
+  );
+  let opened = 0;
+  for (const schedule of due) {
+    const result = await enableEventDrop(schedule.event_slug, schedule.duration_seconds);
+    if (!result.ok) continue;
+    await query(
+      `update event_drop_schedules set opened_at = now()
+        where event_slug = $1 and opened_at is null and cancelled_at is null`,
+      [schedule.event_slug],
+    );
+    opened += 1;
+  }
+  return opened;
 }
 
 /**

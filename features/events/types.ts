@@ -169,6 +169,10 @@ export type EventAlbumView = {
   fileCount: number;
   /** The album is a transfer, so it genuinely does disappear. */
   expiresAt?: string;
+  /** Scheduled opening, when the album has not been created yet. */
+  opensAt?: string;
+  /** Why a closed album has no browsable transfer. */
+  reason?: "unavailable" | "expired";
 };
 
 /**

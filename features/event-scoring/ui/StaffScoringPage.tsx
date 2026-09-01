@@ -10,6 +10,7 @@ import {
 } from "./useStaffScoringController";
 import { StaffAwardPanel } from "./StaffAwardPanel";
 import { StaffOperationNav } from "./StaffOperationNav";
+import { StaffPhotosPanel } from "./StaffPhotosPanel";
 import { StaffTeamsPanel } from "./StaffTeamsPanel";
 import { StaffTicketScannerField } from "./StaffTicketScannerField";
 
@@ -70,6 +71,10 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
 
       {operation === "teams" && data.canManageTeams ? (
         <StaffTeamsPanel data={data} token={token} />
+      ) : null}
+
+      {operation === "photos" && data.canManageGuestPhotos ? (
+        <StaffPhotosPanel data={data} token={token} />
       ) : null}
 
       {operation === "run" && data.canRun && data.canAward && (

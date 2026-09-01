@@ -74,6 +74,7 @@ export const STAFF_PERMISSIONS = [
   "manageActivities",
   "manageDiscoveries",
   "uploadActivityPhotos",
+  "manageGuestPhotos",
   "manageStaffAndPools",
   "resolveIdentity",
   "finalizeLeaderboard",

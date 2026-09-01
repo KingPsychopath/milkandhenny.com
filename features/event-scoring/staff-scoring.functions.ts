@@ -214,6 +214,14 @@ export const acceptStaffHeldActionFn = createServerFn({ method: "POST" })
     return result.ok ? { ok: true as const, value: { id: result.value.id } } : result;
   });
 
+export const setStaffGuestPhotosFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { eventSlug: string; token: string; enabled: boolean; expirySeconds?: number }) => data,
+  )
+  .handler(({ data }) =>
+    runScoring((scoring) => scoring.setStaffGuestPhotos({ ...data, deviceId: ensureDeviceId() })),
+  );
+
 export const reserveOfflineScoreBudgetFn = createServerFn({ method: "POST" })
   .validator(
     (data: {

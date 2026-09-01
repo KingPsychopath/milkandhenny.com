@@ -3740,6 +3740,36 @@ const MIGRATIONS: Migration[] = [
           and invitation_state in ('pending','active');
     `,
   },
+  {
+    id: "0080_event_drop_schedules",
+    sql: `
+      create table if not exists event_drop_schedules (
+        event_slug       text primary key references events (slug) on delete cascade,
+        opens_at         timestamptz not null,
+        duration_seconds integer not null check (duration_seconds between 3600 and 2592000),
+        created_by       text not null,
+        created_at       timestamptz not null default now(),
+        opened_at        timestamptz,
+        cancelled_at     timestamptz
+      );
+
+      create index if not exists event_drop_schedules_due_idx
+        on event_drop_schedules (opens_at)
+        where opened_at is null and cancelled_at is null;
+
+      update event_staff_roles
+         set permissions = jsonb_set(permissions, '{manageGuestPhotos}', 'true'::jsonb, true),
+             updated_at = now()
+       where role_preset in ('event-manager','admin');
+
+      update score_staff_assignments
+         set permissions = jsonb_set(permissions, '{manageGuestPhotos}', 'true'::jsonb, true)
+       where role_preset in ('event-manager','admin')
+          or role_id in (
+            select id from event_staff_roles where role_preset in ('event-manager','admin')
+          );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

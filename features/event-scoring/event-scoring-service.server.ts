@@ -20,6 +20,7 @@ import { processScheduledScoringTransitions } from "./scoring.server";
 import * as staffEngine from "./staff-scoring.server";
 import { getStaffAwardClaimPreview } from "./staff-award-claims.server";
 import { decideGuestRequest } from "@/features/tickets/guest-requests.server";
+import { processScheduledEventDrops } from "@/features/events/drop.server";
 
 function operation<A>(name: string, run: (signal: AbortSignal) => Promise<A>, timeoutMs = 45_000) {
   return eventsOperation(
@@ -75,6 +76,7 @@ const decideStaffGuest = mutate("staff_decide_guest", staffEngine.decideStaffGue
 const decideAdminGuest = mutate("admin_decide_guest", decideGuestRequest);
 const transferStaffPoints = mutate("staff_transfer_points", staffEngine.transferStaffPoints);
 const acceptStaffHeldAction = mutate("staff_accept_held", staffEngine.acceptStaffHeldAction);
+const setStaffGuestPhotos = mutate("staff_guest_photos", staffEngine.setStaffGuestPhotos);
 const reserveOfflineBudget = mutate("offline_reserve", offlineEngine.reserveOfflineScoreBudget);
 const reconcileOfflineCommands = mutate(
   "offline_reconcile",
@@ -93,14 +95,15 @@ const runScheduled = Effect.gen(function* () {
   const outbox = yield* operation("drain_official_outbox", () =>
     drainOfficialGameResultOutbox(consumeOfficialGameResult),
   );
-  const [result, scoringTransitions] = yield* Effect.all(
+  const [result, scoringTransitions, albumOpenings] = yield* Effect.all(
     [
       operation("process_official_results", () => processPendingOfficialGameResults()),
       operation("scheduled_transitions", () => processScheduledScoringTransitions()),
+      operation("scheduled_album_openings", () => processScheduledEventDrops()),
     ],
-    { concurrency: 2 },
+    { concurrency: 3 },
   );
-  return { outbox, result, scoringTransitions };
+  return { outbox, result, scoringTransitions, albumOpenings };
 }).pipe(Effect.withSpan("event-scoring.scheduled"));
 
 /**
@@ -138,6 +141,7 @@ export class EventScoringService extends Context.Service<
     readonly decideAdminGuest: typeof decideAdminGuest;
     readonly transferStaffPoints: typeof transferStaffPoints;
     readonly acceptStaffHeldAction: typeof acceptStaffHeldAction;
+    readonly setStaffGuestPhotos: typeof setStaffGuestPhotos;
     readonly reserveOfflineBudget: typeof reserveOfflineBudget;
     readonly reconcileOfflineCommands: typeof reconcileOfflineCommands;
     readonly closeOfflineReservation: typeof closeOfflineReservation;
@@ -178,6 +182,7 @@ export class EventScoringService extends Context.Service<
 
       return {
         acceptStaffHeldAction,
+        setStaffGuestPhotos,
         admitStaffTicket,
         scanStaffCheckpoint,
         awardStaffPoints,

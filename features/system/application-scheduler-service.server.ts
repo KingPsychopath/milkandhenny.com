@@ -79,6 +79,7 @@ export class ApplicationSchedulerService extends Context.Service<
         outbox: { selected: number; delivered: number };
         result: { selected: number; processed: number; held: number; ignored: number };
         scoringTransitions: number;
+        albumOpenings: number;
       }>,
       unknown
     >;
@@ -226,11 +227,14 @@ export class ApplicationSchedulerService extends Context.Service<
             report: (outcome) => {
               if (
                 outcome.ran &&
-                (outcome.value.result.selected > 0 || outcome.value.scoringTransitions > 0)
+                (outcome.value.result.selected > 0 ||
+                  outcome.value.scoringTransitions > 0 ||
+                  outcome.value.albumOpenings > 0)
               ) {
                 log.info("scheduler.event-scoring", "Scheduled scoring work completed", {
                   ...outcome.value.result,
                   scoringTransitions: outcome.value.scoringTransitions,
+                  albumOpenings: outcome.value.albumOpenings,
                 });
               }
             },

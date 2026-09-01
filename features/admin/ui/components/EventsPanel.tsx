@@ -675,6 +675,13 @@ type DropStatus = {
   fileCount: number;
 };
 
+type DropSchedule = {
+  opensAt: string;
+  durationSeconds: number;
+  openedAt?: string;
+  cancelledAt?: string;
+};
+
 /** Guest media uploads: one shared album per event behind a bearer link. */
 function GuestUploadsSection({
   event,
@@ -696,6 +703,7 @@ function GuestUploadsSection({
 }) {
   const expiryId = useId();
   const [drop, setDrop] = useState<DropStatus | null>(null);
+  const [schedule, setSchedule] = useState<DropSchedule | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [expiry, setExpiry] = useState("7d");
@@ -714,6 +722,11 @@ function GuestUploadsSection({
           ? (data.drop as DropStatus)
           : null;
       setDrop(status);
+      setSchedule(
+        data && typeof data === "object" && "schedule" in data && data.schedule
+          ? (data.schedule as DropSchedule)
+          : null,
+      );
       setDropUrl(status ? `${window.location.origin}/drop/${status.token}` : null);
       setLoaded(true);
     } catch (error) {
@@ -725,19 +738,23 @@ function GuestUploadsSection({
     void load();
   }, [load]);
 
-  const enable = async () => {
+  const enable = async (opensAt?: string) => {
     setBusy(true);
     onError("");
     try {
       const response = await authFetch(`/api/admin/events/${event.slug}/drop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expiry }),
+        body: JSON.stringify({ expiry, opensAt }),
       });
       if (!response.ok) {
         throw new Error(await readErrorMessage(response, "Failed to turn uploads on"));
       }
-      onStatus("Guest uploads are on — share the link or QR");
+      onStatus(
+        opensAt
+          ? "Guest uploads will open at the event start"
+          : "Guest uploads are on — share the link or QR",
+      );
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to turn uploads on");
@@ -885,6 +902,19 @@ function GuestUploadsSection({
           >
             {drop && !drop.live ? "turn uploads back on" : "turn uploads on"}
           </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void enable(event.startsAt)}
+            className="min-h-10 rounded border theme-border-strong px-4 font-mono text-xs disabled:opacity-50"
+          >
+            open at event start
+          </button>
+          {schedule && !schedule.openedAt && !schedule.cancelledAt ? (
+            <p className="w-full font-mono text-micro theme-muted" role="status">
+              scheduled for {new Date(schedule.opensAt).toLocaleString("en-GB")}
+            </p>
+          ) : null}
         </div>
       )}
     </div>

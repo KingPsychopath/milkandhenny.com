@@ -12,7 +12,13 @@ import {
   listGuestRequestsForToken,
 } from "@/features/tickets/guest-requests.server";
 import { getEvent } from "@/features/events/store.server";
-import { getEventDrop } from "@/features/events/drop.server";
+import {
+  cancelEventDropSchedule,
+  disableEventDrop,
+  enableEventDrop,
+  getEventDrop,
+} from "@/features/events/drop.server";
+import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import {
   awardPoints,
@@ -138,6 +144,8 @@ export async function getStaffScoringPage(input: {
       canReverse: boolean;
       canReviewHeld: boolean;
       canUploadMedia: boolean;
+      canManageGuestPhotos: boolean;
+      guestPhotosAvailable: boolean;
       photoConsentPolicy: "ask" | "required" | "not-required";
       mediaDrop?: { uploadPath?: string; albumPath: string; expiresAt: string };
       canRun: boolean;
@@ -201,6 +209,7 @@ export async function getStaffScoringPage(input: {
     teams,
     teamRoster,
     checkpoints,
+    guestPhotosAvailable,
   ] = await Promise.all([
     getEvent(input.eventSlug),
     listScoringActivities(input.eventSlug),
@@ -231,6 +240,7 @@ export async function getStaffScoringPage(input: {
     grant("manageTeams") ? listTeams(input.eventSlug) : [],
     grant("manageTeams") ? listCheckedInTeamParticipants(input.eventSlug) : [],
     listCheckpoints(input.eventSlug),
+    isCapabilityEffective(input.eventSlug, "guestPhotos"),
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
@@ -271,6 +281,8 @@ export async function getStaffScoringPage(input: {
     canReverse: grant("reverseAwards") !== null,
     canReviewHeld: grant("reviewHeldActions") !== null,
     canUploadMedia: grant("uploadActivityPhotos") !== null,
+    canManageGuestPhotos: grant("manageGuestPhotos") !== null,
+    guestPhotosAvailable,
     photoConsentPolicy: settings.photoConsentPolicy,
     mediaDrop: drop
       ? {
@@ -346,6 +358,39 @@ export async function getStaffScoringPage(input: {
       }),
     ),
   };
+}
+
+export async function setStaffGuestPhotos(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  enabled: boolean;
+  expirySeconds?: number;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  const assignment = assignmentFor(context, "manageGuestPhotos");
+  if (!context || !assignment) {
+    return { ok: false as const, status: 403, error: "This staff role cannot manage photos" };
+  }
+  if (!(await isCapabilityEffective(input.eventSlug, "guestPhotos"))) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Guest photos are disabled in the event settings. Ask an admin to enable them.",
+    };
+  }
+  await cancelEventDropSchedule(input.eventSlug);
+  const result = input.enabled
+    ? await enableEventDrop(input.eventSlug, input.expirySeconds ?? 7 * 24 * 60 * 60)
+    : await disableEventDrop(input.eventSlug);
+  if (!result.ok) return result;
+  await query(
+    `insert into score_audit_events
+       (event_slug,action,actor_type,actor_id,assignment_id,device_id,entity_type,entity_id,metadata)
+     values ($1,'event.photos.toggled','staff',$2,$2,$3,'event',$1,$4::jsonb)`,
+    [input.eventSlug, assignment.id, context.deviceId, JSON.stringify({ enabled: input.enabled })],
+  );
+  return { ok: true as const, value: await getEventDrop(input.eventSlug) };
 }
 
 async function currentStaffTeamState(eventSlug: string) {
