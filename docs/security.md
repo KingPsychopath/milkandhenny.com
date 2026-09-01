@@ -159,8 +159,10 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 
 - **View IDs**: 22-char base64url values generated from 128 random bits
 - **Delete tokens**: 22-char base64url (16 bytes), never exposed to recipients
-- **Presigned URLs**: time-limited (15 min), scoped to a single R2 key, generated server-side only for authenticated uploaders
-- **Admin-only takedown**: only the uploader can delete (CLI or admin URL)
+- **Presigned URLs**: time-limited, scoped to a single R2 key and operation, and issued only after
+  the application authorizes the workflow. Upload and protected-read windows are configured
+  separately.
+- **Takedown authority**: the uploader's private delete capability or an authenticated admin action
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
 - **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
 - **Cache isolation**: transfer pages and protected media are always `private, no-store`; only intentionally published public media is cacheable
@@ -187,31 +189,17 @@ Notes:
 
 ---
 
-## Cloudflare WAF (Rate Limiting)
+## Cloudflare WAF
 
 Public images are served from `pics.milkandhenny.com` (the public R2 bucket's custom domain). Transfer files live in a separate private R2 bucket and are reached through short-lived signed redirects from the application. Every successful object request counts as an R2 read.
 
-In **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, create two rules:
+Use narrowly scoped per-IP rules for the public media hostname and protected transfer media route.
+Do not copy plan limits, prices, or dashboard labels into the security contract: they change outside
+the repository. Record the deployed expression and threshold in the operator's Cloudflare
+configuration, verify normal gallery bursts remain below it, and review provider usage alerts.
 
-| Rule           | Match                               | Per IP | Threshold     | Action | Duration |
-| -------------- | ----------------------------------- | ------ | ------------- | ------ | -------- |
-| Album images   | URI path `/albums/*`                | Yes    | 100 req / 10s | Block  | 10s      |
-| Transfer media | URI path `/api/transfers/*/media/*` | Yes    | 100 req / 10s | Block  | 10s      |
-
-> Free plan limits: 10-second period and 10-second block duration only.
-
-For the step-by-step Cloudflare walkthrough, see [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md).
-
-### Worst-case cost with rate limiting
-
-| Attack scenario      | Requests/day (sustained) | R2 cost/month |
-| -------------------- | ------------------------ | ------------- |
-| 1 IP (script kiddie) | ~432,000                 | ~$1           |
-| 10 IPs (VPN/proxies) | ~4.3M                    | ~$43          |
-
-A casual single-IP attacker costs ~$1/month. A serious multi-IP attack is extremely unlikely for a personal site. Cloudflare's automatic DDoS protection (included free) is always active.
-
-**If under attack:** set a Cloudflare billing alert at $5, check Security → Events, block IPs via WAF Custom Rules, enable Under Attack Mode if needed, tighten rate limits temporarily.
+The repository-side intent and verification steps are in
+[cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md).
 
 ---
 
@@ -236,7 +224,8 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 7. **Redeploy** so the app and maintenance runner use the new token
 8. Test: `pnpm cli bucket ls` — should return bucket contents
 
-**Downtime:** Zero for the public site (images served via Cloudflare CDN). CLI operations fail between steps 2–5. Cron fails until redeploy.
+Cached public derivatives may continue to serve during rotation. Private storage operations and
+maintenance can fail until every workload receives the replacement credential.
 
 ### Redis credentials leaked (`REDIS_REST_URL` / `REDIS_REST_TOKEN`)
 
@@ -247,7 +236,8 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 5. **Redeploy**
 6. Test: `pnpm cli transfers list`
 
-**Downtime:** Transfer pages return errors during rotation (~30s). Their `private, no-store` policy prevents a CDN from serving a stale capability response during the window.
+Transfer, authentication, rate-limit, and room operations can fail during rotation. Their
+`private, no-store` policy prevents a shared cache from substituting a stale capability response.
 
 **Data at risk:** The Redis token grants read/write to vote and transfer metadata (not files — those are in R2).
 
@@ -269,14 +259,16 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 
 ### Quick-reference: where each secret lives
 
-| Secret/config                                     | Local development | Production host | Source of truth   |
-| ------------------------------------------------- | :---------------: | :-------------: | ----------------- |
-| `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY`   |        Yes        |       Yes       | Cloudflare R2     |
-| `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY` |        Yes        |       Yes       | Cloudflare R2     |
-| `REDIS_REST_URL` / `REDIS_REST_TOKEN`             |        Yes        |       Yes       | Redis provider    |
-| `ADMIN_PASSWORD` / `UPLOAD_PIN`                   |        Yes        |       Yes       | Secret manager    |
-| `CRON_SECRET`                                     |     Optional      |       Yes       | Secret manager    |
-| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`         |        Yes        |   Build-time    | Deployment config |
+| Secret/config                                                      | Local development | Production host | Source of truth         |
+| ------------------------------------------------------------------ | :---------------: | :-------------: | ----------------------- |
+| `AUTH_SECRET`, `ADMIN_PASSWORD`, `UPLOAD_PIN`, `CRON_SECRET`       |        Yes        |       Yes       | Secret manager          |
+| `DATABASE_URL`                                                     |        Yes        |       Yes       | PostgreSQL provider     |
+| `REDIS_REST_URL` / `REDIS_REST_TOKEN`; optional direct `REDIS_URL` |        Yes        |       Yes       | Redis provider          |
+| `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY`                    |        Yes        |       Yes       | Public-bucket R2 token  |
+| `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY`                  |        Yes        |       Yes       | Private-bucket R2 token |
+| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`                      |     Optional      |  When selling   | Stripe                  |
+| `EMAIL_API_KEY` / `EMAIL_EVENT_SECRET`                             |     Optional      | When delivering | Email provider/relay    |
+| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`                          |        Yes        |   Build-time    | Deployment config       |
 
 ### General incident checklist
 
@@ -285,7 +277,7 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 3. **Update** local and production secret stores
 4. **Redeploy**
 5. **Verify** with a CLI or browser test
-6. **Audit** Cloudflare Analytics and Upstash Monitor for suspicious activity
+6. **Audit** host, Cloudflare, database, Redis, Stripe, and email-provider logs as relevant
 7. **Document** what happened
 
 ### What makes this app rotation-friendly
@@ -293,5 +285,5 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
 - **No secrets in the client bundle.** `VITE_*` vars contain only public URLs and client configuration, never secrets.
 - **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in httpOnly cookies by default, never raw credentials.
-- **Layered storage.** R2 and Redis credentials are independent — leaking one doesn’t compromise the other.
+- **Layered storage.** Database, Redis, and per-bucket R2 credentials have separate blast radii.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

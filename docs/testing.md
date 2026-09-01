@@ -3,6 +3,10 @@
 The test suite protects product decisions and data integrity. It does not try to
 assert every React wrapper or third-party SDK call.
 
+Verification follows the blast radius. Start with the smallest affected test, then expand when the
+change crosses a boundary, a focused check fails, or the handoff/release gate requires broader
+evidence. Do not repeatedly run the full suite while iterating.
+
 ## Commands
 
 | Command                 | Use                                             | Needs services                        |
@@ -51,6 +55,12 @@ The tests use the real application code. External services use the local
 fallback or a focused test server where that is the contract being exercised.
 Database suites use the shared Postgres helper and advisory lock so parallel
 Vitest workers cannot reset one another's schema.
+
+Effect service-boundary tests use deterministic Layers or focused adapters. Test pure policy before
+the wrapper, then cover the execution guarantees the workflow actually owns: typed failure,
+timeout, interruption, finalization, idempotency, lease recovery, overlap prevention, or bounded
+concurrency. Do not assert Effect implementation details or add a mock Layer that weakens the
+production contract.
 
 ### Browser tests
 
@@ -105,7 +115,8 @@ SDK.
 
 ## Release checks
 
-For a normal source change, run:
+During implementation, run the affected Vitest file or tier. Before handing off a normal source
+change, run:
 
 ```bash
 pnpm check
@@ -121,6 +132,10 @@ pnpm verify:release
 The release command is intentionally broader: it includes coverage, the real
 browser flow, and the production build. It should be run with the same test
 services that CI provides.
+
+For a documentation-only change, verify Markdown formatting, local links, referenced paths, and
+documented commands. Source tests are not required unless the audit exposes a code/configuration
+mismatch. In every handoff, state what ran and what remains for CI.
 
 ## Coverage
 

@@ -4,12 +4,13 @@ globs: ["src/**/*.tsx", "features/**/*.tsx", "components/**/*.tsx", "**/*.css"]
 alwaysApply: false
 ---
 
-# Milk & Henny Design System
+# Milk & Henny design system
 
 If a task includes semantics, keyboard support, focus handling, forms, or screen-reader behavior, also load `.cursor/rules/accessibility.mdc`.
 
 ## Aesthetic: "Editorial Typewriter"
-- Writing-first. Single column, max-w-2xl. No sidebars or widgets.
+- Public editorial surfaces are writing-first: single column, `max-w-2xl`, and no dashboard
+  furniture.
 - UI chrome (nav, dates, labels): Geist Mono, lowercase, tight tracking.
 - Prose (titles, body): Lora serif.
 - Warm stone palette. Amber accent. Never blue-grey.
@@ -17,9 +18,14 @@ If a task includes semantics, keyboard support, focus handling, forms, or screen
 - Subtle interactions: opacity shifts, not colour changes.
 
 ## Layout
-- Max width: max-w-2xl (672px), px-6 padding.
+- Editorial reading width: `max-w-2xl` with `px-6` padding.
+- Admin, scanners, live games, media workspaces, and the pitch studio may use wider, denser, or
+  multi-pane layouts when the task requires it. Keep the same tokens, type roles, action hierarchy,
+  and spacing rhythm.
 - Generous vertical spacing. Hairline `border-t theme-border` dividers.
 
 ## Colours
 - Use CSS custom properties (`var(--foreground)`, `var(--stone-400)`).
 - Never hardcode hex in components.
+- Operational green, amber, and red always pair with a written state; colour is never the only
+  signal.

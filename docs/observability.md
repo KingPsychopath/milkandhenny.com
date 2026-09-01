@@ -20,10 +20,10 @@
 
 `/health` uses the same model and exposes no credentials, provider account identifiers, hostnames, or raw errors.
 
-`/api/debug` requires admin authentication. It performs one read-only Redis operation, one
-object-storage bucket probe, and one aggregate email-outbox query. It reports bounded latency and
-normalizes failures without returning secrets or recipients. Its multiplayer section is a live
-per-replica Effect metric snapshot; counters reset when that replica restarts.
+`/api/debug` requires admin authentication. It performs bounded live dependency probes and returns
+the email outbox, scheduler leases, game pools, media queue, official-result durable work, and a
+per-replica Multiplayer metric snapshot. It normalizes failures without returning secrets or
+recipients. Runtime counters reset when that replica restarts.
 
 ## Multiplayer signals
 

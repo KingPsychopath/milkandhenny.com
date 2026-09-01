@@ -8,18 +8,41 @@ alwaysApply: false
 - **Behavior over Implementation:** Test what the code *does*, not internal details.
 - **Shared Logic First:** Prioritize testing `features/*` domain logic before UI.
 - **Naming:** Use `describe` block -> `it("should...")` in plain English.
-- **Mocks:** Mock external network/heavy APIs only. Do not mock internal helpers.
+- **Substitution:** Prefer deterministic service Layers, local adapters, or focused test servers at
+  infrastructure boundaries. Do not mock internal helpers merely to make an implementation easy to
+  assert.
+- **Blast Radius:** Start with the smallest affected tests. Expand when a boundary changes, a
+  focused check fails, or the release gate requires it.
 
 ## Test Tiers
 1. **Unit:**
    - Scope: Pure functions, hooks, `features/*`.
-   - Rule: Fast execution. No browser/DB. 100% logic coverage.
+   - Rule: Fast execution. No browser or database. Cover consequential rules and edge partitions;
+     do not manufacture tests to reach an arbitrary percentage.
 2. **Integration:**
    - Scope: Cross-module workflows, TanStack server functions, and Nitro API routes.
-   - Rule: Test the user contract (input/output). Do not mock sub-components.
+   - Rule: Test the user contract and durable state transition. Use real Postgres for transactional
+     guarantees and explicit local adapters for external providers.
+3. **Browser:**
+   - Scope: High-value navigation, identity, browser-state, accessibility, and multi-surface flows.
+   - Rule: Keep journeys few and consequential. Visual-only changes use focused visual review.
+
+## Effect workflows
+
+- Test pure transitions without Effect first.
+- At the service boundary, cover typed domain failure, timeout, interruption, and finalizer behavior
+  when the workflow owns those concerns.
+- Cover idempotency and uncertain external mutation handling rather than asserting Effect internals.
+- Scheduled and worker workflows cover lease recovery, overlap prevention, bounded concurrency, and
+  shutdown when those guarantees are part of the change.
 
 ## Tooling & Execution
-- **Runner:** `pnpm test`. Match files: `auth.ts` -> `auth.test.ts`.
+- **Focused:** Run the affected Vitest file or `pnpm test:unit` / `pnpm test:integration` while
+  iterating.
+- **Source handoff:** Run `pnpm check` and `pnpm test`.
+- **Release:** Run `pnpm verify:release` with Postgres, object storage, and Chromium available.
 - **Setup:** Use `beforeEach` to clear mocks/stores. Avoid state leaks.
 - **CLI Parity:** Ensure `scripts/*` can be invoked in tests without side effects.
 - **Technique:** Use `vi.mock()` for modules, `vi.fn()` for callbacks.
+- Database-backed suites may skip locally when Postgres is absent, but CI must prove they ran. Do
+  not describe a skipped suite as passing database verification.

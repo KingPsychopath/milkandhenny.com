@@ -8,13 +8,16 @@ Run once per day:
 APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
 ```
 
-The web process owns user-visible timed work through durable Postgres job leases: communication
-fan-out, email delivery, scoring transitions and result recovery, Pitch reminders, and operations
-digests. Every replica can recover the work, but only one lease holder runs a job at a time.
+The web process owns user-visible timed work through the Events runtime and durable Postgres job
+leases: communication fan-out and email delivery, scoring transitions and official-result recovery,
+Pitch reminders, and operations digests. Every replica may attempt recovery, but only one lease
+holder runs a job at a time. `APP_SCHEDULER_DISABLED=true` is an emergency stop, not the normal
+deployment mode.
 
-The daily runner drains the transactional-email outbox, applies email retention, then calls
-transfer cleanup, Pitch Night cleanup, expired word-share cleanup, orphaned word-media cleanup, and
-media reconciliation. It is the independent housekeeping and recovery backstop. Each job emits one
+The daily runner invokes Pitch reminders, email delivery, transfer and Pitch cleanup, game-pool
+cleanup, official-result recovery, operations digests, communication-link and email retention,
+attendee-access cleanup, word-share and orphaned-word-media cleanup, and transfer-media
+reconciliation. It is the independent housekeeping and recovery backstop. Each request emits one
 structured result, and the runner exits non-zero if any job fails.
 
 ## Capability checks
@@ -56,16 +59,19 @@ the queue, and `pnpm cli email cleanup --step-up` to apply retention immediately
 - Start the web process at 512 MB–1 GB RAM and 0.5–1 vCPU.
 - Keep one replica until observed traffic requires more.
 - Before adding a second web replica, link direct Redis as `REDIS_URL`; otherwise WebSocket wake delivery is process-local.
-- Do not attach a volume; application durability belongs in Redis, object storage, or git.
+- Do not attach a volume; application durability belongs in Postgres, Redis, or object storage.
 - Keep `MEDIA_PROCESSOR_MODE=local` while no media worker is running; a queue with no consumer only accumulates.
 - Set host-level memory and spending limits, but leave enough headroom for image transformations.
-- Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so Nitro can close sockets and dispose the Effect runtime after `SIGTERM`.
+- Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so Nitro can close sockets and dispose subsystem
+  Effect runtimes after `SIGTERM`.
 
 `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` is Railway lifecycle configuration, not part of the application environment contract. Application runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`; Railway-provided metadata is an optional deployment adapter.
 
 ## Multiplayer scaling
 
-Each replica owns one managed Effect runtime, one bounded local socket registry, and—when `REDIS_URL` is configured—one Redis publisher and one Redis subscriber. Authoritative rooms remain in Redis REST storage; the direct connection carries advisory cross-replica wake events only.
+Each replica owns one managed Multiplayer runtime, one bounded local socket registry, and—when
+`REDIS_URL` is configured—one Redis publisher and one Redis subscriber. Authoritative rooms remain
+in Redis REST storage; the direct connection carries advisory cross-replica wake events only.
 
 The admin system-health panel reports the current replica and whether fan-out is `local` or `redis`. Do not scale past one replica while it reports `local`. Sticky routing can reduce fan-out traffic but is not required for correctness once the Redis backplane is enabled.
 

@@ -1,5 +1,11 @@
 # Event identity, scoring, staff, discovery, and print checklist
 
+Status: implementation evidence recorded on 25 August 2026; not current release certification
+
+Checked items record the implementation and verification completed for that snapshot. Later
+refactors must use current tests, [../effect-lifecycle.md](../effect-lifecycle.md), and
+[operations.md](./operations.md) rather than treating these checkmarks as permanent proof.
+
 This document is the implementation and acceptance checklist for the event scoring system. It
 covers the product decisions from the planning conversation and the edge cases that must not be
 left implicit.

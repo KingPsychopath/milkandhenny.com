@@ -2,7 +2,9 @@
 
 ## Portable artifact
 
-The root `Dockerfile` is the production contract. It builds TanStack Start with Nitro's Node preset and copies only `.output` plus operational scripts into an unprivileged runtime image.
+The root `Dockerfile` is the production contract. It builds TanStack Start with Nitro's Node preset
+and copies `.output`, operational scripts, and the pinned local semantic model into an unprivileged
+runtime image.
 
 Public browser configuration is supplied as Docker build arguments:
 

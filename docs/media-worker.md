@@ -20,12 +20,17 @@ A nitro startup plugin reads it and, on the worker, starts the drain loop
 alongside the normal server. The worker still answers `/api/health` so Railway
 can supervise it.
 
+The shared Media `ManagedRuntime` owns worker fibers, scoped blocking Redis clients, processing
+deadlines, bounded concurrency, recovery telemetry, and private-transfer orchestration. The Redis
+queue, processing leases, transfer records, and R2 objects remain durable authority; Effect owns
+their execution lifecycle, not their data model.
+
 There is no second build, no separate worker bundle, and no way for the
 worker's copy of the processing code to drift from the app's — it _is_ the
 app's.
 
 The roles do not share the same secret set. The web service owns user-facing
-authentication (`ADMIN_PASSWORD`, `STAFF_PIN`, and `UPLOAD_PIN`) and payment,
+authentication (`ADMIN_PASSWORD` and `UPLOAD_PIN`) and payment,
 email, and database credentials. The media worker does not receive those
 secrets. It only needs Redis REST and direct Redis queue access, and private R2
 bucket credentials. Public R2 credentials are not needed by the worker.
@@ -175,8 +180,10 @@ It is gone.
 Every concurrency slot owns a dedicated direct Redis connection and issues one
 indefinite `BRPOPLPUSH`. Sharing a connection would serialize blocking claims;
 using finite timeouts would turn an empty queue into a permanent command poll.
-Shutdown disconnects only those blocking connections, allowing any claimed job
-to finish and be acknowledged through the separate command connection.
+Shutdown stops intake, interrupts the scoped worker fibers, and finalizes those
+blocking connections. A job interrupted after claim remains recoverable through
+its processing lease; shutdown does not pretend every in-flight provider call
+definitively failed or completed.
 
 Scaling out is safe: the queue is the coordination point, and recovery skips
 every processing entry whose lease is still current.

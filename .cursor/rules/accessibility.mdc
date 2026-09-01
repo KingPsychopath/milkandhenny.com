@@ -7,7 +7,9 @@ alwaysApply: false
 
 ## Interaction and Navigation
 - Use `<button>` for actions and `<a>` for navigation.
-- Never use clickable `div`/`span` unless it includes `role="button"` and `tabIndex={0}`.
+- Do not use clickable `div` or `span` elements when a native control can express the interaction.
+  A genuinely custom control must implement role, name, keyboard behavior, focus, disabled state,
+  and pointer behavior together.
 - Never remove focus outlines without a strong `:focus-visible` style.
 - Interactive controls should have a minimum 44x44px target area.
 

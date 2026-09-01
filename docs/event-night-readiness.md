@@ -1,6 +1,10 @@
 # Event-night readiness ledger
 
-Last audited: 31 August 2026
+Status: evidence snapshot completed at commit `9f42dbb7` on 1 September 2026
+
+This file records what was demonstrated for that tree. It does not certify the current branch,
+deployment, venue, devices, or staff. Re-run the affected software and physical checks before each
+material event and record new evidence in a new audit rather than changing old results silently.
 
 This ledger covers the reachable event-night product surface. It partitions inputs into
 equivalence classes (valid, invalid, expired, replayed, unauthorised, concurrent, offline, and
@@ -15,7 +19,8 @@ device combinations.
 - **PHYSICAL** — requires a real camera, phone sensors, venue network, printer, or human judgement.
 - **OPEN** — not confirmed; must not be described as ready.
 
-All TEST evidence referenced here passed in the final full run: 204 files and 1,448 tests. The
+For the recorded snapshot, all TEST evidence referenced here passed in the final full run: 204
+files and 1,448 tests. The
 serial Chromium event-night suite passed all 12 journeys. Typecheck, zero-warning lint, format,
 and the production build also passed.
 

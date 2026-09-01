@@ -1,5 +1,8 @@
 # Pitch Night platform
 
+Status: current product and architecture contract. Code and tests, not the former delivery phases,
+are the source of implementation status.
+
 Pitch Night is two connected products:
 
 1. A small, offline-capable slide studio under `/things/pitches`.
@@ -240,25 +243,3 @@ Public lists distinguish an empty result from a read failure. One invalid editio
 excluded without hiding valid pitches. A degraded result identifies the rejected count. An
 unavailable refresh keeps the browser's last successful wall instead of replacing it with an empty
 list.
-
-## Delivery phases
-
-### Phase 1 — author and publish
-
-Gallery, owner identity, offline working copy, multi-slide Excalidraw editor, paste/upload,
-optimistic sync, bounded backups, publish sealing, recovery email, and exports.
-
-### Phase 2 — operate
-
-Admin visibility, draft preview, email access recovery, retention cleanup, asset accounting,
-PPTX/PDF imports, and audit events.
-
-### Phase 3 — present
-
-Display mode, approved phone control, deck search, linked video and sound tracks, slide-clock
-scrubbing and media playback.
-
-### Phase 4 — invite
-
-Route-isolated cinematic page, brand assets, reduced-motion fallback, and bidirectional event
-links.

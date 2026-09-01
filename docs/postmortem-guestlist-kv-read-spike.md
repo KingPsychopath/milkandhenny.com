@@ -1,5 +1,8 @@
 # Postmortem: Guestlist KV Read Spike (Local Dev)
 
+Status: historical incident record. The guest-list implementation and former framework
+configuration named below no longer exist; the polling and Redis-shape lessons remain normative.
+
 ## Incident
 
 While developing the door-staff guestlist page, KV/Upstash reads jumped sharply (reported: ~42k -> ~88k, with ~96k reads in a single day). The local dev console was also flooded with:
@@ -72,9 +75,8 @@ This halves reads vs the previous 5s/30s behavior while still feeling "live" for
 - Added unit tests for `fetchWithRetry`:
   - does not retry on 401
   - retries on 500 then succeeds
-- Lint/typecheck/tests pass with:
-  - TypeScript `strict: true`
-  - React Strict Mode enabled in `next.config.ts` (`reactStrictMode: true`)
+- Lint, typecheck, and the focused tests passed at remediation time. The application then used a
+  Next.js Strict Mode setting; it has since moved to TanStack Start and Nitro.
 
 ## Lesson
 

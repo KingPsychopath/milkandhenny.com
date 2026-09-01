@@ -1,28 +1,31 @@
 # milk & henny
 
-A portable TanStack Start application for writing, photo galleries, party tools, and private file transfers.
+A portable TanStack Start application for writing, photo galleries, party games, private file
+transfers, and events/ticketing.
 
 The web application is a standard Node server. It does not require Vercel, Railway, or any other specific host and can run from the included Docker image on a managed platform or VPS.
 
 ## Runtime architecture
 
-| Responsibility         | Owner                                                      |
-| ---------------------- | ---------------------------------------------------------- |
-| SSR, routes, API, auth | TanStack Start + Nitro Node server                         |
-| Application state      | Redis-compatible REST API                                  |
-| Images and files       | S3-compatible object storage (currently Cloudflare R2)     |
-| Public media delivery  | Configured CDN/custom-domain origin                        |
-| Scheduled cleanup      | Any scheduler calling the authenticated maintenance runner |
-| RAW/video derivatives  | Optional dedicated worker; disabled by default             |
+| Responsibility              | Owner                                                             |
+| --------------------------- | ----------------------------------------------------------------- |
+| SSR, routes, API, and auth  | TanStack Start + Nitro Node server                                |
+| Relational product state    | PostgreSQL                                                        |
+| Expiring/distributed state  | Redis-compatible REST API                                         |
+| Images and files            | S3-compatible object storage (currently Cloudflare R2)            |
+| Product-time scheduled work | In-process Events runtime with durable Postgres leases            |
+| Housekeeping and recovery   | Authenticated maintenance runner invoked by an external scheduler |
+| Heavy RAW/video derivatives | Optional worker role using the same production image              |
 
 The application is a modular monolith. UI routes collect intent, server functions and API routes enforce transport/auth boundaries, feature modules own workflows, and `lib/platform` contains external adapters.
 
 ## Requirements
 
-- Node.js 22+
-- pnpm 11.17.0 (pinned by the `packageManager` field)
+- The Node.js version used by the Dockerfile
+- The package-manager version pinned by `packageManager` in `package.json`
 - Redis REST credentials
 - S3-compatible object-storage credentials
+- PostgreSQL for events, tickets, scoring, communications, and Pitch Night
 
 ## Local development
 
@@ -37,19 +40,19 @@ Open `http://localhost:3000`.
 Useful commands:
 
 ```bash
-pnpm typecheck
-pnpm lint
-pnpm format:check
+pnpm check
+pnpm test
 pnpm build
 pnpm start
 pnpm cli
 ```
 
-The project uses TypeScript 7's native preview (`tsgo`), Oxlint, and Oxfmt. ESLint and Prettier are intentionally not part of the toolchain.
+The project uses the native TypeScript compiler (`tsgo`), Oxlint, and Oxfmt. ESLint and Prettier are
+intentionally not part of the toolchain.
 
 ## Environment contract
 
-Copy [`.env.example`](./.env.example). The minimum production variables are:
+Copy [`.env.example`](./.env.example). A full production deployment uses:
 
 ```dotenv
 VITE_BASE_URL=https://milkandhenny.com
@@ -57,6 +60,8 @@ VITE_MEDIA_PUBLIC_URL=https://pics.milkandhenny.com
 
 REDIS_REST_URL=
 REDIS_REST_TOKEN=
+
+DATABASE_URL=
 
 R2_ACCOUNT_ID=
 R2_PUBLIC_BUCKET=milkandhenny-pics
@@ -73,11 +78,16 @@ UPLOAD_PIN=
 
 Only `VITE_*` variables enter the browser bundle. Never prefix credentials or authentication secrets with `VITE_`.
 
-`CRON_SECRET`, media-worker configuration, external ZIP service settings, and performance tuning are optional and documented in `.env.example`.
+`CRON_SECRET`, direct Redis, media-worker configuration, external ZIP service settings, and
+performance tuning are optional and documented in `.env.example`.
 
 `REDIS_REST_*` is the provider-neutral Redis contract.
 
-Multiplayer uses a server-only Effect v4 managed runtime. A direct `REDIS_URL` enables cross-replica WebSocket wake fan-out and is required before scaling the web service beyond one replica; authoritative room state continues to use the Redis REST contract.
+Effect v4 owns backend orchestration and lifecycle for Events, Media, Multiplayer, and Pitches.
+Product rules, repositories, and browser code remain ordinary TypeScript. A direct `REDIS_URL`
+enables cross-replica WebSocket wake fan-out and the blocking media queue; it is required before
+scaling realtime rooms beyond one web replica. Authoritative room state continues to use the Redis
+REST contract.
 
 Application-owned runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`. Hosting-provider metadata is accepted only as an adapter when those canonical variables are omitted; an instance ID must be unique per running process or replica.
 
@@ -123,7 +133,10 @@ Deployment sequence:
 
 ## Scheduled maintenance
 
-`pnpm maintenance` calls all authenticated cleanup routes. It requires `APP_BASE_URL` (or `VITE_BASE_URL`) and `CRON_SECRET`.
+`pnpm maintenance` calls authenticated housekeeping and recovery routes. Product-time jobs such as
+communications, scoring transitions, result recovery, reminders, and operations digests run inside
+the web process with Postgres leases. The maintenance runner requires `APP_BASE_URL` (or
+`VITE_BASE_URL`) and `CRON_SECRET`.
 
 Run it from Railway Cron, system cron, GitHub Actions, or any scheduler:
 

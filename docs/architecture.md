@@ -2,15 +2,17 @@
 
 ## Shape
 
-Milk & Henny is a provider-neutral modular monolith deployed as one Node service.
+Milk & Henny is a provider-neutral modular monolith packaged as one Node artifact. The normal
+deployment has one web process; heavy media processing may run the same artifact as a separate
+worker role.
 
 ```text
 Browser
   -> TanStack Start / Nitro Node server
        -> feature workflows
-            -> Postgres adapter (events, tickets)
-            -> Redis REST adapter (sessions, rate limits, rooms)
-            -> S3-compatible storage adapter
+            -> Postgres adapter (relational state, outboxes, leases)
+            -> Redis adapters (sessions, rooms, transfers, queues, realtime)
+            -> S3-compatible storage adapter (private sources and public media)
             -> email and payments adapters
             -> optional media-worker wake adapter
   -> public media origin (direct images and downloads)
@@ -70,14 +72,16 @@ full decision table and URL rules live in [navigation.md](./navigation.md).
 
 ## Effect subsystems
 
-Effect v4 is used at service boundaries, not as a general programming style. Three subsystems use it today: multiplayer (`features/things/shared`), events/ticketing (`features/events`, `features/tickets`), and the Pitch Night studio (`features/things/pitches`).
+Effect v4 owns asynchronous orchestration and process lifecycle where cancellation, deadlines,
+bounded concurrency, retry policy, scoped resources, or typed infrastructure failure justify it. It
+is not a general replacement for ordinary TypeScript.
 
 Events/ticketing and Pitch Night retain the established service-wrapper pattern. Multiplayer moves
 the boundary inward because game commands need deterministic replay:
 
 ```text
 TanStack / Nitro boundary
-  -> ManagedRuntime (one per subsystem, disposed by a Nitro close hook)
+  -> ManagedRuntime (one per independently owned subsystem lifecycle)
        -> Effect workflow
             -> clock, randomness, ID and persistence services
             -> pure game transition
@@ -94,7 +98,28 @@ returns state plus domain events. Effect remains behind `.server.ts` boundaries;
 React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise
 conversion happens only at TanStack/Nitro edges.
 
-Effect is pinned to an exact v4 release-candidate version while v4 is prerelease, so a version bump is a coordinated change rather than a routine upgrade. The complete resource, cancellation, failure, retry, and shutdown contract is recorded in [effect-lifecycle.md](./effect-lifecycle.md).
+The runtime ownership map is deliberately small:
+
+| Runtime     | Responsibilities                                                                  |
+| ----------- | --------------------------------------------------------------------------------- |
+| Events      | Events, tickets, attendee operations, scoring, communications, and app scheduling |
+| Media       | Media-worker lifecycle and private-transfer orchestration                         |
+| Multiplayer | Shared room workflows, realtime resources, and command execution                  |
+| Pitches     | Pitch Night server workflows and presentation lifecycle                           |
+
+Services compose into the owning runtime Layer. A feature service or compatibility facade does not
+create another `ManagedRuntime` or shutdown plugin. Score rules, eligibility, balance calculations,
+ticket/refund policy, validation, and repositories remain ordinary TypeScript. Runtime layers own
+execution concerns such as durable-outbox draining, advisory wake consumption, deadlines, bounded
+delivery, scheduled fibers, spans, cancellation, finalizers, and shutdown.
+
+Postgres, Redis, R2, email, and Stripe adapters remain plain async implementations. Workflows use an
+injectable service only where substitution, cancellation, lifecycle, or typed failure handling
+provides a real boundary; individual SDK and query calls are not rewritten as pipelines.
+
+Effect is pinned exactly in `package.json`; a prerelease version bump is coordinated rather than
+routine. The complete adoption, resource, cancellation, failure, retry, testing, and shutdown
+contract is [effect-lifecycle.md](./effect-lifecycle.md).
 
 ## Multiplayer runtime
 
@@ -166,9 +191,12 @@ not an access boundary.
 
 ## Persistence
 
-Two stores, split by what each is good at.
+Three durable systems are split by responsibility.
 
-**Postgres** (`DATABASE_URL`) holds events, ticket types, tickets, redemptions and checkout sessions. These moved off Redis because they need guarantees Redis cannot give without hand-rolling them:
+**Postgres** (`DATABASE_URL`) holds relational product state: events, tickets, redemptions,
+checkouts, scoring ledgers and projections, attendee operations, communications/outboxes, Pitch
+Night documents, scheduler leases, and their audit records. It owns workflows that require
+transactions, relational constraints, or durable queryable history. Examples include:
 
 - A refund marks the ticket refunded and returns its seat in one transaction, or does neither.
 - Capacity is a `count(*)` of live ticket rows taken under `select ... for update` on the ticket type, so two buyers racing for the last seat serialise. There is no separate counter that can drift from the rows it describes.
@@ -177,7 +205,15 @@ Two stores, split by what each is good at.
 
 Migrations are an append-only list in `lib/platform/migrations.server.ts`, applied on boot under an advisory lock so several replicas can start together. A migration failure is logged and surfaced on `/health` rather than killing the process — the rest of the site keeps serving.
 
-**Redis** (`REDIS_REST_*`) keeps what suits it: authentication sessions, rate limits, multiplayer room state, wake fan-out, transfer metadata, word metadata and share records.
+**Redis** (`REDIS_REST_*`) holds expiring or coordination-heavy state: authentication sessions,
+rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
+records, distributed locks, and the leased media queue. Mutable independently read records use one
+key each. Specialized queues, indexes, and aggregate-adjacent outboxes document why they require an
+atomic structure.
+
+**R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
+album manifests, and transfer files. The public bucket contains only intentionally published
+derivatives and editorial media.
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
 
@@ -277,9 +313,11 @@ product behavior.
 
 ## Health
 
-- `/api/health` performs configuration-only readiness checks and is safe for frequent polling.
-- `/health` renders the same safe capability model for humans.
-- `/api/debug` is admin-protected and performs live Redis/object-storage probes.
+- `/api/health` performs bounded live checks for required capabilities, exposes only safe runtime
+  metadata, and returns 503 when the process should not receive traffic.
+- `/health` renders the safe capability model for humans.
+- `/api/debug` is admin-protected and performs deeper Redis, object-storage, database, email-outbox,
+  and runtime probes.
 - `/api/debug` also exposes per-replica multiplayer operations, failures, reconciliation latency, socket termination, rate-limit, lock-contention, and realtime-backplane metrics.
 
 Required capability failures produce an unhealthy readiness response. Missing optional maintenance or worker configuration is visible without taking the core site offline.
@@ -289,6 +327,7 @@ Required capability failures produce an unhealthy readiness response. Missing op
 - The server listens on `$HOST` and `$PORT`.
 - Public `VITE_*` values are present at build time.
 - Secrets are supplied at runtime and never enter the client bundle.
-- The container filesystem is ephemeral; durable mutations belong in Redis, object storage, or git.
+- The container filesystem is ephemeral; durable product mutations belong in Postgres, Redis, or
+  object storage. Git contains source and build inputs, not runtime product writes.
 - `/api/health` must pass before traffic cutover.
 - The previous deployment remains available until post-cutover verification completes.

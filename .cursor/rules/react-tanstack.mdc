@@ -16,7 +16,8 @@ alwaysApply: false
 
 ## Components
 - Functional components only. One job per component.
-- Split at ~350 lines or ~10 handlers/effects.
+- Split when a child owns a distinct responsibility, lifecycle, or reusable interaction. Do not
+  split mechanically by line count or hide state flow behind pass-through wrappers.
 - PascalCase components, `useX` hooks, `handleVerb` handlers.
 - Early returns to reduce nesting.
 
@@ -29,8 +30,10 @@ alwaysApply: false
 
 ## Hooks
 - Name by domain: `useEditorFilters`, `useWordFormState`.
-- Split at ~200 lines or ~8 handlers/effects.
-- Hooks orchestrate; they do not redefine business rules.
+- Split when state, effects, or cleanup have independent lifecycles.
+- Hooks orchestrate browser behavior; they do not redefine business rules.
+- Every effect that owns a request, timer, subscription, observer, or media stream owns its cleanup.
+- Polling callbacks stay ref-stable, enforce a hard minimum request gap, and never retry 4xx.
 
 ## Tailwind v4
 - Prefer utilities. Use `@theme` tokens, not hardcoded values.

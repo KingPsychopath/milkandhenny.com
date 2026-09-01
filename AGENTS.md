@@ -1,42 +1,40 @@
-# Agent Instructions
+# Agent instructions
 
-Instructions for AI coding agents working in this repository. Applies to Claude Code, Codex, Cursor, and anything else driving edits here.
+This file is the repository entry point for coding agents. Keep it short and normative. Detailed
+contracts live in the linked documents; dated audits and completed checklists are evidence, not
+instructions for current work.
 
-The previous version of this file described a Codex-specific checkpoint protocol and token-economy rules. Those described a way of talking, not this codebase. What follows is what an agent actually needs to know to change this repo without breaking it.
+## 1. Application and architecture
 
----
+Milk & Henny is a provider-neutral TanStack Start application served by Nitro as one Node process.
+It is a modular monolith for writing, photo galleries, party games, private transfers, and
+events/ticketing. The same production artifact runs through the included Dockerfile on Railway, a
+VPS, or another container host.
 
-## 1. What this is
-
-A TanStack Start + Nitro application served as a plain Node server. Writing, photo galleries, party games, private file transfers, and events/ticketing.
-
-It is a **modular monolith**, deliberately provider-neutral: it runs from the included Dockerfile on Railway, a VPS, or anywhere else that supplies a port and environment variables. No hosting-provider APIs are imported by application code.
-
-Read [`docs/architecture.md`](./docs/architecture.md) before making structural changes. Read
-[`docs/room-first-multiplayer.md`](./docs/room-first-multiplayer.md) before creating or materially
+Read [docs/architecture.md](./docs/architecture.md) before structural work. Read
+[docs/room-first-multiplayer.md](./docs/room-first-multiplayer.md) before creating or materially
 changing a co-located multiplayer mode.
 
----
+## 2. Toolchain and verification
 
-## 2. Toolchain
+Use the package manager and dependency versions pinned in `package.json` and the runtime version in
+the Dockerfile. Do not duplicate those versions in documentation. ESLint and Prettier are
+intentionally absent; do not add them or their configuration.
 
-| Concern    | Tool                                  | Command             |
-| ---------- | ------------------------------------- | ------------------- |
-| Package    | pnpm 11.17.0 (`packageManager` field) | `pnpm install`      |
-| Types      | TypeScript 7 native preview (`tsgo`)  | `pnpm typecheck`    |
-| Lint       | Oxlint                                | `pnpm lint`         |
-| Format     | Oxfmt                                 | `pnpm format`       |
-| Tests      | Vitest                                | `pnpm test`         |
+Use blast-radius-based verification:
 
-**ESLint and Prettier are intentionally absent.** Do not add them, and do not add config files for them.
+- During iteration, run the narrowest relevant test or check.
+- Before handing off a source change, run `pnpm check` and `pnpm test`.
+- Run `pnpm build` when bundling, server/client boundaries, build inputs, or deployment packaging
+  changed.
+- Run focused Playwright journeys when browser behavior changed. Run `pnpm verify:release` for a
+  release candidate or when explicitly requested.
+- For documentation-only changes, verify formatting, local links, referenced paths, and documented
+  commands; source tests are unnecessary unless the documentation change exposes a code mismatch.
 
-Node 22+. Before claiming a change is finished, `pnpm typecheck`, `pnpm lint` and `pnpm test` must all pass.
+Record what ran, why it is sufficient, and what broader verification is deferred to CI.
 
----
-
-## 3. Layer ownership
-
-This is the rule that matters most. From `docs/architecture.md`:
+## 3. Ownership
 
 | Layer                       | Owns                                                                |
 | --------------------------- | ------------------------------------------------------------------- |
@@ -44,84 +42,123 @@ This is the rule that matters most. From `docs/architecture.md`:
 | `features/*/*.functions.ts` | TanStack server-function boundaries                                 |
 | `features/*/*.server.ts`    | Feature workflows and durable product rules                         |
 | `features/*/ui`             | User interaction and rendering                                      |
-| `lib/platform`              | Redis, object storage, email, logging, provider translation         |
-| `lib/shared`                | Environment-safe shared constants and pure utilities                |
+| `lib/platform`              | Provider adapters, logging, runtime and infrastructure translation  |
+| `lib/shared`                | Environment-safe constants and pure utilities                       |
+| `server/plugins`            | Process startup and shutdown integration                             |
+| `ops` and `deploy`          | Independently invoked operational workloads                          |
 
-**Routes do not own business truth.** A route reads input, checks auth coarsely, calls a feature, and shapes a response. If you find yourself writing an `if` about what a user is allowed to do inside `src/routes`, it belongs in a `.server.ts`.
+Routes do not own product truth. They validate transport input, perform coarse authentication,
+call a feature workflow, and shape the response. Feature workflows return domain results rather
+than constructing HTTP responses.
 
-Anything importing `node:crypto`, `process.env` secrets, or a platform adapter must live in a `.server.ts` file. `lib/shared` and feature `types.ts` files are imported by the browser — keep them pure.
+Cross-feature workflows belong at a neutral composition edge such as `features/event-operations`.
+Do not create bidirectional feature imports or move business decisions into a route to avoid a
+cycle.
 
----
+Anything importing secrets, `node:crypto`, or a platform adapter must stay behind a `.server.ts`
+boundary. Browser contracts, feature `types.ts`, reducers, and shared utilities remain pure and
+environment-safe.
 
 ## 4. Effect
 
-Effect v4 is used at **service boundaries**, not as a general programming style.
+Effect v4 is an orchestration boundary, not the default programming style. Use it when a backend
+workflow coordinates multiple fallible side effects or needs cancellation, deadlines, bounded
+concurrency, retry policy, resource lifetime, or structured telemetry.
 
-The established pattern, visible in `features/things/shared` and `features/events`:
+Keep these as ordinary TypeScript:
 
-- Engines stay **plain async functions** in `*.server.ts`. They own the product rules.
-- A `Context.Service` + `Layer` wraps those engines to add timeout, typed errors (`Data.TaggedError`), structured logging, and spans.
-- One `ManagedRuntime` per subsystem, disposed by a Nitro `close` hook in `server/plugins/`.
-- Promise conversion happens **only** at TanStack/Nitro edges.
+- scoring, eligibility, balance, ticket, refund, and authorization policies;
+- validation, parsing, reducers, and deterministic game transitions;
+- simple CRUD and individual Redis/Postgres queries or SDK calls;
+- React, browser state, offline games, and durable queue/outbox data models.
 
-Do not rewrite data access into Effect pipelines. Do not import Effect into browser code, React components, reducers, or offline game logic.
+The runtime map is:
 
-Effect is pinned to an exact prerelease (`4.0.0-rc.112`). Treat a version bump as a coordinated change, not a routine upgrade.
+| Runtime     | Responsibilities                                                                   |
+| ----------- | ---------------------------------------------------------------------------------- |
+| Events      | Events, tickets, attendee operations, scoring, communications, and app scheduling |
+| Media       | Media-worker lifecycle and private-transfer orchestration                         |
+| Multiplayer | Shared server-authoritative room workflows and realtime resources                 |
+| Pitches     | Pitch Night server workflows and presentation lifecycle                          |
 
----
+One independently started and stopped subsystem gets one `ManagedRuntime`. Extend its Layer; do
+not create a runtime or Nitro close plugin per folder or service. Compatibility facades may reuse a
+shared runtime but must not own another one.
 
-## 5. Persistence rules
+Promise conversion belongs at TanStack, Nitro, CLI, or worker edges. Pass the active
+`AbortSignal`. Preserve typed domain failures, classify infrastructure failures once, and treat a
+timed-out or interrupted external mutation as potentially uncertain. Retry only reads, advisory
+publication, or mutations with an explicit idempotency guarantee.
 
-Redis is the source of truth for mutable state. Object storage holds media and transfers.
+Effect controls execution, not durable truth. Postgres transactions, Redis queues/outboxes, leases,
+and R2 objects remain authoritative. Add injectable provider services only when a workflow consumes
+them and substitution, lifecycle, or typed failure handling provides real value; do not wrap every
+query or SDK call.
 
-**One key per record.** Do not put a collection in a single key. This is not a style preference — see [`docs/postmortem-guestlist-kv-read-spike.md`](./docs/postmortem-guestlist-kv-read-spike.md), where a single `guest:list` key plus a re-rendering poll loop nearly exhausted a daily KV quota from one browser tab.
+The complete contract is [docs/effect-lifecycle.md](./docs/effect-lifecycle.md). Effect is pinned to
+an exact prerelease in `package.json`; treat an upgrade as a coordinated change.
 
-The client-side rules that came out of that incident apply to any polling UI:
+## 5. Persistence and durable work
 
-- Ref-stable callbacks, so a parent re-render cannot restart a polling effect.
-- A hard minimum fetch gap, independent of the intended poll rate.
-- **Never retry 4xx.** Only network errors and 5xx.
+Choose storage by responsibility:
 
-Production fails closed when required persistence is unavailable. In-memory fallbacks exist for local development and tests only, and must be guarded by a `NODE_ENV` check.
+| Store    | Owns                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------- |
+| Postgres | Durable relational product state, transactions, leases, and transactional outboxes      |
+| Redis    | Expiring sessions, rate limits, rooms, transfer/word metadata, coordination, and queues |
+| R2       | Private source blobs and intentional public media derivatives                           |
+| Git      | Source, configuration, migrations, fixtures, and generated build inputs                 |
 
----
+Durable work is recorded atomically beside the state that creates it. Wake signals are advisory and
+may be lost. Consumers must be idempotent. See [docs/durable-work.md](./docs/durable-work.md).
 
-## 6. Design language
+Use one Redis key per independently read mutable record. Domain-specific queues, indexes, and atomic
+aggregate/outbox structures require a documented consistency reason. Never restore the retired
+single-key collection pattern described in
+[docs/postmortem-guestlist-kv-read-spike.md](./docs/postmortem-guestlist-kv-read-spike.md).
 
-Read [`docs/design-language.md`](./docs/design-language.md) before touching UI.
+Production fails closed when required persistence is unavailable. In-memory implementations are
+allowed only in explicit development or test paths.
 
-The short version: warm stone palette, serif (Lora) for prose, mono (Geist Mono) for UI chrome, amber as the single accent used sparingly. Single column, `max-w-2xl`, `px-6`. Hairline dividers, not boxes. Hover is opacity, not colour flips.
+## 6. Browser and design rules
 
-**No hardcoded hex in components.** Use the theme tokens and the `theme-muted` / `theme-subtle` / `theme-border` utilities. If you need a new colour, add a token to `src/styles/globals.css` in both light and dark.
+Read [docs/design-language.md](./docs/design-language.md) before UI work and
+[docs/navigation.md](./docs/navigation.md) before changing URLs, history, or navigation.
 
-Never create a utility class that collides with a Tailwind name (the codebase has `anim-duration-300` precisely because `duration-300` is Tailwind's).
+Do not import Effect or server-only modules into browser code. Do not use a client effect as the
+initial data-loading boundary when a route loader or server function can provide the data. Polling
+uses ref-stable callbacks, a hard minimum fetch gap, cancellation, and no automatic retry for 4xx
+responses.
 
----
+The editorial site uses the warm-stone design language. Operational surfaces such as admin, games,
+scanners, and the pitch studio may use task-appropriate layouts while retaining the same tokens,
+typography, interaction hierarchy, and accessibility baseline. Never hardcode component colors;
+add or reuse theme tokens in `src/styles/globals.css`.
 
-## 7. Detailed rules
+## 7. Deeper rules
 
-`.cursor/rules/` holds deeper per-domain rules. Load them when the task calls for it, not by default:
+Load the relevant rule before working in that domain:
 
-| Task domain                                     | File                                |
-| ----------------------------------------------- | ----------------------------------- |
-| UI, design, CSS, components                     | `.cursor/rules/design-system.mdc`   |
-| Accessibility, semantic HTML, forms, focus      | `.cursor/rules/accessibility.mdc`   |
-| React, routing, server/client boundaries        | `.cursor/rules/react-nextjs.mdc`    |
-| CLI commands, domain scripts, admin tools       | `.cursor/rules/cli-parity.mdc`      |
-| File moves, renames, codemods                   | `.cursor/rules/file-ops.mdc`        |
-| TypeScript, safety, module boundaries           | `.cursor/rules/engineering-core.mdc`|
-| Testing strategy                                | `.cursor/rules/testing.mdc`         |
-| Co-located multiplayer, game fun, device balance | `docs/room-first-multiplayer.md`    |
-| Multiplayer scenarios, dev harnesses, solo QA    | `docs/multiplayer-testing.md`       |
-
-Note that `react-nextjs.mdc` is named for a framework this project no longer uses; the React and boundary guidance in it still applies.
-
----
+| Task domain                                     | Rule or document                        |
+| ----------------------------------------------- | --------------------------------------- |
+| UI, CSS, and components                         | `.cursor/rules/design-system.mdc`       |
+| Accessibility, forms, focus, and semantics      | `.cursor/rules/accessibility.mdc`       |
+| React, TanStack, routing, and client boundaries | `.cursor/rules/react-tanstack.mdc`      |
+| CLI and operational admin commands              | `.cursor/rules/cli-parity.mdc`          |
+| Moves, renames, and codemods                     | `.cursor/rules/file-ops.mdc`            |
+| TypeScript, safety, and module boundaries       | `.cursor/rules/engineering-core.mdc`    |
+| Testing                                          | `.cursor/rules/testing.mdc`             |
+| Co-located multiplayer product design           | `docs/room-first-multiplayer.md`         |
+| Multiplayer harnesses and scenarios             | `docs/multiplayer-testing.md`            |
 
 ## 8. Working style
 
-- Read before writing. This codebase has strong existing conventions; match the neighbouring file rather than importing habits from elsewhere.
-- Prefer extending a feature module over growing `features/admin/ui/AdminDashboard.tsx`, which is already ~2,300 lines. New admin surfaces go in `features/admin/ui/components/` as self-contained panels taking `authFetch` / `onError` / `onStatus`.
-- Comments explain **why**, not what. Do not narrate the code.
-- Conventional Commits for commit messages.
-- If a plan document is attached, follow it; if you disagree with it, say so once and then either follow it or ask — do not silently diverge.
+- Read neighboring code before writing and prefer extending an existing feature boundary.
+- Prefer less code, fewer branches, and explicit ownership over new abstractions.
+- Do not grow `features/admin/ui/AdminDashboard.tsx`; add focused panels under
+  `features/admin/ui/components/`.
+- Comments explain why, especially an invariant or non-obvious failure mode.
+- Use Conventional Commit messages.
+- Preserve unrelated work in a dirty tree. Never silently overwrite concurrent edits.
+- When code, configuration, and documentation disagree, verify the implementation and correct the
+  documentation in the same change. Do not present a dated audit or roadmap as current behavior.

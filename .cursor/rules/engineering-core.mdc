@@ -7,8 +7,10 @@ alwaysApply: false
 # Core Engineering
 
 ## Code Style
-- Concise, minimal code. Prefer simple over clever.
+- Concise, minimal code. Prefer fewer branches and explicit ownership over clever abstractions.
 - Change only what is needed. Follow existing repo patterns.
+- Do not add a wrapper, service, or shared helper unless it removes real duplication or establishes a
+  boundary with a concrete lifecycle, substitution, security, or consistency benefit.
 - If work touches UI semantics, forms, keyboard navigation, or screen-reader output, also load `.cursor/rules/accessibility.mdc`.
 
 ## Safety
@@ -20,7 +22,7 @@ alwaysApply: false
 - No `any`. Prefer `unknown` when type is genuinely unknown.
 - Avoid `as` casts; prefer narrowing/validation.
 - Prefer `as const` over enums.
-- `interface` for object shapes; `type` for unions/intersections.
+- Use `interface` or `type` according to the surrounding module; do not churn code for the choice.
 
 ## Modules
 - No barrel files (`index.ts`).
@@ -35,3 +37,4 @@ alwaysApply: false
 
 ## Workflow
 - Execution defaults (commit style, checkpoints) live in `AGENTS.md`.
+- Verification follows the blast radius in `.cursor/rules/testing.mdc` and `docs/testing.md`.

@@ -1,5 +1,8 @@
 # Co-located multiplayer audit
 
+Status: dated evidence snapshot; the normative standard is
+[room-first-multiplayer.md](./room-first-multiplayer.md)
+
 Audit date: 30 August 2026
 
 Standard: [room-first-multiplayer.md](./room-first-multiplayer.md)

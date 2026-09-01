@@ -112,8 +112,8 @@ it anyway.
 Order 4 is the floor even for two players, where order 3 would technically fit. Four symbols per
 card is solved before the animation finishes.
 
-**v1 ships 31 symbols**, which supports up to five players at hand 6, or six at hand 5. The
-extension to 57 is drawing work, not engineering work, and is phase 5 (§13).
+The current game ships 31 symbols, which supports up to five players at hand 6, or six at hand 5.
+Extending to 57 remains drawing work rather than an engine change.
 
 ### 2.3 Layout
 
@@ -443,7 +443,7 @@ Same board, one seat, middle card centred. Clear the deck against the clock; bes
 order persists to `localStorage` through `useGamePreferences`. A miss costs 3 seconds on the clock,
 shown landing on the timer.
 
-Phase 4 (§13). The duel is the more interesting product and shares more with the multiplayer board.
+Solo uses the duel board and the same deck/layout rules rather than maintaining a second engine.
 
 ### 9.3 Screen
 
@@ -466,37 +466,26 @@ roster — and matching it is worth more than any improvement invented on the wa
 
 ```
 features/things/twin/
-  types.ts                    snapshot, actions, results. Browser-safe, no imports from server
-  twin-deck.ts                projective plane generation, deck sizing. Pure
-  twin-layout.ts              seeded symbol placement. Pure
-  twin-rules.ts               heat resolution, ranking, chains, awards. Pure
-  twin-symbols.ts             symbol registry: id → path data, viewBox, name
-  twin-keys.ts                redis + browser keys
-  twin-invite.ts              invite URL construction
-  invite.client.ts
-
-  twin-room-engine.server.ts  room state machine. The only place room state is mutated
-  twin-room-service.server.ts Effect service: timeouts, typed errors, spans
-  twin-room.server.ts         runMultiplayerEffect facade
-  twin-room.functions.ts      TanStack server functions + validators
-
-  useTwinRoom.ts              useLiveRoomSnapshot + useMultiplayerWakeSocket
-  TwinApp.tsx                 create / join entry, host setup
-  TwinRoomApp.tsx             phase router
-  TwinViews.tsx               lobby, heat, settle, finished
-  JoinTwinRoom.tsx
-  TwinCard.tsx                one card: laid-out symbols, tap targets, cooldown state
-  TwinSymbol.tsx              one symbol
-  TwinHand.tsx                stack, face-down peeks, count
-  TwinRay.tsx                 the connection trace. Used in-heat and in the constellation
+  types.ts                    browser-safe snapshot, actions, and results
+  twin-deck.ts                pure projective-plane generation and deck sizing
+  twin-layout.ts              pure seeded symbol placement
+  twin-rules.ts               pure heat resolution, ranking, chains, and awards
+  twin-symbols.ts             source-controlled 31-symbol registry
+  twin-room-engine.server.ts  authoritative room state machine
+  twin-room-service.server.ts Effect service boundary
+  twin-room.server.ts         shared Multiplayer runtime facade
+  twin-room.functions.ts      TanStack server functions and validation
+  TwinRoomApp.tsx             multiplayer phase surface
+  TwinDuelApp.tsx             shared one-screen and solo engine
   TwinConstellation.tsx       post-game review
-  TwinDuelApp.tsx             one device, two seats
-  TwinSoloApp.tsx             one device, one seat            (phase 4)
+  TwinDevHarness.tsx          development-only scenario harness
 
 server/routes/api/things/twin-ws.ts        createMultiplayerWakeHandler
 src/routes/things.twin.tsx                 setup + host
 src/routes/things.twin_.$roomId.tsx        player
-src/routes/things.twin_.duel.tsx           one device
+src/routes/things.twin_.one-screen.tsx     one device, two seats
+src/routes/things.twin_.solo.tsx           one device, one seat
+src/routes/things.twin_.dev.tsx            development harness
 docs/twin.md                               this file
 ```
 
@@ -636,26 +625,7 @@ becomes unplayable in a way that looks like a UI bug.
 
 ---
 
-## 13. Build order
-
-Each phase is playable at its end. No phase leaves a half-wired surface behind it.
-
-| #     | Phase                     | Contains                                                                                                                                                         |
-| ----- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | **The deck is real**      | `twin-deck.ts`, `twin-layout.ts`, `twin-symbols.ts` with 31 drawn symbols, `TwinSymbol`, `TwinCard`. Tests. Nothing is playable, everything downstream is proven |
-| **2** | **One device, two seats** | `TwinDuelApp`, `TwinRay`, the shed animation, wake lock, route + catalog + offline entry. **A complete, shippable game with no server at all**                   |
-| **3** | **Phones**                | `twin-rules.ts`, the engine, service, functions, ws handler, `useTwinRoom`, lobby/heat/settle views, invite + QR. Awards. The full multiplayer game              |
-| **4** | **The constellation**     | Heat log key, `TwinConstellation`, the review, player filter, autoplay. Solo board                                                                               |
-| **5** | **57**                    | The remaining 26 symbols, order 7, 6–12 players                                                                                                                  |
-
-Phase 2 before phase 3 is deliberate. The duel needs the cards, the ray and the shed animation —
-every hard visual problem in the game — and it needs none of the room infrastructure. If
-those are wrong, they are wrong far more cheaply on one device, and the multiplayer board inherits
-them already working.
-
----
-
-## 14. Open, deliberately
+## 13. Open, deliberately
 
 - **A presenter screen.** `liars` and `spelling-party` both have one, and a TV showing the middle
   card with the heat's constellation growing live would be the best-looking thing on the site. It is

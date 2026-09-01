@@ -2,9 +2,12 @@
 
 ## Recovery targets
 
-- PostgreSQL ticket, checkout, event, and email records: 24-hour recovery point; 4-hour recovery time.
+- PostgreSQL relational product state, including events, tickets, scoring, communications, and
+  Pitch Night: 24-hour recovery point; 4-hour recovery time.
 - Permanent object-storage media: 24-hour recovery point; 8-hour recovery time.
-- Redis sessions, live games, Pitch Night rooms, and private transfers: no restore guarantee. These records are short-lived by design. Recreate them after an incident.
+- Redis sessions, rate limits, live games, Pitch Night rooms, private transfers, and expiring word
+  shares: no application-managed restore guarantee. Most are short-lived by design; any durable
+  Redis-backed content requires a provider backup policy before it can claim a recovery target.
 - Published writing and application configuration: restore from the git repository and deployment environment.
 
 These are operating targets, not provider guarantees. Confirm that the selected database and object-storage plans can meet them before launch.
@@ -31,7 +34,7 @@ After restore:
 
 1. Start the application against the restored database and isolated Redis and object storage.
 2. Check `/api/health`.
-3. Verify one event, ticket, checkout, and email-outbox record.
+3. Verify representative event/ticket, scoring, communication-outbox, and Pitch Night records.
 4. Record the archive date, restore duration, operator, and result outside the repository.
 5. Delete the drill environment and its credentials.
 
@@ -49,6 +52,6 @@ Test a restore of one image, one video, and one document every quarter. Verify t
 2. Preserve logs and the failed system for investigation.
 3. Create new database and storage resources. Do not restore over the failed resources.
 4. Restore PostgreSQL, then permanent objects, then deploy the recorded application commit.
-5. rotate credentials if exposure caused the incident.
+5. Rotate credentials if exposure caused the incident.
 6. Check health, sign-in, an event, a ticket, an upload, email queue state, and Pitch Night.
 7. Move traffic only after the checks pass. Keep the failed environment until the incident review is complete.
