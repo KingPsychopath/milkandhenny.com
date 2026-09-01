@@ -11,7 +11,7 @@ import type {
   ScoringAction,
 } from "./event-scoring-types";
 import { AdminStatus } from "./AdminStatus";
-import { StaffAccessRegister } from "./StaffAccessRegister";
+import { StaffRoleAccess } from "./StaffAccessRegister";
 
 const PRESETS = [
   "door-scanner",
@@ -103,6 +103,12 @@ function stringIds(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
+}
+
+function assignmentIsActive(assignment: AdminStaffAssignment) {
+  if (assignment.status !== "active" || assignment.invitationState === "pending") return false;
+  if (["revoked", "expired", "declined"].includes(assignment.invitationState ?? "")) return false;
+  return !assignment.expiresAt || Date.parse(assignment.expiresAt) > Date.now();
 }
 
 function RoleSummary({
@@ -253,8 +259,6 @@ export function ScoringStaffPanel({
         every action still has to fit one complete role and its scope.
       </p>
 
-      <StaffAccessRegister roles={roles} staff={staff} onAction={onAction} />
-
       <details className="mt-6 border-y theme-border py-4" open={roles.length === 0}>
         <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs">
           create a role
@@ -402,125 +406,133 @@ export function ScoringStaffPanel({
         </form>
       </details>
 
-      <div className="mt-6 space-y-4">
+      <div className="mt-6 border-y theme-border">
+        <div className="hidden grid-cols-[minmax(0,1fr)_auto_auto] gap-4 border-b theme-border px-3 py-2 font-mono text-micro uppercase tracking-widest theme-faint sm:grid">
+          <span>role &amp; access</span>
+          <span>status</span>
+          <span className="w-16">control</span>
+        </div>
         {roles.map((role) => {
           const assignments = assignmentsByRole.get(role.id) ?? [];
-          const active = assignments.filter(
-            (assignment) =>
-              assignment.status === "active" && assignment.invitationState === "active",
-          );
+          const active = assignments.filter(assignmentIsActive);
           const pending = assignments.filter(
             (assignment) =>
               assignment.status === "active" && assignment.invitationState === "pending",
           );
           const isOpen = openRoleId === role.id;
           return (
-            <article key={role.id} className="border-y theme-border py-4">
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                <div className="min-w-0">
+            <article key={role.id} className="border-b theme-border last:border-b-0">
+              <button
+                type="button"
+                onClick={() => setOpenRoleId(isOpen ? undefined : role.id)}
+                aria-expanded={isOpen}
+                className="grid w-full gap-3 px-3 py-4 text-left transition-opacity hover:opacity-70 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+              >
+                <span className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h5 className="font-serif text-xl">{role.label}</h5>
-                    <AdminStatus tone={role.status === "active" ? "positive" : "neutral"}>
-                      {active.length} active
-                    </AdminStatus>
-                    {pending.length > 0 && (
-                      <AdminStatus tone="attention">{pending.length} pending</AdminStatus>
-                    )}
+                    <span className="font-serif text-lg text-foreground">{role.label}</span>
                   </div>
-                  <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                  <span className="mt-1 block font-mono text-micro leading-relaxed theme-muted">
                     <RoleSummary role={role} activities={activities} checkpoints={checkpoints} />
-                  </p>
-                  <p className="mt-1 font-mono text-micro theme-faint">
+                  </span>
+                  <span className="mt-1 block font-mono text-micro theme-faint">
                     ends {new Date(role.expiresAt).toLocaleString()}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOpenRoleId(isOpen ? undefined : role.id)}
-                  aria-expanded={isOpen}
-                  className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
-                >
-                  {isOpen ? "close" : "add someone"}
-                </button>
-              </div>
+                  </span>
+                </span>
+                <span className="flex flex-wrap items-center gap-2">
+                  <AdminStatus tone={role.status === "active" ? "positive" : "neutral"}>
+                    {active.length} active
+                  </AdminStatus>
+                  {pending.length > 0 ? (
+                    <AdminStatus tone="attention">{pending.length} pending</AdminStatus>
+                  ) : null}
+                </span>
+                <span className="font-mono text-xs text-foreground sm:w-16 sm:text-right">
+                  {isOpen ? "close ↑" : "manage ↓"}
+                </span>
+              </button>
 
               {isOpen && (
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void assignRole(role);
-                  }}
-                  className="mt-4 grid gap-4 border-t theme-border pt-4 sm:grid-cols-2"
-                >
-                  <label className="font-mono text-xs">
-                    how to add them
-                    <AppSelect
-                      value={delivery}
-                      onValueChange={(value) => setDelivery(value as Delivery)}
-                      options={[
-                        { value: "email", label: "email one-use invite" },
-                        { value: "copy", label: "copy one-use invite" },
-                        { value: "direct", label: "assign verified identity" },
-                        { value: "station", label: "shared station link" },
-                      ]}
-                      variant="field"
-                      ariaLabel="Invitation method"
-                      className="mt-2"
-                    />
-                  </label>
-                  {delivery !== "station" ? (
-                    <div>
-                      <label className="font-mono text-xs">
-                        email / identity
-                        <input
-                          required
-                          type="email"
-                          autoComplete="email"
-                          value={recipientEmail}
-                          onChange={(event) => setRecipientEmail(event.target.value)}
-                          className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                        />
-                      </label>
-                      <EmailAddressNotice
-                        email={recipientEmail}
-                        onAcceptSuggestion={setRecipientEmail}
-                      />
-                    </div>
-                  ) : (
-                    <p className="font-mono text-xs leading-relaxed theme-muted">
-                      Explicit exception: this reusable link is not tied to a person. Use it only on
-                      a supervised device.
-                    </p>
-                  )}
-                  <label className="font-mono text-xs">
-                    audit reason
-                    <input
-                      required
-                      value={inviteReason}
-                      onChange={(event) => setInviteReason(event.target.value)}
-                      className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                    />
-                  </label>
-                  {role.permissions.awardPoints && (
+                <div className="border-t theme-border bg-[var(--stone-50)] px-3 py-4 dark:bg-white/[0.02]">
+                  <StaffRoleAccess role={role} staff={assignments} onAction={onAction} />
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void assignRole(role);
+                    }}
+                    className="mt-5 grid gap-4 border-t theme-border pt-4 sm:grid-cols-2"
+                  >
+                    <p className="font-mono text-xs text-foreground sm:col-span-2">add someone</p>
                     <label className="font-mono text-xs">
-                      point pool
+                      how to add them
+                      <AppSelect
+                        value={delivery}
+                        onValueChange={(value) => setDelivery(value as Delivery)}
+                        options={[
+                          { value: "email", label: "email one-use invite" },
+                          { value: "copy", label: "copy one-use invite" },
+                          { value: "direct", label: "assign verified identity" },
+                          { value: "station", label: "shared station link" },
+                        ]}
+                        variant="field"
+                        ariaLabel="Invitation method"
+                        className="mt-2"
+                      />
+                    </label>
+                    {delivery !== "station" ? (
+                      <div>
+                        <label className="font-mono text-xs">
+                          email / identity
+                          <input
+                            required
+                            type="email"
+                            autoComplete="email"
+                            value={recipientEmail}
+                            onChange={(event) => setRecipientEmail(event.target.value)}
+                            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                          />
+                        </label>
+                        <EmailAddressNotice
+                          email={recipientEmail}
+                          onAcceptSuggestion={setRecipientEmail}
+                        />
+                      </div>
+                    ) : (
+                      <p className="font-mono text-xs leading-relaxed theme-muted">
+                        Explicit exception: this reusable link is not tied to a person. Use it only
+                        on a supervised device.
+                      </p>
+                    )}
+                    <label className="font-mono text-xs">
+                      audit reason
                       <input
-                        type="number"
-                        min={0}
-                        value={poolPoints}
-                        onChange={(event) => setPoolPoints(Number(event.target.value))}
+                        required
+                        value={inviteReason}
+                        onChange={(event) => setInviteReason(event.target.value)}
                         className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
                       />
                     </label>
-                  )}
-                  <button className="min-h-11 border border-foreground px-4 font-mono text-xs sm:col-span-2 sm:w-fit">
-                    {delivery === "direct"
-                      ? "assign role"
-                      : delivery === "station"
-                        ? "create station link"
-                        : "create invitation"}
-                  </button>
-                </form>
+                    {role.permissions.awardPoints && (
+                      <label className="font-mono text-xs">
+                        point pool
+                        <input
+                          type="number"
+                          min={0}
+                          value={poolPoints}
+                          onChange={(event) => setPoolPoints(Number(event.target.value))}
+                          className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
+                        />
+                      </label>
+                    )}
+                    <button className="min-h-11 border border-foreground px-4 font-mono text-xs sm:col-span-2 sm:w-fit">
+                      {delivery === "direct"
+                        ? "assign role"
+                        : delivery === "station"
+                          ? "create station link"
+                          : "create invitation"}
+                    </button>
+                  </form>
+                </div>
               )}
             </article>
           );

@@ -66,6 +66,116 @@ function deliveryLabel(assignment: AdminStaffAssignment) {
   return "shared station";
 }
 
+export function StaffRoleAccess({
+  role,
+  staff,
+  onAction,
+}: {
+  role: AdminStaffRole;
+  staff: AdminStaffAssignment[];
+  onAction: ScoringAction;
+}) {
+  const assignments = staff.filter((assignment) => assignment.roleId === role.id);
+  const current = assignments.filter(isCurrent);
+  const history = assignments.filter((assignment) => !isCurrent(assignment));
+  const groups = groupAssignments(current);
+  const hasPendingInvitation = current.some(
+    (assignment) => assignment.invitationState === "pending",
+  );
+
+  async function revoke(assignment: AdminStaffAssignment) {
+    const action = revokeLabel(assignment);
+    const reason = window.prompt(`Why are you choosing to ${action}?`)?.trim();
+    if (!reason) return;
+    await onAction({ action: "revoke-staff", assignmentId: assignment.id, reason });
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-mono text-xs text-foreground">who has this role now</p>
+        <AdminStatus tone={groups.length > 0 ? "positive" : "neutral"}>
+          {groups.length} {groups.length === 1 ? "person / station" : "people / stations"}
+        </AdminStatus>
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="mt-3 font-mono text-micro theme-muted">No current access.</p>
+      ) : (
+        <ul className="mt-3 divide-y theme-border border-y theme-border">
+          {groups.map((group) => (
+            <li
+              key={group.key}
+              className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-mono text-xs text-foreground">{group.name}</p>
+                  {group.assignments.some(
+                    (assignment) => assignment.invitationState === "pending",
+                  ) ? (
+                    <AdminStatus tone="attention">invited</AdminStatus>
+                  ) : (
+                    <AdminStatus tone="positive">active</AdminStatus>
+                  )}
+                </div>
+                {group.email && group.email !== group.name ? (
+                  <p className="mt-1 truncate font-mono text-micro theme-muted">{group.email}</p>
+                ) : null}
+                <p className="mt-1 font-mono text-micro theme-muted">
+                  {group.assignments.map(deliveryLabel).join(" · ")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 sm:justify-end">
+                {group.assignments.map((assignment) => (
+                  <button
+                    key={assignment.id}
+                    type="button"
+                    onClick={() => void revoke(assignment)}
+                    className="min-h-11 font-mono text-micro underline underline-offset-4 hover:opacity-70"
+                  >
+                    {revokeLabel(assignment)}
+                  </button>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {hasPendingInvitation ? (
+        <p className="mt-2 font-mono text-micro leading-relaxed theme-faint">
+          Invite the same email again to replace a pending invitation; the older link is revoked
+          automatically.
+        </p>
+      ) : null}
+
+      {history.length > 0 ? (
+        <details className="mt-3 border-t theme-border pt-2">
+          <summary className="flex min-h-11 cursor-pointer items-center font-mono text-micro text-foreground">
+            recent access history · {history.length}
+          </summary>
+          <p className="mb-2 font-mono text-micro leading-relaxed theme-muted">
+            Expired and removed credentials stay in the event audit record but no longer work.
+          </p>
+          <ul className="divide-y theme-border">
+            {history.slice(0, 20).map((assignment) => (
+              <li key={assignment.id} className="flex flex-wrap justify-between gap-2 py-2">
+                <span className="font-mono text-micro text-foreground">
+                  {displayName(assignment)} · {deliveryLabel(assignment)}
+                </span>
+                <AdminStatus tone={adminToneForStatus(assignmentState(assignment))}>
+                  {assignmentState(assignment)}
+                </AdminStatus>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 export function StaffAccessRegister({
   roles,
   staff,

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { EventsPanel } from "@/features/admin/ui/components/EventsPanel";
 import { ScoringStaffPanel } from "@/features/admin/ui/components/ScoringStaffPanel";
+import { StaffRoleAccess } from "@/features/admin/ui/components/StaffAccessRegister";
 import { permissionsForGlobalRole } from "@/features/attendee-operations/types";
 
 describe("admin events panel", () => {
@@ -34,78 +35,87 @@ describe("admin events panel", () => {
       expiresAt,
       status: "active" as const,
     };
+    const staff = [
+      {
+        id: "assignment-person",
+        roleId: role.id,
+        label: "Alex",
+        assignmentType: "personal" as const,
+        status: "active",
+        invitationState: "active",
+        permissions: role.permissions,
+        scope: {},
+        assignedEmailHint: "a***@example.com",
+        invitationDelivery: "direct" as const,
+        devices: [],
+      },
+      {
+        id: "assignment-station",
+        roleId: role.id,
+        label: "spare door phone",
+        assignmentType: "station" as const,
+        status: "active",
+        permissions: role.permissions,
+        scope: {},
+        invitationDelivery: "station" as const,
+        devices: [],
+      },
+      {
+        id: "assignment-old",
+        roleId: role.id,
+        label: "Old helper",
+        assignmentType: "personal" as const,
+        status: "revoked",
+        invitationState: "revoked",
+        permissions: role.permissions,
+        scope: {},
+        invitedEmailHint: "o***@example.com",
+        invitationDelivery: "email" as const,
+        devices: [],
+      },
+      {
+        id: "assignment-pending",
+        roleId: role.id,
+        label: "Invited helper",
+        assignmentType: "personal" as const,
+        status: "active",
+        invitationState: "pending",
+        permissions: role.permissions,
+        scope: {},
+        invitedEmailHint: "i***@example.com",
+        invitationDelivery: "email" as const,
+        devices: [],
+      },
+    ];
     const html = renderToStaticMarkup(
       createElement(ScoringStaffPanel, {
         eventSlug: "tomorrow-night",
         activities: [],
         checkpoints: [{ id: "food", name: "food collection" }],
         roles: [role],
-        staff: [
-          {
-            id: "assignment-person",
-            roleId: role.id,
-            label: "Alex",
-            assignmentType: "personal" as const,
-            status: "active",
-            invitationState: "active",
-            permissions: role.permissions,
-            scope: {},
-            assignedEmailHint: "a***@example.com",
-            invitationDelivery: "direct" as const,
-            devices: [],
-          },
-          {
-            id: "assignment-station",
-            roleId: role.id,
-            label: "spare door phone",
-            assignmentType: "station" as const,
-            status: "active",
-            permissions: role.permissions,
-            scope: {},
-            invitationDelivery: "station" as const,
-            devices: [],
-          },
-          {
-            id: "assignment-old",
-            roleId: role.id,
-            label: "Old helper",
-            assignmentType: "personal" as const,
-            status: "revoked",
-            invitationState: "revoked",
-            permissions: role.permissions,
-            scope: {},
-            invitedEmailHint: "o***@example.com",
-            invitationDelivery: "email" as const,
-            devices: [],
-          },
-          {
-            id: "assignment-pending",
-            roleId: role.id,
-            label: "Invited helper",
-            assignmentType: "personal" as const,
-            status: "active",
-            invitationState: "pending",
-            permissions: role.permissions,
-            scope: {},
-            invitedEmailHint: "i***@example.com",
-            invitationDelivery: "email" as const,
-            devices: [],
-          },
-        ],
+        staff,
         onAction: async () => null,
         defaultPreset: "door-scanner" as const,
       }),
     );
+    const accessHtml = renderToStaticMarkup(
+      createElement(StaffRoleAccess, {
+        role,
+        staff,
+        onAction: async () => null,
+      }),
+    );
 
     expect(html).toContain("Roles that match the night");
-    expect(html).toContain("a***@example.com");
-    expect(html).toContain("shared station");
-    expect(html).toContain("Who has access now");
-    expect(html).toContain("recent access history · 1");
-    expect(html).toContain("credentials no longer work");
-    expect(html).toContain("cancel invite");
-    expect(html).toContain("older link is revoked automatically");
-    expect(html).toContain("add someone");
+    expect(html).toContain("role &amp; access");
+    expect(html).toContain("manage ↓");
+    expect(accessHtml).toContain("a***@example.com");
+    expect(accessHtml).toContain("shared station");
+    expect(accessHtml).toContain("who has this role now");
+    expect(accessHtml).toContain("recent access history · 1");
+    expect(accessHtml).toContain("no longer work");
+    expect(accessHtml).toContain("cancel invite");
+    expect(accessHtml).toContain("older link is revoked automatically");
     expect(html).toContain("check guests in at entry");
   });
 });

@@ -1533,6 +1533,29 @@ function ScanningSection({
     }
   };
 
+  const saveCheckpointMode = async (checkpoint: CheckpointRecord, multiScan: boolean) => {
+    if (checkpoint.multiScan === multiScan) return;
+    onError("");
+    try {
+      const response = await authFetch(`/api/admin/events/${event.slug}/checkpoints`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...checkpoint, multiScan }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, "Failed to save scan behaviour"));
+      }
+      setCheckpoints((current) =>
+        current.map((entry) => (entry.id === checkpoint.id ? { ...entry, multiScan } : entry)),
+      );
+      onStatus(
+        `${checkpoint.name} now records ${multiScan ? "a chosen quantity" : "one item"} per scan`,
+      );
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Failed to save scan behaviour");
+    }
+  };
+
   const removeCheckpoint = async (checkpoint: CheckpointRecord) => {
     setBusy(true);
     onError("");
@@ -1792,127 +1815,169 @@ function ScanningSection({
 
       <div>
         <p className="font-mono text-micro theme-muted tracking-wide">checkpoints</p>
-        <p className="mt-1 font-mono text-micro theme-faint">
-          Extra scan stations beyond the door — catering, merch, cloakroom. Each ticket carries a
-          counted allowance per checkpoint; scanning ticks it down.
+        <p className="mt-1 max-w-2xl font-mono text-micro theme-faint">
+          Set what each ticket may collect, then choose whether staff record one item or select a
+          quantity after scanning. Door check-in is separate.
         </p>
 
         {checkpoints.length > 0 && (
-          <ul className="mt-3 space-y-3">
+          <div className="mt-3 border-y theme-border">
             {checkpoints.map((checkpoint) => {
               const stats = usage[checkpoint.id];
+              const overrides = event.ticketTypes
+                .filter(
+                  (type) =>
+                    checkpoint.allowances[type.id] !== undefined &&
+                    checkpoint.allowances[type.id] !== checkpoint.defaultAllowance,
+                )
+                .map((type) => `${type.name} ${checkpoint.allowances[type.id]}`);
               return (
-                <li key={checkpoint.id} className="rounded-lg border theme-border p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-sm text-foreground">{checkpoint.name}</p>
-                      <p className="font-mono text-micro theme-muted">
+                <details
+                  key={checkpoint.id}
+                  className="group border-b theme-border last:border-b-0"
+                >
+                  <summary className="grid min-h-16 cursor-pointer list-none gap-2 px-3 py-3 marker:content-none sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5">
+                    <span className="min-w-0">
+                      <span className="block font-mono text-sm text-foreground">
+                        {checkpoint.name}
+                      </span>
+                      <span className="mt-1 block font-mono text-micro theme-muted">
                         {stats
                           ? `${stats.unitsUsed} given out to ${stats.ticketsServed} ticket${stats.ticketsServed === 1 ? "" : "s"}`
                           : "nothing given out yet"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void removeCheckpoint(checkpoint)}
-                      className="shrink-0 font-mono text-micro theme-muted hover:text-foreground transition-colors disabled:opacity-50"
-                    >
-                      remove
-                    </button>
-                  </div>
-                  <p className="mt-1 font-mono text-micro theme-faint">
-                    {(() => {
-                      const overrides = event.ticketTypes
-                        .filter(
-                          (type) =>
-                            checkpoint.allowances[type.id] !== undefined &&
-                            checkpoint.allowances[type.id] !== checkpoint.defaultAllowance,
-                        )
-                        .map((type) => `${type.name} gets ${checkpoint.allowances[type.id]}`);
-                      return overrides.length > 0
-                        ? `${checkpoint.defaultAllowance} per ticket · ${overrides.join(" · ")}`
-                        : `${checkpoint.defaultAllowance} per ticket, every ticket type`;
-                    })()}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAllowancesOpenFor((current) =>
-                          current === checkpoint.id ? null : checkpoint.id,
-                        )
-                      }
-                      aria-expanded={allowancesOpenFor === checkpoint.id}
-                      className="font-mono text-micro theme-muted underline hover:text-foreground transition-colors"
-                    >
-                      {allowancesOpenFor === checkpoint.id
-                        ? "done adjusting"
-                        : "adjust by ticket type"}
-                    </button>
-                    <label className="flex min-h-9 cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={checkpoint.multiScan}
-                        onChange={(inputEvent) =>
-                          void (async () => {
-                            onError("");
-                            try {
-                              const response = await authFetch(
-                                `/api/admin/events/${event.slug}/checkpoints`,
-                                {
-                                  method: "PUT",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    ...checkpoint,
-                                    multiScan: inputEvent.target.checked,
-                                  }),
-                                },
-                              );
-                              if (!response.ok) {
-                                throw new Error(await readErrorMessage(response, "Failed to save"));
-                              }
-                              await load();
-                            } catch (error) {
-                              onError(error instanceof Error ? error.message : "Failed to save");
-                            }
-                          })()
-                        }
-                      />
-                      <span className="font-mono text-micro theme-muted">
-                        can hand out several per scan
                       </span>
-                    </label>
-                  </div>
-                  {allowancesOpenFor === checkpoint.id && (
-                    <>
+                    </span>
+                    <span className="font-mono text-micro theme-muted">
+                      {checkpoint.defaultAllowance} per ticket
+                      {overrides.length > 0 ? ` · ${overrides.length} custom` : ""}
+                    </span>
+                    <span className="flex items-center justify-between gap-3 font-mono text-micro text-foreground sm:min-w-36 sm:justify-end">
+                      {checkpoint.multiScan ? "choose quantity" : "one at a time"}
+                      <span aria-hidden="true" className="group-open:hidden">
+                        ↓
+                      </span>
+                      <span aria-hidden="true" className="hidden group-open:inline">
+                        ↑
+                      </span>
+                    </span>
+                  </summary>
+
+                  <div className="border-t theme-border bg-[var(--stone-50)] px-3 py-4 dark:bg-white/[0.02]">
+                    <fieldset>
+                      <legend className="font-mono text-xs text-foreground">
+                        after staff scan this ticket
+                      </legend>
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {event.ticketTypes.map((type) => (
-                          <label key={type.id} className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-micro theme-muted">{type.name}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              defaultValue={
-                                checkpoint.allowances[type.id] ?? checkpoint.defaultAllowance
-                              }
-                              onBlur={(inputEvent) =>
-                                void saveAllowance(checkpoint, type.id, inputEvent.target.value)
-                              }
-                              className="w-16 min-h-9 rounded border theme-border bg-transparent px-2 text-right font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-                            />
+                        {[
+                          {
+                            value: false,
+                            title: "record one item",
+                            description: "The scan immediately deducts exactly 1.",
+                          },
+                          {
+                            value: true,
+                            title: "let staff choose quantity",
+                            description:
+                              "Staff can select 1 up to the ticket’s remaining allowance.",
+                          },
+                        ].map((option) => (
+                          <label
+                            key={String(option.value)}
+                            className={`cursor-pointer border p-3 transition-opacity hover:opacity-70 ${
+                              checkpoint.multiScan === option.value
+                                ? "border-[var(--prose-hashtag)]"
+                                : "theme-border"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name={`checkpoint-mode-${checkpoint.id}`}
+                                checked={checkpoint.multiScan === option.value}
+                                onChange={() => void saveCheckpointMode(checkpoint, option.value)}
+                              />
+                              <span className="font-mono text-xs text-foreground">
+                                {option.title}
+                              </span>
+                            </span>
+                            <span className="mt-1 block pl-5 font-mono text-micro leading-relaxed theme-muted">
+                              {option.description}
+                            </span>
                           </label>
                         ))}
                       </div>
-                      <p className="mt-1 font-mono text-micro theme-faint">
-                        how many each ticket type gets · 0 = not included · saves when you tap away
-                      </p>
-                    </>
-                  )}
-                </li>
+                    </fieldset>
+
+                    <div className="mt-5 border-t theme-border pt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-mono text-xs text-foreground">ticket allowances</p>
+                          <p className="mt-1 font-mono text-micro theme-muted">
+                            {overrides.length > 0
+                              ? `${checkpoint.defaultAllowance} normally · ${overrides.join(" · ")}`
+                              : `${checkpoint.defaultAllowance} for every ticket type`}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAllowancesOpenFor((current) =>
+                              current === checkpoint.id ? null : checkpoint.id,
+                            )
+                          }
+                          aria-expanded={allowancesOpenFor === checkpoint.id}
+                          className="min-h-11 border theme-border px-3 font-mono text-micro text-foreground hover:opacity-70"
+                        >
+                          {allowancesOpenFor === checkpoint.id
+                            ? "done adjusting"
+                            : "adjust by ticket type"}
+                        </button>
+                      </div>
+                    </div>
+                    {allowancesOpenFor === checkpoint.id && (
+                      <>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {event.ticketTypes.map((type) => (
+                            <label
+                              key={type.id}
+                              className="flex items-center justify-between gap-2"
+                            >
+                              <span className="font-mono text-micro theme-muted">{type.name}</span>
+                              <input
+                                type="number"
+                                min={0}
+                                defaultValue={
+                                  checkpoint.allowances[type.id] ?? checkpoint.defaultAllowance
+                                }
+                                onBlur={(inputEvent) =>
+                                  void saveAllowance(checkpoint, type.id, inputEvent.target.value)
+                                }
+                                className="w-16 min-h-9 rounded border theme-border bg-transparent px-2 text-right font-mono text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <p className="mt-2 font-mono text-micro theme-faint">
+                          0 means that ticket type is not entitled to this item. Changes save when
+                          you leave a field.
+                        </p>
+                      </>
+                    )}
+                    <p className="mt-5 border-t theme-border pt-3 text-right">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void removeCheckpoint(checkpoint)}
+                        className="min-h-11 font-mono text-micro theme-muted underline underline-offset-4 hover:text-foreground disabled:opacity-50"
+                      >
+                        remove checkpoint
+                      </button>
+                    </p>
+                  </div>
+                </details>
               );
             })}
-          </ul>
+          </div>
         )}
 
         <form
@@ -1929,7 +1994,7 @@ function ScanningSection({
             hint="e.g. Dinner, Welcome drink, Merch"
           />
           <Field
-            label="per ticket"
+            label="standard allowance"
             value={newCheckpointAllowance}
             onChange={setNewCheckpointAllowance}
             type="number"
