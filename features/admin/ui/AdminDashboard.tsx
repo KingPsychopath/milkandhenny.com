@@ -633,21 +633,19 @@ export function AdminDashboard({
                   aria-selected={activeEventWorkspace === workspace.id}
                   aria-controls="event-workspace-panel"
                   onClick={() => handleEventWorkspaceChange(workspace.id)}
-                  className={`inline-flex min-h-11 items-center gap-2 font-mono text-xs transition-opacity hover:opacity-70 ${
+                  className={`relative inline-flex min-h-11 items-center gap-2 font-mono text-xs transition-opacity hover:opacity-70 ${
                     activeEventWorkspace === workspace.id
                       ? "font-bold text-foreground"
                       : "theme-subtle"
                   }`}
                 >
-                  <span
-                    className={`border-b-2 pb-1 ${
-                      activeEventWorkspace === workspace.id
-                        ? "border-[var(--prose-hashtag)]"
-                        : "border-transparent"
-                    }`}
-                  >
-                    {workspace.label}
-                  </span>
+                  {workspace.label}
+                  {activeEventWorkspace === workspace.id ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--prose-hashtag)]"
+                    />
+                  ) : null}
                 </button>
               ))}
             </div>

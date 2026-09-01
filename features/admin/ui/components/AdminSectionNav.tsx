@@ -147,13 +147,13 @@ export function AdminSectionNav({
                 selected ? "font-bold text-[var(--foreground)]" : "theme-subtle"
               }`}
             >
-              <span
-                className={`inline-block border-b-2 pb-1 ${
-                  selected ? "border-[var(--prose-hashtag)]" : "border-transparent"
-                }`}
-              >
-                {section.label}
-              </span>
+              {section.label}
+              {selected ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-1 bottom-0 h-0.5 bg-[var(--prose-hashtag)]"
+                />
+              ) : null}
             </button>
           );
         })}
@@ -173,17 +173,17 @@ export function AdminSectionNav({
                   type="button"
                   onClick={() => onChange(section.id)}
                   aria-current={selected ? "page" : undefined}
-                  className={`inline-flex min-h-11 items-center gap-2 font-mono text-micro transition-opacity hover:opacity-70 ${
+                  className={`relative inline-flex min-h-11 items-center gap-2 font-mono text-micro transition-opacity hover:opacity-70 ${
                     selected ? "font-bold text-[var(--foreground)]" : "theme-subtle"
                   }`}
                 >
-                  <span
-                    className={`border-b pb-0.5 ${
-                      selected ? "border-[var(--prose-hashtag)]" : "border-transparent"
-                    }`}
-                  >
-                    {section.label}
-                  </span>
+                  {section.label}
+                  {selected ? (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-0 bottom-0 h-px bg-[var(--prose-hashtag)]"
+                    />
+                  ) : null}
                 </button>
               );
             })}
