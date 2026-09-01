@@ -60,6 +60,50 @@ export async function reserveOfflineScoreBudget(input: {
     return { ok: false as const, status: 409, error: `Offline budget cannot exceed ${maximum}` };
   const minutes = Math.min(240, Math.max(5, Math.trunc(input.expiresInMinutes ?? 60)));
   return transaction(async (client) => {
+    await client.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+      `${assignment.id}:${input.deviceId}:${input.activityId}`,
+    ]);
+    const existing = await client.query<{
+      id: string;
+      pool_id: string;
+      issued_points: number;
+      spent_points: number;
+      expires_at: Date;
+    }>(
+      `select id,pool_id,issued_points,spent_points,expires_at
+         from score_offline_reservations
+        where assignment_id = $1 and device_id = $2 and activity_id = $3 and status = 'active'
+        for update`,
+      [assignment.id, input.deviceId, input.activityId],
+    );
+    const current = existing.rows[0];
+    if (current && current.expires_at.getTime() > Date.now()) {
+      return {
+        ok: true as const,
+        value: {
+          id: current.id,
+          activityId: input.activityId,
+          points: current.issued_points,
+          spent: current.spent_points,
+          expiresAt: current.expires_at.toISOString(),
+        },
+      };
+    }
+    if (current) {
+      const unused = current.issued_points - current.spent_points;
+      await client.query(
+        `update score_offline_reservations
+            set status = 'closed', closed_at = now()
+          where id = $1`,
+        [current.id],
+      );
+      await client.query(
+        `update score_pools
+            set reserved_points = reserved_points - $2, updated_at = now()
+          where id = $1`,
+        [current.pool_id, unused],
+      );
+    }
     const pool = await client.query<{ id: string }>(
       `select id from score_pools
         where event_slug = $1
@@ -74,18 +118,6 @@ export async function reserveOfflineScoreBudget(input: {
         ok: false as const,
         status: 409,
         error: "The confirmed pool cannot fund that offline budget",
-      };
-    const existing = await client.query<{ id: string }>(
-      `select id from score_offline_reservations
-        where assignment_id = $1 and device_id = $2 and activity_id = $3 and status = 'active'
-        for update`,
-      [assignment.id, input.deviceId, input.activityId],
-    );
-    if (existing.rows[0])
-      return {
-        ok: false as const,
-        status: 409,
-        error: "This device already has an active offline budget",
       };
     const reservationId = id("offline");
     const expiresAt = new Date(Date.now() + minutes * 60_000);

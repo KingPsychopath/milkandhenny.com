@@ -2031,15 +2031,23 @@ describeWithDatabase("event scoring postgres", () => {
       ownerId: access.id,
       points: 20,
     });
-    const reserved = await reserveOfflineScoreBudget({
+    const reservationInput = {
       eventSlug: "scoring-night",
       token: access.token!,
       deviceId: "offline-device",
       activityId: activity.id,
       points: 9,
-    });
+    };
+    const [reserved, concurrent] = await Promise.all([
+      reserveOfflineScoreBudget(reservationInput),
+      reserveOfflineScoreBudget(reservationInput),
+    ]);
     expect(reserved.ok).toBe(true);
     if (!reserved.ok) return;
+    expect(concurrent).toMatchObject({
+      ok: true,
+      value: { id: reserved.value.id, points: 9 },
+    });
     const command = {
       commandId: "offline-command-one",
       localSequence: 1,

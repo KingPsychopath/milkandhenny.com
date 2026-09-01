@@ -46,7 +46,12 @@ import {
   searchEventParticipants,
   type StoredStaffAssignment,
 } from "./store.server";
-import { convertRulePoints, type ScoreParticipant, type ScoreTransaction } from "./types";
+import {
+  SCORE_ECONOMY,
+  convertRulePoints,
+  type ScoreParticipant,
+  type ScoreTransaction,
+} from "./types";
 import { recordScoringOperationalEvent } from "./operations.server";
 import { createStaffAwardClaim } from "./staff-award-claims.server";
 
@@ -125,6 +130,8 @@ export async function getStaffScoringPage(input: {
       canAward: boolean;
       canManageTeams: boolean;
       canFreeform: boolean;
+      maxPointsPerAward: number;
+      offlineBudgetByActivity: Record<string, number>;
       canAdmit: boolean;
       canScanCheckpoints: boolean;
       canTransfer: boolean;
@@ -227,6 +234,20 @@ export async function getStaffScoringPage(input: {
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
+  const awardingAssignments = assignments.filter((entry) =>
+    hasStaffPermission(entry, "awardPoints"),
+  );
+  const maxPointsPerAward = awardingAssignments.length
+    ? Math.min(
+        SCORE_ECONOMY.maximumSingleAward,
+        ...awardingAssignments.map((entry) =>
+          Math.max(
+            1,
+            Math.trunc(scopeNumber(entry, "maxPointsPerAward", SCORE_ECONOMY.maximumSingleAward)),
+          ),
+        ),
+      )
+    : SCORE_ECONOMY.maximumSingleAward;
   return {
     found: true,
     eventSlug: input.eventSlug,
@@ -243,6 +264,7 @@ export async function getStaffScoringPage(input: {
       (entry) =>
         hasStaffPermission(entry, "awardPoints") && scopeBoolean(entry, "allowFreeformPoints"),
     ),
+    maxPointsPerAward,
     canAdmit: grant("admitTickets") !== null,
     canScanCheckpoints: grant("scanCheckpoints") !== null,
     canTransfer: grant("transferPoints") !== null,
@@ -305,6 +327,23 @@ export async function getStaffScoringPage(input: {
           assignments.some((entry) => canUseActivity(entry, pool.activityId!))) ||
         assignments.some((entry) => pool.ownerId === entry.id) ||
         (stationId !== undefined && pool.ownerId === stationId),
+    ),
+    offlineBudgetByActivity: Object.fromEntries(
+      activities.flatMap((activity) => {
+        const offlineAssignment = awardingAssignments.find(
+          (entry) => canUseActivity(entry, activity.id) && !scopeBoolean(entry, "unmetered"),
+        );
+        if (!offlineAssignment) return [];
+        return [
+          [
+            activity.id,
+            Math.min(
+              50,
+              Math.max(1, Math.trunc(scopeNumber(offlineAssignment, "offlineBudgetMax", 50))),
+            ),
+          ],
+        ];
+      }),
     ),
   };
 }
@@ -764,7 +803,24 @@ export async function awardStaffPoints(input: {
     return { ok: false, status: 409, error: "No active tickets in this order can receive points" };
   }
   const points = input.points ?? convertRulePoints(activity.rule, input);
-  const warningAt = Math.max(1, scopeNumber(assignment, "largeAwardWarningAt", 25));
+  const maximum = Math.min(
+    SCORE_ECONOMY.maximumSingleAward,
+    Math.max(
+      1,
+      Math.trunc(scopeNumber(assignment, "maxPointsPerAward", SCORE_ECONOMY.maximumSingleAward)),
+    ),
+  );
+  if (points > maximum) {
+    return {
+      ok: false,
+      status: 400,
+      error: `This role can award at most ${maximum} points per person at once`,
+    };
+  }
+  const warningAt = Math.min(
+    maximum,
+    Math.max(1, scopeNumber(assignment, "largeAwardWarningAt", 10)),
+  );
   if (points >= warningAt && !input.confirmLarge) {
     return {
       ok: false,
@@ -852,6 +908,20 @@ export async function mintStaffAwardClaim(input: {
       ok: false as const,
       status: 403,
       error: "This staff link cannot create custom awards",
+    };
+  }
+  const maximum = Math.min(
+    SCORE_ECONOMY.maximumSingleAward,
+    Math.max(
+      1,
+      Math.trunc(scopeNumber(assignment, "maxPointsPerAward", SCORE_ECONOMY.maximumSingleAward)),
+    ),
+  );
+  if (input.points !== undefined && input.points > maximum) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: `This role can put at most ${maximum} points on one QR`,
     };
   }
   const activity = (await listScoringActivities(input.eventSlug)).find(

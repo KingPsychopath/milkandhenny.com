@@ -5,6 +5,7 @@ import { getEvent } from "@/features/events/store.server";
 import { isCapabilityEffective } from "@/features/attendee-operations/capabilities.server";
 import { getTicket } from "@/features/tickets/store.server";
 import {
+  SCORE_ECONOMY,
   discoveryClaimPoints,
   isWithinWindow,
   normalizeDiscoveryCode,
@@ -78,6 +79,18 @@ function digest(value: string): string {
 }
 
 function discoveryRuleError(rule: DiscoveryRule, method: Discovery["method"]): string | null {
+  const perClaimMaximum = Math.max(
+    0,
+    rule.pointsPerClue ?? 0,
+    rule.completionBonus ?? 0,
+    rule.pointMode === "per-clue-plus-completion"
+      ? (rule.pointsPerClue ?? 0) + (rule.completionBonus ?? 0)
+      : 0,
+    ...(rule.tiers ?? []),
+  );
+  if (!Number.isInteger(perClaimMaximum) || perClaimMaximum > SCORE_ECONOMY.maximumSingleAward) {
+    return `One discovery claim cannot award more than ${SCORE_ECONOMY.maximumSingleAward} points per person`;
+  }
   if (rule.claimFrequency === "once") return null;
   if (method === "collected-clues") return "Collected hunts can only be claimed once per clue";
   if (

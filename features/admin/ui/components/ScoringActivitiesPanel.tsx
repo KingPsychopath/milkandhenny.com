@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES, estimateMaximumIssue } from "@/features/event-scoring/templates";
+import { SCORE_ECONOMY } from "@/features/event-scoring/types";
 import type { AdminScoringActivity, ScoringAction } from "./event-scoring-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
@@ -152,11 +153,16 @@ export function ScoringActivitiesPanel({
           <input
             type="number"
             min={1}
+            max={SCORE_ECONOMY.maximumSingleAward}
             required
             value={points}
             onChange={(event) => setPoints(Number(event.target.value))}
             className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
           />
+          <span className="mt-2 block theme-muted">
+            2 check-in · 3 participation · 5 completion · 10 winner ·{" "}
+            {SCORE_ECONOMY.maximumSingleAward} absolute maximum
+          </span>
         </label>
         <label className="font-mono text-xs">
           expected attendance

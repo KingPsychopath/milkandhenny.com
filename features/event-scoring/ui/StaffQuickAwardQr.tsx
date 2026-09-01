@@ -49,6 +49,7 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
   async function mint(selectedActivityId: string, points?: number) {
     setBusy(true);
     setError("");
+    setIssued(undefined);
     const result = await mintStaffAwardClaimFn({
       data: {
         eventSlug: data.eventSlug,
@@ -69,15 +70,16 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
 
   if (fixedActivities.length === 0 && !data.canFreeform) return null;
   return (
-    <section aria-labelledby="award-qr-heading" className="mt-6 border-y theme-border py-5">
+    <section aria-labelledby="award-qr-heading" className="mt-7 border-y theme-border py-5">
       <h3 id="award-qr-heading" className="font-serif text-xl">
-        Let them scan
+        One-use award QR
       </h3>
       <p className="mt-2 font-mono text-xs theme-muted">
-        Tap an award and hold up the QR. It works once and expires after 60 seconds.
+        Choose a configured award, then hold up the QR. The first eligible ticket gets it; the code
+        expires after 60 seconds.
       </p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {fixedActivities.map((activity) => {
+        {fixedActivities.map((activity, index) => {
           const points =
             activity.rule.mode === "participation"
               ? (activity.rule.participationPoints ?? 0)
@@ -88,10 +90,10 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
               type="button"
               disabled={busy}
               onClick={() => void mint(activity.id)}
-              className="min-h-14 border theme-border px-4 py-3 text-left disabled:opacity-50"
+              className={`mh-action min-h-16 justify-between text-left disabled:opacity-50 ${index === 0 ? "mh-action--primary" : "mh-action--secondary"}`}
             >
-              <span className="block font-serif text-lg">{activity.name}</span>
-              <span className="font-mono text-micro theme-muted">show +{points} QR</span>
+              <span className="font-serif text-lg">{activity.name}</span>
+              <span className="font-mono text-sm">+{points}</span>
             </button>
           );
         })}
@@ -122,6 +124,7 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
               <input
                 type="number"
                 min={1}
+                max={data.maxPointsPerAward}
                 step={1}
                 value={customPoints}
                 onChange={(event) => setCustomPoints(Number(event.target.value))}
@@ -144,6 +147,7 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
                 !activityId ||
                 !Number.isInteger(customPoints) ||
                 customPoints < 1 ||
+                customPoints > data.maxPointsPerAward ||
                 !note.trim()
               }
               onClick={() => void mint(activityId, customPoints)}
@@ -185,10 +189,25 @@ export function StaffQuickAwardQr({ data, token }: { data: PageData; token: stri
               >
                 open claim link
               </a>
+              <button
+                type="button"
+                onClick={() => setIssued(undefined)}
+                className="mx-auto mt-2 mh-action mh-action--quiet"
+              >
+                close QR
+              </button>
             </>
           ) : failed ? (
             <p className="mt-4 font-mono text-xs">QR unavailable. Create another award.</p>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIssued(undefined)}
+              className="mx-auto mt-3 mh-action mh-action--secondary"
+            >
+              choose another award
+            </button>
+          )}
         </div>
       ) : null}
     </section>

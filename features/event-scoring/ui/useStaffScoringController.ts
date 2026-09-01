@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types";
 import {
   acceptStaffHeldActionFn,
   awardStaffPointsFn,
@@ -17,7 +18,7 @@ import {
 } from "../staff-scoring.functions";
 import type { OfflineScoreCommand } from "../offline.server";
 import type { getStaffScoringPage } from "../staff-scoring.server";
-import { convertRulePoints } from "../types";
+import { convertRulePoints, maximumRulePoints } from "../types";
 import { uploadStaffScorePhoto } from "./staff-photo-upload";
 
 export type PageData = Extract<Awaited<ReturnType<typeof getStaffScoringPage>>, { found: true }>;
@@ -29,6 +30,7 @@ type OfflineReservation = {
   spent: number;
   expiresAt: string;
 };
+export type StaffOperation = "admit" | "checkpoint" | "run" | "award" | "teams";
 
 export function useStaffScoringController(data: PageData, token: string) {
   const [activityId, setActivityId] = useState(data.activities[0]?.id ?? "");
@@ -58,7 +60,7 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [mediaConsent, setMediaConsent] = useState<
     "not-requested" | "requested" | "obtained" | "declined"
   >(data.photoConsentPolicy === "required" ? "obtained" : "requested");
-  const [operation, setOperation] = useState<"admit" | "checkpoint" | "run" | "award" | "teams">(
+  const [operation, setOperation] = useState<StaffOperation>(
     data.canAdmit
       ? "admit"
       : data.canScanCheckpoints
@@ -72,6 +74,9 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();
   const [offlineCommands, setOfflineCommands] = useState<OfflineScoreCommand[]>([]);
+  const [offlineHydrated, setOfflineHydrated] = useState(false);
+  const [offlinePreparing, setOfflinePreparing] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestNote, setGuestNote] = useState("");
   const [guestRequests, setGuestRequests] = useState(data.guestRequests);
@@ -128,6 +133,8 @@ export function useStaffScoringController(data: PageData, token: string) {
       if (Array.isArray(saved?.commands)) setOfflineCommands(saved.commands);
     } catch {
       sessionStorage.removeItem(key);
+    } finally {
+      setOfflineHydrated(true);
     }
   }, [data.eventSlug]);
 
@@ -168,8 +175,15 @@ export function useStaffScoringController(data: PageData, token: string) {
     return () => window.removeEventListener("online", online);
   }, [data.eventSlug, offlineCommands, offlineReservation, token]);
 
-  async function search() {
-    if (query.trim().length < 2) {
+  const prepareOfflineEvent = useEffectEvent(prepareOffline);
+
+  useEffect(() => {
+    if (!offlineHydrated || !activityId || !navigator.onLine) return;
+    void prepareOfflineEvent(activityId, true);
+  }, [activityId, offlineCommands.length, offlineHydrated, offlineReservation?.id]);
+
+  async function search(term = query) {
+    if (term.trim().length < 2) {
       setError("Enter at least two letters or a ticket suffix.");
       return;
     }
@@ -178,12 +192,28 @@ export function useStaffScoringController(data: PageData, token: string) {
     try {
       setResults(
         await searchStaffParticipantsFn({
-          data: { eventSlug: data.eventSlug, token, term: query },
+          data: { eventSlug: data.eventSlug, token, term },
         }),
       );
     } finally {
       setBusy(false);
     }
+  }
+
+  async function findParticipant(raw = query) {
+    const value = raw.trim();
+    if (!value) {
+      setError("Enter a name, alias, or ticket.");
+      return;
+    }
+    const ticketValue = value.toUpperCase();
+    if (parseTicketQrPayload(value) || isValidTicketId(ticketValue)) {
+      setScanned(value);
+      await resolveScan(value);
+      return;
+    }
+    setScanned("");
+    await search(value);
   }
 
   async function award(
@@ -293,18 +323,64 @@ export function useStaffScoringController(data: PageData, token: string) {
     commandId.current = crypto.randomUUID();
   }
 
-  async function prepareOffline() {
-    if (!activityId) return;
-    setBusy(true);
-    setError("");
+  async function prepareOffline(selectedActivityId = activityId, quiet = false) {
+    if (!selectedActivityId || !navigator.onLine) return;
+    const configuredBudget = data.offlineBudgetByActivity[selectedActivityId];
+    const selectedPool =
+      data.pools.find((entry) => entry.activityId === selectedActivityId) ?? data.pools[0];
+    const sameActivityReservation = offlineReservation?.activityId === selectedActivityId;
+    const existingUnused = sameActivityReservation
+      ? offlineReservation.points - offlineReservation.spent
+      : 0;
+    const available = (selectedPool?.available ?? 0) + existingUnused;
+    const selectedActivity = data.activities.find((entry) => entry.id === selectedActivityId);
+    const oneAward = Math.max(
+      1,
+      selectedActivity ? (maximumRulePoints(selectedActivity.rule) ?? 1) : 1,
+    );
+    const protectedTarget = Math.max(
+      oneAward,
+      Math.min(oneAward * 3, Math.max(1, Math.floor(available * 0.25))),
+    );
+    const budget = Math.min(configuredBudget ?? 0, available, protectedTarget);
+    if (sameActivityReservation && existingUnused <= budget) {
+      setOfflineMessage("Offline fallback ready");
+      return;
+    }
+    if (budget < 1) {
+      setOfflineMessage("Online scoring ready");
+      return;
+    }
+    if (offlineReservation && offlineCommands.length > 0) {
+      setOfflineMessage("Offline awards are waiting to sync");
+      return;
+    }
+    setOfflinePreparing(true);
+    if (!quiet) setError("");
+    if (offlineReservation) {
+      await closeOfflineScoreReservationFn({
+        data: { eventSlug: data.eventSlug, token, reservationId: offlineReservation.id },
+      });
+      setOfflineReservation(undefined);
+    }
     const result = await reserveOfflineScoreBudgetFn({
-      data: { eventSlug: data.eventSlug, token, activityId, points: 50, expiresInMinutes: 60 },
+      data: {
+        eventSlug: data.eventSlug,
+        token,
+        activityId: selectedActivityId,
+        points: budget,
+        expiresInMinutes: 60,
+      },
     });
-    setBusy(false);
-    if (!result.ok) return setError(result.error);
+    setOfflinePreparing(false);
+    if (!result.ok) {
+      setOfflineMessage("Online scoring ready");
+      if (!quiet) setError(result.error);
+      return;
+    }
     setOfflineReservation(result.value);
     setOfflineCommands([]);
-    setStatus(`Offline budget ready: ${result.value.points} points for 60 minutes.`);
+    setOfflineMessage("Offline fallback ready");
   }
 
   async function resolveScan(raw = scanned) {
@@ -323,6 +399,7 @@ export function useStaffScoringController(data: PageData, token: string) {
       return;
     }
     setParticipant(found);
+    setScanned(raw);
     setRecipientScope("participant");
     setResults([]);
     setQuery("");
@@ -531,6 +608,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setOfflineReservation,
     offlineCommands,
     setOfflineCommands,
+    offlinePreparing,
+    offlineMessage,
     guestName,
     setGuestName,
     guestNote,
@@ -552,6 +631,7 @@ export function useStaffScoringController(data: PageData, token: string) {
     previewPoints,
     quickActivities,
     search,
+    findParticipant,
     award,
     prepareOffline,
     resolveScan,
@@ -564,3 +644,5 @@ export function useStaffScoringController(data: PageData, token: string) {
     acceptHeld,
   };
 }
+
+export type StaffScoringController = ReturnType<typeof useStaffScoringController>;

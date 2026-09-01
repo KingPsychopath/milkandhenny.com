@@ -127,6 +127,41 @@ export type ScoreRule = {
   requiresCheckIn: boolean;
 };
 
+export const SCORE_ECONOMY = {
+  checkIn: 2,
+  participation: 3,
+  completion: 5,
+  winner: 10,
+  maximumSingleAward: 25,
+} as const;
+
+/** Highest score one participant can receive from one configured outcome. */
+export function maximumRulePoints(rule: ScoreRule): number | undefined {
+  if (rule.mode === "fixed") return rule.fixedPoints;
+  if (rule.mode === "participation") return rule.participationPoints;
+  if (rule.mode === "placement") {
+    const values = Object.values(rule.placementPoints ?? {});
+    return values.length > 0 ? Math.max(...values) : undefined;
+  }
+  if (rule.mode === "diminishing") {
+    const values = rule.tiers ?? [];
+    return values.length > 0 ? Math.max(...values) : undefined;
+  }
+  return rule.maximumPoints;
+}
+
+/** Shared guardrail for admin, automatic game, QR, and staff-created activity rules. */
+export function scoreRuleBalanceError(rule: ScoreRule): string | undefined {
+  const maximum = maximumRulePoints(rule);
+  if (maximum === undefined || !Number.isInteger(maximum) || maximum < 1) {
+    return "Choose a positive whole-point maximum for this activity";
+  }
+  if (maximum > SCORE_ECONOMY.maximumSingleAward) {
+    return `One result cannot award more than ${SCORE_ECONOMY.maximumSingleAward} points per person`;
+  }
+  return undefined;
+}
+
 export type ScoreActivity = {
   id: string;
   eventSlug: string;

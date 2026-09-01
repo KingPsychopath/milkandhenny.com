@@ -16,6 +16,7 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
   const secondTicket = `01BRZ3NDEK${suffix}`;
   const orderId = `qa-order-${suffix}`;
   const assignmentId = `staff_qa_${suffix}`;
+  const roleId = `role_qa_${suffix}`;
   const activityId = `activity_qa_${suffix}`;
   const checkedActivityId = `activity_checked_${suffix}`;
   const stationToken = `staff_qa_token_${suffix}`;
@@ -66,11 +67,26 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
     ],
   );
   await pool.query(
+    `insert into event_staff_roles
+       (id,event_slug,label,role_preset,permissions,scope,expires_at,created_by)
+     values ($1,$2,'QA points marshal','points-marshal',$3::jsonb,$4::jsonb,
+       now() + interval '1 day','playwright')`,
+    [
+      roleId,
+      eventSlug,
+      JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
+      JSON.stringify({
+        activityIds: [activityId, checkedActivityId],
+        rolePreset: "points-marshal",
+      }),
+    ],
+  );
+  await pool.query(
     `insert into score_staff_assignments
        (id,event_slug,label,assignment_type,token_hash,permissions,scope,status,role_preset,
-        invitation_state)
+        invitation_state,role_id)
      values ($1,$2,'QA points marshal','station',$3,$4::jsonb,$5::jsonb,'active',
-       'points-marshal','active')`,
+       'points-marshal','active',$6)`,
     [
       assignmentId,
       eventSlug,
@@ -80,6 +96,7 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
         activityIds: [activityId, checkedActivityId],
         rolePreset: "points-marshal",
       }),
+      roleId,
     ],
   );
   await pool.query(
@@ -109,15 +126,15 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
     await staff.goto(`/events/${eventSlug}/staff/${stationToken}`);
     await expect(staff.getByRole("heading", { name: "Staff award QA" })).toBeVisible();
     await staff.waitForLoadState("networkidle");
-    await staff.getByPlaceholder("name, alias, or ticket suffix").fill("First guest");
-    await staff.getByRole("button", { name: "search" }).click();
+    await staff.getByPlaceholder("name, alias, or ticket").fill("First guest");
+    await staff.getByRole("button", { name: "find", exact: true }).click();
     const participantResult = staff.getByRole("button", {
-      name: /First guest.*2-ticket order/,
+      name: /First guest.*2 tickets/,
     });
     await expect(participantResult).toBeVisible({ timeout: 15_000 });
     await participantResult.click();
-    await staff.getByRole("button", { name: "all 2 tickets" }).click();
-    await staff.getByRole("button", { name: /Quick bonus.*\+3 each/ }).click();
+    await staff.getByRole("button", { name: "all 2", exact: true }).click();
+    await staff.getByRole("button", { name: /Quick bonus.*\+3/ }).click();
 
     await expect
       .poll(async () => balances(pool, eventSlug))
@@ -138,13 +155,16 @@ test("staff can award a multi-ticket order and an attendee can claim a live QR",
     await expect(attendee.getByText("managed order total: 6 points")).toBeVisible();
 
     await staff.reload();
+    await staff.waitForLoadState("networkidle");
     await staff.getByRole("button", { name: "First guest recent award" }).click();
+    await expect(staff.getByRole("region", { name: "First guest" })).toContainText("3 points");
     await expect(staff.getByRole("region", { name: "First guest" })).toContainText(
-      "3 points · 6 across 2 tickets",
+      "6 across 2 tickets",
     );
 
-    const qrSection = staff.getByRole("region", { name: "Let them scan" });
-    await qrSection.getByRole("button", { name: /Checked-in bonus.*show \+3 QR/ }).click();
+    await staff.getByRole("button", { name: "show a QR" }).click();
+    const qrSection = staff.getByRole("region", { name: "One-use award QR" });
+    await qrSection.getByRole("button", { name: /Checked-in bonus.*\+3/ }).click();
     const claimLink = qrSection.getByRole("link", { name: "open claim link" });
     await expect(claimLink).toBeVisible();
     const claimUrl = await claimLink.getAttribute("href");

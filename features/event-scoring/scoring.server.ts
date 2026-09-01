@@ -20,6 +20,8 @@ import {
   type ScorePosting,
   type ScoreProjection,
   type ScoreRule,
+  SCORE_ECONOMY,
+  scoreRuleBalanceError,
   type ScoreTransaction,
   type ScoringSettings,
   type ScoringState,
@@ -199,9 +201,8 @@ export async function createScoringActivity(input: {
   const event = await getEvent(input.eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
   if (!input.name.trim()) return { ok: false, status: 400, error: "Name the activity" };
-  if (input.rule.mode === "fixed" && (input.rule.fixedPoints ?? 0) <= 0) {
-    return { ok: false, status: 400, error: "A fixed activity needs positive points" };
-  }
+  const balanceError = scoreRuleBalanceError(input.rule);
+  if (balanceError) return { ok: false, status: 400, error: balanceError };
   const activity = await createActivity(input);
   await query(
     `insert into score_audit_events
@@ -225,6 +226,10 @@ export async function updateScoringActivity(input: {
   if (!activity) return { ok: false, status: 404, error: "Activity not found" };
   if (activity.status === "ended" && input.rule) {
     return { ok: false, status: 409, error: "Ended activity rules cannot be changed" };
+  }
+  if (input.rule) {
+    const balanceError = scoreRuleBalanceError(input.rule);
+    if (balanceError) return { ok: false, status: 400, error: balanceError };
   }
   const updated = await updateActivity(input.activityId, input);
   if (!updated) return { ok: false, status: 404, error: "Activity not found" };
@@ -439,6 +444,13 @@ export async function awardPoints(
   const points = input.points ?? convertRulePoints(activity.rule, input);
   if (!Number.isInteger(points) || points <= 0) {
     return { ok: false, status: 400, error: "This result does not award points" };
+  }
+  if (points > SCORE_ECONOMY.maximumSingleAward) {
+    return {
+      ok: false,
+      status: 400,
+      error: `One result cannot award more than ${SCORE_ECONOMY.maximumSingleAward} points per person`,
+    };
   }
   if (input.allowOverride && !input.note?.trim()) {
     return { ok: false, status: 400, error: "An override needs a note" };

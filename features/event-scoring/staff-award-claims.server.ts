@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { awardPoints, type ScoringOperationResult } from "./scoring.server";
-import type { ScoreActivity, ScoreTransaction } from "./types";
+import { SCORE_ECONOMY, type ScoreActivity, type ScoreTransaction } from "./types";
 import type { StoredStaffAssignment } from "./store.server";
 
 type ClaimRow = {
@@ -70,6 +70,13 @@ export async function createStaffAwardClaim(input: {
       : input.activity.rule.fixedPoints);
   if (!Number.isInteger(points) || !points || points < 1) {
     return { ok: false, status: 400, error: "This activity needs a fixed positive QR award" };
+  }
+  if (points > SCORE_ECONOMY.maximumSingleAward) {
+    return {
+      ok: false,
+      status: 400,
+      error: `One QR cannot award more than ${SCORE_ECONOMY.maximumSingleAward} points`,
+    };
   }
   if (input.pointsOverride !== undefined && !input.note?.trim()) {
     return { ok: false, status: 400, error: "A custom QR award needs a reason" };

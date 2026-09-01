@@ -8,11 +8,14 @@ import {
   hasUnresolvedTie,
   identityEvidenceStrength,
   leaderboardNameFor,
+  maximumRulePoints,
   normalizeDiscoveryCode,
   poolAvailable,
   rankScores,
   reconcileCommands,
   reservePoolPoints,
+  scoreRuleBalanceError,
+  SCORE_ECONOMY,
   type ScorePool,
 } from "@/features/event-scoring/types";
 import {
@@ -111,6 +114,23 @@ describe("event scoring rules", () => {
     };
     expect(convertRulePoints(rule, { rawScore: 4 })).toBe(8);
     expect(convertRulePoints({ ...rule, maximumPoints: 5 }, { rawScore: 4 })).toBe(5);
+  });
+
+  it("keeps every configured outcome inside the shared event-night score ceiling", () => {
+    const winner = {
+      mode: "placement" as const,
+      placementPoints: { "1": 10, "2": 5, "3": 3 },
+      repeat: "once-per-source" as const,
+      requiresCheckIn: true,
+    };
+    expect(maximumRulePoints(winner)).toBe(10);
+    expect(scoreRuleBalanceError(winner)).toBeUndefined();
+    expect(
+      scoreRuleBalanceError({
+        ...winner,
+        placementPoints: { "1": SCORE_ECONOMY.maximumSingleAward + 1 },
+      }),
+    ).toContain(`${SCORE_ECONOMY.maximumSingleAward} points`);
   });
 
   it("assigns standard competition ranks while keeping deterministic order", () => {

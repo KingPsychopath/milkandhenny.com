@@ -131,6 +131,7 @@ test("renders score, discovery, and staff links outside the public event page", 
   const suffix = Date.now().toString(36);
   const eventSlug = `score-routes-${suffix}`;
   const token = `staff-route-${suffix}`;
+  const roleId = `staff-route-role-${suffix}`;
   const pool = new Pool({ connectionString: databaseUrl });
 
   await pool.query(
@@ -144,17 +145,30 @@ test("renders score, discovery, and staff links outside the public event page", 
     [eventSlug],
   );
   await pool.query(
+    `insert into event_staff_roles
+       (id,event_slug,label,role_preset,permissions,scope,expires_at,created_by)
+     values ($1,$2,'Route audit station','points-marshal',$3::jsonb,$4::jsonb,
+       now() + interval '1 day','playwright')`,
+    [
+      roleId,
+      eventSlug,
+      JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
+      JSON.stringify({ activityIds: [], rolePreset: "points-marshal" }),
+    ],
+  );
+  await pool.query(
     `insert into score_staff_assignments
        (id,event_slug,label,assignment_type,token_hash,permissions,scope,status,expires_at,
-        role_preset,invitation_state)
+        role_preset,invitation_state,role_id)
      values ($1,$2,'Route audit station','station',$3,$4::jsonb,$5::jsonb,'active',
-       now() + interval '1 day','points-marshal','active')`,
+       now() + interval '1 day','points-marshal','active',$6)`,
     [
       `staff-route-${suffix}`,
       eventSlug,
       createHash("sha256").update(token).digest("hex"),
       JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
       JSON.stringify({ activityIds: [], rolePreset: "points-marshal" }),
+      roleId,
     ],
   );
 
@@ -169,7 +183,7 @@ test("renders score, discovery, and staff links outside the public event page", 
 
     await page.goto(`/events/${eventSlug}/staff/${token}`);
     await expect(page.getByRole("heading", { name: "Route audit event" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Award points" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Award points" })).toHaveCount(0);
     await expect(page.getByText("No assigned activity is accepting results.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
   } finally {

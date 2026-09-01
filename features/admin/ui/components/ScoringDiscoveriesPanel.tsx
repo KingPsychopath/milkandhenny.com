@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EVENT_SCORING_TEMPLATES } from "@/features/event-scoring/templates";
+import { SCORE_ECONOMY } from "@/features/event-scoring/types";
 import type { AdminScoringActivity, ScoringAction, ScoringData } from "./event-scoring-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
@@ -235,6 +236,7 @@ export function ScoringDiscoveriesPanel({
             <input
               type="number"
               min={0}
+              max={SCORE_ECONOMY.maximumSingleAward}
               value={points}
               onChange={(event) => setPoints(Number(event.target.value))}
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
@@ -247,6 +249,7 @@ export function ScoringDiscoveriesPanel({
             <input
               type="number"
               min={0}
+              max={SCORE_ECONOMY.maximumSingleAward}
               value={completionBonus}
               onChange={(event) => setCompletionBonus(Number(event.target.value))}
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
