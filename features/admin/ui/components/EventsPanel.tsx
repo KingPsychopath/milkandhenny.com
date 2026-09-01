@@ -2325,7 +2325,7 @@ function EventOperations({
     { value: "overview", label: "overview" },
     { value: "tickets", label: "tickets" },
     ...(permissions.manageEvents ? [{ value: "waitlist" as const, label: "waitlist" }] : []),
-    ...(permissions.manageEvents ? [{ value: "door" as const, label: "door setup" }] : []),
+    ...(permissions.manageEvents ? [{ value: "door" as const, label: "entry & checkpoints" }] : []),
     ...(permissions.manageCommunications
       ? [{ value: "messages" as const, label: "messages" }]
       : []),

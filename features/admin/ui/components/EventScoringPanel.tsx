@@ -378,6 +378,8 @@ export function EventScoringPanel({
                 <ScoringStaffPanel
                   eventSlug={eventSlug.trim()}
                   activities={data.activities}
+                  checkpoints={data.checkpoints}
+                  roles={data.staffRoles}
                   staff={data.staff}
                   onAction={performAction}
                 />

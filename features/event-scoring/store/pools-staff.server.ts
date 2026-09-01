@@ -9,9 +9,76 @@ import {
   recordObject,
   type ScoreStoreResult,
   type StaffAssignmentRow,
+  type StaffRoleRow,
   type StoredStaffAssignment,
   type StoredStaffDevice,
+  type StoredStaffRole,
 } from "./common.server";
+
+export async function createStaffRole(input: {
+  eventSlug: string;
+  label: string;
+  rolePreset: string;
+  permissions: StaffPermissionSet;
+  scope?: Record<string, unknown>;
+  expiresAt: string;
+  createdBy: string;
+}): Promise<StoredStaffRole> {
+  const row = await queryOne<StaffRoleRow>(
+    `insert into event_staff_roles
+       (id,event_slug,label,role_preset,permissions,scope,expires_at,created_by)
+     values ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8)
+     returning *`,
+    [
+      id("role"),
+      input.eventSlug,
+      input.label.trim(),
+      input.rolePreset,
+      JSON.stringify(input.permissions),
+      JSON.stringify(input.scope ?? {}),
+      input.expiresAt,
+      input.createdBy,
+    ],
+  );
+  if (!row) throw new Error("Staff role could not be created");
+  return toStaffRole(row);
+}
+
+export async function getStaffRole(
+  eventSlug: string,
+  roleId: string,
+): Promise<StoredStaffRole | null> {
+  const row = await queryOne<StaffRoleRow>(
+    `select * from event_staff_roles
+      where id = $1 and event_slug = $2 and status = 'active' and expires_at > now()`,
+    [roleId, eventSlug],
+  );
+  return row ? toStaffRole(row) : null;
+}
+
+export async function listStaffRoles(eventSlug: string): Promise<StoredStaffRole[]> {
+  const rows = await query<StaffRoleRow>(
+    `select * from event_staff_roles where event_slug = $1 order by created_at desc, id`,
+    [eventSlug],
+  );
+  return rows.map(toStaffRole);
+}
+
+function toStaffRole(row: StaffRoleRow): StoredStaffRole {
+  return {
+    id: row.id,
+    eventSlug: row.event_slug,
+    label: row.label,
+    rolePreset: row.role_preset,
+    permissions: recordObject(row.permissions) as unknown as StaffPermissionSet,
+    scope: recordObject(row.scope),
+    expiresAt: row.expires_at.toISOString(),
+    status: row.status === "archived" ? "archived" : "active",
+    createdBy: row.created_by,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
 
 export async function createPool(input: {
   eventSlug: string;
@@ -155,6 +222,9 @@ export async function createStaffAssignment(input: {
   invitationState?: "pending" | "active";
   invitedEmailHash?: string;
   invitationLinkId?: string;
+  roleId: string;
+  invitedEmailHint?: string;
+  invitationDelivery?: "email" | "copy" | "direct" | "station";
 }): Promise<StoredStaffAssignment> {
   return transaction((client) => createStaffAssignmentInTransaction(client, input));
 }
@@ -174,6 +244,9 @@ export async function createStaffAssignmentInTransaction(
     invitationState?: "pending" | "active";
     invitedEmailHash?: string;
     invitationLinkId?: string;
+    roleId: string;
+    invitedEmailHint?: string;
+    invitationDelivery?: "email" | "copy" | "direct" | "station";
   },
 ): Promise<StoredStaffAssignment> {
   if (input.assignmentType === "personal" && !input.personId)
@@ -183,9 +256,10 @@ export async function createStaffAssignmentInTransaction(
   const result = await client.query<StaffAssignmentRow>(
     `insert into score_staff_assignments
          (id,event_slug,person_id,label,assignment_type,token_hash,permissions,scope,expires_at,
-          role_preset,invitation_state,invited_email_hash,invitation_link_id,activated_at)
+          role_preset,invitation_state,invited_email_hash,invitation_link_id,activated_at,
+          role_id,invited_email_hint,invitation_delivery)
        values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,
-               case when $11 = 'active' then now() else null end)
+               case when $11 = 'active' then now() else null end,$14,$15,$16)
        returning *`,
     [
       id("staff"),
@@ -201,6 +275,9 @@ export async function createStaffAssignmentInTransaction(
       input.invitationState ?? "active",
       input.invitedEmailHash ?? null,
       input.invitationLinkId ?? null,
+      input.roleId,
+      input.invitedEmailHint ?? null,
+      input.invitationDelivery ?? (input.assignmentType === "station" ? "station" : "email"),
     ],
   );
   const row = result.rows[0] ?? null;
@@ -210,8 +287,19 @@ export async function createStaffAssignmentInTransaction(
 
 export async function listStaffAssignments(eventSlug: string): Promise<StoredStaffAssignment[]> {
   const rows = await query<StaffAssignmentRow>(
-    `select * from score_staff_assignments
-      where event_slug = $1 order by created_at desc, id`,
+    `select assignments.*,
+            coalesce(assignments.invited_email_hint, identity.display_hint) as assigned_email_hint,
+            people.canonical_name as person_name
+       from score_staff_assignments assignments
+       left join event_people people on people.id = assignments.person_id
+       left join lateral (
+         select identifiers.display_hint
+           from event_person_identifiers identifiers
+          where identifiers.person_id = assignments.person_id
+            and identifiers.kind = 'email' and identifiers.verified_at is not null
+          order by identifiers.verified_at desc, identifiers.id limit 1
+       ) identity on true
+      where assignments.event_slug = $1 order by assignments.created_at desc, assignments.id`,
     [eventSlug],
   );
   return rows.map(toStaffAssignment);
@@ -239,6 +327,16 @@ function toStaffAssignment(row: StaffAssignmentRow): StoredStaffAssignment {
         : "active",
     activatedAt: iso(row.activated_at ?? null),
     lastUsedAt: iso(row.last_used_at ?? null),
+    roleId: row.role_id,
+    invitedEmailHint: row.invited_email_hint ?? undefined,
+    invitationDelivery:
+      row.invitation_delivery === "copy" ||
+      row.invitation_delivery === "direct" ||
+      row.invitation_delivery === "station"
+        ? row.invitation_delivery
+        : "email",
+    assignedEmailHint: row.assigned_email_hint ?? undefined,
+    personName: row.person_name ?? undefined,
   };
 }
 
@@ -278,6 +376,27 @@ export async function resolvePersonalStaffAssignment(
   if (!row || row.status !== "active" || (row.expires_at && row.expires_at <= new Date()))
     return null;
   return toStaffAssignment(row);
+}
+
+export async function resolvePersonalStaffAssignments(
+  eventSlug: string,
+  personId: string,
+): Promise<StoredStaffAssignment[]> {
+  const rows = await query<StaffAssignmentRow>(
+    `update score_staff_assignments
+        set status = case when expires_at is not null and expires_at <= now() then 'expired' else status end,
+            invitation_state = case
+              when expires_at is not null and expires_at <= now() then 'expired'
+              else invitation_state end,
+            last_used_at = now()
+      where event_slug = $1 and person_id = $2 and assignment_type = 'personal'
+        and invitation_state = 'active'
+      returning *`,
+    [eventSlug, personId],
+  );
+  return rows
+    .filter((row) => row.status === "active" && (!row.expires_at || row.expires_at > new Date()))
+    .map(toStaffAssignment);
 }
 
 export async function revokeStaffAssignment(

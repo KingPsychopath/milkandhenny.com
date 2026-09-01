@@ -26,6 +26,8 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     setRecipientScope,
     scanned,
     setScanned,
+    checkpointId,
+    setCheckpointId,
     placement,
     setPlacement,
     rawScore,
@@ -82,6 +84,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
     prepareOffline,
     resolveScan,
     admit,
+    scanCheckpoint,
     reverse,
     submitGuest,
     decideGuest,
@@ -111,7 +114,7 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
         <p className="mt-2 font-mono text-xs theme-muted">{data.label}</p>
       </header>
 
-      {(data.canAdmit || data.canAward || data.canManageTeams) && (
+      {(data.canAdmit || data.canScanCheckpoints || data.canAward || data.canManageTeams) && (
         <nav
           aria-label="Staff operation"
           className="mt-8 flex flex-wrap gap-3 border-y theme-border py-3"
@@ -124,6 +127,16 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
               className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
             >
               Admit guests
+            </button>
+          )}
+          {data.canScanCheckpoints && data.checkpoints.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setOperation("checkpoint")}
+              aria-pressed={operation === "checkpoint"}
+              className="min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+            >
+              Checkpoints
             </button>
           )}
           {data.canRun && data.canAward && (
@@ -205,9 +218,12 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
           <h2 id="admit-heading" className="font-serif text-2xl">
             Scan and admit
           </h2>
-          <p className="mt-2 font-mono text-xs theme-muted">
-            This action admits one ticket. It does not award an unrelated activity.
-          </p>
+          <div className="mt-3 border-l-2 border-[var(--prose-hashtag)] pl-4">
+            <p className="font-mono text-xs text-foreground">ENTRY MODE · checks the guest in</p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              It does not consume food, merch, or another checkpoint allowance.
+            </p>
+          </div>
           <div className="mt-5 flex gap-2">
             <label htmlFor="staff-admit-ticket" className="sr-only">
               Ticket code
@@ -252,6 +268,83 @@ export function StaffScoringPage({ data, token }: { data: PageData; token: strin
           )}
           {status && (
             <StatusNotice tone="positive" label="Admission confirmed" className="mt-4">
+              {status}
+            </StatusNotice>
+          )}
+        </section>
+      )}
+
+      {data.canScanCheckpoints && operation === "checkpoint" && data.checkpoints.length > 0 && (
+        <section aria-labelledby="checkpoint-heading" className="mt-10 border-t theme-border pt-7">
+          <h2 id="checkpoint-heading" className="font-serif text-2xl">
+            Scan a checkpoint
+          </h2>
+          <div className="mt-3 border-l-2 border-[var(--prose-hashtag)] pl-4">
+            <p className="font-mono text-xs text-foreground">
+              CHECKPOINT MODE · consumes one named allowance
+            </p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              This never checks a guest in at the door. Confirm the station below before scanning.
+            </p>
+          </div>
+          <label className="mt-5 block font-mono text-xs">
+            active station
+            <AppSelect
+              value={checkpointId}
+              onValueChange={setCheckpointId}
+              options={data.checkpoints.map((checkpoint) => ({
+                value: checkpoint.id,
+                label: `${checkpoint.name} — uses 1 allowance`,
+              }))}
+              variant="field"
+              ariaLabel="Active checkpoint"
+              className="mt-2"
+            />
+          </label>
+          <div className="mt-5 flex gap-2">
+            <label htmlFor="staff-checkpoint-ticket" className="sr-only">
+              Ticket code
+            </label>
+            <input
+              id="staff-checkpoint-ticket"
+              value={scanned}
+              onChange={(event) => setScanned(event.target.value)}
+              className="min-h-11 min-w-0 flex-1 border theme-border bg-transparent px-3"
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void scanCheckpoint()}
+              className="min-h-11 border border-foreground px-4 font-mono text-xs hover:opacity-70 disabled:opacity-50"
+            >
+              use 1
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCameraOpen((value) => !value)}
+            className="mt-3 min-h-11 border theme-border px-4 font-mono text-xs hover:opacity-70"
+          >
+            {cameraOpen ? "close camera" : "scan with camera"}
+          </button>
+          {cameraOpen && (
+            <div className="mt-3 max-w-sm">
+              <CameraFeed
+                paused={busy}
+                onCode={(raw) => {
+                  setScanned(raw);
+                  void scanCheckpoint(raw);
+                }}
+              />
+            </div>
+          )}
+          {error && (
+            <StatusNotice tone="danger" label="Checkpoint not used" className="mt-4">
+              {error}
+            </StatusNotice>
+          )}
+          {status && (
+            <StatusNotice tone="positive" label="Allowance recorded" className="mt-4">
               {status}
             </StatusNotice>
           )}

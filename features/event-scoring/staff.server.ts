@@ -10,9 +10,10 @@ import { ensurePendingInvitedPerson } from "@/features/attendee-operations/invit
 import { requireIdentityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import { emitDomainEvent } from "@/features/attendee-operations/notifications.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getEvent } from "@/features/events/store.server";
 import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { sendEmail } from "@/lib/platform/email.server";
-import { query } from "@/lib/platform/postgres.server";
+import { query, queryOne } from "@/lib/platform/postgres.server";
 import { transaction } from "@/lib/platform/postgres.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
@@ -20,14 +21,17 @@ import { escapeEmailHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import {
   createStaffAssignment,
   createStaffAssignmentInTransaction,
+  createStaffRole,
+  getStaffRole,
   createPool,
   adjustPool,
   recordStaffDevice,
   resolveStaffAssignment,
-  resolvePersonalStaffAssignment,
+  resolvePersonalStaffAssignments,
   revokeStaffAssignment,
   revokeStaffDevice as revokeStoredStaffDevice,
   type StoredStaffAssignment,
+  type StoredStaffRole,
 } from "./store.server";
 import {
   STAFF_PERMISSIONS,
@@ -38,6 +42,7 @@ import {
 
 export const STAFF_PRESETS = {
   "door-scanner": ["admitTickets"] as const,
+  "checkpoint-scanner": ["scanCheckpoints"] as const,
   "door-manager": ["admitTickets", "requestGuests", "addGuests", "approveRequests"] as const,
   "game-moderator": [
     "runActivities",
@@ -94,9 +99,104 @@ export function permissionsForPreset(
 
 export type StaffAccess = StoredStaffAssignment & {
   token?: string;
+  actionUrl?: string;
   invitedEmailHint?: string;
   emailQueued?: boolean;
 };
+
+export type StaffInviteDelivery = "email" | "copy" | "direct" | "station";
+
+async function validateRoleScope(eventSlug: string, scope: Record<string, unknown> = {}) {
+  for (const key of ["activityIds", "checkpointIds"] as const) {
+    const value = scope[key];
+    if (
+      value !== undefined &&
+      (!Array.isArray(value) || value.some((entry) => typeof entry !== "string"))
+    )
+      throw new Error(`${key} must be a list of identifiers`);
+  }
+  const activityIds = (scope.activityIds as string[] | undefined) ?? [];
+  const checkpointIds = (scope.checkpointIds as string[] | undefined) ?? [];
+  if (activityIds.length > 0) {
+    const rows = await query<{ id: string }>(
+      `select id from score_activities where event_slug = $1 and id = any($2::text[])`,
+      [eventSlug, activityIds],
+    );
+    if (new Set(rows.map((row) => row.id)).size !== new Set(activityIds).size)
+      throw new Error("One or more scoped activities do not belong to this event");
+  }
+  if (checkpointIds.length > 0) {
+    const rows = await query<{ id: string }>(
+      `select id from checkpoints where event_slug = $1 and id = any($2::text[])`,
+      [eventSlug, checkpointIds],
+    );
+    if (new Set(rows.map((row) => row.id)).size !== new Set(checkpointIds).size)
+      throw new Error("One or more scoped checkpoints do not belong to this event");
+  }
+}
+
+async function eventStaffExpiry(eventSlug: string, requested?: string): Promise<string> {
+  const requestedExpiry = requested ? new Date(requested) : null;
+  if (
+    requestedExpiry &&
+    (!Number.isFinite(requestedExpiry.getTime()) || requestedExpiry <= new Date())
+  )
+    throw new Error("Staff access expiry must be in the future");
+  const event = await getEvent(eventSlug);
+  if (!event) throw new Error("Event not found");
+  const fallbackEnd = new Date(Date.parse(event.startsAt) + 12 * 60 * 60_000);
+  const eventEnd = new Date(event.endsAt ?? fallbackEnd.toISOString());
+  if (!Number.isFinite(eventEnd.getTime())) throw new Error("Event end time is invalid");
+  const expiry = requestedExpiry ?? eventEnd;
+  if (!Number.isFinite(expiry.getTime()) || expiry <= new Date())
+    throw new Error("Staff access expiry must be in the future");
+  if (expiry > eventEnd) throw new Error("Event staff access cannot continue beyond the event end");
+  return expiry.toISOString();
+}
+
+export async function createEventStaffRole(input: {
+  eventSlug: string;
+  label: string;
+  preset: StaffPreset;
+  overrides?: Partial<StaffPermissionSet>;
+  scope?: Record<string, unknown>;
+  expiresAt?: string;
+  actorId: string;
+  reason: string;
+}): Promise<StoredStaffRole> {
+  if (!input.reason.trim()) throw new Error("A reason is required for a staff role");
+  if (!input.label.trim()) throw new Error("A role name is required");
+  await validateRoleScope(input.eventSlug, input.scope);
+  const expiresAt = await eventStaffExpiry(input.eventSlug, input.expiresAt);
+  const duplicate = await queryOne<{ id: string }>(
+    `select id from event_staff_roles
+      where event_slug = $1 and lower(label) = lower($2) and status = 'active'`,
+    [input.eventSlug, input.label.trim()],
+  );
+  if (duplicate) throw new Error("A role with that name already exists for this event");
+  const role = await createStaffRole({
+    eventSlug: input.eventSlug,
+    label: input.label,
+    rolePreset: input.preset,
+    permissions: permissionsForPreset(input.preset, input.overrides),
+    scope: { ...input.scope, rolePreset: input.preset },
+    expiresAt,
+    createdBy: input.actorId,
+  });
+  await query(
+    `insert into attendee_operations_audit_events
+       (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason)
+     values ('staff.role.created','admin',$1,$2,'staff-role',$3,null,$4::jsonb,$5)`,
+    [
+      input.actorId,
+      input.eventSlug,
+      role.id,
+      JSON.stringify({ label: role.label, rolePreset: role.rolePreset, expiresAt }),
+      input.reason.trim(),
+    ],
+  );
+  return role;
+}
 
 function staffInvitationEmail(input: {
   origin: string;
@@ -132,40 +232,33 @@ function staffInvitationEmail(input: {
   };
 }
 
-export async function createStaffAccess(input: {
+export async function assignEventStaffRole(input: {
   eventSlug: string;
-  label: string;
-  assignmentType: StaffAssignmentType;
-  preset: StaffPreset;
-  overrides?: Partial<StaffPermissionSet>;
-  scope?: Record<string, unknown>;
-  expiresAt?: string;
+  roleId: string;
+  delivery: StaffInviteDelivery;
   actorId: string;
   reason: string;
   recipientEmail?: string;
   origin?: string;
 }): Promise<StaffAccess> {
   if (!input.reason.trim()) throw new Error("A reason is required for staff access");
-  const permissions = permissionsForPreset(input.preset, input.overrides);
-  const requestedExpiry = input.expiresAt ? new Date(input.expiresAt) : null;
-  if (
-    requestedExpiry &&
-    (!Number.isFinite(requestedExpiry.getTime()) || requestedExpiry <= new Date())
-  ) {
-    throw new Error("Staff access expiry must be in the future");
-  }
-  if (input.assignmentType === "station") {
+  const role = await getStaffRole(input.eventSlug, input.roleId);
+  if (!role) throw new Error("That staff role is unavailable or expired");
+
+  if (input.delivery === "station") {
     const token = `staff_${randomBytes(24).toString("base64url")}`;
     const assignment = await createStaffAssignment({
       eventSlug: input.eventSlug,
-      label: input.label,
+      label: role.label,
       assignmentType: "station",
       token,
-      permissions,
-      scope: { ...input.scope, rolePreset: input.preset },
-      expiresAt: requestedExpiry?.toISOString(),
-      rolePreset: input.preset,
+      permissions: role.permissions,
+      scope: role.scope,
+      expiresAt: role.expiresAt,
+      rolePreset: role.rolePreset,
       invitationState: "active",
+      roleId: role.id,
+      invitationDelivery: "station",
     });
     await query(
       `insert into score_audit_events
@@ -175,7 +268,7 @@ export async function createStaffAccess(input: {
         input.eventSlug,
         input.actorId,
         assignment.id,
-        JSON.stringify({ assignmentType: "station", label: input.label, preset: input.preset }),
+        JSON.stringify({ assignmentType: "station", label: role.label, roleId: role.id }),
       ],
     );
     await query(
@@ -189,7 +282,8 @@ export async function createStaffAccess(input: {
         JSON.stringify({
           status: "active",
           assignmentType: "station",
-          rolePreset: input.preset,
+          rolePreset: role.rolePreset,
+          roleId: role.id,
         }),
         input.reason.trim(),
       ],
@@ -199,25 +293,74 @@ export async function createStaffAccess(input: {
 
   if (!input.recipientEmail || !isValidEmail(input.recipientEmail))
     throw new Error("Personal staff access requires a valid recipient email");
+  const recipient = normaliseEmail(input.recipientEmail);
+  await requireIdentityMayAcquire(
+    recipient,
+    "This identity cannot receive new staff permissions. Existing access is unchanged.",
+  );
+  const recipientHash = actionEmailHash(recipient);
+  const recipientHint = maskActionEmail(recipient);
+
+  if (input.delivery === "direct") {
+    const identity = await queryOne<{ person_id: string }>(
+      `select person_id from event_person_identifiers
+        where kind = 'email' and value_hash = $1 and verified_at is not null`,
+      [recipientHash],
+    );
+    if (!identity) throw new Error("Direct assignment requires an existing verified identity");
+    const existing = await queryOne<{ id: string }>(
+      `select id from score_staff_assignments
+        where role_id = $1 and person_id = $2 and status in ('active','paused')
+          and invitation_state in ('pending','active')`,
+      [role.id, identity.person_id],
+    );
+    if (existing) throw new Error("That person already has this role");
+    const assignment = await createStaffAssignment({
+      eventSlug: input.eventSlug,
+      label: role.label,
+      assignmentType: "personal",
+      personId: identity.person_id,
+      permissions: role.permissions,
+      scope: role.scope,
+      expiresAt: role.expiresAt,
+      rolePreset: role.rolePreset,
+      invitationState: "active",
+      invitedEmailHash: recipientHash,
+      roleId: role.id,
+      invitedEmailHint: recipientHint,
+      invitationDelivery: "direct",
+    });
+    await query(
+      `insert into attendee_operations_audit_events
+         (action,actor_type,actor_id,event_slug,entity_type,entity_id,before_state,after_state,reason)
+       values ('staff.assignment.direct','admin',$1,$2,'staff-assignment',$3,null,$4::jsonb,$5)`,
+      [
+        input.actorId,
+        input.eventSlug,
+        assignment.id,
+        JSON.stringify({ roleId: role.id, personId: identity.person_id }),
+        input.reason.trim(),
+      ],
+    );
+    return { ...assignment, invitedEmailHint: recipientHint };
+  }
+
+  if (input.delivery !== "email" && input.delivery !== "copy")
+    throw new Error("Choose email, copy link, direct identity, or shared station access");
   const appOrigin =
     input.origin?.trim() ||
     process.env.APP_BASE_URL?.trim() ||
     process.env.VITE_BASE_URL?.trim() ||
     "";
   if (!appOrigin) throw new Error("Application URL is not configured");
-  const recipient = normaliseEmail(input.recipientEmail);
-  await requireIdentityMayAcquire(
-    recipient,
-    "This identity cannot receive new staff permissions. Existing access is unchanged.",
-  );
-  const expiresAt = requestedExpiry ?? new Date(Date.now() + 72 * 60 * 60_000);
+  const expiresAt = new Date(role.expiresAt);
 
   const created = await transaction(async (client) => {
     const invited = await ensurePendingInvitedPerson(client, {
-      emailHash: actionEmailHash(recipient),
-      emailHint: maskActionEmail(recipient),
+      emailHash: recipientHash,
+      emailHint: recipientHint,
       emailAddress: recipient,
-      canonicalName: input.label,
+      canonicalName: role.label,
     });
     const previous = await client.query<{
       id: string;
@@ -225,12 +368,12 @@ export async function createStaffAccess(input: {
       invitation_state: string;
     }>(
       `select id,invitation_link_id,invitation_state from score_staff_assignments
-        where event_slug = $1 and person_id = $2 and status = 'active'
+        where role_id = $1 and person_id = $2 and status = 'active'
           and invitation_state in ('pending','active') for update`,
-      [input.eventSlug, invited.personId],
+      [role.id, invited.personId],
     );
     if (previous.rows.some((row) => row.invitation_state === "active"))
-      throw new Error("That person already has active staff access for this event");
+      throw new Error("That person already has this role");
     for (const row of previous.rows) {
       await client.query(
         `update score_staff_assignments
@@ -247,22 +390,26 @@ export async function createStaffAccess(input: {
       intendedEmail: recipient,
       entityType: "staff-assignment",
       entityId: temporaryId,
+      payload: { delivery: input.delivery, roleId: role.id },
       issuedByType: "admin",
       issuedById: input.actorId,
       expiresAt,
     });
     const assignment = await createStaffAssignmentInTransaction(client, {
       eventSlug: input.eventSlug,
-      label: input.label,
+      label: role.label,
       assignmentType: "personal",
       personId: invited.personId,
-      permissions,
-      scope: { ...input.scope, rolePreset: input.preset },
+      permissions: role.permissions,
+      scope: role.scope,
       expiresAt: expiresAt.toISOString(),
-      rolePreset: input.preset,
+      rolePreset: role.rolePreset,
       invitationState: "pending",
-      invitedEmailHash: actionEmailHash(recipient),
+      invitedEmailHash: recipientHash,
       invitationLinkId: link.id,
+      roleId: role.id,
+      invitedEmailHint: recipientHint,
+      invitationDelivery: input.delivery,
     });
     await client.query(`update attendee_action_links set entity_id = $2 where id = $1`, [
       link.id,
@@ -279,7 +426,9 @@ export async function createStaffAccess(input: {
         JSON.stringify({
           invitationState: "pending",
           personId: invited.personId,
-          rolePreset: input.preset,
+          rolePreset: role.rolePreset,
+          roleId: role.id,
+          delivery: input.delivery,
         }),
         input.reason.trim(),
       ],
@@ -290,27 +439,30 @@ export async function createStaffAccess(input: {
   const rendered = staffInvitationEmail({
     origin: appOrigin,
     eventSlug: input.eventSlug,
-    label: input.label,
+    label: role.label,
     recipient,
     token: created.token,
     expiresAt,
   });
-  const delivery = await sendEmail(
-    {
-      channel: "access",
-      to: recipient,
-      subject: `Event staff access — ${input.eventSlug}`,
-      text: rendered.text,
-      html: rendered.html,
-    },
-    {
-      idempotencyKey: `staff-access:${created.assignment.id}`,
-      kind: "staff-access",
-      source: "admin",
-      context: { eventSlug: input.eventSlug, staffAssignmentId: created.assignment.id },
-    },
-  );
-  if (!delivery.ok) {
+  const delivery =
+    input.delivery === "email"
+      ? await sendEmail(
+          {
+            channel: "access",
+            to: recipient,
+            subject: `Event staff access — ${input.eventSlug}`,
+            text: rendered.text,
+            html: rendered.html,
+          },
+          {
+            idempotencyKey: `staff-access:${created.assignment.id}`,
+            kind: "staff-access",
+            source: "admin",
+            context: { eventSlug: input.eventSlug, staffAssignmentId: created.assignment.id },
+          },
+        )
+      : null;
+  if (delivery && !delivery.ok) {
     await emitDomainEvent({
       kind: "staff.invitation_email_failed",
       deduplicationKey: `staff-assignment:${created.assignment.id}:email-failed`,
@@ -329,29 +481,89 @@ export async function createStaffAccess(input: {
   }
   return {
     ...created.assignment,
-    invitedEmailHint: maskActionEmail(recipient),
-    emailQueued: delivery.ok,
+    token: input.delivery === "copy" ? created.token : undefined,
+    actionUrl: input.delivery === "copy" ? rendered.actionUrl : undefined,
+    invitedEmailHint: recipientHint,
+    emailQueued: delivery?.ok,
   };
 }
+
+export async function createStaffAccess(input: {
+  eventSlug: string;
+  label: string;
+  assignmentType: StaffAssignmentType;
+  preset: StaffPreset;
+  overrides?: Partial<StaffPermissionSet>;
+  scope?: Record<string, unknown>;
+  expiresAt?: string;
+  actorId: string;
+  reason: string;
+  recipientEmail?: string;
+  origin?: string;
+}): Promise<StaffAccess> {
+  const role = await createEventStaffRole(input);
+  return assignEventStaffRole({
+    eventSlug: input.eventSlug,
+    roleId: role.id,
+    delivery: input.assignmentType === "station" ? "station" : "email",
+    actorId: input.actorId,
+    reason: input.reason,
+    recipientEmail: input.recipientEmail,
+    origin: input.origin,
+  });
+}
+
+export type ResolvedStaffAccess = StoredStaffAssignment & {
+  assignments: StoredStaffAssignment[];
+};
 
 export async function resolveStaffAccess(input: {
   eventSlug: string;
   token: string;
   deviceId?: string;
-}): Promise<StoredStaffAssignment | null> {
-  const assignment =
+}): Promise<ResolvedStaffAccess | null> {
+  const assignments =
     input.token === "personal"
       ? await (async () => {
           const session = await getAttendeeSession();
           return session?.personId
-            ? resolvePersonalStaffAssignment(input.eventSlug, session.personId)
-            : null;
+            ? resolvePersonalStaffAssignments(input.eventSlug, session.personId)
+            : [];
         })()
-      : await resolveStaffAssignment(input.eventSlug, input.token);
-  if (assignment && input.deviceId && !(await recordStaffDevice(assignment.id, input.deviceId))) {
-    return null;
+      : await (async () => {
+          const assignment = await resolveStaffAssignment(input.eventSlug, input.token);
+          return assignment ? [assignment] : [];
+        })();
+  if (assignments.length === 0) return null;
+  if (input.deviceId) {
+    const deviceId = input.deviceId;
+    const active = (
+      await Promise.all(
+        assignments.map(async (assignment) =>
+          (await recordStaffDevice(assignment.id, deviceId)) ? assignment : null,
+        ),
+      )
+    ).filter((assignment): assignment is StoredStaffAssignment => assignment !== null);
+    return active[0] ? { ...active[0], assignments: active } : null;
   }
-  return assignment;
+  return { ...assignments[0]!, assignments };
+}
+
+/**
+ * Choose one complete grant for an action. Never merge a permission from one
+ * role with the scope from another: that would turn two narrow roles into an
+ * unintended broad role.
+ */
+export function staffAssignmentForPermission(
+  access: ResolvedStaffAccess | null,
+  permission: StaffPermission,
+  accepts: (assignment: StoredStaffAssignment) => boolean = () => true,
+): StoredStaffAssignment | null {
+  return (
+    access?.assignments.find(
+      (assignment) => hasStaffPermission(assignment, permission) && accepts(assignment),
+    ) ?? null
+  );
 }
 
 export function hasStaffPermission(

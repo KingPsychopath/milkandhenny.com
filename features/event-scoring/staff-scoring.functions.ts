@@ -11,6 +11,7 @@ import {
   getStaffScoringPage,
   mintStaffAwardClaim,
   reverseStaffAward,
+  scanStaffCheckpoint,
   resolveStaffScannedParticipant,
   searchStaffParticipants,
   shuffleStaffTeams,
@@ -115,6 +116,12 @@ export const mintStaffAwardClaimFn = createServerFn({ method: "POST" })
 export const admitStaffTicketFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; scanned: string }) => data)
   .handler(({ data }) => admitStaffTicket({ ...data, deviceId: ensureDeviceId() }));
+
+export const scanStaffCheckpointFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: { eventSlug: string; token: string; checkpointId: string; scanned: string }) => data,
+  )
+  .handler(({ data }) => scanStaffCheckpoint({ ...data, deviceId: ensureDeviceId() }));
 
 export const shuffleStaffTeamsFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; teamCount: number }) => data)

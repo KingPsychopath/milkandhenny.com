@@ -8,6 +8,7 @@ import {
   decideStaffGuestRequestFn,
   reconcileOfflineScoreCommandsFn,
   reserveOfflineScoreBudgetFn,
+  scanStaffCheckpointFn,
   reverseStaffAwardFn,
   resolveStaffScannedParticipantFn,
   searchStaffParticipantsFn,
@@ -36,6 +37,7 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [recipientScope, setRecipientScope] = useState<"participant" | "order">("participant");
   const [scanned, setScanned] = useState("");
+  const [checkpointId, setCheckpointId] = useState(data.checkpoints[0]?.id ?? "");
   const [placement, setPlacement] = useState(1);
   const [rawScore, setRawScore] = useState(0);
   const [note, setNote] = useState("");
@@ -56,14 +58,16 @@ export function useStaffScoringController(data: PageData, token: string) {
   const [mediaConsent, setMediaConsent] = useState<
     "not-requested" | "requested" | "obtained" | "declined"
   >(data.photoConsentPolicy === "required" ? "obtained" : "requested");
-  const [operation, setOperation] = useState<"admit" | "run" | "award" | "teams">(
+  const [operation, setOperation] = useState<"admit" | "checkpoint" | "run" | "award" | "teams">(
     data.canAdmit
       ? "admit"
-      : data.canRun && data.canAward
-        ? "run"
-        : data.canAward
-          ? "award"
-          : "teams",
+      : data.canScanCheckpoints
+        ? "checkpoint"
+        : data.canRun && data.canAward
+          ? "run"
+          : data.canAward
+            ? "award"
+            : "teams",
   );
   const [recentAwards, setRecentAwards] = useState(data.recentAwards);
   const [offlineReservation, setOfflineReservation] = useState<OfflineReservation>();
@@ -353,6 +357,34 @@ export function useStaffScoringController(data: PageData, token: string) {
     setCameraOpen(false);
   }
 
+  async function scanCheckpoint(raw = scanned) {
+    if (!raw.trim() || !checkpointId) {
+      setError("Choose a checkpoint and scan a ticket first.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setStatus("");
+    const result = await scanStaffCheckpointFn({
+      data: { eventSlug: data.eventSlug, token, checkpointId, scanned: raw },
+    });
+    setBusy(false);
+    if (!result.ok) return setError(result.error);
+    const outcome = result.value;
+    if (outcome.result === "consumed") {
+      setStatus(
+        `${outcome.ticket.holderName}: ${outcome.consumed} used, ${Math.max(0, outcome.ticket.allowance - outcome.ticket.used)} left.`,
+      );
+    } else if (outcome.result === "exhausted") setError("That ticket has no allowance left here.");
+    else if (outcome.result === "wrong-event") setError("That ticket belongs to another event.");
+    else if (outcome.result === "void") setError("That ticket is not active.");
+    else if (outcome.result === "unknown-checkpoint")
+      setError("This checkpoint is no longer available.");
+    else setError("That ticket could not be used at this checkpoint.");
+    setScanned("");
+    setCameraOpen(false);
+  }
+
   async function reverse(transactionId: string) {
     const reason = window.prompt("Why are you undoing this award?");
     if (!reason?.trim()) return;
@@ -459,6 +491,8 @@ export function useStaffScoringController(data: PageData, token: string) {
     setRecipientScope,
     scanned,
     setScanned,
+    checkpointId,
+    setCheckpointId,
     placement,
     setPlacement,
     rawScore,
@@ -522,6 +556,7 @@ export function useStaffScoringController(data: PageData, token: string) {
     prepareOffline,
     resolveScan,
     admit,
+    scanCheckpoint,
     reverse,
     submitGuest,
     decideGuest,

@@ -3666,6 +3666,80 @@ const MIGRATIONS: Migration[] = [
         on event_icebreaker_encounters (event_slug, participant_b_id);
     `,
   },
+  {
+    id: "0079_event_staff_roles",
+    sql: `
+      create table if not exists event_staff_roles (
+        id              text primary key,
+        event_slug      text not null references events (slug)
+                        on update cascade on delete restrict,
+        label           text not null check (char_length(label) between 1 and 120),
+        role_preset     text not null,
+        permissions     jsonb not null default '{}'::jsonb,
+        scope           jsonb not null default '{}'::jsonb,
+        expires_at      timestamptz not null,
+        status          text not null default 'active'
+                        check (status in ('active','archived')),
+        created_by      text not null,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now()
+      );
+
+      create unique index if not exists event_staff_roles_active_label_idx
+        on event_staff_roles (event_slug, lower(label)) where status = 'active';
+      create index if not exists event_staff_roles_event_idx
+        on event_staff_roles (event_slug, status, created_at, id);
+
+      alter table score_staff_assignments
+        add column if not exists role_id text references event_staff_roles (id) on delete restrict,
+        add column if not exists invited_email_hint text,
+        add column if not exists invitation_delivery text not null default 'email'
+          check (invitation_delivery in ('email','copy','direct','station'));
+
+      with ranked_assignments as (
+        select assignments.*, events.ends_at as event_ends_at, events.starts_at as event_starts_at,
+               row_number() over (
+                 partition by assignments.event_slug, lower(assignments.label)
+                 order by assignments.created_at, assignments.id
+               ) as label_number
+          from score_staff_assignments assignments
+          join events on events.slug = assignments.event_slug
+      )
+      insert into event_staff_roles
+        (id,event_slug,label,role_preset,permissions,scope,expires_at,status,created_by,created_at)
+      select
+        'role_' || substr(md5(assignments.id || ':role'), 1, 24),
+        assignments.event_slug,
+        case when assignments.label_number = 1 then assignments.label
+             else left(assignments.label, 112) || ' ' || assignments.label_number end,
+        coalesce(assignments.role_preset, assignments.assignment_type),
+        assignments.permissions,
+        assignments.scope,
+        coalesce(assignments.expires_at, assignments.event_ends_at,
+                 assignments.event_starts_at + interval '12 hours'),
+        case when assignments.status in ('active','paused') then 'active' else 'archived' end,
+        'migration',
+        assignments.created_at
+      from ranked_assignments assignments
+      on conflict (id) do nothing;
+
+      update score_staff_assignments assignments
+         set role_id = 'role_' || substr(md5(assignments.id || ':role'), 1, 24),
+             invitation_delivery = case
+               when assignments.assignment_type = 'station' then 'station'
+               else 'email'
+             end;
+
+      alter table score_staff_assignments alter column role_id set not null;
+
+      create unique index if not exists score_staff_assignments_active_role_person_idx
+        on score_staff_assignments (role_id, person_id)
+        where assignment_type = 'personal'
+          and person_id is not null
+          and status in ('active','paused')
+          and invitation_state in ('pending','active');
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

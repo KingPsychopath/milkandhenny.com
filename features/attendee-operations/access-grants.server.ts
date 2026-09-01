@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { establishEmailAuthenticatedSession } from "@/features/attendee-access/email-authentication.server";
+import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { sendEmail } from "@/lib/platform/email.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
@@ -314,6 +315,17 @@ export async function acceptAccessAction(token: string): Promise<
   }>
 > {
   try {
+    const preview = await inspectActionLink(token);
+    if (preview?.purpose === "staff-invitation" && preview.payload.delivery === "copy") {
+      const session = await getAttendeeSession().catch(() => null);
+      if (session?.verifiedEmailHash !== preview.intendedEmailHash) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Sign in with the invited email before accepting this copied link.",
+        };
+      }
+    }
     const consumed = await consumeActionLink(token, async (client, link) => {
       if (link.purpose !== "admin-invitation" && link.purpose !== "staff-invitation")
         throw new AccessGrantError(400, "This link is for a different action");

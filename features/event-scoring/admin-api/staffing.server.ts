@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+
 import { createTeam, setTeamMembership, shuffleCheckedInTeams } from "../store.server";
 import { IdentityAcquisitionRestrictedError } from "@/features/attendee-operations/identity-policy.server";
 import {
@@ -9,10 +11,13 @@ import {
   type StaffPreset,
 } from "../staff.server";
 import { STAFF_PERMISSIONS } from "../types";
+import { StaffAccessService } from "../staff-access-service.server";
+import { runStaffAccessResult } from "../staff-access-runtime.server";
 import { resultResponse, stringValue, type AdminScoringActionHandlers } from "./shared";
 
 const STAFF_PRESETS: ReadonlySet<string> = new Set([
   "door-scanner",
+  "checkpoint-scanner",
   "door-manager",
   "game-moderator",
   "points-marshal",
@@ -21,7 +26,87 @@ const STAFF_PRESETS: ReadonlySet<string> = new Set([
   "admin",
 ]);
 
+function permissionOverrides(body: Record<string, unknown>) {
+  return body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
+    ? Object.fromEntries(
+        STAFF_PERMISSIONS.flatMap((permission) => {
+          const value = (body.overrides as Record<string, unknown>)[permission];
+          return typeof value === "boolean" ? [[permission, value]] : [];
+        }),
+      )
+    : undefined;
+}
+
+function staffScope(body: Record<string, unknown>) {
+  return body.scope && typeof body.scope === "object" && !Array.isArray(body.scope)
+    ? (body.scope as Record<string, unknown>)
+    : undefined;
+}
+
 export const staffingActions: AdminScoringActionHandlers = {
+  "create-staff-role": async ({ eventSlug, actorId, body }) => {
+    const label = stringValue(body.label);
+    const preset = stringValue(body.preset);
+    const reason = stringValue(body.reason);
+    if (!label || !preset || !reason || !STAFF_PRESETS.has(preset))
+      return Response.json(
+        { error: "Role name, starting preset, and reason are required" },
+        { status: 400 },
+      );
+    const result = await runStaffAccessResult(
+      Effect.gen(function* () {
+        const service = yield* StaffAccessService;
+        return yield* service.createRole({
+          eventSlug,
+          label,
+          preset: preset as StaffPreset,
+          actorId,
+          reason,
+          overrides: permissionOverrides(body),
+          scope: staffScope(body),
+          expiresAt: stringValue(body.expiresAt),
+        });
+      }),
+    );
+    return result.ok
+      ? Response.json({ role: result.value }, { status: 201 })
+      : Response.json({ error: result.error }, { status: result.status });
+  },
+
+  "assign-staff-role": async ({ request, eventSlug, actorId, body }) => {
+    const roleId = stringValue(body.roleId);
+    const reason = stringValue(body.reason);
+    const delivery =
+      body.delivery === "email" ||
+      body.delivery === "copy" ||
+      body.delivery === "direct" ||
+      body.delivery === "station"
+        ? body.delivery
+        : null;
+    if (!roleId || !reason || !delivery)
+      return Response.json(
+        { error: "Role, invitation method, and reason are required" },
+        { status: 400 },
+      );
+    const result = await runStaffAccessResult(
+      Effect.gen(function* () {
+        const service = yield* StaffAccessService;
+        return yield* service.assignRole({
+          eventSlug,
+          roleId,
+          delivery,
+          actorId,
+          reason,
+          recipientEmail: stringValue(body.recipientEmail),
+          origin: new URL(request.url).origin,
+        });
+      }),
+    );
+    return result.ok
+      ? Response.json({ assignment: result.value }, { status: 201 })
+      : Response.json({ error: result.error }, { status: result.status });
+  },
+
   "shuffle-teams": async ({ eventSlug, actorId, body }) => {
     return resultResponse(
       await shuffleCheckedInTeams({
@@ -121,19 +206,8 @@ export const staffingActions: AdminScoringActionHandlers = {
         preset: preset as StaffPreset,
         actorId,
         reason,
-        overrides:
-          body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)
-            ? Object.fromEntries(
-                STAFF_PERMISSIONS.flatMap((permission) => {
-                  const value = (body.overrides as Record<string, unknown>)[permission];
-                  return typeof value === "boolean" ? [[permission, value]] : [];
-                }),
-              )
-            : undefined,
-        scope:
-          body.scope && typeof body.scope === "object" && !Array.isArray(body.scope)
-            ? (body.scope as Record<string, unknown>)
-            : undefined,
+        overrides: permissionOverrides(body),
+        scope: staffScope(body),
         expiresAt: stringValue(body.expiresAt),
         recipientEmail: stringValue(body.recipientEmail),
         origin: new URL(request.url).origin,

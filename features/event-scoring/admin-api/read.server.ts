@@ -1,4 +1,5 @@
 import { getEventDrop } from "@/features/events/drop.server";
+import { listCheckpoints } from "@/features/tickets/checkpoints.server";
 import { listDiscoveryClues, listDiscoveries } from "../discoveries.server";
 import { listHeldOfficialGameResults } from "../games.server";
 import { getScoringOperationsSnapshot } from "../operations.server";
@@ -16,6 +17,7 @@ import {
   listScoreAuditEvents,
   listScoreMediaLinks,
   listStaffAssignments,
+  listStaffRoles,
   listStaffDevices,
   listTeams,
   searchEventParticipants,
@@ -42,6 +44,8 @@ export async function readAdminScoring(
     held,
     heldOfficialResults,
     staff,
+    staffRoles,
+    checkpoints,
     media,
     drop,
     audit,
@@ -59,6 +63,8 @@ export async function readAdminScoring(
     listHeldScoreTransactions(eventSlug),
     listHeldOfficialGameResults(eventSlug),
     listStaffAssignments(eventSlug),
+    listStaffRoles(eventSlug),
+    listCheckpoints(eventSlug),
     listScoreMediaLinks(eventSlug),
     getEventDrop(eventSlug),
     listScoreAuditEvents({
@@ -102,6 +108,8 @@ export async function readAdminScoring(
         devices: await listStaffDevices(assignment.id),
       })),
     ),
+    staffRoles,
+    checkpoints,
     media,
     mediaDrop: drop
       ? {

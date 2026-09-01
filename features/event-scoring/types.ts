@@ -63,6 +63,7 @@ export type StaffAssignmentType = (typeof STAFF_ASSIGNMENT_TYPES)[number];
 
 export const STAFF_PERMISSIONS = [
   "admitTickets",
+  "scanCheckpoints",
   "viewParticipantPoints",
   "awardPoints",
   "manageTeams",

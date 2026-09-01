@@ -2,9 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types";
 import { verifyTicketSignature } from "@/features/tickets/qr.server";
-import { transaction } from "@/lib/platform/postgres.server";
+import { queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getActivity, participantForTicket, recordScoreInTransaction } from "./store.server";
-import { hasStaffPermission, resolveStaffAccess } from "./staff.server";
+import { resolveStaffAccess, staffAssignmentForPermission } from "./staff.server";
 import { convertRulePoints } from "./types";
 
 export type OfflineScoreCommand = {
@@ -43,14 +43,15 @@ export async function reserveOfflineScoreBudget(input: {
 }) {
   if (!Number.isInteger(input.points) || input.points < 1)
     return { ok: false as const, status: 400, error: "Choose a positive whole-point budget" };
-  const assignment = await resolveStaffAccess(input);
-  if (!assignment || !hasStaffPermission(assignment, "awardPoints"))
+  const access = await resolveStaffAccess(input);
+  const assignment = staffAssignmentForPermission(access, "awardPoints", (entry) => {
+    const activityIds = entry.scope.activityIds;
+    return !Array.isArray(activityIds) || activityIds.includes(input.activityId);
+  });
+  if (!assignment)
     return { ok: false as const, status: 403, error: "This staff link cannot score offline" };
   if (assignment.scope.unmetered === true)
     return { ok: false as const, status: 409, error: "Unmetered scoring is online only" };
-  const activityIds = assignment.scope.activityIds;
-  if (Array.isArray(activityIds) && !activityIds.includes(input.activityId))
-    return { ok: false as const, status: 403, error: "This activity is outside the assignment" };
   const maximum =
     typeof assignment.scope.offlineBudgetMax === "number"
       ? Math.max(1, Math.trunc(assignment.scope.offlineBudgetMax))
@@ -127,9 +128,23 @@ export async function reconcileOfflineScoreCommands(input: {
   reservationId: string;
   commands: OfflineScoreCommand[];
 }) {
-  const assignment = await resolveStaffAccess(input);
-  if (!assignment || !hasStaffPermission(assignment, "awardPoints"))
+  const access = await resolveStaffAccess(input);
+  if (!access)
     return { ok: false as const, status: 403, error: "This staff link cannot reconcile scoring" };
+  const reservationOwner = await queryOne<{ assignment_id: string }>(
+    `select assignment_id from score_offline_reservations where id = $1 and event_slug = $2`,
+    [input.reservationId, input.eventSlug],
+  );
+  const assignment = access.assignments.find(
+    (entry) =>
+      entry.id === reservationOwner?.assignment_id && entry.permissions.awardPoints === true,
+  );
+  if (!assignment)
+    return {
+      ok: false as const,
+      status: 403,
+      error: "This offline budget belongs to another role",
+    };
   if (input.commands.length > 100)
     return { ok: false as const, status: 400, error: "Reconcile at most 100 commands at once" };
   const outcomes = [] as Array<{
@@ -279,8 +294,21 @@ export async function closeOfflineScoreReservation(input: {
   deviceId: string;
   reservationId: string;
 }) {
-  const assignment = await resolveStaffAccess(input);
-  if (!assignment) return { ok: false as const, status: 403, error: "Staff access is invalid" };
+  const access = await resolveStaffAccess(input);
+  if (!access) return { ok: false as const, status: 403, error: "Staff access is invalid" };
+  const reservationOwner = await queryOne<{ assignment_id: string }>(
+    `select assignment_id from score_offline_reservations where id = $1 and event_slug = $2`,
+    [input.reservationId, input.eventSlug],
+  );
+  const assignment = access.assignments.find(
+    (entry) => entry.id === reservationOwner?.assignment_id,
+  );
+  if (!assignment)
+    return {
+      ok: false as const,
+      status: 403,
+      error: "This offline budget belongs to another role",
+    };
   return transaction(async (client) => {
     const reservation = await client.query<{
       pool_id: string;

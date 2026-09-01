@@ -4,6 +4,7 @@ import { isValidTicketId, parseTicketQrPayload } from "@/features/tickets/types"
 import { verifyTicketSignature } from "@/features/tickets/qr.server";
 import { redeemTicket } from "@/features/tickets/tickets.server";
 import { issueTickets } from "@/features/tickets/tickets.server";
+import { checkpointScan, listCheckpoints } from "@/features/tickets/checkpoints.server";
 import {
   createGuestRequest,
   decideGuestRequest,
@@ -22,7 +23,12 @@ import {
   getScoring,
   type ScoringOperationResult,
 } from "./scoring.server";
-import { hasStaffPermission, resolveStaffAccess } from "./staff.server";
+import {
+  hasStaffPermission,
+  resolveStaffAccess,
+  staffAssignmentForPermission,
+  type ResolvedStaffAccess,
+} from "./staff.server";
 import {
   getScoreTransaction,
   acceptHeldScore,
@@ -45,6 +51,8 @@ import { recordScoringOperationalEvent } from "./operations.server";
 import { createStaffAwardClaim } from "./staff-award-claims.server";
 
 export type StaffScoringContext = {
+  access: ResolvedStaffAccess;
+  /** First grant is display-only. Actions must choose an authorising grant. */
   assignment: StoredStaffAssignment;
   deviceId: string;
 };
@@ -54,12 +62,13 @@ export async function resolveStaffScoringContext(input: {
   token: string;
   deviceId: string;
 }): Promise<StaffScoringContext | null> {
-  const assignment = await resolveStaffAccess({
+  const access = await resolveStaffAccess({
     eventSlug: input.eventSlug,
     token: input.token,
     deviceId: input.deviceId,
   });
-  return assignment ? { assignment, deviceId: input.deviceId } : null;
+  const assignment = access?.assignments[0];
+  return assignment ? { access, assignment, deviceId: input.deviceId } : null;
 }
 
 function scopeActivityIds(assignment: StoredStaffAssignment): string[] | null {
@@ -70,6 +79,23 @@ function scopeActivityIds(assignment: StoredStaffAssignment): string[] | null {
 function canUseActivity(assignment: StoredStaffAssignment, activityId: string): boolean {
   const ids = scopeActivityIds(assignment);
   return ids === null || ids.includes(activityId);
+}
+
+function canUseCheckpoint(assignment: StoredStaffAssignment, checkpointId: string): boolean {
+  const value = assignment.scope.checkpointIds;
+  return !Array.isArray(value) || value.length === 0 || value.includes(checkpointId);
+}
+
+function assignmentFor(
+  context: StaffScoringContext | null,
+  permission: Parameters<typeof staffAssignmentForPermission>[1],
+  activityId?: string,
+): StoredStaffAssignment | null {
+  return staffAssignmentForPermission(
+    context?.access ?? null,
+    permission,
+    activityId ? (assignment) => canUseActivity(assignment, activityId) : undefined,
+  );
 }
 
 function scopeBoolean(assignment: StoredStaffAssignment, key: string): boolean {
@@ -100,6 +126,7 @@ export async function getStaffScoringPage(input: {
       canManageTeams: boolean;
       canFreeform: boolean;
       canAdmit: boolean;
+      canScanCheckpoints: boolean;
       canTransfer: boolean;
       canReverse: boolean;
       canReviewHeld: boolean;
@@ -140,6 +167,7 @@ export async function getStaffScoringPage(input: {
         recentReason: "scan" | "award";
       }>;
       activities: Awaited<ReturnType<typeof listScoringActivities>>;
+      checkpoints: Awaited<ReturnType<typeof listCheckpoints>>;
       pools: Awaited<ReturnType<typeof listPools>>;
       teams: Awaited<ReturnType<typeof listTeams>>;
       teamRoster: Awaited<ReturnType<typeof listCheckedInTeamParticipants>>;
@@ -147,11 +175,12 @@ export async function getStaffScoringPage(input: {
 > {
   const context = await resolveStaffScoringContext(input);
   if (!context) return { found: false };
-  const { assignment } = context;
-  const canApproveGuests = hasStaffPermission(assignment, "approveRequests");
-  const canViewEmail =
-    hasStaffPermission(assignment, "resolveIdentity") ||
-    hasStaffPermission(assignment, "manageStaffAndPools");
+  const { assignment, access } = context;
+  const assignments = access.assignments;
+  const grant = (permission: Parameters<typeof staffAssignmentForPermission>[1]) =>
+    staffAssignmentForPermission(access, permission);
+  const canApproveGuests = grant("approveRequests") !== null;
+  const canViewEmail = grant("resolveIdentity") !== null || grant("manageStaffAndPools") !== null;
   const [
     event,
     activities,
@@ -164,24 +193,37 @@ export async function getStaffScoringPage(input: {
     recentParticipants,
     teams,
     teamRoster,
+    checkpoints,
   ] = await Promise.all([
     getEvent(input.eventSlug),
     listScoringActivities(input.eventSlug),
     listPools(input.eventSlug),
-    listOwnRecentAwards(input.eventSlug, assignment.id),
+    Promise.all(assignments.map((entry) => listOwnRecentAwards(input.eventSlug, entry.id))).then(
+      (entries) =>
+        entries
+          .flat()
+          .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .slice(0, 12),
+    ),
     getScoring(input.eventSlug),
     getEventDrop(input.eventSlug),
     canApproveGuests
       ? listGuestRequests(input.eventSlug, "pending")
-      : listGuestRequestsForToken(`staff:${assignment.id}`),
-    hasStaffPermission(assignment, "reviewHeldActions")
-      ? listHeldScoreTransactions(input.eventSlug)
-      : [],
-    listRecentStaffParticipants(input.eventSlug, assignment.id, assignment.label, canViewEmail),
-    hasStaffPermission(assignment, "manageTeams") ? listTeams(input.eventSlug) : [],
-    hasStaffPermission(assignment, "manageTeams")
-      ? listCheckedInTeamParticipants(input.eventSlug)
-      : [],
+      : Promise.all(
+          assignments.map((entry) => listGuestRequestsForToken(`staff:${entry.id}`)),
+        ).then((entries) => entries.flat()),
+    grant("reviewHeldActions") ? listHeldScoreTransactions(input.eventSlug) : [],
+    Promise.all(
+      assignments.map((entry) =>
+        listRecentStaffParticipants(input.eventSlug, entry.id, entry.label, canViewEmail),
+      ),
+    ).then((entries) => {
+      const unique = new Map(entries.flat().map((entry) => [entry.id, entry]));
+      return [...unique.values()].slice(0, 12);
+    }),
+    grant("manageTeams") ? listTeams(input.eventSlug) : [],
+    grant("manageTeams") ? listCheckedInTeamParticipants(input.eventSlug) : [],
+    listCheckpoints(input.eventSlug),
   ]);
   if (!event) return { found: false };
   const stationId = assignment.assignmentType === "station" ? assignment.id : undefined;
@@ -189,20 +231,24 @@ export async function getStaffScoringPage(input: {
     found: true,
     eventSlug: input.eventSlug,
     eventTitle: event.title,
-    label: assignment.label,
+    label: assignments.map((entry) => entry.label).join(" · "),
     personId: assignment.personId,
     rolePreset:
       typeof assignment.scope.rolePreset === "string" ? assignment.scope.rolePreset : undefined,
     expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
-    canAward: hasStaffPermission(assignment, "awardPoints"),
-    canManageTeams: hasStaffPermission(assignment, "manageTeams"),
-    canFreeform: scopeBoolean(assignment, "allowFreeformPoints"),
-    canAdmit: hasStaffPermission(assignment, "admitTickets"),
-    canTransfer: hasStaffPermission(assignment, "transferPoints"),
-    canReverse: hasStaffPermission(assignment, "reverseAwards"),
-    canReviewHeld: hasStaffPermission(assignment, "reviewHeldActions"),
-    canUploadMedia: hasStaffPermission(assignment, "uploadActivityPhotos"),
+    canAward: grant("awardPoints") !== null,
+    canManageTeams: grant("manageTeams") !== null,
+    canFreeform: assignments.some(
+      (entry) =>
+        hasStaffPermission(entry, "awardPoints") && scopeBoolean(entry, "allowFreeformPoints"),
+    ),
+    canAdmit: grant("admitTickets") !== null,
+    canScanCheckpoints: grant("scanCheckpoints") !== null,
+    canTransfer: grant("transferPoints") !== null,
+    canReverse: grant("reverseAwards") !== null,
+    canReviewHeld: grant("reviewHeldActions") !== null,
+    canUploadMedia: grant("uploadActivityPhotos") !== null,
     photoConsentPolicy: settings.photoConsentPolicy,
     mediaDrop: drop
       ? {
@@ -211,9 +257,9 @@ export async function getStaffScoringPage(input: {
           expiresAt: drop.expiresAt,
         }
       : undefined,
-    canRun: hasStaffPermission(assignment, "runActivities"),
-    canRequestGuests: hasStaffPermission(assignment, "requestGuests"),
-    canAddGuests: hasStaffPermission(assignment, "addGuests"),
+    canRun: grant("runActivities") !== null,
+    canRequestGuests: grant("requestGuests") !== null,
+    canAddGuests: grant("addGuests") !== null,
     canApproveGuests,
     guestRequests,
     heldActions: heldActions.map((action) => ({
@@ -234,16 +280,30 @@ export async function getStaffScoringPage(input: {
       ...entry,
       reversible:
         entry.reversible &&
-        hasStaffPermission(assignment, "reverseAwards") &&
+        grant("reverseAwards") !== null &&
         Date.now() - Date.parse(entry.createdAt) <= 15 * 60 * 1_000,
     })),
     activities: activities.filter(
-      (activity) => activity.status === "live" && canUseActivity(assignment, activity.id),
+      (activity) =>
+        activity.status === "live" &&
+        assignments.some(
+          (entry) =>
+            (hasStaffPermission(entry, "awardPoints") ||
+              hasStaffPermission(entry, "runActivities")) &&
+            canUseActivity(entry, activity.id),
+        ),
+    ),
+    checkpoints: checkpoints.filter((checkpoint) =>
+      assignments.some(
+        (entry) =>
+          hasStaffPermission(entry, "scanCheckpoints") && canUseCheckpoint(entry, checkpoint.id),
+      ),
     ),
     pools: pools.filter(
       (pool) =>
-        (pool.activityId !== undefined && canUseActivity(assignment, pool.activityId)) ||
-        pool.ownerId === assignment.id ||
+        (pool.activityId !== undefined &&
+          assignments.some((entry) => canUseActivity(entry, pool.activityId!))) ||
+        assignments.some((entry) => pool.ownerId === entry.id) ||
         (stationId !== undefined && pool.ownerId === stationId),
     ),
   };
@@ -264,15 +324,16 @@ export async function shuffleStaffTeams(input: {
   teamCount: number;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "manageTeams")) {
+  const assignment = assignmentFor(context, "manageTeams");
+  if (!context || !assignment) {
     return { ok: false as const, status: 403, error: "This staff link cannot manage teams" };
   }
   const shuffled = await shuffleCheckedInTeams({
     eventSlug: input.eventSlug,
     teamCount: input.teamCount,
     actorType: "staff",
-    actorId: context.assignment.id,
-    assignmentId: context.assignment.id,
+    actorId: assignment.id,
+    assignmentId: assignment.id,
     deviceId: context.deviceId,
   });
   return shuffled.ok
@@ -288,7 +349,8 @@ export async function moveStaffTeamParticipant(input: {
   teamId: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "manageTeams")) {
+  const assignment = assignmentFor(context, "manageTeams");
+  if (!context || !assignment) {
     return { ok: false as const, status: 403, error: "This staff link cannot manage teams" };
   }
   const eligible = await queryOne<{ participant: boolean; team: boolean }>(
@@ -317,7 +379,7 @@ export async function moveStaffTeamParticipant(input: {
      values ($1,'teams.member.moved','staff',$2,$2,$3,'participant',$4,$5::jsonb)`,
     [
       input.eventSlug,
-      context.assignment.id,
+      assignment.id,
       context.deviceId,
       input.participantId,
       JSON.stringify({ teamId: input.teamId }),
@@ -337,7 +399,8 @@ export async function submitStaffGuest(input: {
   if (!context) return { ok: false as const, status: 403, error: "Staff access has expired" };
   const name = input.name.trim();
   if (!name) return { ok: false as const, status: 400, error: "Enter the guest name" };
-  if (hasStaffPermission(context.assignment, "addGuests")) {
+  const addAssignment = assignmentFor(context, "addGuests");
+  if (addAssignment) {
     const event = await getEvent(input.eventSlug);
     const ticketTypeId =
       event?.ticketTypes.find((type) => !type.hidden)?.id ?? event?.ticketTypes[0]?.id;
@@ -349,7 +412,7 @@ export async function submitStaffGuest(input: {
       holderName: name,
       quantity: 1,
       kind: "comp",
-      notes: `added by ${context.assignment.label}`,
+      notes: `added by ${addAssignment.label}`,
       bypassSalesWindow: true,
       bypassCapacity: true,
     });
@@ -357,12 +420,13 @@ export async function submitStaffGuest(input: {
       ? { ok: true as const, value: { mode: "added" as const, name } }
       : { ok: false as const, status: issued.status, error: issued.error };
   }
-  if (!hasStaffPermission(context.assignment, "requestGuests"))
+  const requestAssignment = assignmentFor(context, "requestGuests");
+  if (!requestAssignment)
     return { ok: false as const, status: 403, error: "This staff link cannot request guests" };
   const requested = await createGuestRequest({
     eventSlug: input.eventSlug,
-    token: `staff:${context.assignment.id}`,
-    requestedBy: context.assignment.label,
+    token: `staff:${requestAssignment.id}`,
+    requestedBy: requestAssignment.label,
     name,
     note: input.note,
   });
@@ -379,13 +443,14 @@ export async function decideStaffGuestRequest(input: {
   approve: boolean;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "approveRequests"))
+  const assignment = assignmentFor(context, "approveRequests");
+  if (!context || !assignment)
     return { ok: false as const, status: 403, error: "This staff link cannot approve guests" };
   return decideGuestRequest({
     eventSlug: input.eventSlug,
     id: input.requestId,
     approve: input.approve,
-    decidedBy: context.assignment.label,
+    decidedBy: assignment.label,
   });
 }
 
@@ -400,7 +465,8 @@ export async function transferStaffPoints(input: {
   note: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "transferPoints"))
+  const assignment = assignmentFor(context, "transferPoints");
+  if (!context || !assignment)
     return { ok: false as const, status: 403, error: "This staff link cannot transfer points" };
   return transferPoints({
     eventSlug: input.eventSlug,
@@ -409,7 +475,7 @@ export async function transferStaffPoints(input: {
     points: input.points,
     idempotencyKey: input.commandId,
     actorType: "staff",
-    actorId: context.assignment.id,
+    actorId: assignment.id,
     note: input.note,
   });
 }
@@ -422,11 +488,12 @@ export async function acceptStaffHeldAction(input: {
   note: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "reviewHeldActions"))
+  const assignment = assignmentFor(context, "reviewHeldActions");
+  if (!context || !assignment)
     return { ok: false as const, status: 403, error: "This staff link cannot review held work" };
   return acceptHeldScore(input.eventSlug, input.transactionId, {
     actorType: "staff",
-    actorId: context.assignment.id,
+    actorId: assignment.id,
     note: input.note,
   });
 }
@@ -477,12 +544,13 @@ export async function admitStaffTicket(input: {
   scanned: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "admitTickets"))
+  const assignment = assignmentFor(context, "admitTickets");
+  if (!context || !assignment)
     return { ok: false as const, status: 403, error: "This staff link cannot admit tickets" };
   const outcome = await redeemTicket({
     scanned: input.scanned,
     eventSlug: input.eventSlug,
-    redeemedBy: context.assignment.label,
+    redeemedBy: assignment.label,
   });
   if (outcome.result === "admitted" && outcome.ticket) {
     const checkInActivity = (await listScoringActivities(input.eventSlug)).find(
@@ -492,10 +560,35 @@ export async function admitStaffTicket(input: {
       eventSlug: input.eventSlug,
       ticketId: outcome.ticket.id,
       idempotencyKey: `admission-${outcome.ticket.id}`,
-      actorId: context.assignment.id,
+      actorId: assignment.id,
       checkInPoints: checkInActivity?.rule.fixedPoints,
     });
   }
+  return { ok: true as const, value: outcome };
+}
+
+export async function scanStaffCheckpoint(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+  checkpointId: string;
+  scanned: string;
+}) {
+  const context = await resolveStaffScoringContext(input);
+  const assignment = staffAssignmentForPermission(
+    context?.access ?? null,
+    "scanCheckpoints",
+    (entry) => canUseCheckpoint(entry, input.checkpointId),
+  );
+  if (!context || !assignment)
+    return { ok: false as const, status: 403, error: "This role cannot scan that checkpoint" };
+  const outcome = await checkpointScan({
+    eventSlug: input.eventSlug,
+    checkpointId: input.checkpointId,
+    scanned: input.scanned,
+    consume: 1,
+    scannedBy: assignment.label,
+  });
   return { ok: true as const, value: outcome };
 }
 
@@ -506,10 +599,10 @@ export async function searchStaffParticipants(input: {
   term: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "viewParticipantPoints")) return [];
+  if (!context || !assignmentFor(context, "viewParticipantPoints")) return [];
   const includeEmail =
-    hasStaffPermission(context.assignment, "resolveIdentity") ||
-    hasStaffPermission(context.assignment, "manageStaffAndPools");
+    assignmentFor(context, "resolveIdentity") !== null ||
+    assignmentFor(context, "manageStaffAndPools") !== null;
   return searchEventParticipants(input.eventSlug, input.term, 20, includeEmail);
 }
 
@@ -595,7 +688,7 @@ export async function resolveStaffScannedParticipant(input: {
   scanned: string;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "viewParticipantPoints")) return null;
+  if (!context || !assignmentFor(context, "viewParticipantPoints")) return null;
   const participant = await participantFromScannedValue(input.eventSlug, input.scanned);
   if (!participant) return null;
   const order = await ticketOrderSummaryForParticipant(input.eventSlug, participant.id);
@@ -645,16 +738,14 @@ export async function awardStaffPoints(input: {
   };
 }): Promise<ScoringOperationResult<ScoreTransaction>> {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "awardPoints")) {
-    return { ok: false, status: 403, error: "This staff link cannot award points" };
-  }
-  if (!canUseActivity(context.assignment, input.activityId)) {
+  const assignment = assignmentFor(context, "awardPoints", input.activityId);
+  if (!context || !assignment) {
     return { ok: false, status: 403, error: "This activity is outside this staff assignment" };
   }
   const activities = await listScoringActivities(input.eventSlug);
   const activity = activities.find((entry) => entry.id === input.activityId);
   if (!activity) return { ok: false, status: 404, error: "Activity not found" };
-  if (input.points !== undefined && !scopeBoolean(context.assignment, "allowFreeformPoints")) {
+  if (input.points !== undefined && !scopeBoolean(assignment, "allowFreeformPoints")) {
     return { ok: false, status: 403, error: "Use the configured activity outcome" };
   }
   const participant = input.scanned
@@ -673,7 +764,7 @@ export async function awardStaffPoints(input: {
     return { ok: false, status: 409, error: "No active tickets in this order can receive points" };
   }
   const points = input.points ?? convertRulePoints(activity.rule, input);
-  const warningAt = Math.max(1, scopeNumber(context.assignment, "largeAwardWarningAt", 25));
+  const warningAt = Math.max(1, scopeNumber(assignment, "largeAwardWarningAt", 25));
   if (points >= warningAt && !input.confirmLarge) {
     return {
       ok: false,
@@ -684,8 +775,8 @@ export async function awardStaffPoints(input: {
   const pools = await listPools(input.eventSlug);
   const pool =
     pools.find((entry) => entry.activityId === activity.id) ??
-    pools.find((entry) => entry.ownerId === context.assignment.id);
-  if (!pool && !scopeBoolean(context.assignment, "unmetered")) {
+    pools.find((entry) => entry.ownerId === assignment.id);
+  if (!pool && !scopeBoolean(assignment, "unmetered")) {
     return { ok: false, status: 409, error: "This staff assignment has no points pool" };
   }
   const awarded = await awardPoints({
@@ -698,16 +789,17 @@ export async function awardStaffPoints(input: {
     sourceId: `staff_${input.commandId}`,
     idempotencyKey: input.commandId,
     actorType: "staff",
-    actorId: context.assignment.assignmentType === "personal" ? context.assignment.id : undefined,
-    assignmentId: context.assignment.id,
-    stationId: context.assignment.assignmentType === "station" ? context.assignment.id : undefined,
+    actorId: assignment.assignmentType === "personal" ? assignment.id : undefined,
+    assignmentId: assignment.id,
+    stationId: assignment.assignmentType === "station" ? assignment.id : undefined,
     deviceId: context.deviceId,
     note: input.note,
     poolId: pool?.id,
     allowOverride: input.points !== undefined,
   });
   if (!awarded.ok || !input.media) return awarded;
-  if (!hasStaffPermission(context.assignment, "uploadActivityPhotos")) {
+  const mediaAssignment = assignmentFor(context, "uploadActivityPhotos", input.activityId);
+  if (!mediaAssignment) {
     return awarded;
   }
   const settings = await getScoring(input.eventSlug);
@@ -721,7 +813,7 @@ export async function awardStaffPoints(input: {
       activityId: activity.id,
       transactionId: awarded.value.id,
       participantId: participant.id,
-      staffActorId: context.assignment.id,
+      staffActorId: mediaAssignment.id,
       storageRef: input.media.storageRef,
       visibility: input.media.visibility,
       consentState: input.media.consentState,
@@ -747,17 +839,15 @@ export async function mintStaffAwardClaim(input: {
   expiresInSeconds?: number;
 }) {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "awardPoints")) {
-    return { ok: false as const, status: 403, error: "This staff link cannot award points" };
-  }
-  if (!canUseActivity(context.assignment, input.activityId)) {
+  const assignment = assignmentFor(context, "awardPoints", input.activityId);
+  if (!context || !assignment) {
     return {
       ok: false as const,
       status: 403,
       error: "This activity is outside this staff assignment",
     };
   }
-  if (input.points !== undefined && !scopeBoolean(context.assignment, "allowFreeformPoints")) {
+  if (input.points !== undefined && !scopeBoolean(assignment, "allowFreeformPoints")) {
     return {
       ok: false as const,
       status: 403,
@@ -771,13 +861,13 @@ export async function mintStaffAwardClaim(input: {
   const pools = await listPools(input.eventSlug);
   const pool =
     pools.find((entry) => entry.activityId === activity.id) ??
-    pools.find((entry) => entry.ownerId === context.assignment.id);
-  if (!pool && !scopeBoolean(context.assignment, "unmetered")) {
+    pools.find((entry) => entry.ownerId === assignment.id);
+  if (!pool && !scopeBoolean(assignment, "unmetered")) {
     return { ok: false as const, status: 409, error: "This staff assignment has no points pool" };
   }
   return createStaffAwardClaim({
     eventSlug: input.eventSlug,
-    assignment: context.assignment,
+    assignment,
     activity,
     poolId: pool?.id,
     deviceId: input.deviceId,
@@ -796,7 +886,8 @@ export async function reverseStaffAward(input: {
   note: string;
 }): Promise<ScoringOperationResult<ScoreTransaction>> {
   const context = await resolveStaffScoringContext(input);
-  if (!context || !hasStaffPermission(context.assignment, "reverseAwards")) {
+  const assignment = assignmentFor(context, "reverseAwards");
+  if (!context || !assignment) {
     return { ok: false, status: 403, error: "This staff link cannot reverse awards" };
   }
   const transaction = await getScoreTransaction(input.transactionId);
@@ -807,7 +898,7 @@ export async function reverseStaffAward(input: {
     `select id from score_audit_events
         where event_slug = $1 and entity_type = 'score_transaction' and entity_id = $2
           and assignment_id = $3 limit 1`,
-    [input.eventSlug, input.transactionId, context.assignment.id],
+    [input.eventSlug, input.transactionId, assignment.id],
   );
   if (!ownAudit) return { ok: false, status: 403, error: "Staff can reverse only their own award" };
   if (Date.now() - Date.parse(transaction.createdAt) > 15 * 60 * 1_000) {
@@ -818,7 +909,7 @@ export async function reverseStaffAward(input: {
     transactionId: input.transactionId,
     idempotencyKey: input.commandId ?? `staff-reverse-${randomUUID()}`,
     actorType: "staff",
-    actorId: context.assignment.id,
+    actorId: assignment.id,
     note: input.note,
   });
 }

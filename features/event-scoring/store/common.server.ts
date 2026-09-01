@@ -112,6 +112,25 @@ export type StaffAssignmentRow = {
   invitation_link_id?: string | null;
   activated_at?: Date | null;
   last_used_at?: Date | null;
+  role_id: string;
+  invited_email_hint?: string | null;
+  invitation_delivery?: string;
+  assigned_email_hint?: string | null;
+  person_name?: string | null;
+};
+
+export type StaffRoleRow = {
+  id: string;
+  event_slug: string;
+  label: string;
+  role_preset: string;
+  permissions: unknown;
+  scope: unknown;
+  expires_at: Date;
+  status: string;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
 };
 
 export type StoredStaffAssignment = {
@@ -129,6 +148,25 @@ export type StoredStaffAssignment = {
   invitationState: "pending" | "active" | "declined" | "expired" | "revoked";
   activatedAt?: string;
   lastUsedAt?: string;
+  roleId: string;
+  invitedEmailHint?: string;
+  invitationDelivery: "email" | "copy" | "direct" | "station";
+  assignedEmailHint?: string;
+  personName?: string;
+};
+
+export type StoredStaffRole = {
+  id: string;
+  eventSlug: string;
+  label: string;
+  rolePreset: string;
+  permissions: StaffPermissionSet;
+  scope: Record<string, unknown>;
+  expiresAt: string;
+  status: "active" | "archived";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type StoredStaffDevice = {

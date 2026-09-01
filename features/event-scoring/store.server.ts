@@ -10,6 +10,7 @@ export type {
   ScoreStoreResult,
   StoredStaffAssignment,
   StoredStaffDevice,
+  StoredStaffRole,
 } from "./store/common.server";
 export * from "./store/history-media.server";
 export * from "./store/identity.server";

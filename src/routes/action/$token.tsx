@@ -41,6 +41,9 @@ function TicketActionPage() {
       const result = await acceptAttendeeActionFn({ data: { token } });
       if (!result.ok) {
         setMessage(result.error);
+        if (result.status === 401) {
+          setDestination(`/access?returnTo=${encodeURIComponent(`/action/${token}`)}`);
+        }
         return;
       }
       if (result.value.mfaRequired) {

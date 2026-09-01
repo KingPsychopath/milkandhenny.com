@@ -46,6 +46,7 @@ export type AdminStaffDevice = {
 
 export type AdminStaffAssignment = {
   id: string;
+  roleId: string;
   personId?: string;
   label: string;
   assignmentType: "personal" | "station";
@@ -55,7 +56,21 @@ export type AdminStaffAssignment = {
   expiresAt?: string;
   permissions: Record<string, boolean>;
   scope: Record<string, unknown>;
+  invitedEmailHint?: string;
+  assignedEmailHint?: string;
+  personName?: string;
+  invitationDelivery: "email" | "copy" | "direct" | "station";
   devices: AdminStaffDevice[];
+};
+
+export type AdminStaffRole = {
+  id: string;
+  label: string;
+  rolePreset: string;
+  permissions: Record<string, boolean>;
+  scope: Record<string, unknown>;
+  expiresAt: string;
+  status: "active" | "archived";
 };
 
 export type ScoringData = {
@@ -106,6 +121,8 @@ export type ScoringData = {
     clues: Array<{ key: string; label: string; replacementRevision: number }>;
   }>;
   staff: AdminStaffAssignment[];
+  staffRoles: AdminStaffRole[];
+  checkpoints: Array<{ id: string; name: string }>;
   media: Array<{
     id: string;
     storageRef: string;

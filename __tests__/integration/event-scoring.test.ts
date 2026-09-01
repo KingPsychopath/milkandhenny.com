@@ -58,12 +58,17 @@ import {
 } from "@/features/event-scoring/print.server";
 import {
   adjustStaffPool,
+  assignEventStaffRole,
+  createEventStaffRole,
   createStaffAccess,
   issueStaffPool,
   resolveStaffAccess,
   revokeStaffAccess,
   revokeStaffAccessDevice,
+  staffAssignmentForPermission,
 } from "@/features/event-scoring/staff.server";
+import { actionEmailHash } from "@/features/attendee-operations/action-links.server";
+import { acceptAccessAction } from "@/features/attendee-operations/access-grants.server";
 import {
   awardStaffPoints,
   getStaffScoringPage,
@@ -1534,6 +1539,131 @@ describeWithDatabase("event scoring postgres", () => {
         deviceId: "device-two",
       }),
     ).toBeNull();
+  });
+
+  it("assigns reusable roles to many identities and keeps composite scopes narrow", async () => {
+    const people = [
+      ["0198e9d8-53d7-7db5-8ca5-e337796bc433", "Alex", "alex@example.com"],
+      ["0198e9d8-53d7-7db6-8ca5-e337796bc434", "Sam", "sam@example.com"],
+    ] as const;
+    for (const [personId, name, email] of people) {
+      await query(`insert into event_people (id,canonical_name) values ($1,$2)`, [personId, name]);
+      await query(
+        `insert into event_person_identifiers
+           (person_id,kind,value_hash,display_hint,email_address,verified_at)
+         values ($1,'email',$2,$3,$4,now())`,
+        [personId, actionEmailHash(email), `${email[0]}•••@example.com`, email],
+      );
+    }
+    await query(
+      `insert into checkpoints (event_slug,id,name,default_allowance,allowances,multi_scan,position)
+       values ('scoring-night','food','Food',1,'{}'::jsonb,true,0)`,
+    );
+    const door = await createEventStaffRole({
+      eventSlug: "scoring-night",
+      label: "Door",
+      preset: "door-scanner",
+      actorId: "admin-test",
+      reason: "role composition test",
+    });
+    const food = await createEventStaffRole({
+      eventSlug: "scoring-night",
+      label: "Food",
+      preset: "checkpoint-scanner",
+      scope: { checkpointIds: ["food"] },
+      actorId: "admin-test",
+      reason: "role composition test",
+    });
+    const alexDoor = await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: door.id,
+      delivery: "direct",
+      recipientEmail: "alex@example.com",
+      actorId: "admin-test",
+      reason: "Alex is on entry",
+    });
+    const alexFood = await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: food.id,
+      delivery: "direct",
+      recipientEmail: "alex@example.com",
+      actorId: "admin-test",
+      reason: "Alex covers food too",
+    });
+    await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: food.id,
+      delivery: "direct",
+      recipientEmail: "sam@example.com",
+      actorId: "admin-test",
+      reason: "Sam is on food",
+    });
+
+    const access = { ...alexDoor, assignments: [alexDoor, alexFood] };
+    expect(staffAssignmentForPermission(access, "admitTickets")?.id).toBe(alexDoor.id);
+    expect(
+      staffAssignmentForPermission(
+        access,
+        "scanCheckpoints",
+        (assignment) =>
+          !Array.isArray(assignment.scope.checkpointIds) ||
+          assignment.scope.checkpointIds.includes("food"),
+      )?.id,
+    ).toBe(alexFood.id);
+    expect(
+      staffAssignmentForPermission(
+        access,
+        "scanCheckpoints",
+        (assignment) =>
+          !Array.isArray(assignment.scope.checkpointIds) ||
+          assignment.scope.checkpointIds.includes("merch"),
+      ),
+    ).toBeNull();
+    await expect(
+      assignEventStaffRole({
+        eventSlug: "scoring-night",
+        roleId: food.id,
+        delivery: "direct",
+        recipientEmail: "alex@example.com",
+        actorId: "admin-test",
+        reason: "duplicate must fail",
+      }),
+    ).rejects.toThrow();
+    const counts = await query<{ role_id: string; count: string }>(
+      `select role_id,count(*)::text as count from score_staff_assignments
+        where status = 'active' group by role_id order by role_id`,
+    );
+    expect(counts.find((entry) => entry.role_id === door.id)?.count).toBe("1");
+    expect(counts.find((entry) => entry.role_id === food.id)?.count).toBe("2");
+  });
+
+  it("does not let a copied staff invitation prove ownership of an email", async () => {
+    const role = await createEventStaffRole({
+      eventSlug: "scoring-night",
+      label: "Copied invite",
+      preset: "door-scanner",
+      actorId: "admin-test",
+      reason: "copied invite test",
+    });
+    const invitation = await assignEventStaffRole({
+      eventSlug: "scoring-night",
+      roleId: role.id,
+      delivery: "copy",
+      recipientEmail: "invited@example.com",
+      actorId: "admin-test",
+      reason: "copied invite test",
+      origin: "https://example.test",
+    });
+    expect(invitation.token).toBeTruthy();
+    expect(await acceptAccessAction(invitation.token!)).toMatchObject({ ok: false, status: 401 });
+    const rows = await query<{ invitation_state: string; consumed_at: Date | null }>(
+      `select assignments.invitation_state,links.consumed_at
+         from score_staff_assignments assignments
+         join attendee_action_links links on links.id = assignments.invitation_link_id
+        where assignments.id = $1`,
+      [invitation.id],
+    );
+    expect(rows[0]).toEqual({ invitation_state: "pending", consumed_at: null });
   });
 
   it("enforces staff activity scope and a shared pool during concurrent awards", async () => {
