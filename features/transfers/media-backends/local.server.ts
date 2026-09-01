@@ -19,11 +19,7 @@ import {
   type ProcessedVideo,
   type ProcessedImage,
 } from "@/features/media/processing.server";
-import {
-  getInlineProcessingTimeoutMs,
-  getVideoPosterMaxBytes,
-  withProcessingTimeout,
-} from "@/features/transfers/media-processing-config.server";
+import { getVideoPosterMaxBytes } from "@/features/transfers/media-processing-config.server";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
@@ -711,10 +707,6 @@ async function retryLocalTransferFile(
   }
 }
 
-function withLocalTimeout<T>(route: ProcessingRoute | null, work: () => Promise<T>): Promise<T> {
-  return withProcessingTimeout(route ?? "passthrough", getInlineProcessingTimeoutMs(), work);
-}
-
 function createLocalMediaProcessor() {
   return {
     processTransferBuffer: async (
@@ -724,15 +716,13 @@ function createLocalMediaProcessor() {
     ) => {
       const route = classifyTransferProcessingRoute(file.name);
       try {
-        return await withLocalTimeout(route, () =>
-          processTransferBufferLocally(
-            buffer,
-            { ...file, size: buffer.byteLength },
-            transferId,
-            "local_done",
-            "local",
-            route,
-          ),
+        return await processTransferBufferLocally(
+          buffer,
+          { ...file, size: buffer.byteLength },
+          transferId,
+          "local_done",
+          "local",
+          route,
         );
       } catch (error) {
         return buildFailedLocalResult({
@@ -749,9 +739,7 @@ function createLocalMediaProcessor() {
     processTransferObject: async (file: TransferUploadFileInput, transferId: string) => {
       const route = classifyTransferProcessingRoute(file.name);
       try {
-        return await withLocalTimeout(route, () =>
-          processTransferObjectLocally(file, transferId, "local_done", "local", route),
-        );
+        return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
       } catch (error) {
         return buildFailedLocalResult({
           transferId,

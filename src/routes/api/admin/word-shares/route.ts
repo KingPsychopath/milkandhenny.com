@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { listShareLinks, revokeShareLink } from "@/features/words/share.server";
+import { listShareLinks } from "@/features/words/share.server";
 import { listAllWords } from "@/features/words/store.server";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import type { WordType } from "@/features/words/types";
 import type { WordVisibility } from "@/features/words/content-types";
@@ -102,13 +105,12 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const links = await listShareLinks(slug);
-    const active = links.filter(isLinkActive);
-    let revoked = 0;
-    for (const link of active) {
-      const ok = await revokeShareLink(slug, link.id);
-      if (ok) revoked += 1;
-    }
+    const revoked = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* MediaMaintenanceService).revokeWordShares(slug);
+      }),
+      request.signal,
+    );
     return Response.json({ ok: true, slug, revoked });
   } catch (error) {
     return apiErrorFromRequest(

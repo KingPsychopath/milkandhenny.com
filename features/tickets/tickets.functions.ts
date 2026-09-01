@@ -14,7 +14,10 @@ import { managedOrderIdsForPerson } from "@/features/attendee-access/access.serv
 import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
-import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
+import {
+  runEventsResult as runEventOperationsResultWithoutSignal,
+  type EventsServices,
+} from "@/features/events/events-runtime.server";
 import { toTicketHolderEvent } from "@/features/events/types";
 import { TicketsService } from "./tickets-service.server";
 import { sendTicketEmail } from "./email.server";
@@ -34,6 +37,10 @@ import {
   type TicketStatus,
 } from "./types";
 import { isValidEmail } from "@/lib/shared/email-address";
+
+function runEventOperationsResult<A, E>(effect: Effect.Effect<A, E, EventsServices>) {
+  return runEventOperationsResultWithoutSignal(effect, getRequest().signal);
+}
 
 /**
  * TanStack server-function boundary for tickets.

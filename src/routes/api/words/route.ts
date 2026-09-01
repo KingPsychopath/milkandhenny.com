@@ -1,11 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuth, requireAuthWithPayload } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { createWord, listWords } from "@/features/words/store.server";
+import { listWords } from "@/features/words/store.server";
+import {
+  WordOperationError,
+  WordOperationsService,
+} from "@/features/words/word-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { isWordVisibility, type WordVisibility } from "@/features/words/content-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import type { WordType } from "@/features/words/types";
 import { isWordType, normaliseWordType } from "@/features/words/types";
+
+export const maxDuration = 180;
 
 function parseVisibility(value: string | null): WordVisibility | undefined {
   if (value === "public" || value === "unlisted" || value === "private") {
@@ -107,20 +115,26 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const word = await createWord({
-      slug,
-      title,
-      subtitle: body.subtitle,
-      image: body.image,
-      type: body.type ? normaliseWordType(body.type) : undefined,
-      visibility: body.visibility ?? "private",
-      markdown,
-      tags: body.tags,
-      featured: typeof body.featured === "boolean" ? body.featured : undefined,
-    });
+    const word = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* WordOperationsService).create({
+          slug,
+          title,
+          subtitle: body.subtitle,
+          image: body.image,
+          type: body.type ? normaliseWordType(body.type) : undefined,
+          visibility: body.visibility ?? "private",
+          markdown,
+          tags: body.tags,
+          featured: typeof body.featured === "boolean" ? body.featured : undefined,
+        });
+      }),
+      request.signal,
+    );
     return Response.json(word, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create word";
+    const cause = error instanceof WordOperationError ? error.cause : error;
+    const message = cause instanceof Error ? cause.message : "Failed to create word";
     const status = /exists|invalid|required/i.test(message) ? 400 : 500;
     if (status === 400) return Response.json({ error: message }, { status });
     return apiErrorFromRequest(request, "words.create", "Failed to create word", error);

@@ -5,7 +5,7 @@ import {
   isConfigured,
   listObjects,
   uploadBuffer,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
 import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { isValidFocalPreset } from "./focal";

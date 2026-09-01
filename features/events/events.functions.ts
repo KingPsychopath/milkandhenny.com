@@ -22,6 +22,7 @@ export const getEventsIndexFn = createServerFn({ method: "GET" }).handler(
   async (): Promise<EventsIndexData> => {
     const result = await runEventsResult(
       eventsOperation({ domain: "events", operation: "index" }, () => getEventsIndex()),
+      getRequest().signal,
     );
     // The index is a shop window: an outage should show an empty shelf, not
     // an error page that makes the whole site look broken.
@@ -39,6 +40,7 @@ async function listForAdmin() {
       const events = yield* EventsService;
       return yield* events.list({ includeHidden: true });
     }),
+    getRequest().signal,
   );
   return result.ok ? result.value : [];
 }

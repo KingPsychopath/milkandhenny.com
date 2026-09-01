@@ -8,7 +8,7 @@ import {
   listObjects,
   presignPutUrl,
   uploadBuffer,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
 import {
   MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
   PRIVATE_MEDIA_CACHE_CONTROL,

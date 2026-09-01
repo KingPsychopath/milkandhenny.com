@@ -13,7 +13,7 @@ import {
   presignGetUrl,
   presignPutUrl,
   uploadBuffer,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
 import {
   PITCH_AUDIO_MAX_BYTES,
   PITCH_DECK_ASSET_MAX_BYTES,

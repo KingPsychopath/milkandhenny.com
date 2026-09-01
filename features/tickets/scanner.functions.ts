@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
+import { getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
 
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -230,6 +230,7 @@ export const checkpointScanFn = createServerFn({ method: "POST" })
           scannedBy: auth.scannedBy,
         });
       }),
+      getRequest().signal,
     );
     return { authorised: true, outcome };
   });
@@ -277,6 +278,7 @@ export const guestSubmitFn = createServerFn({ method: "POST" })
             bypassCapacity: true,
           });
         }),
+        getRequest().signal,
       );
       if (!issued.ok) return { authorised: true, ok: false, error: issued.error };
       return { authorised: true, ok: true, mode: "added", holderName: name };
@@ -370,6 +372,7 @@ export const checkpointUndoFn = createServerFn({ method: "POST" })
           ticketId: data.ticketId,
         });
       }),
+      getRequest().signal,
     );
     if (!result.ok) return { authorised: true, ok: false, error: result.error };
     return { authorised: true, ok: true, used: result.value.used };

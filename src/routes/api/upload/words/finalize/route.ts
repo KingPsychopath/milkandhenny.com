@@ -1,47 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import {
-  copyObject,
-  deleteObject,
-  downloadBuffer,
-  headObject,
-  isConfigured,
-  uploadBuffer,
-} from "@/lib/platform/r2.server";
-import {
-  RawPreviewUnavailableError,
-  getMimeType,
-  isProcessableImage,
-  processResponsiveImage,
-} from "@/features/media/processing.server";
+import { isConfigured } from "@/lib/platform/r2.server";
 import {
   MAX_WORD_MEDIA_FILE_BYTES,
   MAX_WORD_MEDIA_FILES,
   getWordUploadFilenameCandidates,
   incomingMediaPrefixForTarget,
-  isRawWordUpload,
-  mediaPathForTarget,
   parseWordMediaTarget,
-  toR2Filename,
-  toMarkdownSnippetForTarget,
 } from "@/features/words/upload";
-import { getFileKind } from "@/features/media/processing.server";
 import type { FileKind } from "@/features/media/file-kinds";
 import { FILE_KINDS } from "@/features/media/file-kinds";
-import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
-import { getWordMediaStorageScope } from "@/features/words/media-storage.server";
-import { wordImageVariantKey } from "@/features/words/image";
-import { mergeWordImageMetadata, pruneWordImageVariants } from "@/features/words/image.server";
-import type { ResponsiveImageMetadata } from "@/features/media/image";
-import {
-  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
-  PRIVATE_MEDIA_CACHE_CONTROL,
-  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
-} from "@/lib/shared/media-cache";
-import { buildAttachmentContentDisposition } from "@/features/downloads/presign";
-export const maxDuration = 15;
-const FINALIZE_CONCURRENCY = 2;
+import { WordMediaService } from "@/features/words/word-media-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+export const maxDuration = 120;
 
 type FinalizeFile = {
   original: string;
@@ -50,21 +23,6 @@ type FinalizeFile = {
   size: number;
   kind: FileKind;
   overwrote: boolean;
-};
-
-type FinalizeSuccess = {
-  uploaded: Array<{
-    original: string;
-    filename: string;
-    kind: FileKind;
-    width?: number;
-    height?: number;
-    size: number;
-    markdown: string;
-    overwrote: boolean;
-  }>;
-  skipped: string[];
-  queuedCount: number;
 };
 
 const SAFE_WORD_FILENAME = /^[a-z0-9-]+\.[a-z0-9]{1,8}$/;
@@ -120,7 +78,6 @@ async function handlePOST(request: Request) {
   }
   const target = targetResult.target;
   const incomingPrefix = incomingMediaPrefixForTarget(target);
-  const storageScope = await getWordMediaStorageScope(target);
   const files = body.files;
   const skipped = Array.isArray(body.skipped)
     ? body.skipped
@@ -185,187 +142,17 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const uploadedObjects = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => ({
-      file,
-      object: await headObject(file.uploadKey, { scope: "private" }),
-    }));
-    for (const { file, object } of uploadedObjects) {
-      if (!object.exists || object.size !== file.size) {
-        return Response.json(
-          { error: `Uploaded file verification failed: ${file.original}` },
-          { status: 400 },
-        );
-      }
-      const expectedContentType = getMimeType(file.original);
-      if (object.contentType && object.contentType !== expectedContentType) {
-        return Response.json(
-          { error: `Uploaded file type did not match: ${file.original}` },
-          { status: 400 },
-        );
-      }
-    }
-
-    const processed = await mapWithConcurrency(files, FINALIZE_CONCURRENCY, async (file) => {
-      const original = file.original.trim();
-
-      if (isProcessableImage(original)) {
-        // Uploaded to a temp key → download → process → upload to final key → delete temp key.
-        const raw = await downloadBuffer(file.uploadKey, { scope: "private" });
-        const webpFilename = toR2Filename(original);
-        const webpKey = mediaPathForTarget(target, webpFilename);
-
-        try {
-          const image = await processResponsiveImage(raw, original);
-          const largest = image.variants.at(-1);
-          if (!largest) throw new Error(`No responsive variants generated for ${original}`);
-          await Promise.all([
-            uploadBuffer(webpKey, largest.formats.webp.buffer, "image/webp", {
-              scope: storageScope,
-              cacheControl:
-                storageScope === "public"
-                  ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
-                  : PRIVATE_MEDIA_CACHE_CONTROL,
-            }),
-            ...image.variants.flatMap((variant) =>
-              (["avif", "webp"] as const).map((format) => {
-                const output = variant.formats[format];
-                return uploadBuffer(
-                  wordImageVariantKey(target, webpFilename, variant.width, format),
-                  output.buffer,
-                  output.contentType,
-                  {
-                    scope: storageScope,
-                    cacheControl:
-                      storageScope === "public"
-                        ? VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL
-                        : PRIVATE_MEDIA_CACHE_CONTROL,
-                  },
-                );
-              }),
-            ),
-          ]);
-          await pruneWordImageVariants(
-            target,
-            webpFilename,
-            image.variants.map((variant) => variant.width),
-            storageScope,
-          );
-
-          try {
-            await deleteObject(file.uploadKey, { scope: "private" });
-          } catch {
-            // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
-          }
-
-          return {
-            original,
-            filename: webpFilename,
-            kind: "image" as const,
-            width: image.width,
-            height: image.height,
-            size: largest.formats.webp.buffer.byteLength,
-            markdown: toMarkdownSnippetForTarget(target, webpFilename, "image"),
-            overwrote: !!file.overwrote,
-            image: {
-              width: image.width,
-              height: image.height,
-              version: image.version,
-              widths: image.variants.map((variant) => variant.width),
-              placeholder: image.placeholder,
-            } satisfies ResponsiveImageMetadata,
-          };
-        } catch (error) {
-          if (!(error instanceof RawPreviewUnavailableError) || !isRawWordUpload(original)) {
-            throw error;
-          }
-
-          const fallbackFilename = toR2Filename(original, { preserveRawExtension: true });
-          const fallbackKey = mediaPathForTarget(target, fallbackFilename);
-          const fallbackKind: FileKind = "file";
-          await uploadBuffer(fallbackKey, raw, getMimeType(original), {
-            scope: storageScope,
-            cacheControl:
-              storageScope === "public"
-                ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
-                : PRIVATE_MEDIA_CACHE_CONTROL,
-            contentDisposition: buildAttachmentContentDisposition(fallbackFilename),
-          });
-
-          try {
-            await deleteObject(file.uploadKey, { scope: "private" });
-          } catch {
-            // Best-effort cleanup. The temp file is not referenced by markdown and can be cleaned manually.
-          }
-
-          return {
-            original,
-            filename: fallbackFilename,
-            kind: fallbackKind,
-            size: raw.byteLength,
-            markdown: toMarkdownSnippetForTarget(target, fallbackFilename, fallbackKind),
-            overwrote: !!file.overwrote,
-          };
-        }
-      }
-
-      const kind = file.kind ?? getFileKind(original);
-      const finalKey = mediaPathForTarget(target, file.filename);
-      await copyObject(file.uploadKey, finalKey, {
-        sourceScope: "private",
-        destinationScope: storageScope,
-        contentType: getMimeType(original),
-        cacheControl:
-          storageScope === "public"
-            ? MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL
-            : PRIVATE_MEDIA_CACHE_CONTROL,
-        contentDisposition: buildAttachmentContentDisposition(file.filename),
-      });
-      await deleteObject(file.uploadKey, { scope: "private" });
-      return {
-        original,
-        filename: file.filename,
-        kind,
-        size: file.size,
-        markdown: toMarkdownSnippetForTarget(target, file.filename, kind),
-        overwrote: !!file.overwrote,
-      };
-    });
-
-    const imageEntries = Object.fromEntries(
-      processed.flatMap((file) =>
-        "image" in file && file.image ? [[file.filename, file.image]] : [],
-      ),
-    );
-    if (Object.keys(imageEntries).length > 0) {
-      await mergeWordImageMetadata(target, imageEntries, storageScope);
-    }
-    const uploaded = processed.map((file) => {
-      if (!("image" in file)) return file;
-      const { image: _image, ...result } = file;
-      return result;
-    });
-
-    const payload: FinalizeSuccess = { uploaded, skipped, queuedCount: 0 };
-    return Response.json(payload);
-  } catch (e) {
-    const incomingKeys = files
-      .map((file) => file.uploadKey)
-      .filter(
-        (key): key is string =>
-          typeof key === "string" &&
-          key.startsWith(incomingPrefix) &&
-          isSafeUploadKey(incomingPrefix, key),
-      );
-    await Promise.all(
-      incomingKeys.map(async (key) => {
-        try {
-          await deleteObject(key, { scope: "private" });
-        } catch {
-          // Best-effort temp cleanup after finalize failure.
-        }
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const media = yield* WordMediaService;
+        return yield* media.finalize({ target, files, skipped });
       }),
+      request.signal,
     );
-
+    return result.status === "completed"
+      ? Response.json(result.value)
+      : Response.json({ error: result.error }, { status: 400 });
+  } catch (e) {
     return apiErrorFromRequest(
       request,
       "upload.words.finalize",

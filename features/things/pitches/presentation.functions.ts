@@ -3,8 +3,9 @@ import { getRequest } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
+import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getPitchOperationalStatus } from "./operational.server";
-import { runPitchesResult } from "./pitches-runtime.server";
+import { runPitchesResult as runPitchesResultWithoutSignal } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
 import { isPitchDeckId } from "./validation";
 import {
@@ -17,13 +18,19 @@ type PresentationOperation<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; error: string; retryable?: boolean };
 
+function runPitchesResult<A, E>(
+  effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
+) {
+  return runPitchesResultWithoutSignal(effect, getRequest().signal);
+}
+
 export const getPresentationAccessFn = createServerFn({ method: "GET" }).handler(async () => ({
   auth: await authenticateRequest(getRequest(), "admin"),
   operationalStatus: await getPitchOperationalStatus(),
 }));
 
 async function runPresentationOperation<T>(
-  effect: Effect.Effect<PresentationOperation<T>, unknown, PitchesService>,
+  effect: Effect.Effect<PresentationOperation<T>, unknown, PitchesService | ObjectStorageService>,
 ): Promise<PresentationOperation<T>> {
   const result = await runPitchesResult(effect);
   return result.ok

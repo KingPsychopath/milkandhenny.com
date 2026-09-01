@@ -8,7 +8,7 @@ async function handlePOST(request: Request) {
   const auth = await requireAuth(request, "cron");
   if (auth) return auth;
   try {
-    const outcome = await runOperationsDigestScheduledJob(true);
+    const outcome = await runOperationsDigestScheduledJob(true, request.signal);
     return Response.json(
       outcome.ran
         ? { success: true, schedulerSkipped: false, ...outcome.value }

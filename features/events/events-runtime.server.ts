@@ -6,11 +6,13 @@ import {
   EmailProviderService,
   PaymentsService,
   PostgresService,
+  RedisService,
 } from "@/lib/platform/provider-services.server";
 import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { CommunicationsService } from "@/features/communications/communications-service.server";
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
+import { EventIcebreakerService } from "@/features/event-icebreaker/event-icebreaker-service.server";
 import { StaffAccessService } from "@/features/event-scoring/staff-access-service.server";
 import { ApplicationSchedulerService } from "@/features/system/application-scheduler-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
@@ -22,21 +24,23 @@ import { EventsService } from "./events-service.server";
  *
  * Built lazily once per Node process and disposed by a Nitro shutdown hook,
  * the same lifecycle the multiplayer runtime uses. It owns no authoritative
- * state — Redis remains the source of truth, so any replica can serve the
- * next request.
+ * state — Postgres, Redis, and durable outboxes remain authoritative, so any
+ * replica can serve the next request.
  */
 const eventWorkflowLayer = Layer.mergeAll(
   CommunicationsService.layer.pipe(Layer.provide(EmailProviderService.layer)),
   EventScoringService.layer,
 );
 const scheduledEventWorkflowLayer = ApplicationSchedulerService.layer.pipe(
-  Layer.provideMerge(eventWorkflowLayer),
+  Layer.provide(Layer.mergeAll(eventWorkflowLayer, PostgresService.layer, RedisService.layer)),
 );
 const eventsLayer = Layer.mergeAll(
+  eventWorkflowLayer,
   EventsService.layer,
   TicketsService.layer,
   AttendeeOperationsService.layer,
   EventOperationsService.layer.pipe(Layer.provide(PaymentsService.layer)),
+  EventIcebreakerService.layer.pipe(Layer.provide(PostgresService.layer)),
   StaffAccessService.layer,
   scheduledEventWorkflowLayer,
   EventsRealtimeService.layer.pipe(Layer.provide(PostgresService.layer)),
@@ -49,6 +53,7 @@ export type EventsServices =
   | AttendeeOperationsService
   | CommunicationsService
   | EventOperationsService
+  | EventIcebreakerService
   | EventScoringService
   | EventsRealtimeService
   | StaffAccessService

@@ -36,12 +36,12 @@ TanStack / Nitro / CLI / worker edge
 One independently started and stopped subsystem owns one runtime. A feature folder or service does
 not get a runtime merely to expose an Effect API.
 
-| Runtime     | Current responsibilities                                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Events      | Events, tickets, attendee and event operations, staff access, scoring, Postgres realtime, communications, scheduler                  |
-| Media       | Media-worker lifecycle, transfer creation/append/removal, transfer media processing, expiry, takedown, and bounded media maintenance |
-| Multiplayer | Shared room workflows, realtime resources, deterministic command context, and telemetry                                              |
-| Pitches     | Pitch Night persistence, presentation, reminders, and provider coordination                                                          |
+| Runtime     | Current responsibilities                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Events      | Events, tickets, attendee and event operations, waitlists, icebreaker persistence, staff access, scoring, Postgres realtime, communications, scheduler |
+| Media       | Media-worker lifecycle, private transfers, album and word content/media orchestration, and bounded media maintenance                                   |
+| Multiplayer | Shared room and game-pool workflows, best-dressed voting orchestration, realtime resources, deterministic command context, and telemetry               |
+| Pitches     | Pitch Night persistence, presentation, reminders, and provider coordination                                                                            |
 
 Services compose into the owning runtime Layer. A compatibility facade may delegate to that runtime
 but must not construct or dispose another `ManagedRuntime`. Add a new runtime only when the work has

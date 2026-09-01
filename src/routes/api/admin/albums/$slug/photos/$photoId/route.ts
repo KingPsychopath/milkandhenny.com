@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { deleteAlbumPhoto, isSafeAlbumSlug, updateAlbumPhoto } from "@/features/media/admin-albums";
+import { isSafeAlbumSlug } from "@/features/media/admin-albums";
+import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 type RouteContext = {
@@ -22,7 +25,15 @@ async function handleDELETE(request: Request, context: RouteContext) {
   }
 
   try {
-    const result = await deleteAlbumPhoto(slug, decodeURIComponent(photoId));
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* AlbumOperationsService).deletePhoto(
+          slug,
+          decodeURIComponent(photoId),
+        );
+      }),
+      request.signal,
+    );
     return Response.json({ success: true, ...result });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to delete photo";
@@ -54,7 +65,16 @@ async function handlePATCH(request: Request, context: RouteContext) {
     return Response.json({ error: "Invalid album slug" }, { status: 400 });
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const album = await updateAlbumPhoto(slug, decodeURIComponent(photoId), body);
+    const album = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* AlbumOperationsService).updatePhoto(
+          slug,
+          decodeURIComponent(photoId),
+          body,
+        );
+      }),
+      request.signal,
+    );
     return Response.json({ success: true, album });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to update photo";

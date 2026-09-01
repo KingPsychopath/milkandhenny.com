@@ -5,11 +5,12 @@ import { Effect } from "effect";
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
+import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { isValidEmail } from "@/lib/shared/email-address";
 import { pitchEditorConfig, type PitchAssetUploadInput } from "./pitches.server";
 import { getPitchOperationalStatus } from "./operational.server";
-import { runPitchesResult } from "./pitches-runtime.server";
+import { runPitchesResult as runPitchesResultWithoutSignal } from "./pitches-runtime.server";
 import { PitchesService } from "./pitches-service.server";
 import { verifiedPitchCreatorIdentity } from "./identity.server";
 import type {
@@ -34,6 +35,12 @@ type OperationResult<T> =
   | { ok: true; value: T }
   | { ok: false; status: number; error: string; retryable?: boolean };
 
+function runPitchesResult<A, E>(
+  effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
+) {
+  return runPitchesResultWithoutSignal(effect, getRequest().signal);
+}
+
 function invalid(error = "Some details were missing or invalid. Check them and try again.") {
   return { ok: false as const, status: 400, error };
 }
@@ -43,7 +50,7 @@ function unavailableWall(message: string): PitchWallLoad {
 }
 
 async function runOperation<T>(
-  effect: Effect.Effect<OperationResult<T>, unknown, PitchesService>,
+  effect: Effect.Effect<OperationResult<T>, unknown, PitchesService | ObjectStorageService>,
 ): Promise<OperationResult<T>> {
   const result = await runPitchesResult(effect);
   return result.ok

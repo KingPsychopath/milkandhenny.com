@@ -1,56 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
+
 import { requireAuth } from "@/features/auth/auth.server";
-import { getRedis } from "@/lib/platform/redis.server";
+import { BestDressedService } from "@/features/best-dressed/best-dressed-service.server";
+import { runMultiplayerEffect } from "@/features/things/shared/multiplayer-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
-const OPEN_UNTIL_KEY = "best-dressed:open-until";
-const MAX_MINUTES = 120;
+function runBestDressed<A>(
+  request: Request,
+  use: (service: typeof BestDressedService.Service) => Effect.Effect<A, unknown>,
+) {
+  return runMultiplayerEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* BestDressedService);
+    }),
+    request.signal,
+  );
+}
 
-/**
- * GET /api/best-dressed/voting/open
- *
- * Read current voting window state.
- * Requires admin auth.
- *
- * Returns: { success: true, isOpen, openUntil, secondsRemaining }
- */
 async function handleGET(request: Request) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
-
-  const redis = getRedis();
-  if (!redis) {
-    return Response.json(
-      { error: "Redis not configured (voting window unavailable)" },
-      { status: 503 },
-    );
-  }
-
   try {
-    const value = await redis.get<number | string>(OPEN_UNTIL_KEY);
-    const openUntil =
-      typeof value === "number"
-        ? value
-        : typeof value === "string"
-          ? Number.parseInt(value, 10)
-          : 0;
-    const now = Math.floor(Date.now() / 1000);
-    const normalized = Number.isFinite(openUntil) ? Math.max(0, Math.floor(openUntil)) : 0;
-
-    if (normalized > 0 && normalized <= now) {
-      // Defensive cleanup if the key is stale.
-      await redis.del(OPEN_UNTIL_KEY);
-    }
-
-    const effective = normalized > now ? normalized : 0;
-    const secondsRemaining = effective > 0 ? Math.max(0, effective - now) : 0;
-
-    return Response.json({
-      success: true,
-      isOpen: effective > 0,
-      openUntil: effective || null,
-      secondsRemaining,
-    });
+    const result = await runBestDressed(request, (service) => service.getVotingWindow);
+    return result.ok
+      ? Response.json({ success: true, ...result })
+      : Response.json(result, { status: result.status });
   } catch (error) {
     return apiErrorFromRequest(
       request,
@@ -61,60 +36,22 @@ async function handleGET(request: Request) {
   }
 }
 
-/**
- * POST /api/best-dressed/voting/open
- *
- * Temporarily open voting without codes for N minutes.
- * Requires admin auth.
- *
- * Body: { minutes: number }  (0 closes immediately)
- * Returns: { success: true, isOpen, openUntil, minutes, secondsRemaining }
- */
 async function handlePOST(request: Request) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
-
-  const redis = getRedis();
-  if (!redis) {
-    return Response.json(
-      { error: "Redis not configured (voting window unavailable)" },
-      { status: 503 },
-    );
-  }
-
   let body: { minutes?: number } = {};
   try {
-    body = (await request.json()) as { minutes?: number };
+    body = (await request.json()) as typeof body;
   } catch {
-    body = {};
+    // An empty body closes the voting window.
   }
-
-  const minutesRaw = body.minutes;
-  const minutes =
-    typeof minutesRaw === "number" && Number.isFinite(minutesRaw)
-      ? Math.max(0, Math.min(MAX_MINUTES, Math.floor(minutesRaw)))
-      : 0;
-
-  const now = Math.floor(Date.now() / 1000);
-  const openUntil = minutes > 0 ? now + minutes * 60 : 0;
-
   try {
-    await redis.set(OPEN_UNTIL_KEY, openUntil);
-    if (openUntil > 0) {
-      // Expire shortly after the window ends, so the key doesn't hang around forever.
-      await redis.expire(OPEN_UNTIL_KEY, minutes * 60 + 60);
-    } else {
-      await redis.del(OPEN_UNTIL_KEY);
-    }
-
-    const secondsRemaining = openUntil > 0 ? Math.max(0, openUntil - now) : 0;
-    return Response.json({
-      success: true,
-      isOpen: openUntil > 0,
-      openUntil: openUntil || null,
-      minutes,
-      secondsRemaining,
-    });
+    const result = await runBestDressed(request, (service) =>
+      service.setVotingWindow(body.minutes),
+    );
+    return result.ok
+      ? Response.json({ success: true, ...result })
+      : Response.json(result, { status: result.status });
   } catch (error) {
     return apiErrorFromRequest(
       request,

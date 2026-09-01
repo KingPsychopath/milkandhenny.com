@@ -1,8 +1,16 @@
 import { Context, Effect, Layer } from "effect";
 
 import { claimStaffAward } from "@/features/event-scoring/staff-award-claims.server";
-import { reconcileEventWaitlist } from "@/features/event-waitlist/waitlist.server";
+import {
+  getWaitlistManagement,
+  listEventWaitlist,
+  previewWaitlistImpact,
+  reconcileEventWaitlist,
+  requestEventWaitlist,
+  updateWaitlistManagement,
+} from "@/features/event-waitlist/waitlist.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
+import { disableEventDrop, enableEventDrop, getEventDrop } from "@/features/events/drop.server";
 import {
   fulfilCheckout,
   refundOrder,
@@ -69,6 +77,14 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
     mutation("invite_ticket", () => withPayments(() => inviteAdminTicket(...args)), 45_000);
   const issueComp = (...args: Parameters<typeof issueAdminComp>) =>
     mutation("issue_comp", () => withPayments(() => issueAdminComp(...args)), 45_000);
+  const getDrop = (...args: Parameters<typeof getEventDrop>) =>
+    eventsOperation({ domain: "event-operations", operation: "get_event_drop", kind: "read" }, () =>
+      withPayments(() => getEventDrop(...args)),
+    );
+  const enableDrop = (...args: Parameters<typeof enableEventDrop>) =>
+    mutation("enable_event_drop", () => withPayments(() => enableEventDrop(...args)));
+  const disableDrop = (...args: Parameters<typeof disableEventDrop>) =>
+    idempotent("disable_event_drop", () => withPayments(() => disableEventDrop(...args)));
   const resendTicketOrder = (...args: Parameters<typeof resendAdminTicketOrder>) =>
     idempotent(
       "resend_ticket_order",
@@ -101,6 +117,26 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
       () => withPayments(() => reconcileEventWaitlist(...args)),
       45_000,
     );
+  const requestWaitlist = (...args: Parameters<typeof requestEventWaitlist>) =>
+    mutation("request_waitlist", () => withPayments(() => requestEventWaitlist(...args)));
+  const getWaitlist = (...args: Parameters<typeof getWaitlistManagement>) =>
+    eventsOperation(
+      { domain: "event-operations", operation: "get_waitlist_management", kind: "read" },
+      () => withPayments(() => getWaitlistManagement(...args)),
+    );
+  const updateWaitlist = (...args: Parameters<typeof updateWaitlistManagement>) =>
+    idempotent("update_waitlist_management", () =>
+      withPayments(() => updateWaitlistManagement(...args)),
+    );
+  const listWaitlist = (...args: Parameters<typeof listEventWaitlist>) =>
+    eventsOperation({ domain: "event-operations", operation: "list_waitlist", kind: "read" }, () =>
+      withPayments(() => listEventWaitlist(...args)),
+    );
+  const previewWaitlist = (...args: Parameters<typeof previewWaitlistImpact>) =>
+    eventsOperation(
+      { domain: "event-operations", operation: "preview_waitlist", kind: "read" },
+      () => withPayments(() => previewWaitlistImpact(...args)),
+    );
   const resolveCheckout = (...args: Parameters<typeof resolveCheckoutOutcome>) =>
     idempotent(
       "resolve_checkout",
@@ -121,10 +157,17 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
     checkpointScan: scanCheckpoint,
     fulfilCheckout: fulfilTicketCheckout,
     fulfilExchange,
+    disableDrop,
+    enableDrop,
+    getDrop,
     handleStripeWebhook,
     inviteTicket,
     issueComp,
+    getWaitlist,
+    listWaitlist,
+    previewWaitlist,
     reconcileWaitlist,
+    requestWaitlist,
     refundOrder: refundWholeOrder,
     refundTicket: refundOneTicket,
     resolveCheckout,
@@ -133,6 +176,7 @@ function makeEventOperations(payments: typeof PaymentsService.Service) {
     startCheckout: startTicketCheckout,
     startExchange,
     undoCheckpointUse: undoCheckpoint,
+    updateWaitlist,
   };
 }
 

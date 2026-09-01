@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getTransferMediaUrlTtlSeconds } from "@/features/transfers/media-access";
-import {
-  getVideoPosterMaxBytes,
-  ProcessingTimeoutError,
-  withProcessingTimeout,
-} from "@/features/transfers/media-processing-config.server";
+import { getVideoPosterMaxBytes } from "@/features/transfers/media-processing-config.server";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -36,23 +32,6 @@ describe("video poster cap", () => {
 
     vi.stubEnv("MEDIA_VIDEO_POSTER_MAX_BYTES", "0");
     expect(getVideoPosterMaxBytes()).toBe(0);
-  });
-});
-
-describe("withProcessingTimeout", () => {
-  it("passes work through untouched when no budget is set", async () => {
-    await expect(withProcessingTimeout("job", 0, async () => "done")).resolves.toBe("done");
-  });
-
-  it("rejects work that outruns its budget", async () => {
-    const slow = () => new Promise<string>((resolve) => setTimeout(() => resolve("late"), 50));
-    await expect(withProcessingTimeout("job", 5, slow)).rejects.toBeInstanceOf(
-      ProcessingTimeoutError,
-    );
-  });
-
-  it("resolves work that finishes in time", async () => {
-    await expect(withProcessingTimeout("job", 1000, async () => "quick")).resolves.toBe("quick");
   });
 });
 

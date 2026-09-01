@@ -38,7 +38,14 @@ import { resolveTicketOrderAccess } from "@/features/tickets/order-access";
 import { buildTicketQrPayload } from "@/features/tickets/qr.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
 import type { OrderTicketView, TicketPageTicket } from "@/features/tickets/types";
-import { runEventOperationsResult } from "./runtime.server";
+import {
+  runEventsResult as runEventOperationsResultWithoutSignal,
+  type EventsServices,
+} from "@/features/events/events-runtime.server";
+
+function runEventOperationsResult<A, E>(effect: Effect.Effect<A, E, EventsServices>) {
+  return runEventOperationsResultWithoutSignal(effect, getRequest().signal);
+}
 
 export type TicketPageResult =
   | { found: false }

@@ -1,7 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 
 import { multiplayerRecord, multiplayerText } from "../shared/multiplayer-validation";
-import { controlGamePoolAsOperator, getGamePoolOperatorView } from "./operator.server";
+import { runMultiplayerEffect } from "../shared/multiplayer-runtime.server";
+import { GamePoolOperationsService } from "./game-pool-operations-service.server";
+import { getGamePoolOperatorView } from "./operator.server";
 
 function token(value: unknown) {
   const parsed = multiplayerText(value, 100);
@@ -30,4 +34,15 @@ export const controlGamePoolAsOperatorFn = createServerFn({ method: "POST" })
       roomId: data.roomId === undefined ? undefined : multiplayerText(data.roomId, 20),
     };
   })
-  .handler(({ data }) => controlGamePoolAsOperator(data.token, data.action, data.roomId));
+  .handler(({ data }) =>
+    runMultiplayerEffect(
+      Effect.gen(function* () {
+        return yield* (yield* GamePoolOperationsService).operatorControl(
+          data.token,
+          data.action,
+          data.roomId,
+        );
+      }),
+      getRequest().signal,
+    ),
+  );

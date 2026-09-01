@@ -1,13 +1,13 @@
 import {
   copyObject,
-  deleteObjects,
   deleteObject,
+  deleteObjects,
   downloadBuffer,
   isConfigured,
   listObjects,
   uploadBuffer,
-  type StorageScope,
-} from "@/lib/platform/r2.server";
+} from "@/lib/platform/object-storage-provider-context.server";
+import type { StorageScope } from "@/lib/platform/r2.server";
 import { randomUUID } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { WORD_INDEX_KEY, wordContentKey, wordMetaKey } from "./config.server";

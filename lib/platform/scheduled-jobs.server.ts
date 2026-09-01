@@ -18,16 +18,15 @@ interface ScheduledJobRow extends QueryResultRow {
   failure_count: string | number;
 }
 
-interface RunScheduledJobOptions<T> {
+interface ScheduledJobOptions {
   jobKey: string;
   intervalMs: number;
   retryMs: number;
   leaseMs: number;
   force?: boolean;
-  run: () => Promise<T>;
 }
 
-interface RunScheduledJobEffectOptions<T, E, R> extends Omit<RunScheduledJobOptions<T>, "run"> {
+interface RunScheduledJobEffectOptions<T, E, R> extends ScheduledJobOptions {
   run: Effect.Effect<T, E, R>;
 }
 
@@ -123,62 +122,6 @@ async function finishScheduledJob(input: {
   );
   if (!updated[0]) {
     throw new Error(`Scheduled job ${input.jobKey} lost its lease before completion`);
-  }
-}
-
-/**
- * Claim and run one durable application job.
- *
- * The database lease makes every web replica a safe scheduler candidate. A
- * crashed process is retried after the lease, while deploy overlap and normal
- * multi-replica operation still produce one active runner.
- */
-export async function runLeasedScheduledJob<T>(
-  options: RunScheduledJobOptions<T>,
-): Promise<ScheduledJobRun<T>> {
-  const intervalMs = positiveMilliseconds(options.intervalMs, "Scheduled job interval");
-  const retryMs = positiveMilliseconds(options.retryMs, "Scheduled job retry delay");
-  const leaseMs = positiveMilliseconds(options.leaseMs, "Scheduled job lease");
-  const leaseToken = randomUUID();
-  const claimed = await claimScheduledJob({
-    jobKey: options.jobKey,
-    leaseToken,
-    leaseMs,
-    force: options.force === true,
-  });
-  if (!claimed) return { ran: false };
-
-  const startedAt = Date.now();
-  try {
-    const value = await options.run();
-    const durationMs = Date.now() - startedAt;
-    await finishScheduledJob({
-      jobKey: options.jobKey,
-      leaseToken,
-      delayMs: intervalMs,
-      durationMs,
-    });
-    return { ran: true, durationMs, value };
-  } catch (error) {
-    const durationMs = Date.now() - startedAt;
-    const message = safeError(error);
-    try {
-      await finishScheduledJob({
-        jobKey: options.jobKey,
-        leaseToken,
-        delayMs: retryMs,
-        durationMs,
-        error: message,
-      });
-    } catch (finishError) {
-      log.error(
-        "scheduler.lease",
-        "Could not record scheduled job failure",
-        { jobKey: options.jobKey },
-        finishError,
-      );
-    }
-    throw error;
   }
 }
 

@@ -8,6 +8,7 @@
 
 import fs from "fs";
 import path from "path";
+import { Effect } from "effect";
 import {
   uploadBuffer,
   deleteObjects,
@@ -21,7 +22,6 @@ import {
   getFileKind,
   getMimeType,
   processResponsiveImage,
-  mapConcurrent,
 } from "../features/media/processing.server";
 import {
   mediaPrefixForTarget,
@@ -49,11 +49,12 @@ import {
   VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
 } from "../lib/shared/media-cache";
 import {
-  cleanupOrphanWordMediaFolders,
-  scanOrphanWordMediaFolders,
   type WordMediaOrphanCleanupResult,
   type WordMediaOrphanSummary,
 } from "../features/words/media-maintenance";
+import { MediaMaintenanceService } from "../features/system/media-maintenance-service.server";
+import { runMediaEffect } from "../features/system/media-worker-runtime.server";
+import { withOperationSignal } from "../lib/platform/operation-context.server";
 import { formatBytes } from "../lib/shared/format";
 import type { FileKind } from "../features/media/file-kinds";
 
@@ -65,6 +66,40 @@ const IMAGE_CONCURRENCY = 3;
 const RAW_CONCURRENCY = 6;
 const WORDS_MEDIA_UPLOAD_CHECKPOINT_PREFIX = ".mah-words-media-upload.";
 const WORDS_MEDIA_UPLOAD_CHECKPOINT_SUFFIX = ".checkpoint.json";
+
+function runConcurrent<A, B>(
+  items: readonly A[],
+  concurrency: number,
+  worker: (item: A) => Promise<B>,
+) {
+  return runMediaEffect(
+    Effect.forEach(
+      items,
+      (item) =>
+        Effect.tryPromise({
+          try: (signal) => withOperationSignal(signal, () => worker(item)),
+          catch: (cause) => cause,
+        }),
+      { concurrency },
+    ),
+  );
+}
+
+async function scanOrphanWordMediaFolders(options?: { limit?: number }) {
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* MediaMaintenanceService).scanWordMedia(options);
+    }),
+  );
+}
+
+async function cleanupOrphanWordMediaFolders() {
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* MediaMaintenanceService).cleanupWordMedia;
+    }),
+  );
+}
 
 /* ─── Types ─── */
 
@@ -402,7 +437,7 @@ async function uploadWordMediaFiles(
   };
 
   try {
-    await mapConcurrent(
+    await runConcurrent(
       pendingPlan.filter((e) => e.lane === "image"),
       IMAGE_CONCURRENCY,
       async ({ file, r2Filename, overwrites }): Promise<UploadedWordMediaFile> => {
@@ -470,7 +505,7 @@ async function uploadWordMediaFiles(
       },
     );
 
-    await mapConcurrent(
+    await runConcurrent(
       pendingPlan.filter((e) => e.lane === "raw"),
       RAW_CONCURRENCY,
       async ({ file, r2Filename, overwrites }): Promise<UploadedWordMediaFile> => {

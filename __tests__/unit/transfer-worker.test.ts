@@ -1,21 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  dequeueTransferMediaJobs,
   deleteObjects,
   enqueueTransferMediaJob,
   getTransfer,
-  getTransferMediaQueueLength,
   processImageVariants,
   resolveImageProcessingSource,
   updateTransferFile,
   uploadBuffer,
 } = vi.hoisted(() => ({
-  dequeueTransferMediaJobs: vi.fn(),
   deleteObjects: vi.fn(),
   enqueueTransferMediaJob: vi.fn(),
   getTransfer: vi.fn(),
-  getTransferMediaQueueLength: vi.fn(),
   processImageVariants: vi.fn(),
   resolveImageProcessingSource: vi.fn(),
   updateTransferFile: vi.fn().mockResolvedValue(true),
@@ -29,9 +25,7 @@ vi.mock("@/lib/platform/r2.server", () => ({
 }));
 
 vi.mock("@/features/transfers/media-queue.server", () => ({
-  dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
-  getTransferMediaQueueLength,
 }));
 
 vi.mock("@/features/transfers/store.server", () => ({
@@ -112,7 +106,6 @@ describe("worker media processing", () => {
     vi.clearAllMocks();
     updateTransferFile.mockResolvedValue(true);
     deleteObjects.mockResolvedValue(2);
-    getTransferMediaQueueLength.mockResolvedValue(0);
   });
 
   it("persists mediaId on queued jobs and remaps local video to worker_video", async () => {
@@ -142,27 +135,24 @@ describe("worker media processing", () => {
   });
 
   it("matches worker jobs by mediaId when filenames collide", async () => {
-    const { runTransferMediaJobs } =
-      await import("@/features/transfers/media-backends/worker.server");
+    const { processWorkerJob } = await import("@/features/transfers/media-backends/worker.server");
 
-    dequeueTransferMediaJobs.mockResolvedValue([
-      {
-        transferId: "transfer-1",
+    const job = {
+      transferId: "transfer-1",
+      mediaId: "photo-2",
+      file: {
+        name: "photo.jpg",
         mediaId: "photo-2",
-        file: {
-          name: "photo.jpg",
-          mediaId: "photo-2",
-          size: 512,
-          type: "image/x-adobe-dng",
-          originalName: "photo.dng",
-        },
-        storageKey: "transfers/transfer-1/originals/photo.dng",
-        mimeType: "image/x-adobe-dng",
-        processingRoute: "worker_raw",
-        attempt: 1,
-        enqueuedAt: new Date().toISOString(),
+        size: 512,
+        type: "image/x-adobe-dng",
+        originalName: "photo.dng",
       },
-    ]);
+      storageKey: "transfers/transfer-1/originals/photo.dng",
+      mimeType: "image/x-adobe-dng",
+      processingRoute: "worker_raw" as const,
+      attempt: 1,
+      enqueuedAt: new Date().toISOString(),
+    };
     getTransfer.mockResolvedValue({
       id: "transfer-1",
       title: "transfer",
@@ -206,7 +196,7 @@ describe("worker media processing", () => {
       takenAt: null,
     });
 
-    const result = await runTransferMediaJobs(1);
+    const result = await processWorkerJob(job);
 
     expect(uploadBuffer).toHaveBeenNthCalledWith(
       1,
@@ -226,35 +216,32 @@ describe("worker media processing", () => {
       "transfer-1",
       expect.objectContaining({ id: "photo-2", processingStatus: "worker_done" }),
     );
-    expect(result.succeeded).toBe(1);
+    expect(result).toBe("succeeded");
   });
 
   it("cleans generated variants when the file is deleted during processing", async () => {
-    const { runTransferMediaJobs } =
-      await import("@/features/transfers/media-backends/worker.server");
+    const { processWorkerJob } = await import("@/features/transfers/media-backends/worker.server");
     const expectedThumbKey = "transfers/transfer-1/thumb/photo-2.webp";
     const expectedFullKey = "transfers/transfer-1/full/photo-2.webp";
 
-    dequeueTransferMediaJobs.mockResolvedValue([
-      {
-        transferId: "transfer-1",
+    const job = {
+      transferId: "transfer-1",
+      mediaId: "photo-2",
+      file: {
+        name: "photo.jpg",
         mediaId: "photo-2",
-        file: {
-          name: "photo.jpg",
-          mediaId: "photo-2",
-          size: 512,
-          type: "image/x-adobe-dng",
-          originalName: "photo.dng",
-        },
-        storageKey: "transfers/transfer-1/originals/photo.dng",
-        expectedThumbKey,
-        expectedFullKey,
-        mimeType: "image/x-adobe-dng",
-        processingRoute: "worker_raw",
-        attempt: 1,
-        enqueuedAt: new Date().toISOString(),
+        size: 512,
+        type: "image/x-adobe-dng",
+        originalName: "photo.dng",
       },
-    ]);
+      storageKey: "transfers/transfer-1/originals/photo.dng",
+      expectedThumbKey,
+      expectedFullKey,
+      mimeType: "image/x-adobe-dng",
+      processingRoute: "worker_raw" as const,
+      attempt: 1,
+      enqueuedAt: new Date().toISOString(),
+    };
     getTransfer.mockResolvedValue({
       id: "transfer-1",
       title: "transfer",
@@ -288,12 +275,63 @@ describe("worker media processing", () => {
     });
     updateTransferFile.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
-    const result = await runTransferMediaJobs(1);
+    const result = await processWorkerJob(job);
 
     expect(deleteObjects).toHaveBeenCalledWith([expectedThumbKey, expectedFullKey], {
       scope: "private",
     });
-    expect(result).toMatchObject({ succeeded: 0, skipped: 1 });
+    expect(result).toBe("skipped");
+  });
+
+  it("records an Effect-owned worker deadline as a durable timeout failure", async () => {
+    const { markWorkerJobTimedOut } =
+      await import("@/features/transfers/media-backends/worker.server");
+    const job = {
+      transferId: "transfer-1",
+      mediaId: "clip",
+      file: {
+        name: "clip.mov",
+        mediaId: "clip",
+        size: 512,
+        type: "video/quicktime",
+      },
+      storageKey: "transfers/transfer-1/original/clip.mov",
+      mimeType: "video/quicktime",
+      processingRoute: "worker_video" as const,
+      attempt: 1,
+      enqueuedAt: new Date().toISOString(),
+    };
+    getTransfer.mockResolvedValue({
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "clip",
+          filename: "clip.mov",
+          kind: "video",
+          size: 512,
+          mimeType: "video/quicktime",
+          storageKey: "transfers/transfer-1/original/clip.mov",
+          previewStatus: "original_only",
+          processingStatus: "processing",
+          processingRoute: "worker_video",
+        },
+      ],
+    });
+
+    await expect(markWorkerJobTimedOut(job, 250)).resolves.toBe("failed");
+    expect(updateTransferFile).toHaveBeenCalledWith(
+      "transfer-1",
+      expect.objectContaining({
+        id: "clip",
+        processingStatus: "failed",
+        processingErrorCode: "worker_timeout",
+        processingErrorDetail: expect.stringContaining("timed out after 250ms"),
+      }),
+    );
   });
 
   it("marks stale exhausted files as failed instead of leaving them queued", async () => {

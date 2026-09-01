@@ -3,7 +3,7 @@ import {
   getTransferMediaWorkerStatus,
   type TransferMediaWorkerStatus,
 } from "./media-worker-status.server";
-import { deleteObjects, listObjects } from "@/lib/platform/r2.server";
+import { deleteObjects, listObjects } from "@/lib/platform/object-storage-provider-context.server";
 import { deleteTransferData, getTransfer, listTransfers } from "./store.server";
 import type { TransferData } from "./types";
 

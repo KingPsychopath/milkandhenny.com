@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { runPitchesResult } from "@/features/things/pitches/pitches-runtime.server";
+import { runPitchesResult as runPitchesResultWithoutSignal } from "@/features/things/pitches/pitches-runtime.server";
 import { PitchesService } from "@/features/things/pitches/pitches-service.server";
 import {
   getPitchOperationalStatus,
@@ -16,10 +16,14 @@ import {
 } from "@/features/things/pitches/validation";
 import { PITCH_REMINDER_TEMPLATES } from "@/features/things/pitches/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { isValidEmail } from "@/lib/shared/email-address";
 
 async function handleGET(request: Request) {
+  const runPitchesResult = <A, E>(
+    effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
+  ) => runPitchesResultWithoutSignal(effect, request.signal);
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
@@ -69,6 +73,9 @@ async function handleGET(request: Request) {
 }
 
 async function handlePATCH(request: Request) {
+  const runPitchesResult = <A, E>(
+    effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
+  ) => runPitchesResultWithoutSignal(effect, request.signal);
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
@@ -208,6 +215,9 @@ async function handlePATCH(request: Request) {
 }
 
 async function handleDELETE(request: Request) {
+  const runPitchesResult = <A, E>(
+    effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
+  ) => runPitchesResultWithoutSignal(effect, request.signal);
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   const stepUpError = await requireAdminStepUp(request);

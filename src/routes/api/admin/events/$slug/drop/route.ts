@@ -1,17 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { requireAuth } from "@/features/auth/auth.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import { disableEventDrop, enableEventDrop, getEventDrop } from "@/features/events/drop.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { parseExpiry } from "@/features/transfers/store.server";
 
 /** Admin control of an event's guest media drop. */
+
+function runDrop<A>(
+  request: Request,
+  use: (service: typeof EventOperationsService.Service) => Effect.Effect<A, unknown>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* EventOperationsService);
+    }),
+    request.signal,
+  );
+}
 
 async function handleGET(request: Request, slug: string) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
   try {
-    const drop = await getEventDrop(slug);
+    const drop = await runDrop(request, (service) => service.getDrop(slug));
     return Response.json({ drop });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.drop", "Failed to load guest uploads", error);
@@ -36,7 +50,7 @@ async function handlePOST(request: Request, slug: string) {
       );
     }
 
-    const result = await enableEventDrop(slug, expirySeconds);
+    const result = await runDrop(request, (service) => service.enableDrop(slug, expirySeconds));
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ drop: result.value });
   } catch (error) {
@@ -53,7 +67,7 @@ async function handleDELETE(request: Request, slug: string) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
   try {
-    const result = await disableEventDrop(slug);
+    const result = await runDrop(request, (service) => service.disableDrop(slug));
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ ok: true });
   } catch (error) {

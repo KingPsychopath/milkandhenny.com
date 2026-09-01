@@ -10,7 +10,7 @@ import { EventOperationsService } from "@/features/event-operations/event-operat
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
 import { TicketsService } from "@/features/tickets/tickets-service.server";
-import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
+import { runEventsResult as runEventOperationsResult } from "@/features/events/events-runtime.server";
 import { log } from "@/lib/platform/logger.server";
 
 /**

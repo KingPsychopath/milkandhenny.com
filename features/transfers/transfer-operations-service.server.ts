@@ -5,7 +5,6 @@ import {
   RedisService,
   type InfrastructureError,
 } from "@/lib/platform/provider-services.server";
-import { isTransferStorageConfigured } from "@/lib/platform/r2.server";
 import { withOperationSignal } from "@/lib/platform/operation-context.server";
 import { withObjectStorageProvider } from "@/lib/platform/object-storage-provider-context.server";
 import { isSafeTransferId } from "./admin.server";
@@ -32,18 +31,23 @@ import {
   transferUploadFilesFingerprint,
 } from "./upload-reservation.server";
 import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
+import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
 
 export class TransferOperationError extends Data.TaggedError("TransferOperationError")<{
   readonly cause: unknown;
   readonly operation: string;
 }> {}
 
-function attempt<A>(operation: string, run: (signal: AbortSignal) => Promise<A>) {
-  return Effect.tryPromise({
+function attempt<A>(
+  operation: string,
+  run: (signal: AbortSignal) => Promise<A>,
+  timeoutMs: false | number = 45_000,
+) {
+  const attempted = Effect.tryPromise({
     try: (signal) => withOperationSignal(signal, () => run(signal)),
     catch: (cause) => new TransferOperationError({ cause, operation }),
-  }).pipe(
-    Effect.timeout(45_000),
+  });
+  return (timeoutMs === false ? attempted : attempted.pipe(Effect.timeout(timeoutMs))).pipe(
     Effect.mapError((cause) =>
       cause instanceof TransferOperationError
         ? cause
@@ -199,7 +203,7 @@ export class TransferOperationsService extends Context.Service<
 
       const removeObjects = (id: string) =>
         Effect.gen(function* () {
-          if (!isTransferStorageConfigured()) return 0;
+          if (!storage.port.isTransferStorageConfigured()) return 0;
           const prefix = `transfers/${id}/`;
           const objects = yield* storage.listObjects(prefix, { scope: "private" });
           const keys = objects.map(({ key }) => key).filter((key) => key.startsWith(prefix));
@@ -381,8 +385,13 @@ export class TransferOperationsService extends Context.Service<
         Effect.forEach(
           files,
           (file) =>
-            attempt("process_uploaded_file", () =>
-              withObjectStorageProvider(storage.port, () => processUploadedFile(file, transferId)),
+            attempt(
+              "process_uploaded_file",
+              () =>
+                withObjectStorageProvider(storage.port, () =>
+                  processUploadedFile(file, transferId),
+                ),
+              getInlineProcessingTimeoutMs() || false,
             ).pipe(
               Effect.map((result) => ({
                 ...result,
@@ -584,7 +593,7 @@ export class TransferOperationsService extends Context.Service<
           const file = transfer.files.find(({ id }) => id === input.fileId);
           if (!file) return { status: "file-missing" } as const;
 
-          const keys = isTransferStorageConfigured()
+          const keys = storage.port.isTransferStorageConfigured()
             ? getTransferFileDeleteKeys(input.id, file)
             : [];
           let deletedObjects =
@@ -607,7 +616,7 @@ export class TransferOperationsService extends Context.Service<
 
       const nuke = Effect.gen(function* () {
         const client = yield* redis.client;
-        if (!client || !isTransferStorageConfigured()) {
+        if (!client || !storage.port.isTransferStorageConfigured()) {
           return { configured: false } as const;
         }
         const objects = yield* storage.listObjects("transfers/", { scope: "private" });

@@ -23,6 +23,7 @@ async function handleGET(request: Request) {
         const events = yield* EventsService;
         return yield* events.list({ includeHidden: true });
       }),
+      request.signal,
     );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ events: result.value });
@@ -46,6 +47,7 @@ async function handlePOST(request: Request) {
         const events = yield* EventsService;
         return yield* events.create(body as Record<string, unknown>);
       }),
+      request.signal,
     );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     if (!result.value.ok) {

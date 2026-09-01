@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { requireAuth } from "@/features/auth/auth.server";
+import { CommunicationsService } from "@/features/communications/communications-service.server";
 import {
   listCommunicationContacts,
   listCommunicationEvents,
   listCommunicationMessages,
-  saveCommunication,
   setMarketingPreference,
 } from "@/features/communications/communications.server";
 import {
@@ -17,14 +18,12 @@ import {
   pauseCommunicationPlan,
   saveCommunicationTemplate,
   scheduleCommunicationPlan,
-  sendCommunicationStageNow,
-  sendCommunicationStageToMissingRecipients,
   previewCommunicationStage,
   previewCommunicationStageEmail,
   resetCommunicationPlanStageFromTemplate,
-  sendCommunicationPlanTest,
   updateCommunicationPlanStage,
 } from "@/features/communications/communication-plans.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { listSurveys } from "@/features/surveys/surveys.server";
 import { getEvent } from "@/features/events/store.server";
 import {
@@ -181,19 +180,43 @@ async function handlePOST(request: Request) {
         );
       }
       return Response.json({
-        queued: await sendCommunicationPlanTest(body.planId, body.testEmail, request),
+        queued: await runEventsEffect(
+          Effect.gen(function* () {
+            const communications = yield* CommunicationsService;
+            return yield* communications.sendPlanTest(
+              body.planId as string,
+              body.testEmail as string,
+              request,
+            );
+          }),
+          request.signal,
+        ),
       });
     }
     if (body.action === "send-stage-now") {
       if (typeof body.stageId !== "string" || !body.stageId)
         return Response.json({ error: "Choose a stage" }, { status: 400 });
-      return Response.json({ queued: await sendCommunicationStageNow(body.stageId, request) });
+      return Response.json({
+        queued: await runEventsEffect(
+          Effect.gen(function* () {
+            const communications = yield* CommunicationsService;
+            return yield* communications.sendStageNow(body.stageId as string, request);
+          }),
+          request.signal,
+        ),
+      });
     }
     if (body.action === "send-stage-to-missing") {
       if (typeof body.stageId !== "string" || !body.stageId)
         return Response.json({ error: "Choose a stage" }, { status: 400 });
       return Response.json({
-        queued: await sendCommunicationStageToMissingRecipients(body.stageId, request),
+        queued: await runEventsEffect(
+          Effect.gen(function* () {
+            const communications = yield* CommunicationsService;
+            return yield* communications.sendStageToMissing(body.stageId as string, request);
+          }),
+          request.signal,
+        ),
       });
     }
     if (body.action === "save-template") {
@@ -247,20 +270,28 @@ async function handlePOST(request: Request) {
     ) {
       return Response.json({ error: "Choose a message type" }, { status: 400 });
     }
-    const data = await saveCommunication({
-      kind,
-      audience: typeof body.audience === "string" ? body.audience : "",
-      eventSlug: typeof body.eventSlug === "string" ? body.eventSlug : null,
-      subject: typeof body.subject === "string" ? body.subject : "",
-      body: typeof body.body === "string" ? body.body : "",
-      media: body.media,
-      selectedContactHashes: Array.isArray(body.selectedContactHashes)
-        ? body.selectedContactHashes.filter((value): value is string => typeof value === "string")
-        : [],
-      scheduledAt:
-        typeof body.scheduledAt === "string" && body.scheduledAt ? body.scheduledAt : null,
-      request,
-    });
+    const data = await runEventsEffect(
+      Effect.gen(function* () {
+        const communications = yield* CommunicationsService;
+        return yield* communications.save({
+          kind,
+          audience: typeof body.audience === "string" ? body.audience : "",
+          eventSlug: typeof body.eventSlug === "string" ? body.eventSlug : null,
+          subject: typeof body.subject === "string" ? body.subject : "",
+          body: typeof body.body === "string" ? body.body : "",
+          media: body.media,
+          selectedContactHashes: Array.isArray(body.selectedContactHashes)
+            ? body.selectedContactHashes.filter(
+                (value): value is string => typeof value === "string",
+              )
+            : [],
+          scheduledAt:
+            typeof body.scheduledAt === "string" && body.scheduledAt ? body.scheduledAt : null,
+          request,
+        });
+      }),
+      request.signal,
+    );
     return Response.json({ communication: data });
   } catch (error) {
     return apiErrorFromRequest(

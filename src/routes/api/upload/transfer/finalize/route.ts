@@ -24,7 +24,7 @@ import {
 } from "@/features/transfers/transfer-operations-service.server";
 import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 
-export const maxDuration = 15;
+export const maxDuration = 300;
 export const runtime = "nodejs";
 type FileEntry = TransferUploadFileInput;
 

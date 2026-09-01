@@ -7,6 +7,9 @@ import { eventsOperation } from "@/features/events/events-operation.server";
 import { runAutomaticPitchReminders } from "@/features/things/pitches/reminders.server";
 import { cleanupGamePools } from "@/features/things/pool/operations.server";
 import { log } from "@/lib/platform/logger.server";
+import { withPostgresProvider } from "@/lib/platform/postgres-provider-context.server";
+import { PostgresService, RedisService } from "@/lib/platform/provider-services.server";
+import { withRedisProvider } from "@/lib/platform/redis-provider-context.server";
 import {
   runLeasedScheduledJobEffect,
   type ScheduledJobRun,
@@ -107,6 +110,9 @@ export class ApplicationSchedulerService extends Context.Service<
     Effect.gen(function* () {
       const communications = yield* CommunicationsService;
       const scoring = yield* EventScoringService;
+      const postgres = yield* PostgresService;
+      const redis = yield* RedisService;
+      const redisClient = yield* redis.client;
       const startGate = yield* Deferred.make<void>();
       const stopGate = yield* Deferred.make<void>();
 
@@ -143,7 +149,11 @@ export class ApplicationSchedulerService extends Context.Service<
           force,
           jobKey: "game-pool-cleanup",
           intervalMs: GAME_POOL_CLEANUP_INTERVAL_MS,
-          run: schedulerOperation("game_pool_cleanup", () => cleanupGamePools()),
+          run: schedulerOperation("game_pool_cleanup", () =>
+            withPostgresProvider(postgres.port, () =>
+              withRedisProvider(redisClient, cleanupGamePools),
+            ),
+          ),
         });
       const runPitchReminders = (force = false) =>
         leased({
@@ -280,6 +290,19 @@ export class ApplicationSchedulerService extends Context.Service<
           },
           4,
         ),
+        forkJob(
+          {
+            jobKey: "game-pool-cleanup",
+            intervalMs: GAME_POOL_CLEANUP_INTERVAL_MS,
+            run: runGamePoolCleanup,
+            report: (outcome) => {
+              if (outcome.ran && Object.values(outcome.value).some((count) => count > 0)) {
+                log.info("scheduler.game-pool", "Expired game pools cleaned up", outcome.value);
+              }
+            },
+          },
+          4,
+        ),
       ]);
 
       const jobSummaries = [
@@ -288,6 +311,7 @@ export class ApplicationSchedulerService extends Context.Service<
         { jobKey: "media-worker-health", intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS },
         { jobKey: "operations-digests", intervalMs: OPERATIONS_DIGEST_INTERVAL_MS },
         { jobKey: "pitch-reminders", intervalMs: PITCH_REMINDER_INTERVAL_MS },
+        { jobKey: "game-pool-cleanup", intervalMs: GAME_POOL_CLEANUP_INTERVAL_MS },
       ];
 
       return {

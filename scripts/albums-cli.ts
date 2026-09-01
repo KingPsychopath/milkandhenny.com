@@ -1,20 +1,28 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Effect } from "effect";
 
 import {
   createAdminAlbum,
-  deleteAlbum,
-  deleteAlbumPhoto,
-  finalizeAlbumUploads,
   listAdminAlbums,
-  prepareAlbumUploads,
   reorderAlbumPhotos,
   setAlbumCover,
-  updateAlbumMetadata,
-  updateAlbumPhoto,
 } from "../features/media/admin-albums";
+import { AlbumOperationsService } from "../features/media/album-operations-service.server";
+import { runMediaEffect } from "../features/system/media-worker-runtime.server";
 import { getMimeType, isProcessableImage } from "../features/media/processing.server";
 import { isConfigured as isObjectStorageConfigured } from "../lib/platform/r2.server";
+import { withOperationSignal } from "../lib/platform/operation-context.server";
+
+function runAlbumOperation<A, E>(
+  use: (albums: typeof AlbumOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* AlbumOperationsService);
+    }),
+  );
+}
 
 function option(args: string[], name: string): string | undefined {
   const index = args.indexOf(`--${name}`);
@@ -39,21 +47,34 @@ async function uploadDirectory(slug: string, directory: string) {
     });
   if (!files.length) throw new Error("No supported images found in that directory");
 
-  const prepared = await prepareAlbumUploads(
-    slug,
-    files.map(({ name, size, type }) => ({ name, size, type })),
+  const prepared = await runAlbumOperation((albums) =>
+    albums.prepareUploads(
+      slug,
+      files.map(({ name, size, type }) => ({ name, size, type })),
+    ),
   );
-  await Promise.all(
-    prepared.map(async (upload, index) => {
-      const response = await fetch(upload.url, {
-        method: "PUT",
-        headers: { "Content-Type": upload.contentType },
-        body: fs.readFileSync(files[index].filePath),
-      });
-      if (!response.ok) throw new Error(`Storage rejected ${upload.original}: ${response.status}`);
-    }),
+  await runMediaEffect(
+    Effect.forEach(
+      prepared,
+      (upload, index) =>
+        Effect.tryPromise({
+          try: (signal) =>
+            withOperationSignal(signal, async () => {
+              const response = await fetch(upload.url, {
+                method: "PUT",
+                headers: { "Content-Type": upload.contentType },
+                body: fs.readFileSync(files[index].filePath),
+                signal,
+              });
+              if (!response.ok)
+                throw new Error(`Storage rejected ${upload.original}: ${response.status}`);
+            }),
+          catch: (cause) => cause,
+        }),
+      { concurrency: 4, discard: true },
+    ),
   );
-  return finalizeAlbumUploads(slug, prepared);
+  return runAlbumOperation((albums) => albums.finalizeUploads(slug, prepared));
 }
 
 function print(value: unknown): void {
@@ -84,18 +105,20 @@ export async function runAlbumsCli(command: "albums" | "photos", args: string[])
     if (!slug) throw new Error(`Usage: pnpm cli albums ${action ?? "<action>"} <slug>`);
     if (action === "update") {
       return print(
-        await updateAlbumMetadata(slug, {
-          title: option(args, "title"),
-          date: option(args, "date"),
-          description: option(args, "description"),
-          status: option(args, "status"),
-        }),
+        await runAlbumOperation((albums) =>
+          albums.updateMetadata(slug, {
+            title: option(args, "title"),
+            date: option(args, "date"),
+            description: option(args, "description"),
+            status: option(args, "status"),
+          }),
+        ),
       );
     }
     if (action === "upload") return print(await uploadDirectory(slug, required(args, "dir")));
     if (action === "delete") {
       if (!args.includes("--yes")) throw new Error("Album deletion requires --yes");
-      return print(await deleteAlbum(slug));
+      return print(await runAlbumOperation((albums) => albums.deleteAlbum(slug)));
     }
     throw new Error("Use albums list|create|update|upload|delete");
   }
@@ -107,7 +130,7 @@ export async function runAlbumsCli(command: "albums" | "photos", args: string[])
   if (action === "delete") {
     if (!photoId || !args.includes("--yes"))
       throw new Error("Photo deletion needs an ID and --yes");
-    return print(await deleteAlbumPhoto(slug, photoId));
+    return print(await runAlbumOperation((albums) => albums.deletePhoto(slug, photoId)));
   }
   if (action === "set-cover") {
     if (!photoId) throw new Error("Photo ID is required");
@@ -116,12 +139,14 @@ export async function runAlbumsCli(command: "albums" | "photos", args: string[])
   if (action === "update") {
     if (!photoId) throw new Error("Photo ID is required");
     return print(
-      await updateAlbumPhoto(slug, photoId, {
-        title: option(args, "title"),
-        alt: option(args, "alt"),
-        caption: option(args, "caption"),
-        focalPoint: option(args, "focal"),
-      }),
+      await runAlbumOperation((albums) =>
+        albums.updatePhoto(slug, photoId, {
+          title: option(args, "title"),
+          alt: option(args, "alt"),
+          caption: option(args, "caption"),
+          focalPoint: option(args, "focal"),
+        }),
+      ),
     );
   }
   if (action === "reorder") {

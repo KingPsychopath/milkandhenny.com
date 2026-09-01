@@ -15,17 +15,31 @@ import { HotAndColdRoomService } from "../hot-and-cold/hot-and-cold-room-service
 import { FamilyFeudRoomService } from "../family-feud/family-feud-room-service.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
+import { MultiplayerLifecycle } from "./multiplayer-lifecycle.server";
 import { gameRealtimeChannel } from "./multiplayer-keys";
 import { MULTIPLAYER_GAME_REGISTRY, type MultiplayerGame } from "./multiplayer-telemetry";
-import { startMemoryRoomSweeper, stopMemoryRoomSweeper } from "./room-primitives.server";
 import {
   GameClock,
   GameIdGenerator,
   GameRandom,
   gameWorkflowServicesLayer,
 } from "./game-workflow-services.server";
+import { BestDressedService } from "@/features/best-dressed/best-dressed-service.server";
+import { GamePoolOperationsService } from "@/features/things/pool/game-pool-operations-service.server";
+import { PostgresService, RedisService } from "@/lib/platform/provider-services.server";
+
+const multiplayerBackplaneLayer = MultiplayerRealtimeBackplane.layer.pipe(
+  Layer.provide(MultiplayerTelemetry.layer),
+);
 
 const multiplayerLayer = Layer.mergeAll(
+  BestDressedService.layer.pipe(Layer.provide(RedisService.layer)),
+  GamePoolOperationsService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(multiplayerBackplaneLayer, PostgresService.layer, RedisService.layer),
+    ),
+  ),
+  MultiplayerLifecycle.layer,
   MultiplayerTelemetry.layer,
   PairedGameRoomService.layer,
   PartyRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
@@ -36,7 +50,7 @@ const multiplayerLayer = Layer.mergeAll(
   CentreRoomService.layer,
   HotAndColdRoomService.layer,
   FamilyFeudRoomService.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
-  MultiplayerRealtimeBackplane.layer.pipe(Layer.provide(MultiplayerTelemetry.layer)),
+  multiplayerBackplaneLayer,
   gameWorkflowServicesLayer,
 );
 
@@ -86,6 +100,9 @@ if (import.meta.hot) {
 }
 
 type MultiplayerServices =
+  | BestDressedService
+  | GamePoolOperationsService
+  | MultiplayerLifecycle
   | MultiplayerTelemetry
   | MultiplayerRealtimeBackplane
   | PairedGameRoomService
@@ -165,8 +182,5 @@ export function disposeMultiplayerRuntime() {
   // down and every effect fails on a closed scope.
   const runtime = currentMultiplayerRuntime();
   delete runtimeHolder[RUNTIME_KEY];
-  stopMemoryRoomSweeper();
   return runtime ? runtime.dispose() : Promise.resolve();
 }
-
-startMemoryRoomSweeper();

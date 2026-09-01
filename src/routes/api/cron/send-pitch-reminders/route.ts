@@ -11,7 +11,7 @@ async function handleGET(request: Request) {
   const startedAt = Date.now();
   const requestId = request.headers.get("x-request-id") ?? null;
   try {
-    const outcome = await runPitchReminderScheduledJob(true);
+    const outcome = await runPitchReminderScheduledJob(true, request.signal);
     if (!outcome.ran) {
       return Response.json({ success: true, skipped: true, timestamp: new Date().toISOString() });
     }

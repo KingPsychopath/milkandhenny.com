@@ -1,14 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 import {
   multiplayerRecord,
   multiplayerRoomId,
   multiplayerText,
 } from "../shared/multiplayer-validation";
-import {
-  assignGamePoolRoom,
-  getGamePoolPublicView,
-  releaseGamePoolAssignment,
-} from "./pool.server";
+import { runMultiplayerEffect } from "../shared/multiplayer-runtime.server";
+import { GamePoolOperationsService } from "./game-pool-operations-service.server";
+import { getGamePoolPublicView } from "./pool.server";
 import { getDefaultGamePoolPublicLink } from "./store.server";
 import { isGamePoolGame } from "./presets";
 
@@ -59,11 +59,25 @@ export const assignGamePoolRoomFn = createServerFn({ method: "POST" })
       moveExisting: data.moveExisting === true,
     };
   })
-  .handler(({ data }) => assignGamePoolRoom(data));
+  .handler(({ data }) =>
+    runMultiplayerEffect(
+      Effect.gen(function* () {
+        return yield* (yield* GamePoolOperationsService).assign(data);
+      }),
+      getRequest().signal,
+    ),
+  );
 
 export const releaseGamePoolAssignmentFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {
     const data = multiplayerRecord(value);
     return { token: token(data.token), clientId: clientId(data.clientId) };
   })
-  .handler(({ data }) => releaseGamePoolAssignment(data));
+  .handler(({ data }) =>
+    runMultiplayerEffect(
+      Effect.gen(function* () {
+        return yield* (yield* GamePoolOperationsService).release(data);
+      }),
+      getRequest().signal,
+    ),
+  );

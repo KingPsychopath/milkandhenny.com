@@ -6,13 +6,24 @@ import { expandDueCommunicationStages } from "@/features/communications/communic
 import { enqueueEmail, hashEmailRecipient } from "@/lib/platform/email-outbox.server";
 import {
   describeScheduledJobs,
-  runLeasedScheduledJob,
   runLeasedScheduledJobEffect,
 } from "@/lib/platform/scheduled-jobs.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
 describeWithDatabase("application scheduler (postgres)", () => {
+  const runLeased = <T>(options: {
+    jobKey: string;
+    intervalMs: number;
+    retryMs: number;
+    leaseMs: number;
+    force?: boolean;
+    run: () => Promise<T>;
+  }) =>
+    Effect.runPromise(
+      runLeasedScheduledJobEffect({ ...options, run: Effect.promise(options.run) }),
+    );
+
   beforeAll(applySchema);
   afterAll(closeDatabase);
   beforeEach(async () => {
@@ -35,11 +46,11 @@ describeWithDatabase("application scheduler (postgres)", () => {
       run,
     };
 
-    await expect(runLeasedScheduledJob(options)).resolves.toMatchObject({
+    await expect(runLeased(options)).resolves.toMatchObject({
       ran: true,
       value: { queued: 1 },
     });
-    await expect(runLeasedScheduledJob(options)).resolves.toEqual({ ran: false });
+    await expect(runLeased(options)).resolves.toEqual({ ran: false });
     expect(calls).toBe(1);
 
     const [snapshot] = await describeScheduledJobs();
@@ -55,7 +66,7 @@ describeWithDatabase("application scheduler (postgres)", () => {
 
   it("records a failure, releases its lease, and permits a forced recovery", async () => {
     await expect(
-      runLeasedScheduledJob({
+      runLeased({
         jobKey: "test-recovery",
         intervalMs: 60_000,
         retryMs: 60_000,
@@ -73,7 +84,7 @@ describeWithDatabase("application scheduler (postgres)", () => {
     });
 
     await expect(
-      runLeasedScheduledJob({
+      runLeased({
         jobKey: "test-recovery",
         intervalMs: 60_000,
         retryMs: 60_000,
@@ -101,7 +112,7 @@ describeWithDatabase("application scheduler (postgres)", () => {
     );
 
     await expect(
-      runLeasedScheduledJob({
+      runLeased({
         jobKey: "test-stale",
         intervalMs: 60_000,
         retryMs: 1_000,

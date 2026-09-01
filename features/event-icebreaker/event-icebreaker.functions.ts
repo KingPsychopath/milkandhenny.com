@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
+import { Effect } from "effect";
 
 import {
   activeParticipantForEvent,
@@ -8,7 +10,8 @@ import {
 import { getTicket } from "@/features/tickets/store.server";
 import { ticketPublicId } from "@/features/tickets/types";
 import { isPlayerId } from "@/features/things/icebreaker/icebreaker-pairing";
-import { addEventIcebreakerEncounter, getEventIcebreaker } from "./event-icebreaker.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
+import { EventIcebreakerService } from "./event-icebreaker-service.server";
 
 function text(value: unknown, label: string, max = 160): string {
   if (typeof value !== "string") throw new Error(`${label} is missing`);
@@ -43,12 +46,18 @@ export const getEventIcebreakerFn = createServerFn({ method: "GET" })
     };
   })
   .handler(async ({ data }) => {
+    const request = getRequest();
     const access = await resolveAccess(data.eventSlug, data.ticketReference);
     if (!access) {
       return { ok: false as const, status: 404, error: "Open your event ticket on this device" };
     }
     const [result, ticket] = await Promise.all([
-      getEventIcebreaker(data.eventSlug, access.participantId),
+      runEventsEffect(
+        Effect.gen(function* () {
+          return yield* (yield* EventIcebreakerService).get(data.eventSlug, access.participantId);
+        }),
+        request.signal,
+      ),
       getTicket(access.ticketId),
     ]);
     if (!result.ok) return result;
@@ -81,13 +90,19 @@ export const addEventIcebreakerEncounterFn = createServerFn({ method: "POST" })
     };
   })
   .handler(async ({ data }) => {
+    const request = getRequest();
     const access = await resolveAccess(data.eventSlug, data.ticketReference);
     if (!access) {
       return { ok: false as const, status: 404, error: "Open your event ticket on this device" };
     }
-    return addEventIcebreakerEncounter({
-      eventSlug: data.eventSlug,
-      participantId: access.participantId,
-      partnerCode: data.partnerCode,
-    });
+    return runEventsEffect(
+      Effect.gen(function* () {
+        return yield* (yield* EventIcebreakerService).encounter({
+          eventSlug: data.eventSlug,
+          participantId: access.participantId,
+          partnerCode: data.partnerCode,
+        });
+      }),
+      request.signal,
+    );
   });

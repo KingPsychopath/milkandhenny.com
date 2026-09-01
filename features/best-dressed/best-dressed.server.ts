@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "crypto";
 import { getCookie, getRequestIP, setCookie } from "@tanstack/react-start/server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
+import { generateHumanCode } from "@/lib/server/human-code";
 import { getAttendeeNames } from "./attendees.server";
 
 const VOTES_HASH_KEY = "best-dressed:votes:v2";
@@ -11,6 +12,13 @@ const TOKEN_KEY_PREFIX = "best-dressed:token:"; // One-time vote token keys (Red
 const VOTED_KEY_PREFIX = "best-dressed:voted:"; // Per-session "already voted" record (Redis hash)
 const CODE_KEY_PREFIX = "best-dressed:code:"; // one-time vote codes minted by staff
 const CODE_INDEX_KEY = "best-dressed:code-index";
+const CODE_SCAN_MATCH = "best-dressed:code:*";
+const CODE_TTL_SECONDS = 6 * 60 * 60;
+const MAX_CODE_BATCH = 200;
+const MAX_ONE_WORD_BATCH = 50;
+const MIN_CODE_TTL_MINUTES = 15;
+const MAX_CODE_TTL_MINUTES = 12 * 60;
+const MAX_VOTING_WINDOW_MINUTES = 120;
 
 const VOTE_COOKIE = "mah-bd-voter";
 const VOTE_TOKEN_TTL_SECONDS = 10 * 60;
@@ -77,6 +85,19 @@ function voteCodeVariants(code: string): string[] {
   const raw = code.trim();
   if (!raw) return [];
   return Array.from(new Set([raw, raw.toUpperCase(), raw.toLowerCase()]));
+}
+
+function normalizeVoteCode(code: string): string {
+  return code.trim().toLowerCase();
+}
+
+function parseCodeWordCount(raw: unknown): 1 | 2 {
+  if (raw === 1 || raw === 2) return raw;
+  if (typeof raw === "string") {
+    const parsed = Number.parseInt(raw, 10);
+    if (parsed === 1 || parsed === 2) return parsed;
+  }
+  return 2;
 }
 
 function sumPipelineDeletes(results: unknown): number {
@@ -499,4 +520,141 @@ export async function clearBestDressedVotes(): Promise<{ ok: true; session: stri
   memoryVotes.clear();
   const session = await resetSession();
   return { ok: true, session };
+}
+
+export async function mintBestDressedCodes(input: {
+  count?: number;
+  ttlMinutes?: number;
+  words?: number | string;
+}) {
+  const redis = getRedis();
+  if (!redis) return { ok: false as const, status: 503, error: "Vote codes are unavailable" };
+  const count =
+    typeof input.count === "number" && Number.isFinite(input.count)
+      ? Math.max(1, Math.min(MAX_CODE_BATCH, Math.floor(input.count)))
+      : 20;
+  const ttlMinutes =
+    typeof input.ttlMinutes === "number" && Number.isFinite(input.ttlMinutes)
+      ? Math.max(MIN_CODE_TTL_MINUTES, Math.min(MAX_CODE_TTL_MINUTES, Math.floor(input.ttlMinutes)))
+      : CODE_TTL_SECONDS / 60;
+  const words = parseCodeWordCount(input.words);
+  if (words === 1 && count > MAX_ONE_WORD_BATCH) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: `1-word codes collide quickly in large batches. Use 2 words for sheets > ${MAX_ONE_WORD_BATCH}.`,
+    };
+  }
+
+  const codes: string[] = [];
+  const ttlSeconds = ttlMinutes * 60;
+  const maxAttempts = words === 1 ? count * 200 : count * 10;
+  for (let attempts = 0; codes.length < count && attempts < maxAttempts; attempts += 1) {
+    const code = normalizeVoteCode(generateHumanCode(words));
+    const key = codeKey(code);
+    if ((await redis.set(key, 1, { nx: true })) !== "OK") continue;
+    await redis.expire(key, ttlSeconds);
+    codes.push(code);
+  }
+  if (codes.length < count) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Failed to mint enough codes. Try again.",
+      minted: codes.length,
+    };
+  }
+  const pipeline = redis.pipeline();
+  codes.forEach((code) => pipeline.sadd(CODE_INDEX_KEY, code));
+  pipeline.expire(CODE_INDEX_KEY, ttlSeconds + 60 * 60);
+  await pipeline.exec();
+  return {
+    ok: true as const,
+    codes,
+    ttlSeconds,
+    expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+  };
+}
+
+export async function revokeAllBestDressedCodes() {
+  const redis = getRedis();
+  if (!redis) return { ok: false as const, status: 503, error: "Vote codes are unavailable" };
+  const codes = await redis.smembers<string[]>(CODE_INDEX_KEY);
+  const indexed = Array.isArray(codes) ? codes.length : 0;
+  let deleted = 0;
+  let scanned = 0;
+  if (codes.length > 0) {
+    const pipeline = redis.pipeline();
+    codes
+      .filter((code) => typeof code === "string" && code.trim())
+      .forEach((code) => {
+        pipeline.del(codeKey(code.trim()));
+      });
+    pipeline.del(CODE_INDEX_KEY);
+    deleted = sumPipelineDeletes(await pipeline.exec());
+  } else {
+    let cursor = 0;
+    do {
+      const result = (await redis.scan(cursor, {
+        match: CODE_SCAN_MATCH,
+        count: 200,
+      })) as unknown;
+      const [nextCursor, keys] = Array.isArray(result)
+        ? (result as [number, string[]])
+        : ([0, []] as [number, string[]]);
+      const safeKeys = keys.filter(
+        (key) => typeof key === "string" && key.startsWith(CODE_KEY_PREFIX),
+      );
+      if (safeKeys.length > 0) {
+        const pipeline = redis.pipeline();
+        safeKeys.forEach((key) => pipeline.del(key));
+        deleted += sumPipelineDeletes(await pipeline.exec());
+      }
+      scanned += keys.length;
+      cursor = typeof nextCursor === "number" ? nextCursor : 0;
+    } while (cursor !== 0 && scanned < 5000);
+    await redis.del(CODE_INDEX_KEY);
+  }
+  return { ok: true as const, deleted, indexed, scanned };
+}
+
+export async function getBestDressedVotingWindow() {
+  const redis = getRedis();
+  if (!redis) return { ok: false as const, status: 503, error: "Voting window is unavailable" };
+  const value = await redis.get<number | string>(OPEN_UNTIL_KEY);
+  const parsed = typeof value === "number" ? value : Number.parseInt(value ?? "0", 10);
+  const now = Math.floor(Date.now() / 1000);
+  const normalized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+  if (normalized > 0 && normalized <= now) await redis.del(OPEN_UNTIL_KEY);
+  const openUntil = normalized > now ? normalized : 0;
+  return {
+    ok: true as const,
+    isOpen: openUntil > 0,
+    openUntil: openUntil || null,
+    secondsRemaining: openUntil > 0 ? openUntil - now : 0,
+  };
+}
+
+export async function setBestDressedVotingWindow(minutesInput: unknown) {
+  const redis = getRedis();
+  if (!redis) return { ok: false as const, status: 503, error: "Voting window is unavailable" };
+  const minutes =
+    typeof minutesInput === "number" && Number.isFinite(minutesInput)
+      ? Math.max(0, Math.min(MAX_VOTING_WINDOW_MINUTES, Math.floor(minutesInput)))
+      : 0;
+  const now = Math.floor(Date.now() / 1000);
+  const openUntil = minutes > 0 ? now + minutes * 60 : 0;
+  if (openUntil > 0) {
+    await redis.set(OPEN_UNTIL_KEY, openUntil);
+    await redis.expire(OPEN_UNTIL_KEY, minutes * 60 + 60);
+  } else {
+    await redis.del(OPEN_UNTIL_KEY);
+  }
+  return {
+    ok: true as const,
+    isOpen: openUntil > 0,
+    openUntil: openUntil || null,
+    minutes,
+    secondsRemaining: openUntil > 0 ? openUntil - now : 0,
+  };
 }

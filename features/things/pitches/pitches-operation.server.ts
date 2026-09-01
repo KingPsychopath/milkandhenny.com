@@ -6,6 +6,8 @@ import {
   type OperationKind,
 } from "@/lib/platform/effect-boundary.server";
 import { log } from "@/lib/platform/logger.server";
+import { withObjectStorageProvider } from "@/lib/platform/object-storage-provider-context.server";
+import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import {
   assertPitchOperationAllowed,
   PitchOperationBlockedError,
@@ -18,28 +20,30 @@ export function pitchesOperation<A>(
   run: (signal: AbortSignal) => Promise<A>,
   options: { access: PitchOperationAccess; kind?: OperationKind; timeoutMs?: false | number },
 ) {
-  const timeoutMs = options.timeoutMs ?? 8_000;
   const kind = options.kind ?? "mutation";
-  return effectOperation({
-    kind,
-    timeoutMs,
-    run: async (signal) => {
-      await assertPitchOperationAllowed(options.access);
-      return run(signal);
-    },
-    classify: (cause) =>
-      cause instanceof PitchOperationBlockedError ? "domain" : classifyFailure(cause),
-    isMappedError: (cause): cause is PitchesOperationError =>
-      cause instanceof PitchesOperationError,
-    mapError: (details) =>
-      new PitchesOperationError({
-        ...details,
-        operation,
-        status:
-          details.cause instanceof PitchOperationBlockedError ? details.cause.status : undefined,
-        publicMessage:
-          details.cause instanceof PitchOperationBlockedError ? details.cause.message : undefined,
-      }),
+  return Effect.gen(function* () {
+    const storage = yield* ObjectStorageService;
+    return yield* effectOperation({
+      kind,
+      timeoutMs: options.timeoutMs ?? 8_000,
+      run: async (signal) => {
+        await assertPitchOperationAllowed(options.access);
+        return withObjectStorageProvider(storage.port, () => run(signal));
+      },
+      classify: (cause) =>
+        cause instanceof PitchOperationBlockedError ? "domain" : classifyFailure(cause),
+      isMappedError: (cause): cause is PitchesOperationError =>
+        cause instanceof PitchesOperationError,
+      mapError: (details) =>
+        new PitchesOperationError({
+          ...details,
+          operation,
+          status:
+            details.cause instanceof PitchOperationBlockedError ? details.cause.status : undefined,
+          publicMessage:
+            details.cause instanceof PitchOperationBlockedError ? details.cause.message : undefined,
+        }),
+    });
   }).pipe(
     Effect.tapError((error) =>
       Effect.sync(() => {

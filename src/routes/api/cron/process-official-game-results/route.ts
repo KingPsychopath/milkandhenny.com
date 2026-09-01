@@ -10,7 +10,7 @@ async function handlePOST(request: Request) {
   if (authError) return authError;
   const startedAt = Date.now();
   try {
-    const outcome = await runEventScoringScheduledJob(true);
+    const outcome = await runEventScoringScheduledJob(true, request.signal);
     if (!outcome.ran) {
       return Response.json({ success: true, skipped: true, timestamp: new Date().toISOString() });
     }

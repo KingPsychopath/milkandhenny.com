@@ -15,6 +15,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import matter from "gray-matter";
+import { Effect } from "effect";
 import { runAlbumsCli } from "./albums-cli";
 import { BASE_URL } from "@/lib/shared/config";
 import { buildTransferUrl } from "@/features/transfers/routes";
@@ -87,6 +88,8 @@ import {
 import { isWordType, WORD_TYPES } from "@/features/words/types";
 import type { WordType } from "@/features/words/types";
 import { formatMoney, type EventRecord, type TicketType } from "@/features/events/types";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+import { withOperationSignal } from "@/lib/platform/operation-context.server";
 
 /* ─── Formatting ─── */
 
@@ -208,21 +211,17 @@ async function mapWithConcurrency<T, R>(
   concurrency: number,
   worker: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-  if (items.length === 0) return [];
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.max(1, Math.min(concurrency, items.length));
-
-  async function runWorker() {
-    while (true) {
-      const index = nextIndex++;
-      if (index >= items.length) return;
-      results[index] = await worker(items[index], index);
-    }
-  }
-
-  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
-  return results;
+  return runMediaEffect(
+    Effect.forEach(
+      items,
+      (item, index) =>
+        Effect.tryPromise({
+          try: (signal) => withOperationSignal(signal, () => worker(item, index)),
+          catch: (cause) => cause,
+        }),
+      { concurrency: Math.max(1, concurrency) },
+    ),
+  );
 }
 
 /* ─── Interactive prompts ─── */

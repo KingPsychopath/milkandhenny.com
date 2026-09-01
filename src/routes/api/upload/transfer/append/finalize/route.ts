@@ -3,7 +3,7 @@ import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { appendFinalize } from "@/features/transfers/append.server";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
-export const maxDuration = 15;
+export const maxDuration = 300;
 export const runtime = "nodejs";
 
 /** Admin append: record uploaded files on an existing transfer. */

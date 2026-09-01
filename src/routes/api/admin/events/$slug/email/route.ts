@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { requireAuth } from "@/features/auth/auth.server";
+import { CommunicationsService } from "@/features/communications/communications-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { describeEmailCapability } from "@/lib/platform/email.server";
-import { enqueueEmails } from "@/lib/platform/email-outbox.server";
-import { getEvent } from "@/features/events/store.server";
-import { renderEventMessage } from "@/features/tickets/email.server";
-import { listTicketsForEvent } from "@/features/tickets/store.server";
 import { isValidTicketId } from "@/features/tickets/types";
 
 /**
@@ -19,8 +18,6 @@ import { isValidTicketId } from "@/features/tickets/types";
  */
 
 const MAX_BODY_LENGTH = 8_000;
-const MAX_RECIPIENTS = 500;
-
 type EmailBody = {
   subject?: unknown;
   body?: unknown;
@@ -47,48 +44,28 @@ async function handlePOST(request: Request, slug: string) {
       return Response.json({ error: "Write the message first" }, { status: 400 });
     }
 
-    const event = await getEvent(slug);
-    if (!event) return Response.json({ error: "Event not found" }, { status: 404 });
-
-    const tickets = await listTicketsForEvent(slug);
-    const live = tickets.filter((ticket) => ticket.status === "valid" && ticket.email);
-
-    let targeted = live;
-    if (Array.isArray(parsed.recipients)) {
-      const wanted = new Set(parsed.recipients.filter(isValidTicketId));
-      targeted = live.filter((ticket) => wanted.has(ticket.id));
-    }
-
-    // One email per address, however many tickets it bought.
-    const byEmail = new Map<string, string>();
-    for (const ticket of targeted) {
-      const email = ticket.email?.trim().toLowerCase();
-      if (email && !byEmail.has(email)) {
-        byEmail.set(email, ticket.holderName);
-      }
-    }
-
-    const rendered = renderEventMessage({ event, subject, body });
-    const recipients = [...byEmail.entries()].map(([email, name]) => ({ email, name }));
+    const ticketIds = Array.isArray(parsed.recipients)
+      ? parsed.recipients.filter(isValidTicketId)
+      : undefined;
 
     if (parsed.preview === true) {
+      const result = await runEventsEffect(
+        Effect.gen(function* () {
+          const communications = yield* CommunicationsService;
+          return yield* communications.previewEventBroadcast({ slug, subject, body, ticketIds });
+        }),
+        request.signal,
+      );
+      if (result.status === "not-found") {
+        return Response.json({ error: "Event not found" }, { status: 404 });
+      }
       return Response.json({
         preview: true,
-        rendered,
-        recipientCount: recipients.length,
-        recipients: recipients.map((entry) => entry.name),
+        rendered: result.rendered,
+        recipientCount: result.recipients.length,
+        recipients: result.recipients.map((entry) => entry.name),
         emailConfigured: describeEmailCapability().configured,
       });
-    }
-
-    if (recipients.length === 0) {
-      return Response.json({ error: "Nobody selected has an email address" }, { status: 409 });
-    }
-    if (recipients.length > MAX_RECIPIENTS) {
-      return Response.json(
-        { error: `That's over the ${MAX_RECIPIENTS}-recipient limit` },
-        { status: 400 },
-      );
     }
 
     const requestId = typeof parsed.requestId === "string" ? parsed.requestId : "";
@@ -99,27 +76,29 @@ async function handlePOST(request: Request, slug: string) {
       );
     }
 
-    await enqueueEmails(
-      recipients.map((recipient, index) => ({
-        idempotencyKey: `events:broadcast:${slug}:${requestId}:${index}`,
-        kind: "event-broadcast" as const,
-        source: "admin" as const,
-        context: { eventSlug: slug },
-        message: {
-          channel: "tickets" as const,
-          to: recipient.email,
-          subject: rendered.subject,
-          text: rendered.text,
-          html: rendered.html,
-        },
-      })),
+    const result = await runEventsEffect(
+      Effect.gen(function* () {
+        const communications = yield* CommunicationsService;
+        return yield* communications.queueEventBroadcast({
+          slug,
+          subject,
+          body,
+          ticketIds,
+          requestId,
+        });
+      }),
+      request.signal,
     );
-
-    return Response.json({
-      ok: true,
-      queued: recipients.length,
-      requestId,
-    });
+    if (result.status === "not-found")
+      return Response.json({ error: "Event not found" }, { status: 404 });
+    if (result.status === "empty")
+      return Response.json({ error: "Nobody selected has an email address" }, { status: 409 });
+    if (result.status === "too-many")
+      return Response.json(
+        { error: `That's over the ${result.limit}-recipient limit` },
+        { status: 400 },
+      );
+    return Response.json({ ok: true, queued: result.queued, requestId: result.requestId });
   } catch (error) {
     return apiErrorFromRequest(request, "events.admin.email", "Failed to send the email", error);
   }

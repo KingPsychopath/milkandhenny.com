@@ -3,10 +3,17 @@ import { getRequest } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
-import { runEventOperationsResult } from "@/features/event-operations/runtime.server";
+import {
+  runEventsResult as runEventOperationsResultWithoutSignal,
+  type EventsServices,
+} from "@/features/events/events-runtime.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getTicketExchangeManagement, type ExchangeOutcome } from "./exchange.server";
 import type { TicketExchangeManagement } from "./exchange-types";
+
+function runEventOperationsResult<A, E>(effect: Effect.Effect<A, E, EventsServices>) {
+  return runEventOperationsResultWithoutSignal(effect, getRequest().signal);
+}
 
 export type TicketExchangeManagementResult =
   | { ok: true; management: TicketExchangeManagement }

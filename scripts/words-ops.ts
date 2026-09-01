@@ -1,23 +1,16 @@
 import { BASE_URL } from "@/lib/shared/config";
+import { Effect } from "effect";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
 import { buildWordShareUrl } from "@/features/words/routes";
 import {
-  cleanupShareLinksForSlug,
   createShareLink,
-  deleteAllShareLinksForSlug,
   listShareLinks,
-  listTrackedShareSlugs,
   revokeShareLink,
   updateShareLink,
 } from "@/features/words/share.server";
-import {
-  createWord,
-  deleteWord,
-  getWord,
-  getWordMeta,
-  listAllWords,
-  listWords,
-  updateWord,
-} from "@/features/words/store.server";
+import { getWord, getWordMeta, listWords } from "@/features/words/store.server";
+import { WordOperationsService } from "@/features/words/word-operations-service.server";
 import type { NoteVisibility } from "@/features/words/content-types";
 import type { WordType } from "@/features/words/types";
 
@@ -49,7 +42,11 @@ type UpdateWordInput = {
 };
 
 async function createWordRecord(input: CreateWordInput) {
-  return createWord(input);
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* WordOperationsService).create(input);
+    }),
+  );
 }
 
 async function listWordRecords(options?: {
@@ -76,11 +73,19 @@ async function getWordRecord(slug: string) {
 }
 
 async function updateWordRecord(slug: string, input: UpdateWordInput) {
-  return updateWord(slug, input);
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* WordOperationsService).update(slug, input);
+    }),
+  );
 }
 
 async function deleteWordRecord(slug: string) {
-  return deleteWord(slug);
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* WordOperationsService).delete(slug);
+    }),
+  );
 }
 
 async function createWordShare(
@@ -130,57 +135,20 @@ async function revokeWordShare(slug: string, id: string) {
   return revokeShareLink(slug, id);
 }
 
-async function collectShareSlugs(slug?: string): Promise<string[]> {
-  if (slug) return [slug];
-  const [tracked, notes] = await Promise.all([
-    listTrackedShareSlugs(),
-    listAllWords({ includeNonPublic: true }),
-  ]);
-  const slugs = new Set<string>(tracked);
-  for (const note of notes) {
-    slugs.add(note.slug);
-  }
-  return [...slugs].sort();
-}
-
 async function cleanupWordShares(slug?: string) {
-  const slugs = await collectShareSlugs(slug);
-  let scannedLinks = 0;
-  let removedExpired = 0;
-  let removedRevoked = 0;
-  let staleIndexRemoved = 0;
-  let remaining = 0;
-
-  for (const item of slugs) {
-    const result = await cleanupShareLinksForSlug(item);
-    scannedLinks += result.scanned;
-    removedExpired += result.removedExpired;
-    removedRevoked += result.removedRevoked;
-    staleIndexRemoved += result.staleIndexRemoved;
-    remaining += result.remaining;
-  }
-
-  return {
-    scannedSlugs: slugs.length,
-    scannedLinks,
-    removedExpired,
-    removedRevoked,
-    staleIndexRemoved,
-    remaining,
-  };
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* MediaMaintenanceService).cleanupWordShares(slug);
+    }),
+  );
 }
 
 async function purgeWordShares(slug?: string) {
-  const slugs = await collectShareSlugs(slug);
-  let deletedLinks = 0;
-  for (const item of slugs) {
-    deletedLinks += await deleteAllShareLinksForSlug(item);
-  }
-  return {
-    scannedSlugs: slugs.length,
-    deletedLinks,
-    remaining: 0,
-  };
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* MediaMaintenanceService).purgeWordShares(slug);
+    }),
+  );
 }
 
 async function resetWordShares() {

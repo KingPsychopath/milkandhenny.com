@@ -19,6 +19,7 @@ function runOperation<A, E>(
     Effect.gen(function* () {
       return yield* use(yield* AttendeeOperationsService);
     }),
+    getRequest().signal,
   );
 }
 

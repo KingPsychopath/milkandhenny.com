@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import {
-  cleanupOrphanWordMediaFolders,
-  scanOrphanWordMediaFolders,
-} from "@/features/words/media-maintenance";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
@@ -14,7 +13,12 @@ async function handleGET(request: Request) {
   const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
 
   try {
-    const summary = await scanOrphanWordMediaFolders({ limit });
+    const summary = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* MediaMaintenanceService).scanWordMedia({ limit });
+      }),
+      request.signal,
+    );
     return Response.json(summary);
   } catch (error) {
     return apiErrorFromRequest(
@@ -33,7 +37,12 @@ async function handlePOST(request: Request) {
   if (stepUpErr) return stepUpErr;
 
   try {
-    const result = await cleanupOrphanWordMediaFolders();
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* MediaMaintenanceService).cleanupWordMedia;
+      }),
+      request.signal,
+    );
     return Response.json({ ok: true, ...result });
   } catch (error) {
     return apiErrorFromRequest(

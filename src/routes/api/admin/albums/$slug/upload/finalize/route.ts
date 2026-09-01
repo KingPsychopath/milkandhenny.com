@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuth } from "@/features/auth/auth.server";
-import {
-  finalizeAlbumUploads,
-  isSafeAlbumSlug,
-  type PreparedAlbumUpload,
-} from "@/features/media/admin-albums";
+import { isSafeAlbumSlug, type PreparedAlbumUpload } from "@/features/media/admin-albums";
+import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export const maxDuration = 120;
@@ -19,7 +18,12 @@ async function handlePOST(request: Request, slug: string) {
     if (!Array.isArray(body.files) || body.files.length === 0) {
       return Response.json({ error: "No uploaded files were supplied" }, { status: 400 });
     }
-    const result = await finalizeAlbumUploads(slug, body.files);
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* AlbumOperationsService).finalizeUploads(slug, body.files ?? []);
+      }),
+      request.signal,
+    );
     return Response.json({ success: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to process uploads";

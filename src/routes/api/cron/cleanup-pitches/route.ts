@@ -18,6 +18,7 @@ async function handleGET(request: Request) {
         const pitches = yield* PitchesService;
         return yield* pitches.cleanup();
       }),
+      request.signal,
     );
     if (!outcome.ok) {
       return Response.json({ success: false, error: outcome.error }, { status: outcome.status });

@@ -11,7 +11,7 @@ async function handlePOST(request: Request) {
   const startedAt = Date.now();
   const requestId = request.headers.get("x-request-id") ?? null;
   try {
-    const outcome = await runEmailDeliveryScheduledJob(true);
+    const outcome = await runEmailDeliveryScheduledJob(true, request.signal);
     const { staged, waitlistAlerts, handled } = outcome.ran
       ? outcome.value
       : { staged: 0, waitlistAlerts: 0, handled: 0 };

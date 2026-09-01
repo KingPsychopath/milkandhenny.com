@@ -8,11 +8,6 @@ import {
   updateGamePoolEntrance,
 } from "./store.server";
 import type { GamePoolNameVisibility } from "./types";
-import {
-  publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
-} from "../shared/multiplayer-runtime.server";
-import { getGamePoolPublicView } from "./pool.server";
 
 function record(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -33,6 +28,9 @@ function nameVisibility(value: unknown): GamePoolNameVisibility | undefined {
 }
 
 export async function listGamePoolsForAdmin() {
+  // Keep the read-only public-view facade out of the mutation module graph: it publishes through
+  // the Multiplayer runtime, while the runtime itself owns GamePoolOperationsService.
+  const { getGamePoolPublicView } = await import("./pool.server");
   const entrances = await listGamePoolEntrances();
   return Promise.all(
     entrances.map(async (entrance) => ({
@@ -61,7 +59,7 @@ export function createGamePoolForAdmin(value: unknown) {
 
 export async function updateGamePoolForAdmin(id: string, value: unknown) {
   const input = record(value);
-  const entrance = await updateGamePoolEntrance(id, {
+  return updateGamePoolEntrance(id, {
     label: typeof input.label === "string" ? input.label : undefined,
     isDefault: optionalBoolean(input.isDefault),
     gameSettings: input.gameSettings,
@@ -73,14 +71,10 @@ export async function updateGamePoolForAdmin(id: string, value: unknown) {
     rotateToken: input.rotateToken === true,
     retire: typeof input.retire === "boolean" ? input.retire : undefined,
   });
-  if (entrance?.run)
-    await publishMultiplayerRoomWake("game-pool", entrance.run.id).catch(() => undefined);
-  return entrance;
 }
 
 export async function controlGamePoolForAdmin(id: string, value: unknown) {
   const input = record(value);
-  const current = (await listGamePoolEntrances()).find((entrance) => entrance.id === id) ?? null;
   let entrance;
   if (input.action === "open")
     entrance = await openGamePoolRun(id, {
@@ -94,15 +88,5 @@ export async function controlGamePoolForAdmin(id: string, value: unknown) {
     if (typeof input.roomId !== "string" || !input.roomId) throw new Error("Choose a room");
     entrance = await closeGamePoolRoomForAdmin(id, input.roomId.slice(0, 80));
   } else throw new Error("Invalid game-pool action");
-  const runIds = new Set([current?.run?.id, entrance?.run?.id].filter(Boolean) as string[]);
-  await Promise.all(
-    [...runIds].map((runId) =>
-      publishMultiplayerRoomWake("game-pool", runId).catch(() => undefined),
-    ),
-  );
-  if (input.action === "close" && current?.run?.id)
-    await publishMultiplayerRoomTermination("game-pool", current.run.id, {
-      reason: "session_ended",
-    }).catch(() => undefined);
   return entrance;
 }

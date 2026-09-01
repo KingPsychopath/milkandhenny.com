@@ -23,7 +23,7 @@ async function handleGET(request: Request) {
   try {
     const result = await runMediaEffect(
       Effect.gen(function* () {
-        return yield* (yield* MediaMaintenanceService).cleanupWordShares;
+        return yield* (yield* MediaMaintenanceService).cleanupWordShares();
       }),
       request.signal,
     );

@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { backfillTransferMedia } from "@/features/transfers/upload.server";
-import { didTransferFileChange } from "@/features/transfers/media-state";
-import { getTransfer } from "@/features/transfers/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { getAdminTransferMediaStats } from "@/features/transfers/admin.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
-import { forceReprocessTransferFiles } from "@/features/transfers/media-backends/worker.server";
-import { retryDeadTransferMediaJobs } from "@/features/transfers/media-queue.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
+import { TransferMediaOperationsService } from "@/features/transfers/transfer-media-operations-service.server";
 
 type ProcessMediaBody =
   | { mode?: "drain"; limit?: number }
@@ -15,6 +13,24 @@ type ProcessMediaBody =
   | { mode: "backfill"; transferId?: string }
   | { mode: "reprocess"; transferId?: string; kind?: string; mediaId?: string; filename?: string }
   | { mode: "retry-dead"; limit?: number };
+
+function runTransferMedia<A>(
+  request: Request,
+  use: (service: typeof TransferMediaOperationsService.Service) => Effect.Effect<A, unknown>,
+) {
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* TransferMediaOperationsService);
+    }),
+    request.signal,
+  );
+}
+
+function transferStatusResponse(status: "missing" | "expired") {
+  return status === "missing"
+    ? Response.json({ error: "Transfer not found or expired" }, { status: 404 })
+    : Response.json({ error: "Transfer has already expired" }, { status: 400 });
+}
 
 async function handlePOST(request: Request) {
   const authErr = await requireAuth(request, "admin");
@@ -46,8 +62,8 @@ async function handlePOST(request: Request) {
     }
 
     if (mode === "retry-dead") {
-      const retried = await retryDeadTransferMediaJobs(
-        "limit" in body && typeof body.limit === "number" ? body.limit : 25,
+      const retried = await runTransferMedia(request, (service) =>
+        service.retryDead("limit" in body && typeof body.limit === "number" ? body.limit : 25),
       );
       return Response.json({ success: true, mode, retried });
     }
@@ -60,14 +76,6 @@ async function handlePOST(request: Request) {
       if (!transferId) {
         return Response.json({ error: "transferId is required" }, { status: 400 });
       }
-      const transfer = await getTransfer(transferId);
-      if (!transfer) {
-        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
-      }
-      if (Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000) <= 0) {
-        return Response.json({ error: "Transfer has already expired" }, { status: 400 });
-      }
-
       const kind = "kind" in body ? body.kind?.trim() : undefined;
       const mediaId = "mediaId" in body ? body.mediaId?.trim() : undefined;
       const filename = "filename" in body ? body.filename?.trim() : undefined;
@@ -78,19 +86,18 @@ async function handlePOST(request: Request) {
         );
       }
 
-      const { requeued, skipped } = await forceReprocessTransferFiles(transfer, (file) => {
-        if (mediaId) return file.id === mediaId;
-        if (filename) return file.filename === filename;
-        return file.kind === kind;
-      });
+      const result = await runTransferMedia(request, (service) =>
+        service.reprocess({ transferId, kind, mediaId, filename }),
+      );
+      if (result.status !== "completed") return transferStatusResponse(result.status);
 
       return Response.json({
         success: true,
         mode,
         transferId,
-        requeuedCount: requeued.length,
-        skippedCount: skipped.length,
-        requeued,
+        requeuedCount: result.requeued.length,
+        skippedCount: result.skipped.length,
+        requeued: result.requeued,
       });
     }
 
@@ -99,16 +106,13 @@ async function handlePOST(request: Request) {
       if (!transferId) {
         return Response.json({ error: "transferId is required" }, { status: 400 });
       }
-      const transfer = await getTransfer(transferId);
-      if (!transfer) {
-        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
-      }
-      const updated = await backfillTransferMedia(transfer);
+      const result = await runTransferMedia(request, (service) => service.backfill(transferId));
+      if (result.status !== "completed") return transferStatusResponse(result.status);
       return Response.json({
         success: true,
         mode,
         transferId,
-        fileCount: updated.files.length,
+        fileCount: result.fileCount,
       });
     }
 
@@ -122,38 +126,28 @@ async function handlePOST(request: Request) {
       );
     }
 
-    const transfer = await getTransfer(transferId);
-    if (!transfer) {
-      return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
-    }
-
-    if (Math.ceil((new Date(transfer.expiresAt).getTime() - Date.now()) / 1000) <= 0) {
-      return Response.json({ error: "Transfer has already expired" }, { status: 400 });
-    }
-
-    const target = transfer.files.find((file) =>
-      mediaId ? file.id === mediaId : file.filename === filename,
+    const result = await runTransferMedia(request, (service) =>
+      service.retry({ transferId, mediaId, filename }),
     );
-    if (!target) {
+    if (result.status === "missing" || result.status === "expired") {
+      return transferStatusResponse(result.status);
+    }
+    if (result.status === "file-missing") {
       return Response.json({ error: "File not found in transfer" }, { status: 404 });
     }
-
-    const updatedTransfer = await backfillTransferMedia(transfer);
-    const updatedFile = updatedTransfer.files.find((file) => file.id === target.id);
-    if (!updatedFile) {
+    if (result.status === "refreshed-file-missing") {
       return Response.json({ error: "File not found after refresh" }, { status: 404 });
     }
-    const didRetry = didTransferFileChange(target, updatedFile);
 
     return Response.json({
-      success: didRetry,
-      requeued: didRetry,
+      success: result.requeued,
+      requeued: result.requeued,
       mode,
       transferId,
-      mediaId: target.id,
-      filename: target.filename,
-      processingStatus: updatedFile.processingStatus,
-      retryCount: updatedFile.retryCount ?? 0,
+      mediaId: result.mediaId,
+      filename: result.filename,
+      processingStatus: result.processingStatus,
+      retryCount: result.retryCount,
     });
   } catch (error) {
     return apiErrorFromRequest(

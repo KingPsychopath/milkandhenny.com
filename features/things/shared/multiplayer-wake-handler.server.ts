@@ -1,5 +1,5 @@
 import { defineWebSocketHandler } from "nitro/h3";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import { log } from "@/lib/platform/logger.server";
 import { BASE_URL } from "@/lib/shared/config";
 import {
@@ -10,6 +10,7 @@ import {
 } from "./multiplayer-realtime";
 import { runMultiplayerEffect } from "./multiplayer-runtime.server";
 import { MultiplayerRealtimeBackplane } from "./multiplayer-realtime-backplane.server";
+import { MultiplayerLifecycle } from "./multiplayer-lifecycle.server";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import type { MultiplayerGame } from "./multiplayer-telemetry";
 import { multiplayerRecord } from "./multiplayer-validation";
@@ -207,7 +208,7 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
     return true;
   };
 
-  const idleSweepTimer = setInterval(() => {
+  const sweepIdleSockets = () => {
     const now = Date.now();
     for (const connection of connections.values()) {
       if (now - connection.lastActivityAt <= MULTIPLAYER_REALTIME_LIMITS.socketIdleTimeoutMs)
@@ -232,9 +233,21 @@ export function createMultiplayerWakeHandler<Session extends MultiplayerWakeSess
         terminatedPeers.delete(peerId);
       }
     }
-  }, MULTIPLAYER_REALTIME_LIMITS.socketIdleSweepIntervalMs);
-  if (typeof idleSweepTimer === "object" && idleSweepTimer !== null && "unref" in idleSweepTimer)
-    (idleSweepTimer as { unref: () => void }).unref();
+  };
+  void runMultiplayerEffect(
+    MultiplayerLifecycle.use((lifecycle) =>
+      lifecycle.registerRepeating(
+        `socket-idle:${options.game}`,
+        MULTIPLAYER_REALTIME_LIMITS.socketIdleSweepIntervalMs,
+        sweepIdleSockets,
+      ),
+    ),
+  ).catch((error) =>
+    log.warn("things.multiplayer", "Socket idle lifecycle unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+      game: options.game,
+    }),
+  );
 
   return defineWebSocketHandler({
     open(peer) {

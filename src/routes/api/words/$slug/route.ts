@@ -1,17 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { getCookie } from "@/lib/http/cookies";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { wordAccessCookieName, verifyWordAccessToken } from "@/features/words/share.server";
+import { getWord, WordUpdateConflictError } from "@/features/words/store.server";
 import {
-  deleteWord,
-  getWord,
-  updateWord,
-  WordUpdateConflictError,
-} from "@/features/words/store.server";
+  WordOperationError,
+  WordOperationsService,
+} from "@/features/words/word-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import type { WordVisibility } from "@/features/words/content-types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isWordType, normaliseWordType } from "@/features/words/types";
+
+export const maxDuration = 180;
 
 type Params = {
   params: Promise<{ slug: string }>;
@@ -102,21 +105,27 @@ async function handlePUT(request: Request, { params }: Params) {
   }
 
   try {
-    const updated = await updateWord(slug, {
-      ...body,
-      expectedUpdatedAt: body.expectedUpdatedAt?.trim() || undefined,
-      type: body.type ? normaliseWordType(body.type) : undefined,
-    });
+    const updated = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* WordOperationsService).update(slug, {
+          ...body,
+          expectedUpdatedAt: body.expectedUpdatedAt?.trim() || undefined,
+          type: body.type ? normaliseWordType(body.type) : undefined,
+        });
+      }),
+      request.signal,
+    );
     if (!updated) return Response.json({ error: "Not found" }, { status: 404 });
     return Response.json(updated);
   } catch (error) {
-    if (error instanceof WordUpdateConflictError) {
+    const cause = error instanceof WordOperationError ? error.cause : error;
+    if (cause instanceof WordUpdateConflictError) {
       return Response.json(
-        { error: error.message, conflict: true, currentUpdatedAt: error.currentUpdatedAt },
+        { error: cause.message, conflict: true, currentUpdatedAt: cause.currentUpdatedAt },
         { status: 409 },
       );
     }
-    const message = error instanceof Error ? error.message : "Failed to update word";
+    const message = cause instanceof Error ? cause.message : "Failed to update word";
     if (/invalid|required/i.test(message)) {
       return Response.json({ error: message }, { status: 400 });
     }
@@ -136,7 +145,12 @@ async function handleDELETE(request: Request, { params }: Params) {
 
   const { slug } = await params;
   try {
-    const deleted = await deleteWord(slug);
+    const deleted = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* WordOperationsService).delete(slug);
+      }),
+      request.signal,
+    );
     if (!deleted) return Response.json({ error: "Not found" }, { status: 404 });
     return Response.json({ ok: true });
   } catch (error) {

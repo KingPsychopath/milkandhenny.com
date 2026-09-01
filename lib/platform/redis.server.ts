@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis";
 import { currentOperationSignal } from "./operation-context.server";
+import { currentRedisProvider } from "./redis-provider-context.server";
 
 /**
  * Shared Redis REST client.
@@ -20,6 +21,8 @@ export function getRedisRestConfig(): RedisRestConfig | null {
 }
 
 export function getRedis(): Redis | null {
+  const provider = currentRedisProvider();
+  if (provider) return provider.client;
   const config = getRedisRestConfig();
   return config
     ? new Redis({

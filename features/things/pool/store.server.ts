@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
-import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres-provider-context.server";
 import {
   GAME_POOL_ADMISSION_DEFAULTS,
   GAME_POOL_DEFAULTS,

@@ -8,41 +8,36 @@
 
 import fs from "fs";
 import path from "path";
-import { deleteObjects, listObjects, listPrefixes, isTransferStorageConfigured } from "./r2-client";
-import {
-  PROCESSABLE_EXTENSIONS,
-  ANIMATED_EXTENSIONS,
-  mapConcurrent,
-} from "../features/media/processing.server";
+import { Effect } from "effect";
+import { isTransferStorageConfigured } from "./r2-client";
+import { PROCESSABLE_EXTENSIONS, ANIMATED_EXTENSIONS } from "../features/media/processing.server";
 import {
   buildTransferProcessingCounts,
   resolveTransferUploadIds,
   type TransferProcessingCounts,
 } from "../features/transfers/media-state";
-import {
-  getTransferFileDeleteKeys,
-  resolveTransferFileForDelete,
-} from "../features/transfers/delete";
+import { resolveTransferFileForDelete } from "../features/transfers/delete";
 import {
   applyTransferAssetGroups,
   processTransferFile,
   sortTransferFiles,
 } from "../features/transfers/upload.server";
-import { backfillTransferMedia } from "../features/transfers/upload.server";
 import type { ProcessFileResult } from "../features/transfers/upload.server";
 import { getTransferMediaQueueLength } from "../features/transfers/media-queue.server";
 import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker-status.server";
-import { runTransferMediaJobs } from "../features/transfers/media-backends/worker.server";
 import { isSafeTransferId } from "../features/transfers/admin.server";
+import { MediaWorkerService, runMediaEffect } from "../features/system/media-worker-runtime.server";
+import { TransferOperationsService } from "../features/transfers/transfer-operations-service.server";
+import { TransferMediaOperationsService } from "../features/transfers/transfer-media-operations-service.server";
 import { BASE_URL } from "../lib/shared/config";
 import { buildTransferUrl } from "../features/transfers/routes";
 import { getRedis } from "../lib/platform/redis.server";
+import { withOperationSignal } from "../lib/platform/operation-context.server";
+import { getInlineProcessingTimeoutMs } from "../features/transfers/media-processing-config.server";
 import {
   saveTransfer,
   getTransfer,
   listTransfers,
-  deleteTransferData,
-  removeTransferFile,
   generateTransferId,
   generateDeleteToken,
   parseExpiry,
@@ -50,6 +45,35 @@ import {
   DEFAULT_EXPIRY_SECONDS,
 } from "../features/transfers/store.server";
 import type { TransferData, TransferSummary } from "../features/transfers/types";
+
+function runTransferOperation<A, E>(
+  use: (transfers: typeof TransferOperationsService.Service) => Effect.Effect<A, E>,
+) {
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* TransferOperationsService);
+    }),
+  );
+}
+
+function runConcurrent<A, B>(
+  items: readonly A[],
+  concurrency: number,
+  worker: (item: A) => Promise<B>,
+) {
+  const timeoutMs = getInlineProcessingTimeoutMs();
+  return runMediaEffect(
+    Effect.forEach(
+      items,
+      (item) =>
+        Effect.tryPromise({
+          try: (signal) => withOperationSignal(signal, () => worker(item)),
+          catch: (cause) => cause,
+        }).pipe((effect) => (timeoutMs > 0 ? effect.pipe(Effect.timeout(timeoutMs)) : effect)),
+      { concurrency },
+    ),
+  );
+}
 
 /* ─── Preflight checks ─── */
 
@@ -426,8 +450,8 @@ async function createTransfer(
   };
 
   try {
-    await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
-    await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+    await runConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+    await runConcurrent(light, RAW_CONCURRENCY, processFile);
   } finally {
     await checkpointWriteQueue;
   }
@@ -641,8 +665,8 @@ async function appendToTransfer(
   };
 
   try {
-    await mapConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
-    await mapConcurrent(light, RAW_CONCURRENCY, processFile);
+    await runConcurrent(heavy, IMAGE_CONCURRENCY, processFile);
+    await runConcurrent(light, RAW_CONCURRENCY, processFile);
   } finally {
     await checkpointWriteQueue;
   }
@@ -709,22 +733,10 @@ async function deleteTransfer(
 ): Promise<{ deletedFiles: number; dataDeleted: boolean }> {
   requireRedis();
   requireR2();
-  const prefix = `transfers/${id}/`;
-  onProgress?.(`Listing files under ${prefix}...`);
-
-  const objects = await listObjects(prefix, { scope: "private" });
-  const keys = objects.map((o) => o.key);
-
-  let deletedFiles = 0;
-  if (keys.length > 0) {
-    onProgress?.(`Deleting ${keys.length} files from R2...`);
-    deletedFiles = await deleteObjects(keys, { scope: "private" });
-  }
-
-  const dataDeleted = await deleteTransferData(id);
+  onProgress?.(`Deleting transfer ${id}...`);
+  const result = await runTransferOperation((transfers) => transfers.adminDelete(id));
   onProgress?.("Done.");
-
-  return { deletedFiles, dataDeleted };
+  return result;
 }
 
 async function deleteTransferFile(
@@ -750,34 +762,27 @@ async function deleteTransferFile(
     throw new Error(`No file matched "${selector}" in transfer "${id}".`);
   }
 
-  const keys = getTransferFileDeleteKeys(id, file);
-  let deletedObjects = 0;
-  if (keys.length > 0) {
-    onProgress?.(`Deleting ${keys.length} objects for ${file.filename}...`);
-    deletedObjects = await deleteObjects(keys, { scope: "private" });
-  }
-
-  const updatedTransfer = removeTransferFile(transfer, file.id);
-  if (updatedTransfer.files.length === 0) {
-    await deleteTransferData(id);
-    onProgress?.("Deleted last file; transfer removed.");
-    return { deletedObjects, deletedTransfer: true, file };
-  }
-
-  const remainingTtlSeconds = Math.floor(
-    (new Date(transfer.expiresAt).getTime() - Date.now()) / 1000,
+  onProgress?.(`Deleting objects for ${file.filename}...`);
+  const result = await runTransferOperation((transfers) =>
+    transfers.removeFile({ id, fileId: file.id, token: transfer.deleteToken }),
   );
-  if (remainingTtlSeconds <= 0) {
-    throw new Error(`Transfer "${id}" expired while deleting file.`);
+  if (result.status === "deleted") {
+    onProgress?.("Deleted last file; transfer removed.");
+    return { deletedObjects: result.deletedObjects, deletedTransfer: true, file };
   }
-
-  await saveTransfer(updatedTransfer, remainingTtlSeconds);
+  if (result.status !== "updated") {
+    throw new Error(
+      result.status === "unauthorised"
+        ? `Transfer "${id}" could not authorize its delete token.`
+        : `Transfer "${id}" or file "${selector}" is no longer available.`,
+    );
+  }
   onProgress?.("Done.");
   return {
-    deletedObjects,
+    deletedObjects: result.deletedObjects,
     deletedTransfer: false,
     file,
-    transfer: updatedTransfer,
+    transfer: result.transfer,
   };
 }
 
@@ -791,53 +796,50 @@ async function getTransferMediaStatus(): Promise<TransferMediaStatusResult> {
   return { queueLength, worker };
 }
 
-async function drainTransferMediaQueue(
-  limit = 8,
-): Promise<Awaited<ReturnType<typeof runTransferMediaJobs>>> {
+async function drainTransferMediaQueue(limit = 8): Promise<{
+  processedJobs: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  queueLength: number;
+}> {
   requireRedis();
-  return runTransferMediaJobs(limit);
+  return runMediaEffect(
+    Effect.gen(function* () {
+      const result = yield* (yield* MediaWorkerService).drain(limit);
+      const queueLength = yield* (yield* TransferMediaOperationsService).queueLength;
+      return { ...result, queueLength };
+    }),
+  );
 }
 
 async function reconcileTransferMedia(
   onProgress?: (msg: string) => void,
 ): Promise<ReconcileTransferMediaResult> {
   requireRedis();
-  const summaries = await listTransfers();
-  let updatedTransfers = 0;
-
-  for (const summary of summaries) {
-    const transfer = await getTransfer(summary.id);
-    if (!transfer) continue;
-    onProgress?.(`Reconciling ${summary.id}...`);
-    const updated = await backfillTransferMedia(transfer);
-    if (JSON.stringify(updated.files) !== JSON.stringify(transfer.files)) {
-      updatedTransfers += 1;
-    }
-  }
-
+  onProgress?.("Reconciling active transfers...");
+  const result = await runMediaEffect(
+    Effect.gen(function* () {
+      const media = yield* TransferMediaOperationsService;
+      const reconciled = yield* media.reconcile;
+      const queueLength = yield* media.queueLength;
+      return { reconciled, queueLength };
+    }),
+  );
   return {
-    scannedTransfers: summaries.length,
-    updatedTransfers,
-    queueLength: await getTransferMediaQueueLength().catch(() => 0),
+    scannedTransfers: result.reconciled.transfersScanned,
+    updatedTransfers: result.reconciled.transfersRepaired,
+    queueLength: result.queueLength,
   };
 }
 
 async function clearTransferMediaQueue(): Promise<ClearTransferMediaQueueResult> {
   requireRedis();
-  const redis = getRedis()!;
-  const [queueLengthBefore, processingLengthBefore] = await Promise.all([
-    redis.llen("transfer:media:queue").then((value) => (typeof value === "number" ? value : 0)),
-    redis
-      .llen("transfer:media:processing")
-      .then((value) => (typeof value === "number" ? value : 0)),
-  ]);
-  const deletedKeys = await redis.del("transfer:media:queue", "transfer:media:processing");
-
-  return {
-    deletedKeys,
-    queueLengthBefore,
-    processingLengthBefore,
-  };
+  return runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* TransferMediaOperationsService).clearQueue;
+    }),
+  );
 }
 
 async function retryTransferMedia(
@@ -851,40 +853,48 @@ async function retryTransferMedia(
   }
 
   const transfer = await getTransfer(id);
-  if (!transfer) {
-    throw new Error(`Transfer "${id}" not found or expired.`);
-  }
-
+  if (!transfer) throw new Error(`Transfer "${id}" not found or expired.`);
   const beforeTarget = selector
     ? resolveTransferFileForDelete(transfer.files, selector)
     : undefined;
-
-  if (selector && !beforeTarget) {
+  if (selector && !beforeTarget)
     throw new Error(`No file matched "${selector}" in transfer "${id}".`);
+  const result = selector
+    ? await runMediaEffect(
+        Effect.gen(function* () {
+          return yield* (yield* TransferMediaOperationsService).retry({
+            transferId: id,
+            mediaId: beforeTarget?.id,
+          });
+        }),
+      )
+    : await runMediaEffect(
+        Effect.gen(function* () {
+          return yield* (yield* TransferMediaOperationsService).backfill(id);
+        }),
+      );
+  if (result.status !== "completed") {
+    throw new Error(`Transfer "${id}" is no longer available for retry.`);
   }
-
-  const updated = await backfillTransferMedia(transfer);
-  const target = beforeTarget
-    ? updated.files.find((file) => file.id === beforeTarget.id)
-    : undefined;
-
-  const requeued = beforeTarget
-    ? JSON.stringify(target) !== JSON.stringify(beforeTarget)
-    : JSON.stringify(updated.files) !== JSON.stringify(transfer.files);
+  const queueLength = await runMediaEffect(
+    Effect.gen(function* () {
+      return yield* (yield* TransferMediaOperationsService).queueLength;
+    }),
+  );
 
   return {
     transferId: id,
     ...(selector ? { selector } : {}),
-    requeued,
-    fileCount: updated.files.length,
-    queueLength: await getTransferMediaQueueLength().catch(() => 0),
-    ...(target
+    requeued: "requeued" in result ? result.requeued : result.changed,
+    fileCount: "fileCount" in result ? result.fileCount : transfer.files.length,
+    queueLength,
+    ...(result.status === "completed" && "mediaId" in result
       ? {
           target: {
-            id: target.id,
-            filename: target.filename,
-            processingStatus: target.processingStatus,
-            retryCount: target.retryCount,
+            id: result.mediaId,
+            filename: result.filename,
+            processingStatus: result.processingStatus,
+            retryCount: result.retryCount,
           },
         }
       : {}),
@@ -899,54 +909,11 @@ async function cleanupExpiredTransfers(
 ): Promise<{ expiredIndexEntries: number; scannedPrefixes: number; deletedObjects: number }> {
   requireRedis();
   requireR2();
-
-  const redis = getRedis()!;
-  const indexedIds: string[] = await redis.smembers("transfer:index");
-
-  let expiredIds: string[] = [];
-  if (indexedIds.length > 0) {
-    const pipeline = redis.pipeline();
-    for (const id of indexedIds) {
-      pipeline.exists(`transfer:${id}`);
-    }
-    const results = await pipeline.exec();
-    expiredIds = indexedIds.filter((_, i) => results[i] === 0);
-  }
-
-  if (expiredIds.length > 0) {
-    onProgress?.(`Removing ${expiredIds.length} expired transfer index entries...`);
-    const cleanupPipeline = redis.pipeline();
-    for (const id of expiredIds) {
-      cleanupPipeline.srem("transfer:index", id);
-    }
-    await cleanupPipeline.exec();
-  }
-
-  onProgress?.("Scanning R2 transfer prefixes...");
-  const transferPrefixes = await listPrefixes("transfers/", { scope: "private" });
-  const allR2Ids = transferPrefixes
-    .map((p) => p.replace("transfers/", "").replace(/\/$/, ""))
-    .filter(Boolean);
-
-  let deletedObjects = 0;
-  for (const id of allR2Ids) {
-    const exists = await redis.exists(`transfer:${id}`);
-    if (exists) continue;
-
-    const objects = await listObjects(`transfers/${id}/`, { scope: "private" });
-    const keys = objects.map((o) => o.key);
-    if (keys.length > 0) {
-      onProgress?.(`Deleting ${keys.length} orphaned files for transfer ${id}...`);
-      deletedObjects += await deleteObjects(keys, { scope: "private" });
-    }
-    await redis.srem("transfer:index", id);
-  }
-
-  return {
-    expiredIndexEntries: expiredIds.length,
-    scannedPrefixes: allR2Ids.length,
-    deletedObjects,
-  };
+  onProgress?.("Scanning transfer metadata and object storage...");
+  const { mode: _mode, ...result } = await runTransferOperation((transfers) =>
+    transfers.cleanup("deep"),
+  );
+  return result;
 }
 
 /**
@@ -958,42 +925,11 @@ async function nukeAllTransfers(
 ): Promise<{ deletedFiles: number; deletedKeys: number }> {
   requireRedis();
   requireR2();
-
-  const redis = getRedis()!;
-
-  /* ─── R2 cleanup ─── */
-  onProgress?.("Listing all R2 objects under transfers/...");
-  const objects = await listObjects("transfers/", { scope: "private" });
-  const keys = objects.map((o) => o.key);
-
-  let deletedFiles = 0;
-  if (keys.length > 0) {
-    onProgress?.(`Deleting ${keys.length} files from R2...`);
-    deletedFiles = await deleteObjects(keys, { scope: "private" });
-  } else {
-    onProgress?.("No R2 objects found under transfers/.");
-  }
-
-  /* ─── Redis cleanup ─── */
-  onProgress?.("Clearing Redis transfer metadata...");
-  const indexedIds: string[] = await redis.smembers("transfer:index");
-  let deletedKeys = 0;
-
-  if (indexedIds.length > 0) {
-    const pipeline = redis.pipeline();
-    for (const id of indexedIds) {
-      pipeline.del(`transfer:${id}`);
-    }
-    pipeline.del("transfer:index");
-    await pipeline.exec();
-    deletedKeys = indexedIds.length;
-  } else {
-    // Index may be empty but stale keys might exist — just delete the index
-    await redis.del("transfer:index");
-  }
-
+  onProgress?.("Deleting transfer objects and metadata...");
+  const result = await runTransferOperation((transfers) => transfers.nuke);
+  if (!result.configured) throw new Error("Transfer storage is not configured.");
   onProgress?.("Done.");
-  return { deletedFiles, deletedKeys };
+  return { deletedFiles: result.deletedFiles, deletedKeys: result.deletedTransfers };
 }
 
 export {

@@ -14,7 +14,7 @@ import { definePlugin } from "nitro";
  * It still answers `/api/health` so the platform can supervise it; the drain
  * loop just runs alongside.
  */
-export default definePlugin((nitroApp) => {
+export default definePlugin(async (nitroApp) => {
   const workerRole = isMediaWorkerRole();
 
   const mode = getMediaProcessorMode();
@@ -24,7 +24,7 @@ export default definePlugin((nitroApp) => {
       "MEDIA_WORKER_ROLE=worker with MEDIA_PROCESSOR_MODE=local — nothing will be queued to drain",
     );
   } else if (workerRole) {
-    startMediaWorkerLoop();
+    await startMediaWorkerLoop();
     log.info("media.worker", "Media worker role started", { mode });
   }
 

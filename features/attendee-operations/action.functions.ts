@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -13,6 +14,7 @@ function runAction<A, E>(
     Effect.gen(function* () {
       return yield* use(yield* AttendeeOperationsService);
     }),
+    getRequest().signal,
   );
 }
 

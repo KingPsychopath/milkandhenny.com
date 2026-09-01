@@ -1,17 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 
 import { requireAuth } from "@/features/auth/auth.server";
-import {
-  listEventWaitlist,
-  previewWaitlistImpact,
-} from "@/features/event-waitlist/waitlist.server";
+import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+
+function runWaitlist<A>(
+  request: Request,
+  use: (service: typeof EventOperationsService.Service) => Effect.Effect<A, unknown>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* EventOperationsService);
+    }),
+    request.signal,
+  );
+}
 
 async function handleGET(request: Request, slug: string) {
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
-    return Response.json(await listEventWaitlist(slug), {
+    return Response.json(await runWaitlist(request, (service) => service.listWaitlist(slug)), {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
@@ -41,7 +52,9 @@ async function handlePOST(request: Request, slug: string) {
     ) {
       return Response.json({ error: "Invalid waitlist action" }, { status: 400 });
     }
-    const result = await previewWaitlistImpact(slug, record.event as Record<string, unknown>);
+    const result = await runWaitlist(request, (service) =>
+      service.previewWaitlist(slug, record.event as Record<string, unknown>),
+    );
     return result.ok
       ? Response.json(result.value, { headers: { "Cache-Control": "private, no-store" } })
       : Response.json(

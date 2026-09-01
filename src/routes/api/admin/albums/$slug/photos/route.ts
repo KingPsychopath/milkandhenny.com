@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
-import { deleteAlbumPhotos, isSafeAlbumSlug } from "@/features/media/admin-albums";
+import { isSafeAlbumSlug } from "@/features/media/admin-albums";
+import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleDELETE(request: Request, slug: string) {
@@ -15,7 +18,12 @@ async function handleDELETE(request: Request, slug: string) {
     if (!Array.isArray(body.photoIds) || !body.photoIds.every((id) => typeof id === "string")) {
       return Response.json({ error: "photoIds must be a list of photo IDs" }, { status: 400 });
     }
-    const result = await deleteAlbumPhotos(slug, body.photoIds);
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* AlbumOperationsService).deletePhotos(slug, body.photoIds as string[]);
+      }),
+      request.signal,
+    );
     return Response.json({ success: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to delete photos";

@@ -12,7 +12,7 @@ import {
 } from "../staff.server";
 import { STAFF_PERMISSIONS } from "../types";
 import { StaffAccessService } from "../staff-access-service.server";
-import { runStaffAccessResult } from "../staff-access-runtime.server";
+import { runEventsResult } from "@/features/events/events-runtime.server";
 import { resultResponse, stringValue, type AdminScoringActionHandlers } from "./shared";
 
 const STAFF_PRESETS: ReadonlySet<string> = new Set([
@@ -53,7 +53,7 @@ export const staffingActions: AdminScoringActionHandlers = {
         { error: "Role name, starting preset, and reason are required" },
         { status: 400 },
       );
-    const result = await runStaffAccessResult(
+    const result = await runEventsResult(
       Effect.gen(function* () {
         const service = yield* StaffAccessService;
         return yield* service.createRole({
@@ -88,7 +88,7 @@ export const staffingActions: AdminScoringActionHandlers = {
         { error: "Role, invitation method, and reason are required" },
         { status: 400 },
       );
-    const result = await runStaffAccessResult(
+    const result = await runEventsResult(
       Effect.gen(function* () {
         const service = yield* StaffAccessService;
         return yield* service.assignRole({

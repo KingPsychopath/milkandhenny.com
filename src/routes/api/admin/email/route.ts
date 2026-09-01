@@ -5,15 +5,8 @@ import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { CommunicationsService } from "@/features/communications/communications-service.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
 import {
-  cancelQueuedEmail,
-  cleanupEmailOperations,
-  correctTicketRecipientAndResend,
   EmailOperationError,
   listEmailLedger,
-  removeEmailSuppression,
-  revealEmailLedgerRecipient,
-  resendEmailFromLedger,
-  retryEmailNow,
 } from "@/features/email-operations/email-operations.server";
 import type { EmailLedgerSort } from "@/features/email-operations/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -27,6 +20,24 @@ import {
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 
 const SORTS: EmailLedgerSort[] = ["newest", "oldest", "next-attempt"];
+
+function runCommunication<A>(
+  request: Request,
+  use: (service: typeof CommunicationsService.Service) => Effect.Effect<A, unknown>,
+) {
+  return runEventsEffect(
+    Effect.gen(function* () {
+      return yield* use(yield* CommunicationsService);
+    }),
+    request.signal,
+  );
+}
+
+function emailOperationError(error: unknown): EmailOperationError | null {
+  if (error instanceof EmailOperationError) return error;
+  if (typeof error !== "object" || error === null || !("cause" in error)) return null;
+  return error.cause instanceof EmailOperationError ? error.cause : null;
+}
 
 function positiveInteger(value: string | null, fallback: number, maximum: number): number {
   if (!value) return fallback;
@@ -78,12 +89,7 @@ async function handlePOST(request: Request) {
   const id = typeof body.id === "string" ? body.id : "";
   try {
     if (action === "drain") {
-      const handled = await runEventsEffect(
-        Effect.gen(function* () {
-          return yield* (yield* CommunicationsService).drain;
-        }),
-        request.signal,
-      );
+      const handled = await runCommunication(request, (service) => service.drain);
       return Response.json({ ok: true, handled });
     }
     if (
@@ -96,14 +102,15 @@ async function handlePOST(request: Request) {
       if (stepUpError) return stepUpError;
     }
     if (action === "cleanup") {
-      return Response.json({ ok: true, ...(await cleanupEmailOperations()) });
+      const result = await runCommunication(request, (service) => service.cleanupEmail);
+      return Response.json({ ok: true, ...result });
     }
     if (action === "unsuppress") {
       const recipientHash = typeof body.recipientHash === "string" ? body.recipientHash : "";
       if (!/^[a-f0-9]{64}$/.test(recipientHash)) {
         return Response.json({ error: "Choose a valid suppression" }, { status: 400 });
       }
-      await removeEmailSuppression(recipientHash);
+      await runCommunication(request, (service) => service.removeSuppression(recipientHash));
       return Response.json({ ok: true });
     }
     if (action === "correct-and-resend") {
@@ -119,10 +126,12 @@ async function handlePOST(request: Request) {
           { status: 400 },
         );
       }
-      const result = await correctTicketRecipientAndResend(
-        id,
-        useSuggestedCorrection ? null : recipientEmail,
-        getBaseUrlForRequest(request),
+      const result = await runCommunication(request, (service) =>
+        service.correctTicketRecipient(
+          id,
+          useSuggestedCorrection ? null : recipientEmail,
+          getBaseUrlForRequest(request),
+        ),
       );
       return Response.json({ ok: true, ...result });
     }
@@ -131,23 +140,30 @@ async function handlePOST(request: Request) {
         return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });
       }
       return Response.json(
-        { recipientEmail: await revealEmailLedgerRecipient(id) },
+        {
+          recipientEmail: await runCommunication(request, (service) => service.revealRecipient(id)),
+        },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
     if (!/^[a-f0-9-]{36}$/.test(id)) {
       return Response.json({ error: "Choose an email ledger entry" }, { status: 400 });
     }
-    if (action === "retry") await retryEmailNow(id);
-    else if (action === "cancel") await cancelQueuedEmail(id);
-    else if (action === "resend") {
-      const result = await resendEmailFromLedger(id, getBaseUrlForRequest(request));
+    if (action === "retry") {
+      await runCommunication(request, (service) => service.retryEmail(id));
+    } else if (action === "cancel") {
+      await runCommunication(request, (service) => service.cancelEmail(id));
+    } else if (action === "resend") {
+      const result = await runCommunication(request, (service) =>
+        service.resendEmail(id, getBaseUrlForRequest(request)),
+      );
       return Response.json({ ok: true, ...result });
     } else return Response.json({ error: "Choose a valid email action" }, { status: 400 });
     return Response.json({ ok: true });
   } catch (error) {
-    if (error instanceof EmailOperationError) {
-      return Response.json({ error: error.message }, { status: error.status });
+    const domainError = emailOperationError(error);
+    if (domainError) {
+      return Response.json({ error: domainError.message }, { status: domainError.status });
     }
     return apiErrorFromRequest(request, "admin.email.action", "Email action failed", error, {
       action,

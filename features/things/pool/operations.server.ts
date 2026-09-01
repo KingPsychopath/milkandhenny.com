@@ -1,4 +1,4 @@
-import { query, transaction } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres-provider-context.server";
 import { clearAssignmentReceipts, expireStaleGamePoolAssignments } from "./membership.server";
 
 let allocationAttempts = 0;

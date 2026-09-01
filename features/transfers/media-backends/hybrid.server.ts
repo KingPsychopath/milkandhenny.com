@@ -1,7 +1,3 @@
-import {
-  getInlineProcessingTimeoutMs,
-  withProcessingTimeout,
-} from "@/features/transfers/media-processing-config.server";
 import { mapConcurrent } from "@/features/media/processing.server";
 import {
   canRetryTransferProcessing,
@@ -47,15 +43,6 @@ function canUseWorkerForRoute(route: ProcessingRoute): boolean {
   );
 }
 
-/**
- * Ceiling for the work the web role still does itself. Nothing catches a file
- * that blows it — a queued route never reaches here — so it exists purely to
- * stop a wedged decode from holding a request open.
- */
-function withInlineTimeout<T>(route: ProcessingRoute, work: () => Promise<T>): Promise<T> {
-  return withProcessingTimeout(route, getInlineProcessingTimeoutMs(), work);
-}
-
 async function processTransferBuffer(
   buffer: Buffer,
   file: TransferUploadFileInput,
@@ -76,8 +63,13 @@ async function processTransferBuffer(
   }
 
   try {
-    return await withInlineTimeout(route, () =>
-      processTransferBufferLocally(buffer, file, transferId, "local_done", "local", route),
+    return await processTransferBufferLocally(
+      buffer,
+      file,
+      transferId,
+      "local_done",
+      "local",
+      route,
     );
   } catch {
     return buildFailedLocalResult({
@@ -100,9 +92,7 @@ async function processTransferObject(file: TransferUploadFileInput, transferId: 
   }
 
   try {
-    return await withInlineTimeout(route, () =>
-      processTransferObjectLocally(file, transferId, "local_done", "local", route),
-    );
+    return await processTransferObjectLocally(file, transferId, "local_done", "local", route);
   } catch {
     return buildFailedLocalResult({ transferId, file, route });
   }
@@ -140,22 +130,20 @@ async function repairOrQueueIncompleteFile(
 
   try {
     const repaired = (
-      await withInlineTimeout(route, () =>
-        processTransferObjectLocally(
-          {
-            name: file.filename,
-            size: file.size,
-            type: file.mimeType,
-            originalName: file.originalFilename,
-            originalType: file.originalMimeType,
-            originalSize: file.originalStorageKey ? file.size : undefined,
-            convertedFrom: file.convertedFrom,
-          },
-          transfer.id,
-          "local_done",
-          "local",
-          route,
-        ),
+      await processTransferObjectLocally(
+        {
+          name: file.filename,
+          size: file.size,
+          type: file.mimeType,
+          originalName: file.originalFilename,
+          originalType: file.originalMimeType,
+          originalSize: file.originalStorageKey ? file.size : undefined,
+          convertedFrom: file.convertedFrom,
+        },
+        transfer.id,
+        "local_done",
+        "local",
+        route,
       )
     ).file;
     return file.storedBytes === undefined

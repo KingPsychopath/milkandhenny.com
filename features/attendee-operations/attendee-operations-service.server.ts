@@ -1,9 +1,17 @@
 import { Context, Effect, Layer } from "effect";
 
 import { cleanupExpiredAccessChallenges } from "@/features/attendee-access/access.server";
+import { reconcileEmailDeliveryAttention } from "@/features/email-operations/delivery-feedback.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
 import { acceptAccessAction, inviteNamedAdmin, revokeNamedAdmin } from "./access-grants.server";
-import { revokeAlertRecipient, saveAlertRecipient, sendTestAlert } from "./notifications.server";
+import {
+  listAdminInbox,
+  revokeAlertRecipient,
+  saveAlertRecipient,
+  sendTestAlert,
+  setAdminNotificationReadState,
+  updateAdminNotification,
+} from "./notifications.server";
 import {
   acceptRefundConsent,
   acceptTicketAction,
@@ -61,6 +69,19 @@ const declineTransfer = mutate("decline_transfer", declineTicketTransfer);
 const cancelPending = mutate("cancel_pending", cancelPendingTicketOperation);
 const cancelReturn = mutate("cancel_return", cancelTransferredTicketReturn);
 const resendPending = mutate("resend_pending", resendPendingTicketOperation);
+const setNotificationRead = mutate("set_notification_read", setAdminNotificationReadState);
+const updateNotification = mutate("update_notification", updateAdminNotification);
+
+const loadInbox = (input: Parameters<typeof listAdminInbox>[0]) =>
+  operation("reconcile_email_attention", () => reconcileEmailDeliveryAttention()).pipe(
+    Effect.andThen(
+      eventsOperation(
+        { domain: "attendee-operations", operation: "list_admin_inbox", kind: "read" },
+        () => listAdminInbox(input),
+      ),
+    ),
+    Effect.withSpan("attendee-operations.load_inbox"),
+  );
 
 const cleanupExpired = Effect.all(
   [
@@ -88,6 +109,7 @@ export class AttendeeOperationsService extends Context.Service<
     readonly declineRefund: typeof declineRefund;
     readonly declineTransfer: typeof declineTransfer;
     readonly inviteAdmin: typeof inviteAdmin;
+    readonly loadInbox: typeof loadInbox;
     readonly requestAssignment: typeof requestAssignment;
     readonly requestReturn: typeof requestReturn;
     readonly requestTransfer: typeof requestTransfer;
@@ -96,7 +118,9 @@ export class AttendeeOperationsService extends Context.Service<
     readonly revokeAdmin: typeof revokeAdmin;
     readonly revokeAlerts: typeof revokeAlerts;
     readonly saveAlerts: typeof saveAlerts;
+    readonly setNotificationRead: typeof setNotificationRead;
     readonly testAlert: typeof testAlert;
+    readonly updateNotification: typeof updateNotification;
   }
 >()("AttendeeOperationsService") {
   static readonly layer = Layer.succeed(this, {
@@ -111,6 +135,7 @@ export class AttendeeOperationsService extends Context.Service<
     declineRefund,
     declineTransfer,
     inviteAdmin,
+    loadInbox,
     requestAssignment,
     requestReturn,
     requestTransfer,
@@ -119,6 +144,8 @@ export class AttendeeOperationsService extends Context.Service<
     revokeAdmin,
     revokeAlerts,
     saveAlerts,
+    setNotificationRead,
     testAlert,
+    updateNotification,
   });
 }

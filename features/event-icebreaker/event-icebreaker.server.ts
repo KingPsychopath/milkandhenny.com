@@ -14,7 +14,7 @@ import {
   type IcebreakerLedger,
   type IcebreakerPlayer,
 } from "@/features/things/icebreaker/icebreaker-pairing";
-import { query, transaction } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres-provider-context.server";
 
 type ProfileRow = {
   participant_id: string;

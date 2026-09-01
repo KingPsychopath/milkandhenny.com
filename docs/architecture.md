@@ -100,12 +100,12 @@ conversion happens only at TanStack/Nitro edges.
 
 The runtime ownership map is deliberately small:
 
-| Runtime     | Responsibilities                                                                            |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| Events      | Events, tickets, attendee operations, scoring, realtime, communications, and app scheduling |
-| Media       | Media-worker lifecycle, private-transfer orchestration, and bounded media maintenance       |
-| Multiplayer | Shared room workflows, realtime resources, and command execution                            |
-| Pitches     | Pitch Night server workflows and presentation lifecycle                                     |
+| Runtime     | Responsibilities                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Events      | Events, tickets, attendee operations, waitlists, icebreaker persistence, scoring, realtime, communications, and app scheduling |
+| Media       | Media-worker lifecycle, private transfers, album and word orchestration, and bounded media maintenance                         |
+| Multiplayer | Shared room and game-pool workflows, best-dressed voting, realtime resources, and command execution                            |
+| Pitches     | Pitch Night server workflows and presentation lifecycle                                                                        |
 
 Services compose into the owning runtime Layer. A feature service or compatibility facade does not
 create another `ManagedRuntime` or shutdown plugin. Score rules, eligibility, balance calculations,

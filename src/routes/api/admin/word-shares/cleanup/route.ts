@@ -1,25 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import {
-  cleanupShareLinksForSlug,
-  deleteAllShareLinksForSlug,
-  listTrackedShareSlugs,
-} from "@/features/words/share.server";
-import { listAllWords } from "@/features/words/store.server";
+import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-
-async function collectCleanupSlugs(): Promise<string[]> {
-  const [trackedSlugs, notes] = await Promise.all([
-    listTrackedShareSlugs(),
-    listAllWords({ includeNonPublic: true }),
-  ]);
-  const slugs = new Set<string>(trackedSlugs);
-  for (const note of notes) {
-    slugs.add(note.slug);
-  }
-  return [...slugs].sort();
-}
 
 async function handlePOST(request: Request) {
   const authErr = await requireAuth(request, "admin");
@@ -43,45 +28,28 @@ async function handlePOST(request: Request) {
   }
 
   try {
-    const slugs = await collectCleanupSlugs();
-    if (mode === "purge" || mode === "reset") {
-      let deletedLinks = 0;
-      for (const slug of slugs) {
-        deletedLinks += await deleteAllShareLinksForSlug(slug);
-      }
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const maintenance = yield* MediaMaintenanceService;
+        return mode === "cleanup"
+          ? yield* maintenance.cleanupWordShares()
+          : yield* maintenance.purgeWordShares();
+      }),
+      request.signal,
+    );
+    if (mode !== "cleanup") {
       return Response.json({
         ok: true,
         mode,
-        scannedSlugs: slugs.length,
-        deletedLinks,
-        remaining: 0,
+        ...result,
         cleanedAt: new Date().toISOString(),
       });
-    }
-
-    let scanned = 0;
-    let removedExpired = 0;
-    let removedRevoked = 0;
-    let staleIndexRemoved = 0;
-    let remaining = 0;
-    for (const slug of slugs) {
-      const result = await cleanupShareLinksForSlug(slug);
-      scanned += result.scanned;
-      removedExpired += result.removedExpired;
-      removedRevoked += result.removedRevoked;
-      staleIndexRemoved += result.staleIndexRemoved;
-      remaining += result.remaining;
     }
 
     return Response.json({
       ok: true,
       mode,
-      scannedSlugs: slugs.length,
-      scannedLinks: scanned,
-      removedExpired,
-      removedRevoked,
-      staleIndexRemoved,
-      remaining,
+      ...result,
       cleanedAt: new Date().toISOString(),
     });
   } catch (error) {

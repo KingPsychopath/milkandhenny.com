@@ -7,7 +7,7 @@ import { readTicketHolderSlugs } from "@/features/tickets/holder-cookie.server";
 import { log } from "@/lib/platform/logger.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getEventPage, type EventPageData } from "./event-page.server";
-import { runEventOperationsResult } from "./runtime.server";
+import { runEventsResult as runEventOperationsResult } from "@/features/events/events-runtime.server";
 
 export type EventPageResult =
   | { found: true; data: EventPageData; origin: string; waitlistEmail?: string }
@@ -23,6 +23,7 @@ export const getEventPageFn = createServerFn({ method: "GET" })
       eventsOperation({ domain: "events", operation: "page" }, () =>
         getEventPage(data.slug, { revealLocation }),
       ),
+      request.signal,
     );
 
     if (!result.ok || !result.value) return { found: false };

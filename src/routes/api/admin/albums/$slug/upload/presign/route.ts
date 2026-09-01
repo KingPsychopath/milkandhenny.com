@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Effect } from "effect";
 import { requireAuth } from "@/features/auth/auth.server";
-import {
-  isSafeAlbumSlug,
-  prepareAlbumUploads,
-  type AlbumUploadInput,
-} from "@/features/media/admin-albums";
+import { isSafeAlbumSlug, type AlbumUploadInput } from "@/features/media/admin-albums";
+import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handlePOST(request: Request, slug: string) {
@@ -14,7 +13,15 @@ async function handlePOST(request: Request, slug: string) {
     return Response.json({ error: "Invalid album slug" }, { status: 400 });
   try {
     const body = (await request.json()) as { files?: AlbumUploadInput[] };
-    const uploads = await prepareAlbumUploads(slug, Array.isArray(body.files) ? body.files : []);
+    const uploads = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* AlbumOperationsService).prepareUploads(
+          slug,
+          Array.isArray(body.files) ? body.files : [],
+        );
+      }),
+      request.signal,
+    );
     return Response.json({ success: true, uploads });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to prepare uploads";

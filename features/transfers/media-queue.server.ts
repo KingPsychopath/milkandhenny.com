@@ -68,38 +68,6 @@ async function enqueueTransferMediaJob(job: TransferMediaJob): Promise<void> {
   );
 }
 
-async function dequeueTransferMediaJobs(limit: number): Promise<TransferMediaJob[]> {
-  const redis = requireTransferMediaQueueRedis();
-  const jobs: TransferMediaJob[] = [];
-
-  for (let i = 0; i < limit; i += 1) {
-    const raw = await redis.rpop<string>(TRANSFER_MEDIA_QUEUE_KEY);
-    if (!raw) break;
-    try {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (
-        parsed &&
-        typeof parsed.transferId === "string" &&
-        parsed.file &&
-        typeof parsed.file === "object" &&
-        typeof parsed.file.name === "string" &&
-        (typeof parsed.mediaId === "undefined" || typeof parsed.mediaId === "string") &&
-        typeof parsed.storageKey === "string" &&
-        typeof parsed.mimeType === "string" &&
-        typeof parsed.processingRoute === "string" &&
-        typeof parsed.attempt === "number" &&
-        typeof parsed.enqueuedAt === "string"
-      ) {
-        jobs.push(parsed as TransferMediaJob);
-      }
-    } catch {
-      // Drop malformed jobs rather than poisoning the queue.
-    }
-  }
-
-  return jobs;
-}
-
 async function getTransferMediaQueueLength(): Promise<number> {
   const redis = requireTransferMediaQueueRedis();
   const length = await redis.llen(TRANSFER_MEDIA_QUEUE_KEY);
@@ -319,7 +287,6 @@ async function retryDeadTransferMediaJobs(limit = 25) {
 export {
   ackTransferMediaJob,
   claimTransferMediaJobBlocking,
-  dequeueTransferMediaJobs,
   describeTransferMediaQueue,
   enqueueTransferMediaJob,
   getTransferMediaQueueLength,

@@ -2,9 +2,8 @@ import { createHash } from "node:crypto";
 
 import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
-import { query } from "@/lib/platform/postgres.server";
+import { query } from "@/lib/platform/postgres-provider-context.server";
 import { remainingMultiplayerRoomTtlSeconds } from "../shared/room-primitives.server";
-import { publishMultiplayerRoomWake } from "../shared/multiplayer-runtime.server";
 import {
   GamePoolJoinError,
   createPoolRoomAndJoin,
@@ -223,13 +222,15 @@ async function joinRegisteredRoom(input: {
   };
 }
 
-export async function assignGamePoolRoom(input: {
+export interface AssignGamePoolRoomInput {
   token: string;
   clientId: string;
   name: string;
   choice: "auto" | "new" | { roomId: string };
   moveExisting: boolean;
-}) {
+}
+
+export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
   const startedAt = performance.now();
   let failed = true;
   try {
@@ -242,7 +243,7 @@ export async function assignGamePoolRoom(input: {
     const name = validName(input.name);
     const previousReceipt = input.moveExisting ? await readStoredReceipt(run.id, clientId) : null;
     const receipt = input.moveExisting ? null : await readReceipt(run.id, clientId);
-    if (receipt) return receipt.assignment;
+    if (receipt) return { assignment: receipt.assignment, runId: run.id };
 
     let staleReceipts: Array<{ runId: string; clientId: string }> = [];
     const assignment = await withGamePoolAllocation(run.id, async (client) => {
@@ -423,20 +424,19 @@ export async function assignGamePoolRoom(input: {
       });
     }
     await clearAssignmentReceipts(staleReceipts);
-    await publishMultiplayerRoomWake("game-pool", run.id).catch(() => undefined);
     failed = false;
-    return assignment;
+    return { assignment, runId: run.id };
   } finally {
     recordGamePoolAllocation({ durationMs: performance.now() - startedAt, failed });
   }
 }
 
-export async function releaseGamePoolAssignment(input: { token: string; clientId: string }) {
+export async function releaseGamePoolAssignmentState(input: { token: string; clientId: string }) {
   const entrance = await getGamePoolEntranceByToken(input.token);
   const clientId = validClientId(input.clientId);
   const runId =
     entrance?.run?.id ?? (await findGamePoolRunForClient({ token: input.token, clientId }));
-  if (!runId) return { ok: true as const };
+  if (!runId) return { ok: true as const, runId: null };
   const receipt = await readStoredReceipt(runId, clientId);
   if (receipt) await leavePoolRoom(receipt.assignment);
   await withGamePoolAllocation(runId, async (client) => {
@@ -444,8 +444,7 @@ export async function releaseGamePoolAssignment(input: { token: string; clientId
   });
   const redis = getRedis();
   if (redis) await redis.del(gamePoolAssignmentReceiptKey(runId, clientId));
-  await publishMultiplayerRoomWake("game-pool", runId).catch(() => undefined);
-  return { ok: true as const };
+  return { ok: true as const, runId };
 }
 
 export async function authorizeGamePoolSocket(token: string, expectedRunId: string) {

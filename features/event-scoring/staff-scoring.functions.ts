@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
+import { getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -32,6 +32,7 @@ function runScoring<A, E>(
     Effect.gen(function* () {
       return yield* use(yield* EventScoringService);
     }),
+    getRequest().signal,
   );
 }
 

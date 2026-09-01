@@ -2,7 +2,6 @@ import path from "path";
 
 import {
   getMimeType,
-  mapConcurrent,
   processImageVariants,
   RawPreviewUnavailableError,
   resolveImageProcessingSource,
@@ -22,17 +21,12 @@ import {
   type ProcessingRoute,
 } from "@/features/transfers/media-state";
 import {
-  dequeueTransferMediaJobs,
   enqueueTransferMediaJob,
   getTransferMediaQueueLength,
   type TransferMediaJob,
 } from "@/features/transfers/media-queue.server";
 import { getTransfer, updateTransferFile } from "@/features/transfers/store.server";
 import { publishTransferMediaEvent } from "@/features/transfers/media-events.server";
-import {
-  getWorkerProcessingTimeoutMs,
-  withProcessingTimeout,
-} from "@/features/transfers/media-processing-config.server";
 import type { TransferData, TransferFile } from "@/features/transfers/types";
 import type { ProcessFileResult, TransferUploadFileInput } from "@/features/transfers/upload-types";
 import {
@@ -45,16 +39,6 @@ import {
   getRouteKind,
   processTransferObjectLocally,
 } from "@/features/transfers/media-backends/local.server";
-
-type WorkerRunResult = {
-  processedJobs: number;
-  succeeded: number;
-  failed: number;
-  skipped: number;
-  queueLength: number;
-};
-
-const WORKER_JOB_CONCURRENCY = Math.max(1, Number(process.env.MEDIA_WORKER_CONCURRENCY ?? "1"));
 
 const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   raw_try_local: "worker_raw",
@@ -222,9 +206,81 @@ async function enqueueWorkerJob(params: {
   }
 }
 
+type WorkerJobOutcome = "succeeded" | "failed" | "skipped";
+
+async function recordWorkerJobFailure(
+  job: TransferMediaJob,
+  current: TransferFile,
+  mediaId: string,
+  error: unknown,
+  failureCode?: string,
+): Promise<WorkerJobOutcome> {
+  const errorDetail =
+    error instanceof Error
+      ? (error.stack ?? error.message).slice(0, 500)
+      : String(error).slice(0, 500);
+  const code =
+    failureCode ??
+    (job.processingRoute === "worker_raw" &&
+    (error instanceof RawPreviewUnavailableError || isRawPreviewFallbackError(error))
+      ? "raw_preview_unavailable"
+      : "worker_failed");
+  console.error(
+    `[transfer-media-worker] job failed transfer=${job.transferId} mediaId=${mediaId} route=${job.processingRoute}\n${errorDetail}`,
+  );
+  const failedFile: TransferFile = {
+    ...buildOriginalOnlyFailureFile(
+      mediaId,
+      job.file.name,
+      current.size,
+      current.storageKey,
+      job.processingRoute,
+      code,
+      job.attempt,
+    ),
+    processingBackend: "worker",
+    storageKey: current.storageKey,
+    ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
+    ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
+    ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
+    ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
+    ...(current.groupId ? { groupId: current.groupId } : {}),
+    ...(current.groupRole ? { groupRole: current.groupRole } : {}),
+    processingErrorDetail: errorDetail,
+  };
+  if (!(await saveAndAnnounceTransferFile(job.transferId, failedFile))) {
+    await cleanupAbandonedWorkerOutputs(job).catch(() => undefined);
+    return "skipped";
+  }
+  return "failed";
+}
+
+/** Records the durable terminal state after the Effect worker deadline interrupts an attempt. */
+async function markWorkerJobTimedOut(job: TransferMediaJob, timeoutMs: number) {
+  const transfer = await getTransfer(job.transferId);
+  if (!transfer) return "skipped" as const;
+  const mediaId = job.mediaId ?? job.file.mediaId ?? getTransferFileId(job.file.name);
+  const current = transfer.files.find((file) => file.id === mediaId);
+  if (
+    !current ||
+    current.processingStatus === "local_done" ||
+    current.processingStatus === "worker_done"
+  ) {
+    return "skipped" as const;
+  }
+  return recordWorkerJobFailure(
+    job,
+    current,
+    mediaId,
+    new Error(`Media processing timed out after ${timeoutMs}ms`),
+    "worker_timeout",
+  );
+}
+
 async function processWorkerJob(
   job: TransferMediaJob,
-): Promise<"succeeded" | "failed" | "skipped"> {
+  signal?: AbortSignal,
+): Promise<WorkerJobOutcome> {
   const transfer = await getTransfer(job.transferId);
   if (!transfer) return "skipped";
 
@@ -249,75 +305,71 @@ async function processWorkerJob(
   if (!(await saveAndAnnounceTransferFile(job.transferId, processingFile))) return "skipped";
 
   try {
-    // A wedged decode must fail the job rather than hold the only worker slot.
-    // The error lands in the catch below, which records it and acks — retrying
-    // a job that already blew its budget would just wedge the next slot too.
-    const result = await withProcessingTimeout(
-      `${job.processingRoute} ${mediaId}`,
-      getWorkerProcessingTimeoutMs(),
-      async (): Promise<ProcessFileResult> => {
-        if (job.processingRoute === "worker_raw") {
-          const original = await downloadBuffer(current.storageKey, { scope: "private" });
-          const filename = job.file.originalName ?? job.file.name;
-          const ext = path.extname(filename).toLowerCase() || ".dng";
+    const result = await (async (): Promise<ProcessFileResult> => {
+      if (job.processingRoute === "worker_raw") {
+        const original = await downloadBuffer(current.storageKey, { scope: "private" });
+        const filename = job.file.originalName ?? job.file.name;
+        const ext = path.extname(filename).toLowerCase() || ".dng";
 
-          const { buffer: source, takenAt } = await resolveImageProcessingSource(original, ext);
+        const { buffer: source, takenAt } = await resolveImageProcessingSource(original, ext);
 
-          const processed = await processImageVariants(source, ".jpg");
+        const processed = await processImageVariants(source, ".jpg");
 
-          const prefix = `transfers/${job.transferId}`;
-          await Promise.all([
-            uploadBuffer(
-              `${prefix}/thumb/${mediaId}.webp`,
-              processed.thumb.buffer,
-              processed.thumb.contentType,
-              { scope: "private" },
-            ),
-            uploadBuffer(
-              `${prefix}/full/${mediaId}.webp`,
-              processed.full.buffer,
-              processed.full.contentType,
-              { scope: "private" },
-            ),
-          ]);
+        const prefix = `transfers/${job.transferId}`;
+        await Promise.all([
+          uploadBuffer(
+            `${prefix}/thumb/${mediaId}.webp`,
+            processed.thumb.buffer,
+            processed.thumb.contentType,
+            { scope: "private" },
+          ),
+          uploadBuffer(
+            `${prefix}/full/${mediaId}.webp`,
+            processed.full.buffer,
+            processed.full.contentType,
+            { scope: "private" },
+          ),
+        ]);
 
-          return {
-            file: buildReadyVisualFile(
-              mediaId,
-              job.file.name,
-              current.size,
-              "image",
-              current.mimeType,
-              current.storageKey,
-              current.originalStorageKey,
-              processed.width,
-              processed.height,
-              job.processingRoute,
-              "worker_done",
-              "worker",
-              processed.takenAt ?? takenAt ?? current.takenAt ?? null,
-              processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
-              job.file,
-              "server_raw",
-            ),
-            uploadedBytes:
-              processed.thumb.buffer.byteLength + processed.full.buffer.byteLength + current.size,
-          };
-        }
+        return {
+          file: buildReadyVisualFile(
+            mediaId,
+            job.file.name,
+            current.size,
+            "image",
+            current.mimeType,
+            current.storageKey,
+            current.originalStorageKey,
+            processed.width,
+            processed.height,
+            job.processingRoute,
+            "worker_done",
+            "worker",
+            processed.takenAt ?? takenAt ?? current.takenAt ?? null,
+            processed.livePhotoContentId ?? current.livePhotoContentId ?? null,
+            job.file,
+            "server_raw",
+          ),
+          uploadedBytes:
+            processed.thumb.buffer.byteLength + processed.full.buffer.byteLength + current.size,
+        };
+      }
 
-        return processTransferObjectLocally(
-          {
-            ...job.file,
-            size: current.size,
-          },
-          job.transferId,
-          "worker_done",
-          "worker",
-          job.processingRoute,
-        );
-      },
-    );
+      return processTransferObjectLocally(
+        {
+          ...job.file,
+          size: current.size,
+        },
+        job.transferId,
+        "worker_done",
+        "worker",
+        job.processingRoute,
+      );
+    })();
 
+    // Effect owns the deadline. A provider that finishes while interruption is propagating must
+    // not publish a late success over the durable timeout failure recorded by the worker runtime.
+    signal?.throwIfAborted();
     const updatedFile: TransferFile = {
       ...result.file,
       ...(current.groupId ? { groupId: current.groupId } : {}),
@@ -329,71 +381,9 @@ async function processWorkerJob(
     }
     return "succeeded";
   } catch (error) {
-    const errorDetail =
-      error instanceof Error
-        ? (error.stack ?? error.message).slice(0, 500)
-        : String(error).slice(0, 500);
-    const failureCode =
-      job.processingRoute === "worker_raw" &&
-      (error instanceof RawPreviewUnavailableError || isRawPreviewFallbackError(error))
-        ? "raw_preview_unavailable"
-        : "worker_failed";
-    console.error(
-      `[transfer-media-worker] job failed transfer=${job.transferId} mediaId=${mediaId} route=${job.processingRoute}\n${errorDetail}`,
-    );
-    const failedFile: TransferFile = {
-      ...buildOriginalOnlyFailureFile(
-        mediaId,
-        job.file.name,
-        current.size,
-        current.storageKey,
-        job.processingRoute,
-        failureCode,
-        job.attempt,
-      ),
-      processingBackend: "worker",
-      storageKey: current.storageKey,
-      ...(current.originalStorageKey ? { originalStorageKey: current.originalStorageKey } : {}),
-      ...(current.originalFilename ? { originalFilename: current.originalFilename } : {}),
-      ...(current.originalMimeType ? { originalMimeType: current.originalMimeType } : {}),
-      ...(current.convertedFrom ? { convertedFrom: current.convertedFrom } : {}),
-      ...(current.groupId ? { groupId: current.groupId } : {}),
-      ...(current.groupRole ? { groupRole: current.groupRole } : {}),
-      processingErrorDetail: errorDetail,
-    };
-    if (!(await saveAndAnnounceTransferFile(job.transferId, failedFile))) {
-      await cleanupAbandonedWorkerOutputs(job).catch(() => undefined);
-      return "skipped";
-    }
-    return "failed";
+    if (signal?.aborted) throw error;
+    return recordWorkerJobFailure(job, current, mediaId, error);
   }
-}
-
-async function runTransferMediaJobs(limit = 8): Promise<WorkerRunResult> {
-  const jobs = await dequeueTransferMediaJobs(limit);
-  let succeeded = 0;
-  let failed = 0;
-  let skipped = 0;
-
-  const outcomes = await mapConcurrent(
-    jobs,
-    Math.min(WORKER_JOB_CONCURRENCY, Math.max(1, jobs.length)),
-    (job) => processWorkerJob(job),
-  );
-
-  for (const outcome of outcomes) {
-    if (outcome === "succeeded") succeeded += 1;
-    else if (outcome === "failed") failed += 1;
-    else skipped += 1;
-  }
-
-  return {
-    processedJobs: jobs.length,
-    succeeded,
-    failed,
-    skipped,
-    queueLength: await getTransferMediaQueueLength(),
-  };
 }
 
 async function requeueTransferFile(
@@ -511,10 +501,8 @@ export {
   enqueueWorkerJob,
   forceReprocessTransferFiles,
   getTransferMediaQueueLength,
+  markWorkerJobTimedOut,
   processWorkerJob,
   refreshQueuedTransferState,
   requeueTransferFile,
-  runTransferMediaJobs,
 };
-
-export type { WorkerRunResult };

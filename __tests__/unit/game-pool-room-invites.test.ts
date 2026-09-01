@@ -12,7 +12,6 @@ const fakes = vi.hoisted(() => ({
   joinPoolRoom: vi.fn(),
   leavePoolRoom: vi.fn(),
   postgresQuery: vi.fn(),
-  publishWake: vi.fn(),
   redis: {
     del: vi.fn(),
     get: vi.fn(),
@@ -22,9 +21,6 @@ const fakes = vi.hoisted(() => ({
 
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => fakes.redis }));
 vi.mock("@/lib/platform/postgres.server", () => ({ query: fakes.postgresQuery }));
-vi.mock("@/features/things/shared/multiplayer-runtime.server", () => ({
-  publishMultiplayerRoomWake: fakes.publishWake,
-}));
 vi.mock("@/features/things/pool/game-adapters.server", () => ({
   GamePoolJoinError: class GamePoolJoinError extends Error {},
   createPoolRoomAndJoin: fakes.createPoolRoomAndJoin,
@@ -101,13 +97,15 @@ vi.mock("@/features/things/pool/store.server", () => ({
 }));
 
 import { gamePoolRoomInvitePath } from "@/features/things/pool/pool-session.client";
-import { assignGamePoolRoom, releaseGamePoolAssignment } from "@/features/things/pool/pool.server";
+import {
+  assignGamePoolRoomState,
+  releaseGamePoolAssignmentState,
+} from "@/features/things/pool/pool.server";
 
 describe("game-pool room invites", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fakes.postgresQuery.mockResolvedValue([]);
-    fakes.publishWake.mockResolvedValue(undefined);
     fakes.redis.get.mockImplementation(async (key: string) =>
       key.includes(":assignment:") ? null : "room-join-token",
     );
@@ -163,14 +161,17 @@ describe("game-pool room invites", () => {
 
   it("admits a targeted room invite when the public room directory is hidden", async () => {
     await expect(
-      assignGamePoolRoom({
+      assignGamePoolRoomState({
         token: "play_test-token-with-enough-characters",
         clientId: "client_test_1234",
         name: "Ada",
         choice: { roomId: "ABCDEFG" },
         moveExisting: false,
       }),
-    ).resolves.toMatchObject({ game: "same-brain", roomId: "ABCDEFG" });
+    ).resolves.toMatchObject({
+      assignment: { game: "same-brain", roomId: "ABCDEFG" },
+      runId: "gpr_test",
+    });
 
     expect(fakes.joinPoolRoom).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -240,14 +241,14 @@ describe("game-pool room invites", () => {
     });
 
     await expect(
-      assignGamePoolRoom({
+      assignGamePoolRoomState({
         token: "play_test-token-with-enough-characters",
         clientId: "client_test_1234",
         name: "Ada",
         choice: { roomId: "NEW123" },
         moveExisting: true,
       }),
-    ).resolves.toMatchObject({ roomId: "NEW123" });
+    ).resolves.toMatchObject({ assignment: { roomId: "NEW123" }, runId: "gpr_test" });
 
     expect(calls.findIndex((sql) => sql.includes("set status = 'left'"))).toBeGreaterThan(-1);
     expect(fakes.joinPoolRoom).toHaveBeenCalledWith(
@@ -272,11 +273,11 @@ describe("game-pool room invites", () => {
     );
 
     await expect(
-      releaseGamePoolAssignment({
+      releaseGamePoolAssignmentState({
         token: "play_test-token-with-enough-characters",
         clientId: "client_test_1234",
       }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, runId: "gpr_test" });
 
     expect(fakes.leavePoolRoom).toHaveBeenCalledWith(assignment);
     expect(fakes.clientQuery).toHaveBeenCalledWith(expect.stringContaining("set status = 'left'"), [

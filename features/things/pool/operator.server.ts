@@ -1,10 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { query, transaction } from "@/lib/platform/postgres.server";
-import {
-  publishMultiplayerRoomTermination,
-  publishMultiplayerRoomWake,
-} from "../shared/multiplayer-runtime.server";
+import { query, transaction } from "@/lib/platform/postgres-provider-context.server";
 import { isGamePoolGame } from "./presets";
 import type { GamePoolOperatorView, GamePoolRoomSummary, GamePoolRunStatus } from "./types";
 
@@ -77,7 +73,7 @@ export async function getGamePoolOperatorView(token: string): Promise<GamePoolOp
   };
 }
 
-export async function controlGamePoolAsOperator(
+export async function controlGamePoolAsOperatorState(
   token: string,
   action: "pause" | "resume" | "close" | "close-room",
   roomId?: string,
@@ -121,10 +117,5 @@ export async function controlGamePoolAsOperator(
     }
     return run.id;
   });
-  await publishMultiplayerRoomWake("game-pool", runId).catch(() => undefined);
-  if (action === "close")
-    await publishMultiplayerRoomTermination("game-pool", runId, {
-      reason: "session_ended",
-    }).catch(() => undefined);
-  return getGamePoolOperatorView(token);
+  return runId;
 }
