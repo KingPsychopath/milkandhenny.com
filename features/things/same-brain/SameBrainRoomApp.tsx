@@ -407,7 +407,6 @@ function LobbyPhase({
         canPassLead={isHost && snapshot.players.length > 1}
         canSetAdmission={isHost && !snapshot.managed}
         currentPlayerId={snapshot.you?.id ?? null}
-        game="same-brain"
         inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
         inviteText="Join our same brain room."
         inviteTitle="Same brain"

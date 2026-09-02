@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { gameNameDefault, useBrowserGameNameForm } from "@/lib/client/browser-profile";
+import { useBrowserGameNameForm } from "@/lib/client/browser-profile";
 
 const SHARED_MAX_NAME_LENGTH = 32;
 
@@ -20,24 +20,11 @@ export function useRememberedPlayerName(maxLength = SHARED_MAX_NAME_LENGTH) {
     maxNameLength: maxLength,
   });
   const edited = useRef(false);
+  const guestName = useRef(`guest ${crypto.randomUUID().slice(0, 4)}`);
 
   useEffect(() => {
     if (!loaded || name || edited.current) return;
-    let active = true;
-    void fetch("/api/attendee/session?view=name", { headers: { accept: "application/json" } })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const body = (await response.json()) as { preferredName?: string | null };
-        return body.preferredName?.trim() || null;
-      })
-      .then((preferredName) => {
-        if (!active || edited.current || !preferredName) return;
-        setName(gameNameDefault(preferredName, maxLength));
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
+    setName(guestName.current.slice(0, maxLength));
   }, [loaded, maxLength, name, setName]);
 
   const editName = useCallback(

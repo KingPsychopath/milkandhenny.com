@@ -5,8 +5,8 @@ import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
 import { shareOrCopy } from "@/lib/client/share";
 import { PlayerReadyControl } from "./PlayerReadyControl";
-import { PixelRoomLobby } from "./PixelWorld";
-import type { PixelWorldGame, PixelWorldPlayer } from "./pixel-world";
+import type { PixelWorldPlayer } from "./pixel-world";
+import "./PixelWorld.css";
 
 export function LobbyIntro({
   title,
@@ -106,7 +106,6 @@ export function MultiplayerLobby({
   canSetAdmission = false,
   canPassLead = false,
   currentPlayerId,
-  game,
   inviteLabel = "room code",
   inviteText,
   inviteTitle,
@@ -126,7 +125,6 @@ export function MultiplayerLobby({
   canSetAdmission?: boolean;
   canPassLead?: boolean;
   currentPlayerId: string | null;
-  game: PixelWorldGame;
   inviteLabel?: string;
   inviteText?: string;
   inviteTitle?: string;
@@ -149,7 +147,6 @@ export function MultiplayerLobby({
   const faint = light ? "text-black/40" : "text-white/40";
   const border = light ? "border-black/15" : "border-white/15";
   const buttonBorder = light ? "border-black/20" : "border-white/20";
-  const pixelTone = light ? "page" : "night";
 
   const shareInvite = async () => {
     if (!inviteUrl) return;
@@ -180,56 +177,64 @@ export function MultiplayerLobby({
   });
 
   return (
-    <section className="mt-8 w-full text-left" aria-label="Room lobby">
+    <section className="mt-6 w-full text-left" aria-label="Room lobby">
       {inviteUrl ? (
-        <section className="flex flex-col items-center text-center" aria-label="Join the room">
-          {admissionLocked !== undefined ? (
-            <RoomAdmissionControl
-              locked={admissionLocked}
-              canChange={canSetAdmission}
-              onChange={onAdmissionChange}
-              tone={tone}
-            />
-          ) : null}
-          {qr ? (
-            <AppImage
-              src={qr}
-              alt={`QR code to join room ${roomId}`}
-              width={320}
-              height={320}
-              className="w-56 rounded-3xl bg-white p-3"
-            />
-          ) : qrFailed ? (
-            <p className={`font-mono text-xs ${muted}`}>
-              QR unavailable — use the room code or invite link.
+        <details
+          open={present.length <= 1 ? true : undefined}
+          className={`overflow-hidden rounded-3xl border ${border}`}
+        >
+          <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className={`block font-mono text-micro uppercase tracking-[0.18em] ${faint}`}>
+                {inviteLabel}
+              </span>
+              <span
+                className={`mt-1 block font-mono text-xl font-bold tracking-[0.18em] ${light ? "text-black" : "text-[var(--things-amber)]"}`}
+              >
+                {roomId}
+              </span>
+            </span>
+            <span className={`font-mono text-xs ${muted}`}>invite people ↓</span>
+          </summary>
+          <div className={`border-t px-5 pb-5 pt-4 text-center ${border}`}>
+            {admissionLocked !== undefined ? (
+              <RoomAdmissionControl
+                locked={admissionLocked}
+                canChange={canSetAdmission}
+                onChange={onAdmissionChange}
+                tone={tone}
+              />
+            ) : null}
+            {qr ? (
+              <AppImage
+                src={qr}
+                alt={`QR code to join room ${roomId}`}
+                width={320}
+                height={320}
+                className="mx-auto w-52 rounded-3xl bg-white p-3"
+              />
+            ) : qrFailed ? (
+              <p className={`font-mono text-xs ${muted}`}>
+                QR unavailable — share the link or read the room code out.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void shareInvite()}
+              className={`mt-4 min-h-12 rounded-full border px-6 font-mono text-xs ${buttonBorder}`}
+            >
+              {nativeShare ? "share invite" : "copy invite link"}
+            </button>
+            <p aria-live="polite" className={`mt-2 min-h-5 font-mono text-xs ${muted}`}>
+              {shareMessage}
             </p>
-          ) : null}
-          <p className={`mt-5 font-mono text-micro uppercase tracking-[0.18em] ${faint}`}>
-            {inviteLabel}
-          </p>
-          <p
-            className={`mt-1 font-mono text-3xl font-bold tracking-[0.22em] ${light ? "text-black" : "text-[var(--things-amber)]"}`}
-          >
-            {roomId}
-          </p>
-          <button
-            type="button"
-            onClick={() => void shareInvite()}
-            className={`mt-5 min-h-11 rounded-full border px-6 font-mono text-xs ${buttonBorder}`}
-          >
-            {nativeShare ? "share invite" : "copy invite link"}
-          </button>
-          <p aria-live="polite" className={`mt-2 min-h-5 font-mono text-xs ${muted}`}>
-            {shareMessage}
-          </p>
-        </section>
+          </div>
+        </details>
       ) : null}
 
       {ready !== undefined && onReadyChange ? (
         <PlayerReadyControl ready={ready} onChange={onReadyChange} tone={tone} />
       ) : null}
-
-      <PixelRoomLobby game={game} players={present} roomId={roomId} tone={pixelTone} />
 
       <div className="multiplayer-lobby-panel">
         <h2 className="multiplayer-lobby-panel-heading">who is here · {present.length}</h2>
@@ -258,10 +263,14 @@ export function MultiplayerLobby({
       </div>
 
       {settings ? (
-        <section className={`mt-8 border-t pt-5 ${border}`} aria-label="Room settings">
-          <h2 className={`font-mono text-micro uppercase tracking-[0.18em] ${faint}`}>settings</h2>
-          <div className="mt-3">{settings}</div>
-        </section>
+        <details className={`mt-6 border-y py-2 ${border}`}>
+          <summary
+            className={`flex min-h-11 cursor-pointer items-center font-mono text-xs ${muted}`}
+          >
+            room options
+          </summary>
+          <div className="pb-3 pt-2">{settings}</div>
+        </details>
       ) : null}
 
       {actions ? <div className="mt-6">{actions}</div> : null}

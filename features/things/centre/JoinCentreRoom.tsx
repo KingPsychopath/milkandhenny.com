@@ -6,7 +6,7 @@ import { centreBrowserKeys } from "./centre-keys";
 import { joinCentreRoomFn } from "./centre-room.functions";
 import { captureCentreInvite } from "./invite.client";
 import type { CentrePlayerCredentials } from "./types";
-import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinCentreRoom({
@@ -69,6 +69,7 @@ export function JoinCentreRoom({
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), join);
 
   return (
     <div className="things-game things-game--night centre">

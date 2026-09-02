@@ -654,6 +654,7 @@ export async function applyHotAndColdAction(
         if (room.phase !== "lobby")
           return reject("action_unavailable", "Names only change in the lobby");
         player.name = action.name.trim();
+        setMultiplayerPlayerReady(player, false);
         changed(room);
         return accept();
       }

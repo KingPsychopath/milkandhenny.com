@@ -317,7 +317,6 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
                 </button>
               }
               currentPlayerId={null}
-              game="spelling-party"
               inviteLabel="room code"
               inviteText="Join our spelling party."
               inviteTitle="Spelling party"

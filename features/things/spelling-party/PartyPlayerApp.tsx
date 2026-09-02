@@ -43,6 +43,7 @@ import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
+import { useAutomaticRoomJoin } from "../shared/multiplayer-join.client";
 
 function joinToken(roomId: string) {
   const key = partyBrowserKeys.invite(roomId);
@@ -114,6 +115,10 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(
+    sessionReadyForRoom === roomId && nameLoaded && Boolean(name.trim()),
+    handleJoin,
+  );
   if (credentials) return <PartyPlayerGame credentials={credentials} />;
   if (sessionReadyForRoom !== roomId)
     return <PlayerMessage title="Opening the room…" detail="Keep this screen open for a moment." />;
@@ -832,7 +837,6 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                 ) : null
               }
               currentPlayerId={credentials.playerId}
-              game="spelling-party"
               inviteLabel="room code"
               inviteText="Join our spelling party."
               inviteTitle="Spelling party"

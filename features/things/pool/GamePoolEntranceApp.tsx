@@ -37,7 +37,6 @@ export function GamePoolEntranceApp({
   requestedRoomId?: string;
   suppressAutoJoin?: boolean;
 }) {
-  const nameId = useId();
   const messageId = useId();
   const [view, setView] = useState(initialView);
   const [busy, setBusy] = useState(false);
@@ -45,7 +44,7 @@ export function GamePoolEntranceApp({
   const [message, setMessage] = useState<string | null>(initialView.message ?? null);
   const [roomsOpen, setRoomsOpen] = useState(false);
   const [targetRejected, setTargetRejected] = useState(false);
-  const { loaded: nameLoaded, name: playerName, remember, setName } = useRememberedPlayerName(32);
+  const { loaded: nameLoaded, name: playerName, remember } = useRememberedPlayerName(32);
   const autoJoinChecked = useRef(false);
   const actionInFlight = useRef(false);
   const rooms = view.rooms ?? [];
@@ -117,8 +116,7 @@ export function GamePoolEntranceApp({
       }
       const name = playerName.trim();
       if (!name) {
-        setMessage("Add your name first.");
-        document.getElementById(nameId)?.focus();
+        setMessage("Your room name is still loading. Try once more.");
         return;
       }
       actionInFlight.current = true;
@@ -169,7 +167,6 @@ export function GamePoolEntranceApp({
       activeMembership,
       busy,
       game,
-      nameId,
       playerName,
       refresh,
       remember,
@@ -184,8 +181,8 @@ export function GamePoolEntranceApp({
     autoJoinChecked.current = true;
     if (
       suppressAutoJoin ||
-      !view.run?.autoJoin ||
-      view.run.status !== "open" ||
+      (!requestedRoomId && !view.run?.autoJoin) ||
+      view.run?.status !== "open" ||
       view.message ||
       !playerName.trim() ||
       (activeRoomId && !requestedRoomId && !targetRejected)
@@ -245,14 +242,14 @@ export function GamePoolEntranceApp({
           {returningToActiveRoom
             ? `You are already in ${activeRoom?.label ?? "your room"}. Continue to go back, or choose another room below.`
             : joiningRequestedRoom && requestedRoomAvailable && requestedRoom
-              ? `This invite is for ${requestedRoom.label}. Add your name and go straight in.`
+              ? `This invite is for ${requestedRoom.label}. We’re taking you straight in.`
               : joiningRequestedRoom
-                ? "This invite is for one specific room. Add your name and go straight in."
+                ? "This invite is for one specific room. We’re taking you straight in."
                 : activeRoom
                   ? `You are still in ${activeRoom.label}. Choose another room to leave it and move.`
                   : requestedRoomId
                     ? "That room is no longer available. We can place you in the next room."
-                    : "Add your name. We will place you in a room that is ready for another player."}
+                    : "One tap finds a room. You can change your display name once you are inside."}
         </p>
       </header>
 
@@ -275,6 +272,57 @@ export function GamePoolEntranceApp({
         </section>
       ) : null}
 
+      {accepting && !activeMembership ? (
+        <section
+          className="mt-8 rounded-3xl border theme-border bg-[var(--stone-50)] p-5 dark:bg-white/[0.03]"
+          aria-labelledby="join-title"
+        >
+          <p className="font-mono text-micro uppercase tracking-[0.16em] theme-muted">
+            ready when you are
+          </p>
+          <h2 id="join-title" className="mt-2 font-serif text-3xl font-semibold">
+            {joiningRequestedRoom && requestedRoomAvailable && requestedRoom
+              ? `Join ${requestedRoom.label}`
+              : joiningRequestedRoom
+                ? "Join the invited room"
+                : joiningNextRoom
+                  ? "Find the next room"
+                  : "Enter the lobby"}
+          </h2>
+          <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
+            Joining as <strong className="text-foreground">{playerName || "guest"}</strong>. You can
+            change this inside the room.
+          </p>
+          <button
+            type="button"
+            disabled={busy || !nameLoaded}
+            onClick={() => void assign(requestedChoice)}
+            className="mt-5 min-h-16 w-full rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85 disabled:opacity-50"
+          >
+            {busy ? "finding your room…" : "play together"}
+          </button>
+          {view.run?.allowNewRooms ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void assign("new")}
+              className="mt-2 min-h-12 w-full rounded-full border theme-border px-6 font-mono text-xs transition-opacity hover:opacity-70 disabled:opacity-50"
+            >
+              open a fresh room
+            </button>
+          ) : null}
+          {message ? (
+            <p
+              id={messageId}
+              role="status"
+              className="mt-4 font-mono text-xs text-[var(--prose-hashtag)]"
+            >
+              {message}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {accepting && view.run ? (
         <GamePoolLobbyScene
           allowNewRooms={view.run.allowNewRooms}
@@ -291,109 +339,14 @@ export function GamePoolEntranceApp({
         />
       ) : null}
 
-      {accepting ? (
-        <form
-          className="mt-8 border-t theme-border pt-8"
-          aria-labelledby="join-title"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void assign(requestedChoice);
-          }}
-        >
-          <h2 id="join-title" className="font-serif text-2xl font-semibold">
-            {joiningRequestedRoom && requestedRoomAvailable && requestedRoom
-              ? `Join ${requestedRoom.label}`
-              : joiningRequestedRoom
-                ? "Join the invited room"
-                : requestedRoomId
-                  ? "Join the next room"
-                  : joiningNextRoom
-                    ? "Join the next room"
-                    : returningToActiveRoom
-                      ? "Return to your room"
-                      : activeRoom
-                        ? "Choose another room"
-                        : "Enter the lobby"}
-          </h2>
-          <label htmlFor={nameId} className="mt-6 block font-mono text-xs theme-muted">
-            your name
-          </label>
-          <input
-            id={nameId}
-            name="playerName"
-            value={playerName}
-            maxLength={32}
-            autoComplete="name"
-            aria-invalid={message === "Add your name first." || undefined}
-            aria-describedby={message ? messageId : undefined}
-            onChange={(event) => {
-              setName(event.target.value);
-              setMessage(null);
-            }}
-            className="mt-2 min-h-12 w-full border-b theme-border bg-transparent py-2 font-serif text-2xl outline-none focus:border-[var(--foreground)]"
-          />
-          <button
-            type="submit"
-            disabled={busy || (!returningToActiveRoom && !nameLoaded)}
-            className="mt-8 min-h-14 w-full rounded-full bg-[var(--foreground)] px-6 font-mono text-sm font-semibold text-[var(--background)] transition-opacity hover:opacity-85 disabled:opacity-50"
-          >
-            {busy
-              ? "finding a room…"
-              : joiningRequestedRoom && requestedRoomAvailable && requestedRoom
-                ? `join ${requestedRoom.label}`
-                : joiningRequestedRoom
-                  ? "join invited room"
-                  : requestedRoomId
-                    ? "join next available room"
-                    : joiningNextRoom
-                      ? "join next available room"
-                      : returningToActiveRoom
-                        ? "return to my room"
-                        : activeRoom
-                          ? "leave current room and find another"
-                          : "play together"}
-          </button>
-          {view.run?.allowNewRooms ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void assign("new")}
-              className="mt-3 min-h-12 w-full rounded-full border theme-border px-6 font-mono text-xs transition-opacity hover:opacity-70 disabled:opacity-50"
-            >
-              start another room
-            </button>
-          ) : null}
-          {message ? (
-            <p
-              id={messageId}
-              role="status"
-              className="mt-4 font-mono text-xs text-[var(--prose-hashtag)]"
-            >
-              {message}
-            </p>
-          ) : null}
-          {joiningRequestedRoom ? (
-            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-              This invite takes you to one specific room.
-            </p>
-          ) : requestedRoomAvailable ? (
-            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-              This is a shared room. Everyone who joins plays together.
-            </p>
-          ) : activeRoom ? (
-            <p className="mt-4 font-mono text-micro leading-relaxed theme-faint">
-              Choosing another room releases your current seat first.
-            </p>
-          ) : null}
-        </form>
-      ) : (
+      {!accepting ? (
         <section className="mt-10 border-t theme-border pt-8" aria-live="polite">
           <h2 className="font-serif text-2xl font-semibold">Not open right now</h2>
           <p className="mt-3 font-mono text-sm leading-relaxed theme-muted">
             {view.message ?? "The organiser has paused new joins."}
           </p>
         </section>
-      )}
+      ) : null}
 
       {accepting && view.run?.allowRoomChoice && rooms.length > 0 ? (
         <section className="mt-8 border-t theme-border pt-6">

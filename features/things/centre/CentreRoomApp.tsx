@@ -733,7 +733,6 @@ function CentreLobby({
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
           canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
-          game="centre"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
           inviteText="Join our centre room."
           inviteTitle="Centre"

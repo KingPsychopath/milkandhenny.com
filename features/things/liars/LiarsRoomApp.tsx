@@ -480,7 +480,6 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
         canPassLead={isHost && snapshot.players.length > 1}
         canSetAdmission={isHost && !snapshot.managed}
         currentPlayerId={snapshot.player?.playerId ?? null}
-        game={snapshot.mode}
         inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
         inviteText="Join our liars room."
         inviteTitle="Liars"

@@ -23,7 +23,7 @@ import { useHotAndColdRoom } from "./useHotAndColdRoom";
 import type { HotAndColdAction, HotAndColdActionResult, HotAndColdCredentials } from "./types";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
-import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { RoomAdmissionControl } from "../shared/MultiplayerLobby";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
@@ -76,6 +76,7 @@ export function JoinHotAndColdRoom({
       setJoining(false);
     }
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), join);
   return (
     <div className="hot-and-cold min-h-svh">
       <header className="mx-auto max-w-lg px-5 pt-3">

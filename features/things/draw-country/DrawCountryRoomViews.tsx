@@ -134,7 +134,6 @@ export function RoomLobby({
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
           canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
-          game="draw-country"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
           inviteText="Join our draw the country room."
           inviteTitle="Draw the country"

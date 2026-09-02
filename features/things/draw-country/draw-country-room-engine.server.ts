@@ -665,6 +665,7 @@ export async function applyDrawCountryAction(
             snapshot: current(),
           } as const;
         player.name = nextName;
+        setMultiplayerPlayerReady(player, false);
         changed(room, now);
         return accept();
       }

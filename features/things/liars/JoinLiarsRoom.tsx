@@ -8,6 +8,7 @@ import { captureLiarsInvite } from "./invite.client";
 import type { LiarsPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
+import { useAutomaticRoomJoin } from "../shared/multiplayer-join.client";
 
 export function JoinLiarsRoom({
   roomId,
@@ -61,6 +62,7 @@ export function JoinLiarsRoom({
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
     <GameShell tone="night">

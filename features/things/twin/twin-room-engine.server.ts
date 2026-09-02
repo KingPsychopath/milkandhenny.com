@@ -1030,6 +1030,7 @@ export async function applyTwinAction(
         )
           return reject("action_unavailable", "That name is already here");
         player.name = nextName;
+        setMultiplayerPlayerReady(player, false);
         changed(room);
         return accept();
       }

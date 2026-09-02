@@ -1044,6 +1044,7 @@ export async function applyPlayerAction(
             "That name is already here",
           );
         player.name = nextName;
+        setMultiplayerPlayerReady(player, false);
         changed(room);
         room.processedActions = rememberMultiplayerAction(
           room.processedActions,

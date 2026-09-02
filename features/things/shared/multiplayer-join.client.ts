@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { MultiplayerJoinAttempt } from "./multiplayer";
 import { gameBrowserKey } from "./multiplayer-keys";
@@ -67,4 +67,20 @@ export function useMultiplayerJoinAttempt(game: string, version: number, roomId:
   const attempt = useMemo(() => readOrCreateMultiplayerJoinAttempt(key), [key]);
   const clear = useCallback(() => clearMultiplayerJoinAttempt(key), [key]);
   return { attempt, clear };
+}
+
+/**
+ * Direct invites should open the lobby, not stop at a form. This performs one automatic join after
+ * the local profile and invite are ready; any rejection stays visible and retries remain manual.
+ */
+export function useAutomaticRoomJoin(ready: boolean, join: () => void | Promise<void>) {
+  const attempted = useRef(false);
+  const joinRef = useRef(join);
+  joinRef.current = join;
+
+  useEffect(() => {
+    if (!ready || attempted.current) return;
+    attempted.current = true;
+    void joinRef.current();
+  }, [ready]);
 }

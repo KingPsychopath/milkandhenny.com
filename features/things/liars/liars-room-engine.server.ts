@@ -1947,6 +1947,7 @@ export async function applyLiarsPlayerAction(
         )
           return reject(view(), "action_unavailable", "That name is already here");
         player.name = action.name;
+        setMultiplayerPlayerReady(player, false);
         changed(room);
         return remembered();
       }

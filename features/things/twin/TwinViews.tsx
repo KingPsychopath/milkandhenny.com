@@ -130,7 +130,6 @@ export function TwinLobby({
           canPassLead={snapshot.canControl && snapshot.players.length > 1}
           canSetAdmission={snapshot.canControl && !snapshot.managed}
           currentPlayerId={playerId}
-          game="twin"
           inviteLabel={snapshot.managed ? "game-night invite" : "room code"}
           inviteText="Join our twin room."
           inviteTitle="Twin"

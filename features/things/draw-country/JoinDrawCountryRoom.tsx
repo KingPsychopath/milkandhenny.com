@@ -7,7 +7,7 @@ import { drawCountryBrowserKeys } from "./draw-country-keys";
 import { captureDrawCountryInvite } from "./invite.client";
 import type { DrawCountryPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
-import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinDrawCountryRoom({
@@ -70,6 +70,7 @@ export function JoinDrawCountryRoom({
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
     <div className="things-game things-game--cream text-black">

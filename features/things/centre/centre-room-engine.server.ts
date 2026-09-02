@@ -651,6 +651,7 @@ export async function applyCentreAction(
         )
           return rejection(room, player.id, "That name is already here", "action_unavailable");
         player.name = action.name;
+        setMultiplayerPlayerReady(player, false);
         changed(room, now);
         return accept(player.id);
       }

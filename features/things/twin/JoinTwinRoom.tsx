@@ -7,7 +7,7 @@ import { twinBrowserKeys } from "./twin-keys";
 import { joinTwinRoomFn } from "./twin-room.functions";
 import type { TwinPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
-import { useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
+import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multiplayer-join.client";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function JoinTwinRoom({
@@ -66,6 +66,7 @@ export function JoinTwinRoom({
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
     <div className="things-game things-game--night twin">

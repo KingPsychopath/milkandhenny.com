@@ -8,6 +8,7 @@ import { captureSameBrainInvite } from "./invite.client";
 import type { SameBrainPlayerCredentials } from "./types";
 import { ThingsRoomHeader } from "../shared/RoomHeader";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
+import { useAutomaticRoomJoin } from "../shared/multiplayer-join.client";
 
 export function JoinSameBrainRoom({
   roomId,
@@ -61,6 +62,7 @@ export function JoinSameBrainRoom({
     setEditingName(true);
     setMessage(null);
   };
+  useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
     <GameShell tone="night">
