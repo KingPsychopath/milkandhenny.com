@@ -96,6 +96,32 @@ describe("ticket email", () => {
     expect(message.text).toContain("Everyone scans their own code");
   });
 
+  it("puts each pre-assigned team on the matching ticket and QR frame", async () => {
+    sendEmail.mockResolvedValue({ ok: true, id: "msg_team" });
+    const tickets = order(2);
+    await sendTicketEmail({
+      event: EVENT,
+      tickets,
+      origin: "https://milkandhenny.com",
+      idempotencyKey: "event-team:apartment-life:ord_1:allocation",
+      kind: "event-team",
+      subject: "Your team — Apartment Life",
+      teams: {
+        [tickets[0]!.id]: { name: "Amber", colourKey: "amber" },
+        [tickets[1]!.id]: { name: "Sage", colourKey: "sage" },
+      },
+    });
+
+    const message = sendEmail.mock.calls[0][0] as { subject: string; html: string; text: string };
+    expect(message.subject).toBe("Your team — Apartment Life");
+    expect(message.html).toContain("Team Amber");
+    expect(message.html).toContain("Team Sage");
+    expect(message.html).toContain("border:4px solid #b45309");
+    expect(message.html).toContain("border:4px solid #3f7d58");
+    expect(message.text).toContain("Team Amber");
+    expect(message.text).toContain("Team Sage");
+  });
+
   it("records the exact ticket group needed to regenerate a refund confirmation", async () => {
     sendEmail.mockResolvedValue({ ok: true, id: "msg_refund" });
     const tickets = order(3).map((ticket) => ({ ...ticket, status: "refunded" as const }));

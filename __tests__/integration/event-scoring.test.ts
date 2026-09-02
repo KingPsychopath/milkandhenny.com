@@ -82,6 +82,7 @@ import {
 import { officialResultPayloadHash } from "@/features/game-results/outbox.server";
 import { buildTicketQrPayload } from "@/features/tickets/qr.server";
 import { redeemTicket } from "@/features/tickets/tickets.server";
+import { sendEventTeamEmails } from "@/features/event-operations/team-email.server";
 import {
   closeOfflineScoreReservation,
   reconcileOfflineScoreCommands,
@@ -210,7 +211,7 @@ describeWithDatabase("event scoring postgres", () => {
     expect((await findSettings("scoring-night"))?.state).toBe("off");
   });
 
-  it("balances checked-in guests, reshuffles team counts, and places later arrivals", async () => {
+  it("balances confirmed guests before arrival and places later ticket sales", async () => {
     const ticketIds = [
       "01ARZ3NDEKTSV4RR",
       "01ARZ3NDEKTSV4T1",
@@ -249,13 +250,22 @@ describeWithDatabase("event scoring postgres", () => {
         expect.objectContaining({ colourKey: "plum" }),
       ]),
     );
-    expect(
-      (await listTeams("scoring-night"))
-        .filter((team) => team.status === "active")
-        .map((team) => team.checkedInCount)
-        .sort(),
-    ).toEqual([1, 2, 2]);
-    expect(await listCheckedInTeamParticipants("scoring-night")).toHaveLength(5);
+    const initialTeams = (await listTeams("scoring-night")).filter(
+      (team) => team.status === "active",
+    );
+    expect(initialTeams.map((team) => team.memberCount).sort()).toEqual([2, 2, 3]);
+    expect(initialTeams.reduce((sum, team) => sum + team.checkedInCount, 0)).toBe(5);
+    expect(await listCheckedInTeamParticipants("scoring-night")).toHaveLength(7);
+
+    const lateTicketId = "01ARZ3NDEKTSV4T7";
+    await query(
+      `insert into tickets (id,event_slug,ticket_type_id,holder_name,order_id)
+       values ($1,'scoring-night','standard','Late Guest','team-order-late')`,
+      [lateTicketId],
+    );
+    expect((await participantForTicket(lateTicketId))?.teamName).toBeTruthy();
+    const afterSale = (await listTeams("scoring-night")).filter((team) => team.status === "active");
+    expect(afterSale.map((team) => team.memberCount).sort()).toEqual([2, 3, 3]);
 
     expect(
       await redeemTicket({
@@ -267,9 +277,8 @@ describeWithDatabase("event scoring postgres", () => {
     expect(
       (await listTeams("scoring-night"))
         .filter((team) => team.status === "active")
-        .map((team) => team.checkedInCount)
-        .sort(),
-    ).toEqual([2, 2, 2]);
+        .reduce((sum, team) => sum + team.checkedInCount, 0),
+    ).toBe(6);
     expect((await participantForTicket(ticketIds[5]!))?.teamName).toBeTruthy();
 
     const twoTeams = await shuffleCheckedInTeams({
@@ -281,13 +290,41 @@ describeWithDatabase("event scoring postgres", () => {
     expect(twoTeams.ok).toBe(true);
     const teams = await listTeams("scoring-night");
     expect(
-      teams.filter((team) => team.status === "active").map((team) => team.checkedInCount),
-    ).toEqual([3, 3]);
+      teams
+        .filter((team) => team.status === "active")
+        .map((team) => team.memberCount)
+        .sort(),
+    ).toEqual([4, 4]);
+    expect(
+      teams
+        .filter((team) => team.status === "active")
+        .reduce((sum, team) => sum + team.checkedInCount, 0),
+    ).toBe(6);
     expect(teams.filter((team) => team.status === "active").map((team) => team.colourKey)).toEqual([
       "amber",
       "sage",
     ]);
     expect(teams.filter((team) => team.status === "archived")).toHaveLength(1);
+
+    await query(
+      `update tickets set email = 'teams@example.com'
+        where event_slug = 'scoring-night' and status = 'valid'`,
+    );
+    expect(
+      await sendEventTeamEmails({
+        eventSlug: "scoring-night",
+        actorId: "admin-1",
+        deviceId: "integration",
+      }),
+    ).toMatchObject({ ok: true, value: { queued: 8, unchanged: 0, orderCount: 8 } });
+    expect(
+      await sendEventTeamEmails({
+        eventSlug: "scoring-night",
+        actorId: "admin-1",
+        deviceId: "integration",
+      }),
+    ).toMatchObject({ ok: true, value: { queued: 0, unchanged: 8, orderCount: 8 } });
+
     expect(
       await shuffleCheckedInTeams({
         eventSlug: "scoring-night",

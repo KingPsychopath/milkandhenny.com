@@ -9,7 +9,7 @@ leave without scanning unrelated controls.
 admin
 ├── overview          priorities, reports, shortcuts
 ├── content           writing, albums, shares, media audits
-├── events            events, tickets, scanners, scoring, pitches
+├── events            events, tickets, staff access, checkpoints, teams, pitches
 ├── people & support  identity, ticket history, restrictions, support cases (`view=operations`)
 ├── communications    drafts, scheduled messages, templates, people
 └── games             game-night entrances, room pools, default settings
@@ -28,15 +28,13 @@ navigation beside Events. The public voting page remains separate at `/best-dres
 - Each work area is its own panel component under `features/admin/ui/components/`. A panel owns
   its data loading, actions, and confirmation dialogs; the dashboard shell owns navigation, the
   shared status line, and the overview/system snapshot.
-- Events, scoring, and Pitch Night are sibling workspaces inside the Events area; only the chosen
-  workspace mounts. Event management itself is master-detail, and create, edit, and tickets/door
-  work are mutually exclusive.
-- Event scoring groups its focused sub-panels into task workspaces (setup, discoveries, live desk,
-  media, review, people, pools), so only the chosen set mounts. New scoring capability gets a
-  focused sub-panel in the matching task instead of extending the full page.
-- Held work must always be visible and actionable where it accumulates: held score transactions
-  and held official game results live together in the lifecycle sub-panel with accept and retry
-  controls.
+- Events and Pitch Night are sibling workspaces inside the Events area; only the chosen workspace
+  mounts. Event management itself is master-detail, and create, edit, and ticket/staff work are
+  mutually exclusive.
+- Event-night operations are capability-shaped. A staff link composes only its door, checkpoint,
+  guest, team, and photo tools. Retired scoring permissions do not resurrect a scoring screen.
+- Team setup is pre-event work: balance every valid ticket, then deliberately email the final team
+  cards. Check-in is a separate arrival fact and never gates assignment.
 
 ## Page rules
 
@@ -81,6 +79,9 @@ local to the image.
 - Primary actions use a bordered or filled button with a 44px touch target. Underlined text is for
   secondary actions, but it still gets a usable hit area.
 - Toolbars wrap on small screens. Stats collapse to one or two columns before they become narrow.
+- Door and checkpoint tools assume one hand, poor signal, noise, and time pressure. The current
+  station is explicit, search tolerates names or ticket references, QR capture lives inside that
+  search control, and a grouped order can be admitted without scanning each code.
 - Keep dangerous actions visually separate from routine actions. Confirmations and step-up checks
   stay attached to the action they protect.
 - Use the image or resource title as the main anchor. IDs, timestamps, and storage details stay

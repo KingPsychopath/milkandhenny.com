@@ -1,4 +1,4 @@
-import { isTeamColourKey, type TeamColourKey } from "../team-palette";
+import { isTeamColourKey, type TeamColourKey } from "@/lib/shared/team-palette";
 
 export function TeamBadge({
   name,

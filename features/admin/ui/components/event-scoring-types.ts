@@ -23,7 +23,8 @@ export type AdminScoringPool = {
 export type AdminScoringTeam = {
   id: string;
   name: string;
-  colourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
+  colourKey?: import("@/lib/shared/team-palette").TeamColourKey;
+  memberCount: number;
   checkedInCount: number;
   status: "active" | "archived";
 };
@@ -35,7 +36,8 @@ export type AdminTeamParticipant = {
   ticketSuffix?: string;
   teamId?: string;
   teamName?: string;
-  teamColourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
+  teamColourKey?: import("@/lib/shared/team-palette").TeamColourKey;
+  checkedIn: boolean;
 };
 
 import type { AdminStaffAssignment, AdminStaffRole } from "./staff-access-types";

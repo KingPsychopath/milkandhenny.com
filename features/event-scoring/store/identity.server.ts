@@ -46,7 +46,7 @@ export async function markParticipantCheckedIn(
           and (memberships.ends_at is null or memberships.ends_at > $2)
          left join event_participants members
            on members.id = memberships.participant_id
-          and members.status = 'active' and members.checked_in_at is not null
+          and members.status = 'active'
         where teams.event_slug = $1 and teams.status = 'active'
         group by teams.id
         order by count(members.id), teams.sort_order nulls last, teams.created_at, teams.id

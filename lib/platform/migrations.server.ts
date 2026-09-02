@@ -4080,6 +4080,77 @@ const MIGRATIONS: Migration[] = [
         add column if not exists credit_discount_minor integer not null default 0;
     `,
   },
+  {
+    id: "0090_pre_event_team_assignment",
+    sql: `
+      -- Teams are an arrival aid, not a scoring prerequisite. When an event already has active
+      -- teams, a later valid ticket joins the smallest one in the same ticket transaction.
+      create or replace function event_scoring_ticket_participant() returns trigger
+      language plpgsql as $$
+      declare
+        participant_key text;
+        selected_team text;
+        assigned_at timestamptz := clock_timestamp();
+      begin
+        insert into event_participants
+          (id, event_slug, ticket_id, generated_alias, display_name)
+        values (
+          'ep_' || substr(md5(new.id || assigned_at::text), 1, 24),
+          new.event_slug,
+          new.id,
+          'guest-' || substr(md5(new.id), 1, 8),
+          new.holder_name
+        )
+        on conflict (ticket_id) do nothing
+        returning id into participant_key;
+
+        if participant_key is null or new.status <> 'valid' then return new; end if;
+
+        select teams.id into selected_team
+          from score_teams teams
+          left join score_team_memberships memberships
+            on memberships.team_id = teams.id
+           and memberships.starts_at <= assigned_at
+           and (memberships.ends_at is null or memberships.ends_at > assigned_at)
+          left join event_participants members
+            on members.id = memberships.participant_id
+           and members.status = 'active'
+         where teams.event_slug = new.event_slug and teams.status = 'active'
+         group by teams.id
+         order by count(members.id), teams.sort_order nulls last, teams.created_at, teams.id
+         limit 1;
+
+        if selected_team is not null then
+          insert into score_team_memberships
+            (id,event_slug,team_id,participant_id,starts_at)
+          values (
+            'tm_' || substr(md5(new.id || selected_team || assigned_at::text), 1, 24),
+            new.event_slug,
+            selected_team,
+            participant_key,
+            assigned_at
+          );
+        end if;
+        return new;
+      end;
+      $$;
+    `,
+  },
+  {
+    id: "0091_event_team_email",
+    sql: `
+      alter table email_outbox drop constraint if exists email_outbox_kind_check;
+      alter table email_outbox add constraint email_outbox_kind_check check (kind in (
+        'ticket-issued','ticket-resend','ticket-refund','ticket-exchange',
+        'ticket-exchange-payment','attendee-access','ticket-assignment',
+        'ticket-transfer','ticket-return','event-team','staff-access','admin-access',
+        'security-notice','operations-alert','operations-digest','event-broadcast',
+        'communication','communication-stage','communication-test','waitlist-confirmation',
+        'waitlist-availability','pitch-welcome','pitch-published','pitch-recovery',
+        'pitch-reminder'
+      ));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

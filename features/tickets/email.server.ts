@@ -13,6 +13,7 @@ import { BASE_URL } from "@/lib/shared/config";
 import { buildAppUrl } from "@/lib/shared/app-url";
 import { escapeEmailHtml as escapeHtml, renderBrandedEmail } from "@/lib/shared/email-design";
 import { renderCommunicationMessage } from "@/features/communications/email.server";
+import { TEAM_EMAIL_COLOURS, type TeamColourKey } from "@/lib/shared/team-palette";
 
 /**
  * Ticket delivery email.
@@ -41,6 +42,9 @@ type TicketQr = {
   contentId: string;
   managesOrder: boolean;
 };
+
+export type TicketTeamAssignment = { name: string; colourKey: TeamColourKey };
+type TicketTeamAssignments = Record<string, TicketTeamAssignment>;
 
 async function renderQrAttachment(
   ticket: TicketRecord,
@@ -108,7 +112,12 @@ function renderCalendarAttachment(
   }
 }
 
-function buildText(event: EventRecord, tickets: TicketRecord[], origin: string): string {
+function buildText(
+  event: EventRecord,
+  tickets: TicketRecord[],
+  origin: string,
+  teams: TicketTeamAssignments = {},
+): string {
   const calendarUrl = buildTicketIcsUrl(origin, publicTicketId(tickets[0]));
   const when = formatEventDateTime(event.startsAt, event.timezone);
   const threeWordUrl = threeWordMapUrl(event.threeWordHint);
@@ -137,10 +146,13 @@ function buildText(event: EventRecord, tickets: TicketRecord[], origin: string):
       : null,
     "",
     tickets.length === 1 ? "Your ticket:" : `Your ${tickets.length} tickets:`,
-    ...tickets.map(
-      (ticket) =>
+    ...tickets.flatMap((ticket) => {
+      const team = teams[publicTicketId(ticket)] ?? teams[ticket.id];
+      return [
         `  ${ticket.holderName} — ${buildTicketUrl(origin, publicTicketId(ticket))}${tickets.length > 1 && !ticket.parentTicketId ? " (manages the full order)" : ""}`,
-    ),
+        team ? `    Team ${team.name}` : null,
+      ].filter((line): line is string => line !== null);
+    }),
     tickets.length > 1 ? "Everyone scans their own code — one per person at the door." : null,
     tickets.length > 1
       ? "Share each guest's own link. A shared link opens only that ticket."
@@ -174,6 +186,7 @@ function buildHtml(
   tickets: TicketRecord[],
   origin: string,
   qrs: TicketQr[],
+  teams: TicketTeamAssignments = {},
 ): string {
   const when = escapeHtml(formatEventDateTime(event.startsAt, event.timezone));
   const calendarUrl = escapeHtml(buildTicketIcsUrl(origin, publicTicketId(tickets[0])));
@@ -216,7 +229,9 @@ function buildHtml(
     .map((ticket) => {
       const label =
         tickets.length > 1 && !ticket.parentTicketId ? "open ticket · manage order" : "open ticket";
-      return `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, publicTicketId(ticket)))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — ${label}</a></p>`;
+      const team = teams[publicTicketId(ticket)] ?? teams[ticket.id];
+      const teamText = team ? ` · Team ${escapeHtml(team.name)}` : "";
+      return `<p style="margin:0 0 8px"><a href="${escapeHtml(buildTicketUrl(origin, publicTicketId(ticket)))}" style="color:#b45309">${escapeHtml(ticket.holderName)} — ${label}</a>${teamText}</p>`;
     })
     .join("");
 
@@ -228,7 +243,15 @@ function buildHtml(
       const ticketUrl = escapeHtml(buildTicketUrl(origin, qr.ticketId));
       const label =
         qrs.length > 1 && qr.managesOrder ? "open ticket · manage order" : "open ticket";
-      return `<div style="margin:0 0 24px"><img src="cid:${qr.contentId}" width="${size}" height="${size}" alt="Ticket QR code for ${escapeHtml(qr.holderName)}" style="max-width:100%">
+      const team = teams[qr.ticketId];
+      const colour = team ? TEAM_EMAIL_COLOURS[team.colourKey] : null;
+      const teamLabel = team
+        ? `<p style="margin:0 0 10px;color:${colour!.ink};font:700 14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em">Team ${escapeHtml(team.name)}</p>`
+        : "";
+      const frame = colour
+        ? `border:4px solid ${colour.border};background:${colour.wash};border-radius:18px;padding:16px;`
+        : "";
+      return `<div style="margin:0 auto 24px;max-width:300px;${frame}">${teamLabel}<img src="cid:${qr.contentId}" width="${size}" height="${size}" alt="Ticket QR code for ${escapeHtml(qr.holderName)}" style="max-width:100%;background:#fff;border-radius:10px">
       <p style="margin:8px 0 0"><a href="${ticketUrl}" style="color:#b45309;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace">${escapeHtml(qr.holderName)} — ${label}</a></p></div>`;
     })
     .join("");
@@ -286,9 +309,11 @@ export async function sendTicketEmail(input: {
   tickets: TicketRecord[];
   origin: string;
   idempotencyKey: string;
-  kind: "ticket-issued" | "ticket-resend";
+  kind: "ticket-issued" | "ticket-resend" | "event-team";
   source?: EmailSource;
   replayedFrom?: string;
+  teams?: TicketTeamAssignments;
+  subject?: string;
 }): Promise<TicketEmailResult> {
   const { event, tickets, origin } = input;
   const recipient = tickets.find((ticket) => ticket.email)?.email;
@@ -311,9 +336,9 @@ export async function sendTicketEmail(input: {
     {
       channel: "tickets",
       to: recipient,
-      subject: `You're in — ${event.title}`,
-      text: buildText(event, tickets, origin),
-      html: buildHtml(event, tickets, origin, qrs),
+      subject: input.subject ?? `You're in — ${event.title}`,
+      text: buildText(event, tickets, origin, input.teams),
+      html: buildHtml(event, tickets, origin, qrs, input.teams),
       attachments: attachments.length > 0 ? attachments : undefined,
     },
     {

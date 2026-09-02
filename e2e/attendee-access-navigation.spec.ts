@@ -11,7 +11,7 @@ test("anonymous account navigation reaches sign in without an error boundary", a
   await expect
     .poll(() => accountLink.evaluate((element) => getComputedStyle(element).pointerEvents))
     .toBe("auto");
-  expect(await accountLink.getAttribute("href")).toBe("/access?returnTo=%2Fmy");
+  expect(await accountLink.getAttribute("href")).toBe("/my");
   await accountLink.click();
 
   await expect(page).toHaveURL(/\/access\?returnTo=(%2F|%2f)my$/);

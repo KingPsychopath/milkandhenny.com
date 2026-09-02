@@ -33,6 +33,7 @@ export async function createTeam(input: {
       name: row.name,
       colourKey: row.colour_key ?? undefined,
       sortOrder: row.sort_order ?? undefined,
+      memberCount: 0,
       checkedInCount: 0,
       status: row.status as ScoreTeam["status"],
     },
@@ -46,10 +47,13 @@ export async function listTeams(eventSlug: string): Promise<ScoreTeam[]> {
     name: string;
     colour_key: TeamColourKey | null;
     sort_order: number | null;
+    member_count: number;
     checked_in_count: number;
     status: string;
   }>(
     `select teams.id, teams.event_slug, teams.name, teams.colour_key, teams.sort_order, teams.status,
+            count(participants.id) filter (where participants.status = 'active')::integer
+              as member_count,
             count(participants.id) filter (where participants.checked_in_at is not null
               and participants.status = 'active')::integer as checked_in_count
        from score_teams teams
@@ -70,6 +74,7 @@ export async function listTeams(eventSlug: string): Promise<ScoreTeam[]> {
     name: row.name,
     colourKey: row.colour_key ?? undefined,
     sortOrder: row.sort_order ?? undefined,
+    memberCount: row.member_count,
     checkedInCount: row.checked_in_count,
     status: row.status as ScoreTeam["status"],
   }));
@@ -83,6 +88,7 @@ export type CheckedInTeamParticipant = {
   teamId?: string;
   teamName?: string;
   teamColourKey?: TeamColourKey;
+  checkedIn: boolean;
 };
 
 export async function listCheckedInTeamParticipants(
@@ -98,10 +104,12 @@ export async function listCheckedInTeamParticipants(
     team_id: string | null;
     team_name: string | null;
     team_colour_key: TeamColourKey | null;
+    checked_in_at: Date | null;
   }>(
     `select participants.id, participants.generated_alias, participants.chosen_alias,
             participants.display_name, tickets.holder_name, participants.ticket_id,
-            team.team_id, team.team_name, team.team_colour_key
+            team.team_id, team.team_name, team.team_colour_key,
+            participants.checked_in_at
        from event_participants participants
        left join tickets on tickets.id = participants.ticket_id
        left join lateral (
@@ -116,7 +124,7 @@ export async function listCheckedInTeamParticipants(
        ) team on true
       where participants.event_slug = $1
         and participants.status = 'active'
-        and participants.checked_in_at is not null
+        and tickets.status = 'valid'
       order by team.team_name nulls last,
                coalesce(participants.display_name, tickets.holder_name,
                         participants.chosen_alias, participants.generated_alias), participants.id`,
@@ -130,6 +138,7 @@ export async function listCheckedInTeamParticipants(
     teamId: row.team_id ?? undefined,
     teamName: row.team_name ?? undefined,
     teamColourKey: row.team_colour_key ?? undefined,
+    checkedIn: row.checked_in_at !== null,
   }));
 }
 
@@ -192,9 +201,12 @@ export async function shuffleCheckedInTeams(input: {
     );
 
     const participants = await client.query<{ id: string }>(
-      `select id from event_participants
-        where event_slug = $1 and status = 'active' and checked_in_at is not null
-        order by random(), id for update`,
+      `select participants.id from event_participants participants
+        join tickets on tickets.id = participants.ticket_id
+        where participants.event_slug = $1
+          and participants.status = 'active'
+          and tickets.status = 'valid'
+        order by random(), participants.id for update of participants`,
       [input.eventSlug],
     );
     const timestamp = (await client.query<{ at: Date }>(`select clock_timestamp() as at`)).rows[0]!

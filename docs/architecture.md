@@ -47,13 +47,26 @@ scoring ──────┘
 games ─> game-results durable outbox ─> explicit scoring consumer
 ```
 
-`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. Redis persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and scoring can be disabled without changing game rules.
+`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. Redis persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and the retired scoring consumer can remain sealed without changing game rules.
 
-Event scoring keeps stable public boundaries while splitting implementation by responsibility. The admin route dispatches to focused configuration, ledger, discovery, staffing, identity, and media handlers. Its persistence barrel delegates to aggregate-specific repositories for settings and activities, participants and teams, ledger, pools and staff, identity, and history and media.
+Event scoring is quarantined rather than deleted: historical ledgers, projections, and audit data
+remain durable, but public score routes and score-only staff roles expose no live tools. Operational
+team assignment deliberately reuses participant/team persistence without reopening points,
+leaderboards, score notifications, or automatic game-result consumption.
 
 Authentication follows the same shape: `auth.server.ts` is a stable server-only boundary over separate token/session, authorization, verification, and rate-limit modules. Upload access remains its own capability rather than accumulating in the main authentication module.
 
-Staff identity is explicit. Personal assignments link to an `event_people` record and retain their role preset; shared stations remain deliberately personless. Remembered, revocable staff and scanner access is available from the root navigation after refresh. Attendee score identity remains the event participant ID: canonical names are private identity data, generated aliases are the safe default, and a chosen public alias can change without moving scores or changing the person.
+Staff identity is explicit. Personal assignments link to an `event_people` record and retain their
+role preset; supervised shared stations remain deliberately personless. Remembered, revocable
+staff and scanner access is available from the root navigation after refresh. Opening or scanning
+an attendee ticket does not claim an account, select a points identity, or set state on another
+device. A ticket-backed participant exists only as durable event history and optional team
+membership.
+
+Door and checkpoint actions are authoritative request/response mutations. They do not depend on a
+WebSocket or SSE connection: the database arbitrates duplicate admission and allowance use, while
+the client presents explicit retry/recovery for network failure. Realtime channels remain for
+shared multiplayer rooms where another device's command must update the current screen.
 
 ## Browser navigation and state
 

@@ -275,6 +275,7 @@ export type ScoreTeam = {
   name: string;
   colourKey?: import("./team-palette").TeamColourKey;
   sortOrder?: number;
+  memberCount: number;
   checkedInCount: number;
   status: "active" | "archived";
 };

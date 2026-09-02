@@ -705,7 +705,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       holder_name: string;
       status: string;
       team_name: string | null;
-      team_colour_key: import("@/features/event-operations/team-palette").TeamColourKey | null;
+      team_colour_key: import("@/lib/shared/team-palette").TeamColourKey | null;
       participant_id: string | null;
       personally_claimed: boolean;
       manages_order: boolean;

@@ -301,7 +301,6 @@ function GuestRequests({
 export function DoorScanner({
   eventSlug,
   eventTitle,
-  arrivalExperience = "none",
   initialManifest,
   initialTickets,
   initialSummary,
@@ -312,7 +311,6 @@ export function DoorScanner({
 }: {
   eventSlug: string;
   eventTitle: string;
-  arrivalExperience?: import("@/features/events/types").EventArrivalExperience;
   initialManifest: string[];
   initialTickets: (DoorTicketView & { issuedAt: string })[];
   initialSummary: { total: number; redeemed: number };
@@ -503,10 +501,7 @@ export function DoorScanner({
                   setVerdict({
                     kind: "admitted",
                     name: outcome.ticket.holderName,
-                    detail:
-                      arrivalExperience === "icebreaker"
-                        ? `${outcome.ticket.ticketTypeName} · colour opening on their ticket`
-                        : outcome.ticket.ticketTypeName,
+                    detail: outcome.ticket.ticketTypeName,
                   });
                   setSummary((prev) => ({ ...prev, redeemed: prev.redeemed + 1 }));
                   setTickets((current) =>
@@ -600,7 +595,7 @@ export function DoorScanner({
         setBusy(false);
       }
     },
-    [arrivalExperience, eventSlug, tickets, scannerToken],
+    [eventSlug, tickets, scannerToken],
   );
 
   const admitPendingGroup = useCallback(async () => {

@@ -7,10 +7,30 @@ import {
 } from "@/features/event-scoring/staff.server";
 import { listCheckedInTeamParticipants, listTeams } from "@/features/event-scoring/store.server";
 import { listCheckpoints } from "@/features/tickets/checkpoints.server";
+import { listTicketsForEvent } from "@/features/tickets/store.server";
+import { ticketPublicId } from "@/features/tickets/types";
 import {
   listGuestRequests,
   listGuestRequestsForToken,
 } from "@/features/tickets/guest-requests.server";
+import { sendEventTeamEmails } from "./team-email.server";
+
+export async function emailStaffTeams(input: {
+  eventSlug: string;
+  token: string;
+  deviceId: string;
+}) {
+  const access = await resolveStaffAccess(input);
+  const assignment = staffAssignmentForPermission(access, "manageTeams");
+  if (!access || !assignment) {
+    return { ok: false as const, status: 403, error: "This staff link cannot manage teams" };
+  }
+  return sendEventTeamEmails({
+    eventSlug: input.eventSlug,
+    actorId: assignment.id,
+    deviceId: input.deviceId,
+  });
+}
 
 export async function getStaffOperationsPage(input: {
   eventSlug: string;
@@ -40,6 +60,7 @@ export async function getStaffOperationsPage(input: {
     drop,
     mediaSchedule,
     guestPhotosAvailable,
+    doorTickets,
   ] = await Promise.all([
     getEvent(input.eventSlug),
     canScanCheckpoints ? listCheckpoints(input.eventSlug) : [],
@@ -55,6 +76,7 @@ export async function getStaffOperationsPage(input: {
     canManageGuestPhotos ? getEventDrop(input.eventSlug) : null,
     canManageGuestPhotos ? getEventDropSchedule(input.eventSlug) : null,
     canManageGuestPhotos ? isCapabilityEffective(input.eventSlug, "guestPhotos") : false,
+    canAdmit || canScanCheckpoints ? listTicketsForEvent(input.eventSlug) : [],
   ]);
   if (!event) return { found: false as const };
 
@@ -71,6 +93,16 @@ export async function getStaffOperationsPage(input: {
     expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
     canAdmit,
+    doorTickets: doorTickets.map((ticket) => ({
+      id: ticketPublicId(ticket),
+      orderId: ticket.orderId,
+      holderName: ticket.holderName,
+      ticketTypeName:
+        event.ticketTypes.find((ticketType) => ticketType.id === ticket.ticketTypeId)?.name ??
+        "Ticket",
+      status: ticket.status,
+      redeemedAt: ticket.redeemedAt,
+    })),
     canScanCheckpoints,
     canManageTeams,
     canManageGuestPhotos,

@@ -36,6 +36,7 @@ export const EMAIL_KINDS = [
   "ticket-assignment",
   "ticket-transfer",
   "ticket-return",
+  "event-team",
   "staff-access",
   "admin-access",
   "security-notice",

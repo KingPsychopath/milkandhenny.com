@@ -10,61 +10,6 @@
   }
 }
 
-@keyframes arrival-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes arrival-handoff-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes arrival-handoff-orb {
-  0% {
-    transform: scale(0.2);
-    background: var(--prose-hashtag);
-  }
-  55% {
-    transform: scale(1.15);
-    background: var(--status-positive);
-  }
-  100% {
-    transform: scale(1);
-    background: var(--prose-hashtag);
-  }
-}
-
-.arrival-pulse {
-  animation: arrival-pulse 1.8s ease-in-out infinite;
-}
-.arrival-handoff {
-  background: var(--things-night);
-  animation: arrival-handoff-in 320ms ease-out both;
-}
-.arrival-handoff-orb {
-  animation: arrival-handoff-orb 900ms ease-out both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .arrival-pulse,
-  .arrival-handoff,
-  .arrival-handoff-orb {
-    animation: none;
-  }
-}
-
 @keyframes feud-claim-plus {
   0% {
     opacity: 0;
@@ -2509,7 +2454,7 @@
   }
 
   /* ─── Lamp toggle ─── */
-  /* Desktop: top-right corner. Mobile: centred. Photo page: offset left of counter. */
+  /* Keep the control in a predictable corner; centred mobile cords collide with page titles. */
   .lamp-toggle {
     position: fixed;
     top: 0;
@@ -2584,9 +2529,9 @@
 
   @media (max-width: 640px) {
     .lamp-toggle {
-      right: auto;
-      left: 50%;
-      translate: -50% 0;
+      right: 12px;
+      left: auto;
+      translate: none;
     }
 
     .lamp-toggle--photo {

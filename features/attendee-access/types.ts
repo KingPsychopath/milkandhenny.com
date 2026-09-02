@@ -21,7 +21,7 @@ export type AttendeeAccount = {
     status: string;
     startsAt: string;
     teamName?: string;
-    teamColourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
+    teamColourKey?: import("@/lib/shared/team-palette").TeamColourKey;
     personallyClaimed: boolean;
     managesOrder: boolean;
   }>;

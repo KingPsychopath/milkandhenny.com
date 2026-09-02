@@ -524,11 +524,10 @@ export function GamePoolsPanel({
         for you. Use a game’s normal room screen only when you want one QR for one fixed room.
       </p>
       <div className="mt-4 border-y theme-border py-4" role="note">
-        <p className="font-mono text-xs font-semibold text-foreground">rooms, not event points</p>
+        <p className="font-mono text-xs font-semibold text-foreground">rooms only</p>
         <p className="mt-1 font-mono text-xs leading-relaxed theme-muted">
-          These QR entrances arrange players into game rooms. They do not attach the game to an
-          event activity or post points to attendee accounts. After a result, staff must record the
-          event points separately from the staff scoring link.
+          These QR entrances only arrange players into game rooms. Results stay in the room and do
+          not change tickets, teams, or attendee accounts.
         </p>
       </div>
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">

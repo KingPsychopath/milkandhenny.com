@@ -6,6 +6,17 @@ export type TeamPaletteEntry = {
   defaultName: string;
 };
 
+/** Email clients cannot read the site's CSS variables, so keep their accessible ink here. */
+export const TEAM_EMAIL_COLOURS: Record<
+  TeamColourKey,
+  { border: string; wash: string; ink: string }
+> = {
+  amber: { border: "#b45309", wash: "#fffbeb", ink: "#78350f" },
+  sage: { border: "#3f7d58", wash: "#f0fdf4", ink: "#14532d" },
+  plum: { border: "#8b5a83", wash: "#fdf4ff", ink: "#581c87" },
+  sky: { border: "#39779b", wash: "#f0f9ff", ink: "#0c4a6e" },
+};
+
 const TEAM_PALETTES: Record<2 | 3 | 4, readonly TeamPaletteEntry[]> = {
   2: [
     { colourKey: "amber", defaultName: "Amber" },

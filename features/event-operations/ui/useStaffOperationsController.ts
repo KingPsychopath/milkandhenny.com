@@ -20,16 +20,20 @@ function initialOperation(data: StaffOperationsData): StaffOperation {
 }
 
 export function useStaffOperationsController(data: StaffOperationsData, token: string) {
-  const [scanned, setScanned] = useState("");
-  const [checkpointId, setCheckpointId] = useState(data.checkpoints[0]?.id ?? "");
+  const [scanned, setScannedValue] = useState("");
+  const [checkpointId, setCheckpointIdValue] = useState(data.checkpoints[0]?.id ?? "");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [operation, setOperation] = useState<StaffOperation>(() => initialOperation(data));
+  const [operation, setOperationValue] = useState<StaffOperation>(() => initialOperation(data));
   const [guestName, setGuestName] = useState("");
   const [guestNote, setGuestNote] = useState("");
   const [guestRequests, setGuestRequests] = useState(data.guestRequests);
+  const [redeemedTicketIds, setRedeemedTicketIds] = useState(
+    () =>
+      new Set(data.doorTickets.filter((ticket) => ticket.redeemedAt).map((ticket) => ticket.id)),
+  );
 
   function beginAction() {
     setBusy(true);
@@ -37,38 +41,92 @@ export function useStaffOperationsController(data: StaffOperationsData, token: s
     setStatus("");
   }
 
-  function finishScan() {
-    setScanned("");
+  function resetTransientState() {
+    setScannedValue("");
+    setCameraOpen(false);
+    setError("");
+    setStatus("");
+  }
+
+  function setScanned(value: string) {
+    setScannedValue(value);
+    if (value) {
+      setError("");
+      setStatus("");
+    }
+  }
+
+  function setCheckpointId(value: string) {
+    setCheckpointIdValue(value);
+    resetTransientState();
+  }
+
+  function setOperation(value: StaffOperation) {
+    setOperationValue(value);
+    resetTransientState();
+  }
+
+  function finishScan(clearInput = true) {
+    if (clearInput) setScannedValue("");
     setCameraOpen(false);
     setBusy(false);
   }
 
-  async function admit(raw = scanned) {
-    if (!raw.trim()) return setError("Find or scan a ticket first.");
+  async function admit(raw = scanned, announce = true): Promise<boolean> {
+    if (!raw.trim()) {
+      setError("Find or scan a ticket first.");
+      return false;
+    }
     beginAction();
+    let clearInput = true;
     try {
       const result = await admitStaffTicketFn({
         data: { eventSlug: data.eventSlug, token, scanned: raw },
       });
-      if (!result.ok) return setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        return false;
+      }
       const outcome = result.value;
-      if (outcome.result === "admitted")
-        setStatus(`${outcome.ticket?.holderName ?? "Guest"} is checked in.`);
-      else if (outcome.result === "already-redeemed") setError("This guest is already checked in.");
+      if (outcome.result === "admitted") {
+        const ticket = outcome.ticket;
+        if (ticket) setRedeemedTicketIds((current) => new Set(current).add(ticket.id));
+        if (announce) setStatus(`${outcome.ticket?.holderName ?? "Guest"} is checked in.`);
+      } else if (outcome.result === "already-redeemed")
+        setError("This guest is already checked in.");
       else if (outcome.result === "wrong-event") setError("This ticket belongs to another event.");
       else if (outcome.result === "void") setError("This ticket is not active.");
       else setError("No active ticket matches that code.");
+      return outcome.result === "admitted";
     } catch {
+      clearInput = false;
+      setScannedValue(raw);
       setError("The door could not be reached. Check the connection and try again.");
+      return false;
     } finally {
-      finishScan();
+      finishScan(clearInput);
     }
+  }
+
+  function announceGroup(admitted: number, requested: number) {
+    setError("");
+    if (admitted === requested) {
+      setStatus(`${admitted} ${admitted === 1 ? "guest is" : "guests are"} checked in.`);
+      return;
+    }
+    setStatus("");
+    setError(
+      admitted > 0
+        ? `${admitted} checked in; ${requested - admitted} could not be completed. Review the names and retry only those still waiting.`
+        : "Nobody was checked in. Review the names or connection and try again.",
+    );
   }
 
   async function scanCheckpoint(raw = scanned) {
     if (!raw.trim() || !checkpointId)
       return setError("Choose a checkpoint, then find or scan a ticket.");
     beginAction();
+    let clearInput = true;
     try {
       const result = await scanStaffCheckpointFn({
         data: { eventSlug: data.eventSlug, token, checkpointId, scanned: raw },
@@ -88,9 +146,11 @@ export function useStaffOperationsController(data: StaffOperationsData, token: s
         setError("This checkpoint is no longer available.");
       else setError("No active ticket matches that code.");
     } catch {
+      clearInput = false;
+      setScannedValue(raw);
       setError("This checkpoint could not be reached. Check the connection and try again.");
     } finally {
-      finishScan();
+      finishScan(clearInput);
     }
   }
 
@@ -150,7 +210,9 @@ export function useStaffOperationsController(data: StaffOperationsData, token: s
     guestNote,
     setGuestNote,
     guestRequests,
+    redeemedTicketIds,
     admit,
+    announceGroup,
     scanCheckpoint,
     submitGuest,
     decideGuest,

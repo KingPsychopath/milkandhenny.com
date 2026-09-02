@@ -12,7 +12,7 @@ import {
   shuffleStaffTeams,
   submitStaffGuest,
 } from "@/features/event-scoring/staff-scoring.server";
-import { getStaffOperationsPage } from "./staff-operations.server";
+import { emailStaffTeams, getStaffOperationsPage } from "./staff-operations.server";
 export type { StaffOperationsPageData } from "./staff-operations.server";
 
 const DEVICE_COOKIE = "mah-score-staff-device";
@@ -55,6 +55,10 @@ export const moveStaffTeamParticipantFn = createServerFn({ method: "POST" })
     (data: { eventSlug: string; token: string; participantId: string; teamId: string }) => data,
   )
   .handler(({ data }) => moveStaffTeamParticipant({ ...data, deviceId: ensureDeviceId() }));
+
+export const emailStaffTeamsFn = createServerFn({ method: "POST" })
+  .validator((data: { eventSlug: string; token: string }) => data)
+  .handler(({ data }) => emailStaffTeams({ ...data, deviceId: ensureDeviceId() }));
 
 export const submitStaffGuestFn = createServerFn({ method: "POST" })
   .validator((data: { eventSlug: string; token: string; name: string; note?: string }) => data)

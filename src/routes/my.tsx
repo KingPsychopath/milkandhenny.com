@@ -20,7 +20,7 @@ export const Route = createFileRoute("/my")({
   head: () =>
     buildSeoHead({
       title: `Account — ${SITE_NAME}`,
-      description: "Your Milk & Henny tickets, scores and details.",
+      description: "Your Milk & Henny tickets, staff access and event details.",
       path: "/my",
       robots: "noindex, nofollow",
       referrer: "no-referrer",

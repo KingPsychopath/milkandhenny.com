@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { CameraFeed } from "@/features/tickets/ui/CameraFeed";
 
 export function StaffTicketScannerField({
@@ -9,6 +11,7 @@ export function StaffTicketScannerField({
   onCameraOpenChange,
   busy,
   onSubmit,
+  children,
 }: {
   id: string;
   value: string;
@@ -18,6 +21,7 @@ export function StaffTicketScannerField({
   onCameraOpenChange: (open: boolean) => void;
   busy: boolean;
   onSubmit: (raw?: string) => void;
+  children?: ReactNode;
 }) {
   return (
     <div>
@@ -27,15 +31,18 @@ export function StaffTicketScannerField({
           onSubmit();
         }}
       >
-        <label htmlFor={id} className="sr-only">
-          Ticket code or QR
+        <label
+          htmlFor={id}
+          className="font-mono text-micro uppercase tracking-[0.12em] theme-muted"
+        >
+          find a guest
         </label>
-        <div className="relative">
+        <div className="relative mt-2">
           <input
             id={id}
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="ticket reference"
+            placeholder="name or ticket"
             autoComplete="off"
             spellCheck={false}
             className="min-h-16 w-full rounded-2xl border theme-border-strong bg-transparent py-3 pl-4 pr-28 font-mono text-base outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
@@ -51,6 +58,7 @@ export function StaffTicketScannerField({
             {cameraOpen ? "close QR" : "scan QR"}
           </button>
         </div>
+        {children}
         <button
           type="submit"
           disabled={busy || !value.trim()}

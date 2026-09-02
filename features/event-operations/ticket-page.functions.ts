@@ -53,7 +53,7 @@ export type TicketPageResult =
       album: EventAlbumView;
       team?: {
         name: string;
-        colourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
+        colourKey?: import("@/lib/shared/team-palette").TeamColourKey;
       };
       preview?: true;
       attendeeIdentity?: AttendeeTicketIdentity;

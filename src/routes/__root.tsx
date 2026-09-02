@@ -15,6 +15,7 @@ import { LampToggle } from "@/components/LampToggle";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { OfflinePlatform } from "@/components/OfflinePlatform";
 import { WorkAccessReturnPrompt } from "@/components/WorkAccessReturnPrompt";
+import { AttendeeAccessLink } from "@/features/attendee-access/ui/AttendeeAccessLink";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import { ApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
 import { recordDiagnosticAction } from "@/features/reports/diagnostics";
@@ -124,6 +125,7 @@ function RootDocument({
         <NavigationProgress />
         <ApplicationFileDrop />
         <OfflinePlatform />
+        <AttendeeAccessLink />
         <WorkAccessReturnPrompt />
         {children}
         <Scripts />

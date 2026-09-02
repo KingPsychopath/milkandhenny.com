@@ -82,7 +82,6 @@ function ScanRoute() {
       <DoorScanner
         eventSlug={data.eventSlug}
         eventTitle={data.eventTitle}
-        arrivalExperience={data.arrivalExperience}
         initialManifest={data.door.manifestHashes}
         initialTickets={data.door.tickets}
         initialSummary={data.door.summary}

@@ -468,14 +468,13 @@ export async function moveStaffTeamParticipant(input: {
   const eligible = await queryOne<{ participant: boolean; team: boolean }>(
     `select
        exists(select 1 from event_participants
-               where id = $2 and event_slug = $1 and status = 'active'
-                 and checked_in_at is not null) as participant,
+               where id = $2 and event_slug = $1 and status = 'active') as participant,
        exists(select 1 from score_teams
                where id = $3 and event_slug = $1 and status = 'active') as team`,
     [input.eventSlug, input.participantId, input.teamId],
   );
   if (!eligible?.participant) {
-    return { ok: false as const, status: 409, error: "That attendee is not checked in" };
+    return { ok: false as const, status: 409, error: "That attendee is not active" };
   }
   if (!eligible.team) return { ok: false as const, status: 404, error: "Team not found" };
   const membership = await setTeamMembership({

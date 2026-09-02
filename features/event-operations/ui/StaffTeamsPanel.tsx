@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StatusNotice } from "@/components/StatusNotice";
 import { AppSelect } from "@/components/AppSelect";
 import {
+  emailStaffTeamsFn,
   getStaffOperationsPageFn,
   moveStaffTeamParticipantFn,
   shuffleStaffTeamsFn,
@@ -24,6 +25,8 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -80,7 +83,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
       setSelectedParticipantId("");
       setSelectedTeamId("");
       setStatus(
-        `${result.value.teamRoster.length} checked-in ${result.value.teamRoster.length === 1 ? "guest" : "guests"} balanced across ${teamCount} teams.`,
+        `${result.value.teamRoster.length} ticket ${result.value.teamRoster.length === 1 ? "holder" : "holders"} balanced across ${teamCount} teams.`,
       );
     } catch {
       setError("Teams could not be shuffled. Check the connection and try once more.");
@@ -91,7 +94,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
 
   async function move() {
     if (!selectedParticipantId || !selectedTeamId) {
-      setError("Choose a checked-in guest and their new team.");
+      setError("Choose a guest and their new team.");
       return;
     }
     setBusy(true);
@@ -121,17 +124,46 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
     }
   }
 
+  async function emailTeams() {
+    if (!confirmEmail) {
+      setConfirmEmail(true);
+      return;
+    }
+    setEmailBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const result = await emailStaffTeamsFn({ data: { eventSlug: data.eventSlug, token } });
+      if (!result.ok) return setError(result.error);
+      const parts = [
+        result.value.queued > 0
+          ? `${result.value.queued} team ${result.value.queued === 1 ? "email" : "emails"} queued`
+          : null,
+        result.value.unchanged > 0
+          ? `${result.value.unchanged} already had this exact team card`
+          : null,
+        result.value.skippedNoEmail > 0
+          ? `${result.value.skippedNoEmail} ${result.value.skippedNoEmail === 1 ? "order has" : "orders have"} no email`
+          : null,
+      ].filter(Boolean);
+      setStatus(parts.join(" · ") || "No team emails were needed.");
+      setConfirmEmail(false);
+    } catch {
+      setError("Team cards could not be queued. Check the connection and try once more.");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   return (
     <section aria-labelledby="staff-teams-heading" className="mt-10 border-t theme-border pt-7">
-      <p className="font-mono text-micro uppercase tracking-widest theme-muted">
-        checked-in guests
-      </p>
+      <p className="font-mono text-micro uppercase tracking-widest theme-muted">before the event</p>
       <h2 id="staff-teams-heading" className="mt-2 font-serif text-2xl">
         Balance the teams
       </h2>
       <p className="mt-2 max-w-xl font-mono text-xs leading-5 theme-muted">
-        Pick the number of teams, then shuffle. Everyone currently checked in is spread as evenly as
-        possible; later arrivals join the smallest team automatically.
+        Pick the number of teams, then shuffle. Everyone with a valid ticket is spread as evenly as
+        possible before the event; later tickets join the smallest team automatically.
       </p>
 
       <div className="mt-6 grid grid-cols-3 gap-2" aria-label="Number of teams">
@@ -143,7 +175,9 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
             aria-pressed={teamCount === count}
             onClick={() => setTeamCount(count)}
             className={`min-h-14 border px-3 font-mono text-sm hover:opacity-70 disabled:opacity-50 ${
-              teamCount === count ? "border-foreground" : "theme-border"
+              teamCount === count
+                ? "border-foreground bg-foreground text-background"
+                : "theme-border"
             }`}
           >
             {count} teams
@@ -154,9 +188,9 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
         type="button"
         disabled={busy}
         onClick={() => void shuffle()}
-        className="mt-3 min-h-14 w-full border border-foreground px-5 font-mono text-sm hover:opacity-70 disabled:opacity-50"
+        className="mh-action mh-action--primary mt-3 min-h-14 w-full"
       >
-        {busy ? "balancing…" : `shuffle ${state.teamRoster.length} checked-in guests`}
+        {busy ? "balancing…" : `shuffle ${state.teamRoster.length} ticket holders`}
       </button>
 
       {activeTeams.length > 0 ? (
@@ -168,10 +202,43 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
             >
               <TeamBadge name={team.name} colourKey={team.colourKey} />
               <span className="font-mono text-xs theme-muted">
-                {team.checkedInCount} {team.checkedInCount === 1 ? "person" : "people"}
+                {team.memberCount} assigned · {team.checkedInCount} inside
               </span>
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {activeTeams.length > 0 && state.teamRoster.length > 0 ? (
+        <div className="mt-5 rounded-2xl border theme-border p-4">
+          <p className="font-serif text-lg">Send everyone their colour</p>
+          <p className="mt-1 font-mono text-xs leading-5 theme-muted">
+            Each ticket email shows the guest’s team and frames their QR in that colour. Send only
+            after the teams are final.
+          </p>
+          <button
+            type="button"
+            disabled={emailBusy || busy}
+            onClick={() => void emailTeams()}
+            className={`mt-4 min-h-12 w-full rounded-xl border px-4 font-mono text-xs hover:opacity-75 disabled:opacity-40 ${
+              confirmEmail ? "border-[var(--status-attention)]" : "theme-border-strong"
+            }`}
+          >
+            {emailBusy
+              ? "queueing…"
+              : confirmEmail
+                ? "confirm · send current team cards"
+                : "email team cards"}
+          </button>
+          {confirmEmail ? (
+            <button
+              type="button"
+              onClick={() => setConfirmEmail(false)}
+              className="mt-2 min-h-11 w-full font-mono text-xs underline underline-offset-4 hover:opacity-70"
+            >
+              cancel
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -193,7 +260,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
           </summary>
           <div className="mt-3 space-y-4">
             <label className="block font-mono text-xs">
-              <span className="mb-2 block theme-muted">Find a checked-in guest</span>
+              <span className="mb-2 block theme-muted">Find a guest</span>
               <input
                 value={filter}
                 onChange={(event) => setFilter(event.target.value)}
@@ -215,7 +282,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
                     value: participant.id,
                     label: `${participant.displayName ?? participant.publicAlias}${
                       participant.teamName ? ` — ${participant.teamName}` : " — unassigned"
-                    }`,
+                    }${participant.checkedIn ? " · inside" : ""}`,
                   })),
                 ]}
                 ariaLabel="Guest"
@@ -242,7 +309,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
                         <TeamBadge
                           name={team.name}
                           colourKey={team.colourKey}
-                          detail={`${team.checkedInCount} now`}
+                          detail={`${team.memberCount} assigned · ${team.checkedInCount} inside`}
                         />
                       </button>
                     ))}

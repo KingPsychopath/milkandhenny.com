@@ -1,9 +1,9 @@
-import { AppSelect } from "@/components/AppSelect";
 import { StatusNotice } from "@/components/StatusNotice";
 import { StaffOperationNav } from "./StaffOperationNav";
+import { StaffAdmissionPanel } from "./StaffAdmissionPanel";
+import { StaffCheckpointPanel } from "./StaffCheckpointPanel";
 import { StaffPhotosPanel } from "./StaffPhotosPanel";
 import { StaffTeamsPanel } from "./StaffTeamsPanel";
-import { StaffTicketScannerField } from "./StaffTicketScannerField";
 import {
   useStaffOperationsController,
   type StaffOperationsData,
@@ -28,7 +28,9 @@ export function StaffOperationsPage({ data, token }: { data: StaffOperationsData
     guestNote,
     setGuestNote,
     guestRequests,
+    redeemedTicketIds,
     admit,
+    announceGroup,
     scanCheckpoint,
     submitGuest,
     decideGuest,
@@ -75,18 +77,17 @@ export function StaffOperationsPage({ data, token }: { data: StaffOperationsData
           <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
             Scan the ticket or paste its reference. Checkpoints are never used here.
           </p>
-          <div className="mt-5">
-            <StaffTicketScannerField
-              id="staff-admit-ticket"
-              value={scanned}
-              onChange={setScanned}
-              actionLabel="check in"
-              cameraOpen={cameraOpen}
-              onCameraOpenChange={setCameraOpen}
-              busy={busy}
-              onSubmit={(raw) => void admit(raw)}
-            />
-          </div>
+          <StaffAdmissionPanel
+            data={data}
+            value={scanned}
+            onChange={setScanned}
+            cameraOpen={cameraOpen}
+            onCameraOpenChange={setCameraOpen}
+            busy={busy}
+            redeemedTicketIds={redeemedTicketIds}
+            onAdmit={admit}
+            onGroupComplete={announceGroup}
+          />
         </section>
       ) : null}
 
@@ -101,32 +102,17 @@ export function StaffOperationsPage({ data, token }: { data: StaffOperationsData
           <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
             Choose the station first. This never checks a guest in at the door.
           </p>
-          <label className="mt-5 block font-mono text-xs">
-            active station
-            <AppSelect
-              value={checkpointId}
-              onValueChange={setCheckpointId}
-              options={data.checkpoints.map((checkpoint) => ({
-                value: checkpoint.id,
-                label: checkpoint.name,
-              }))}
-              variant="field"
-              ariaLabel="Active checkpoint"
-              className="mt-2"
-            />
-          </label>
-          <div className="mt-5">
-            <StaffTicketScannerField
-              id="staff-checkpoint-ticket"
-              value={scanned}
-              onChange={setScanned}
-              actionLabel="record 1"
-              cameraOpen={cameraOpen}
-              onCameraOpenChange={setCameraOpen}
-              busy={busy}
-              onSubmit={(raw) => void scanCheckpoint(raw)}
-            />
-          </div>
+          <StaffCheckpointPanel
+            data={data}
+            checkpointId={checkpointId}
+            onCheckpointChange={setCheckpointId}
+            value={scanned}
+            onChange={setScanned}
+            cameraOpen={cameraOpen}
+            onCameraOpenChange={setCameraOpen}
+            busy={busy}
+            onScan={scanCheckpoint}
+          />
         </section>
       ) : null}
 
