@@ -4,26 +4,14 @@ import { getRequest } from "@tanstack/react-start/server";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { queryOne } from "@/lib/platform/postgres.server";
-import {
-  getAttendeeSession,
-  openAttendeeTicket,
-  ticketPointSelection,
-} from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/event-scoring/session.server";
 import {
   currentAttendeeTicketIdentity,
   managedOrderIdsForPerson,
 } from "@/features/attendee-access/access.server";
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
-import { personalScore } from "@/features/event-scoring/scoring.server";
-import { listDiscoveries } from "@/features/event-scoring/discoveries.server";
-import {
-  findSettings,
-  participantForTicket,
-  privateOrderScore,
-} from "@/features/event-scoring/store.server";
+import { participantForTicket } from "@/features/event-scoring/store.server";
 import { getEventAlbumView } from "@/features/events/drop.server";
-import { achievementViewForParticipant } from "@/features/achievements/achievements.server";
-import type { AchievementView } from "@/features/achievements/types";
 import { EventsService } from "@/features/events/events-service.server";
 import {
   toTicketHolderEvent,
@@ -63,37 +51,12 @@ export type TicketPageResult =
       managerTicketId?: string;
       checkpointNames: string[];
       album: EventAlbumView;
-      hasDiscoveries: boolean;
       team?: {
         name: string;
         colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
       };
       preview?: true;
       attendeeIdentity?: AttendeeTicketIdentity;
-      ticketPointSelection?: Awaited<ReturnType<typeof ticketPointSelection>>;
-      achievements?: AchievementView;
-      score?: {
-        participantId: string;
-        publicAlias: string;
-        displayMode: "alias" | "anonymous" | "hidden";
-        points: number;
-        revision: number;
-        rank: number;
-        teamRank?: number;
-        teamName?: string;
-        teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
-        leaderboardAvailable: boolean;
-        synchronizedAt: string;
-        orderPoints?: number;
-        transactions: Array<{
-          status: string;
-          reasonCode: string;
-          activityName?: string;
-          sourceType?: string;
-          points: number;
-          createdAt: string;
-        }>;
-      };
     };
 
 export const getTicketPageFn = createServerFn({ method: "GET" })
@@ -163,56 +126,17 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       if (isPrimaryTicket) rememberManagedTicketOrder(ticket.orderId);
     }
 
-    const [album, checkpoints, discoveries] = await Promise.all([
+    const [album, checkpoints, participant] = await Promise.all([
       getEventAlbumView(event.slug),
       listCheckpoints(event.slug),
-      listDiscoveries(event.slug),
-    ]);
-    const [scoringSettings, participant] = await Promise.all([
-      findSettings(event.slug),
       participantForTicket(ticket.id),
     ]);
-    const scoreResult =
-      scoringSettings && scoringSettings.state !== "off"
-        ? await personalScore({
-            eventSlug: event.slug,
-            ticketId: ticket.id,
-            includeHistory: true,
-          })
-        : null;
-    const achievements =
-      participant && !data.preview
-        ? await achievementViewForParticipant(participant.id).catch(() => undefined)
-        : undefined;
-    const orderScore =
-      scoreResult?.ok && access.canManageOrder
-        ? await privateOrderScore({ eventSlug: event.slug, orderId: ticket.orderId })
-        : null;
-    if (!data.preview) {
-      try {
-        await openAttendeeTicket({
-          ticketId: publicTicketId,
-          eventSlug: event.slug,
-          mode: "view-only",
-        });
-      } catch {
-        // Ticket rendering must survive an unavailable optional attendee session store.
-      }
-    }
-
-    const [attendeeIdentity, pointSelection] = data.preview
-      ? [undefined, undefined]
-      : await Promise.all([
-          currentAttendeeTicketIdentity(ticket.id, event.slug).catch(() => ({
-            account: null,
-            personallyClaimed: false,
-          })),
-          ticketPointSelection(publicTicketId).catch(() => ({
-            mode: "view-only" as const,
-            active: false,
-            eventHasActive: false,
-          })),
-        ]);
+    const attendeeIdentity = data.preview
+      ? undefined
+      : await currentAttendeeTicketIdentity(ticket.id, event.slug).catch(() => ({
+          account: null,
+          personallyClaimed: false,
+        }));
 
     return {
       found: true,
@@ -247,32 +171,10 @@ export const getTicketPageFn = createServerFn({ method: "GET" })
       managerTicketId: access.managerTicketId,
       checkpointNames: checkpoints.map((checkpoint) => checkpoint.name),
       album,
-      hasDiscoveries: discoveries.some((discovery) => discovery.status === "live"),
       team: participant?.teamName
         ? { name: participant.teamName, colourKey: participant.teamColourKey }
         : undefined,
       preview: data.preview ? true : undefined,
       attendeeIdentity,
-      ticketPointSelection: pointSelection,
-      achievements,
-      score: scoreResult?.ok
-        ? {
-            participantId: scoreResult.value.participant.id,
-            publicAlias: scoreResult.value.participant.publicAlias,
-            displayMode: scoreResult.value.participant.displayMode,
-            points: scoreResult.value.participant.balance,
-            revision: scoreResult.value.participant.revision,
-            rank: scoreResult.value.rank,
-            teamRank: scoreResult.value.teamRank,
-            teamName: scoreResult.value.participant.teamName,
-            teamColourKey: scoreResult.value.participant.teamColourKey,
-            leaderboardAvailable:
-              scoringSettings?.leaderboardVisibility === "public-live" ||
-              scoringSettings?.leaderboardVisibility === "public-final",
-            synchronizedAt: new Date().toISOString(),
-            transactions: scoreResult.value.transactions,
-            orderPoints: orderScore?.ok ? orderScore.value.points : undefined,
-          }
-        : undefined,
     };
   });

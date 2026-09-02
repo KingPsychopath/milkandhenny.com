@@ -2,7 +2,7 @@ import { Context, Deferred, Effect, Fiber, Layer, Schedule } from "effect";
 
 import { sendOperationsDigests } from "@/features/attendee-operations/notifications.server";
 import { CommunicationsService } from "@/features/communications/communications-service.server";
-import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
+import { processScheduledEventDrops } from "@/features/events/drop.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
 import { runAutomaticPitchReminders } from "@/features/things/pitches/reminders.server";
 import { cleanupGamePools } from "@/features/things/pool/operations.server";
@@ -19,7 +19,7 @@ import { isMediaWorkerRole } from "./media-role.server";
 import { monitorMediaWorkerHealth } from "./media-worker-monitor.server";
 
 const EMAIL_INTERVAL_MS = 15_000;
-const EVENT_SCORING_INTERVAL_MS = 30_000;
+const EVENT_DROP_INTERVAL_MS = 30_000;
 const OPERATIONS_DIGEST_INTERVAL_MS = 5 * 60_000;
 const MEDIA_WORKER_HEALTH_INTERVAL_MS = 60_000;
 const PITCH_REMINDER_INTERVAL_MS = 15 * 60_000;
@@ -74,15 +74,9 @@ export class ApplicationSchedulerService extends Context.Service<
       }>,
       unknown
     >;
-    readonly runEventScoring: (force?: boolean) => Effect.Effect<
-      ScheduledJobRun<{
-        outbox: { selected: number; delivered: number };
-        result: { selected: number; processed: number; held: number; ignored: number };
-        scoringTransitions: number;
-        albumOpenings: number;
-      }>,
-      unknown
-    >;
+    readonly runEventDrops: (
+      force?: boolean,
+    ) => Effect.Effect<ScheduledJobRun<{ albumOpenings: number }>, unknown>;
     readonly runOperationsDigests: (
       force?: boolean,
     ) => Effect.Effect<ScheduledJobRun<Awaited<ReturnType<typeof sendOperationsDigests>>>, unknown>;
@@ -110,7 +104,6 @@ export class ApplicationSchedulerService extends Context.Service<
     this,
     Effect.gen(function* () {
       const communications = yield* CommunicationsService;
-      const scoring = yield* EventScoringService;
       const postgres = yield* PostgresService;
       const redis = yield* RedisService;
       const redisClient = yield* redis.client;
@@ -124,12 +117,14 @@ export class ApplicationSchedulerService extends Context.Service<
           intervalMs: EMAIL_INTERVAL_MS,
           run: communications.runScheduled,
         });
-      const runEventScoring = (force = false) =>
+      const runEventDrops = (force = false) =>
         leased({
           force,
-          jobKey: "event-scoring",
-          intervalMs: EVENT_SCORING_INTERVAL_MS,
-          run: scoring.runScheduled,
+          jobKey: "event-drops",
+          intervalMs: EVENT_DROP_INTERVAL_MS,
+          run: schedulerOperation("event_drops", async () => ({
+            albumOpenings: await processScheduledEventDrops(),
+          })),
         });
       const runOperationsDigests = (force = false) =>
         leased({
@@ -221,21 +216,12 @@ export class ApplicationSchedulerService extends Context.Service<
         ),
         forkJob(
           {
-            jobKey: "event-scoring",
-            intervalMs: EVENT_SCORING_INTERVAL_MS,
-            run: runEventScoring,
+            jobKey: "event-drops",
+            intervalMs: EVENT_DROP_INTERVAL_MS,
+            run: runEventDrops,
             report: (outcome) => {
-              if (
-                outcome.ran &&
-                (outcome.value.result.selected > 0 ||
-                  outcome.value.scoringTransitions > 0 ||
-                  outcome.value.albumOpenings > 0)
-              ) {
-                log.info("scheduler.event-scoring", "Scheduled scoring work completed", {
-                  ...outcome.value.result,
-                  scoringTransitions: outcome.value.scoringTransitions,
-                  albumOpenings: outcome.value.albumOpenings,
-                });
+              if (outcome.ran && outcome.value.albumOpenings > 0) {
+                log.info("scheduler.event-drops", "Scheduled event drops opened", outcome.value);
               }
             },
           },
@@ -311,7 +297,7 @@ export class ApplicationSchedulerService extends Context.Service<
 
       const jobSummaries = [
         { jobKey: "communications-delivery", intervalMs: EMAIL_INTERVAL_MS },
-        { jobKey: "event-scoring", intervalMs: EVENT_SCORING_INTERVAL_MS },
+        { jobKey: "event-drops", intervalMs: EVENT_DROP_INTERVAL_MS },
         { jobKey: "media-worker-health", intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS },
         { jobKey: "operations-digests", intervalMs: OPERATIONS_DIGEST_INTERVAL_MS },
         { jobKey: "pitch-reminders", intervalMs: PITCH_REMINDER_INTERVAL_MS },
@@ -338,7 +324,7 @@ export class ApplicationSchedulerService extends Context.Service<
           Effect.andThen(Effect.forEach(fibers, Fiber.await, { discard: true })),
         ),
         runCommunications,
-        runEventScoring,
+        runEventDrops,
         runGamePoolCleanup,
         runMediaWorkerHealth,
         runOperationsDigests,

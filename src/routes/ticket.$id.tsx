@@ -45,13 +45,9 @@ function TicketRoute() {
       managerTicketId={data.managerTicketId}
       checkpointNames={data.checkpointNames}
       album={data.album}
-      hasDiscoveries={data.hasDiscoveries}
       team={data.team}
-      score={data.score}
       preview={data.preview}
       attendeeIdentity={data.attendeeIdentity}
-      initialTicketPointSelection={data.ticketPointSelection}
-      achievements={data.achievements}
     />
   );
 }

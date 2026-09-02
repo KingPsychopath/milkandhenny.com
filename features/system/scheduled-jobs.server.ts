@@ -19,8 +19,8 @@ export function runEmailDeliveryScheduledJob(force = false, signal?: AbortSignal
   return withScheduler((scheduler) => scheduler.runCommunications(force), signal);
 }
 
-export function runEventScoringScheduledJob(force = false, signal?: AbortSignal) {
-  return withScheduler((scheduler) => scheduler.runEventScoring(force), signal);
+export function runEventDropsScheduledJob(force = false, signal?: AbortSignal) {
+  return withScheduler((scheduler) => scheduler.runEventDrops(force), signal);
 }
 
 export function runPitchReminderScheduledJob(force = false, signal?: AbortSignal) {

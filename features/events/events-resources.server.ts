@@ -1,12 +1,6 @@
 import { Context, Data, Effect, Layer, Queue } from "effect";
 
 import {
-  closeScoreEventSubscriber,
-  reconnectScoreEventSubscriber,
-  setScoreEventReconnectWake,
-  subscribeToScoreEvents,
-} from "@/features/event-scoring/score-events.server";
-import {
   closeTicketEventSubscriber,
   reconnectTicketEventSubscriber,
   setTicketEventReconnectWake,
@@ -29,19 +23,15 @@ function attempt<A>(operation: string, run: () => Promise<A>) {
   }).pipe(Effect.withSpan(`events.realtime.${operation}`));
 }
 
-function reconnectLoop(
-  queue: Queue.Queue<void>,
-  reconnect: () => Promise<void>,
-  channel: "score" | "ticket",
-) {
+function reconnectLoop(queue: Queue.Queue<void>, reconnect: () => Promise<void>) {
   return Effect.forever(
     Queue.take(queue).pipe(
       Effect.andThen(Effect.sleep(1_000)),
-      Effect.andThen(attempt(`${channel}_reconnect`, reconnect)),
+      Effect.andThen(attempt("ticket_reconnect", reconnect)),
       Effect.catch((error) =>
         Effect.sync(() => {
           log.warn("events.realtime", "Realtime subscriber reconnect will retry", {
-            channel,
+            channel: "ticket",
             error: String(error),
           });
           Effect.runSync(Queue.offer(queue, undefined));
@@ -55,9 +45,6 @@ function reconnectLoop(
 export class EventsRealtimeService extends Context.Service<
   EventsRealtimeService,
   {
-    readonly subscribeScore: (
-      ...args: Parameters<typeof subscribeToScoreEvents>
-    ) => Effect.Effect<() => void, EventsRealtimeError>;
     readonly subscribeTicket: (
       ...args: Parameters<typeof subscribeToTicketEvents>
     ) => Effect.Effect<() => void, EventsRealtimeError>;
@@ -67,55 +54,25 @@ export class EventsRealtimeService extends Context.Service<
     this,
     Effect.gen(function* () {
       const postgres = yield* PostgresService;
-      const scoreReconnects = yield* Queue.sliding<void>(1);
       const ticketReconnects = yield* Queue.sliding<void>(1);
 
       yield* Effect.acquireRelease(
         Effect.sync(() => {
-          setScoreEventReconnectWake(() => {
-            Effect.runSync(Queue.offer(scoreReconnects, undefined));
-          });
           setTicketEventReconnectWake(() => {
             Effect.runSync(Queue.offer(ticketReconnects, undefined));
           });
         }),
         () =>
           Effect.sync(() => {
-            setScoreEventReconnectWake(null);
             setTicketEventReconnectWake(null);
-          }).pipe(
-            Effect.andThen(
-              Effect.promise(() =>
-                Promise.allSettled([
-                  closeScoreEventSubscriber(),
-                  closeTicketEventSubscriber(),
-                ]).then(() => undefined),
-              ),
-            ),
-          ),
+          }).pipe(Effect.andThen(Effect.promise(() => closeTicketEventSubscriber()))),
       );
 
-      yield* Effect.all(
-        [
-          reconnectLoop(
-            scoreReconnects,
-            () => withPostgresProvider(postgres.port, reconnectScoreEventSubscriber),
-            "score",
-          ),
-          reconnectLoop(
-            ticketReconnects,
-            () => withPostgresProvider(postgres.port, reconnectTicketEventSubscriber),
-            "ticket",
-          ),
-        ],
-        { concurrency: 2, discard: true },
+      yield* reconnectLoop(ticketReconnects, () =>
+        withPostgresProvider(postgres.port, reconnectTicketEventSubscriber),
       ).pipe(Effect.forkScoped);
 
       return {
-        subscribeScore: (...args: Parameters<typeof subscribeToScoreEvents>) =>
-          attempt("score_subscribe", () =>
-            withPostgresProvider(postgres.port, () => subscribeToScoreEvents(...args)),
-          ),
         subscribeTicket: (...args: Parameters<typeof subscribeToTicketEvents>) =>
           attempt("ticket_subscribe", () =>
             withPostgresProvider(postgres.port, () => subscribeToTicketEvents(...args)),

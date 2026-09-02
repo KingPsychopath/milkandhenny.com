@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { forgetStaffAccess, rememberStaffAccess } from "@/features/event-scoring/staff-memory";
+import { forgetStaffAccess, rememberStaffAccess } from "@/features/event-operations/staff-memory";
 import { getStaffScoringPageFn } from "@/features/event-scoring/staff-scoring.functions";
 import { StaffScoringPage } from "@/features/event-scoring/ui/StaffScoringPage";
 import { buildSeoHead } from "@/lib/shared/seo";

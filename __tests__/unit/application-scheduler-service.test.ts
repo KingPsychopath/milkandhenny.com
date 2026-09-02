@@ -22,17 +22,7 @@ vi.mock("@/features/system/media-role.server", () => ({
   isMediaWorkerRole: () => false,
 }));
 
-vi.mock("@/features/event-scoring/event-scoring-service.server", async () => {
-  const { Context } = await import("effect");
-  class EventScoringService extends Context.Service<
-    EventScoringService,
-    { readonly runScheduled: Effect.Effect<unknown> }
-  >()("TestEventScoringService") {}
-  return { EventScoringService };
-});
-
 import { CommunicationsService } from "@/features/communications/communications-service.server";
-import { EventScoringService } from "@/features/event-scoring/event-scoring-service.server";
 import { ApplicationSchedulerService } from "@/features/system/application-scheduler-service.server";
 import { PostgresService, RedisService } from "@/lib/platform/provider-services.server";
 
@@ -42,13 +32,6 @@ describe("application scheduler service", () => {
     const dependencies = Layer.mergeAll(
       Layer.succeed(CommunicationsService, {
         runScheduled: Effect.succeed({ staged: 0, waitlistAlerts: 0, handled: 0 }),
-      } as never),
-      Layer.succeed(EventScoringService, {
-        runScheduled: Effect.succeed({
-          outbox: { selected: 0, delivered: 0 },
-          result: { selected: 0, processed: 0, held: 0, ignored: 0 },
-          scoringTransitions: 0,
-        }),
       } as never),
       Layer.succeed(PostgresService, { port: {} as never }),
       Layer.succeed(RedisService, { client: Effect.succeed(null) }),
@@ -67,7 +50,7 @@ describe("application scheduler service", () => {
 
     expect(scheduler.registered).toEqual([
       "communications-delivery",
-      "event-scoring",
+      "event-drops",
       "media-worker-health",
       "operations-digests",
       "pitch-reminders",

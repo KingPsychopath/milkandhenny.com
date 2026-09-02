@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 
@@ -20,19 +17,11 @@ import { describeCheckpoints, type OrderTicketView, type TicketPageTicket } from
 import { RefundTicketButton } from "./RefundTicketButton";
 import { ManageTickets } from "./ManageTickets";
 import { ShareTicketButton } from "./ShareTicketButton";
-import { TicketScoringControl, type TicketMode } from "./TicketScoringControl";
-import { ScoreSyncStatus } from "./ScoreSyncStatus";
-import { ScoreNotificationNotice } from "./ScoreNotificationNotice";
-import { ScorePublicIdentityControls } from "./ScorePublicIdentityControls";
-import { AttendeeClaimStatus } from "@/features/event-scoring/ui/AttendeeClaimStatus";
 import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
 import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
-import { isTeamColourKey, type TeamColourKey } from "@/features/event-scoring/team-palette";
-import { TicketArrivalHandoff } from "./TicketArrivalHandoff";
+import { isTeamColourKey } from "@/features/event-scoring/team-palette";
 import { useTicketAdmissionState } from "../useTicketAdmissionState";
-import type { AchievementView } from "@/features/achievements/types";
-import { TicketAchievementCollection } from "@/features/achievements/ui/AchievementCollection";
 
 /**
  * The ticket itself.
@@ -56,15 +45,11 @@ export function TicketPage({
   managerTicketId,
   checkpointNames,
   album,
-  hasDiscoveries,
   team,
-  score,
   preview = false,
   previewIdentityControls,
   embedded = false,
   attendeeIdentity,
-  initialTicketPointSelection,
-  achievements,
 }: {
   ticket: TicketPageTicket;
   event: TicketHolderEvent;
@@ -76,7 +61,6 @@ export function TicketPage({
   managerTicketId?: string;
   checkpointNames: string[];
   album: EventAlbumView;
-  hasDiscoveries: boolean;
   team?: {
     name: string;
     colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
@@ -86,55 +70,7 @@ export function TicketPage({
   previewIdentityControls?: ReactNode;
   embedded?: boolean;
   attendeeIdentity?: AttendeeTicketIdentity;
-  initialTicketPointSelection?: {
-    mode: TicketMode;
-    active: boolean;
-    eventHasActive: boolean;
-  };
-  achievements?: AchievementView;
-  score?: {
-    participantId: string;
-    publicAlias: string;
-    displayMode: "alias" | "anonymous" | "hidden";
-    points: number;
-    revision: number;
-    rank: number;
-    teamRank?: number;
-    teamName?: string;
-    teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
-    leaderboardAvailable?: boolean;
-    synchronizedAt: string;
-    orderPoints?: number;
-    transactions: Array<{
-      status: string;
-      reasonCode: string;
-      activityName?: string;
-      sourceType?: string;
-      points: number;
-      createdAt: string;
-    }>;
-  };
 }) {
-  const [confirmedScore, setConfirmedScore] = useState(score?.points);
-  const [confirmedOrderPoints, setConfirmedOrderPoints] = useState(score?.orderPoints);
-  const [confirmedSynchronizedAt, setConfirmedSynchronizedAt] = useState(score?.synchronizedAt);
-  const [confirmedTeam, setConfirmedTeam] = useState<{
-    name: string;
-    colourKey?: TeamColourKey;
-  } | null>(() =>
-    team
-      ? { name: team.name, colourKey: team.colourKey }
-      : score?.teamName
-        ? { name: score.teamName, colourKey: score.teamColourKey }
-        : null,
-  );
-  const [ticketMode, setTicketMode] = useState<TicketMode | null>(
-    initialTicketPointSelection
-      ? initialTicketPointSelection.mode === "scoring" && initialTicketPointSelection.active
-        ? "scoring"
-        : "view-only"
-      : null,
-  );
   const { dataUrl: qr, failed } = useQrCode(qrPayload, 512);
   const eventCancelled = event.status === "cancelled";
   const invalid = ticket.status !== "valid" || eventCancelled;
@@ -152,15 +88,7 @@ export function TicketPage({
   // Whoever holds this id gets every sibling QR and the refund button, so it is
   // the one ticket in the order that must not have a "share" next to it.
   const isManagerTicket = ticket.id === managerTicketId || ticket.publicId === managerTicketId;
-  const [pendingDiscovery, setPendingDiscovery] = useState<string | null>(null);
-  const teamColour = isTeamColourKey(confirmedTeam?.colourKey)
-    ? confirmedTeam.colourKey
-    : undefined;
-
-  useEffect(() => {
-    const pending = sessionStorage.getItem("mah-pending-discovery");
-    if (pending) setPendingDiscovery(pending);
-  }, []);
+  const teamColour = isTeamColourKey(team?.colourKey) ? team.colourKey : undefined;
 
   const PageBody = embedded ? "div" : "main";
   return (
@@ -294,14 +222,6 @@ export function TicketPage({
           </p>
         )}
 
-        {!preview && !invalid && event.arrivalExperience === "icebreaker" ? (
-          <TicketArrivalHandoff
-            ticketReference={ticketReference}
-            eventSlug={event.slug}
-            redeemedAt={redeemedAt}
-          />
-        ) : null}
-
         {/* The QR — deliberately the largest element on the page. */}
         <div className="mt-8 flex items-center justify-center">
           <div
@@ -333,15 +253,9 @@ export function TicketPage({
 
         <div className="mt-6 text-center">
           <p className="font-serif text-xl text-foreground">{ticket.holderName}</p>
-          <span aria-live="polite">
-            {confirmedTeam ? (
-              <TeamBadge
-                name={`Team ${confirmedTeam.name}`}
-                colourKey={confirmedTeam.colourKey}
-                className="mt-2"
-              />
-            ) : null}
-          </span>
+          {team ? (
+            <TeamBadge name={`Team ${team.name}`} colourKey={team.colourKey} className="mt-2" />
+          ) : null}
           {/* Only the kinds that tell the holder something. A paid ticket
               being paid is the unremarkable case, and labelling it invites
               the reader to wonder what it would mean if it were missing. */}
@@ -484,167 +398,6 @@ export function TicketPage({
               />
             )}
           </div>
-        )}
-
-        {score && (
-          <section
-            aria-labelledby="ticket-score-heading"
-            className="mt-8 border-y theme-border py-4"
-          >
-            <div className="flex items-baseline justify-between gap-4">
-              <h2
-                id="ticket-score-heading"
-                className="font-mono text-micro theme-muted tracking-widest uppercase"
-              >
-                event score
-              </h2>
-              {score.leaderboardAvailable !== false ? (
-                <Link
-                  to="/events/$slug/score"
-                  params={{ slug: event.slug }}
-                  className="inline-flex min-h-11 items-center font-mono text-micro underline hover:opacity-70 transition-opacity"
-                >
-                  leaderboard
-                </Link>
-              ) : (
-                <span className="font-mono text-micro theme-muted">rankings hidden</span>
-              )}
-            </div>
-            <p className="mt-2 font-serif text-2xl text-foreground" aria-live="polite">
-              {confirmedScore ?? score.points} points
-            </p>
-            {!preview && !eventCancelled && initialTicketPointSelection ? (
-              <TicketScoringControl
-                ticketId={ticketReference}
-                eventSlug={event.slug}
-                initialSelection={initialTicketPointSelection}
-                onModeChange={setTicketMode}
-              />
-            ) : null}
-            <p className="mt-1 font-mono text-micro theme-subtle">rank {score.rank}</p>
-            {!preview && !eventCancelled && ticketMode === "scoring" && (
-              <ScorePublicIdentityControls
-                ticketId={ticketReference}
-                initialAlias={score.publicAlias}
-                initialMode={score.displayMode}
-              />
-            )}
-            {score.teamRank !== undefined && (
-              <p className="mt-1 font-mono text-micro theme-subtle">
-                rank {score.teamRank} within your team
-              </p>
-            )}
-            {score.orderPoints !== undefined && orderSize > 1 && (
-              <p className="mt-2 font-mono text-xs theme-subtle">
-                managed order total: {confirmedOrderPoints ?? score.orderPoints} points
-              </p>
-            )}
-            <p className="mt-4 font-mono text-micro theme-muted">
-              {preview ? (
-                "preview"
-              ) : eventCancelled ? (
-                "event cancelled"
-              ) : (
-                <ScoreSyncStatus
-                  ticketId={ticketReference}
-                  snapshot={{
-                    eventSlug: event.slug,
-                    participantId: score.participantId,
-                    balance: score.points,
-                    revision: score.revision,
-                    synchronizedAt: score.synchronizedAt,
-                  }}
-                  onSnapshot={(next) => {
-                    setConfirmedScore(next.balance);
-                    setConfirmedSynchronizedAt(next.synchronizedAt);
-                    if (next.orderPoints !== undefined) setConfirmedOrderPoints(next.orderPoints);
-                    setConfirmedTeam(
-                      next.teamName ? { name: next.teamName, colourKey: next.teamColourKey } : null,
-                    );
-                  }}
-                />
-              )}{" "}
-              · last confirmed{" "}
-              {formatEventTime(confirmedSynchronizedAt ?? score.synchronizedAt, event.timezone)}
-            </p>
-            {!preview && !eventCancelled ? (
-              <AttendeeClaimStatus eventSlug={event.slug} participantId={score.participantId} />
-            ) : null}
-            {!preview && !eventCancelled && ticketMode === "scoring" ? (
-              <ScoreNotificationNotice ticketId={ticketReference} />
-            ) : null}
-            {score.transactions.length > 0 && (
-              <details className="mt-4">
-                <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
-                  where your points came from
-                </summary>
-                <ol className="divide-y theme-border border-y theme-border">
-                  {score.transactions.map((transaction, index) => (
-                    <li
-                      key={`${transaction.createdAt}-${index}`}
-                      className="flex items-baseline justify-between gap-4 py-3"
-                    >
-                      <span className="min-w-0 font-mono text-xs">
-                        <span className="block text-foreground">
-                          {transaction.activityName ?? transaction.reasonCode.replaceAll("-", " ")}
-                          {transaction.status === "held" ? " · pending review" : ""}
-                          {transaction.status === "reversed" ? " · reversed" : ""}
-                        </span>
-                        <time className="mt-1 block theme-muted" dateTime={transaction.createdAt}>
-                          {formatEventDate(transaction.createdAt, event.timezone)} ·{" "}
-                          {formatEventTime(transaction.createdAt, event.timezone)}
-                        </time>
-                      </span>
-                      <span className="font-mono text-xs">
-                        {transaction.points > 0 ? "+" : ""}
-                        {transaction.points}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </details>
-            )}
-          </section>
-        )}
-
-        {achievements ? <TicketAchievementCollection view={achievements} /> : null}
-
-        {hasDiscoveries && !eventCancelled && (
-          <section
-            aria-labelledby="ticket-clues-heading"
-            className="mt-8 border-y theme-border py-4"
-          >
-            <h2
-              id="ticket-clues-heading"
-              className="font-mono text-micro uppercase tracking-widest theme-muted"
-            >
-              event clues
-            </h2>
-            <p className="mt-2 font-serif text-lg">Scan a clue or enter its code.</p>
-            <p className="mt-1 font-mono text-micro theme-muted">
-              Hunts keep their own progress. Some can also award event points.
-            </p>
-            {!preview && (
-              <div className="mt-3 flex flex-wrap gap-4">
-                <Link
-                  to="/events/$slug/discoveries"
-                  params={{ slug: event.slug }}
-                  className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
-                >
-                  open clue entry
-                </Link>
-                {pendingDiscovery && (
-                  <a
-                    href={pendingDiscovery}
-                    onClick={() => sessionStorage.removeItem("mah-pending-discovery")}
-                    className="min-h-11 py-3 font-mono text-xs underline hover:opacity-70"
-                  >
-                    return to pending clue
-                  </a>
-                )}
-              </div>
-            )}
-          </section>
         )}
 
         {preview ? (

@@ -145,7 +145,7 @@ function accessEmail(input: {
     origin: input.origin,
     label: "your sign-in",
     title: "Pick up where you left off",
-    contentHtml: `<p style="margin:0">Use this private, one-time link to see your tickets and scores on this device.</p><p style="margin:18px 0 0">Or enter <strong style="font:600 20px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em">${escapeEmailHtml(input.code)}</strong></p>`,
+    contentHtml: `<p style="margin:0">Use this private, one-time link to see and manage your tickets on this device.</p><p style="margin:18px 0 0">Or enter <strong style="font:600 20px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em">${escapeEmailHtml(input.code)}</strong></p>`,
     action: { label: "continue securely", url: link },
     note: "This expires in 15 minutes and works once. If you did not request it, you can ignore this email.",
   });

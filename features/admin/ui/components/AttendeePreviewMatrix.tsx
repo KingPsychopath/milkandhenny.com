@@ -162,35 +162,6 @@ export function AttendeePreviewMatrix() {
   const multiTicket = variant === "multi-ticket purchaser";
   const ticketStatus = variant === "refunded / void" ? "refunded" : "valid";
   const redeemedAt = variant === "checked in" ? "2027-10-16T19:42:00.000Z" : undefined;
-  const scoringOff = variant === "scoring off";
-  const score = scoringOff
-    ? undefined
-    : {
-        participantId: "participant-preview",
-        publicAlias: "amber fox",
-        displayMode: "alias" as const,
-        points: 120,
-        revision: 4,
-        rank: 7,
-        teamRank: 2,
-        synchronizedAt: "2027-10-16T20:15:00.000Z",
-        orderPoints: multiTicket ? 280 : undefined,
-        leaderboardAvailable: variant !== "leaderboard off",
-        transactions:
-          variant === "offline score pending"
-            ? [
-                {
-                  status: "held",
-                  reasonCode: "offline-award",
-                  activityName: "Offline award",
-                  sourceType: "staff-award",
-                  points: 12,
-                  createdAt: "2027-10-16T20:14:00.000Z",
-                },
-              ]
-            : [],
-      };
-
   return (
     <section aria-labelledby="attendee-preview-heading">
       <div className="border-b theme-border pb-5">
@@ -308,8 +279,6 @@ export function AttendeePreviewMatrix() {
                 fileCount: 18,
                 expiresAt: "2027-11-16T19:00:00.000Z",
               }}
-              hasDiscoveries={variant !== "clues off"}
-              score={score}
               preview
               embedded
               previewIdentityControls={previewIdentityControls}

@@ -27,6 +27,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SubscribeRouteImport } from './routes/subscribe'
 import { Route as ThingsRouteImport } from './routes/things'
 import { Route as UploadRouteImport } from './routes/upload'
+import { Route as WorkRouteImport } from './routes/work'
 import { Route as AccessMfaRouteImport } from './routes/access_.mfa'
 import { Route as AccessVerifyRouteImport } from './routes/access_.verify'
 import { Route as ActionTokenRouteImport } from './routes/action/$token'
@@ -38,6 +39,7 @@ import { Route as ApiDebugRouteRouteImport } from './routes/api/debug/route'
 import { Route as ApiHealthRouteRouteImport } from './routes/api/health/route'
 import { Route as ApiReportsRouteRouteImport } from './routes/api/reports/route'
 import { Route as ApiWordsRouteRouteImport } from './routes/api/words/route'
+import { Route as CreditTokenRouteImport } from './routes/credit/$token'
 import { Route as DropTokenRouteImport } from './routes/drop.$token'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as EventsSlugRouteImport } from './routes/events/$slug'
@@ -71,6 +73,7 @@ import { Route as ApiAdminAlbumsRouteRouteImport } from './routes/api/admin/albu
 import { Route as ApiAdminCommunicationsRouteRouteImport } from './routes/api/admin/communications/route'
 import { Route as ApiAdminContentAuditRouteRouteImport } from './routes/api/admin/content-audit/route'
 import { Route as ApiAdminContentSummaryRouteRouteImport } from './routes/api/admin/content-summary/route'
+import { Route as ApiAdminCreditsRouteRouteImport } from './routes/api/admin/credits/route'
 import { Route as ApiAdminEmailRouteRouteImport } from './routes/api/admin/email/route'
 import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/events/route'
 import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
@@ -96,6 +99,7 @@ import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/c
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
 import { Route as ApiCronDeliverEmailRouteRouteImport } from './routes/api/cron/deliver-email/route'
+import { Route as ApiCronProcessEventDropsRouteRouteImport } from './routes/api/cron/process-event-drops/route'
 import { Route as ApiCronProcessOfficialGameResultsRouteRouteImport } from './routes/api/cron/process-official-game-results/route'
 import { Route as ApiCronProcessTransferMediaRouteRouteImport } from './routes/api/cron/process-transfer-media/route'
 import { Route as ApiCronSendOperationsDigestsRouteRouteImport } from './routes/api/cron/send-operations-digests/route'
@@ -171,11 +175,12 @@ import { Route as ApiTicketsIdIdentityRouteRouteImport } from './routes/api/tick
 import { Route as ApiTicketsIdScoreRouteRouteImport } from './routes/api/tickets/$id/score/route'
 import { Route as ApiTicketsIdSessionRouteRouteImport } from './routes/api/tickets/$id/session/route'
 import { Route as ApiTransfersIdEventsRouteRouteImport } from './routes/api/transfers/$id/events/route'
+import { Route as ApiUploadTransferAbandonRouteRouteImport } from './routes/api/upload/transfer/abandon/route'
 import { Route as ApiUploadTransferFinalizeRouteRouteImport } from './routes/api/upload/transfer/finalize/route'
 import { Route as ApiUploadTransferPresignRouteRouteImport } from './routes/api/upload/transfer/presign/route'
+import { Route as ApiUploadTransferResumeRouteRouteImport } from './routes/api/upload/transfer/resume/route'
 import { Route as ApiUploadWordsFinalizeRouteRouteImport } from './routes/api/upload/words/finalize/route'
 import { Route as ApiUploadWordsPresignRouteRouteImport } from './routes/api/upload/words/presign/route'
-import { Route as ApiUploadWordsTargetsRouteRouteImport } from './routes/api/upload/words/targets/route'
 import { Route as ApiWordsSlugSharesRouteRouteImport } from './routes/api/words/$slug/shares/route'
 import { Route as ApiWordsShareVerifyRouteRouteImport } from './routes/api/words/share/verify/route'
 import { Route as EventsSlugAwardTokenRouteImport } from './routes/events/$slug_.award.$token'
@@ -315,6 +320,11 @@ const UploadRoute = UploadRouteImport.update({
   path: '/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkRoute = WorkRouteImport.update({
+  id: '/work',
+  path: '/work',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AccessMfaRoute = AccessMfaRouteImport.update({
   id: '/access_/mfa',
   path: '/access/mfa',
@@ -368,6 +378,11 @@ const ApiReportsRouteRoute = ApiReportsRouteRouteImport.update({
 const ApiWordsRouteRoute = ApiWordsRouteRouteImport.update({
   id: '/api/words',
   path: '/api/words',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreditTokenRoute = CreditTokenRouteImport.update({
+  id: '/credit/$token',
+  path: '/credit/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DropTokenRoute = DropTokenRouteImport.update({
@@ -538,6 +553,11 @@ const ApiAdminContentSummaryRouteRoute =
     path: '/api/admin/content-summary',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiAdminCreditsRouteRoute = ApiAdminCreditsRouteRouteImport.update({
+  id: '/api/admin/credits',
+  path: '/api/admin/credits',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminEmailRouteRoute = ApiAdminEmailRouteRouteImport.update({
   id: '/api/admin/email',
   path: '/api/admin/email',
@@ -674,6 +694,12 @@ const ApiCronDeliverEmailRouteRoute =
   ApiCronDeliverEmailRouteRouteImport.update({
     id: '/api/cron/deliver-email',
     path: '/api/cron/deliver-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronProcessEventDropsRouteRoute =
+  ApiCronProcessEventDropsRouteRouteImport.update({
+    id: '/api/cron/process-event-drops',
+    path: '/api/cron/process-event-drops',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronProcessOfficialGameResultsRouteRoute =
@@ -1083,6 +1109,12 @@ const ApiTransfersIdEventsRouteRoute =
     path: '/events',
     getParentRoute: () => ApiTransfersIdRouteRoute,
   } as any)
+const ApiUploadTransferAbandonRouteRoute =
+  ApiUploadTransferAbandonRouteRouteImport.update({
+    id: '/api/upload/transfer/abandon',
+    path: '/api/upload/transfer/abandon',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiUploadTransferFinalizeRouteRoute =
   ApiUploadTransferFinalizeRouteRouteImport.update({
     id: '/api/upload/transfer/finalize',
@@ -1095,6 +1127,12 @@ const ApiUploadTransferPresignRouteRoute =
     path: '/api/upload/transfer/presign',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiUploadTransferResumeRouteRoute =
+  ApiUploadTransferResumeRouteRouteImport.update({
+    id: '/api/upload/transfer/resume',
+    path: '/api/upload/transfer/resume',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiUploadWordsFinalizeRouteRoute =
   ApiUploadWordsFinalizeRouteRouteImport.update({
     id: '/api/upload/words/finalize',
@@ -1105,12 +1143,6 @@ const ApiUploadWordsPresignRouteRoute =
   ApiUploadWordsPresignRouteRouteImport.update({
     id: '/api/upload/words/presign',
     path: '/api/upload/words/presign',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiUploadWordsTargetsRouteRoute =
-  ApiUploadWordsTargetsRouteRouteImport.update({
-    id: '/api/upload/words/targets',
-    path: '/api/upload/words/targets',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiWordsSlugSharesRouteRoute = ApiWordsSlugSharesRouteRouteImport.update({
@@ -1417,6 +1449,7 @@ export interface FileRoutesByFullPath {
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
+  '/work': typeof WorkRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/health': typeof ApiHealthRouteRoute
@@ -1427,6 +1460,7 @@ export interface FileRoutesByFullPath {
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
+  '/credit/$token': typeof CreditTokenRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
@@ -1461,6 +1495,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/credits': typeof ApiAdminCreditsRouteRoute
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
@@ -1486,6 +1521,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-event-drops': typeof ApiCronProcessEventDropsRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
@@ -1561,11 +1597,12 @@ export interface FileRoutesByFullPath {
   '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
   '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
+  '/api/upload/transfer/abandon': typeof ApiUploadTransferAbandonRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
+  '/api/upload/transfer/resume': typeof ApiUploadTransferResumeRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
   '/api/upload/words/presign': typeof ApiUploadWordsPresignRouteRoute
-  '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/award/$token': typeof EventsSlugAwardTokenRoute
@@ -1634,6 +1671,7 @@ export interface FileRoutesByTo {
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
+  '/work': typeof WorkRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/health': typeof ApiHealthRouteRoute
@@ -1644,6 +1682,7 @@ export interface FileRoutesByTo {
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
+  '/credit/$token': typeof CreditTokenRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
@@ -1678,6 +1717,7 @@ export interface FileRoutesByTo {
   '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/credits': typeof ApiAdminCreditsRouteRoute
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
@@ -1703,6 +1743,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-event-drops': typeof ApiCronProcessEventDropsRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
@@ -1778,11 +1819,12 @@ export interface FileRoutesByTo {
   '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
   '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
+  '/api/upload/transfer/abandon': typeof ApiUploadTransferAbandonRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
+  '/api/upload/transfer/resume': typeof ApiUploadTransferResumeRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
   '/api/upload/words/presign': typeof ApiUploadWordsPresignRouteRoute
-  '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug/award/$token': typeof EventsSlugAwardTokenRoute
@@ -1852,6 +1894,7 @@ export interface FileRoutesById {
   '/subscribe': typeof SubscribeRoute
   '/things': typeof ThingsRouteWithChildren
   '/upload': typeof UploadRoute
+  '/work': typeof WorkRoute
   '/api/best-dressed': typeof ApiBestDressedRouteRouteWithChildren
   '/api/debug': typeof ApiDebugRouteRoute
   '/api/health': typeof ApiHealthRouteRoute
@@ -1862,6 +1905,7 @@ export interface FileRoutesById {
   '/action/$token': typeof ActionTokenRoute
   '/admin/cli-auth': typeof AdminCliAuthRoute
   '/admin/editor': typeof AdminEditorRoute
+  '/credit/$token': typeof CreditTokenRoute
   '/drop/$token': typeof DropTokenRoute
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
@@ -1896,6 +1940,7 @@ export interface FileRoutesById {
   '/api/admin/communications': typeof ApiAdminCommunicationsRouteRouteWithChildren
   '/api/admin/content-audit': typeof ApiAdminContentAuditRouteRoute
   '/api/admin/content-summary': typeof ApiAdminContentSummaryRouteRoute
+  '/api/admin/credits': typeof ApiAdminCreditsRouteRoute
   '/api/admin/email': typeof ApiAdminEmailRouteRoute
   '/api/admin/events': typeof ApiAdminEventsRouteRouteWithChildren
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
@@ -1921,6 +1966,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
   '/api/cron/deliver-email': typeof ApiCronDeliverEmailRouteRoute
+  '/api/cron/process-event-drops': typeof ApiCronProcessEventDropsRouteRoute
   '/api/cron/process-official-game-results': typeof ApiCronProcessOfficialGameResultsRouteRoute
   '/api/cron/process-transfer-media': typeof ApiCronProcessTransferMediaRouteRoute
   '/api/cron/send-operations-digests': typeof ApiCronSendOperationsDigestsRouteRoute
@@ -1996,11 +2042,12 @@ export interface FileRoutesById {
   '/api/tickets/$id/score': typeof ApiTicketsIdScoreRouteRouteWithChildren
   '/api/tickets/$id/session': typeof ApiTicketsIdSessionRouteRoute
   '/api/transfers/$id/events': typeof ApiTransfersIdEventsRouteRoute
+  '/api/upload/transfer/abandon': typeof ApiUploadTransferAbandonRouteRoute
   '/api/upload/transfer/finalize': typeof ApiUploadTransferFinalizeRouteRoute
   '/api/upload/transfer/presign': typeof ApiUploadTransferPresignRouteRoute
+  '/api/upload/transfer/resume': typeof ApiUploadTransferResumeRouteRoute
   '/api/upload/words/finalize': typeof ApiUploadWordsFinalizeRouteRoute
   '/api/upload/words/presign': typeof ApiUploadWordsPresignRouteRoute
-  '/api/upload/words/targets': typeof ApiUploadWordsTargetsRouteRoute
   '/api/words/$slug/shares': typeof ApiWordsSlugSharesRouteRouteWithChildren
   '/api/words/share/verify': typeof ApiWordsShareVerifyRouteRoute
   '/events/$slug_/award/$token': typeof EventsSlugAwardTokenRoute
@@ -2071,6 +2118,7 @@ export interface FileRouteTypes {
     | '/subscribe'
     | '/things'
     | '/upload'
+    | '/work'
     | '/api/best-dressed'
     | '/api/debug'
     | '/api/health'
@@ -2081,6 +2129,7 @@ export interface FileRouteTypes {
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
+    | '/credit/$token'
     | '/drop/$token'
     | '/events/$slug'
     | '/organize/$token'
@@ -2115,6 +2164,7 @@ export interface FileRouteTypes {
     | '/api/admin/communications'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/credits'
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
@@ -2140,6 +2190,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-event-drops'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-operations-digests'
@@ -2215,11 +2266,12 @@ export interface FileRouteTypes {
     | '/api/tickets/$id/score'
     | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
+    | '/api/upload/transfer/abandon'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
+    | '/api/upload/transfer/resume'
     | '/api/upload/words/finalize'
     | '/api/upload/words/presign'
-    | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/award/$token'
@@ -2288,6 +2340,7 @@ export interface FileRouteTypes {
     | '/subscribe'
     | '/things'
     | '/upload'
+    | '/work'
     | '/api/best-dressed'
     | '/api/debug'
     | '/api/health'
@@ -2298,6 +2351,7 @@ export interface FileRouteTypes {
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
+    | '/credit/$token'
     | '/drop/$token'
     | '/events/$slug'
     | '/organize/$token'
@@ -2332,6 +2386,7 @@ export interface FileRouteTypes {
     | '/api/admin/communications'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/credits'
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
@@ -2357,6 +2412,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-event-drops'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-operations-digests'
@@ -2432,11 +2488,12 @@ export interface FileRouteTypes {
     | '/api/tickets/$id/score'
     | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
+    | '/api/upload/transfer/abandon'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
+    | '/api/upload/transfer/resume'
     | '/api/upload/words/finalize'
     | '/api/upload/words/presign'
-    | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug/award/$token'
@@ -2505,6 +2562,7 @@ export interface FileRouteTypes {
     | '/subscribe'
     | '/things'
     | '/upload'
+    | '/work'
     | '/api/best-dressed'
     | '/api/debug'
     | '/api/health'
@@ -2515,6 +2573,7 @@ export interface FileRouteTypes {
     | '/action/$token'
     | '/admin/cli-auth'
     | '/admin/editor'
+    | '/credit/$token'
     | '/drop/$token'
     | '/events/$slug'
     | '/organize/$token'
@@ -2549,6 +2608,7 @@ export interface FileRouteTypes {
     | '/api/admin/communications'
     | '/api/admin/content-audit'
     | '/api/admin/content-summary'
+    | '/api/admin/credits'
     | '/api/admin/email'
     | '/api/admin/events'
     | '/api/admin/game-pools'
@@ -2574,6 +2634,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
     | '/api/cron/deliver-email'
+    | '/api/cron/process-event-drops'
     | '/api/cron/process-official-game-results'
     | '/api/cron/process-transfer-media'
     | '/api/cron/send-operations-digests'
@@ -2649,11 +2710,12 @@ export interface FileRouteTypes {
     | '/api/tickets/$id/score'
     | '/api/tickets/$id/session'
     | '/api/transfers/$id/events'
+    | '/api/upload/transfer/abandon'
     | '/api/upload/transfer/finalize'
     | '/api/upload/transfer/presign'
+    | '/api/upload/transfer/resume'
     | '/api/upload/words/finalize'
     | '/api/upload/words/presign'
-    | '/api/upload/words/targets'
     | '/api/words/$slug/shares'
     | '/api/words/share/verify'
     | '/events/$slug_/award/$token'
@@ -2723,6 +2785,7 @@ export interface RootRouteChildren {
   SubscribeRoute: typeof SubscribeRoute
   ThingsRoute: typeof ThingsRouteWithChildren
   UploadRoute: typeof UploadRoute
+  WorkRoute: typeof WorkRoute
   ApiBestDressedRouteRoute: typeof ApiBestDressedRouteRouteWithChildren
   ApiDebugRouteRoute: typeof ApiDebugRouteRoute
   ApiHealthRouteRoute: typeof ApiHealthRouteRoute
@@ -2733,6 +2796,7 @@ export interface RootRouteChildren {
   ActionTokenRoute: typeof ActionTokenRoute
   AdminCliAuthRoute: typeof AdminCliAuthRoute
   AdminEditorRoute: typeof AdminEditorRoute
+  CreditTokenRoute: typeof CreditTokenRoute
   DropTokenRoute: typeof DropTokenRoute
   EventsSlugRoute: typeof EventsSlugRoute
   OrganizeTokenRoute: typeof OrganizeTokenRoute
@@ -2753,6 +2817,7 @@ export interface RootRouteChildren {
   ApiAdminCommunicationsRouteRoute: typeof ApiAdminCommunicationsRouteRouteWithChildren
   ApiAdminContentAuditRouteRoute: typeof ApiAdminContentAuditRouteRoute
   ApiAdminContentSummaryRouteRoute: typeof ApiAdminContentSummaryRouteRoute
+  ApiAdminCreditsRouteRoute: typeof ApiAdminCreditsRouteRoute
   ApiAdminEmailRouteRoute: typeof ApiAdminEmailRouteRoute
   ApiAdminEventsRouteRoute: typeof ApiAdminEventsRouteRouteWithChildren
   ApiAdminGamePoolsRouteRoute: typeof ApiAdminGamePoolsRouteRouteWithChildren
@@ -2778,6 +2843,7 @@ export interface RootRouteChildren {
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
   ApiCronDeliverEmailRouteRoute: typeof ApiCronDeliverEmailRouteRoute
+  ApiCronProcessEventDropsRouteRoute: typeof ApiCronProcessEventDropsRouteRoute
   ApiCronProcessOfficialGameResultsRouteRoute: typeof ApiCronProcessOfficialGameResultsRouteRoute
   ApiCronProcessTransferMediaRouteRoute: typeof ApiCronProcessTransferMediaRouteRoute
   ApiCronSendOperationsDigestsRouteRoute: typeof ApiCronSendOperationsDigestsRouteRoute
@@ -2812,11 +2878,12 @@ export interface RootRouteChildren {
   ApiTicketsIdIdentityRouteRoute: typeof ApiTicketsIdIdentityRouteRoute
   ApiTicketsIdScoreRouteRoute: typeof ApiTicketsIdScoreRouteRouteWithChildren
   ApiTicketsIdSessionRouteRoute: typeof ApiTicketsIdSessionRouteRoute
+  ApiUploadTransferAbandonRouteRoute: typeof ApiUploadTransferAbandonRouteRoute
   ApiUploadTransferFinalizeRouteRoute: typeof ApiUploadTransferFinalizeRouteRoute
   ApiUploadTransferPresignRouteRoute: typeof ApiUploadTransferPresignRouteRoute
+  ApiUploadTransferResumeRouteRoute: typeof ApiUploadTransferResumeRouteRoute
   ApiUploadWordsFinalizeRouteRoute: typeof ApiUploadWordsFinalizeRouteRoute
   ApiUploadWordsPresignRouteRoute: typeof ApiUploadWordsPresignRouteRoute
-  ApiUploadWordsTargetsRouteRoute: typeof ApiUploadWordsTargetsRouteRoute
   EventsSlugAwardTokenRoute: typeof EventsSlugAwardTokenRoute
   EventsSlugDiscoveriesDiscoveryIdRoute: typeof EventsSlugDiscoveriesDiscoveryIdRoute
   EventsSlugStaffTokenRoute: typeof EventsSlugStaffTokenRoute
@@ -2960,6 +3027,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UploadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/work': {
+      id: '/work'
+      path: '/work'
+      fullPath: '/work'
+      preLoaderRoute: typeof WorkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/access_/mfa': {
       id: '/access_/mfa'
       path: '/access/mfa'
@@ -3035,6 +3109,13 @@ declare module '@tanstack/react-router' {
       path: '/api/words'
       fullPath: '/api/words'
       preLoaderRoute: typeof ApiWordsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/credit/$token': {
+      id: '/credit/$token'
+      path: '/credit/$token'
+      fullPath: '/credit/$token'
+      preLoaderRoute: typeof CreditTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/drop/$token': {
@@ -3268,6 +3349,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminContentSummaryRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/credits': {
+      id: '/api/admin/credits'
+      path: '/api/admin/credits'
+      fullPath: '/api/admin/credits'
+      preLoaderRoute: typeof ApiAdminCreditsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/email': {
       id: '/api/admin/email'
       path: '/api/admin/email'
@@ -3441,6 +3529,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/deliver-email'
       fullPath: '/api/cron/deliver-email'
       preLoaderRoute: typeof ApiCronDeliverEmailRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/process-event-drops': {
+      id: '/api/cron/process-event-drops'
+      path: '/api/cron/process-event-drops'
+      fullPath: '/api/cron/process-event-drops'
+      preLoaderRoute: typeof ApiCronProcessEventDropsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/process-official-game-results': {
@@ -3968,6 +4063,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiTransfersIdEventsRouteRouteImport
       parentRoute: typeof ApiTransfersIdRouteRoute
     }
+    '/api/upload/transfer/abandon': {
+      id: '/api/upload/transfer/abandon'
+      path: '/api/upload/transfer/abandon'
+      fullPath: '/api/upload/transfer/abandon'
+      preLoaderRoute: typeof ApiUploadTransferAbandonRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/upload/transfer/finalize': {
       id: '/api/upload/transfer/finalize'
       path: '/api/upload/transfer/finalize'
@@ -3982,6 +4084,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadTransferPresignRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/upload/transfer/resume': {
+      id: '/api/upload/transfer/resume'
+      path: '/api/upload/transfer/resume'
+      fullPath: '/api/upload/transfer/resume'
+      preLoaderRoute: typeof ApiUploadTransferResumeRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/upload/words/finalize': {
       id: '/api/upload/words/finalize'
       path: '/api/upload/words/finalize'
@@ -3994,13 +4103,6 @@ declare module '@tanstack/react-router' {
       path: '/api/upload/words/presign'
       fullPath: '/api/upload/words/presign'
       preLoaderRoute: typeof ApiUploadWordsPresignRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/upload/words/targets': {
-      id: '/api/upload/words/targets'
-      path: '/api/upload/words/targets'
-      fullPath: '/api/upload/words/targets'
-      preLoaderRoute: typeof ApiUploadWordsTargetsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/words/$slug/shares': {
@@ -4784,6 +4886,7 @@ const rootRouteChildren: RootRouteChildren = {
   SubscribeRoute: SubscribeRoute,
   ThingsRoute: ThingsRouteWithChildren,
   UploadRoute: UploadRoute,
+  WorkRoute: WorkRoute,
   ApiBestDressedRouteRoute: ApiBestDressedRouteRouteWithChildren,
   ApiDebugRouteRoute: ApiDebugRouteRoute,
   ApiHealthRouteRoute: ApiHealthRouteRoute,
@@ -4794,6 +4897,7 @@ const rootRouteChildren: RootRouteChildren = {
   ActionTokenRoute: ActionTokenRoute,
   AdminCliAuthRoute: AdminCliAuthRoute,
   AdminEditorRoute: AdminEditorRoute,
+  CreditTokenRoute: CreditTokenRoute,
   DropTokenRoute: DropTokenRoute,
   EventsSlugRoute: EventsSlugRoute,
   OrganizeTokenRoute: OrganizeTokenRoute,
@@ -4815,6 +4919,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiAdminCommunicationsRouteRouteWithChildren,
   ApiAdminContentAuditRouteRoute: ApiAdminContentAuditRouteRoute,
   ApiAdminContentSummaryRouteRoute: ApiAdminContentSummaryRouteRoute,
+  ApiAdminCreditsRouteRoute: ApiAdminCreditsRouteRoute,
   ApiAdminEmailRouteRoute: ApiAdminEmailRouteRoute,
   ApiAdminEventsRouteRoute: ApiAdminEventsRouteRouteWithChildren,
   ApiAdminGamePoolsRouteRoute: ApiAdminGamePoolsRouteRouteWithChildren,
@@ -4843,6 +4948,7 @@ const rootRouteChildren: RootRouteChildren = {
     ApiCronCleanupWordMediaOrphansRouteRoute,
   ApiCronCleanupWordSharesRouteRoute: ApiCronCleanupWordSharesRouteRoute,
   ApiCronDeliverEmailRouteRoute: ApiCronDeliverEmailRouteRoute,
+  ApiCronProcessEventDropsRouteRoute: ApiCronProcessEventDropsRouteRoute,
   ApiCronProcessOfficialGameResultsRouteRoute:
     ApiCronProcessOfficialGameResultsRouteRoute,
   ApiCronProcessTransferMediaRouteRoute: ApiCronProcessTransferMediaRouteRoute,
@@ -4881,11 +4987,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiTicketsIdIdentityRouteRoute: ApiTicketsIdIdentityRouteRoute,
   ApiTicketsIdScoreRouteRoute: ApiTicketsIdScoreRouteRouteWithChildren,
   ApiTicketsIdSessionRouteRoute: ApiTicketsIdSessionRouteRoute,
+  ApiUploadTransferAbandonRouteRoute: ApiUploadTransferAbandonRouteRoute,
   ApiUploadTransferFinalizeRouteRoute: ApiUploadTransferFinalizeRouteRoute,
   ApiUploadTransferPresignRouteRoute: ApiUploadTransferPresignRouteRoute,
+  ApiUploadTransferResumeRouteRoute: ApiUploadTransferResumeRouteRoute,
   ApiUploadWordsFinalizeRouteRoute: ApiUploadWordsFinalizeRouteRoute,
   ApiUploadWordsPresignRouteRoute: ApiUploadWordsPresignRouteRoute,
-  ApiUploadWordsTargetsRouteRoute: ApiUploadWordsTargetsRouteRoute,
   EventsSlugAwardTokenRoute: EventsSlugAwardTokenRoute,
   EventsSlugDiscoveriesDiscoveryIdRoute: EventsSlugDiscoveriesDiscoveryIdRoute,
   EventsSlugStaffTokenRoute: EventsSlugStaffTokenRoute,

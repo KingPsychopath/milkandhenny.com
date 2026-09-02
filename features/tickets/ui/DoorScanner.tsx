@@ -31,6 +31,7 @@ import {
   parseTicketQrPayload,
   type DoorTicketView,
 } from "../types";
+import { searchDoorTickets } from "../door-search";
 
 /**
  * The door.
@@ -70,6 +71,7 @@ type PendingGroup = {
   raw: string;
   anchor: DoorTicketView;
   tickets: DoorTicketView[];
+  selectedIds: string[];
 };
 
 /**
@@ -343,7 +345,7 @@ export function DoorScanner({
   const [verdict, setVerdict] = useState<Verdict>({ kind: "idle" });
   const [online, setOnline] = useState(true);
   const [query, setQuery] = useState("");
-  const [manualId, setManualId] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [pendingGroup, setPendingGroup] = useState<PendingGroup | null>(null);
@@ -481,7 +483,8 @@ export function DoorScanner({
             !queuedIds.has(ticket.id),
         );
         if (availableGroup.length > 1) {
-          setPendingGroup({ raw, anchor: known, tickets: availableGroup });
+          const ordered = [known, ...availableGroup.filter((ticket) => ticket.id !== known.id)];
+          setPendingGroup({ raw, anchor: known, tickets: ordered, selectedIds: [known.id] });
           setVerdict({ kind: "idle" });
           return "rejected";
         }
@@ -623,7 +626,7 @@ export function DoorScanner({
     let admitted = 0;
     let queued = 0;
     try {
-      for (const ticket of group.tickets) {
+      for (const ticket of group.tickets.filter((entry) => group.selectedIds.includes(entry.id))) {
         const result = await handleScan(ticket.id, true);
         if (result === "admitted") admitted += 1;
         if (result === "queued") queued += 1;
@@ -645,17 +648,7 @@ export function DoorScanner({
     }
   }, [handleScan, pendingGroup]);
 
-  const matches = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (term.length < 2) return [];
-    return tickets
-      .filter(
-        (ticket) =>
-          ticket.holderName.toLowerCase().includes(term) ||
-          ticket.id.toLowerCase().startsWith(term),
-      )
-      .slice(0, 8);
-  }, [query, tickets]);
+  const matches = useMemo(() => searchDoorTickets(tickets, query), [query, tickets]);
 
   const occupancy = useMemo(() => {
     const live = tickets.filter((ticket) => ticket.status === "valid");
@@ -855,43 +848,68 @@ export function DoorScanner({
             <p id="door-group-title" className="font-serif text-xl text-foreground">
               {pendingGroup.tickets.length} people on this order
             </p>
-            <p className="mt-1 font-mono text-micro theme-muted">Who is coming in right now?</p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              The scanned ticket is selected. Tap anyone else arriving with them.
+            </p>
             <ul className="mt-3 divide-y theme-border border-y theme-border">
-              {pendingGroup.tickets.map((ticket) => (
-                <li
-                  key={ticket.id}
-                  className="flex items-center justify-between gap-3 py-2 font-mono text-xs"
-                >
-                  <span className="truncate text-foreground">{ticket.holderName}</span>
-                  <span className="shrink-0 theme-muted">{ticket.ticketTypeName}</span>
-                </li>
-              ))}
+              {pendingGroup.tickets.map((ticket) => {
+                const anchor = ticket.id === pendingGroup.anchor.id;
+                const selected = pendingGroup.selectedIds.includes(ticket.id);
+                return (
+                  <li key={ticket.id}>
+                    <label className="flex min-h-14 cursor-pointer items-center gap-3 py-2 font-mono text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={anchor}
+                        onChange={() =>
+                          setPendingGroup((current) => {
+                            if (!current) return current;
+                            const next = current.selectedIds.includes(ticket.id)
+                              ? current.selectedIds.filter((id) => id !== ticket.id)
+                              : [...current.selectedIds, ticket.id];
+                            return { ...current, selectedIds: next };
+                          })
+                        }
+                        className="size-5 shrink-0 accent-[var(--things-green)]"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-foreground">
+                        {ticket.holderName}
+                      </span>
+                      <span className="shrink-0 text-right theme-muted">
+                        {anchor ? "scanned ✓" : ticket.ticketTypeName}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
             </ul>
-            <div className="mt-4 grid gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setPendingGroup((current) =>
+                    current
+                      ? { ...current, selectedIds: current.tickets.map((ticket) => ticket.id) }
+                      : current,
+                  )
+                }
+                className="min-h-12 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground"
+              >
+                select everyone
+              </button>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => void admitPendingGroup()}
                 className="min-h-12 rounded-lg bg-foreground px-4 font-mono text-xs text-background disabled:opacity-50"
               >
-                check in all {pendingGroup.tickets.length}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  const selected = pendingGroup;
-                  setPendingGroup(null);
-                  void handleScan(selected.raw, true);
-                }}
-                className="min-h-12 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
-              >
-                only {pendingGroup.anchor.holderName}
+                check in {pendingGroup.selectedIds.length}
               </button>
               <button
                 type="button"
                 onClick={() => setPendingGroup(null)}
-                className="min-h-11 font-mono text-micro theme-muted hover:text-foreground transition-colors"
+                className="col-span-2 min-h-11 font-mono text-micro theme-muted hover:text-foreground transition-colors"
               >
                 cancel
               </button>
@@ -899,58 +917,54 @@ export function DoorScanner({
           </section>
         )}
 
-        <div className="mt-4">
-          <CameraFeed
-            onCode={(raw) => void handleScan(raw)}
-            paused={busy || bulkBusy || pendingGroup !== null}
-          />
-        </div>
-
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (manualId.trim()) {
-              void handleScan(manualId.trim());
-              setManualId("");
+            const value = query.trim();
+            if (parseTicketQrPayload(value) || isValidTicketId(value.toUpperCase())) {
+              void handleScan(value);
+              setQuery("");
+            } else if (matches.length === 1) {
+              void handleScan(matches[0].id);
             }
           }}
-          className="mt-5 flex gap-2"
+          className="mt-5"
         >
-          <label htmlFor="door-manual" className="sr-only">
-            Ticket reference
+          <label htmlFor="door-search" className="font-mono text-micro theme-muted tracking-wide">
+            scan or find a guest
           </label>
-          <input
-            id="door-manual"
-            value={manualId}
-            onChange={(event) => setManualId(event.target.value.toUpperCase())}
-            autoCapitalize="characters"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={16}
-            placeholder="TICKET REFERENCE"
-            className="min-h-12 min-w-0 flex-1 rounded-lg border theme-border-strong bg-transparent px-3 font-mono text-base tracking-[0.15em] text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-          />
-          <button
-            type="submit"
-            className="min-h-12 rounded-lg bg-foreground px-4 font-mono text-xs text-background"
-          >
-            check
-          </button>
+          <div className="relative mt-2">
+            <input
+              id="door-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="name or ticket reference"
+              className="min-h-16 w-full rounded-xl border theme-border-strong bg-transparent py-3 pl-4 pr-28 font-mono text-base text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+            />
+            <button
+              type="button"
+              onClick={() => setCameraOpen((current) => !current)}
+              aria-expanded={cameraOpen}
+              className="absolute inset-y-2 right-2 min-w-24 rounded-lg bg-foreground px-3 font-mono text-xs text-background"
+            >
+              {cameraOpen ? "close" : "scan QR"}
+            </button>
+          </div>
         </form>
 
-        <section className="mt-8">
-          <label htmlFor="door-search" className="font-mono text-micro theme-muted tracking-wide">
-            search by name or ticket ref
-          </label>
-          <input
-            id="door-search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoComplete="off"
-            placeholder="dead phone? find them here"
-            className="mt-1 min-h-12 w-full rounded-lg border theme-border bg-transparent px-3 font-mono text-base text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-          />
+        {cameraOpen && (
+          <div className="mt-4">
+            <CameraFeed
+              onCode={(raw) => void handleScan(raw)}
+              paused={busy || bulkBusy || pendingGroup !== null}
+            />
+          </div>
+        )}
 
+        <section className="mt-3" aria-label="Matching guests">
           <ul className="mt-2 divide-y theme-border">
             {matches.map((ticket) => (
               <li key={ticket.id} className="flex items-center justify-between gap-3 py-2">
@@ -968,7 +982,7 @@ export function DoorScanner({
                   type="button"
                   disabled={busy}
                   onClick={() => void handleScan(ticket.id)}
-                  className="shrink-0 min-h-11 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-50"
+                  className="shrink-0 min-h-12 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
                 >
                   let in
                 </button>

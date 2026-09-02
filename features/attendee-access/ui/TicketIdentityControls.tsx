@@ -211,7 +211,7 @@ export function TicketIdentityControlsView({
           <EmailAddressNotice email={recipientEmail} onAcceptSuggestion={onRecipientEmailChange} />
           <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
             {personallyClaimed
-              ? "You remain the holder until the recipient accepts. Scoring and refunds pause while pending."
+              ? "You remain the holder until the recipient accepts. Refund changes pause while pending."
               : "The recipient receives only this child ticket, never the rest of the order."}
           </p>
         </form>

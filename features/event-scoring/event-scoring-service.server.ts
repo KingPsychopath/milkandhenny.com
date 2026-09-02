@@ -1,26 +1,19 @@
-import { Context, Effect, Layer, Queue } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { eventsOperation } from "@/features/events/events-operation.server";
 import { runAdminScoringAction } from "./admin-api/actions.server";
 import { readAdminScoring } from "./admin-api/read.server";
-import {
-  consumeOfficialResultWake,
-  drainOfficialGameResultOutbox,
-  subscribeOfficialResultWake,
-} from "@/features/game-results/outbox.server";
+import { consumeOfficialResultWake } from "@/features/game-results/outbox.server";
 import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
-import { log } from "@/lib/platform/logger.server";
 import * as discoveryEngine from "./discoveries.server";
 import * as gameClaimEngine from "./game-claims.server";
 import * as groupClaimEngine from "./group-game-claims.server";
-import { consumeOfficialGameResult, processPendingOfficialGameResults } from "./games.server";
+import { consumeOfficialGameResult } from "./games.server";
 import * as offlineEngine from "./offline.server";
 import * as scoringEngine from "./scoring.server";
-import { processScheduledScoringTransitions } from "./scoring.server";
 import * as staffEngine from "./staff-scoring.server";
 import { getStaffAwardClaimPreview } from "./staff-award-claims.server";
 import { decideGuestRequest } from "@/features/tickets/guest-requests.server";
-import { processScheduledEventDrops } from "@/features/events/drop.server";
 
 function operation<A>(name: string, run: (signal: AbortSignal) => Promise<A>, timeoutMs = 45_000) {
   return eventsOperation(
@@ -91,21 +84,6 @@ const consumeWake = (envelopes: readonly OfficialGameResultEnvelope[]) =>
     consumeOfficialResultWake(envelopes, consumeOfficialGameResult),
   ).pipe(Effect.withSpan("event-scoring.official-results.wake"));
 
-const runScheduled = Effect.gen(function* () {
-  const outbox = yield* operation("drain_official_outbox", () =>
-    drainOfficialGameResultOutbox(consumeOfficialGameResult),
-  );
-  const [result, scoringTransitions, albumOpenings] = yield* Effect.all(
-    [
-      operation("process_official_results", () => processPendingOfficialGameResults()),
-      operation("scheduled_transitions", () => processScheduledScoringTransitions()),
-      operation("scheduled_album_openings", () => processScheduledEventDrops()),
-    ],
-    { concurrency: 3 },
-  );
-  return { outbox, result, scoringTransitions, albumOpenings };
-}).pipe(Effect.withSpan("event-scoring.scheduled"));
-
 /**
  * Effect owns event-night orchestration; scoring, eligibility and balance rules stay in the
  * ordinary TypeScript engines and their transactional Postgres repositories.
@@ -147,75 +125,43 @@ export class EventScoringService extends Context.Service<
     readonly closeOfflineReservation: typeof closeOfflineReservation;
     readonly readAdmin: typeof readAdmin;
     readonly runAdminAction: typeof runAdminAction;
-    readonly runScheduled: typeof runScheduled;
   }
 >()("EventScoringService") {
-  static readonly layer = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const wakes = yield* Queue.unbounded<readonly OfficialGameResultEnvelope[]>();
-      const wakeLoop = Effect.forever(
-        Queue.take(wakes).pipe(
-          Effect.flatMap(consumeWake),
-          Effect.catch((error) =>
-            Effect.sync(() =>
-              log.error(
-                "event-scoring.official-results",
-                "Advisory result wake failed; the durable outbox will retry it",
-                {},
-                error,
-              ),
-            ),
-          ),
-        ),
-      );
-
-      yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          subscribeOfficialResultWake((envelopes) => {
-            Effect.runSync(Queue.offer(wakes, envelopes));
-          }),
-        ),
-        (stop) => Effect.promise(stop).pipe(Effect.catch(() => Effect.void)),
-      );
-      yield* Effect.forkScoped(wakeLoop);
-
-      return {
-        acceptStaffHeldAction,
-        setStaffGuestPhotos,
-        admitStaffTicket,
-        scanStaffCheckpoint,
-        awardStaffPoints,
-        claimDiscovery,
-        claimGameResult,
-        claimGroupResult,
-        closeOfflineReservation,
-        consumeOfficialResult: (envelope) =>
-          operation("consume_official_result", () => consumeOfficialGameResult(envelope)),
-        consumeWake,
-        decideStaffGuest,
-        decideAdminGuest,
-        findDiscovery,
-        getDiscovery,
-        getStaffPage,
-        getStaffAwardPreview,
-        mintStaffAward,
-        moveStaffTeamParticipant,
-        personalScore,
-        publicLeaderboard,
-        readAdmin,
-        readGroupClaim,
-        reconcileOfflineCommands,
-        reserveOfflineBudget,
-        resolveStaffParticipant,
-        reverseStaffAward,
-        runScheduled,
-        runAdminAction,
-        searchStaffParticipants,
-        shuffleStaffTeams,
-        submitStaffGuest,
-        transferStaffPoints,
-      };
-    }),
-  );
+  // Historical scoring remains callable for explicit administrative recovery, but it owns no
+  // process-global subscriber or scheduled work while the product is retired.
+  static readonly layer = Layer.succeed(this, {
+    acceptStaffHeldAction,
+    setStaffGuestPhotos,
+    admitStaffTicket,
+    scanStaffCheckpoint,
+    awardStaffPoints,
+    claimDiscovery,
+    claimGameResult,
+    claimGroupResult,
+    closeOfflineReservation,
+    consumeOfficialResult: (envelope) =>
+      operation("consume_official_result", () => consumeOfficialGameResult(envelope)),
+    consumeWake,
+    decideStaffGuest,
+    decideAdminGuest,
+    findDiscovery,
+    getDiscovery,
+    getStaffPage,
+    getStaffAwardPreview,
+    mintStaffAward,
+    moveStaffTeamParticipant,
+    personalScore,
+    publicLeaderboard,
+    readAdmin,
+    readGroupClaim,
+    reconcileOfflineCommands,
+    reserveOfflineBudget,
+    resolveStaffParticipant,
+    reverseStaffAward,
+    runAdminAction,
+    searchStaffParticipants,
+    shuffleStaffTeams,
+    submitStaffGuest,
+    transferStaffPoints,
+  });
 }

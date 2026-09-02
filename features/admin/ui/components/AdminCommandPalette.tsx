@@ -40,7 +40,7 @@ const COMMANDS: Array<{
   },
   {
     label: "events and tickets",
-    detail: "event setup, ticket holders, scanners, scoring",
+    detail: "event setup, ticket holders, staff, and scanners",
     destination: { section: "events" },
     permissions: ["viewOperations"],
   },

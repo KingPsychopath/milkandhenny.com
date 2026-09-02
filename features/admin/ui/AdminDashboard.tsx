@@ -47,11 +47,6 @@ const ReportsPanel = lazy(() =>
 const EventsPanel = lazy(() =>
   import("./components/EventsPanel").then((module) => ({ default: module.EventsPanel })),
 );
-const EventScoringPanel = lazy(() =>
-  import("./components/EventScoringPanel").then((module) => ({
-    default: module.EventScoringPanel,
-  })),
-);
 const PitchesPanel = lazy(() =>
   import("./components/PitchesPanel").then((module) => ({ default: module.PitchesPanel })),
 );
@@ -175,7 +170,7 @@ type SessionRevokeResponse = {
   revoked?: Array<{ role?: string; tokenVersion?: number }>;
 };
 
-type EventWorkspace = "events" | "scoring" | "pitches";
+type EventWorkspace = "events" | "pitches";
 
 export function AdminDashboard({
   view,
@@ -240,7 +235,6 @@ export function AdminDashboard({
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [eventWorkspace, setEventWorkspace] = useState<EventWorkspace>("events");
-  const [selectedEventSlug, setSelectedEventSlug] = useState(targetEvent);
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
   const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
   const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
@@ -309,7 +303,6 @@ export function AdminDashboard({
 
   useEffect(() => {
     if (targetEvent) {
-      setSelectedEventSlug(targetEvent);
       setEventWorkspace("events");
     }
   }, [targetEvent]);
@@ -428,10 +421,6 @@ export function AdminDashboard({
     setEventWorkspace(workspace);
   };
 
-  const handleSelectedEventChange = useCallback((eventSlug?: string) => {
-    setSelectedEventSlug(eventSlug);
-  }, []);
-
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
     if (item.unread) {
       await authFetch("/api/admin/operations/inbox", {
@@ -510,7 +499,6 @@ export function AdminDashboard({
 
   const availableEventWorkspaces: Array<{ id: EventWorkspace; label: string }> = [
     ...(permissions.viewOperations ? [{ id: "events" as const, label: "tickets" }] : []),
-    ...(permissions.manageScoring ? [{ id: "scoring" as const, label: "scoring" }] : []),
     ...(permissions.manageContent ? [{ id: "pitches" as const, label: "pitches" }] : []),
   ];
   const activeEventWorkspace = availableEventWorkspaces.some(
@@ -682,19 +670,7 @@ export function AdminDashboard({
                   ensureStepUpToken={ensureStepUpTokenResult}
                   withStepUpHeaders={withStepUpHeaders}
                   initialEventSlug={targetEvent}
-                  onSelectedEventChange={handleSelectedEventChange}
                   permissions={permissions}
-                />
-              ) : null}
-              {activeEventWorkspace === "scoring" && permissions.manageScoring ? (
-                <EventScoringPanel
-                  authFetch={authFetch}
-                  onError={setErrorMessage}
-                  onStatus={setStatusMessage}
-                  ensureStepUpToken={ensureStepUpTokenResult}
-                  withStepUpHeaders={withStepUpHeaders}
-                  initialEventSlug={selectedEventSlug}
-                  onEventChange={setSelectedEventSlug}
                 />
               ) : null}
               {activeEventWorkspace === "pitches" && permissions.manageContent ? (
