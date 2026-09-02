@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { CameraFeed } from "./CameraFeed";
+import { ScannerHeader, ScannerMatches, ScannerResult, ScannerSearch } from "./ScannerChrome";
 import { checkpointScanFn, checkpointUndoFn } from "../scanner.functions";
 import type { CheckpointDirectoryTicket } from "../scanner.functions";
+import { searchDoorTickets } from "../door-search";
 import type {
   CheckpointGroupView,
   CheckpointRecord,
@@ -40,20 +42,6 @@ type Verdict =
   | { kind: "not-included"; ticket: CheckpointTicketView }
   | { kind: "rejected"; title: string; detail: string };
 
-function verdictStyle(kind: Verdict["kind"]): string {
-  switch (kind) {
-    case "ok":
-      return "bg-[var(--things-green)] text-black";
-    case "spent":
-    case "not-included":
-      return "bg-[var(--things-amber)] text-black";
-    case "rejected":
-      return "bg-[var(--things-country-outside)] text-white";
-    default:
-      return "";
-  }
-}
-
 export function CheckpointScanner({
   token,
   eventSlug,
@@ -77,22 +65,13 @@ export function CheckpointScanner({
   const [tickets, setTickets] = useState(initialTickets);
   const [busy, setBusy] = useState(false);
   const [manualId, setManualId] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
   /** How many the next "give" hands out — the scanner's +/- control. */
   const [giveCount, setGiveCount] = useState(1);
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
 
   /** Dead phone or unreadable code: find them by name or reference instead. */
-  const matches = useMemo(() => {
-    const term = manualId.trim().toLowerCase();
-    if (term.length < 2) return [];
-    return tickets
-      .filter(
-        (ticket) =>
-          ticket.holderName.toLowerCase().includes(term) ||
-          ticket.id.toLowerCase().startsWith(term),
-      )
-      .slice(0, 6);
-  }, [manualId, tickets]);
+  const matches = useMemo(() => searchDoorTickets(tickets, manualId, 6), [manualId, tickets]);
 
   /** Keep the search list's used counts honest after scans and undos. */
   const applyUsed = useCallback((ticketId: string, used: number) => {
@@ -258,65 +237,97 @@ export function CheckpointScanner({
 
   return (
     <div className="min-h-dvh bg-background">
-      <main id="main" className="mx-auto max-w-md px-5 pb-16 pt-8">
-        <header className="flex items-baseline justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate font-mono text-sm text-foreground">{checkpoint.name}</h1>
-            <p className="truncate font-mono text-micro theme-muted">
-              {eventTitle} · {label}
-            </p>
-          </div>
-          <p className="shrink-0 font-mono text-micro theme-muted">{summary.unitsUsed} given out</p>
-        </header>
-
-        {/* Verdict above the camera — it is what the scanner actually reads.
-            Idle keeps almost no height until there is a verdict to show. */}
-        <div
-          aria-live="assertive"
-          className={
-            verdict.kind === "idle"
-              ? "mt-3 text-center"
-              : `mt-4 min-h-28 rounded-2xl px-4 py-4 text-center ${verdictStyle(verdict.kind)}`
+      <main id="main" className="mx-auto max-w-lg px-5 pb-16 pt-6 sm:px-6 sm:pt-10">
+        <ScannerHeader
+          mode="checkpoint"
+          title={checkpoint.name}
+          eventTitle={eventTitle}
+          helperLabel={label}
+          status={
+            <>
+              <span className="block text-lg leading-none">{summary.unitsUsed}</span>
+              <span className="mt-1 block text-micro theme-muted">given out</span>
+            </>
           }
+        />
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (matches.length === 1) {
+              void scan(matches[0].id, 1);
+              setManualId("");
+            } else if (manualId.trim().length === 16) {
+              void scan(manualId.trim(), 1);
+              setManualId("");
+            }
+          }}
+          className="mt-6"
         >
-          {verdict.kind === "idle" ? (
-            <p className="font-mono text-micro theme-faint">ready — point at a code</p>
-          ) : verdict.kind === "rejected" ? (
-            <>
-              <p className="font-mono text-lg font-bold">{verdict.title}</p>
-              <p className="mt-1 font-mono text-xs opacity-90">{verdict.detail}</p>
-            </>
-          ) : (
-            <>
-              <p className="font-serif text-2xl font-bold leading-tight">
-                {verdict.ticket.holderName}
-              </p>
-              <p className="mt-1 font-mono text-xs opacity-90">
-                {verdict.kind === "ok" &&
-                  (verdict.consumed > 0
-                    ? `✓ ${verdict.consumed} ${checkpoint.name.toLowerCase()} — ${remaining} of ${verdict.ticket.allowance} left`
-                    : `${remaining} of ${verdict.ticket.allowance} left`)}
-                {verdict.kind === "spent" &&
-                  `All ${verdict.ticket.allowance} already used${
-                    verdict.lastUsedAt
-                      ? ` · last at ${new Date(verdict.lastUsedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
-                      : ""
-                  }`}
-                {verdict.kind === "not-included" &&
-                  `${verdict.ticket.ticketTypeName} doesn't include this`}
-              </p>
-              {(verdict.kind === "ok" || verdict.kind === "spent") &&
-                verdict.group &&
-                verdict.group.otherTickets > 0 && (
-                  <p className="mt-1 font-mono text-xs font-bold">
-                    {verdict.group.othersLeft > 0
-                      ? `their group still has ${verdict.group.othersLeft} left on ${verdict.group.otherTickets === 1 ? "another ticket" : "other tickets"} — scan those`
-                      : "their group's other tickets are all used too"}
-                  </p>
-                )}
-            </>
-          )}
-        </div>
+          <ScannerSearch
+            id="checkpoint-search"
+            value={manualId}
+            onChange={setManualId}
+            cameraOpen={cameraOpen}
+            onCameraToggle={() => setCameraOpen((current) => !current)}
+          />
+        </form>
+
+        {cameraOpen && (
+          <div id="checkpoint-search-camera" className="mt-4">
+            <CameraFeed onCode={(raw) => void scan(raw, 1)} paused={busy} />
+          </div>
+        )}
+
+        {verdict.kind !== "idle" &&
+          (() => {
+            if (verdict.kind === "rejected") {
+              return (
+                <ScannerResult
+                  tone="danger"
+                  label="nothing given out"
+                  title={verdict.title}
+                  detail={verdict.detail}
+                />
+              );
+            }
+            const detail =
+              verdict.kind === "ok"
+                ? verdict.consumed > 0
+                  ? `${verdict.consumed} given · ${remaining} of ${verdict.ticket.allowance} left`
+                  : `${remaining} of ${verdict.ticket.allowance} left`
+                : verdict.kind === "spent"
+                  ? `All ${verdict.ticket.allowance} already used${
+                      verdict.lastUsedAt
+                        ? ` · last at ${new Date(verdict.lastUsedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`
+                        : ""
+                    }`
+                  : `${verdict.ticket.ticketTypeName} doesn't include this`;
+            return (
+              <ScannerResult
+                tone={verdict.kind === "ok" ? "positive" : "attention"}
+                label={
+                  verdict.kind === "ok"
+                    ? "allowance recorded"
+                    : verdict.kind === "spent"
+                      ? "already used"
+                      : "not included"
+                }
+                title={verdict.ticket.holderName}
+                detail={detail}
+              >
+                {(verdict.kind === "ok" || verdict.kind === "spent") &&
+                  verdict.group &&
+                  verdict.group.otherTickets > 0 && (
+                    <p className="mt-3 border-t border-current/20 pt-3 font-mono text-xs font-medium text-foreground">
+                      {verdict.group.othersLeft > 0
+                        ? `${verdict.group.othersLeft} still available on ${verdict.group.otherTickets === 1 ? "another ticket" : "their other tickets"}`
+                        : "No allowance left on their other tickets"}
+                    </p>
+                  )}
+              </ScannerResult>
+            );
+          })()}
 
         {/* Follow-up for the ticket on screen: how many more, and undo. */}
         {activeTicket &&
@@ -376,76 +387,46 @@ export function CheckpointScanner({
             );
           })()}
 
-        <div className="mt-4">
-          <CameraFeed onCode={(raw) => void scan(raw, 1)} paused={busy} />
-        </div>
-
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (matches.length === 1) {
-              void scan(matches[0].id, 1);
-              setManualId("");
-            } else if (manualId.trim().length === 16) {
-              void scan(manualId.trim(), 1);
-              setManualId("");
-            }
-          }}
-          className="mt-5"
-        >
-          <label htmlFor="checkpoint-manual" className="sr-only">
-            Name or ticket reference
-          </label>
-          <input
-            id="checkpoint-manual"
-            value={manualId}
-            onChange={(event) => setManualId(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="can't scan? type their name or ticket ref"
-            className="min-h-12 w-full rounded-lg border theme-border-strong bg-transparent px-3 font-mono text-base text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-          />
-        </form>
-
         {matches.length > 0 && (
-          <ul className="mt-2 divide-y theme-border">
-            {matches.map((ticket) => {
-              const left = Math.max(0, ticket.allowance - ticket.used);
-              return (
-                <li key={ticket.id} className="flex items-center justify-between gap-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm text-foreground">
-                      {ticket.holderName}
-                    </p>
-                    <p className="font-mono text-micro theme-muted">
-                      {ticket.ticketTypeName} ·{" "}
-                      {ticket.allowance === 0
-                        ? "not included"
-                        : `${left} of ${ticket.allowance} left`}
-                    </p>
-                  </div>
-                  {/* A spent row stays tappable: the scan verdict is what says
-                      whether the rest of their order still has units. */}
-                  <button
-                    type="button"
-                    disabled={busy || ticket.allowance === 0}
-                    onClick={() => {
-                      setManualId("");
-                      void scan(ticket.id, 1, true);
-                    }}
-                    className="shrink-0 min-h-10 rounded-lg border theme-border-strong px-3 font-mono text-micro text-foreground disabled:opacity-40"
-                  >
-                    {ticket.allowance === 0 ? "n/a" : left === 0 ? "check" : "give 1"}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <section className="mt-4" aria-label="Matching guests">
+            <ScannerMatches>
+              {matches.map((ticket) => {
+                const left = Math.max(0, ticket.allowance - ticket.used);
+                return (
+                  <li key={ticket.id} className="border-b theme-border last:border-b-0">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setManualId("");
+                        void scan(ticket.id, 1, true);
+                      }}
+                      className="flex min-h-16 w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-[var(--stone-100)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--prose-hashtag)] disabled:opacity-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-sm text-foreground">
+                          {ticket.holderName}
+                        </span>
+                        <span className="block font-mono text-micro theme-muted">
+                          {ticket.ticketTypeName} ·{" "}
+                          {ticket.allowance === 0
+                            ? "not included"
+                            : `${left} of ${ticket.allowance} left`}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-xs text-foreground">
+                        {ticket.allowance === 0 ? "check →" : left === 0 ? "check →" : "give 1 →"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ScannerMatches>
+          </section>
         )}
 
-        <p className="mt-6 text-center font-mono text-micro theme-faint">
-          Scanning checks each ticket's {checkpoint.name.toLowerCase()} allowance — it doesn't
-          affect entry at the door.
+        <p className="mt-8 border-t theme-border pt-4 text-center font-mono text-micro theme-faint">
+          This station records {checkpoint.name.toLowerCase()} only. It never checks a guest in.
         </p>
       </main>
     </div>

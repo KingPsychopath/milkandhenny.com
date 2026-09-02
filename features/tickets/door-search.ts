@@ -1,4 +1,8 @@
-import type { DoorTicketView } from "./types";
+type SearchableTicket = {
+  id: string;
+  holderName: string;
+  redeemedAt?: string;
+};
 
 function normalise(value: string): string {
   return value
@@ -45,7 +49,7 @@ function oneEditAway(left: string, right: string): boolean {
   return edits + Number(leftIndex < left.length || rightIndex < right.length) <= 1;
 }
 
-function matchRank(ticket: DoorTicketView, rawQuery: string): number | null {
+function matchRank(ticket: SearchableTicket, rawQuery: string): number | null {
   const query = normalise(rawQuery);
   if (!query) return null;
   const name = normalise(ticket.holderName);
@@ -66,7 +70,7 @@ function matchRank(ticket: DoorTicketView, rawQuery: string): number | null {
   return null;
 }
 
-export function searchDoorTickets<T extends DoorTicketView>(
+export function searchDoorTickets<T extends SearchableTicket>(
   tickets: readonly T[],
   query: string,
   limit = 8,

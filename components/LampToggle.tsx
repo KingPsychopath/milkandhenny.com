@@ -3,7 +3,7 @@ import { useLocation } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
 
 /** Routes where the lamp should be fully hidden (own dark styling or standalone pages) */
-const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/t"] as const;
+const HIDDEN_ROUTES = ["/party", "/icebreaker", "/best-dressed", "/t", "/scan"] as const;
 
 /** Check if we're on a single photo page: /pics/{album}/{photo} */
 function isSinglePhotoPage(path: string): boolean {

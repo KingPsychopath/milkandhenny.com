@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CameraFeed } from "./CameraFeed";
+import { ScannerHeader, ScannerMatches, ScannerResult, ScannerSearch } from "./ScannerChrome";
 import { getDoorDataFn, redeemTicketFn } from "../tickets.functions";
 import { useVisibilityReconciler } from "@/hooks/useVisibilityReconciler";
 import {
@@ -295,21 +296,6 @@ function GuestRequests({
       )}
     </div>
   );
-}
-
-function verdictStyle(kind: Verdict["kind"]): string {
-  switch (kind) {
-    case "admitted":
-      return "bg-[var(--things-green)] text-black";
-    case "queued":
-      return "bg-[var(--things-amber)] text-black";
-    case "already":
-      return "bg-[var(--things-amber)] text-black";
-    case "rejected":
-      return "bg-[var(--things-country-outside)] text-white";
-    default:
-      return "";
-  }
 }
 
 export function DoorScanner({
@@ -684,18 +670,30 @@ export function DoorScanner({
 
   return (
     <div className="min-h-dvh bg-background">
-      <main id="main" className="mx-auto max-w-md px-5 pb-16 pt-8">
-        <header className="flex items-baseline justify-between gap-3">
-          <h1 className="font-mono text-sm text-foreground">{eventTitle}</h1>
-          <button
-            type="button"
-            onClick={() => setShowOccupancy((current) => !current)}
-            aria-expanded={showOccupancy}
-            className="inline-flex min-h-11 items-center font-mono text-micro theme-muted underline decoration-dotted underline-offset-4 hover:text-foreground transition-colors"
-          >
-            {summary.redeemed}/{summary.total} in {showOccupancy ? "▴" : "▾"}
-          </button>
-        </header>
+      <main id="main" className="mx-auto max-w-lg px-5 pb-16 pt-6 sm:px-6 sm:pt-10">
+        <ScannerHeader
+          mode="entry"
+          title="Guest entry"
+          eventTitle={eventTitle}
+          status={
+            <>
+              <span className="block text-lg leading-none">
+                {summary.redeemed}/{summary.total}
+              </span>
+              <span className="mt-1 block text-micro theme-muted">inside</span>
+            </>
+          }
+          action={
+            <button
+              type="button"
+              onClick={() => setShowOccupancy((current) => !current)}
+              aria-expanded={showOccupancy}
+              className="inline-flex min-h-11 items-center rounded-full border theme-border px-3 font-mono text-micro text-foreground transition-opacity hover:opacity-70"
+            >
+              guest list {showOccupancy ? "↑" : "↓"}
+            </button>
+          }
+        />
 
         {showOccupancy && (
           <section aria-label="Who is inside" className="mt-3 rounded-2xl border theme-border p-4">
@@ -799,47 +797,6 @@ export function DoorScanner({
           </p>
         )}
 
-        {scannerToken && (permissions.addGuests || permissions.requestGuests) && (
-          <GuestRequests
-            token={scannerToken}
-            permissions={permissions}
-            requests={guestRequests}
-            onRequestsChanged={setGuestRequests}
-            onGuestAdded={() => {
-              lastRefreshRef.current = 0;
-              void refresh();
-            }}
-          />
-        )}
-
-        {/* Verdict sits above the camera: it is what staff actually look at.
-            Idle keeps almost no height — the box only earns its size once
-            there is a verdict worth reading. */}
-        <div
-          aria-live="assertive"
-          className={
-            verdict.kind === "idle"
-              ? "mt-3 text-center"
-              : `mt-4 min-h-24 rounded-2xl px-4 py-4 text-center ${verdictStyle(verdict.kind)}`
-          }
-        >
-          {verdict.kind === "idle" ? (
-            <p className="font-mono text-micro theme-faint">ready — point at a code</p>
-          ) : verdict.kind === "rejected" ? (
-            <>
-              <p className="font-mono text-lg font-bold">{verdict.title}</p>
-              <p className="mt-1 font-mono text-xs opacity-90">{verdict.detail}</p>
-            </>
-          ) : (
-            <>
-              <p className="font-serif text-2xl font-bold leading-tight">{verdict.name}</p>
-              <p className="mt-1 font-mono text-xs opacity-90">
-                {verdict.kind === "admitted" ? `in — ${verdict.detail}` : verdict.detail}
-              </p>
-            </>
-          )}
-        </div>
-
         {pendingGroup && (
           <section
             aria-labelledby="door-group-title"
@@ -917,79 +874,108 @@ export function DoorScanner({
           </section>
         )}
 
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const value = query.trim();
-            if (parseTicketQrPayload(value) || isValidTicketId(value.toUpperCase())) {
-              void handleScan(value);
-              setQuery("");
-            } else if (matches.length === 1) {
-              void handleScan(matches[0].id);
-            }
-          }}
-          className="mt-5"
-        >
-          <label htmlFor="door-search" className="font-mono text-micro theme-muted tracking-wide">
-            scan or find a guest
-          </label>
-          <div className="relative mt-2">
-            <input
-              id="door-search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="name or ticket reference"
-              className="min-h-16 w-full rounded-xl border theme-border-strong bg-transparent py-3 pl-4 pr-28 font-mono text-base text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-            />
-            <button
-              type="button"
-              onClick={() => setCameraOpen((current) => !current)}
-              aria-expanded={cameraOpen}
-              className="absolute inset-y-2 right-2 min-w-24 rounded-lg bg-foreground px-3 font-mono text-xs text-background"
+        {!pendingGroup && (
+          <>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const value = query.trim();
+                if (parseTicketQrPayload(value) || isValidTicketId(value.toUpperCase())) {
+                  void handleScan(value);
+                  setQuery("");
+                } else if (matches.length === 1) {
+                  void handleScan(matches[0].id);
+                  setQuery("");
+                }
+              }}
+              className="mt-6"
             >
-              {cameraOpen ? "close" : "scan QR"}
-            </button>
-          </div>
-        </form>
+              <ScannerSearch
+                id="door-search"
+                value={query}
+                onChange={setQuery}
+                cameraOpen={cameraOpen}
+                onCameraToggle={() => setCameraOpen((current) => !current)}
+              />
+            </form>
 
-        {cameraOpen && (
-          <div className="mt-4">
-            <CameraFeed
-              onCode={(raw) => void handleScan(raw)}
-              paused={busy || bulkBusy || pendingGroup !== null}
-            />
-          </div>
+            {cameraOpen && (
+              <div id="door-search-camera" className="mt-4">
+                <CameraFeed onCode={(raw) => void handleScan(raw)} paused={busy || bulkBusy} />
+              </div>
+            )}
+
+            {verdict.kind !== "idle" &&
+              (verdict.kind === "rejected" ? (
+                <ScannerResult
+                  tone="danger"
+                  label="could not check in"
+                  title={verdict.title}
+                  detail={verdict.detail}
+                />
+              ) : (
+                <ScannerResult
+                  tone={verdict.kind === "admitted" ? "positive" : "attention"}
+                  label={
+                    verdict.kind === "admitted"
+                      ? "checked in"
+                      : verdict.kind === "queued"
+                        ? "saved offline"
+                        : "already checked in"
+                  }
+                  title={verdict.name}
+                  detail={verdict.detail}
+                />
+              ))}
+
+            {matches.length > 0 && (
+              <section className="mt-4" aria-label="Matching guests">
+                <ScannerMatches>
+                  {matches.map((ticket) => (
+                    <li key={ticket.id} className="border-b theme-border last:border-b-0">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setQuery("");
+                          void handleScan(ticket.id);
+                        }}
+                        className="flex min-h-16 w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-[var(--stone-100)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--prose-hashtag)] disabled:opacity-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-mono text-sm text-foreground">
+                            {ticket.holderName}
+                            {ticket.isPlusOne && <span className="theme-muted"> +1</span>}
+                          </span>
+                          <span className="block font-mono text-micro theme-muted">
+                            {ticket.ticketTypeName}
+                            {ticket.redeemedAt ? " · already inside" : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-xs text-foreground">
+                          {ticket.redeemedAt ? "check →" : "let in →"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ScannerMatches>
+              </section>
+            )}
+          </>
         )}
 
-        <section className="mt-3" aria-label="Matching guests">
-          <ul className="mt-2 divide-y theme-border">
-            {matches.map((ticket) => (
-              <li key={ticket.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate font-mono text-sm text-foreground">
-                    {ticket.holderName}
-                    {ticket.isPlusOne && <span className="theme-muted"> +1</span>}
-                  </p>
-                  <p className="font-mono text-micro theme-muted">
-                    {ticket.ticketTypeName}
-                    {ticket.redeemedAt ? " · already in" : ""}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void handleScan(ticket.id)}
-                  className="shrink-0 min-h-12 rounded-lg border theme-border-strong px-4 font-mono text-xs text-foreground disabled:opacity-50"
-                >
-                  let in
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {scannerToken && (permissions.addGuests || permissions.requestGuests) && (
+          <GuestRequests
+            token={scannerToken}
+            permissions={permissions}
+            requests={guestRequests}
+            onRequestsChanged={setGuestRequests}
+            onGuestAdded={() => {
+              lastRefreshRef.current = 0;
+              void refresh();
+            }}
+          />
+        )}
       </main>
     </div>
   );
