@@ -28,6 +28,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),
+      clsx: fileURLToPath(new URL("./lib/shared/clsx-compat.ts", import.meta.url)),
+      "tailwind-merge": "cn",
     },
   },
   plugins: [

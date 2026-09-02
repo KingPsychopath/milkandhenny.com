@@ -56,6 +56,7 @@
     "@tanstack/react-router": "^1.170.27",
     "@tanstack/react-start": "^1.168.44",
     "@upstash/redis": "^1.38.2",
+    "cn": "^0.2.2",
     "drawesome": "^0.1.1",
     "effect": "4.0.0-rc.112",
     "exif-reader": "^2.0.3",
