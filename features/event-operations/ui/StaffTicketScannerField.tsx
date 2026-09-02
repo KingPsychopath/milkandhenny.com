@@ -30,45 +30,37 @@ export function StaffTicketScannerField({
         <label htmlFor={id} className="sr-only">
           Ticket code or QR
         </label>
-        <div className="flex min-h-12 items-stretch border theme-border focus-within:border-foreground">
+        <div className="relative">
           <input
             id={id}
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            placeholder="ticket code or QR"
+            placeholder="ticket reference"
             autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent px-3 font-mono text-xs outline-none"
+            spellCheck={false}
+            className="min-h-16 w-full rounded-2xl border theme-border-strong bg-transparent py-3 pl-4 pr-28 font-mono text-base outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
           />
-          <button
-            type="submit"
-            disabled={busy}
-            className="border-l theme-border px-3 font-mono text-xs disabled:opacity-50"
-          >
-            {actionLabel}
-          </button>
           <button
             type="button"
             aria-label={cameraOpen ? "Close ticket camera" : "Scan ticket with camera"}
-            title={cameraOpen ? "Close camera" : "Scan ticket QR"}
             onClick={() => onCameraOpenChange(!cameraOpen)}
-            className="grid min-w-11 place-items-center border-l theme-border hover:opacity-70"
+            aria-expanded={cameraOpen}
+            aria-controls={`${id}-camera`}
+            className="absolute inset-y-2 right-2 min-w-24 rounded-xl bg-foreground px-3 font-mono text-xs text-background transition-opacity hover:opacity-80"
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M4 7.5h3l1.2-2h7.6l1.2 2h3v11H4z" />
-              <circle cx="12" cy="13" r="3.25" />
-            </svg>
+            {cameraOpen ? "close QR" : "scan QR"}
           </button>
         </div>
+        <button
+          type="submit"
+          disabled={busy || !value.trim()}
+          className="mh-action mh-action--primary mt-3 w-full disabled:opacity-50"
+        >
+          {busy ? "working…" : actionLabel}
+        </button>
       </form>
       {cameraOpen ? (
-        <div className="mt-3 max-w-sm">
+        <div id={`${id}-camera`} className="mt-4 max-w-sm">
           <CameraFeed paused={busy} onCode={(raw) => onSubmit(raw)} />
         </div>
       ) : null}

@@ -3,21 +3,21 @@ import { useEffect, useMemo, useState } from "react";
 import { StatusNotice } from "@/components/StatusNotice";
 import { AppSelect } from "@/components/AppSelect";
 import {
-  getStaffScoringPageFn,
+  getStaffOperationsPageFn,
   moveStaffTeamParticipantFn,
   shuffleStaffTeamsFn,
-} from "../staff-scoring.functions";
+} from "../staff-operations.functions";
 import { TeamBadge } from "./TeamBadge";
-import type { PageData } from "./useStaffScoringController";
+import type { StaffOperationsData } from "./useStaffOperationsController";
 
-type TeamState = Pick<PageData, "teams" | "teamRoster">;
+type TeamState = Pick<StaffOperationsData, "teams" | "teamRoster">;
 
-function initialTeamCount(teams: PageData["teams"]): 2 | 3 | 4 {
+function initialTeamCount(teams: StaffOperationsData["teams"]): 2 | 3 | 4 {
   const count = teams.filter((team) => team.status === "active").length;
   return count === 3 || count === 4 ? count : 2;
 }
 
-export function StaffTeamsPanel({ data, token }: { data: PageData; token: string }) {
+export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; token: string }) {
   const [state, setState] = useState<TeamState>({ teams: data.teams, teamRoster: data.teamRoster });
   const [teamCount, setTeamCount] = useState<2 | 3 | 4>(() => initialTeamCount(data.teams));
   const [selectedParticipantId, setSelectedParticipantId] = useState("");
@@ -34,7 +34,7 @@ export function StaffTeamsPanel({ data, token }: { data: PageData; token: string
 
   useEffect(() => {
     let current = true;
-    void getStaffScoringPageFn({ data: { eventSlug: data.eventSlug, token } })
+    void getStaffOperationsPageFn({ data: { eventSlug: data.eventSlug, token } })
       .then((page) => {
         if (!current || !page.found) return;
         setState({ teams: page.teams, teamRoster: page.teamRoster });

@@ -1,4 +1,4 @@
-import type { PageData, StaffOperation } from "./useStaffScoringController";
+import type { StaffOperation, StaffOperationsData } from "./useStaffOperationsController";
 
 type OperationChoice = { id: StaffOperation; label: string };
 
@@ -7,7 +7,7 @@ export function StaffOperationNav({
   value,
   onChange,
 }: {
-  data: PageData;
+  data: StaffOperationsData;
   value: StaffOperation;
   onChange: (operation: StaffOperation) => void;
 }) {
@@ -16,8 +16,9 @@ export function StaffOperationNav({
     ...(data.canScanCheckpoints && data.checkpoints.length > 0
       ? [{ id: "checkpoint" as const, label: "checkpoints" }]
       : []),
-    ...(data.canRun && data.canAward ? [{ id: "run" as const, label: "game results" }] : []),
-    ...(data.canAward ? [{ id: "award" as const, label: "give points" }] : []),
+    ...(data.canRequestGuests || data.canAddGuests || data.canApproveGuests
+      ? [{ id: "guests" as const, label: "guests" }]
+      : []),
     ...(data.canManageTeams ? [{ id: "teams" as const, label: "teams" }] : []),
     ...(data.canManageGuestPhotos ? [{ id: "photos" as const, label: "photos" }] : []),
   ];

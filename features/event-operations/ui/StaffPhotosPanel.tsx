@@ -1,8 +1,8 @@
 import { useState } from "react";
 
 import { StatusNotice } from "@/components/StatusNotice";
-import { setStaffGuestPhotosFn } from "../staff-scoring.functions";
-import type { PageData } from "./useStaffScoringController";
+import { setStaffGuestPhotosFn } from "../staff-operations.functions";
+import type { StaffOperationsData } from "./useStaffOperationsController";
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString("en-GB", {
@@ -13,7 +13,7 @@ function dateTime(value: string) {
   });
 }
 
-export function StaffPhotosPanel({ data, token }: { data: PageData; token: string }) {
+export function StaffPhotosPanel({ data, token }: { data: StaffOperationsData; token: string }) {
   const [drop, setDrop] = useState(data.mediaDrop);
   const [schedule, setSchedule] = useState(data.mediaSchedule);
   const [busy, setBusy] = useState(false);
