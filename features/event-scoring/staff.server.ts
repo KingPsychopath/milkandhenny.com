@@ -361,7 +361,7 @@ function staffInvitationEmail(input: {
       `Accept: ${actionUrl}`,
       `Expires: ${input.expiresAt.toISOString()}`,
       "",
-      "This private link works once and attaches the role to this verified email.",
+      "This private link works once. It verifies this email, creates a Milk & Henny account if needed, signs the recipient in, and attaches the role.",
       "",
       "— milk & henny",
     ].join("\n"),
@@ -371,7 +371,7 @@ function staffInvitationEmail(input: {
       title: "Your event role",
       contentHtml: `<p style="margin:0">You have been invited as <strong>${escapeEmailHtml(input.label)}</strong> for <strong>${escapeEmailHtml(input.eventSlug)}</strong>.</p>`,
       action: { label: "review staff access", url: actionUrl },
-      note: `This private link expires ${escapeEmailHtml(input.expiresAt.toISOString())} and works once.`,
+      note: `This private link expires ${escapeEmailHtml(input.expiresAt.toISOString())} and works once. It creates your account if you do not already have one.`,
     }),
   };
 }

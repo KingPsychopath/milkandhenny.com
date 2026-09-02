@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { query, transaction } from "@/lib/platform/postgres.server";
+import { recordScoreInTransaction } from "@/features/event-scoring/store.server";
 import { pitchSlideContentCount } from "@/features/things/pitches/document-content";
 import { parsePitchDocument } from "@/features/things/pitches/validation";
 import { ACHIEVEMENTS, achievementDefinition } from "./catalog";
@@ -285,13 +286,13 @@ async function personFacts(client: PoolClient, personId: string): Promise<Progre
       where person_id = $1 and checked_in_at is not null and status = 'active'`,
     [personId],
   );
-  const pitches = await client.query<{ id: string; published_document: unknown }>(
-    `select id,published_document from pitch_decks
-      where owner_person_id = $1 and lifecycle = 'active' and published_document is not null`,
+  const pitches = await client.query<{ id: string; draft_document: unknown }>(
+    `select id,draft_document from pitch_decks
+      where owner_person_id = $1 and lifecycle = 'active'`,
     [personId],
   );
   const qualifyingPitch = pitches.rows.find((row) => {
-    const parsed = parsePitchDocument(row.published_document, 6);
+    const parsed = parsePitchDocument(row.draft_document, 6);
     const slides = parsed.ok ? parsed.document.slides.filter((slide) => !slide.deletedAt) : [];
     return slides.length === 6 && slides.every((slide) => pitchSlideContentCount(slide) > 0);
   });
@@ -301,7 +302,7 @@ async function personFacts(client: PoolClient, personId: string): Promise<Progre
       current: qualifyingPitch ? 1 : 0,
       target: 1,
       sourceType: "pitch",
-      sourceId: qualifyingPitch?.id ?? "published-pitch",
+      sourceId: qualifyingPitch?.id ?? "saved-pitch",
     },
     {
       key: "regular-behaviour",
@@ -311,6 +312,55 @@ async function personFacts(client: PoolClient, personId: string): Promise<Progre
       sourceId: personId,
     },
   ];
+}
+
+async function rewardSixAppeal(
+  client: PoolClient,
+  personId: string,
+  participantIds: readonly string[],
+) {
+  const uniqueParticipantIds = [...new Set(participantIds)].slice(0, 20);
+  if (uniqueParticipantIds.length === 0) return;
+  const unlock = await client.query<{ id: string; source_transaction_id: string | null }>(
+    `select id,source_transaction_id from achievement_unlocks
+      where achievement_key = 'six-appeal' and person_id = $1 and participant_id is null
+      for update`,
+    [personId],
+  );
+  if (!unlock.rows[0] || unlock.rows[0].source_transaction_id) return;
+  const participants = await client.query<{ id: string; event_slug: string }>(
+    `select participant.id,participant.event_slug
+       from event_participants participant
+       join event_scoring_settings settings on settings.event_slug = participant.event_slug
+      where participant.id = any($1::text[])
+        and participant.person_id = $2
+        and participant.status = 'active'
+        and settings.state = 'live'
+      order by participant.created_at,participant.id`,
+    [uniqueParticipantIds, personId],
+  );
+  // More than one live event is deliberately ambiguous. The reward waits until
+  // the attendee has one active event ticket rather than guessing incorrectly.
+  if (participants.rows.length !== 1) return;
+  const participant = participants.rows[0];
+  const points = achievementDefinition("six-appeal")?.rewardPoints ?? 5;
+  const scored = await recordScoreInTransaction(client, {
+    eventSlug: participant.event_slug,
+    sourceType: "manual",
+    sourceId: `achievement:${unlock.rows[0].id}`,
+    idempotencyKey: `achievement:six-appeal:${unlock.rows[0].id}`,
+    reasonCode: "completion",
+    note: "Six Appeal achievement",
+    actorType: "system",
+    actorId: "achievements",
+    metadata: { achievementKey: "six-appeal", displayLabel: "Six Appeal" },
+    postings: [{ participantId: participant.id, points }],
+  });
+  if (!scored.ok) return;
+  await client.query(`update achievement_unlocks set source_transaction_id = $2 where id = $1`, [
+    unlock.rows[0].id,
+    scored.value.id,
+  ]);
 }
 
 async function refreshParticipant(client: PoolClient, participantId: string) {
@@ -423,11 +473,15 @@ export async function achievementCabinetForPerson(
   });
 }
 
-export async function refreshPersonAchievements(personId: string): Promise<void> {
+export async function refreshPersonAchievements(
+  personId: string,
+  options: { sixAppealParticipantIds?: readonly string[] } = {},
+): Promise<void> {
   await transaction(async (client) => {
     for (const fact of await personFacts(client, personId)) {
       await upsertPersonFact(client, personId, fact);
     }
+    await rewardSixAppeal(client, personId, options.sixAppealParticipantIds ?? []);
   });
 }
 

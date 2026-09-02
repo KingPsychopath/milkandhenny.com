@@ -69,6 +69,15 @@ function formatAccountDateTime(value: string): string {
   }).format(date);
 }
 
+function formatCreditMoney(amountMinor: number, currency: string): string {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(amountMinor / 100);
+}
+
 function gamePath(
   game: string,
   mode: AttendeeAccount["gameHistory"][number]["mode"],
@@ -416,6 +425,52 @@ export function MyAccountPage({
           </ul>
         )}
       </section>
+
+      {account.credits.length > 0 ? (
+        <section className="mt-10" aria-labelledby="my-credits-heading">
+          <h2 id="my-credits-heading" className="font-serif text-2xl">
+            Your credits
+          </h2>
+          <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
+            Applied automatically at checkout—one credit per admission ticket, with no code to
+            remember.
+          </p>
+          <ul className="mt-4 divide-y border-y theme-border">
+            {account.credits.map((credit) => (
+              <li key={credit.grantId} className="py-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-serif text-xl">{credit.campaignName}</h3>
+                    <p className="mt-2 font-mono text-xs theme-muted">
+                      {credit.remainingUnits} ×{" "}
+                      {formatCreditMoney(credit.amountMinor, credit.currency)} available
+                      {credit.reservedUnits ? ` · ${credit.reservedUnits} in checkout` : ""}
+                      {credit.redeemedUnits ? ` · ${credit.redeemedUnits} used` : ""}
+                    </p>
+                    <p className="mt-1 font-mono text-micro theme-faint">
+                      {credit.redemptionEventTitle
+                        ? `For ${credit.redemptionEventTitle}`
+                        : "Waiting for the next eligible event"}
+                      {credit.redeemExpiresAt
+                        ? ` · use by ${formatAccountDate(credit.redeemExpiresAt)}`
+                        : ""}
+                    </p>
+                  </div>
+                  {credit.redemptionEventSlug && credit.remainingUnits > 0 ? (
+                    <Link
+                      to="/events/$slug"
+                      params={{ slug: credit.redemptionEventSlug }}
+                      className="mh-action mh-action--secondary shrink-0"
+                    >
+                      view event →
+                    </Link>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <AchievementCabinet achievements={account.achievements} />
 

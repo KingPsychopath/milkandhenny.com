@@ -40,6 +40,12 @@ export type CommunicationEmailContext = {
   event?: EventRecord;
   surveyUrl?: string;
   recipientName?: string;
+  credit?: {
+    claimUrl: string;
+    units: number;
+    amountMinor: number;
+    currency: string;
+  };
 };
 
 function replaceTokens(value: string, context: CommunicationEmailContext, origin: string): string {
@@ -82,6 +88,42 @@ function replaceTokens(value: string, context: CommunicationEmailContext, origin
     "links.contact": buildAppUrl(origin, "/contact"),
     "links.email": "mailto:hello@milkandhenny.com",
     "survey.url": context.surveyUrl ?? "",
+    "credit.claimUrl": context.credit?.claimUrl ?? "",
+    "credit.units": context.credit ? String(context.credit.units) : "",
+    "credit.ticketSummary": context.credit
+      ? `${context.credit.units} food ticket${context.credit.units === 1 ? "" : "s"}`
+      : "",
+    "credit.unitAmount": context.credit
+      ? new Intl.NumberFormat("en-GB", {
+          style: "currency",
+          currency: context.credit.currency,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format(context.credit.amountMinor / 100)
+      : "",
+    "credit.total": context.credit
+      ? new Intl.NumberFormat("en-GB", {
+          style: "currency",
+          currency: context.credit.currency,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }).format((context.credit.amountMinor * context.credit.units) / 100)
+      : "",
+    "credit.claimLabel": context.credit
+      ? context.credit.units === 1
+        ? `save my ${new Intl.NumberFormat("en-GB", {
+            style: "currency",
+            currency: context.credit.currency,
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          }).format(context.credit.amountMinor / 100)} credit`
+        : `save my ${context.credit.units} × ${new Intl.NumberFormat("en-GB", {
+            style: "currency",
+            currency: context.credit.currency,
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          }).format(context.credit.amountMinor / 100)} credits`
+      : "",
   };
   return value.replace(/\{\{([A-Za-z.]+)\}\}/g, (_, key: string) => values[key] ?? "");
 }
@@ -321,7 +363,9 @@ export function renderCommunicationMessage(input: {
   };
   const subject = replaceTokens(input.subject, context, origin);
   const body = replaceTokens(input.body, context, origin);
-  const greeting = input.recipientName ? `Hi ${input.recipientName},` : "";
+  const bodyStartsWithGreeting = /^hi\b[^\n,]*,\s*(?:\n|$)/i.test(body.trimStart());
+  const greeting =
+    input.recipientName && !bodyStartsWithGreeting ? `Hi ${input.recipientName},` : "";
   const paragraphs = richBodyHtml(body, input.trackingLinks);
   const contentHtml = [
     greeting ? `<p style="margin:0 0 14px;line-height:1.6">${escapeEmailHtml(greeting)}</p>` : "",
@@ -353,7 +397,7 @@ export function renderCommunicationMessage(input: {
   return {
     subject,
     text: [
-      input.recipientName ? `Hi ${input.recipientName},` : "",
+      greeting,
       plainTextBody(body, input.trackingLinks),
       ...(input.media?.length ? ["", "Media is included in the HTML version."] : []),
       ...(input.unsubscribeUrl ? ["", `Stop marketing emails: ${input.unsubscribeUrl}`] : []),

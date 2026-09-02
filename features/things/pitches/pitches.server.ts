@@ -197,9 +197,21 @@ export async function syncPitch(input: {
   title: string;
   document: PitchDocument;
   operations: PitchCommandOperation[];
+  achievementParticipantIds?: string[];
 }): Promise<PitchStoreResult<{ deck: OwnedPitchDeck; merged: boolean; duplicate: boolean }>> {
   const synced = await syncPitchDeck(input);
   if (!synced.ok) return synced;
+  const ownerPersonId = synced.value.deck.ownerPersonId;
+  if (ownerPersonId) {
+    await refreshPersonAchievements(ownerPersonId, {
+      sixAppealParticipantIds: input.achievementParticipantIds,
+    }).catch((error) =>
+      log.warn("pitches.achievement", "Pitch saved but achievements could not be refreshed", {
+        deckId: synced.value.deck.id,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
   return {
     ok: true,
     value: {

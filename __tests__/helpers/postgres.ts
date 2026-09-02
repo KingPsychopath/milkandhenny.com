@@ -172,6 +172,7 @@ export async function truncateAll(): Promise<void> {
   const { query } = await import("@/lib/platform/postgres.server");
   await query(
     `truncate application_scheduled_jobs, email_delivery_events, email_suppressions, email_outbox, communication_links, pitch_decks,
+              attendee_credit_claim_links, attendee_credit_grants, attendee_credit_campaigns,
               event_waitlist_inventory, event_waitlist_entries, checkout_sessions, tickets,
               ticket_types, events restart identity cascade`,
   );

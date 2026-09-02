@@ -3992,6 +3992,94 @@ const MIGRATIONS: Migration[] = [
        where slug = 'after-school-club-feedback';
     `,
   },
+  {
+    id: "0088_attendee_credits",
+    sql: `
+      create table if not exists attendee_credit_campaigns (
+        id                    uuid primary key,
+        campaign_key          text not null unique
+                                check (campaign_key ~ '^[a-z0-9][a-z0-9-]{2,100}$'),
+        name                  text not null check (char_length(name) between 1 and 160),
+        reason                text not null default '' check (char_length(reason) <= 1000),
+        source_event_slug     text references events (slug) on delete set null,
+        redemption_event_slug text references events (slug) on delete set null,
+        amount_minor          integer not null check (amount_minor > 0),
+        currency              text not null check (currency ~ '^[A-Z]{3}$'),
+        claim_expires_at      timestamptz not null,
+        redeem_expires_at     timestamptz,
+        status                text not null default 'draft'
+                                check (status in ('draft','active','paused','closed')),
+        created_at            timestamptz not null default now(),
+        updated_at            timestamptz not null default now(),
+        check (redeem_expires_at is null or redeem_expires_at > claim_expires_at)
+      );
+
+      create table if not exists attendee_credit_grants (
+        id              uuid primary key,
+        campaign_id     uuid not null references attendee_credit_campaigns (id) on delete cascade,
+        email           text not null,
+        email_hash      text not null check (char_length(email_hash) = 64),
+        display_name    text,
+        units_total     integer not null check (units_total between 1 and 100),
+        claimed_at      timestamptz,
+        revoked_at      timestamptz,
+        created_at      timestamptz not null default now(),
+        updated_at      timestamptz not null default now(),
+        unique (campaign_id, email_hash)
+      );
+
+      create index if not exists attendee_credit_grants_email_idx
+        on attendee_credit_grants (email_hash, claimed_at)
+        where revoked_at is null;
+
+      create table if not exists attendee_credit_claim_links (
+        id              uuid primary key,
+        grant_id        uuid not null references attendee_credit_grants (id) on delete cascade,
+        token_hash      text not null unique check (char_length(token_hash) = 64),
+        expires_at      timestamptz not null,
+        consumed_at     timestamptz,
+        revoked_at      timestamptz,
+        created_at      timestamptz not null default now()
+      );
+
+      create index if not exists attendee_credit_claim_links_grant_idx
+        on attendee_credit_claim_links (grant_id, created_at desc);
+
+      alter table communication_messages
+        add column if not exists credit_campaign_id uuid references attendee_credit_campaigns (id) on delete set null;
+    `,
+  },
+  {
+    id: "0089_attendee_credit_redemptions",
+    sql: `
+      create table if not exists attendee_credit_redemptions (
+        id                  uuid primary key,
+        grant_id            uuid not null references attendee_credit_grants (id) on delete restrict,
+        checkout_reference  text not null,
+        checkout_session_id text,
+        order_id            text,
+        event_slug          text not null references events (slug) on delete restrict,
+        units               integer not null check (units > 0),
+        unit_amount_minor   integer not null check (unit_amount_minor > 0),
+        status              text not null check (status in ('reserved','redeemed','released')),
+        expires_at          timestamptz not null,
+        redeemed_at         timestamptz,
+        released_at         timestamptz,
+        created_at          timestamptz not null default now(),
+        updated_at          timestamptz not null default now(),
+        unique (grant_id, checkout_reference)
+      );
+
+      create index if not exists attendee_credit_redemptions_grant_idx
+        on attendee_credit_redemptions (grant_id, status, expires_at);
+      create index if not exists attendee_credit_redemptions_checkout_idx
+        on attendee_credit_redemptions (checkout_reference, status);
+
+      alter table checkout_sessions
+        add column if not exists amount_allocations_minor integer[],
+        add column if not exists credit_discount_minor integer not null default 0;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

@@ -1,6 +1,5 @@
 "use client";
 
-import { AppCombobox } from "@/components/AppCombobox";
 import { AppSelect } from "@/components/AppSelect";
 import { useState, useRef, useCallback, useEffect, useDeferredValue } from "react";
 import { Link } from "@tanstack/react-router";
@@ -18,60 +17,38 @@ import { inferTransferTitle } from "@/features/transfers/presentation";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { copyText } from "@/lib/client/share";
 import { uploadPresignedObject } from "@/lib/client/presigned-upload";
+import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
+import {
+  clearTransferUploadRecovery,
+  clearLastTransferResult,
+  getRecoverySelectionState,
+  getRecoveryStorageState,
+  readLastTransferResult,
+  readTransferUploadRecovery,
+  orderSourceFilesForRecovery,
+  saveLastTransferResult,
+  saveTransferUploadRecovery,
+  type SavedTransferResult,
+  type TransferUploadRecovery,
+} from "./recovery";
+import { TransferRecoveryPanel, type RecoveryCheckStatus } from "./TransferRecoveryPanel";
 
 /* ─── Types ─── */
 
-type UploadMode = "transfer" | "words";
-type WordsScope = "word" | "asset";
 type TransferAction = "create" | "append";
 
-type TransferResult = {
-  shareUrl: string;
-  adminUrl: string;
-  transfer: {
-    id: string;
-    title: string;
-    fileCount: number;
-    expiresAt: string;
-  };
-  totalSize: number;
-  fileCounts: {
-    images: number;
-    videos: number;
-    gifs: number;
-    audio: number;
-    other: number;
-  };
-  processingCounts?: {
-    readyCount: number;
-    queuedCount: number;
-    failedCount: number;
-    skippedCount: number;
-    originalOnlyCount: number;
-  };
-  addedCount?: number;
-};
+type TransferResult = SavedTransferResult;
 
-type WordUploadedFile = {
-  original: string;
-  filename: string;
-  kind: string;
-  width?: number;
-  height?: number;
-  size: number;
-  markdown: string;
-  overwrote: boolean;
-};
-
-type WordResult = {
-  uploaded: WordUploadedFile[];
-  skipped: string[];
-};
-
-type WordUploadTargetsResponse = {
-  slugs: string[];
-  assets: string[];
+type UploadProgress = {
+  phase: "preparing" | "authorizing" | "uploading" | "processing";
+  current: number;
+  total: number;
+  filename?: string;
+  uploadedBytes?: number;
+  totalBytes?: number;
+  attempt?: number;
+  totalAttempts?: number;
 };
 
 /* ─── Helpers ─── */
@@ -104,24 +81,12 @@ type UploadDashboardProps = {
 const DIRECT_UPLOAD_CONCURRENCY = 4;
 const DIRECT_UPLOAD_RETRIES = 3;
 const API_REQUEST_RETRIES = 2;
+const API_REQUEST_TIMEOUT_MS = 20_000;
+const API_FINALIZE_TIMEOUT_MS = 5 * 60_000;
 const BROWSER_PREP_MODE = import.meta.env.VITE_TRANSFER_MEDIA_BROWSER_PREP ?? "auto";
 const BROWSER_PREP_CONCURRENCY = 2;
 const LARGE_BATCH_ENTRY_COUNT = 24;
 const LARGE_BATCH_UPLOAD_CONCURRENCY = 2;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
-}
-
-function retryDelayMs(attempt: number): number {
-  const base = 350 * Math.pow(2, attempt - 1);
-  const jitter = Math.floor(Math.random() * 120);
-  return base + jitter;
-}
 
 function sanitizeUrlForLogs(url: string): string {
   try {
@@ -162,11 +127,15 @@ async function isReadableLocalFile(file: File): Promise<boolean> {
 }
 
 async function toFriendlyUploadError(error: unknown, file?: File): Promise<Error> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("Upload stalled")) {
+    return new Error("Storage stopped responding. We paused safely so you can continue.");
+  }
+
   if (!file) {
     return error instanceof Error ? error : new Error("Upload failed");
   }
 
-  const message = error instanceof Error ? error.message : String(error);
   const isGenericFetchFailure =
     message === "Failed to fetch" ||
     message.includes("ERR_UPLOAD_FILE_CHANGED") ||
@@ -183,7 +152,7 @@ async function toFriendlyUploadError(error: unknown, file?: File): Promise<Error
     );
   }
 
-  return error instanceof Error ? error : new Error("Upload failed");
+  return new Error("Storage connection failed. Check your connection and try again.");
 }
 
 function buildUploadFailureMessage(params: {
@@ -206,67 +175,88 @@ function buildUploadFailureMessage(params: {
     error: params.error,
   });
 
-  return new Error(`Failed to upload ${params.file.name}. ${message}. ${context}`);
+  return new Error(`Failed to upload ${params.file.name}. ${message}`);
 }
 
-function getUploadProgressPercent(progress: {
-  phase: "preparing" | "uploading" | "processing";
-  current: number;
-  total: number;
-}): number | null {
-  if (progress.phase === "processing") return null;
+function getUploadProgressPercent(progress: UploadProgress): number | null {
+  if (progress.phase === "authorizing" || progress.phase === "processing") return null;
+  if (progress.phase === "uploading" && progress.totalBytes) {
+    return Math.max(
+      0,
+      Math.min(100, Math.round(((progress.uploadedBytes ?? 0) / progress.totalBytes) * 100)),
+    );
+  }
   if (progress.total <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)));
 }
 
-function getUploadProgressLabel(progress: {
-  phase: "preparing" | "uploading" | "processing";
-  current: number;
-  total: number;
-}): string {
+function getUploadProgressLabel(progress: UploadProgress): string {
   if (progress.phase === "preparing") {
     return `preparing ${progress.current}/${progress.total}`;
+  }
+  if (progress.phase === "authorizing") {
+    return "requesting a secure upload link";
   }
   if (progress.phase === "processing") {
     return `processing previews for ${progress.total} file${progress.total === 1 ? "" : "s"}`;
   }
+  if (progress.totalBytes) {
+    return `uploading ${formatBytes(progress.uploadedBytes ?? 0)} / ${formatBytes(progress.totalBytes)}`;
+  }
   return `uploading ${progress.current}/${progress.total}`;
+}
+
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+}
+
+function uploadMetadataMatches(
+  current: TransferUploadFileInput,
+  saved: TransferUploadFileInput,
+): boolean {
+  return (
+    current.name === saved.name &&
+    current.size === saved.size &&
+    (current.type ?? "") === (saved.type ?? "") &&
+    (current.originalName ?? "") === (saved.originalName ?? "") &&
+    (current.originalSize ?? 0) === (saved.originalSize ?? 0) &&
+    (current.originalType ?? "") === (saved.originalType ?? "") &&
+    (current.convertedFrom ?? "") === (saved.convertedFrom ?? "")
+  );
+}
+
+function getOwnerToken(result: TransferResult): string | null {
+  try {
+    return new URL(result.adminUrl).searchParams.get("token");
+  } catch {
+    return null;
+  }
 }
 
 export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardProps) {
   /* Upload state */
-  const [mode, setMode] = useState<UploadMode>("transfer");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadElapsedSeconds, setUploadElapsedSeconds] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
+  const [recovery, setRecovery] = useState<TransferUploadRecovery | null>(null);
+  const [recoveryCheckStatus, setRecoveryCheckStatus] = useState<RecoveryCheckStatus>("checking");
+  const [recoveryUploadedNames, setRecoveryUploadedNames] = useState<string[]>([]);
+  const [recoveryCheckNonce, setRecoveryCheckNonce] = useState(0);
 
   /* Transfer fields */
   const [transferAction, setTransferAction] = useState<TransferAction>("create");
   const [title, setTitle] = useState("");
   const [expiry, setExpiry] = useState("7d");
   const [appendTransferId, setAppendTransferId] = useState("");
+  const [appendOwnerToken, setAppendOwnerToken] = useState("");
   const [transferResult, setTransferResult] = useState<TransferResult | null>(null);
 
-  /* Words fields */
-  const [wordsScope, setWordsScope] = useState<WordsScope>("word");
-  const [slug, setSlug] = useState("");
-  const [assetId, setAssetId] = useState("");
-  const [force, setForce] = useState(false);
-  const [wordsResult, setWordsResult] = useState<WordResult | null>(null);
-  const [wordSlugSuggestions, setWordSlugSuggestions] = useState<string[]>([]);
-  const [assetSuggestions, setAssetSuggestions] = useState<string[]>([]);
-  const [targetsLoading, setTargetsLoading] = useState(false);
-  const targetsRequestActive = useRef(false);
-  const [targetsResolved, setTargetsResolved] = useState(false);
-  const [targetsError, setTargetsError] = useState("");
-
   /* Upload progress (presigned flow) */
-  const [uploadProgress, setUploadProgress] = useState<{
-    phase: "preparing" | "uploading" | "processing";
-    current: number;
-    total: number;
-    filename?: string;
-  } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
   /* Drag state */
   const [isDragging, setIsDragging] = useState(false);
@@ -276,17 +266,64 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
   /* Refs */
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadControllerRef = useRef<AbortController | null>(null);
+  const recoveryCheckControllerRef = useRef<AbortController | null>(null);
   const deferredFiles = useDeferredValue(files);
+  const fileSelectionDisabled =
+    uploading ||
+    Boolean(transferResult) ||
+    Boolean(
+      recovery &&
+      (recoveryCheckStatus === "checking" ||
+        recoveryCheckStatus === "finishing" ||
+        recoveryCheckStatus === "discarding"),
+    );
 
-  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
-    const res = await fetch(url, options);
-    if (res.status === 401) {
-      window.location.assign("/upload");
-    }
-    return res;
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => {
+      setIsOnline(false);
+      uploadControllerRef.current?.abort("offline");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, []);
 
-  const adminAuthFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+  useEffect(() => {
+    const saved = readTransferUploadRecovery();
+    if (saved) {
+      setRecovery(saved);
+      setTransferAction("create");
+      setTitle(saved.title);
+      setExpiry(saved.expiry);
+      return;
+    }
+    setTransferResult(readLastTransferResult());
+  }, []);
+
+  useEffect(() => {
+    if (!uploading) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [uploading]);
+
+  useEffect(() => {
+    if (!uploading) return;
+    const startedAt = Date.now();
+    const updateElapsed = () =>
+      setUploadElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(interval);
+  }, [uploading]);
+
+  const authFetch = useCallback(async (url: string | URL | Request, options: RequestInit = {}) => {
     const res = await fetch(url, options);
     if (res.status === 401) {
       window.location.assign("/upload");
@@ -295,110 +332,168 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
   }, []);
 
   const authFetchWithRetry = useCallback(
-    async (url: string, options: RequestInit = {}, retries = API_REQUEST_RETRIES) => {
-      let lastError: unknown;
-      for (let attempt = 1; attempt <= retries + 1; attempt++) {
-        try {
-          const res = await authFetch(url, options);
-          if (res.ok || !isRetryableStatus(res.status) || attempt > retries) return res;
-        } catch (error) {
-          lastError = error;
-          if (attempt > retries) throw error;
-        }
-        await sleep(retryDelayMs(attempt));
-      }
-      throw lastError instanceof Error ? lastError : new Error("Request failed");
-    },
+    async (
+      url: string,
+      options: RequestInit = {},
+      retries = API_REQUEST_RETRIES,
+      timeoutMs = API_REQUEST_TIMEOUT_MS,
+    ) =>
+      fetchWithRetry(url, options, {
+        retries,
+        retryMethods: ["GET", "POST"],
+        timeoutMs,
+        request: authFetch,
+      }),
     [authFetch],
   );
 
-  const adminAuthFetchWithRetry = useCallback(
-    async (url: string, options: RequestInit = {}, retries = API_REQUEST_RETRIES) => {
-      let lastError: unknown;
-      for (let attempt = 1; attempt <= retries + 1; attempt++) {
-        try {
-          const res = await adminAuthFetch(url, options);
-          if (res.ok || !isRetryableStatus(res.status) || attempt > retries) return res;
-        } catch (error) {
-          lastError = error;
-          if (attempt > retries) throw error;
-        }
-        await sleep(retryDelayMs(attempt));
-      }
-      throw lastError instanceof Error ? lastError : new Error("Request failed");
-    },
-    [adminAuthFetch],
-  );
-
   useEffect(() => {
-    // Re-entrancy is guarded by a ref, not `targetsLoading`: setting that
-    // state inside the effect while it sits in the dependency array made the
-    // first commit abort its own fetch, leaving the panel stuck on
-    // "loading suggestions…" with no way to recover.
-    if (!isAdmin || mode !== "words" || targetsResolved || targetsRequestActive.current) return;
-    targetsRequestActive.current = true;
+    if (!recovery || !isOnline || uploading) return;
+
     let cancelled = false;
     const controller = new AbortController();
-    const abortTimeout = setTimeout(() => controller.abort(), 4500);
-    const hardStop = setTimeout(() => {
-      if (cancelled) return;
-      setTargetsLoading(false);
-      setTargetsResolved(true);
-      setTargetsError("suggestions unavailable right now");
-    }, 5500);
+    recoveryCheckControllerRef.current = controller;
 
-    const loadTargets = async () => {
-      setTargetsLoading(true);
-      setTargetsError("");
+    const finishRecovery = async () => {
+      setRecoveryCheckStatus("finishing");
+      const finalizeRes = await authFetchWithRetry(
+        "/api/upload/transfer/finalize",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transferId: recovery.transferId,
+            deleteToken: recovery.deleteToken,
+            title: recovery.title,
+            expiresSeconds: recovery.expiresSeconds,
+            files: recovery.files,
+          }),
+          signal: controller.signal,
+        },
+        API_REQUEST_RETRIES,
+        API_FINALIZE_TIMEOUT_MS,
+      );
+      const finalizePayload = await readResponsePayload(finalizeRes);
+      if (!finalizeRes.ok) {
+        setRecoveryCheckStatus(finalizeRes.status === 409 ? "expired" : "unavailable");
+        return;
+      }
+      if (cancelled) return;
+      const result = finalizePayload.json as TransferResult;
+      clearTransferUploadRecovery();
+      setRecovery(null);
+      setTransferResult(result);
+      saveLastTransferResult(result);
+      setFiles([]);
+    };
+
+    const releaseEmptyRecovery = async () => {
       try {
-        const res = await authFetch("/api/upload/words/targets", { signal: controller.signal });
-        if (!res.ok) {
-          setTargetsError("couldn't load suggestions");
-          return;
-        }
-        const data = (await res.json().catch(() => ({}))) as Partial<WordUploadTargetsResponse>;
-        if (cancelled) return;
-        setWordSlugSuggestions(Array.isArray(data.slugs) ? data.slugs : []);
-        setAssetSuggestions(Array.isArray(data.assets) ? data.assets : []);
-      } catch {
-        if (!cancelled) setTargetsError("suggestions unavailable right now");
+        await authFetchWithRetry("/api/upload/transfer/abandon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transferId: recovery.transferId,
+            deleteToken: recovery.deleteToken,
+          }),
+          signal: controller.signal,
+        });
       } finally {
-        clearTimeout(abortTimeout);
-        clearTimeout(hardStop);
-        targetsRequestActive.current = false;
         if (!cancelled) {
-          setTargetsLoading(false);
-          setTargetsResolved(true);
+          clearTransferUploadRecovery();
+          setRecovery(null);
+          setRecoveryUploadedNames([]);
+          setFiles([]);
         }
       }
     };
 
-    void loadTargets();
-    return () => {
-      clearTimeout(abortTimeout);
-      clearTimeout(hardStop);
-      controller.abort();
-      cancelled = true;
+    const checkRecovery = async () => {
+      setRecoveryCheckStatus("checking");
+      try {
+        const resumeRes = await authFetchWithRetry("/api/upload/transfer/resume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transferId: recovery.transferId,
+            deleteToken: recovery.deleteToken,
+            files: recovery.files,
+          }),
+          signal: controller.signal,
+        });
+        const resumePayload = await readResponsePayload(resumeRes);
+        const resumeData = resumePayload.json as Partial<{
+          status: "ready";
+          urls: unknown[];
+          uploadedNames: string[];
+        }>;
+        if (cancelled) return;
+        if (resumeRes.status === 410) {
+          // Finalization may have committed immediately before the response was lost.
+          // Its endpoint is idempotent and can recover the completed transfer result.
+          await finishRecovery();
+          return;
+        }
+        if (!resumeRes.ok || resumeData.status !== "ready" || !Array.isArray(resumeData.urls)) {
+          setRecoveryCheckStatus("unavailable");
+          return;
+        }
+
+        const uploadedNames = Array.isArray(resumeData.uploadedNames)
+          ? resumeData.uploadedNames
+          : [];
+        setRecoveryUploadedNames(uploadedNames);
+        const storageState = getRecoveryStorageState(uploadedNames.length, resumeData.urls.length);
+        if (storageState === "empty") {
+          await releaseEmptyRecovery();
+          return;
+        }
+        if (storageState === "partial") {
+          setRecoveryCheckStatus("available");
+          return;
+        }
+
+        await finishRecovery();
+      } catch {
+        if (!cancelled && !controller.signal.aborted) {
+          setRecoveryCheckStatus(navigator.onLine ? "unavailable" : "available");
+        }
+      }
     };
-  }, [authFetch, isAdmin, mode, targetsResolved]);
+
+    void checkRecovery();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (recoveryCheckControllerRef.current === controller) {
+        recoveryCheckControllerRef.current = null;
+      }
+    };
+  }, [authFetchWithRetry, isOnline, recovery, recoveryCheckNonce, uploading]);
 
   /* ─── File management ─── */
 
-  const addFiles = useCallback((newFiles: FileList | File[]) => {
-    const arr = Array.from(newFiles);
-    setFiles((prev) => {
-      const seen = new Set(prev.map((file) => `${file.name}:${file.size}`));
-      const next = [...prev];
-      for (const file of arr) {
-        const signature = `${file.name}:${file.size}`;
-        if (seen.has(signature)) continue;
-        seen.add(signature);
-        next.push(file);
-      }
-      return next;
-    });
-    setUploadError("");
-  }, []);
+  const addFiles = useCallback(
+    (newFiles: FileList | File[]) => {
+      const arr = Array.from(newFiles);
+      setFiles((prev) => {
+        if (recovery) return arr;
+        const seen = new Set(prev.map((file) => `${file.name}:${file.size}`));
+        const next = [...prev];
+        for (const file of arr) {
+          const signature = `${file.name}:${file.size}`;
+          if (seen.has(signature)) continue;
+          seen.add(signature);
+          next.push(file);
+        }
+        return next;
+      });
+      setTransferResult(null);
+      if (transferAction !== "append" || !appendOwnerToken) clearLastTransferResult();
+      setUploadError("");
+    },
+    [appendOwnerToken, recovery, transferAction],
+  );
 
   const removeFile = useCallback((target: File) => {
     setFiles((prev) =>
@@ -409,21 +504,102 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
   const clearAll = useCallback(() => {
     setFiles([]);
     setTransferResult(null);
-    setWordsResult(null);
+    if (transferAction !== "append" || !appendOwnerToken) clearLastTransferResult();
     setUploadError("");
-  }, []);
+  }, [appendOwnerToken, transferAction]);
+
+  const addToCompletedTransfer = (result: TransferResult) => {
+    const ownerToken = getOwnerToken(result);
+    if (!ownerToken && !isAdmin) {
+      setUploadError("The private owner link is missing. Start a new transfer instead.");
+      return;
+    }
+    setTransferAction("append");
+    setAppendTransferId(result.transfer.id);
+    setAppendOwnerToken(ownerToken ?? "");
+    setFiles([]);
+    setTransferResult(null);
+    setUploadError("");
+  };
+
+  const startNewTransfer = () => {
+    clearLastTransferResult();
+    setTransferAction("create");
+    setAppendTransferId("");
+    setAppendOwnerToken("");
+    setTitle("");
+    setExpiry("7d");
+    setFiles([]);
+    setTransferResult(null);
+    setUploadError("");
+  };
+
+  const discardRecovery = async () => {
+    if (!recovery || recoveryCheckStatus === "discarding") return;
+    const savedStatus = recoveryCheckStatus;
+    recoveryCheckControllerRef.current?.abort("discarded");
+    setRecoveryCheckStatus("discarding");
+    setUploadError("");
+
+    try {
+      const response = await authFetchWithRetry("/api/upload/transfer/abandon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transferId: recovery.transferId,
+          deleteToken: recovery.deleteToken,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await readResponsePayload(response);
+        throw new Error(getResponseErrorMessage(payload, "Could not discard unfinished transfer"));
+      }
+
+      clearTransferUploadRecovery();
+      setRecovery(null);
+      setRecoveryCheckStatus("checking");
+      setRecoveryUploadedNames([]);
+      setFiles([]);
+      setTitle("");
+    } catch (error) {
+      setRecoveryCheckStatus(savedStatus);
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Could not discard unfinished transfer. Please try again.",
+      );
+    }
+  };
 
   const uploadPresignedFiles = useCallback(
-    async (entries: Array<{ file: File; url: string; label: string; contentType: string }>) => {
+    async (
+      entries: Array<{ file: File; url: string; label: string; contentType: string }>,
+      signal: AbortSignal,
+      initialUploadedBytes = 0,
+      completeTotalBytes?: number,
+    ) => {
       if (entries.length === 0) return;
 
       let nextIndex = 0;
       let completed = 0;
+      let uploadedBytes = initialUploadedBytes;
+      const reportedBytes = entries.map(() => 0);
+      const attempts = entries.map(() => 1);
+      const totalBytes =
+        completeTotalBytes ?? entries.reduce((sum, entry) => sum + entry.file.size, 0);
       const totalAttempts = DIRECT_UPLOAD_RETRIES + 1;
       const workerCount =
         entries.length >= LARGE_BATCH_ENTRY_COUNT
           ? Math.min(LARGE_BATCH_UPLOAD_CONCURRENCY, entries.length)
           : Math.min(DIRECT_UPLOAD_CONCURRENCY, entries.length);
+
+      setUploadProgress({
+        phase: "uploading",
+        current: 0,
+        total: entries.length,
+        uploadedBytes,
+        totalBytes,
+      });
 
       const worker = async () => {
         while (true) {
@@ -441,8 +617,39 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                 url: entry.url,
                 body: entry.file,
                 contentType: entry.contentType,
+                signal,
               },
-              { retries: DIRECT_UPLOAD_RETRIES },
+              {
+                retries: DIRECT_UPLOAD_RETRIES,
+                onAttempt: (attempt) => {
+                  attempts[index] = attempt;
+                  setUploadProgress({
+                    phase: "uploading",
+                    current: completed,
+                    total: entries.length,
+                    filename: entry.label,
+                    uploadedBytes,
+                    totalBytes,
+                    attempt,
+                    totalAttempts,
+                  });
+                },
+                onProgress: (loaded) => {
+                  const nextLoaded = Math.max(0, Math.min(entry.file.size, loaded));
+                  uploadedBytes += nextLoaded - reportedBytes[index];
+                  reportedBytes[index] = nextLoaded;
+                  setUploadProgress({
+                    phase: "uploading",
+                    current: completed,
+                    total: entries.length,
+                    filename: entry.label,
+                    uploadedBytes,
+                    totalBytes,
+                    attempt: attempts[index],
+                    totalAttempts,
+                  });
+                },
+              },
             );
             if (!putRes.ok) {
               throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
@@ -469,6 +676,10 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             current: completed,
             total: entries.length,
             filename: entry.label,
+            uploadedBytes,
+            totalBytes,
+            attempt: attempts[index],
+            totalAttempts,
           });
         }
       };
@@ -532,10 +743,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
   /* ─── Drag & drop ─── */
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      if (!fileSelectionDisabled) setIsDragging(true);
+    },
+    [fileSelectionDisabled],
+  );
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -546,25 +760,28 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
+      if (fileSelectionDisabled) return;
       const droppedFiles = await collectDroppedFiles(e.dataTransfer);
       if (droppedFiles.length > 0) addFiles(droppedFiles);
     },
-    [addFiles],
+    [addFiles, fileSelectionDisabled],
   );
 
   useEffect(
     () =>
       registerApplicationFileDrop(async (dataTransfer) => {
+        if (fileSelectionDisabled) return;
         const droppedFiles = await collectDroppedFiles(dataTransfer);
         if (droppedFiles.length > 0) addFiles(droppedFiles);
       }),
-    [addFiles],
+    [addFiles, fileSelectionDisabled],
   );
 
   /* ─── Paste (Ctrl+V / Cmd+V) ─── */
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      if (fileSelectionDisabled) return;
       // Try clipboardData.files first (direct file paste)
       const directFiles = e.clipboardData?.files;
       if (directFiles && directFiles.length > 0) {
@@ -607,14 +824,22 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, [addFiles]);
+  }, [addFiles, fileSelectionDisabled]);
 
   /* ─── Upload ─── */
 
   /** Presigned flow: browser uploads directly to R2, then tells the API to finalize. */
-  const handleTransferCreateUpload = async () => {
+  const handleTransferCreateUpload = async (signal: AbortSignal) => {
     const transferTitle = inferTransferTitle(title, files);
-    const preparedFiles = await prepareTransferUploads(files);
+    const selectedFiles = recovery
+      ? orderSourceFilesForRecovery(files, recovery.sourceFiles)
+      : files;
+    if (!selectedFiles) {
+      throw new Error(
+        "Choose the same files shown in the interrupted upload, or discard it before starting a new transfer.",
+      );
+    }
+    const preparedFiles = await prepareTransferUploads(selectedFiles);
     const presignFiles: TransferUploadFileInput[] = preparedFiles.map((file) => ({
       name: file.uploadName,
       size: file.uploadFile.size,
@@ -629,52 +854,98 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         : {}),
     }));
 
-    // 1. Get presigned PUT URLs
-    setUploadProgress({ phase: "uploading", current: 0, total: presignFiles.length });
-    const presignRes = await authFetchWithRetry("/api/upload/transfer/presign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: transferTitle,
-        expires: expiry,
-        files: presignFiles,
-      }),
-    });
+    setUploadProgress({ phase: "authorizing", current: 0, total: presignFiles.length });
+    let transferId: string;
+    let deleteToken: string;
+    let expiresSeconds: number;
+    let finalizeFiles: TransferUploadFileInput[];
+    let urls: Array<{
+      name: string;
+      mediaId?: string;
+      contentType: string;
+      primaryUrl: string;
+      archivedOriginalUrl?: string;
+    }>;
+    let uploadedNames: string[] = [];
 
-    const presignPayload = await readResponsePayload(presignRes);
-    if (!presignRes.ok) {
-      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare upload"));
-    }
-
-    const presignData = presignPayload.json as {
-      transferId?: string;
-      deleteToken?: string;
-      expiresSeconds?: number;
-      urls?: Array<{
-        name: string;
-        mediaId: string;
-        contentType: string;
-        primaryUrl: string;
-        archivedOriginalUrl?: string;
+    if (recovery) {
+      if (
+        recovery.files.length !== presignFiles.length ||
+        !presignFiles.every((file, index) => uploadMetadataMatches(file, recovery.files[index]!))
+      ) {
+        throw new Error(
+          "The reselected files changed while being prepared. Discard the interrupted upload and start again.",
+        );
+      }
+      const resumeRes = await authFetchWithRetry("/api/upload/transfer/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transferId: recovery.transferId,
+          deleteToken: recovery.deleteToken,
+          files: recovery.files,
+        }),
+        signal,
+      });
+      const resumePayload = await readResponsePayload(resumeRes);
+      const resumeData = resumePayload.json as Partial<{
+        status: "ready";
+        urls: typeof urls;
+        uploadedNames: string[];
       }>;
-    };
-
-    if (
-      !presignData ||
-      typeof presignData.transferId !== "string" ||
-      typeof presignData.deleteToken !== "string" ||
-      typeof presignData.expiresSeconds !== "number" ||
-      !Array.isArray(presignData.urls)
-    ) {
-      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare upload"));
+      if (!resumeRes.ok || resumeData.status !== "ready" || !Array.isArray(resumeData.urls)) {
+        throw new Error(getResponseErrorMessage(resumePayload, "Could not resume upload"));
+      }
+      transferId = recovery.transferId;
+      deleteToken = recovery.deleteToken;
+      expiresSeconds = recovery.expiresSeconds;
+      finalizeFiles = recovery.files;
+      urls = resumeData.urls;
+      uploadedNames = Array.isArray(resumeData.uploadedNames) ? resumeData.uploadedNames : [];
+    } else {
+      const presignRes = await authFetchWithRetry("/api/upload/transfer/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: transferTitle, expires: expiry, files: presignFiles }),
+        signal,
+      });
+      const presignPayload = await readResponsePayload(presignRes);
+      const presignData = presignPayload.json as Partial<{
+        transferId: string;
+        deleteToken: string;
+        expiresSeconds: number;
+        urls: typeof urls;
+      }>;
+      if (
+        !presignRes.ok ||
+        typeof presignData.transferId !== "string" ||
+        typeof presignData.deleteToken !== "string" ||
+        typeof presignData.expiresSeconds !== "number" ||
+        !Array.isArray(presignData.urls)
+      ) {
+        throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare upload"));
+      }
+      transferId = presignData.transferId;
+      deleteToken = presignData.deleteToken;
+      expiresSeconds = presignData.expiresSeconds;
+      urls = presignData.urls;
+      const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
+      finalizeFiles = presignFiles.map((file) => ({
+        ...file,
+        mediaId: mediaIdsByName.get(file.name),
+      }));
+      const saved = saveTransferUploadRecovery({
+        transferId,
+        deleteToken,
+        title: transferTitle,
+        expiry,
+        expiresSeconds,
+        sourceFiles: files,
+        files: finalizeFiles,
+      });
+      setRecovery(saved);
+      setRecoveryUploadedNames([]);
     }
-
-    const { transferId, deleteToken, expiresSeconds, urls } = presignData;
-    const mediaIdsByName = new Map(urls.map((entry) => [entry.name, entry.mediaId]));
-    const finalizeFiles: TransferUploadFileInput[] = presignFiles.map((file) => ({
-      ...file,
-      mediaId: mediaIdsByName.get(file.name),
-    }));
 
     // 2. Upload files directly to R2 (bounded parallelism for faster uploads)
     const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
@@ -708,7 +979,17 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           : []),
       ];
     });
-    await uploadPresignedFiles(uploadEntries);
+    const uploadedNameSet = new Set(uploadedNames);
+    const totalBytes = finalizeFiles.reduce(
+      (sum, file) => sum + file.size + (file.originalSize ?? 0),
+      0,
+    );
+    const uploadedBytes = finalizeFiles.reduce(
+      (sum, file) =>
+        sum + (uploadedNameSet.has(file.name) ? file.size + (file.originalSize ?? 0) : 0),
+      0,
+    );
+    await uploadPresignedFiles(uploadEntries, signal, uploadedBytes, totalBytes);
 
     // 3. Finalize — server processes thumbnails and saves metadata
     setUploadProgress({
@@ -717,17 +998,23 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       total: presignFiles.length,
     });
 
-    const finalizeRes = await authFetchWithRetry("/api/upload/transfer/finalize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        transferId,
-        deleteToken,
-        title: transferTitle,
-        expiresSeconds,
-        files: finalizeFiles,
-      }),
-    });
+    const finalizeRes = await authFetchWithRetry(
+      "/api/upload/transfer/finalize",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transferId,
+          deleteToken,
+          title: transferTitle,
+          expiresSeconds,
+          files: finalizeFiles,
+        }),
+        signal,
+      },
+      API_REQUEST_RETRIES,
+      API_FINALIZE_TIMEOUT_MS,
+    );
 
     const finalizePayload = await readResponsePayload(finalizeRes);
     if (!finalizeRes.ok) {
@@ -736,13 +1023,17 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       );
     }
 
+    clearTransferUploadRecovery();
+    setRecovery(null);
     return finalizePayload.json as TransferResult;
   };
 
-  const handleTransferAppendUpload = async () => {
+  const handleTransferAppendUpload = async (signal: AbortSignal) => {
     const transferId = appendTransferId.trim();
     if (!transferId) throw new Error("transfer id is required for append");
-    if (!isAdmin) throw new Error("Only admins can append to an existing transfer");
+    if (!isAdmin && !appendOwnerToken) {
+      throw new Error("The private owner link is required to add files to this transfer");
+    }
     const preparedFiles = await prepareTransferUploads(files);
     const presignFiles: TransferUploadFileInput[] = preparedFiles.map((file) => ({
       name: file.uploadName,
@@ -758,14 +1049,16 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         : {}),
     }));
 
-    setUploadProgress({ phase: "uploading", current: 0, total: presignFiles.length });
-    const presignRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/presign", {
+    setUploadProgress({ phase: "authorizing", current: 0, total: presignFiles.length });
+    const presignRes = await authFetchWithRetry("/api/upload/transfer/append/presign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         transferId,
+        deleteToken: appendOwnerToken || undefined,
         files: presignFiles,
       }),
+      signal,
     });
 
     const presignData = await presignRes.json().catch(() => ({}));
@@ -818,21 +1111,28 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           : []),
       ];
     });
-    await uploadPresignedFiles(uploadEntries);
+    await uploadPresignedFiles(uploadEntries, signal);
 
     setUploadProgress({
       phase: "processing",
       current: presignFiles.length,
       total: presignFiles.length,
     });
-    const finalizeRes = await adminAuthFetchWithRetry("/api/upload/transfer/append/finalize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        transferId,
-        files: finalizeFiles,
-      }),
-    });
+    const finalizeRes = await authFetchWithRetry(
+      "/api/upload/transfer/append/finalize",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transferId,
+          deleteToken: appendOwnerToken || undefined,
+          files: finalizeFiles,
+        }),
+        signal,
+      },
+      API_REQUEST_RETRIES,
+      API_FINALIZE_TIMEOUT_MS,
+    );
 
     const finalizePayload = await readResponsePayload(finalizeRes);
     if (!finalizeRes.ok) {
@@ -844,150 +1144,43 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     return finalizePayload.json as TransferResult;
   };
 
-  /** Words upload uses presigned PUT URLs (same as transfers). */
-  const handleWordsUpload = async () => {
-    const cleanSlug = slug.trim().toLowerCase();
-    const cleanAssetId = assetId.trim().toLowerCase();
-    if (wordsScope === "word" && !cleanSlug) throw new Error("word slug is required");
-    if (wordsScope === "asset" && !cleanAssetId) throw new Error("asset id is required");
-
-    setUploadProgress({ phase: "preparing", current: 0, total: files.length });
-    let preparedCount = 0;
-    const uploadFiles = await mapWithConcurrency(files, BROWSER_PREP_CONCURRENCY, async (file) => {
-      const prepared = await prepareBrowserImage(file, {
-        derivePreview: true,
-        maxDimension: 2_560,
-      });
-      preparedCount += 1;
-      setUploadProgress({
-        phase: "preparing",
-        current: preparedCount,
-        total: files.length,
-        filename: file.name,
-      });
-      return prepared.uploadFile;
-    });
-
-    // 1. Presign PUT URLs
-    setUploadProgress({ phase: "uploading", current: 0, total: uploadFiles.length });
-    const presignRes = await authFetchWithRetry("/api/upload/words/presign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: wordsScope,
-        slug: wordsScope === "word" ? cleanSlug : undefined,
-        assetId: wordsScope === "asset" ? cleanAssetId : undefined,
-        force,
-        files: uploadFiles.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
-      }),
-    });
-    const presignPayload = await readResponsePayload(presignRes);
-    const presignData = presignPayload.json as Partial<{
-      success: boolean;
-      urls: Array<{
-        original: string;
-        filename: string;
-        uploadKey: string;
-        url: string;
-        contentType: string;
-        kind: string;
-        overwrote: boolean;
-      }>;
-      skipped: string[];
-      error: string;
-    }> | null;
-    if (!presignRes.ok || !presignData || presignData.success !== true) {
-      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare words upload"));
-    }
-
-    const { urls, skipped } = presignData;
-    if (!Array.isArray(urls) || !Array.isArray(skipped)) {
-      throw new Error(getResponseErrorMessage(presignPayload, "Failed to prepare words upload"));
-    }
-
-    if (urls.length === 0) {
-      return { uploaded: [], skipped };
-    }
-
-    // 2. Upload bytes direct to R2 (bounded parallelism)
-    const filesByName = new Map<string, File[]>();
-    for (const file of uploadFiles) {
-      const bucket = filesByName.get(file.name);
-      if (bucket) {
-        bucket.push(file);
-      } else {
-        filesByName.set(file.name, [file]);
-      }
-    }
-    const uploadEntries = urls.map((entry) => {
-      const bucket = filesByName.get(entry.original);
-      const file = bucket?.shift();
-      if (!file) {
-        throw new Error(`Could not resolve local file for ${entry.original}`);
-      }
-      return { file, url: entry.url, label: entry.original, contentType: entry.contentType };
-    });
-    await uploadPresignedFiles(uploadEntries);
-
-    // 3. Finalize (process images to WebP, return markdown snippets)
-    setUploadProgress({ phase: "processing", current: urls.length, total: urls.length });
-    const fileSizes = new Map(uploadFiles.map((file) => [file.name, file.size]));
-    const finalizeRes = await authFetchWithRetry("/api/upload/words/finalize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope: wordsScope,
-        slug: wordsScope === "word" ? cleanSlug : undefined,
-        assetId: wordsScope === "asset" ? cleanAssetId : undefined,
-        skipped,
-        files: urls.map((u) => ({
-          original: u.original,
-          filename: u.filename,
-          uploadKey: u.uploadKey,
-          kind: u.kind,
-          size: fileSizes.get(u.original) ?? 0,
-          overwrote: u.overwrote,
-        })),
-      }),
-    });
-    const finalizePayload = await readResponsePayload(finalizeRes);
-    if (!finalizeRes.ok) {
-      throw new Error(
-        getResponseErrorMessage(finalizePayload, "Words upload succeeded but finalization failed"),
-      );
-    }
-
-    return finalizePayload.json as WordResult;
-  };
-
   const handleUpload = async () => {
     if (files.length === 0) return;
+    if (
+      recovery &&
+      (recoveryCheckStatus !== "available" ||
+        getRecoverySelectionState(files, recovery.sourceFiles) !== "matches")
+    ) {
+      setUploadError("Choose the original files together before continuing this transfer.");
+      return;
+    }
 
+    setUploadElapsedSeconds(0);
     setUploading(true);
     setUploadError("");
     setUploadProgress(null);
     setTransferResult(null);
-    setWordsResult(null);
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
 
     try {
-      if (mode === "transfer") {
-        const result =
-          transferAction === "append"
-            ? await handleTransferAppendUpload()
-            : await handleTransferCreateUpload();
-        setTransferResult(result);
-      } else {
-        const result = await handleWordsUpload();
-        setWordsResult(result);
-      }
+      const result =
+        transferAction === "append"
+          ? await handleTransferAppendUpload(controller.signal)
+          : await handleTransferCreateUpload(controller.signal);
+      setTransferResult(result);
+      saveLastTransferResult(result);
       setFiles([]);
     } catch (e) {
-      setUploadError((e as Error).message || "Upload failed");
+      setUploadError(
+        !navigator.onLine
+          ? "connection lost · reconnect, then continue the upload"
+          : controller.signal.aborted
+            ? "upload paused · your files are still selected"
+            : (e as Error).message || "Upload failed",
+      );
     } finally {
+      uploadControllerRef.current = null;
       setUploading(false);
       setUploadProgress(null);
     }
@@ -1005,23 +1198,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     }
   };
 
-  /* ─── Switch mode ─── */
-
-  useEffect(() => {
-    if (!isAdmin && mode === "words") {
-      setMode("transfer");
-    }
-  }, [isAdmin, mode]);
-
-  const switchMode = (newMode: UploadMode) => {
-    if (newMode === "words" && !isAdmin) return;
-    setMode(newMode);
-    setUploadError("");
-    setTransferResult(null);
-    setWordsResult(null);
-  };
-
   const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
+  const recoverySelectionState = recovery
+    ? getRecoverySelectionState(files, recovery.sourceFiles)
+    : null;
+  const canContinueRecovery =
+    !recovery || (recoveryCheckStatus === "available" && recoverySelectionState === "matches");
   // The route loader owns the upload authentication gate.
 
   /* ─── Render: Upload dashboard ─── */
@@ -1066,281 +1248,156 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         ) : null}
       </header>
 
-      {/* Mode toggle */}
-      <div className="mb-8 flex flex-wrap gap-x-6 gap-y-1">
-        <button
-          type="button"
-          onClick={() => switchMode("transfer")}
-          aria-pressed={mode === "transfer"}
-          className={`inline-flex min-h-11 items-center border-b-2 pb-1 font-mono text-sm lowercase tracking-wide transition-colors ${
-            mode === "transfer"
-              ? "border-[var(--foreground)]"
-              : "border-transparent theme-muted hover:text-[var(--foreground)]"
-          }`}
-        >
-          transfer
-        </button>
-        {isAdmin ? (
-          <button
-            type="button"
-            onClick={() => switchMode("words")}
-            aria-pressed={mode === "words"}
-            className={`inline-flex min-h-11 items-center border-b-2 pb-1 font-mono text-sm lowercase tracking-wide transition-colors ${
-              mode === "words"
-                ? "border-[var(--foreground)]"
-                : "border-transparent theme-muted hover:text-[var(--foreground)]"
-            }`}
-          >
-            words
-          </button>
-        ) : null}
-      </div>
-
-      {/* Mode description */}
       <p className="font-mono text-xs theme-muted mb-6">
-        {mode === "transfer"
-          ? transferAction === "append"
-            ? "admin only — append files to an existing active transfer (expiry stays the same)"
-            : "ephemeral file sharing — auto-expires after the set duration"
-          : wordsScope === "word"
-            ? "per-word media — uploaded to words/media/{slug}/"
-            : "shared media library — uploaded to words/assets/{assetId}/"}
+        {transferAction === "append"
+          ? appendOwnerToken
+            ? "add files to the same share link · its expiry stays the same"
+            : "admin only — append files to an existing active transfer (expiry stays the same)"
+          : "ephemeral file sharing — auto-expires after the set duration"}
       </p>
 
-      {/* Form fields */}
-      {mode === "transfer" ? (
-        <div className="space-y-4 mb-6">
-          {isAdmin ? (
-            <p className="font-mono text-micro theme-faint">
-              admin uploads bypass request size caps
-            </p>
-          ) : null}
-          {isAdmin ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setTransferAction("create")}
-                aria-pressed={transferAction === "create"}
-                className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
-                  transferAction === "create"
-                    ? "border-[var(--foreground)] text-[var(--foreground)]"
-                    : "theme-border theme-muted hover:text-[var(--foreground)]"
-                }`}
-              >
-                new transfer
-              </button>
-              <button
-                type="button"
-                onClick={() => setTransferAction("append")}
-                aria-pressed={transferAction === "append"}
-                className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
-                  transferAction === "append"
-                    ? "border-[var(--foreground)] text-[var(--foreground)]"
-                    : "theme-border theme-muted hover:text-[var(--foreground)]"
-                }`}
-              >
-                append to existing
-              </button>
-            </div>
-          ) : null}
-
-          {transferAction === "append" ? (
-            <div>
-              <label
-                htmlFor="append-transfer-id"
-                className="font-mono text-xs theme-muted block mb-1.5"
-              >
-                transfer id
-              </label>
-              <input
-                id="append-transfer-id"
-                type="text"
-                value={appendTransferId}
-                onChange={(e) => setAppendTransferId(e.target.value)}
-                placeholder="velvet-moon-candle"
-                className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
-              />
-              <p className="font-mono text-micro theme-faint mt-1">
-                admin only · appends files without changing expiry
-              </p>
-            </div>
-          ) : (
-            <>
-              <div>
-                <label
-                  htmlFor="transfer-title"
-                  className="font-mono text-xs theme-muted block mb-1.5"
-                >
-                  transfer title
-                </label>
-                <input
-                  id="transfer-title"
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  maxLength={160}
-                  placeholder="valentine's day photos"
-                  className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
-                />
-                <p className="font-mono text-micro theme-faint mt-1">
-                  optional · a single file uses its filename by default
-                </p>
-              </div>
-              <div>
-                <label
-                  htmlFor="transfer-expiry"
-                  className="font-mono text-xs theme-muted block mb-1.5"
-                >
-                  expires
-                </label>
-                <AppSelect
-                  id="transfer-expiry"
-                  value={expiry}
-                  onValueChange={setExpiry}
-                  className="w-full rounded-lg text-sm"
-                  options={EXPIRY_OPTIONS}
-                />
-              </div>
-              <p className="font-mono text-micro theme-faint">
-                originals stay intact; large or uncommon images get a browser-prepared working copy
-                before server previews are built
-              </p>
-            </>
-          )}
+      {!isOnline && !recovery ? (
+        <div className="mb-6 rounded-md border theme-border px-4 py-3" role="status">
+          <p className="font-mono text-xs">offline · upload will be available when you reconnect</p>
+          <p className="mt-1 font-mono text-micro theme-muted">
+            selected files stay on this page; nothing is being sent right now
+          </p>
         </div>
-      ) : (
-        <div className="space-y-4 mb-6">
+      ) : null}
+
+      {recovery && !uploading && recoveryCheckStatus !== "checking" ? (
+        <TransferRecoveryPanel
+          recovery={recovery}
+          checkStatus={recoveryCheckStatus}
+          selectionState={recoverySelectionState ?? "missing"}
+          uploadedNames={recoveryUploadedNames}
+          isOnline={isOnline}
+          onChooseFiles={() => fileInputRef.current?.click()}
+          onContinue={() => void handleUpload()}
+          onCheckAgain={() => setRecoveryCheckNonce((value) => value + 1)}
+          onDiscard={() => void discardRecovery()}
+        />
+      ) : null}
+      {recovery && !uploading && recoveryCheckStatus === "checking" ? (
+        <p className="mb-6 font-mono text-xs theme-muted" role="status">
+          checking whether any files from the previous upload finished…
+        </p>
+      ) : null}
+
+      <div className="space-y-4 mb-6">
+        {isAdmin ? (
+          <p className="font-mono text-micro theme-faint">admin uploads bypass request size caps</p>
+        ) : null}
+        {isAdmin ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setWordsScope("word")}
-              aria-pressed={wordsScope === "word"}
+              onClick={() => {
+                setTransferAction("create");
+                setAppendOwnerToken("");
+              }}
+              disabled={uploading || Boolean(recovery)}
+              aria-pressed={transferAction === "create"}
               className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
-                wordsScope === "word"
+                transferAction === "create"
                   ? "border-[var(--foreground)] text-[var(--foreground)]"
                   : "theme-border theme-muted hover:text-[var(--foreground)]"
               }`}
             >
-              content media
+              new transfer
             </button>
             <button
               type="button"
-              onClick={() => setWordsScope("asset")}
-              aria-pressed={wordsScope === "asset"}
+              onClick={() => {
+                setTransferAction("append");
+                setAppendOwnerToken("");
+              }}
+              disabled={uploading || Boolean(recovery)}
+              aria-pressed={transferAction === "append"}
               className={`min-h-11 rounded border px-3 py-2 font-mono text-xs transition-colors ${
-                wordsScope === "asset"
+                transferAction === "append"
                   ? "border-[var(--foreground)] text-[var(--foreground)]"
                   : "theme-border theme-muted hover:text-[var(--foreground)]"
               }`}
             >
-              shared assets
+              append to existing
             </button>
           </div>
-          <div className="rounded-md border theme-border px-3 py-2.5">
-            <p className="font-mono text-xs theme-muted">
-              {wordsScope === "word"
-                ? "content media: files tied to one word (hero + inline visuals)"
-                : "shared assets: reusable files for multiple words (logos, recurring visuals)"}
-            </p>
-            <p className="font-mono text-micro theme-faint mt-1">
-              destination:{" "}
-              <code className="text-[var(--foreground)]">
-                {wordsScope === "word"
-                  ? `words/media/${slug.trim().toLowerCase() || "{slug}"}/`
-                  : `words/assets/${assetId.trim().toLowerCase() || "{assetId}"}/`}
-              </code>
-            </p>
-            <p className="font-mono text-micro theme-faint mt-1">
-              admin uploads bypass request size caps
+        ) : null}
+
+        {transferAction === "append" && appendOwnerToken ? (
+          <div className="rounded border theme-border px-4 py-3">
+            <p className="font-mono text-xs">adding to {appendTransferId}</p>
+            <p className="mt-1 font-mono text-micro theme-muted">
+              New files will appear on the existing share link. Existing files will stay unchanged.
             </p>
           </div>
+        ) : transferAction === "append" ? (
           <div>
             <label
-              htmlFor="words-upload-target"
+              htmlFor="append-transfer-id"
               className="font-mono text-xs theme-muted block mb-1.5"
             >
-              {wordsScope === "word" ? "slug" : "asset id"}
+              transfer id
             </label>
-            <AppCombobox
-              id="words-upload-target"
-              value={wordsScope === "word" ? slug : assetId}
-              onValueChange={(value) =>
-                wordsScope === "word" ? setSlug(value) : setAssetId(value)
-              }
-              placeholder={wordsScope === "word" ? "my-post-slug" : "brand-kit"}
-              options={(wordsScope === "word" ? wordSlugSuggestions : assetSuggestions).map(
-                (suggestion) => ({ value: suggestion, label: suggestion }),
-              )}
+            <input
+              id="append-transfer-id"
+              type="text"
+              value={appendTransferId}
+              onChange={(e) => setAppendTransferId(e.target.value)}
+              placeholder="velvet-moon-candle"
+              className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)]"
             />
             <p className="font-mono text-micro theme-faint mt-1">
-              {wordsScope === "word"
-                ? "stores at words/media/{slug}/..."
-                : "stores at words/assets/{assetId}/..."}
+              admin only · appends files without changing expiry
             </p>
-            {targetsLoading ? (
-              <p className="font-mono text-micro theme-faint mt-1">loading suggestions...</p>
-            ) : (
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <p className="font-mono text-micro theme-faint">
-                  {wordsScope === "word"
-                    ? `${wordSlugSuggestions.length} slug suggestion${wordSlugSuggestions.length === 1 ? "" : "s"}`
-                    : `${assetSuggestions.length} asset suggestion${assetSuggestions.length === 1 ? "" : "s"}`}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTargetsError("");
-                    setTargetsResolved(false);
-                  }}
-                  className="min-h-11 font-mono text-micro theme-muted transition-colors hover:text-[var(--foreground)]"
-                >
-                  reload suggestions
-                </button>
-              </div>
-            )}
-            {targetsError ? (
-              <p
-                className="mt-1 font-mono text-micro text-amber-700 dark:text-amber-500/90"
-                role="alert"
-              >
-                {targetsError}
-              </p>
-            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => setForce(!force)}
-            aria-pressed={force}
-            className="group flex min-h-11 cursor-pointer items-center gap-2.5 text-left"
-          >
-            <span
-              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                force
-                  ? "bg-[var(--foreground)] border-[var(--foreground)]"
-                  : "border-[var(--stone-300)] group-hover:border-[var(--stone-400)]"
-              }`}
-            >
-              {force && (
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  stroke="var(--background)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M1.5 5.5L4 8L8.5 2" />
-                </svg>
-              )}
-            </span>
-            <span className="font-mono text-xs theme-muted">
-              overwrite existing files in this target
-            </span>
-          </button>
-        </div>
-      )}
+        ) : (
+          <>
+            <div>
+              <label
+                htmlFor="transfer-title"
+                className="font-mono text-xs theme-muted block mb-1.5"
+              >
+                transfer title
+              </label>
+              <input
+                id="transfer-title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={Boolean(recovery)}
+                maxLength={160}
+                placeholder="valentine's day photos"
+                className="min-h-11 w-full border-b border-[var(--stone-200)] bg-transparent py-2 font-mono text-sm outline-none transition-colors placeholder:text-[var(--stone-400)] focus:border-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <p className="font-mono text-micro theme-faint mt-1">
+                optional · a single file uses its filename by default
+              </p>
+            </div>
+            <div>
+              <label
+                htmlFor="transfer-expiry"
+                className="font-mono text-xs theme-muted block mb-1.5"
+              >
+                expires
+              </label>
+              <AppSelect
+                id="transfer-expiry"
+                value={expiry}
+                onValueChange={setExpiry}
+                disabled={Boolean(recovery)}
+                className="w-full rounded-lg text-sm"
+                options={EXPIRY_OPTIONS}
+              />
+            </div>
+            <p className="font-mono text-micro theme-faint">
+              originals stay intact; large or uncommon images get a browser-prepared working copy
+              before server previews are built
+            </p>
+          </>
+        )}
+      </div>
 
       {/* Divider */}
       <div className="border-t theme-border my-6" />
@@ -1351,28 +1408,44 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!fileSelectionDisabled) fileInputRef.current?.click();
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (!fileSelectionDisabled && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
             fileInputRef.current?.click();
           }
         }}
         role="button"
-        tabIndex={0}
-        aria-label="Choose files to upload or drop files here"
-        className={`border rounded-lg p-10 text-center cursor-pointer transition-colors ${
+        tabIndex={fileSelectionDisabled ? -1 : 0}
+        aria-disabled={fileSelectionDisabled}
+        aria-label={
+          recovery
+            ? "Choose the original files to continue this transfer"
+            : "Choose files to upload"
+        }
+        className={`border rounded-lg p-10 text-center transition-colors ${
+          fileSelectionDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+        } ${
           isDragging
             ? "border-[var(--prose-hashtag)] border-solid bg-[var(--selection-bg)]/20"
             : "border-dashed border-[var(--stone-300)] hover:border-[var(--stone-400)]"
         }`}
       >
-        <p className="font-mono text-sm theme-muted">drop files here</p>
-        <p className="font-mono text-xs theme-faint mt-1">click to browse · paste to add</p>
+        <p className="font-mono text-sm theme-muted">
+          {recovery ? "choose the original files" : "drop files here"}
+        </p>
+        <p className="font-mono text-xs theme-faint mt-1">
+          {recovery
+            ? "select the full set together · your files stay on this device until you continue"
+            : "click to browse · paste to add"}
+        </p>
         <input
           ref={fileInputRef}
           type="file"
           multiple
+          disabled={fileSelectionDisabled}
           onChange={(e) => {
             if (e.target.files) addFiles(e.target.files);
             e.target.value = "";
@@ -1387,12 +1460,12 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="font-mono text-xs theme-muted">
               {files.length} file{files.length !== 1 ? "s" : ""} · {formatBytes(totalFileSize)}
-              {mode === "transfer" && <span className="theme-faint"> (direct to R2)</span>}
-              {mode === "words" && <span className="theme-faint"> (direct to R2)</span>}
+              <span className="theme-faint"> (direct to R2)</span>
             </span>
             <button
               type="button"
               onClick={clearAll}
+              disabled={uploading}
               className="min-h-11 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
             >
               clear all
@@ -1413,6 +1486,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                   <button
                     type="button"
                     onClick={() => removeFile(file)}
+                    disabled={uploading}
                     className="inline-flex size-11 items-center justify-center text-sm leading-none theme-muted transition-colors hover:text-[var(--foreground)]"
                     aria-label={`Remove ${file.name}`}
                   >
@@ -1427,52 +1501,75 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           <button
             type="button"
             onClick={handleUpload}
-            disabled={uploading || files.length === 0}
-            className="mt-6 min-h-11 w-full rounded-md bg-[var(--foreground)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-30"
+            disabled={uploading || !isOnline || files.length === 0 || !canContinueRecovery}
+            className="mh-action mh-action--primary mt-6 w-full disabled:opacity-30"
           >
             {uploading && uploadProgress
               ? `${getUploadProgressLabel(uploadProgress)}...`
               : uploading
                 ? "uploading..."
-                : mode === "transfer" && transferAction === "append"
-                  ? `append ${files.length} file${files.length !== 1 ? "s" : ""}`
-                  : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
+                : recovery
+                  ? "continue transfer"
+                  : transferAction === "append"
+                    ? `append ${files.length} file${files.length !== 1 ? "s" : ""}`
+                    : `upload ${files.length} file${files.length !== 1 ? "s" : ""}`}
           </button>
           {uploading && uploadProgress ? (
-            <div
-              className="mt-3 rounded-md border theme-border px-4 py-3"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-            >
+            <div className="mt-3 rounded-md border theme-border px-4 py-3">
               <div className="flex items-center justify-between gap-3 font-mono text-xs tracking-wide">
-                <span>{getUploadProgressLabel(uploadProgress)}</span>
-                {getUploadProgressPercent(uploadProgress) !== null ? (
-                  <span className="theme-muted">{getUploadProgressPercent(uploadProgress)}%</span>
-                ) : (
-                  <span className="theme-muted">final step</span>
-                )}
+                <span aria-live="polite">{getUploadProgressLabel(uploadProgress)}</span>
+                <span className="shrink-0 theme-muted">
+                  {uploadProgress.phase === "authorizing"
+                    ? "connecting"
+                    : uploadProgress.phase === "processing"
+                      ? "final step"
+                      : `${getUploadProgressPercent(uploadProgress)}%`}
+                  {` · ${formatElapsed(uploadElapsedSeconds)}`}
+                </span>
               </div>
               {getUploadProgressPercent(uploadProgress) !== null ? (
                 <div
                   className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--border)]"
-                  aria-hidden="true"
+                  role="progressbar"
+                  aria-label={getUploadProgressLabel(uploadProgress)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={getUploadProgressPercent(uploadProgress) ?? undefined}
                 >
                   <div
                     className="h-full bg-[var(--foreground)] transition-[width] duration-200"
                     style={{ width: `${getUploadProgressPercent(uploadProgress)}%` }}
                   />
                 </div>
+              ) : uploadProgress.phase === "authorizing" ? (
+                <p className="mt-2 font-mono text-[11px] theme-muted">
+                  no file data has been sent yet · this step retries automatically
+                </p>
               ) : (
                 <p className="mt-2 font-mono text-[11px] theme-muted">
                   uploads are done. the server is building gallery previews now.
                 </p>
               )}
+              {uploadProgress.phase === "uploading" &&
+              uploadProgress.attempt &&
+              uploadProgress.attempt > 1 ? (
+                <p className="mt-2 font-mono text-[11px] text-[var(--prose-hashtag)]">
+                  storage stopped responding · reconnecting {uploadProgress.attempt}/
+                  {uploadProgress.totalAttempts}
+                </p>
+              ) : null}
               {uploadProgress.filename ? (
                 <p className="mt-2 truncate font-mono text-[11px] theme-muted">
                   current file: {uploadProgress.filename}
                 </p>
               ) : null}
+              <button
+                type="button"
+                onClick={() => uploadControllerRef.current?.abort()}
+                className="mt-2 min-h-11 font-mono text-xs theme-muted underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+              >
+                pause upload
+              </button>
             </div>
           ) : null}
         </div>
@@ -1487,7 +1584,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       <ReportIssueButton
         type="upload_issue"
         payload={{
-          surface: mode,
+          surface: "transfer",
           phase: uploadProgress?.phase,
           operation: transferAction === "append" ? "append" : "upload",
           fileCount: files.length,
@@ -1501,32 +1598,49 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       {transferResult && (
         <div className="mt-8">
           <div className="border-t theme-border pt-6">
-            <p className="font-mono text-xs theme-muted mb-4">result</p>
+            <div className="mh-status mh-status--positive mb-5" role="status">
+              <span className="mh-status__mark" aria-hidden="true" />
+              <div>
+                <p className="mh-status__label">transfer ready</p>
+                <p className="mh-status__detail">
+                  Send the share link. Keep the owner link private for managing or deleting files.
+                </p>
+              </div>
+            </div>
 
             <div className="space-y-4">
-              <div>
-                <p className="font-mono text-xs theme-muted mb-1">share</p>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={transferResult.shareUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-sm flex-1 truncate hover:underline"
-                  >
-                    {transferResult.shareUrl}
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(transferResult.shareUrl, "share")}
-                    className="min-h-11 shrink-0 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
-                  >
-                    {copied === "share" ? "copied" : "copy"}
-                  </button>
-                </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(transferResult.shareUrl, "share")}
+                  className="mh-action mh-action--primary flex-1"
+                >
+                  {copied === "share" ? "share link copied" : "copy share link"}
+                </button>
+                <a
+                  href={transferResult.shareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mh-action mh-action--secondary flex-1"
+                >
+                  open transfer
+                </a>
               </div>
 
               <div>
-                <p className="font-mono text-xs theme-muted mb-1">admin</p>
+                <p className="font-mono text-xs theme-muted mb-1">share link</p>
+                <a
+                  href={transferResult.shareUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block truncate font-mono text-sm hover:underline"
+                >
+                  {transferResult.shareUrl}
+                </a>
+              </div>
+
+              <div>
+                <p className="font-mono text-xs theme-muted mb-1">private owner link</p>
                 <div className="flex items-center gap-2">
                   <a
                     href={transferResult.adminUrl}
@@ -1546,10 +1660,16 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                 </div>
               </div>
 
+              <p className="font-mono text-micro theme-faint">
+                anyone with the owner link can manage or delete this transfer. it stays available
+                after a refresh in this tab only.
+              </p>
+
               <p className="font-mono text-xs theme-muted pt-2">
                 {transferResult.transfer.fileCount} file
                 {transferResult.transfer.fileCount !== 1 ? "s" : ""} ·{" "}
-                {formatBytes(transferResult.totalSize)} · expires{" "}
+                {formatBytes(transferResult.transferTotalSize ?? transferResult.totalSize)} ·
+                expires{" "}
                 {new Date(transferResult.transfer.expiresAt).toLocaleDateString("en-GB", {
                   timeZone: "Europe/London",
                 })}
@@ -1579,90 +1699,21 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
           <button
             type="button"
-            onClick={clearAll}
-            className="mt-6 min-h-11 w-full rounded-md border border-[var(--stone-200)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--foreground)] transition-colors hover:border-[var(--stone-400)]"
+            onClick={() => addToCompletedTransfer(transferResult)}
+            className="mh-action mh-action--primary mt-6 w-full"
           >
-            upload more
+            add more to this transfer
           </button>
-        </div>
-      )}
-
-      {/* Words result */}
-      {wordsResult && (
-        <div className="mt-8">
-          <div className="border-t theme-border pt-6">
-            <p className="font-mono text-xs theme-muted mb-4">result</p>
-
-            {wordsResult.uploaded.length > 0 && (
-              <div className="space-y-3">
-                {wordsResult.uploaded.map((file) => (
-                  <div key={file.filename} className="border-b border-[var(--stone-100)] pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm">{file.filename}</span>
-                      {file.width && file.height && (
-                        <span className="font-mono text-xs theme-muted">
-                          {file.width}×{file.height}
-                        </span>
-                      )}
-                      {file.overwrote && (
-                        <span className="font-mono text-xs text-[var(--prose-hashtag)]">
-                          overwrote
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <code className="font-mono text-xs theme-muted flex-1 truncate">
-                        {file.markdown}
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(file.markdown, file.filename)}
-                        className="min-h-11 shrink-0 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
-                      >
-                        {copied === file.filename ? "copied" : "copy"}
-                      </button>
-                    </div>
-                    <p
-                      className="font-mono text-[10px] theme-faint mt-1"
-                      title="Use canonical snippet output. Short media references are normalized when word markdown is saved."
-                    >
-                      use canonical snippet for best compatibility
-                    </p>
-                  </div>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    copyToClipboard(
-                      wordsResult.uploaded.map((f) => f.markdown).join("\n"),
-                      "all-markdown",
-                    )
-                  }
-                  className="min-h-11 px-2 font-mono text-xs theme-muted transition-colors hover:text-[var(--foreground)]"
-                >
-                  {copied === "all-markdown" ? "copied all" : "copy all markdown"}
-                </button>
-              </div>
-            )}
-
-            {wordsResult.skipped.length > 0 && (
-              <div className="mt-4">
-                <p className="font-mono text-xs theme-muted mb-1">
-                  skipped ({wordsResult.skipped.length})
-                </p>
-                <p className="font-mono text-xs theme-faint">{wordsResult.skipped.join(", ")}</p>
-              </div>
-            )}
-          </div>
-
           <button
             type="button"
-            onClick={clearAll}
-            className="mt-6 min-h-11 w-full rounded-md border border-[var(--stone-200)] py-2.5 font-mono text-sm lowercase tracking-wide text-[var(--foreground)] transition-colors hover:border-[var(--stone-400)]"
+            onClick={startNewTransfer}
+            className="mh-action mh-action--secondary mt-3 w-full"
           >
-            upload more
+            start a new transfer
           </button>
+          <p className="mt-2 font-mono text-micro theme-faint">
+            Adding more keeps this link and expiry. Starting new creates a separate share link.
+          </p>
         </div>
       )}
 

@@ -29,6 +29,7 @@ export type AchievementDefinition = {
   title: string;
   description: string;
   icon: AchievementIconKey;
+  rewardPoints?: number;
   secret?: boolean;
 };
 

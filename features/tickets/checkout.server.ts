@@ -41,6 +41,12 @@ import {
   exchangeRefundTotalForPayment,
   listOrderExchangePayments,
 } from "./exchange.server";
+import {
+  attachCreditReservationToCheckout,
+  redeemCreditReservation,
+  releaseCreditReservation,
+  reserveCreditsForCheckout,
+} from "@/features/credits/credits.server";
 
 /**
  * Paid ticket purchase.
@@ -234,23 +240,8 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         error: `Limit of ${storedType.per_person_limit} per person for ${storedType.name}`,
       };
     }
-    const amountMinor = storedType.price_minor * quantity;
-    if (
-      prior &&
-      (prior.amount_minor !== amountMinor ||
-        prior.currency.toLowerCase() !== storedType.currency.toLowerCase())
-    ) {
+    if (prior && prior.currency.toLowerCase() !== storedType.currency.toLowerCase()) {
       return { ok: false as const, status: 409, error: "This checkout request has changed" };
-    }
-    if (!isCheckoutTotalSupported(storedType.price_minor, quantity, storedType.currency)) {
-      const minimum = getCheckoutMinimumMinor(storedType.currency);
-      return {
-        ok: false as const,
-        status: 409,
-        error: minimum
-          ? `Online payments must total at least ${formatMoney(minimum, storedType.currency)}`
-          : "That payment total is too low",
-      };
     }
 
     const heldResult = await client.query<{ held: string }>(
@@ -320,14 +311,40 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       };
     }
 
+    const minimumChargeMinor = getCheckoutMinimumMinor(storedType.currency) ?? 0;
+    const credit = await reserveCreditsForCheckout(client, {
+      checkoutReference: reference,
+      email,
+      eventSlug: event.slug,
+      quantity,
+      ticketPriceMinor: storedType.price_minor,
+      currency: storedType.currency,
+      minimumChargeMinor,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1_000),
+    });
+    const amountMinor = credit.ticketAmountsMinor.reduce((sum, amount) => sum + amount, 0);
+    if (prior && prior.amount_minor !== amountMinor) {
+      return { ok: false as const, status: 409, error: "This checkout request has changed" };
+    }
+    if (!isCheckoutTotalSupported(amountMinor, 1, storedType.currency)) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: minimumChargeMinor
+          ? `Online payments must total at least ${formatMoney(minimumChargeMinor, storedType.currency)}`
+          : "That payment total is too low",
+      };
+    }
+
     if (!prior) {
       await client.query(
         `insert into checkout_sessions (
            id, event_slug, ticket_type_id, quantity, holder_name, email, email_hash,
-           amount_minor, currency, reference, status, terms_accepted_at, terms_snapshot,
+           amount_minor, amount_allocations_minor, credit_discount_minor,
+           currency, reference, status, terms_accepted_at, terms_snapshot,
            marketing_opted_in, marketing_opted_in_at, expires_at
-         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'creating',now(),$11::jsonb,$12,
-                   case when $12 then now() else null end, now() + interval '2 minutes')`,
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'creating',now(),$13::jsonb,$14,
+                   case when $14 then now() else null end, now() + interval '2 minutes')`,
         [
           `reservation_${reference}`,
           event.slug,
@@ -337,6 +354,8 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
           email,
           emailHash,
           amountMinor,
+          credit.ticketAmountsMinor,
+          credit.discountMinor,
           storedType.currency,
           reference,
           JSON.stringify({
@@ -350,9 +369,11 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
     } else {
       await client.query(
         `update checkout_sessions
-            set status = 'creating', expires_at = now() + interval '2 minutes', updated_at = now()
+            set status = 'creating', amount_minor = $2, amount_allocations_minor = $3,
+                credit_discount_minor = $4, expires_at = now() + interval '2 minutes',
+                updated_at = now()
           where reference = $1`,
-        [reference],
+        [reference, amountMinor, credit.ticketAmountsMinor, credit.discountMinor],
       );
     }
     return {
@@ -363,6 +384,9 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         ticketTypeName: storedType.name,
         priceMinor: storedType.price_minor,
         currency: storedType.currency,
+        ticketAmountsMinor: credit.ticketAmountsMinor,
+        creditDiscountMinor: credit.discountMinor,
+        creditUnits: credit.units,
       },
     };
   });
@@ -375,6 +399,17 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
   }
   const checkout = reservation.checkout;
 
+  const groupedPrices = [
+    ...checkout.ticketAmountsMinor.reduce((groups, amount) => {
+      groups.set(amount, (groups.get(amount) ?? 0) + 1);
+      return groups;
+    }, new Map<number, number>()),
+  ].map(([unitAmountMinor, lineQuantity]) => ({
+    quantity: lineQuantity,
+    unitAmountMinor,
+    ...(unitAmountMinor < checkout.priceMinor ? { label: "credit applied" } : {}),
+  }));
+
   let session: { id: string; url: string; expiresAt: string };
   try {
     session = await createCheckoutSession({
@@ -383,6 +418,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
       priceMinor: checkout.priceMinor,
       currency: checkout.currency,
       quantity,
+      priceLines: groupedPrices,
       email,
       // The brace template is Stripe's, substituted on the redirect. Built by
       // concatenation rather than URLSearchParams, which would percent-encode
@@ -396,6 +432,8 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         ticketTypeId: ticketType.id,
         holderName,
         quantity: String(quantity),
+        creditUnits: String(checkout.creditUnits),
+        creditDiscountMinor: String(checkout.creditDiscountMinor),
       },
     });
   } catch (error) {
@@ -405,6 +443,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         where reference = $1 and status = 'creating'`,
       [reference],
     );
+    await releaseCreditReservation(reference);
     return { ok: false, status: 502, error: "Could not start checkout. Try again." };
   }
 
@@ -429,6 +468,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         throw new Error("Checkout reservation was not persisted");
       }
     }
+    await attachCreditReservationToCheckout(reference, session.id);
   } catch (error) {
     await expireCheckoutSession(session.id);
     await query(
@@ -436,6 +476,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
         where reference = $1 and status = 'creating'`,
       [reference],
     ).catch(() => undefined);
+    await releaseCreditReservation(reference).catch(() => undefined);
     log.error("checkout.create", "Checkout ledger finalization failed", { reference }, error);
     return { ok: false, status: 502, error: "Could not start checkout. Try again." };
   }
@@ -451,6 +492,7 @@ type CheckoutRow = {
   holder_name: string;
   email: string;
   amount_minor: number;
+  amount_allocations_minor: number[] | null;
   currency: string;
   reference: string | null;
   marketing_opted_in: boolean;
@@ -507,18 +549,21 @@ export type FulfilResult =
  * a person being quietly turned away at the door.
  */
 export async function expireCheckout(sessionId: string): Promise<void> {
-  await query(
+  const expired = await query<{ reference: string | null }>(
     `update checkout_sessions
         set status = 'expired', updated_at = now()
-      where id = $1 and status in ('pending', 'payment_pending')`,
+      where id = $1 and status in ('pending', 'payment_pending')
+      returning reference`,
     [sessionId],
   );
+  if (expired[0]?.reference) await releaseCreditReservation(expired[0].reference);
 }
 
 type CheckoutPaymentStateRow = {
   id: string;
   amount_minor: number;
   status: string;
+  reference: string | null;
 };
 
 async function findCheckoutForPayment(
@@ -526,7 +571,7 @@ async function findCheckoutForPayment(
   reference?: string,
 ): Promise<CheckoutPaymentStateRow | null> {
   return queryOne<CheckoutPaymentStateRow>(
-    `select id, amount_minor, status
+    `select id, amount_minor, status, reference
        from checkout_sessions
       where payment_ref = $1
          or (payment_ref is null and $2::text is not null and reference = $2)
@@ -574,6 +619,7 @@ export async function cancelUnfulfilledCheckout(input: {
       where id = $1 and status <> 'fulfilled'`,
     [checkout.id, input.paymentIntentId, status, refund?.refundId ?? null],
   );
+  if (checkout.reference) await releaseCreditReservation(checkout.reference);
   return true;
 }
 
@@ -646,12 +692,16 @@ export async function updateCheckoutRefundStatus(
   status: string | null,
 ): Promise<void> {
   if (status !== "succeeded" && status !== "failed" && status !== "canceled") return;
-  await query(
+  const updated = await query<{ reference: string | null }>(
     `update checkout_sessions
         set status = $2, updated_at = now()
-      where refund_ref = $1 and status in ('refund_pending', 'refund_failed')`,
+      where refund_ref = $1 and status in ('refund_pending', 'refund_failed')
+      returning reference`,
     [refundId, status === "succeeded" ? "refunded" : "refund_failed"],
   );
+  if (status === "succeeded" && updated[0]?.reference) {
+    await releaseCreditReservation(updated[0].reference);
+  }
 }
 
 export async function fulfilCheckout(sessionId: string, origin: string): Promise<FulfilResult> {
@@ -667,7 +717,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
             or (status = 'fulfilling' and processing_started_at < now() - interval '2 minutes')
           )
         returning id, event_slug, ticket_type_id, quantity, holder_name, email,
-                  amount_minor, currency, reference, marketing_opted_in,
+                  amount_minor, amount_allocations_minor, currency, reference, marketing_opted_in,
                   marketing_opted_in_at`,
       [sessionId],
     );
@@ -811,6 +861,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
         where id = $1`,
       [sessionId, status, refundRef],
     );
+    if (claimed.reference) await releaseCreditReservation(claimed.reference);
     return { outcome: "refunded-oversold" };
   }
 
@@ -827,6 +878,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
         where id = $1`,
       [sessionId, orderId],
     );
+    if (claimed.reference) await redeemCreditReservation(claimed.reference, orderId);
     await recordPaidMarketingConsent({
       enabled: claimed.marketing_opted_in,
       email: claimed.email,
@@ -855,6 +907,13 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
   try {
     const allocationBase = Math.floor(claimed.amount_minor / Math.max(1, claimed.quantity));
     const allocationRemainder = claimed.amount_minor - allocationBase * claimed.quantity;
+    const amountAllocationsMinor =
+      claimed.amount_allocations_minor?.length === claimed.quantity
+        ? claimed.amount_allocations_minor
+        : Array.from(
+            { length: claimed.quantity },
+            (_, index) => allocationBase + (index < allocationRemainder ? 1 : 0),
+          );
     issued = await issueTickets({
       eventSlug: claimed.event_slug,
       ticketTypeId: claimed.ticket_type_id,
@@ -870,10 +929,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       bypassSalesWindow: true,
       // Preserve the exact paid total even when it does not divide evenly.
       // The first few tickets receive one extra minor unit deterministically.
-      amountAllocationsMinor: Array.from(
-        { length: claimed.quantity },
-        (_, index) => allocationBase + (index < allocationRemainder ? 1 : 0),
-      ),
+      amountAllocationsMinor,
       currency: claimed.currency,
     });
   } catch (error) {
@@ -925,6 +981,7 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
         where id = $1`,
       [sessionId, refund.status === "succeeded" ? "refunded" : "refund_pending", refund.refundId],
     );
+    if (claimed.reference) await releaseCreditReservation(claimed.reference);
     return { outcome: "refunded-oversold" };
   }
 
@@ -935,6 +992,9 @@ export async function fulfilCheckout(sessionId: string, origin: string): Promise
       where id = $1`,
     [sessionId, issued.value.orderId],
   );
+  if (claimed.reference) {
+    await redeemCreditReservation(claimed.reference, issued.value.orderId);
+  }
   await recordPaidMarketingConsent({
     enabled: claimed.marketing_opted_in,
     email: claimed.email,

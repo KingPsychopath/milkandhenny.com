@@ -174,7 +174,7 @@ export function ScoringStaffPanel({
   const [recipientEmail, setRecipientEmail] = useState("");
   const [delivery, setDelivery] = useState<Delivery>("email");
   const [inviteReason, setInviteReason] = useState("");
-  const [poolPoints, setPoolPoints] = useState(50);
+  const [poolPoints, setPoolPoints] = useState("175");
   const [issuedUrl, setIssuedUrl] = useState("");
   const [issuedLabel, setIssuedLabel] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
@@ -227,12 +227,13 @@ export function ScoringStaffPanel({
       | { id?: string; token?: string; actionUrl?: string }
       | undefined;
     if (!assignment?.id) return;
-    if (poolPoints > 0 && role.permissions.awardPoints) {
+    const parsedPoolPoints = Number.parseInt(poolPoints, 10);
+    if (parsedPoolPoints > 0 && role.permissions.awardPoints) {
       await onAction({
         action: "issue-pool",
         ownerType: delivery === "station" ? "station" : "staff",
         ownerId: assignment.id,
-        points: poolPoints,
+        points: parsedPoolPoints,
       });
     }
     const stationUrl = assignment.token
@@ -527,7 +528,7 @@ export function ScoringStaffPanel({
                         value={delivery}
                         onValueChange={(value) => setDelivery(value as Delivery)}
                         options={[
-                          { value: "email", label: "email a one-use invite" },
+                          { value: "email", label: "email invite + create account" },
                           { value: "copy", label: "copy a private invite link" },
                           { value: "direct", label: "assign an existing account" },
                           { value: "station", label: "create a shared-device link" },
@@ -556,7 +557,7 @@ export function ScoringStaffPanel({
                         />
                         <p className="mt-2 font-mono text-micro leading-relaxed theme-muted">
                           {delivery === "email"
-                            ? "We send a one-use link. They sign in or verify this email to accept it."
+                            ? "We send a one-use link. It verifies this email, creates their account if needed, signs them in and activates the role."
                             : delivery === "copy"
                               ? "The link works once and is reserved for this email. Send it privately."
                               : "Access is added immediately. This email must already belong to a verified account."}
@@ -581,12 +582,18 @@ export function ScoringStaffPanel({
                       <label className="font-mono text-xs">
                         point pool
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={poolPoints}
-                          onChange={(event) => setPoolPoints(Number(event.target.value))}
+                          onChange={(event) =>
+                            setPoolPoints(event.target.value.replaceAll(/[^0-9]/g, ""))
+                          }
                           className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
                         />
+                        <span className="mt-2 block font-mono text-micro theme-muted">
+                          Total points this person can give out. Start with 175 for an invigilator.
+                        </span>
                       </label>
                     )}
                     <button className="min-h-11 border border-foreground px-4 font-mono text-xs sm:col-span-2 sm:w-fit">
@@ -596,7 +603,7 @@ export function ScoringStaffPanel({
                           ? "create shared-device link"
                           : delivery === "copy"
                             ? "create private invite link"
-                            : "send invitation"}
+                            : "send account invitation"}
                     </button>
                   </form>
                   {(role.permissions.awardPoints || role.permissions.runActivities) &&

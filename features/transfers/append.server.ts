@@ -20,7 +20,7 @@ import { TransferOperationsService } from "./transfer-operations-service.server"
 /**
  * Appending files to an existing transfer, shared by two callers:
  *
- * - the admin append routes, where the caller names any transfer, and
+ * - the upload page, where an admin names a transfer or an owner presents its private token, and
  * - event guest drops, where a bearer token maps to exactly one transfer.
  *
  * Authorisation stays with the caller; everything below assumes the caller
@@ -266,6 +266,10 @@ export async function appendFinalize(
       },
       addedCount: result.addedCount,
       totalSize: result.totalSize,
+      transferTotalSize: result.transfer.files.reduce(
+        (total, file) => total + (file.storedBytes ?? file.size),
+        0,
+      ),
       fileCounts: result.fileCounts,
       processingCounts: result.processingCounts,
     });

@@ -156,6 +156,62 @@ describeWithDatabase("checkout capacity reservations (postgres)", () => {
     ).toEqual(expect.objectContaining({ soldOut: false }));
   });
 
+  it("applies one claimed credit unit to one admission ticket and persists exact allocations", async () => {
+    await seedEvent({ quantity: 10 });
+    await query(
+      `insert into attendee_credit_campaigns
+         (id,campaign_key,name,reason,redemption_event_slug,amount_minor,currency,
+          claim_expires_at,status)
+       values ('01990a20-0000-7000-8000-000000000001','checkout-credit','Thank-you credit','test',
+               'capacity-night',500,'GBP',now() + interval '1 day','active')`,
+    );
+    await query(
+      `insert into attendee_credit_grants
+         (id,campaign_id,email,email_hash,units_total,claimed_at)
+       values ('01990a20-0000-7000-8000-000000000002',
+               '01990a20-0000-7000-8000-000000000001','buyer@example.com',$1,1,now())`,
+      [createHash("sha256").update("buyer@example.com").digest("hex")],
+    );
+    stripe.createCheckoutSession.mockResolvedValueOnce({
+      id: "cs_credit_checkout_123",
+      url: "https://checkout.stripe.test/credit",
+      expiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+    });
+
+    const result = await startCheckout({
+      ...checkoutInput("credit-checkout-reference"),
+      quantity: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(stripe.createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quantity: 2,
+        priceLines: [
+          { quantity: 1, unitAmountMinor: 1000, label: "credit applied" },
+          { quantity: 1, unitAmountMinor: 1500 },
+        ],
+        metadata: expect.objectContaining({ creditUnits: "1", creditDiscountMinor: "500" }),
+      }),
+    );
+    expect(
+      await query<{
+        amount_minor: number;
+        amount_allocations_minor: number[];
+        credit_discount_minor: number;
+      }>(
+        `select amount_minor,amount_allocations_minor,credit_discount_minor
+           from checkout_sessions where id = 'cs_credit_checkout_123'`,
+      ),
+    ).toEqual([
+      {
+        amount_minor: 2500,
+        amount_allocations_minor: [1000, 1500],
+        credit_discount_minor: 500,
+      },
+    ]);
+  });
+
   it("blocks a restricted identity from starting a new purchase", async () => {
     await seedEvent({ quantity: 4 });
     const email = "restricted@example.com";

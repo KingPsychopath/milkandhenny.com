@@ -280,6 +280,24 @@ Storage implementation details remain behind `lib/platform/r2.server.ts`; the ap
 
 Every object-storage operation selects `public` or `private` explicitly; unknown namespaces never fall through to the public origin. Browser upload workflows share one transport for exact signed headers, cancellation, timeouts, and retry policy, while feature services continue to own authorisation, limits, key reservation, final verification, and publication. All word and album uploads land in the private bucket under lifecycle-managed `incoming/` prefixes. Feature finalisation verifies and promotes them, copying only intentional public results to the public bucket, so abandoned or partially completed uploads are never public assets.
 
+### Transfer upload recovery
+
+A server reservation and signed R2 targets exist before the first byte moves, and the browser keeps
+that provisional checkpoint in tab-scoped session storage. Active uploads render only live byte
+progress. After a refresh or interruption, the upload page authenticates the checkpoint against both
+the upload-session ID and its delete token, then checks the expected R2 objects by exact size. An
+empty reservation is not presented as an unfinished transfer: the page releases it and forgets the
+local checkpoint. Once at least one complete file exists, the recovery panel preserves those files
+and resends only missing or interrupted files. Finalisation removes the reservation and browser
+checkpoint. Explicit discard confirms intent, removes stored parts first, then releases the
+reservation and checkpoint.
+
+The signed upload window defaults to six hours and its reservation lasts another 30 minutes.
+Daily deep cleanup treats either completed transfer metadata or a live upload reservation as an
+ownership record, deleting a prefix only after both are absent. The private-bucket transfer lifecycle
+rule is a 31-day infrastructure backstop; it also remains one day beyond the longest user-visible
+30-day transfer lifetime.
+
 ## Media processing
 
 Images and GIFs are processed on the request that finalises the upload. RAW and video are queued, because they cost seconds of CPU and can pull gigabytes off object storage:

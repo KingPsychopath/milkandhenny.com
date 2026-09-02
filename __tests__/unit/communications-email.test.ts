@@ -107,4 +107,38 @@ describe("communication email rendering", () => {
     expect(rendered.text).not.toContain("javascript:alert");
     expect(rendered.text).not.toContain("**");
   });
+
+  it("renders a credit total and grammatically correct ticket quantity", () => {
+    const rendered = renderCommunicationMessage({
+      kind: "event_service",
+      subject: "Your credit",
+      body: "You purchased {{credit.ticketSummary}}. [{{credit.claimLabel}}]({{credit.claimUrl}})",
+      origin: "https://milkandhenny.com",
+      context: {
+        credit: {
+          claimUrl: "https://milkandhenny.com/credit/private-token",
+          units: 2,
+          amountMinor: 500,
+          currency: "GBP",
+        },
+      },
+    });
+
+    expect(rendered.text).toContain("You purchased 2 food tickets.");
+    expect(rendered.text).toContain("save my 2 × £5 credits");
+    expect(rendered.text).toContain("https://milkandhenny.com/credit/private-token");
+  });
+
+  it("does not add a second greeting when the message supplies one", () => {
+    const rendered = renderCommunicationMessage({
+      kind: "feedback",
+      subject: "Thank you",
+      body: "Hi Owen,\n\nThank you for coming.",
+      recipientName: "Test contact",
+    });
+
+    expect(rendered.text).toMatch(/^Hi Owen,/);
+    expect(rendered.text).not.toContain("Hi Test contact,");
+    expect(rendered.html.match(/Hi Owen,/g)).toHaveLength(1);
+  });
 });

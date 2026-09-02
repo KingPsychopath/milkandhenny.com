@@ -41,7 +41,8 @@ export async function listParticipantScoreEntries(
     points: number;
     created_at: Date;
   }>(
-    `select transaction.id as transaction_id, activity.name as activity_name,
+    `select transaction.id as transaction_id,
+            coalesce(activity.name,transaction.metadata->>'displayLabel') as activity_name,
             transaction.source_type, transaction.reason_code, transaction.status,
             sum(posting.points)::integer as points, transaction.created_at
        from score_transactions transaction
@@ -74,16 +75,19 @@ export async function listPublicScoreBreakdowns(
     points: number;
   }>(
     `select posting.participant_id,
-            coalesce(activity.name, replace(transaction.reason_code, '-', ' ')) as label,
+            coalesce(activity.name,transaction.metadata->>'displayLabel',
+                     replace(transaction.reason_code, '-', ' ')) as label,
             sum(posting.points)::integer as points
        from score_transactions transaction
        join score_postings posting on posting.transaction_id = transaction.id
        left join score_activities activity on activity.id = transaction.activity_id
       where transaction.event_slug = $1 and transaction.status = 'accepted'
       group by posting.participant_id,
-               coalesce(activity.name, replace(transaction.reason_code, '-', ' '))
+               coalesce(activity.name,transaction.metadata->>'displayLabel',
+                        replace(transaction.reason_code, '-', ' '))
       order by sum(posting.points) desc,
-               coalesce(activity.name, replace(transaction.reason_code, '-', ' '))`,
+               coalesce(activity.name,transaction.metadata->>'displayLabel',
+                        replace(transaction.reason_code, '-', ' '))`,
     [eventSlug],
   );
   const breakdowns = new Map<string, Array<{ label: string; points: number }>>();

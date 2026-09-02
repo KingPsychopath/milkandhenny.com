@@ -10,6 +10,7 @@ import {
   type CommunicationMedia,
 } from "./email.server";
 import { prepareCommunicationLinkMap } from "./email-links.server";
+import { issueCreditClaimLink } from "@/features/credits/credits.server";
 import {
   optOutByToken as optOutMarketingByToken,
   setMarketingPreference as setMarketingConsentPreference,
@@ -47,6 +48,7 @@ export type CommunicationMessage = {
   lastError: string | null;
   createdAt: string;
   queuedAt: string | null;
+  creditCampaignId: string | null;
   delivery: CommunicationDeliveryCounts;
   linkClicks: CommunicationLinkMetric[];
 };
@@ -317,6 +319,7 @@ function messageFromRow(row: Record<string, unknown>): CommunicationMessage {
     lastError: typeof row.last_error === "string" ? row.last_error : null,
     createdAt: iso(row.created_at as Date) ?? new Date().toISOString(),
     queuedAt: iso(row.queued_at as Date | null),
+    creditCampaignId: typeof row.credit_campaign_id === "string" ? row.credit_campaign_id : null,
     delivery: deliveryCounts(row.delivery_counts),
     linkClicks: linkMetrics(row.link_clicks),
   };
@@ -325,7 +328,7 @@ function messageFromRow(row: Record<string, unknown>): CommunicationMessage {
 export async function listCommunicationMessages(): Promise<CommunicationMessage[]> {
   const rows = await query<
     Record<string, unknown>
-  >(`select id, kind, audience, event_slug, subject, body, media,
+  >(`select id, kind, audience, event_slug, subject, body, media, credit_campaign_id,
             selected_contact_hashes, scheduled_at, status, recipient_count,
             queued_count, last_error, created_at, queued_at,
             jsonb_build_object(
@@ -381,6 +384,7 @@ export async function saveCommunication(input: {
   media: unknown;
   selectedContactHashes: string[];
   scheduledAt: string | null;
+  creditCampaignId?: string | null;
   request: Request;
 }): Promise<CommunicationMessage> {
   const subject = input.subject.trim();
@@ -416,8 +420,8 @@ export async function saveCommunication(input: {
   await query(
     `insert into communication_messages
        (id, kind, audience, event_slug, subject, body, media,
-        selected_contact_hashes, scheduled_at, status, recipient_count)
-     values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)`,
+        selected_contact_hashes, scheduled_at, status, recipient_count, credit_campaign_id)
+     values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12)`,
     [
       id,
       input.kind,
@@ -430,6 +434,7 @@ export async function saveCommunication(input: {
       scheduledAt,
       isDraft ? "draft" : "scheduled",
       recipients.length,
+      input.creditCampaignId ?? null,
     ],
   );
 
@@ -441,7 +446,27 @@ export async function saveCommunication(input: {
         const unsubscribeUrl = isMarketingKind(input.kind)
           ? new URL(`/api/marketing/unsubscribe/${recipient.unsubscribeToken}`, origin).toString()
           : undefined;
-        const context = { event, recipientName: recipient.displayName ?? undefined };
+        const credit = input.creditCampaignId
+          ? await issueCreditClaimLink({
+              campaignId: input.creditCampaignId,
+              email: recipient.email,
+              origin,
+            })
+          : null;
+        const context = {
+          event,
+          recipientName: recipient.displayName ?? undefined,
+          ...(credit
+            ? {
+                credit: {
+                  claimUrl: credit.url,
+                  units: credit.claim.units,
+                  amountMinor: credit.claim.amountMinor,
+                  currency: credit.claim.currency,
+                },
+              }
+            : {}),
+        };
         const trackingLinks = await prepareCommunicationLinkMap({
           body,
           context,
@@ -492,7 +517,7 @@ export async function saveCommunication(input: {
   }
 
   const rows = await query<Record<string, unknown>>(
-    `select id, kind, audience, event_slug, subject, body, media,
+    `select id, kind, audience, event_slug, subject, body, media, credit_campaign_id,
             selected_contact_hashes, scheduled_at, status, recipient_count,
             queued_count, last_error, created_at, queued_at,
             jsonb_build_object(

@@ -247,7 +247,11 @@ async function requiredNamedAdminPermission(
   if (pathname.includes("/operations/audit")) return "viewAudit";
   if (pathname.includes("/operations/directory") || pathname.includes("/people"))
     return "managePeople";
-  if (pathname.includes("/communications") || pathname.includes("/email"))
+  if (
+    pathname.includes("/communications") ||
+    pathname.includes("/email") ||
+    pathname.includes("/credits")
+  )
     return "manageCommunications";
   if (
     pathname.includes("/scoring") ||

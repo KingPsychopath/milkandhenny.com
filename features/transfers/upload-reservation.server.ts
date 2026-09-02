@@ -28,7 +28,7 @@ function requireReservationRedis() {
   );
 }
 
-function reservationKey(transferId: string): string {
+function getTransferUploadReservationKey(transferId: string): string {
   return `${RESERVATION_PREFIX}${transferId}`;
 }
 
@@ -53,14 +53,14 @@ async function createTransferUploadReservation(
   const redis = requireReservationRedis();
   if (redis) {
     return Boolean(
-      await redis.set(reservationKey(reservation.transferId), reservation, {
+      await redis.set(getTransferUploadReservationKey(reservation.transferId), reservation, {
         ex: getUploadReservationTtlSeconds(),
         nx: true,
       }),
     );
   }
 
-  const key = reservationKey(reservation.transferId);
+  const key = getTransferUploadReservationKey(reservation.transferId);
   if (memoryReservations.has(key)) return false;
   memoryReservations.set(key, reservation);
   setTimeout(
@@ -75,26 +75,29 @@ async function getTransferUploadReservation(
 ): Promise<TransferUploadReservation | null> {
   const redis = requireReservationRedis();
   if (redis) {
-    const raw = await redis.get<TransferUploadReservation | string>(reservationKey(transferId));
+    const raw = await redis.get<TransferUploadReservation | string>(
+      getTransferUploadReservationKey(transferId),
+    );
     if (!raw) return null;
     return typeof raw === "string" ? (JSON.parse(raw) as TransferUploadReservation) : raw;
   }
-  return memoryReservations.get(reservationKey(transferId)) ?? null;
+  return memoryReservations.get(getTransferUploadReservationKey(transferId)) ?? null;
 }
 
 async function deleteTransferUploadReservation(transferId: string): Promise<void> {
   const redis = requireReservationRedis();
   if (redis) {
-    await redis.del(reservationKey(transferId));
+    await redis.del(getTransferUploadReservationKey(transferId));
     return;
   }
-  memoryReservations.delete(reservationKey(transferId));
+  memoryReservations.delete(getTransferUploadReservationKey(transferId));
 }
 
 export {
   createTransferUploadReservation,
   deleteTransferUploadReservation,
   getTransferUploadReservation,
+  getTransferUploadReservationKey,
   transferUploadFilesFingerprint,
 };
 

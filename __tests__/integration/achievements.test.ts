@@ -8,17 +8,15 @@ import {
   achievementViewForParticipant,
   listAchievementNotifications,
   markAchievementNotificationsDelivered,
+  refreshPersonAchievements,
 } from "@/features/achievements/achievements.server";
 import {
   PITCH_DOCUMENT_SCHEMA_VERSION,
   PITCH_SLIDE_DEFAULT_DURATION_MS,
   type PitchDocument,
 } from "@/features/things/pitches/types";
-import {
-  createPitchDeck,
-  createPitchOwnerToken,
-  publishPitchDeck,
-} from "@/features/things/pitches/store.server";
+import { createPitchDeck, createPitchOwnerToken } from "@/features/things/pitches/store.server";
+import { getOrCreateSettings } from "@/features/event-scoring/store.server";
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase, truncateAll } from "../helpers/postgres";
 
@@ -171,10 +169,32 @@ describeWithDatabase("achievements", () => {
     ).toBeDefined();
   });
 
-  it("unlocks Six Appeal only for a published deck with six populated slides", async () => {
+  it("unlocks Six Appeal from a saved deck and rewards only the selected live-event ticket", async () => {
     const personId = randomUUID();
     await query(`insert into event_people (id,canonical_name) values ($1,'Pitch Guest')`, [
       personId,
+    ]);
+    const participantId = await addEventWithTicket({
+      slug: "six-appeal-night",
+      ticketId: "pitch-guest-ticket",
+      orderId: "pitch-night-order",
+      holderName: "Pitch Guest",
+    });
+    await query(
+      `insert into tickets (id,event_slug,ticket_type_id,holder_name,order_id)
+       values ('pitch-sibling-ticket','six-appeal-night','standard','Other Guest','pitch-night-order')`,
+    );
+    const sibling = await queryOne<{ id: string }>(
+      `select id from event_participants where ticket_id = 'pitch-sibling-ticket'`,
+    );
+    expect(sibling).not.toBeNull();
+    await query(`update event_participants set person_id = $2 where id = $1`, [
+      participantId,
+      personId,
+    ]);
+    await getOrCreateSettings("six-appeal-night");
+    await query(`update event_scoring_settings set state = 'live' where event_slug = $1`, [
+      "six-appeal-night",
     ]);
     const ownerToken = createPitchOwnerToken();
     const created = await createPitchDeck({
@@ -191,8 +211,12 @@ describeWithDatabase("achievements", () => {
       created.value.deck.id,
       personId,
     ]);
-    const published = await publishPitchDeck({ deckId: created.value.deck.id, ownerToken });
-    expect(published.ok).toBe(true);
+    await refreshPersonAchievements(personId, {
+      sixAppealParticipantIds: [participantId],
+    });
+    await refreshPersonAchievements(personId, {
+      sixAppealParticipantIds: [participantId],
+    });
 
     const cabinet = await achievementCabinetForPerson(personId);
     expect(cabinet.find((achievement) => achievement.key === "six-appeal")).toMatchObject({
@@ -201,6 +225,24 @@ describeWithDatabase("achievements", () => {
     });
     expect(
       cabinet.find((achievement) => achievement.key === "six-appeal")?.unlockedAt,
+    ).toBeDefined();
+    const balances = await query<{ participant_id: string; balance: number }>(
+      `select participant.id as participant_id,coalesce(projection.balance,0)::integer as balance
+         from event_participants participant
+         left join score_projections projection on projection.participant_id = participant.id
+        where participant.id = any($1::text[]) order by participant.id`,
+      [[participantId, sibling!.id]],
+    );
+    expect(new Map(balances.map((row) => [row.participant_id, row.balance]))).toEqual(
+      new Map([
+        [participantId, 5],
+        [sibling!.id, 0],
+      ]),
+    );
+    expect(
+      (await listAchievementNotifications(participantId)).find(
+        (notification) => notification.key === "six-appeal",
+      )?.sourceTransactionId,
     ).toBeDefined();
   });
 });

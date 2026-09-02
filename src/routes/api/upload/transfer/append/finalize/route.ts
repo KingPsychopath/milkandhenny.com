@@ -1,17 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { appendFinalize } from "@/features/transfers/append.server";
+import {
+  MAX_TRANSFER_FILE_BYTES,
+  MAX_TRANSFER_TOTAL_BYTES,
+  validateDeleteToken,
+} from "@/features/transfers/store.server";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-/** Admin append: record uploaded files on an existing transfer. */
+/** Record extra files for an admin or the holder of a transfer's private owner token. */
 async function handlePOST(request: Request) {
-  const { error: authErr } = await requireAuthWithPayload(request, "admin");
+  const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
   if (authErr) return authErr;
 
-  let body: { transferId?: string; files?: TransferUploadFileInput[] };
+  let body: { transferId?: string; deleteToken?: string; files?: TransferUploadFileInput[] };
   try {
     body = await request.json();
   } catch {
@@ -20,8 +25,19 @@ async function handlePOST(request: Request) {
 
   const transferId = body.transferId?.trim();
   if (!transferId) return Response.json({ error: "Missing transferId" }, { status: 400 });
+  const isAdmin = payload?.role === "admin";
+  if (!isAdmin && !(await validateDeleteToken(transferId, body.deleteToken ?? ""))) {
+    return Response.json({ error: "Private owner access is required" }, { status: 403 });
+  }
 
-  return appendFinalize(request, transferId, body.files);
+  return appendFinalize(
+    request,
+    transferId,
+    body.files,
+    isAdmin
+      ? {}
+      : { maxFileBytes: MAX_TRANSFER_FILE_BYTES, maxTotalBytes: MAX_TRANSFER_TOTAL_BYTES },
+  );
 }
 
 export const Route = createFileRoute("/api/upload/transfer/append/finalize")({
@@ -31,3 +47,5 @@ export const Route = createFileRoute("/api/upload/transfer/append/finalize")({
     },
   },
 });
+
+export { handlePOST as POST };

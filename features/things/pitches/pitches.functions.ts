@@ -411,6 +411,14 @@ export const syncPitchFn = createServerFn({ method: "POST" })
     ) {
       return invalid(document.ok ? undefined : document.error);
     }
+    const session = await getAttendeeSession();
+    const scoringTickets = (session?.tickets ?? []).filter((ticket) => ticket.mode === "scoring");
+    const achievementParticipantIds = scoringTickets
+      .filter((ticket) => {
+        const selected = session?.activeParticipantByEventId[ticket.eventId];
+        return !selected || selected === ticket.participantId;
+      })
+      .map((ticket) => ticket.participantId);
     return runOperation(
       Effect.gen(function* () {
         const pitches = yield* PitchesService;
@@ -419,6 +427,7 @@ export const syncPitchFn = createServerFn({ method: "POST" })
           title,
           document: document.document,
           operations,
+          achievementParticipantIds,
         });
       }),
     );

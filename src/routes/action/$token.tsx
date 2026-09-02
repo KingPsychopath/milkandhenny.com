@@ -54,7 +54,7 @@ function TicketActionPage() {
         setMessage("Admin access activated. It is now attached to your verified identity.");
       } else if ("purpose" in result.value && result.value.purpose === "staff-invitation") {
         setDestination(result.value.destination);
-        setMessage("Staff access activated. It is now attached to your verified identity.");
+        setMessage("Your account is ready and the staff role has been activated.");
       } else if ("publicTicketId" in result.value) {
         setDestination(result.value.destination);
         setMessage(
@@ -179,7 +179,7 @@ function TicketActionPage() {
           </dl>
           <p className="mt-5 max-w-lg font-mono text-xs leading-relaxed theme-muted">
             {isAccess
-              ? "Accepting verifies the invited mailbox and attaches this authority to that person. If another person is signed in, their identity is not merged or changed."
+              ? "Accepting verifies the invited mailbox, creates their Milk & Henny account if needed, signs them in and attaches this authority. If another person is signed in, their identity is not merged or changed."
               : isRefundConsent
                 ? "The purchaser requested this refund. Consenting cancels this ticket and returns money only to the purchaser’s original payment method."
                 : "Accepting verifies the invited email and saves the ticket to You. A transfer replaces the previous holder’s link and QR. It does not move payment or refund ownership."}

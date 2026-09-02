@@ -28,6 +28,7 @@ import {
   createTransferUploadReservation,
   deleteTransferUploadReservation,
   getTransferUploadReservation,
+  getTransferUploadReservationKey,
   transferUploadFilesFingerprint,
 } from "./upload-reservation.server";
 import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
@@ -116,6 +117,20 @@ export type TransferFinalizeResult =
   | { status: "too-large"; actualUploadedBytes: number }
   | { status: "transfer-conflict" };
 
+export type TransferResumeResult =
+  | {
+      status: "ready";
+      urls: Extract<TransferPresignResult, { status: "ready" }>["urls"];
+      uploadedNames: string[];
+    }
+  | { status: "missing-reservation" }
+  | { status: "reservation-mismatch" };
+
+export type TransferAbandonResult =
+  | { status: "abandoned"; deletedObjects: number }
+  | { status: "missing-reservation" }
+  | { status: "reservation-mismatch" };
+
 export type TransferAppendResult =
   | {
       status: "completed";
@@ -143,6 +158,11 @@ export class TransferOperationsService extends Context.Service<
       id: string,
     ) => Effect.Effect<{ deletedFiles: number; dataDeleted: boolean }, unknown>;
     readonly cleanup: (mode: "deep" | "index") => Effect.Effect<TransferCleanupResult, unknown>;
+    readonly abandonUpload: (input: {
+      transferId: string;
+      deleteToken: string;
+      actorJti: string;
+    }) => Effect.Effect<TransferAbandonResult, unknown>;
     readonly finalizeAppend: (input: {
       transferId: string;
       files: TransferUploadFileInput[];
@@ -171,6 +191,13 @@ export class TransferOperationsService extends Context.Service<
       files: TransferUploadFileInput[];
       uploadUrlTtlSeconds: number;
     }) => Effect.Effect<Extract<TransferPresignResult, { status: "ready" }>, unknown>;
+    readonly resumeUpload: (input: {
+      transferId: string;
+      deleteToken: string;
+      actorJti: string;
+      files: TransferUploadFileInput[];
+      uploadUrlTtlSeconds: number;
+    }) => Effect.Effect<TransferResumeResult, unknown>;
     readonly removeFile: (input: {
       id: string;
       fileId: string;
@@ -266,8 +293,20 @@ export class TransferOperationsService extends Context.Service<
           const orphanIds = yield* Effect.forEach(
             ids,
             (id) =>
-              redisCommand("check_orphan", () => client.exists(`transfer:${id}`)).pipe(
-                Effect.map((exists) => (exists === 0 ? id : null)),
+              Effect.all(
+                {
+                  transfer: redisCommand("check_orphan_transfer", () =>
+                    client.exists(`transfer:${id}`),
+                  ),
+                  reservation: redisCommand("check_orphan_reservation", () =>
+                    client.exists(getTransferUploadReservationKey(id)),
+                  ),
+                },
+                { concurrency: 2 },
+              ).pipe(
+                Effect.map(({ transfer, reservation }) =>
+                  transfer === 0 && reservation === 0 ? id : null,
+                ),
               ),
             { concurrency: 8 },
           ).pipe(Effect.map((values) => values.filter((id): id is string => id !== null)));
@@ -517,6 +556,72 @@ export class TransferOperationsService extends Context.Service<
           }),
         );
 
+      const resumeUpload = (input: {
+        transferId: string;
+        deleteToken: string;
+        actorJti: string;
+        files: TransferUploadFileInput[];
+        uploadUrlTtlSeconds: number;
+      }) =>
+        Effect.gen(function* () {
+          const reservation = yield* attempt("read_resume_reservation", () =>
+            getTransferUploadReservation(input.transferId),
+          );
+          if (!reservation) return { status: "missing-reservation" } as const;
+          if (
+            reservation.actorJti !== input.actorJti ||
+            reservation.deleteToken !== input.deleteToken ||
+            reservation.filesFingerprint !== transferUploadFilesFingerprint(input.files)
+          ) {
+            return { status: "reservation-mismatch" } as const;
+          }
+
+          const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
+          const missingFiles = input.files.filter((_, index) => inspected[index]?.mismatch);
+          const urls = yield* presignFiles(
+            input.transferId,
+            missingFiles,
+            input.uploadUrlTtlSeconds,
+          );
+          return {
+            status: "ready",
+            urls,
+            uploadedNames: input.files
+              .filter((_, index) => !inspected[index]?.mismatch)
+              .map((file) => file.name),
+          } as const;
+        }).pipe(
+          Effect.withSpan("transfers.resume_upload", {
+            attributes: { fileCount: input.files.length },
+          }),
+        );
+
+      const abandonUpload = (input: {
+        transferId: string;
+        deleteToken: string;
+        actorJti: string;
+      }) =>
+        Effect.gen(function* () {
+          const reservation = yield* attempt("read_abandon_reservation", () =>
+            getTransferUploadReservation(input.transferId),
+          );
+          if (!reservation) return { status: "missing-reservation" } as const;
+          if (
+            reservation.actorJti !== input.actorJti ||
+            reservation.deleteToken !== input.deleteToken
+          ) {
+            return { status: "reservation-mismatch" } as const;
+          }
+
+          // Keep the reservation until object deletion succeeds. That prevents
+          // deep cleanup from racing an explicit discard and makes retries safe.
+          const deletedObjects = yield* removeObjects(input.transferId);
+          yield* attempt("release_abandoned_reservation", () =>
+            deleteTransferUploadReservation(input.transferId),
+          );
+          return { status: "abandoned", deletedObjects } as const;
+        }).pipe(Effect.withSpan("transfers.abandon_upload"));
+
       const presignAppend = (input: {
         transferId: string;
         files: TransferUploadFileInput[];
@@ -641,6 +746,7 @@ export class TransferOperationsService extends Context.Service<
       }).pipe(Effect.withSpan("transfers.nuke"));
 
       return {
+        abandonUpload,
         adminDelete: (id) =>
           Effect.gen(function* () {
             if (!isSafeTransferId(id)) {
@@ -661,6 +767,7 @@ export class TransferOperationsService extends Context.Service<
         nuke,
         presignAppend,
         presignUpload,
+        resumeUpload,
         removeFile,
         takedown,
       };

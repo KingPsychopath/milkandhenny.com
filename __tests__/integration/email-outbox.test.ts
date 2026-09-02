@@ -181,6 +181,24 @@ describeWithDatabase("email outbox (postgres)", () => {
     );
     expect(click[0]?.click_count).toBe(1);
 
+    const privateSourceId = randomUUID();
+    const privateClaimUrl = `http://localhost:3000/credit/mhc_${"A".repeat(43)}`;
+    const privateLinks = await prepareCommunicationLinkMap({
+      body: `[Save credit](${privateClaimUrl})`,
+      context: {},
+      origin: "http://localhost:3000",
+      media: [],
+      source: {
+        sourceType: "message",
+        sourceId: privateSourceId,
+        recipientHash: "b".repeat(64),
+      },
+    });
+    expect(privateLinks.size).toBe(0);
+    await expect(
+      query(`select destination from communication_links where source_id = $1`, [privateSourceId]),
+    ).resolves.toHaveLength(0);
+
     await recordEmailDeliveryFeedback({
       eventId: "feedback-1",
       type: "bounced",

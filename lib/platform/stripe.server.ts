@@ -102,6 +102,8 @@ export type CreateCheckoutInput = {
   metadata: Record<string, string>;
   /** Our own id, used as the idempotency key so a double-submit is one session. */
   reference: string;
+  /** Exact paid ticket prices after account credits, grouped into Stripe line items. */
+  priceLines?: Array<{ quantity: number; unitAmountMinor: number; label?: string }>;
 };
 
 export type CheckoutSession = {
@@ -115,18 +117,18 @@ export async function createCheckoutSession(input: CreateCheckoutInput): Promise
     {
       mode: "payment",
       customer_email: input.email,
-      line_items: [
-        {
-          quantity: input.quantity,
-          price_data: {
-            currency: input.currency.toLowerCase(),
-            unit_amount: input.priceMinor,
-            product_data: {
-              name: `${input.eventTitle} — ${input.ticketTypeName}`,
-            },
+      line_items: (
+        input.priceLines ?? [{ quantity: input.quantity, unitAmountMinor: input.priceMinor }]
+      ).map((line) => ({
+        quantity: line.quantity,
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          unit_amount: line.unitAmountMinor,
+          product_data: {
+            name: `${input.eventTitle} — ${input.ticketTypeName}${line.label ? ` (${line.label})` : ""}`,
           },
         },
-      ],
+      })),
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
       metadata: input.metadata,

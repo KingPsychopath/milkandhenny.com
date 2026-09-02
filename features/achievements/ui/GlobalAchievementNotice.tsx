@@ -46,5 +46,10 @@ export function GlobalAchievementNotice({ authenticated }: { authenticated: bool
     return () => window.clearTimeout(timer);
   }, [queue]);
 
-  return queue[0] ? <AchievementUnlockNotice achievement={queue[0]} /> : null;
+  return queue[0] ? (
+    <AchievementUnlockNotice
+      achievement={queue[0]}
+      points={queue[0].sourceTransactionId ? queue[0].rewardPoints : undefined}
+    />
+  ) : null;
 }

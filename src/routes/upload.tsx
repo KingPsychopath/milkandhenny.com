@@ -18,7 +18,7 @@ export const Route = createFileRoute("/upload")({
   head: () =>
     buildSeoHead({
       title: `Upload · ${SITE_NAME}`,
-      description: "Upload files to private transfers or Milk & Henny words media.",
+      description: "Upload files to a private, expiring Milk & Henny transfer.",
       path: "/upload",
       robots: "noindex, nofollow",
       referrer: "no-referrer",

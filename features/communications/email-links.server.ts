@@ -55,6 +55,15 @@ function safeDestination(value: string): string | null {
   }
 }
 
+function isPrivateCreditDestination(value: string): boolean {
+  try {
+    const url = new URL(value, "https://milkandhenny.invalid");
+    return /^\/credit\/mhc_[A-Za-z0-9_-]{40,60}$/.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function sign(encodedPayload: string, secret: string): string {
   return createHmac("sha256", secret)
     .update(`milk-henny-email-link:${encodedPayload}`)
@@ -136,6 +145,7 @@ export async function prepareCommunicationLinkMap(input: {
   const definitions = new Map<string, string>();
   for (const link of extractCommunicationLinks(resolvedBody)) {
     const destination = safeDestination(link.url);
+    if (destination && isPrivateCreditDestination(destination)) continue;
     const key = destination ? communicationLinkKey(destination) : null;
     if (key && destination) definitions.set(key, destination);
   }

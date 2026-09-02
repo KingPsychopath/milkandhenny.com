@@ -23,6 +23,7 @@ import { personGameHistory, personGameStats } from "@/features/person-games/hist
 import { connectPitchDecksToVerifiedPerson } from "@/features/things/pitches/identity.server";
 import { listPitchDecksForPerson } from "@/features/things/pitches/store.server";
 import { achievementCabinetForPerson } from "@/features/achievements/achievements.server";
+import { listAccountCredits } from "@/features/credits/credits.server";
 import { safeReturnTo, type AttendeeAccount, type AttendeeTicketIdentity } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -684,6 +685,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     gameHistory,
     gameStats,
     achievements,
+    credits,
   ] = await Promise.all([
     query<{ id: string; display_hint: string; verified_at: Date }>(
       `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
@@ -780,6 +782,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     personGameHistory(personId),
     personGameStats(personId),
     achievementCabinetForPerson(personId),
+    listAccountCredits(personId),
   ]);
   const participantIds = tickets
     .map((ticket) => ticket.participant_id)
@@ -806,6 +809,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     gameHistory,
     gameStats,
     achievements,
+    credits,
     emails: emails.map((row) => ({
       id: row.id,
       masked: row.display_hint,

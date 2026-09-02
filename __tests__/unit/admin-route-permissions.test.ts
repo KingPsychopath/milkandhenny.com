@@ -74,6 +74,7 @@ const EXPECTED: Record<string, { GET: string | null; POST: string | null }> = {
   },
   "/api/admin/content-audit": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/content-summary": { GET: "manageContent", POST: "manageContent" },
+  "/api/admin/credits": { GET: "manageCommunications", POST: "manageCommunications" },
   "/api/admin/email": { GET: "manageCommunications", POST: "manageCommunications" },
   "/api/admin/events": { GET: "viewOperations", POST: "manageEvents" },
   "/api/admin/events/sample-slug": { GET: "viewOperations", POST: "manageEvents" },

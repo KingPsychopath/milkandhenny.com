@@ -54,8 +54,9 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
     key: "six-appeal",
     scope: "global",
     title: "Six Appeal",
-    description: "Publish a pitch with exactly six non-empty slides.",
+    description: "Save a pitch with exactly six non-empty slides.",
     icon: "slides",
+    rewardPoints: 5,
   },
   {
     key: "regular-behaviour",

@@ -287,6 +287,10 @@ async function handlePOST(request: Request) {
             : [],
           scheduledAt:
             typeof body.scheduledAt === "string" && body.scheduledAt ? body.scheduledAt : null,
+          creditCampaignId:
+            typeof body.creditCampaignId === "string" && body.creditCampaignId
+              ? body.creditCampaignId
+              : null,
           request,
         });
       }),

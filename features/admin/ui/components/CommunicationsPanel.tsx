@@ -29,6 +29,7 @@ import {
   type AdminStatusTone,
 } from "./AdminStatus";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
+import { CreditsPanel } from "./CreditsPanel";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type Kind = "newsletter" | "event_update" | "pitch_nudge" | "event_service" | "feedback";
@@ -1354,6 +1355,9 @@ export function CommunicationsPanel({
               responses={responses}
               busy={busy}
             />
+          ) : null}
+          {tab === "credits" ? (
+            <CreditsPanel authFetch={authFetch} onError={onError} onStatus={onStatus} />
           ) : null}
           {tab === "people" ? (
             <PeopleView

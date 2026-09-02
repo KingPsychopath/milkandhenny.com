@@ -51,6 +51,129 @@ describe("presigned upload transport", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it("allows a progressing upload to run beyond two minutes", async () => {
+    let finishUpload: ((response: Response) => void) | undefined;
+    let uploadSignal: AbortSignal | null | undefined;
+    const request = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          uploadSignal = init?.signal;
+          finishUpload = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", request);
+
+    const pending = uploadPresignedObject({
+      url: "https://bucket.example/large-upload?signature=test",
+      body: new Blob(["archive"]),
+      contentType: "application/zip",
+    });
+
+    await vi.advanceTimersByTimeAsync(120_001);
+
+    expect(uploadSignal?.aborted).toBe(false);
+    finishUpload?.(new Response(null, { status: 200 }));
+    await expect(pending).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("reports uploaded bytes while preserving the signed PUT request", async () => {
+    const progress = vi.fn();
+    const xhr = {
+      upload: {
+        onprogress: null as ((event: ProgressEvent) => void) | null,
+      },
+      open: vi.fn(),
+      setRequestHeader: vi.fn(),
+      getAllResponseHeaders: vi.fn(() => "etag: uploaded\r\n"),
+      responseType: "",
+      response: new Blob(),
+      status: 200,
+      statusText: "OK",
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      onabort: null as (() => void) | null,
+      abort: vi.fn(),
+      send: vi.fn((body: Blob) => {
+        xhr.upload.onprogress?.({
+          loaded: 4,
+          total: body.size,
+          lengthComputable: true,
+        } as ProgressEvent);
+        xhr.onload?.();
+      }),
+    };
+    function FakeXMLHttpRequest() {
+      return xhr;
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const response = await uploadPresignedObject(
+      {
+        url: "https://bucket.example/upload?signature=test",
+        body: new Blob(["12345678"]),
+        contentType: "application/zip",
+      },
+      { retries: 0, onProgress: progress },
+    );
+
+    expect(response.status).toBe(200);
+    expect(xhr.open).toHaveBeenCalledWith("PUT", expect.stringContaining("signature=test"));
+    expect(xhr.setRequestHeader).toHaveBeenCalledWith("content-type", "application/zip");
+    expect(progress.mock.calls).toEqual([
+      [0, 8],
+      [4, 8],
+      [8, 8],
+    ]);
+  });
+
+  it("aborts an inactive storage upload instead of hanging at zero", async () => {
+    const progress = vi.fn();
+    const attempts = vi.fn();
+    const xhr = {
+      upload: {
+        onprogress: null as ((event: ProgressEvent) => void) | null,
+      },
+      open: vi.fn(),
+      setRequestHeader: vi.fn(),
+      getAllResponseHeaders: vi.fn(() => ""),
+      responseType: "",
+      response: new Blob(),
+      status: 0,
+      statusText: "",
+      onload: null as (() => void) | null,
+      onerror: null as (() => void) | null,
+      onabort: null as (() => void) | null,
+      abort: vi.fn(() => xhr.onabort?.()),
+      send: vi.fn(),
+    };
+    function FakeXMLHttpRequest() {
+      return xhr;
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+
+    const pending = uploadPresignedObject(
+      {
+        url: "https://bucket.example/upload?signature=test",
+        body: new Blob(["archive"]),
+        contentType: "application/zip",
+      },
+      {
+        retries: 0,
+        stallTimeoutMs: 1_000,
+        onProgress: progress,
+        onAttempt: attempts,
+      },
+    );
+    const rejection = expect(pending).rejects.toThrow("Upload stalled while waiting for storage");
+
+    await vi.advanceTimersByTimeAsync(1_001);
+    await rejection;
+
+    expect(attempts).toHaveBeenCalledWith(1, 1);
+    expect(progress).toHaveBeenCalledWith(0, 7);
+    expect(xhr.abort).toHaveBeenCalledOnce();
+  });
+
   it("rejects non-http destinations before sending bytes", async () => {
     const request = vi.fn();
     vi.stubGlobal("fetch", request);
