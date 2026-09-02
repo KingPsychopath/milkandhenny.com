@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
-import { getRedis } from "@/lib/platform/redis.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { gamePoolAssignmentReceiptKey } from "./pool-keys";
+import { deletePoolValues } from "./pool-redis.server";
 
 function moderationId() {
   return `gpm_${randomBytes(16).toString("base64url")}`;
@@ -11,11 +11,9 @@ function moderationId() {
 export async function clearAssignmentReceipts(
   receipts: Array<{ runId: string; clientId: string }>,
 ) {
-  const redis = getRedis();
-  if (redis && receipts.length > 0)
-    await redis.del(
-      ...receipts.map(({ runId, clientId }) => gamePoolAssignmentReceiptKey(runId, clientId)),
-    );
+  await deletePoolValues(
+    ...receipts.map(({ runId, clientId }) => gamePoolAssignmentReceiptKey(runId, clientId)),
+  );
 }
 
 export async function expireStaleGamePoolAssignments(

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { getRedis } from "@/lib/platform/redis.server";
 import { log } from "@/lib/platform/logger.server";
 import { query } from "@/lib/platform/postgres-provider-context.server";
 import { remainingMultiplayerRoomTtlSeconds } from "../shared/room-primitives.server";
@@ -33,6 +32,7 @@ import {
 } from "./membership.server";
 import { recordGamePoolAllocation } from "./operations.server";
 import { poolGameSettings } from "./presets";
+import { deletePoolValues, getPoolValue, setPoolValue } from "./pool-redis.server";
 
 interface ActiveAssignmentRow {
   id: string;
@@ -158,14 +158,10 @@ async function leaveExistingAssignment(
 }
 
 async function readStoredReceipt(runId: string, clientId: string) {
-  const redis = getRedis();
-  return redis
-    ? ((await redis.get<AssignmentReceipt>(gamePoolAssignmentReceiptKey(runId, clientId))) ?? null)
-    : null;
+  return getPoolValue<AssignmentReceipt>(gamePoolAssignmentReceiptKey(runId, clientId));
 }
 
 async function readReceipt(runId: string, clientId: string) {
-  const redis = getRedis();
   const receipt = await readStoredReceipt(runId, clientId);
   if (!receipt) return null;
   const rows = await query<{ active: boolean }>(
@@ -176,7 +172,7 @@ async function readReceipt(runId: string, clientId: string) {
     [runId, clientId, receipt.assignment.roomId, receipt.assignment.playerId],
   );
   if (rows[0]?.active) return receipt;
-  await redis?.del(gamePoolAssignmentReceiptKey(runId, clientId));
+  await deletePoolValues(gamePoolAssignmentReceiptKey(runId, clientId));
   return null;
 }
 
@@ -187,15 +183,13 @@ async function saveRoomSecrets(input: {
   joinToken: string;
   assignment: GamePoolAssignment;
 }) {
-  const redis = getRedis();
-  if (!redis) throw new Error("Game-night rooms require Redis.");
   const ttl = remainingMultiplayerRoomTtlSeconds(input.assignment.expiresAt);
   await Promise.all([
-    redis.set(gamePoolRoomSecretKey(input.runId, input.roomId), input.joinToken, { ex: ttl }),
-    redis.set(
+    setPoolValue(gamePoolRoomSecretKey(input.runId, input.roomId), input.joinToken, ttl),
+    setPoolValue(
       gamePoolAssignmentReceiptKey(input.runId, input.clientId),
       { assignment: input.assignment } satisfies AssignmentReceipt,
-      { ex: ttl },
+      ttl,
     ),
   ]);
 }
@@ -207,9 +201,9 @@ async function joinRegisteredRoom(input: {
   clientId: string;
   name: string;
 }) {
-  const redis = getRedis();
-  if (!redis) throw new Error("Game-night rooms require Redis.");
-  const joinToken = await redis.get<string>(gamePoolRoomSecretKey(input.runId, input.room.room_id));
+  const joinToken = await getPoolValue<string>(
+    gamePoolRoomSecretKey(input.runId, input.room.room_id),
+  );
   if (!joinToken) throw new GamePoolJoinError("room_unavailable", "That room has closed.");
   return {
     assignment: await joinPoolRoom({
@@ -446,8 +440,7 @@ export async function releaseGamePoolAssignmentState(input: { token: string; cli
   await withGamePoolAllocation(runId, async (client) => {
     await leaveExistingAssignment(client, runId, clientId);
   });
-  const redis = getRedis();
-  if (redis) await redis.del(gamePoolAssignmentReceiptKey(runId, clientId));
+  await deletePoolValues(gamePoolAssignmentReceiptKey(runId, clientId));
   return { ok: true as const, runId };
 }
 

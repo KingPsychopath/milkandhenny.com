@@ -10,8 +10,24 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
   browser,
 }, testInfo) => {
   test.setTimeout(180_000);
+  process.env.DATABASE_URL ??=
+    process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
   const configuredBaseURL = testInfo.project.use.baseURL;
   if (typeof configuredBaseURL !== "string") throw new Error("Playwright baseURL is required");
+  const pools = await import("@/features/things/pool/store.server");
+  const action = `same-brain-e2e:${Date.now()}`;
+  const entrance = await pools.createGamePoolEntrance({
+    game: "same-brain",
+    label: "same brain browser QA",
+    targetSize: 8,
+    autoJoin: true,
+    allowRoomChoice: true,
+    allowNewRooms: true,
+    actionId: action,
+  });
+  const opened = await pools.openGamePoolRun(entrance.id, { actionId: action });
+  if (!opened) throw new Error("Same Brain test pool did not open");
+  const entrancePath = `/play/${opened.token}`;
 
   const phone = {
     ...devices["Pixel 7"],
@@ -30,21 +46,11 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
   const [host, maya, daniel] = surfaces;
 
   try {
-    await host.context.grantPermissions(["clipboard-read", "clipboard-write"], {
-      origin: configuredBaseURL,
-    });
-    await host.page.goto("/things/same-brain");
-    await waitForAppHydration(host.page);
-    await host.page.getByRole("button", { name: /^(?:open a room|private room)$/ }).click();
-    await joinAs(host, "Host");
-
-    await host.page.getByRole("button", { name: "copy invite link" }).click();
-    await expect(host.page.getByText("invite copied", { exact: true })).toBeVisible();
-    const inviteUrl = await host.page.evaluate(() => navigator.clipboard.readText());
-    expect(inviteUrl).toContain("/things/same-brain/");
-    expect(inviteUrl).toContain("#join=");
-
-    await Promise.all([joinFromInvite(maya, inviteUrl), joinFromInvite(daniel, inviteUrl)]);
+    await enterFromGamePool(host, entrancePath, "Host");
+    await Promise.all([
+      enterFromGamePool(maya, entrancePath, "Maya"),
+      enterFromGamePool(daniel, entrancePath, "Daniel"),
+    ]);
 
     const hostRoster = host.page.getByRole("list", { name: "Players in the room" });
     const mayaRoster = maya.page.getByRole("list", { name: "Players in the room" });
@@ -93,21 +99,25 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
     await expect(maya.page.getByRole("button", { name: "next round" })).toHaveCount(0);
   } finally {
     await closeGameSurfaces(surfaces);
+    await pools.setGamePoolRunStatus(entrance.id, "closed");
   }
 });
 
-async function joinFromInvite(surface: IsolatedGameSurface, inviteUrl: string) {
-  await surface.page.goto(inviteUrl);
-  await joinAs(surface, surface.role);
-}
-
-async function joinAs(surface: IsolatedGameSurface, name: string) {
+async function enterFromGamePool(surface: IsolatedGameSurface, entrancePath: string, name: string) {
+  await surface.page.goto(entrancePath);
   await waitForAppHydration(surface.page);
-  await surface.page.getByRole("textbox", { name: "your name" }).fill(name);
-  await surface.page.getByRole("button", { name: "join the room" }).click();
   await expect(surface.page.getByRole("region", { name: "Room lobby" })).toBeVisible({
     timeout: 15_000,
   });
+  await surface.page.getByRole("button", { name: "change my name" }).click();
+  const dialog = surface.page.getByRole("dialog", { name: "What should we call you?" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill(name);
+  await dialog.getByRole("button", { name: "save name" }).click();
+  const roster = surface.page.getByRole("list", { name: "Players in the room" });
+  await expect(roster).toContainText(`${name} · you`);
+  await expect(roster).toContainText("not ready");
+  await surface.page.getByRole("button", { name: "I’m ready" }).click();
+  await expect(roster).toContainText("ready");
 }
 
 async function answer(surface: IsolatedGameSurface, text: string) {

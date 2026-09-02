@@ -12,6 +12,8 @@ declare module "ioredis" {
     on(event: "message", listener: (channel: string, message: string) => void): this;
     psubscribe(...patterns: string[]): Promise<number>;
     publish(channel: string, message: string): Promise<number>;
+    get(key: string): Promise<string | null>;
+    set(key: string, value: string, mode: "EX", ttlSeconds: number): Promise<"OK" | null>;
     subscribe(...channels: string[]): Promise<number>;
     rpush(key: string, ...values: string[]): Promise<number>;
     del(...keys: string[]): Promise<number>;

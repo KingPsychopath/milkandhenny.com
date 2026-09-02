@@ -148,7 +148,9 @@ export function GamePoolEntranceApp({
         window.location.assign(gamePoolPlayerPath(assignment.game, assignment.roomId));
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message : "Could not start playing together. Try again.";
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : "Could not find a room. Check your connection and try again.";
         if (typeof choice === "object" && errorMessage === "That room is no longer available.") {
           setTargetRejected(true);
           setMessage("That room just filled or started. Join the next available room.");
@@ -177,17 +179,21 @@ export function GamePoolEntranceApp({
   );
 
   useEffect(() => {
-    if (!nameLoaded || autoJoinChecked.current) return;
-    autoJoinChecked.current = true;
+    // The profile hook loads first and supplies a generated guest name on the
+    // next render. Do not consume the one automatic attempt in between those
+    // renders or a first-time guest gets stranded behind a redundant button.
     if (
+      !nameLoaded ||
+      !playerName.trim() ||
+      autoJoinChecked.current ||
       suppressAutoJoin ||
       (!requestedRoomId && !view.run?.autoJoin) ||
       view.run?.status !== "open" ||
       view.message ||
-      !playerName.trim() ||
       (activeRoomId && !requestedRoomId && !targetRejected)
     )
       return;
+    autoJoinChecked.current = true;
     void assign(requestedChoice);
   }, [
     activeRoomId,
