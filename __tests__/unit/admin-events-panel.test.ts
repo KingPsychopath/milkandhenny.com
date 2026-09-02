@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { EventsPanel, TicketSalesBreakdown } from "@/features/admin/ui/components/EventsPanel";
-import { ScoringStaffPanel } from "@/features/admin/ui/components/ScoringStaffPanel";
+import { EventStaffAccessPanel } from "@/features/admin/ui/components/EventStaffAccessPanel";
 import { StaffRoleAccess } from "@/features/admin/ui/components/StaffAccessRegister";
 import { permissionsForGlobalRole } from "@/features/attendee-operations/types";
 
@@ -125,9 +125,8 @@ describe("admin events panel", () => {
       },
     ];
     const html = renderToStaticMarkup(
-      createElement(ScoringStaffPanel, {
+      createElement(EventStaffAccessPanel, {
         eventSlug: "tomorrow-night",
-        activities: [],
         checkpoints: [{ id: "food", name: "food collection" }],
         roles: [role],
         staff,

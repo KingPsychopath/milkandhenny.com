@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import type { AdminStaffAssignment, AdminStaffRole, ScoringAction } from "./event-scoring-types";
+import type { AdminStaffAssignment, AdminStaffRole, StaffAccessAction } from "./staff-access-types";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type AccessGroup = {
@@ -73,7 +73,7 @@ export function StaffRoleAccess({
 }: {
   role: AdminStaffRole;
   staff: AdminStaffAssignment[];
-  onAction: ScoringAction;
+  onAction: StaffAccessAction;
 }) {
   const assignments = staff.filter((assignment) => assignment.roleId === role.id);
   const current = assignments.filter(isCurrent);
@@ -225,7 +225,7 @@ export function StaffAccessRegister({
 }: {
   roles: AdminStaffRole[];
   staff: AdminStaffAssignment[];
-  onAction: ScoringAction;
+  onAction: StaffAccessAction;
 }) {
   const roleNames = useMemo(() => new Map(roles.map((role) => [role.id, role.label])), [roles]);
   const current = staff.filter(isCurrent);

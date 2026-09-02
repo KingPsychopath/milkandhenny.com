@@ -66,7 +66,8 @@ export async function getStaffOperationsPage(input: {
     label: access.assignments.map((entry) => entry.label).join(" · "),
     personId: assignment.personId,
     rolePreset:
-      typeof assignment.scope.rolePreset === "string" ? assignment.scope.rolePreset : undefined,
+      assignment.rolePreset ??
+      (typeof assignment.scope.rolePreset === "string" ? assignment.scope.rolePreset : undefined),
     expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
     canAdmit,

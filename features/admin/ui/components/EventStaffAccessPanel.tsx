@@ -4,34 +4,28 @@ import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useQrCode } from "@/hooks/useQrCode";
-import type {
-  AdminScoringActivity,
-  AdminStaffAssignment,
-  AdminStaffRole,
-  ScoringAction,
-} from "./event-scoring-types";
+import type { AdminStaffAssignment, AdminStaffRole, StaffAccessAction } from "./staff-access-types";
 import { AdminStatus } from "./AdminStatus";
 import { StaffRoleAccess } from "./StaffAccessRegister";
 
-const PRESETS = [
-  "door-scanner",
-  "checkpoint-scanner",
-  "door-manager",
-  "game-moderator",
-  "points-marshal",
-  "activity-manager",
-  "event-manager",
-  "admin",
-] as const;
+const PRESETS = ["door-scanner", "checkpoint-scanner", "door-manager", "event-manager"] as const;
 type Preset = (typeof PRESETS)[number];
 type Delivery = "email" | "copy" | "direct" | "station";
 
-const PERMISSIONS = [
+const OPERATIONAL_PERMISSIONS = [
   "admitTickets",
   "scanCheckpoints",
+  "manageTeams",
+  "manageGuestPhotos",
+  "requestGuests",
+  "addGuests",
+  "approveRequests",
+] as const;
+
+// Explicitly switch retired capabilities off when a role is created from a legacy preset.
+const RETIRED_PERMISSIONS = [
   "viewParticipantPoints",
   "awardPoints",
-  "manageTeams",
   "runActivities",
   "transferPoints",
   "reverseAwards",
@@ -39,66 +33,34 @@ const PERMISSIONS = [
   "manageActivities",
   "manageDiscoveries",
   "uploadActivityPhotos",
-  "manageGuestPhotos",
   "manageStaffAndPools",
   "resolveIdentity",
   "finalizeLeaderboard",
-  "requestGuests",
-  "addGuests",
-  "approveRequests",
 ] as const;
 
 const PRESET_PERMISSIONS: Record<Preset, readonly string[]> = {
   "door-scanner": ["admitTickets"],
   "checkpoint-scanner": ["scanCheckpoints"],
   "door-manager": ["admitTickets", "requestGuests", "addGuests", "approveRequests"],
-  "game-moderator": ["runActivities", "viewParticipantPoints", "awardPoints", "manageTeams"],
-  "points-marshal": ["viewParticipantPoints", "awardPoints"],
-  "activity-manager": [
-    "viewParticipantPoints",
-    "awardPoints",
-    "manageTeams",
-    "runActivities",
-    "manageActivities",
-  ],
-  "event-manager": PERMISSIONS.filter((permission) => permission !== "scanCheckpoints"),
-  admin: PERMISSIONS,
+  "event-manager": OPERATIONAL_PERMISSIONS,
 };
 
-const LABELS: Record<(typeof PERMISSIONS)[number], string> = {
+const LABELS: Record<(typeof OPERATIONAL_PERMISSIONS)[number], string> = {
   admitTickets: "check guests in at entry",
   scanCheckpoints: "scan ticket allowances at checkpoints",
-  viewParticipantPoints: "find attendees and view points",
-  awardPoints: "award points",
   manageTeams: "shuffle and move teams",
-  runActivities: "run activities",
-  transferPoints: "transfer points",
-  reverseAwards: "undo awards",
-  reviewHeldActions: "approve held scoring",
-  manageActivities: "change activities",
-  manageDiscoveries: "manage discoveries",
-  uploadActivityPhotos: "attach activity photos",
   manageGuestPhotos: "open and close the shared photo album",
-  manageStaffAndPools: "manage staff and point pools",
-  resolveIdentity: "view and resolve identity",
-  finalizeLeaderboard: "finalise leaderboard",
   requestGuests: "request walk-in guests",
   addGuests: "add walk-in guests",
   approveRequests: "approve guest requests",
 };
 
-const HIGH_RISK = new Set([
-  "transferPoints",
-  "reverseAwards",
-  "reviewHeldActions",
-  "manageStaffAndPools",
-  "resolveIdentity",
-  "finalizeLeaderboard",
-]);
-
 function presetState(preset: Preset): Record<string, boolean> {
   const enabled = new Set(PRESET_PERMISSIONS[preset]);
-  return Object.fromEntries(PERMISSIONS.map((permission) => [permission, enabled.has(permission)]));
+  return Object.fromEntries([
+    ...OPERATIONAL_PERMISSIONS.map((permission) => [permission, enabled.has(permission)] as const),
+    ...RETIRED_PERMISSIONS.map((permission) => [permission, false] as const),
+  ]);
 }
 
 function stringIds(value: unknown): string[] {
@@ -115,11 +77,9 @@ function assignmentIsActive(assignment: AdminStaffAssignment) {
 
 function RoleSummary({
   role,
-  activities,
   checkpoints,
 }: {
   role: AdminStaffRole;
-  activities: AdminScoringActivity[];
   checkpoints: Array<{ id: string; name: string }>;
 }) {
   const parts: string[] = [];
@@ -132,33 +92,27 @@ function RoleSummary({
         : "all checkpoints",
     );
   }
-  if (role.permissions.awardPoints || role.permissions.runActivities) {
-    const ids = stringIds(role.scope.activityIds);
-    parts.push(
-      ids.length
-        ? ids.map((id) => activities.find((entry) => entry.id === id)?.name ?? id).join(", ")
-        : "all live activities",
-    );
-  }
   if (role.permissions.manageTeams) parts.push("teams");
+  if (role.permissions.requestGuests) parts.push("guest requests");
+  if (role.permissions.addGuests) parts.push("add guests");
+  if (role.permissions.approveRequests) parts.push("approve guests");
+  if (role.permissions.manageGuestPhotos) parts.push("guest photos");
   return <>{parts.length ? parts.join(" · ") : "no operational capabilities"}</>;
 }
 
-export function ScoringStaffPanel({
+export function EventStaffAccessPanel({
   eventSlug,
-  activities,
   checkpoints,
   roles,
   staff,
   onAction,
-  defaultPreset = "points-marshal",
+  defaultPreset = "door-scanner",
 }: {
   eventSlug: string;
-  activities: AdminScoringActivity[];
   checkpoints: Array<{ id: string; name: string }>;
   roles: AdminStaffRole[];
   staff: AdminStaffAssignment[];
-  onAction: ScoringAction;
+  onAction: StaffAccessAction;
   defaultPreset?: Preset;
 }) {
   const [roleName, setRoleName] = useState("");
@@ -166,7 +120,6 @@ export function ScoringStaffPanel({
   const [permissions, setPermissions] = useState<Record<string, boolean>>(() =>
     presetState(defaultPreset),
   );
-  const [activityIds, setActivityIds] = useState<string[]>([]);
   const [checkpointIds, setCheckpointIds] = useState<string[]>([]);
   const [roleReason, setRoleReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
@@ -174,11 +127,9 @@ export function ScoringStaffPanel({
   const [recipientEmail, setRecipientEmail] = useState("");
   const [delivery, setDelivery] = useState<Delivery>("email");
   const [inviteReason, setInviteReason] = useState("");
-  const [poolPoints, setPoolPoints] = useState("175");
   const [issuedUrl, setIssuedUrl] = useState("");
   const [issuedLabel, setIssuedLabel] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
-  const [scopeReason, setScopeReason] = useState("");
   const [retireReason, setRetireReason] = useState("");
   const { dataUrl: issuedQr, failed: issuedQrFailed } = useQrCode(issuedUrl || null, 320);
 
@@ -195,10 +146,6 @@ export function ScoringStaffPanel({
 
   async function createRole(event: React.FormEvent) {
     event.preventDefault();
-    const risky = Object.entries(permissions).some(
-      ([permission, enabled]) => enabled && HIGH_RISK.has(permission),
-    );
-    if (risky && !window.confirm("This role includes high-risk controls. Continue?")) return;
     const result = await onAction({
       action: "create-staff-role",
       label: roleName,
@@ -206,7 +153,7 @@ export function ScoringStaffPanel({
       reason: roleReason,
       overrides: permissions,
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
-      scope: { activityIds, checkpointIds, allowFreeformPoints: false, largeAwardWarningAt: 25 },
+      scope: { checkpointIds },
     });
     const role = result?.role as { id?: string } | undefined;
     if (!role?.id) return;
@@ -227,15 +174,6 @@ export function ScoringStaffPanel({
       | { id?: string; token?: string; actionUrl?: string }
       | undefined;
     if (!assignment?.id) return;
-    const parsedPoolPoints = Number.parseInt(poolPoints, 10);
-    if (parsedPoolPoints > 0 && role.permissions.awardPoints) {
-      await onAction({
-        action: "issue-pool",
-        ownerType: delivery === "station" ? "station" : "staff",
-        ownerId: assignment.id,
-        points: parsedPoolPoints,
-      });
-    }
     const stationUrl = assignment.token
       ? `${window.location.origin}/events/${encodeURIComponent(eventSlug)}/staff/${assignment.token}`
       : "";
@@ -273,19 +211,6 @@ export function ScoringStaffPanel({
     setOpenRoleId(undefined);
   }
 
-  async function includeAllLiveActivities(role: AdminStaffRole) {
-    const reason = scopeReason.trim();
-    if (!reason) return;
-    const result = await onAction({
-      action: "update-staff-role-scope",
-      roleId: role.id,
-      scope: { activityIds: [] },
-      reason,
-    });
-    if (!result?.updated) return;
-    setScopeReason("");
-  }
-
   return (
     <section aria-labelledby="staff-access-heading" className="border-t theme-border pt-6">
       <p className="font-mono text-micro uppercase tracking-widest theme-muted">
@@ -295,8 +220,8 @@ export function ScoringStaffPanel({
         Roles that match the night
       </h4>
       <p className="mt-2 max-w-xl font-mono text-xs leading-relaxed theme-muted">
-        Define a role once, then add as many people as needed. One person can hold several roles;
-        every action still has to fit one complete role and its scope.
+        Choose what a helper can do, then give that role to one or more people. Personal access is
+        tied to email; a shared-device link is the quick, supervised fallback.
       </p>
 
       <details className="mt-6 border-y theme-border py-4" open={roles.length === 0}>
@@ -313,7 +238,7 @@ export function ScoringStaffPanel({
               required
               value={roleName}
               onChange={(event) => setRoleName(event.target.value)}
-              placeholder="e.g. food & points"
+              placeholder="e.g. front door team"
               className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
             />
           </label>
@@ -334,7 +259,7 @@ export function ScoringStaffPanel({
           <fieldset className="sm:col-span-2">
             <legend className="font-mono text-xs">what this role can do</legend>
             <div className="mt-2 grid gap-x-6 sm:grid-cols-2">
-              {PERMISSIONS.map((permission) => (
+              {OPERATIONAL_PERMISSIONS.map((permission) => (
                 <label
                   key={permission}
                   className="flex min-h-11 items-center gap-2 font-mono text-xs"
@@ -350,7 +275,6 @@ export function ScoringStaffPanel({
                     }
                   />
                   {LABELS[permission]}
-                  {HIGH_RISK.has(permission) ? " · high risk" : ""}
                 </label>
               ))}
             </div>
@@ -382,38 +306,6 @@ export function ScoringStaffPanel({
                     {checkpoint.name}
                   </label>
                 ))}
-              </div>
-            </fieldset>
-          )}
-
-          {(permissions.awardPoints || permissions.runActivities) && (
-            <fieldset className="sm:col-span-2">
-              <legend className="font-mono text-xs">activity scope</legend>
-              <p className="mt-1 font-mono text-micro theme-muted">
-                Leave all unchecked for every live activity.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-x-5">
-                {activities
-                  .filter((activity) => activity.status === "live")
-                  .map((activity) => (
-                    <label
-                      key={activity.id}
-                      className="flex min-h-11 items-center gap-2 font-mono text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={activityIds.includes(activity.id)}
-                        onChange={(event) =>
-                          setActivityIds((current) =>
-                            event.target.checked
-                              ? [...current, activity.id]
-                              : current.filter((id) => id !== activity.id),
-                          )
-                        }
-                      />
-                      {activity.name}
-                    </label>
-                  ))}
               </div>
             </fieldset>
           )}
@@ -479,7 +371,7 @@ export function ScoringStaffPanel({
                     <span className="font-serif text-lg text-foreground">{role.label}</span>
                   </div>
                   <span className="mt-1 block font-mono text-micro leading-relaxed theme-muted">
-                    <RoleSummary role={role} activities={activities} checkpoints={checkpoints} />
+                    <RoleSummary role={role} checkpoints={checkpoints} />
                   </span>
                   <span className="mt-1 block font-mono text-micro theme-faint">
                     ends {new Date(role.expiresAt).toLocaleString()}
@@ -578,24 +470,6 @@ export function ScoringStaffPanel({
                         className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
                       />
                     </label>
-                    {role.permissions.awardPoints && (
-                      <label className="font-mono text-xs">
-                        point pool
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          value={poolPoints}
-                          onChange={(event) =>
-                            setPoolPoints(event.target.value.replaceAll(/[^0-9]/g, ""))
-                          }
-                          className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                        />
-                        <span className="mt-2 block font-mono text-micro theme-muted">
-                          Total points this person can give out. Start with 175 for an invigilator.
-                        </span>
-                      </label>
-                    )}
                     <button className="min-h-11 border border-foreground px-4 font-mono text-xs sm:col-span-2 sm:w-fit">
                       {delivery === "direct"
                         ? "assign account"
@@ -606,32 +480,6 @@ export function ScoringStaffPanel({
                             : "send account invitation"}
                     </button>
                   </form>
-                  {(role.permissions.awardPoints || role.permissions.runActivities) &&
-                    stringIds(role.scope.activityIds).length > 0 && (
-                      <form
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void includeAllLiveActivities(role);
-                        }}
-                        className="mt-5 grid gap-3 border-t theme-border pt-4 sm:grid-cols-[minmax(0,1fr)_auto]"
-                      >
-                        <label className="font-mono text-xs">
-                          scope-change reason
-                          <input
-                            required
-                            value={scopeReason}
-                            onChange={(event) => setScopeReason(event.target.value)}
-                            placeholder="include activities added after crew setup"
-                            className="mt-2 min-h-11 w-full border theme-border bg-transparent px-3"
-                          />
-                        </label>
-                        <button className="mh-action self-end">include every live activity</button>
-                        <p className="font-mono text-micro leading-relaxed theme-muted sm:col-span-2">
-                          Updates this role and its active links. Future live activities are
-                          included automatically.
-                        </p>
-                      </form>
-                    )}
                   <form
                     onSubmit={(event) => {
                       event.preventDefault();

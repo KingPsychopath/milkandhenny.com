@@ -37,13 +37,8 @@ import type { DoorTicketView } from "@/features/tickets/types";
 import { AdminFormAction } from "./AdminFormAction";
 import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 import { EventWaitlistPanel } from "./EventWaitlistPanel";
-import { ScoringStaffPanel } from "./ScoringStaffPanel";
-import type {
-  AdminScoringActivity,
-  AdminStaffAssignment,
-  AdminStaffRole,
-  ScoringAction,
-} from "./event-scoring-types";
+import { EventStaffAccessPanel } from "./EventStaffAccessPanel";
+import type { AdminStaffAssignment, AdminStaffRole, StaffAccessAction } from "./staff-access-types";
 import {
   AdminStatus,
   adminToneBorderClass,
@@ -62,7 +57,6 @@ const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
 type EventStaffAccessData = {
-  activities: AdminScoringActivity[];
   staff: AdminStaffAssignment[];
   staffRoles: AdminStaffRole[];
 };
@@ -1452,7 +1446,7 @@ function ScanningSection({
       const [checkpointsRes, linksRes, staffRes] = await Promise.all([
         authFetch(`/api/admin/events/${event.slug}/checkpoints`),
         authFetch(`/api/admin/events/${event.slug}/scanner-links`),
-        authFetch(`/api/admin/events/${event.slug}/scoring`),
+        authFetch(`/api/admin/events/${event.slug}/staff-access`),
       ]);
       const checkpointsData: unknown = await checkpointsRes.json().catch(() => null);
       const linksData: unknown = await linksRes.json().catch(() => null);
@@ -1512,15 +1506,10 @@ function ScanningSection({
       }
       const staffRecord = staffData as Record<string, unknown>;
       setStaffAccess({
-        activities: Array.isArray(staffRecord.activities)
-          ? (staffRecord.activities as AdminScoringActivity[])
+        staff: Array.isArray(staffRecord.assignments)
+          ? (staffRecord.assignments as AdminStaffAssignment[])
           : [],
-        staff: Array.isArray(staffRecord.staff)
-          ? (staffRecord.staff as AdminStaffAssignment[])
-          : [],
-        staffRoles: Array.isArray(staffRecord.staffRoles)
-          ? (staffRecord.staffRoles as AdminStaffRole[])
-          : [],
+        staffRoles: Array.isArray(staffRecord.roles) ? (staffRecord.roles as AdminStaffRole[]) : [],
       });
       setLoaded(true);
     } catch (error) {
@@ -1532,7 +1521,7 @@ function ScanningSection({
     void load();
   }, [load]);
 
-  const performStaffAction: ScoringAction = async (body) => {
+  const performStaffAction: StaffAccessAction = async (body) => {
     const token = await stepUp.ensureStepUpToken();
     if (!token.ok) {
       if (!token.cancelled) onError(token.error ?? "Step-up failed");
@@ -1541,7 +1530,7 @@ function ScanningSection({
     setBusy(true);
     onError("");
     try {
-      const response = await authFetch(`/api/admin/events/${event.slug}/scoring`, {
+      const response = await authFetch(`/api/admin/events/${event.slug}/staff-access`, {
         method: "POST",
         headers: stepUp.withStepUpHeaders(token.token, { "Content-Type": "application/json" }),
         body: JSON.stringify(body),
@@ -1737,9 +1726,8 @@ function ScanningSection({
   return (
     <div className="mt-5 space-y-5 border-t theme-border pt-4">
       {staffAccess && (
-        <ScoringStaffPanel
+        <EventStaffAccessPanel
           eventSlug={event.slug}
-          activities={staffAccess.activities}
           checkpoints={checkpoints.map(({ id, name }) => ({ id, name }))}
           roles={staffAccess.staffRoles}
           staff={staffAccess.staff}
