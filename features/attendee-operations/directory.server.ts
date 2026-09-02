@@ -1,5 +1,5 @@
 import { query } from "@/lib/platform/postgres.server";
-import { attendeeSessionSummaries } from "@/features/event-scoring/session.server";
+import { attendeeSessionSummaries } from "@/features/attendee-access/session.server";
 import { actionEmailHash, maskActionEmail } from "./action-links.server";
 
 export type PurchaserContactDirectoryEntry = {

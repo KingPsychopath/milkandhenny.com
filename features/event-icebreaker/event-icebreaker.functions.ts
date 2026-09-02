@@ -6,7 +6,7 @@ import {
   activeParticipantForEvent,
   openedTicketForReference,
   openedTicketsForEvent,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { getTicket } from "@/features/tickets/store.server";
 import { ticketPublicId } from "@/features/tickets/types";
 import { isPlayerId } from "@/features/things/icebreaker/icebreaker-pairing";

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { getAttendeeSession, pendingMfaIsFresh } from "@/features/event-scoring/session.server";
+import { getAttendeeSession, pendingMfaIsFresh } from "@/features/attendee-access/session.server";
 import {
   beginTotpEnrollment,
   disableTotp,

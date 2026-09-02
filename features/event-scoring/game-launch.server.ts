@@ -19,9 +19,6 @@ import type {
   LiarsToggles,
 } from "@/features/things/liars/types";
 import { createFamilyFeudRoom } from "@/features/things/family-feud/family-feud-room.server";
-import { createHotAndColdRoom } from "@/features/things/hot-and-cold/hot-and-cold-room.server";
-import type { CreatedPoolRoom } from "@/features/things/pool/game-adapters.server";
-import type { GameSettingsDocument } from "@/features/things/shared/game-settings";
 import type {
   FamilyFeudCustomDeckInput,
   FamilyFeudTeamId,
@@ -55,98 +52,6 @@ async function closeBinding(channelId: string, reason: string) {
       where bindings.channel_id = $1`,
     [channelId, JSON.stringify({ reason })],
   );
-}
-
-export async function launchAutomaticEventPoolRoom(input: {
-  eventSlug: string;
-  activityId: string;
-  gameSettings: GameSettingsDocument;
-  name: string;
-  joinId: string;
-}): Promise<CreatedPoolRoom> {
-  const gameKind = input.gameSettings.game;
-  if (
-    gameKind !== "centre" &&
-    gameKind !== "same-brain" &&
-    gameKind !== "draw-country" &&
-    gameKind !== "hot-and-cold"
-  )
-    throw new Error(`${gameKind} does not publish an authoritative pooled result`);
-  const binding = await createGameScoreBinding({
-    eventSlug: input.eventSlug,
-    activityId: input.activityId,
-    gameKind,
-    acceptedScope: "game",
-  });
-  if (!binding.ok) throw new Error(binding.error);
-  const channelId = binding.value.channelId;
-  try {
-    const settings = input.gameSettings.settings;
-    let created: CreatedPoolRoom;
-    if (settings.game === "centre") {
-      const room = await createCentreRoom({
-        managed: true,
-        hostName: input.name,
-        difficulty: settings.difficulty as CentreDifficulty,
-        delayedRivals: settings.delayedRivals,
-        officialResultChannelId: channelId,
-      });
-      created = { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
-    } else if (settings.game === "same-brain") {
-      const room = await createSameBrainRoom({
-        managed: true,
-        rounds: settings.rounds,
-        toggles: {
-          sayItAloud: settings.sayItAloud,
-          eliminateOddOne: settings.eliminateOddOne,
-          revealAuthors: settings.revealAuthors,
-        },
-        officialResultChannelId: channelId,
-      });
-      const joined = await joinSameBrainRoom({
-        roomId: room.roomId,
-        joinToken: room.joinToken,
-        hostToken: room.hostToken,
-        name: input.name,
-        joinId: input.joinId,
-      });
-      if (!joined.ok) throw new Error(joined.error);
-      created = {
-        assignment: { game: settings.game, ...joined },
-        joinToken: room.joinToken,
-      };
-    } else if (settings.game === "hot-and-cold") {
-      const room = await createHotAndColdRoom({
-        managed: true,
-        hostName: input.name,
-        rounds: settings.rounds,
-        guessesPerPlayer: settings.guessesPerPlayer,
-        turnSeconds: settings.turnSeconds,
-        officialResultChannelId: channelId,
-      });
-      created = { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
-    } else if (settings.game === "draw-country") {
-      const room = await createDrawCountryRoom({
-        managed: true,
-        hostName: input.name,
-        drawSeconds: settings.drawSeconds,
-        roundTotal: settings.roundTotal,
-        recentCountryIds: [],
-        officialResultChannelId: channelId,
-      });
-      created = { assignment: { game: settings.game, ...room }, joinToken: room.joinToken };
-    } else throw new Error(`${settings.game} does not publish an authoritative pooled result`);
-    const activated = await activateGameScoreBinding({
-      channelId,
-      gameInstanceId: created.assignment.roomId,
-    });
-    if (!activated.ok) throw new Error(activated.error);
-    return created;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Pooled game launch failed";
-    await closeBinding(channelId, message);
-    throw error;
-  }
 }
 
 export async function launchEventFamilyFeudGame(input: {

@@ -29,13 +29,7 @@ export const getGamePoolPublicViewFn = createServerFn({ method: "GET" })
     const data = multiplayerRecord(value);
     return { token: token(data.token) };
   })
-  .handler(async ({ data }) => {
-    const [view, { eventGamePoolPublicScoring }] = await Promise.all([
-      getGamePoolPublicView(data.token),
-      import("@/features/event-operations/event-game-pool.server"),
-    ]);
-    return { ...view, scoring: await eventGamePoolPublicScoring(data.token) };
-  });
+  .handler(({ data }) => getGamePoolPublicView(data.token));
 
 /** Resolve the admin-selected, currently open public entrance for a game. */
 export const getDefaultGamePoolLaunchFn = createServerFn({ method: "GET" })
@@ -65,17 +59,14 @@ export const assignGamePoolRoomFn = createServerFn({ method: "POST" })
       moveExisting: data.moveExisting === true,
     };
   })
-  .handler(async ({ data }) => {
-    const { eventGamePoolHooks } =
-      await import("@/features/event-operations/event-game-pool.server");
-    const hooks = await eventGamePoolHooks(data.token);
-    return runMultiplayerEffect(
+  .handler(({ data }) =>
+    runMultiplayerEffect(
       Effect.gen(function* () {
-        return yield* (yield* GamePoolOperationsService).assign({ ...data, ...hooks });
+        return yield* (yield* GamePoolOperationsService).assign(data);
       }),
       getRequest().signal,
-    );
-  });
+    ),
+  );
 
 export const releaseGamePoolAssignmentFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

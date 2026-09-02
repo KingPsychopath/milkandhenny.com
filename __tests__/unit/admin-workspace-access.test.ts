@@ -25,7 +25,7 @@ describe("admin workspace access", () => {
   it("admits a content-only named admin and exposes only their effective permissions", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
-    vi.doMock("@/features/event-scoring/session.server", () => ({
+    vi.doMock("@/features/attendee-access/session.server", () => ({
       getAttendeeSessionForRequest: async () => namedAdminSession(),
     }));
     vi.doMock("@/lib/platform/postgres.server", () => ({
@@ -55,7 +55,7 @@ describe("admin workspace access", () => {
   it("merges concurrent active grants and honours explicit overrides", async () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.doMock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
-    vi.doMock("@/features/event-scoring/session.server", () => ({
+    vi.doMock("@/features/attendee-access/session.server", () => ({
       getAttendeeSessionForRequest: async () => namedAdminSession(),
     }));
     vi.doMock("@/lib/platform/postgres.server", () => ({

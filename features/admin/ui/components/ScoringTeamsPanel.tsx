@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
-import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
+import { TeamBadge } from "@/features/event-operations/ui/TeamBadge";
 import type { AdminScoringTeam, AdminTeamParticipant, ScoringAction } from "./event-scoring-types";
 
 type Participant = {

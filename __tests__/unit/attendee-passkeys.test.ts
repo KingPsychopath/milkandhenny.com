@@ -18,7 +18,7 @@ vi.mock("@simplewebauthn/server", () => ({
   verifyRegistrationResponse: mocks.verifyRegistrationResponse,
 }));
 
-vi.mock("@/features/event-scoring/session.server", () => ({
+vi.mock("@/features/attendee-access/session.server", () => ({
   authenticateAttendeeSession: mocks.authenticateSession,
   ensureAttendeeSession: mocks.ensureSession,
   getAttendeeSession: mocks.getSession,

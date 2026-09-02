@@ -22,7 +22,7 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 
-vi.mock("@/features/event-scoring/session.server", () => ({
+vi.mock("@/features/attendee-access/session.server", () => ({
   getAttendeeSession: async () => ({
     personId: "01890f3e-7b1a-7cc2-b5c3-3f8b6a4d2190",
   }),

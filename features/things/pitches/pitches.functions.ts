@@ -3,7 +3,7 @@ import { getRequest, getRequestIP } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { describeEmailCapability } from "@/lib/platform/email.server";
 import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";

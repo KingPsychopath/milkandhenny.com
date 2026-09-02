@@ -23,7 +23,7 @@ export type AdminScoringPool = {
 export type AdminScoringTeam = {
   id: string;
   name: string;
-  colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+  colourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
   checkedInCount: number;
   status: "active" | "archived";
 };
@@ -35,7 +35,7 @@ export type AdminTeamParticipant = {
   ticketSuffix?: string;
   teamId?: string;
   teamName?: string;
-  teamColourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+  teamColourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
 };
 
 export type AdminStaffDevice = {

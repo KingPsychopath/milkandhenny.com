@@ -359,7 +359,7 @@ describe("auth security flows", () => {
         },
       ],
     }));
-    vi.doMock("@/features/event-scoring/session.server", () => ({
+    vi.doMock("@/features/attendee-access/session.server", () => ({
       getAttendeeSessionForRequest: async () => ({
         personId: "person_named_admin",
         authenticatedAt: new Date().toISOString(),

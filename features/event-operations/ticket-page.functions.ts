@@ -4,7 +4,7 @@ import { getRequest } from "@tanstack/react-start/server";
 
 import { authenticateRequest } from "@/features/auth/auth.server";
 import { queryOne } from "@/lib/platform/postgres.server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import {
   currentAttendeeTicketIdentity,
   managedOrderIdsForPerson,
@@ -53,7 +53,7 @@ export type TicketPageResult =
       album: EventAlbumView;
       team?: {
         name: string;
-        colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+        colourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
       };
       preview?: true;
       attendeeIdentity?: AttendeeTicketIdentity;

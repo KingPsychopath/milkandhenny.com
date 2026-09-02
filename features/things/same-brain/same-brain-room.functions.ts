@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { linkCurrentAttendeeGamePlayer } from "@/features/event-scoring/game-player-identity.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -155,16 +154,7 @@ export const joinSameBrainRoomFn = createServerFn({ method: "POST" })
       hostToken: data.hostToken === undefined ? undefined : credential(data.hostToken),
     };
   })
-  .handler(async ({ data }) => {
-    const result = await joinSameBrainRoom(data);
-    if (result.ok)
-      await linkCurrentAttendeeGamePlayer({
-        gameKind: "same-brain",
-        gameInstanceId: result.roomId,
-        gamePlayerId: result.playerId,
-      });
-    return result;
-  });
+  .handler(({ data }) => joinSameBrainRoom(data));
 
 export const readSameBrainSnapshotFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

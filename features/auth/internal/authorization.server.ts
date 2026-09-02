@@ -173,7 +173,7 @@ export async function createAdminStepUpToken(
 
   if (auth.token.startsWith("person:")) {
     const { getAttendeeSessionForRequest } =
-      await import("@/features/event-scoring/session.server");
+      await import("@/features/attendee-access/session.server");
     const attendee = await getAttendeeSessionForRequest(request);
     const authenticatedAt = attendee?.passkeyAuthenticatedAt
       ? Date.parse(attendee.passkeyAuthenticatedAt)
@@ -309,7 +309,7 @@ async function activeNamedAdmin(
   permissions: GlobalAdminPermissionSet;
 } | null> {
   const [{ getAttendeeSessionForRequest }, { query }] = await Promise.all([
-    import("@/features/event-scoring/session.server"),
+    import("@/features/attendee-access/session.server"),
     import("@/lib/platform/postgres.server"),
   ]);
   const session = await getAttendeeSessionForRequest(request);

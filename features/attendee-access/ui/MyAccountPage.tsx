@@ -15,7 +15,7 @@ import {
   updateAttendeeNameFn,
 } from "../access.functions";
 import type { AttendeeAccount } from "../types";
-import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
+import { TeamBadge } from "@/features/event-operations/ui/TeamBadge";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 import { AchievementCabinet } from "@/features/achievements/ui/AchievementCollection";
 

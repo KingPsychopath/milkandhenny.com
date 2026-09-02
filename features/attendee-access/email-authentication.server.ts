@@ -1,7 +1,7 @@
 import {
   authenticateAttendeeSession,
   beginAttendeeMfaSession,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { personHasTotp } from "./totp.server";
 import { safeReturnTo } from "./types";
 

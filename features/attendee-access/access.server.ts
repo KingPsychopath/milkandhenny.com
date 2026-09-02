@@ -9,7 +9,7 @@ import {
 
 import type { PoolClient } from "pg";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { describeEmailCapability, sendEmail } from "@/lib/platform/email.server";
@@ -704,12 +704,8 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       starts_at: Date;
       holder_name: string;
       status: string;
-      points: number;
-      order_points: number | null;
-      public_alias: string | null;
       team_name: string | null;
-      team_colour_key: import("@/features/event-scoring/team-palette").TeamColourKey | null;
-      rank: string | null;
+      team_colour_key: import("@/features/event-operations/team-palette").TeamColourKey | null;
       participant_id: string | null;
       personally_claimed: boolean;
       manages_order: boolean;
@@ -717,34 +713,12 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       `select distinct on (t.id)
           t.id, t.access_reference, t.order_id, t.event_slug, e.title as event_title, e.starts_at,
           t.holder_name, t.status, p.id as participant_id,
-          coalesce(sp.balance, 0)::integer as points,
-          case when om.id is not null then (
-            select coalesce(sum(order_projection.balance), 0)::integer
-              from tickets order_ticket
-              join event_participants order_participant on order_participant.ticket_id = order_ticket.id
-             left join score_projections order_projection
-                on order_projection.participant_id = order_participant.id
-             where order_ticket.order_id = t.order_id
-               and order_ticket.event_slug = t.event_slug
-               and order_ticket.status = 'valid'
-               and order_participant.status = 'active'
-          ) else null end as order_points,
-          coalesce(p.chosen_alias,p.generated_alias) as public_alias,
           team.name as team_name, team.colour_key as team_colour_key,
-          case when p.id is null then null else (
-            1 + (select count(*) from score_projections ranked
-                  join event_participants ranked_participant
-                    on ranked_participant.id = ranked.participant_id
-                 where ranked_participant.event_slug = t.event_slug
-                   and ranked_participant.status = 'active'
-                   and ranked.balance > coalesce(sp.balance, 0))
-          )::text end as rank,
           (p.person_id = $1) as personally_claimed,
           (om.id is not null) as manages_order
          from tickets t
          join events e on e.slug = t.event_slug
          left join event_participants p on p.ticket_id = t.id
-         left join score_projections sp on sp.participant_id = p.id
          left join lateral (
            select score_teams.name, score_teams.colour_key
              from score_team_memberships membership
@@ -784,25 +758,6 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     achievementCabinetForPerson(personId),
     listAccountCredits(personId),
   ]);
-  const participantIds = tickets
-    .map((ticket) => ticket.participant_id)
-    .filter((participantId): participantId is string => Boolean(participantId));
-  const historyRows = participantIds.length
-    ? await query<{
-        participant_id: string;
-        points: number;
-        reason_code: string;
-        created_at: Date;
-      }>(
-        `select posting.participant_id,posting.points,score.reason_code,score.created_at
-           from score_postings posting
-           join score_transactions score on score.id = posting.transaction_id
-          where posting.participant_id = any($1::text[])
-            and score.status = 'accepted'
-          order by score.created_at desc limit 200`,
-        [participantIds],
-      )
-    : [];
   return {
     name: person.canonical_name,
     pitches,
@@ -824,19 +779,8 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       holderName: row.holder_name,
       status: row.status,
       startsAt: row.starts_at.toISOString(),
-      points: row.points,
-      orderPoints: row.order_points ?? undefined,
-      rank: row.rank ? Number(row.rank) : undefined,
-      publicAlias: row.public_alias ?? undefined,
       teamName: row.team_name ?? undefined,
       teamColourKey: row.team_colour_key ?? undefined,
-      scoreHistory: historyRows
-        .filter((history) => history.participant_id === row.participant_id)
-        .map((history) => ({
-          points: history.points,
-          reason: history.reason_code,
-          createdAt: history.created_at.toISOString(),
-        })),
       personallyClaimed: row.personally_claimed,
       managesOrder: row.manages_order,
     })),

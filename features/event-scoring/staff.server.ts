@@ -9,7 +9,7 @@ import {
 import { ensurePendingInvitedPerson } from "@/features/attendee-operations/invited-person.server";
 import { requireIdentityMayAcquire } from "@/features/attendee-operations/identity-policy.server";
 import { emitDomainEvent } from "@/features/attendee-operations/notifications.server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { getEvent } from "@/features/events/store.server";
 import { isValidEmail, normaliseEmail } from "@/lib/shared/email-address";
 import { sendEmail } from "@/lib/platform/email.server";

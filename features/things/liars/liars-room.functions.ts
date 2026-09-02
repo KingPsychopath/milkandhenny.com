@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { linkCurrentAttendeeGamePlayer } from "@/features/event-scoring/game-player-identity.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -249,16 +248,7 @@ export const joinLiarsRoomFn = createServerFn({ method: "POST" })
       hostToken: data.hostToken === undefined ? undefined : credential(data.hostToken),
     };
   })
-  .handler(async ({ data }) => {
-    const result = await joinLiarsRoom(data);
-    if (result.ok)
-      await linkCurrentAttendeeGamePlayer({
-        gameKind: "liars",
-        gameInstanceId: result.roomId,
-        gamePlayerId: result.playerId,
-      });
-    return result;
-  });
+  .handler(({ data }) => joinLiarsRoom(data));
 
 export const readLiarsSnapshotFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

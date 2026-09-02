@@ -78,11 +78,6 @@ export interface GamePoolPublicView {
   run?: GamePoolRun | null;
   rooms?: GamePoolRoomSummary[];
   message?: string;
-  scoring?: {
-    completionPoints: number;
-    winnerTotalPoints: number;
-    eligible: boolean;
-  };
 }
 
 export interface GamePoolOperatorView {

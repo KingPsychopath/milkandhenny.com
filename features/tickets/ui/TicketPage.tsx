@@ -19,8 +19,8 @@ import { ManageTickets } from "./ManageTickets";
 import { ShareTicketButton } from "./ShareTicketButton";
 import { TicketIdentityControls } from "@/features/attendee-access/ui/TicketIdentityControls";
 import type { AttendeeTicketIdentity } from "@/features/attendee-access/types";
-import { TeamBadge } from "@/features/event-scoring/ui/TeamBadge";
-import { isTeamColourKey } from "@/features/event-scoring/team-palette";
+import { TeamBadge } from "@/features/event-operations/ui/TeamBadge";
+import { isTeamColourKey } from "@/features/event-operations/team-palette";
 import { useTicketAdmissionState } from "../useTicketAdmissionState";
 
 /**
@@ -63,7 +63,7 @@ export function TicketPage({
   album: EventAlbumView;
   team?: {
     name: string;
-    colourKey?: import("@/features/event-scoring/team-palette").TeamColourKey;
+    colourKey?: import("@/features/event-operations/team-palette").TeamColourKey;
   };
   preview?: boolean;
   /** Production identity UI supplied with synthetic state by the admin preview. */

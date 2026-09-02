@@ -3,7 +3,7 @@ import {
   activeParticipantForEvent,
   getAttendeeSession,
   openedTicketsForEvent,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import {
   findSettings,
   getParticipant,

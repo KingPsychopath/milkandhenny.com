@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { openedTicketForReference } from "@/features/event-scoring/session.server";
+import { openedTicketForReference } from "@/features/attendee-access/session.server";
 import { getEvent } from "@/features/events/store.server";
 import { getTicket } from "@/features/tickets/store.server";
 

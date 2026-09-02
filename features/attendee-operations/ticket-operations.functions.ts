@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { Effect } from "effect";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { getTicketByCurrentReference } from "@/features/tickets/store.server";

@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import {
   listPersonAchievementNotifications,
   markPersonAchievementNotificationsDelivered,

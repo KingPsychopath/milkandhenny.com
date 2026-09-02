@@ -5,7 +5,7 @@ import {
   isTeamCount,
   isTeamColourKey,
   teamPaletteForCount,
-} from "@/features/event-scoring/team-palette";
+} from "@/features/event-operations/team-palette";
 
 describe("event team palette", () => {
   it("provides distinct stable palettes for each supported team count", () => {

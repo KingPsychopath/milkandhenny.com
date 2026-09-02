@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { ticketOperationsForPerson } from "@/features/attendee-operations/ticket-operations.server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 

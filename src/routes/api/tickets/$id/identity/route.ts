@@ -7,7 +7,7 @@ import {
 import {
   getAttendeeSession,
   openedTicketForReference,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { getTicketByCurrentReference } from "@/features/tickets/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 

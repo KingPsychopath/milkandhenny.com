@@ -18,7 +18,7 @@ import {
   ensureAttendeeSession,
   getAttendeeSession,
   revokeAttendeeSessionsForPerson,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { getBaseUrlForRequest, SITE_NAME } from "@/lib/shared/config";

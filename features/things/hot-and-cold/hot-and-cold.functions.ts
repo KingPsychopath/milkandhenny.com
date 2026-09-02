@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestIP } from "@tanstack/react-start/server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { recordPersonGame } from "@/features/person-games/history.server";
 import { log } from "@/lib/platform/logger.server";
 import { reserveRateLimit } from "@/lib/platform/rate-limit.server";

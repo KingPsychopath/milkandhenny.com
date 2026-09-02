@@ -12,7 +12,7 @@ vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
 vi.mock("@/features/attendee-access/security-notifications.server", () => ({
   sendPersonSecurityNotice: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("@/features/event-scoring/session.server", () => ({
+vi.mock("@/features/attendee-access/session.server", () => ({
   getAttendeeSession: async () => sessionState.current,
   pendingMfaIsFresh: (pending: { createdAt?: string } | undefined) => {
     const createdAt = pending?.createdAt ? Date.parse(pending.createdAt) : Number.NaN;

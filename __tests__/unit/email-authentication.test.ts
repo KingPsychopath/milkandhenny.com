@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   pending: vi.fn(),
 }));
 
-vi.mock("@/features/event-scoring/session.server", () => ({
+vi.mock("@/features/attendee-access/session.server", () => ({
   authenticateAttendeeSession: state.authenticated,
   beginAttendeeMfaSession: state.pending,
 }));

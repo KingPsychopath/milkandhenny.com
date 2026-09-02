@@ -18,7 +18,7 @@ import {
   pendingMfaIsFresh,
   revokeAttendeeSessionsForPerson,
   stepUpAttendeeSession,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { SITE_NAME } from "@/lib/shared/config";

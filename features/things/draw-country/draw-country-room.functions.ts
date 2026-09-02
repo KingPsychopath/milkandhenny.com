@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { linkCurrentAttendeeGamePlayer } from "@/features/event-scoring/game-player-identity.server";
 import {
   multiplayerBoundedText,
   multiplayerCredential,
@@ -68,16 +67,7 @@ export const joinDrawCountryRoomFn = createServerFn({ method: "POST" })
       ...optionalMultiplayerJoinAttempt(data.joinId, data.playerToken),
     };
   })
-  .handler(async ({ data }) => {
-    const result = await joinDrawCountryRoom(data);
-    if (result.ok)
-      await linkCurrentAttendeeGamePlayer({
-        gameKind: "draw-country",
-        gameInstanceId: result.roomId,
-        gamePlayerId: result.playerId,
-      });
-    return result;
-  });
+  .handler(({ data }) => joinDrawCountryRoom(data));
 
 export const readDrawCountrySnapshotFn = createServerFn({ method: "POST" })
   .validator((value: unknown) => {

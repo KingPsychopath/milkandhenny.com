@@ -21,7 +21,7 @@ import {
   LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
 } from "./cookies";
 import type { AuthCookieRole } from "./cookies";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { queryOne } from "@/lib/platform/postgres.server";
 
 interface Credentials {

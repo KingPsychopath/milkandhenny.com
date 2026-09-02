@@ -10,7 +10,7 @@ import {
 import {
   getAttendeeSession,
   signOutAttendeeSession,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request): Promise<Response> {

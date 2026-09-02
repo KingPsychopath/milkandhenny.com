@@ -256,21 +256,6 @@ export function GamePoolEntranceApp({
         </p>
       </header>
 
-      {view.scoring ? (
-        <aside className="mt-8 border-y theme-border py-5" aria-label="Event points">
-          <p className="font-mono text-xs uppercase tracking-widest theme-muted">event points</p>
-          <p className="mt-2 font-serif text-lg leading-relaxed">
-            Finish the game for {view.scoring.completionPoints} points. Win for{" "}
-            {view.scoring.winnerTotalPoints} points total.
-          </p>
-          <p className="mt-2 font-mono text-xs leading-relaxed theme-muted">
-            {view.scoring.eligible
-              ? "Your event ticket is connected on this phone. Points will be added automatically."
-              : "You can still play, but this phone has no event ticket connected, so this game will not add points."}
-          </p>
-        </aside>
-      ) : null}
-
       {activeMembership && game ? (
         <section className="mt-8 border-y theme-border py-6" aria-labelledby="return-to-room-title">
           <p className="font-mono text-micro theme-muted tracking-widest uppercase">your room</p>

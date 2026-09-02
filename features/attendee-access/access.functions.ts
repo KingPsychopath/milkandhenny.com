@@ -16,7 +16,7 @@ import {
   ensureAttendeeSession,
   getAttendeeSession,
   signOutAttendeeSession,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import { personTotpStatus } from "./totp.server";
 import { listPersonPasskeys } from "./passkeys.server";

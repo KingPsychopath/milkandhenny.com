@@ -1,4 +1,4 @@
-import { revokeAttendeeSessionsForPerson } from "@/features/event-scoring/session.server";
+import { revokeAttendeeSessionsForPerson } from "@/features/attendee-access/session.server";
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
 
 export type PersonAcquisitionStatus = "active" | "restricted";

@@ -151,7 +151,7 @@ import {
   revokeAttendeeSessionsForPerson,
   signOutAttendeeSession,
   ticketPointSelection,
-} from "@/features/event-scoring/session.server";
+} from "@/features/attendee-access/session.server";
 
 describe("attendee session authentication", () => {
   beforeEach(() => {

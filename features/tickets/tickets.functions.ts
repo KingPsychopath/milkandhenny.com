@@ -12,7 +12,7 @@ import {
 import { EventsService } from "@/features/events/events-service.server";
 import { managedOrderIdsForPerson } from "@/features/attendee-access/access.server";
 import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
-import { getAttendeeSession } from "@/features/event-scoring/session.server";
+import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import {
   runEventsResult as runEventOperationsResultWithoutSignal,

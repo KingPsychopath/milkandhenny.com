@@ -284,9 +284,7 @@ describeWithDatabase("attendee person access", () => {
     expect(owner).toBe(guestClaim.ok ? verified.value.personId : rival.personId);
     expect((await participantForTicket(PRIMARY))?.personId).toBeUndefined();
     expect((await attendeeAccount(owner!))?.tickets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: CHILD, personallyClaimed: true, points: 0 }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ id: CHILD, personallyClaimed: true })]),
     );
     if (guestClaim.ok) {
       await claimTicketForPerson({
@@ -307,7 +305,7 @@ describeWithDatabase("attendee person access", () => {
     }
   });
 
-  it("keeps held postings out of account history until they change the confirmed balance", async () => {
+  it("keeps the account ticket projection independent from the scoring ledger", async () => {
     const person = await createVerifiedPerson("person_score_owner", "score-owner@example.com");
     const participant = await participantForTicket(SPARE);
     expect(
@@ -340,9 +338,12 @@ describeWithDatabase("attendee person access", () => {
       postings: [{ participantId: participant!.id, points: 5 }],
     });
     expect(held).toMatchObject({ ok: true, value: { status: "held" } });
-    expect((await attendeeAccount(person.personId))?.tickets).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: SPARE, points: 0, scoreHistory: [] })]),
+    const whileHeld = (await attendeeAccount(person.personId))?.tickets.find(
+      (ticket) => ticket.id === SPARE,
     );
+    expect(whileHeld).toMatchObject({ id: SPARE, personallyClaimed: true });
+    expect(whileHeld).not.toHaveProperty("points");
+    expect(whileHeld).not.toHaveProperty("scoreHistory");
 
     await query(`update event_scoring_settings set state = 'live' where event_slug = $1`, [EVENT]);
     expect(
@@ -351,15 +352,12 @@ describeWithDatabase("attendee person access", () => {
         actorId: "admin-1",
       }),
     ).toMatchObject({ ok: true, value: { status: "accepted" } });
-    expect((await attendeeAccount(person.personId))?.tickets).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: SPARE,
-          points: 5,
-          scoreHistory: [expect.objectContaining({ points: 5 })],
-        }),
-      ]),
+    const afterAcceptance = (await attendeeAccount(person.personId))?.tickets.find(
+      (ticket) => ticket.id === SPARE,
     );
+    expect(afterAcceptance).toMatchObject({ id: SPARE, personallyClaimed: true });
+    expect(afterAcceptance).not.toHaveProperty("points");
+    expect(afterAcceptance).not.toHaveProperty("scoreHistory");
   });
 
   it("shows a claimed ticket's current team and palette colour on the account", async () => {

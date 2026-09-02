@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
-import { openedTicketForReference } from "@/features/event-scoring/session.server";
+import { openedTicketForReference } from "@/features/attendee-access/session.server";
 import { EventsRealtimeService } from "@/features/events/events-resources.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";

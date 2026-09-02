@@ -8,7 +8,7 @@ const refund = vi.hoisted(() => ({ ticket: vi.fn() }));
 
 vi.mock("@/lib/platform/email.server", () => ({ sendEmail: email.send }));
 vi.mock("@/lib/platform/redis.server", () => ({ getRedis: () => null }));
-vi.mock("@/features/event-scoring/session.server", () => ({
+vi.mock("@/features/attendee-access/session.server", () => ({
   authenticateAttendeeSession: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/features/tickets/checkout.server", () => ({ refundTicket: refund.ticket }));
