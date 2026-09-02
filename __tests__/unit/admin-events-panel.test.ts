@@ -2,12 +2,49 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { EventsPanel } from "@/features/admin/ui/components/EventsPanel";
+import { EventsPanel, TicketSalesBreakdown } from "@/features/admin/ui/components/EventsPanel";
 import { ScoringStaffPanel } from "@/features/admin/ui/components/ScoringStaffPanel";
 import { StaffRoleAccess } from "@/features/admin/ui/components/StaffAccessRegister";
 import { permissionsForGlobalRole } from "@/features/attendee-operations/types";
 
 describe("admin events panel", () => {
+  it("reveals the ticket option counts from the sales total", () => {
+    const html = renderToStaticMarkup(
+      createElement(TicketSalesBreakdown, {
+        summary: {
+          currency: "GBP",
+          netMinor: 6_000,
+          byType: {
+            standard: {
+              name: "Standard",
+              issued: 3,
+              redeemed: 1,
+              valid: 3,
+              reserved: 0,
+              remaining: 7,
+            },
+            concession: {
+              name: "Concession",
+              issued: 2,
+              redeemed: 0,
+              valid: 1,
+              reserved: 1,
+              remaining: 8,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(html).toContain("<details>");
+    expect(html).toContain("net ticket sales");
+    expect(html).toContain("£60");
+    expect(html).toContain("ticket split ↓");
+    expect(html).toContain("Standard");
+    expect(html).toContain("Concession");
+    expect(html).toContain("1 + 1 held");
+  });
+
   it("shows an initial loading state instead of a false empty state", () => {
     const html = renderToStaticMarkup(
       createElement(EventsPanel, {

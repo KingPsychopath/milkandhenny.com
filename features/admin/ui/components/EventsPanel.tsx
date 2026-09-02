@@ -243,6 +243,43 @@ type EventTicketSummary = {
   tickets: AdminTicket[];
 };
 
+export function TicketSalesBreakdown({
+  summary,
+}: {
+  summary: Pick<EventTicketSummary, "byType" | "currency" | "netMinor">;
+}) {
+  const ticketTypes = Object.entries(summary.byType);
+
+  return (
+    <details>
+      <summary className="min-h-11 cursor-pointer list-none font-mono marker:content-none">
+        <span className="block text-micro theme-muted">net ticket sales</span>
+        <span className="text-lg text-foreground">
+          {summary.currency ? formatMoney(summary.netMinor, summary.currency) : "—"}
+        </span>
+        {ticketTypes.length > 0 ? (
+          <span className="block text-micro theme-faint underline decoration-dotted underline-offset-4">
+            ticket split ↓
+          </span>
+        ) : null}
+      </summary>
+      {ticketTypes.length > 0 ? (
+        <ul className="mt-2 space-y-1 border-l theme-border pl-3 font-mono text-micro">
+          {ticketTypes.map(([id, type]) => (
+            <li key={id} className="flex justify-between gap-3">
+              <span className="min-w-0 truncate theme-muted">{type.name}</span>
+              <span className="shrink-0 text-foreground">
+                {type.valid}
+                {type.reserved > 0 ? ` + ${type.reserved} held` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </details>
+  );
+}
+
 type AdminTicketInvitation = {
   id: string;
   ticketId: string;
@@ -2491,12 +2528,7 @@ function EventOperations({
                 {summary.redeemed}/{summary.valid}
               </p>
             </div>
-            <div>
-              <p className="font-mono text-micro theme-muted">net ticket sales</p>
-              <p className="font-mono text-lg text-foreground">
-                {summary.currency ? formatMoney(summary.netMinor, summary.currency) : "—"}
-              </p>
-            </div>
+            <TicketSalesBreakdown summary={summary} />
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-micro theme-muted">
