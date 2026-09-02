@@ -139,8 +139,9 @@ export function NewPitch({
         What are you selling us?
       </h1>
       <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
-        You get up to {maximumSlides} slides. Your account owns the pitch when you are signed in;
-        this browser also keeps an offline safety copy and a private editing key.
+        One strong title slide is enough. Use up to {maximumSlides} only when they help the story.
+        Your account owns the pitch when you are signed in; this browser also keeps an offline
+        safety copy and a private editing key.
       </p>
 
       {emailDestination === "mailpit" ? (

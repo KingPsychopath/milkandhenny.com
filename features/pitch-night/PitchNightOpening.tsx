@@ -50,7 +50,7 @@ export function PitchNightHero() {
         </p>
         <div data-hero-actions className="pitch-night-hero-actions">
           <Link to="/things/pitches/new" className="pitch-night-button pitch-night-button-light">
-            make the six slides
+            make your slide
           </Link>
           <a href="#the-night" className="pitch-night-text-link">
             come closer
@@ -109,7 +109,7 @@ export function PitchScene() {
         <SceneNumber>01 · THE PITCH</SceneNumber>
         <div className="pitch-night-pitch-copy">
           <p className="pitch-night-pitch-quote" data-pitch-quote>
-            {"I’m giving you six slides and a room full of strangers. What are you going to make us believe?"
+            {"You have the screen and a room full of strangers. What are you going to make us believe?"
               .split(" ")
               .map((word, index) => (
                 <span key={`${word}-${index}`} data-quote-word>
@@ -118,8 +118,8 @@ export function PitchScene() {
               ))}
           </p>
           <p className="pitch-night-body-copy" data-soft-reveal>
-            Pitch a business. Defend an unpopular opinion. Make the case for a conspiracy. Six
-            slides are welcome, but conviction is the only requirement.
+            Pitch a business. Defend an unpopular opinion. Make the case for a conspiracy. One
+            strong title slide is enough; build more only if they help the story.
           </p>
           <Link to="/things/pitches/new" className="pitch-night-text-link" data-soft-reveal>
             open the slide studio

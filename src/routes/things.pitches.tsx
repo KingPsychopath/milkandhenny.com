@@ -12,10 +12,10 @@ export const Route = createFileRoute("/things/pitches")({
   head: () =>
     buildSeoHead({
       title: `Pitch Night Studio — ${SITE_NAME}`,
-      description: "Make six slides, seal the idea, and take over the big screen.",
+      description: "Put one strong idea—or a full pitch—on the big screen.",
       path: "/things/pitches",
       image: OG_IMAGES.pitchStudio,
-      imageAlt: "Pitch Night Studio — make six slides and present them on the big screen",
+      imageAlt: "Pitch Night Studio — put an idea on the big screen",
     }),
 });
 

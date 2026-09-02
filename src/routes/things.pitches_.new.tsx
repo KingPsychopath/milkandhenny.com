@@ -12,7 +12,7 @@ export const Route = createFileRoute("/things/pitches_/new")({
   head: () =>
     buildSeoHead({
       title: `New pitch — ${SITE_NAME}`,
-      description: "Start a new six-slide pitch in the Milk & Henny studio.",
+      description: "Start with one strong slide or build a full Milk & Henny pitch.",
       path: "/things/pitches/new",
       image: OG_IMAGES.pitchStudio,
       robots: "noindex, nofollow",
