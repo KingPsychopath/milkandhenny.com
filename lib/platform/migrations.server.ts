@@ -3974,6 +3974,24 @@ const MIGRATIONS: Migration[] = [
         where converted_order_id is not null;
     `,
   },
+  {
+    id: "0087_after_school_feedback_questions",
+    sql: `
+      update surveys
+         set title = 'Tell us about After School Club — First Bell',
+             intro = 'A few honest answers help us make the next one simpler, warmer, and better. This takes about two minutes.',
+             questions = '[
+               {"id":"overall","type":"rating","label":"How was the night overall?","hint":"1 is not for you; 5 is more please.","required":true},
+               {"id":"duration","type":"single_choice","label":"How did the length of the night feel?","options":["Too short","About right","Too long"],"required":true},
+               {"id":"more_time","type":"multi_choice","label":"What would you have liked more time for?","hint":"Choose as many as you like, or skip this if the balance felt right.","options":["The spelling bee","Hosted conversations","Team games","Pitches and presentations","Meeting people"],"required":false},
+               {"id":"worked","type":"long_text","label":"What should we definitely keep?","hint":"A moment, a detail, a person, a game — anything.","required":true},
+               {"id":"change","type":"long_text","label":"What should we simplify or change next time?","required":false},
+               {"id":"return","type":"yes_no","label":"Would you come again?","required":true}
+             ]'::jsonb,
+             updated_at = now()
+       where slug = 'after-school-club-feedback';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

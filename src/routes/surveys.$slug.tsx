@@ -48,9 +48,10 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
   const [error, setError] = useState("");
   const requiredCount = survey.questions.filter((question) => question.required).length;
 
-  const answeredCount = useMemo(
+  const requiredAnsweredCount = useMemo(
     () =>
       survey.questions.filter((question) => {
+        if (!question.required) return false;
         const answer = answers[question.id];
         return Array.isArray(answer)
           ? answer.length > 0
@@ -111,7 +112,7 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
           </h1>
           <p className="mt-5 font-serif text-lg leading-relaxed theme-muted">{survey.intro}</p>
           <p className="mt-6 font-mono text-xs theme-faint">
-            {answeredCount} of {requiredCount} required answers · about 2 minutes
+            {requiredAnsweredCount} of {requiredCount} required answers · about 2 minutes
           </p>
         </header>
 

@@ -536,39 +536,83 @@ async function ensureSurvey(eventSlug: string, eventTitle: string): Promise<stri
   ]);
   if (existing[0]) return existing[0].id;
   const id = randomUUID();
+  const intro =
+    eventSlug === "after-school-club-2026-09-01"
+      ? "A few honest answers help us make the next one simpler, warmer, and better. This takes about two minutes."
+      : "A few honest answers help us make the next one better. There are no wrong answers.";
+  const questions =
+    eventSlug === "after-school-club-2026-09-01"
+      ? [
+          {
+            id: "overall",
+            type: "rating",
+            label: "How was the night overall?",
+            hint: "1 is not for you; 5 is more please.",
+            required: true,
+          },
+          {
+            id: "duration",
+            type: "single_choice",
+            label: "How did the length of the night feel?",
+            options: ["Too short", "About right", "Too long"],
+            required: true,
+          },
+          {
+            id: "more_time",
+            type: "multi_choice",
+            label: "What would you have liked more time for?",
+            hint: "Choose as many as you like, or skip this if the balance felt right.",
+            options: [
+              "The spelling bee",
+              "Hosted conversations",
+              "Team games",
+              "Pitches and presentations",
+              "Meeting people",
+            ],
+            required: false,
+          },
+          {
+            id: "worked",
+            type: "long_text",
+            label: "What should we definitely keep?",
+            hint: "A moment, a detail, a person, a game — anything.",
+            required: true,
+          },
+          {
+            id: "change",
+            type: "long_text",
+            label: "What should we simplify or change next time?",
+            required: false,
+          },
+          { id: "return", type: "yes_no", label: "Would you come again?", required: true },
+        ]
+      : [
+          {
+            id: "overall",
+            type: "rating",
+            label: "How was the overall feeling?",
+            hint: "1 is not for you; 5 is more please.",
+            required: true,
+          },
+          {
+            id: "worked",
+            type: "long_text",
+            label: "What worked?",
+            hint: "A moment, a detail, a person, a game — anything.",
+            required: true,
+          },
+          {
+            id: "change",
+            type: "long_text",
+            label: "What should we change next time?",
+            required: false,
+          },
+          { id: "return", type: "yes_no", label: "Would you come again?", required: true },
+        ];
   await query(
     `insert into surveys (id, slug, event_slug, title, intro, questions, status)
      values ($1,$2,$3,$4,$5,$6::jsonb,'draft')`,
-    [
-      id,
-      slug,
-      eventSlug,
-      `Tell us about ${eventTitle}`,
-      "A few honest answers help us make the next one better. There are no wrong answers.",
-      JSON.stringify([
-        {
-          id: "overall",
-          type: "rating",
-          label: "How was the overall feeling?",
-          hint: "1 is not for you; 5 is more please.",
-          required: true,
-        },
-        {
-          id: "worked",
-          type: "long_text",
-          label: "What worked?",
-          hint: "A moment, a detail, a person, a game — anything.",
-          required: true,
-        },
-        {
-          id: "change",
-          type: "long_text",
-          label: "What should we change next time?",
-          required: false,
-        },
-        { id: "return", type: "yes_no", label: "Would you come again?", required: true },
-      ]),
-    ],
+    [id, slug, eventSlug, `Tell us about ${eventTitle}`, intro, JSON.stringify(questions)],
   );
   return id;
 }
