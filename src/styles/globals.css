@@ -1666,18 +1666,6 @@
     --active-room-notice-bottom: 5.5rem;
   }
 
-  body:has(.event-night-nav) .active-room-notice {
-    --active-room-notice-bottom: 5.5rem;
-  }
-
-  .event-night-nav {
-    bottom: 0.75rem;
-  }
-
-  body:has(.work-access-return-prompt) .event-night-nav {
-    bottom: 4.75rem;
-  }
-
   .country-reveal-reference,
   .country-reveal-drawing,
   .country-reveal-guide {
