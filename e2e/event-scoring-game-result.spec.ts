@@ -4,7 +4,7 @@ import { Pool } from "pg";
 const databaseUrl =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
 
-test("an official game result awards, corrects, and cancels attendee points live", async ({
+test("historical result corrections preserve the ledger without reopening public points", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -76,10 +76,8 @@ test("an official game result awards, corrects, and cancels attendee points live
     });
 
     await page.goto(`/ticket/${ticketId}`);
-    await page.getByRole("button", { name: "use this ticket for points" }).click();
-    await expect(
-      page.getByText("This device will use this ticket for event points."),
-    ).toBeVisible();
+    await expect(page.getByRole("img", { name: /Your ticket QR code/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "use this ticket for points" })).toHaveCount(0);
 
     const process = async (revision: number, placement?: number, operation = "record") => {
       const envelope = results.sealOfficialGameResult({
@@ -109,13 +107,7 @@ test("an official game result awards, corrects, and cancels attendee points live
     };
 
     await process(1, 1);
-    const eventScore = page.getByRole("region", { name: "event score" });
-    await expect(
-      eventScore.getByRole("status").filter({ hasText: "server confirmed" }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(eventScore.getByText("7 points", { exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.getByRole("region", { name: "event score" })).toHaveCount(0);
     await expect.poll(() => balance(pool, participant.id)).toBe(7);
 
     await process(2, 2);

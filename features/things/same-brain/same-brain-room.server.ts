@@ -1,3 +1,4 @@
+import { settleGamePoolBookkeeping } from "../pool/bookkeeping.server";
 import {
   publishMultiplayerRoomTermination,
   runMultiplayerEffect,
@@ -36,8 +37,8 @@ export function readSameBrainSnapshot(input: Parameters<typeof engine.readSameBr
     SameBrainRoomService.use((service) => service.readSnapshot(input)),
   ).then(async (result) => {
     if (result.ok && input.playerId)
-      await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
-        () => undefined,
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }),
       );
     return result;
   });
@@ -50,11 +51,13 @@ export function applySameBrainHostAction(
     SameBrainRoomService.use((service) => service.applyHostAction(input)),
   ).then(async (result) => {
     if (result.accepted && input.action.type === "player.remove") {
-      await markGamePoolPlayersRemoved({
-        roomId: input.roomId,
-        playerIds: [input.action.playerId],
-        actionId: input.action.actionId,
-      }).catch(() => undefined);
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayersRemoved({
+          roomId: input.roomId,
+          playerIds: [input.action.playerId],
+          actionId: input.action.actionId,
+        }),
+      );
       await publishMultiplayerRoomTermination("same-brain", input.roomId, {
         reason: "removed",
         playerId: input.action.playerId,
@@ -66,11 +69,13 @@ export function applySameBrainHostAction(
         (playerId) => !remainingPlayerIds.has(playerId),
       );
       if (removedPlayerIds.length > 0) {
-        await markGamePoolPlayersRemoved({
-          roomId: input.roomId,
-          playerIds: removedPlayerIds,
-          actionId: input.action.actionId,
-        }).catch(() => undefined);
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayersRemoved({
+            roomId: input.roomId,
+            playerIds: removedPlayerIds,
+            actionId: input.action.actionId,
+          }),
+        );
         for (const playerId of removedPlayerIds)
           await publishMultiplayerRoomTermination("same-brain", input.roomId, {
             reason: "removed",
@@ -89,8 +94,8 @@ export function applySameBrainPlayerAction(
     SameBrainRoomService.use((service) => service.applyPlayerAction(input)),
   ).then(async (result) => {
     if (result.accepted && input.action.type === "room.leave") {
-      await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
-        () => undefined,
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }),
       );
       await publishMultiplayerRoomTermination("same-brain", input.roomId, {
         reason: "session_ended",

@@ -1,3 +1,4 @@
+import { readCommunicationsWorkspace } from "@/features/communications/admin-workspace.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
@@ -10,6 +11,7 @@ import {
   setMarketingPreference,
 } from "@/features/communications/communications.server";
 import {
+  CommunicationStageConflictError,
   archiveCommunicationTemplate,
   createStarterPlan,
   listCommunicationPlans,
@@ -39,6 +41,15 @@ async function handleGET(request: Request) {
   if (authError) return authError;
   try {
     const url = new URL(request.url);
+    if (url.searchParams.get("scope") === "workspace")
+      return Response.json(
+        await readCommunicationsWorkspace({
+          tab: url.searchParams.get("tab") ?? undefined,
+          eventSlug: url.searchParams.get("eventSlug") ?? undefined,
+          query: url.searchParams.get("q") ?? undefined,
+          cursor: url.searchParams.get("cursor") ?? undefined,
+        }),
+      );
     if (url.searchParams.get("scope") === "event-plan") {
       const eventSlug = url.searchParams.get("eventSlug")?.trim();
       if (!eventSlug) return Response.json({ error: "Choose an event" }, { status: 400 });
@@ -142,6 +153,8 @@ async function handlePOST(request: Request) {
       }
       await updateCommunicationPlanStage({
         id: body.stageId,
+        expectedUpdatedAt:
+          typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : undefined,
         subject: body.subject,
         body: body.messageBody,
         media: body.media,
@@ -240,6 +253,8 @@ async function handlePOST(request: Request) {
       return Response.json({
         template: await saveCommunicationTemplate({
           id: typeof body.templateId === "string" ? body.templateId : undefined,
+          expectedUpdatedAt:
+            typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : undefined,
           name: body.name,
           kind: kind as
             | "newsletter"
@@ -298,6 +313,8 @@ async function handlePOST(request: Request) {
     );
     return Response.json({ communication: data });
   } catch (error) {
+    if (error instanceof CommunicationStageConflictError)
+      return Response.json({ error: error.message }, { status: 409 });
     return apiErrorFromRequest(
       request,
       "admin.communications",

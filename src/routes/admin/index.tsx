@@ -1,5 +1,7 @@
+import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
 import { SITE_NAME } from "@/lib/shared/config";
 import {
   ADMIN_SECTIONS,
@@ -46,6 +48,7 @@ export const Route = createFileRoute("/admin/")({
     communicationTab?: CommunicationsTab;
     communicationEvent?: string;
     operationsTab?: OperationsTab;
+    eventWorkspace?: "events" | "pitches";
     event?: string;
     ticket?: string;
     person?: string;
@@ -54,6 +57,9 @@ export const Route = createFileRoute("/admin/")({
     auth?: AdminSignInState;
   } => ({
     view: isAdminSection(search.view) ? search.view : "overview",
+    ...(search.eventWorkspace === "pitches" || search.eventWorkspace === "events"
+      ? { eventWorkspace: search.eventWorkspace }
+      : {}),
     ...(isCommunicationsTab(search.communicationTab)
       ? { communicationTab: search.communicationTab }
       : {}),
@@ -79,8 +85,28 @@ export const Route = createFileRoute("/admin/")({
     ...(parseAdminSignInState(search.auth) ? { auth: parseAdminSignInState(search.auth) } : {}),
   }),
   component: AdminPage,
+  loaderDeps: ({ search }) => ({
+    view: search.view,
+    tab: search.communicationTab,
+    eventSlug: search.communicationEvent,
+  }),
   loader: {
-    handler: () => getAdminAccessFn(),
+    handler: async ({ deps }) => {
+      const access = await getAdminAccessFn();
+      const communications =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications"
+          ? await readCommunicationsWorkspaceFn({ data: deps }).then(
+              (data) => ({ data, error: null }),
+              () => ({
+                data: null,
+                error: "Could not load this communications workspace. Retry below.",
+              }),
+            )
+          : null;
+      return { ...access, communications };
+    },
     staleReloadMode: "blocking",
   },
   staleTime: 0,
@@ -99,6 +125,8 @@ export const Route = createFileRoute("/admin/")({
 function AdminPage() {
   const {
     isAuthed,
+    draftScope,
+    communications,
     permissions,
     localDevBypassAvailable,
     namedAdminPasskeyRequired,
@@ -110,6 +138,7 @@ function AdminPage() {
     communicationEvent,
     operationsTab,
     event,
+    eventWorkspace,
     ticket,
     person,
     emailStatus,
@@ -219,79 +248,96 @@ function AdminPage() {
 
   return (
     <main id="main" className="min-h-dvh">
-      <Suspense fallback={<AdminDashboardFallback />}>
-        <AdminDashboard
-          view={availableView}
-          communicationTab={communicationTab ?? "event-plan"}
-          communicationEvent={communicationEvent}
-          operationsTab={availableOperationsTab}
-          targetEvent={event}
-          targetTicket={ticket}
-          targetPerson={person}
-          emailStatus={emailStatus}
-          emailQuery={emailQuery}
-          permissions={permissions}
-          onNavigate={(destination: AdminDestination) => {
-            if (!canAccessAdminDestination(destination, permissions)) return;
-            void navigate({
-              search: {
-                view: destination.section,
-                communicationTab: destination.communicationTab,
-                operationsTab: destination.operationsTab,
-                event: destination.event,
-                ticket: destination.ticket,
-                person: destination.person,
-                emailStatus: destination.emailStatus,
-                emailQuery: destination.emailQuery,
-              },
-              resetScroll: false,
-            });
-          }}
-          onViewChange={(nextView) => {
-            if (!canAccessAdminSection(nextView, permissions)) return;
-            void navigate({ search: { view: nextView }, resetScroll: false });
-          }}
-          onCommunicationTabChange={(nextTab) =>
-            void navigate({
-              search: (current) => ({
-                ...current,
-                view: "communications",
-                communicationTab: nextTab,
-              }),
-              resetScroll: false,
-            })
-          }
-          onCommunicationEventChange={(nextEvent) =>
-            void navigate({
-              search: (current) => ({
-                ...current,
-                view: "communications",
-                communicationEvent: nextEvent,
-              }),
-              resetScroll: false,
-            })
-          }
-          onOperationsTabChange={(nextTab) => {
-            if (!canAccessOperationsTab(nextTab, permissions)) return;
-            void navigate({
-              search: { view: "operations", operationsTab: nextTab },
-              resetScroll: false,
-            });
-          }}
-          onOperationsPersonChange={(nextPerson) =>
-            void navigate({
-              search: (current) => ({
-                ...current,
-                view: "operations",
-                operationsTab: "people",
-                person: nextPerson,
-                ticket: undefined,
-              }),
-              resetScroll: false,
-            })
-          }
-        />
-      </Suspense>
+      <AdminDraftProvider key={draftScope} scope={draftScope ?? "admin"}>
+        <Suspense fallback={<AdminDashboardFallback />}>
+          <AdminDashboard
+            view={availableView}
+            initialCommunications={communications}
+            communicationTab={communicationTab ?? "event-plan"}
+            communicationEvent={communicationEvent}
+            operationsTab={availableOperationsTab}
+            targetEvent={event}
+            eventWorkspace={eventWorkspace ?? "events"}
+            onEventWorkspaceChange={(workspace) =>
+              void navigate({
+                search: (current) => ({ ...current, eventWorkspace: workspace }),
+                resetScroll: false,
+              })
+            }
+            onSelectedEventChange={(slug) => {
+              if (slug !== event)
+                void navigate({
+                  search: (current) => ({ ...current, event: slug }),
+                  resetScroll: false,
+                });
+            }}
+            targetTicket={ticket}
+            targetPerson={person}
+            emailStatus={emailStatus}
+            emailQuery={emailQuery}
+            permissions={permissions}
+            onNavigate={(destination: AdminDestination) => {
+              if (!canAccessAdminDestination(destination, permissions)) return;
+              void navigate({
+                search: {
+                  view: destination.section,
+                  communicationTab: destination.communicationTab,
+                  operationsTab: destination.operationsTab,
+                  event: destination.event,
+                  ticket: destination.ticket,
+                  person: destination.person,
+                  emailStatus: destination.emailStatus,
+                  emailQuery: destination.emailQuery,
+                },
+                resetScroll: false,
+              });
+            }}
+            onViewChange={(nextView) => {
+              if (!canAccessAdminSection(nextView, permissions)) return;
+              void navigate({ search: { view: nextView }, resetScroll: false });
+            }}
+            onCommunicationTabChange={(nextTab) =>
+              void navigate({
+                search: (current) => ({
+                  ...current,
+                  view: "communications",
+                  communicationTab: nextTab,
+                }),
+                resetScroll: false,
+              })
+            }
+            onCommunicationEventChange={(nextEvent) =>
+              void navigate({
+                search: (current) => ({
+                  ...current,
+                  view: "communications",
+                  communicationEvent: nextEvent,
+                }),
+                resetScroll: false,
+              })
+            }
+            onOperationsTabChange={(nextTab) => {
+              if (!canAccessOperationsTab(nextTab, permissions)) return;
+              void navigate({
+                search: { view: "operations", operationsTab: nextTab },
+                resetScroll: false,
+              });
+            }}
+            onOperationsPersonChange={(nextPerson) =>
+              void navigate({
+                search: (current) => ({
+                  ...current,
+                  view: "operations",
+                  operationsTab: "people",
+                  person: nextPerson,
+                  ticket: undefined,
+                }),
+                resetScroll: false,
+              })
+            }
+          />
+        </Suspense>
+      </AdminDraftProvider>
     </main>
   );
 }

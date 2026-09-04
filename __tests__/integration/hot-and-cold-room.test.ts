@@ -20,6 +20,27 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Hot and Cold room", () => {
+  it("lets a lobby player rename without taking another player's name", async () => {
+    const host = await roomEngine.createHotAndColdRoom({ hostName: "Ada" });
+    const guest = await roomEngine.joinHotAndColdRoom({ roomId: host.roomId, name: "Bea" });
+    if (!guest.ok) throw new Error(guest.error);
+    const rename = (name: string) =>
+      roomEngine.applyHotAndColdAction({
+        roomId: host.roomId,
+        playerId: guest.playerId,
+        playerToken: guest.playerToken,
+        action: { type: "player.rename", name, actionId: `rename:${name}` },
+      });
+    for (const name of ["  ", "ADA", "x".repeat(25)]) {
+      expect((await rename(name)).accepted).toBe(false);
+    }
+    const renamed = await rename("  Maya  ");
+    expect(renamed.accepted).toBe(true);
+    expect(renamed.snapshot?.players.find((player) => player.id === guest.playerId)?.name).toBe(
+      "Maya",
+    );
+  });
+
   it("lets the room lead close and reopen admission", async () => {
     const host = await roomEngine.createHotAndColdRoom({ hostName: "Ada" });
     expect(host.snapshot.joinLocked).toBe(false);

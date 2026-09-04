@@ -457,6 +457,14 @@ function LobbyPhase({
               </label>
 
               <Toggle
+                label="host controls the reveal"
+                hint="leave time to talk; the host chooses when the next round starts"
+                checked={snapshot.timings.reveal === 0}
+                onChange={(next) =>
+                  void sendHost({ type: "game.configure", timings: { reveal: next ? 0 : 20_000 } })
+                }
+              />
+              <Toggle
                 label="say the answers out loud"
                 hint="counts everyone down, then shows each person their own answer"
                 checked={snapshot.toggles.sayItAloud}
@@ -751,6 +759,12 @@ function RevealPhase({
         <Scoreboard snapshot={snapshot} highlightIds={herdIds} />
       </div>
       <div className="mt-6">
+        {snapshot.phaseEndsAt === 0 ? (
+          <p className="font-mono text-xs text-white/60">
+            Talk through the answers.{" "}
+            {isHost ? "Move on when everyone is ready." : "The host will start the next round."}
+          </p>
+        ) : null}
         <PhaseTimer
           endsAt={snapshot.phaseEndsAt}
           clockOffset={clockOffset}

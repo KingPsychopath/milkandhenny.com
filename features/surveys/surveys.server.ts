@@ -180,7 +180,7 @@ export async function saveSurvey(input: {
     throw new Error("Every question needs a label");
   }
   const id = input.id || randomUUID();
-  await query(
+  const saved = await query<{ id: string }>(
     `insert into surveys (id, slug, event_slug, title, intro, questions, identity_mode, status)
      values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
      on conflict (id) do update set
@@ -191,7 +191,10 @@ export async function saveSurvey(input: {
        questions = excluded.questions,
        identity_mode = excluded.identity_mode,
        status = excluded.status,
-       updated_at = now()`,
+       updated_at = now()
+     where surveys.response_count = 0
+        or (surveys.questions = excluded.questions and surveys.identity_mode = excluded.identity_mode)
+     returning id`,
     [
       id,
       slug,
@@ -203,6 +206,10 @@ export async function saveSurvey(input: {
       input.status,
     ],
   );
+  if (saved.length === 0)
+    throw new Error(
+      "Questions and identity cannot change after responses begin. Create another survey.",
+    );
   const survey = await getSurvey(slug, true);
   if (!survey) throw new Error("Survey was not saved");
   return survey;
@@ -267,6 +274,17 @@ export async function submitSurvey(input: {
   const invitationId = invitedIdentity?.id ?? null;
   const identitySource = invitationId ? "invitation" : email ? "provided" : "anonymous";
   const inserted = await transaction(async (client) => {
+    const locked = await client.query<Record<string, unknown>>(
+      "select * from surveys where id=$1 for update",
+      [survey.id],
+    );
+    const current = locked.rows[0] ? fromRow(locked.rows[0]) : null;
+    if (!current || current.status !== "open") throw new Error("This survey is not open");
+    if (
+      JSON.stringify(current.questions) !== JSON.stringify(survey.questions) ||
+      current.identityMode !== survey.identityMode
+    )
+      throw new Error("This survey changed. Reload its questions before responding.");
     if (invitation) {
       const claimed = await client.query<{ id: string }>(
         `update survey_invitations

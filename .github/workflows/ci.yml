@@ -17,6 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
       postgres:
         image: postgres:18-alpine
         env:
@@ -30,6 +34,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      REDIS_URL: redis://127.0.0.1:56379
       TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:55432/mah_test
     steps:
       - uses: actions/checkout@v4

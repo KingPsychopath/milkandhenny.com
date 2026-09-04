@@ -72,3 +72,14 @@ Never log passwords, PINs, tokens, cookies, presigned URLs, or direct personal i
   are configured.
 
 Every alert needs a target owner and a link to [`deployment.md`](./deployment.md) for rollback.
+
+## Time-driven product readiness
+
+`product-readiness.yml` checks the rolling Hot & Cold quality window daily, seven days ahead.
+A failed run contains the affected puzzle/date; use repository workflow-failure notifications rather
+than sending unchanged application alerts every polling cycle. The protected System panel shows
+oldest pending email/media age and scheduler last-success/next-due times. Scheduled-job rows and
+queue state are shared durable state; multiplayer counters belong to the displayed replica and
+reset when that process restarts. Aggregate those process metrics in the log/metrics backend.
+Configure the deployment's alert receiver for growing queue age or missed job success windows;
+workflow scheduling and notification delivery must be verified after this change is deployed.

@@ -278,15 +278,32 @@ async function replaceTicketTypes(
   }
 }
 
+export class EventEditConflictError extends Error {
+  constructor() {
+    super(
+      "This event was changed elsewhere. Reload to review the latest version; your draft has been kept.",
+    );
+    this.name = "EventEditConflictError";
+  }
+}
+
 export async function putEvent(
   event: EventRecord,
-  options: { renameFrom?: string } = {},
+  options: { renameFrom?: string; expectedUpdatedAt?: string } = {},
 ): Promise<void> {
   if (!isValidEventSlug(event.slug)) {
     throw new Error(`Refusing to store event with invalid slug: ${event.slug}`);
   }
 
   await transaction(async (client) => {
+    if (options.expectedUpdatedAt) {
+      const locked = await client.query<{ updated_at: Date }>(
+        "select updated_at from events where slug = $1 for update",
+        [options.renameFrom ?? event.slug],
+      );
+      if (locked.rows[0]?.updated_at.toISOString() !== options.expectedUpdatedAt)
+        throw new EventEditConflictError();
+    }
     if (options.renameFrom && options.renameFrom !== event.slug) {
       if (!isValidEventSlug(options.renameFrom)) throw new Error("Invalid event slug");
       const existing = await client.query<{ event_id: string }>(
@@ -334,7 +351,7 @@ export async function putEvent(
          refund_policy = excluded.refund_policy, transferable = excluded.transferable,
          terms = excluded.terms, check_in_opens_at = excluded.check_in_opens_at,
          arrival_experience = excluded.arrival_experience,
-         staff_notes = excluded.staff_notes, updated_at = excluded.updated_at`,
+         staff_notes = excluded.staff_notes, updated_at = greatest(excluded.updated_at, events.updated_at + interval '1 millisecond')`,
       [
         event.slug,
         event.title,

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -579,6 +579,7 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
 /** Hold to reveal, so nobody catches your role over your shoulder. */
 function DealPhase({ snapshot, clockOffset }: PhaseProps) {
   const [held, setHeld] = useState(false);
+  const cardDetailsId = useId();
   const you = snapshot.player;
   if (!you) return null;
   const definition = LIARS_ROLES[you.role];
@@ -594,63 +595,83 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
         label="everyone reads at once"
       />
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Hold to reveal your role"
+        aria-pressed={held}
+        aria-describedby={held ? cardDetailsId : undefined}
+        onKeyDown={(event) => {
+          if (event.key !== " " && event.key !== "Enter") return;
+          event.preventDefault();
+          setHeld(true);
+        }}
+        onKeyUp={(event) => {
+          if (event.key === " " || event.key === "Enter") {
+            event.preventDefault();
+            setHeld(false);
+          }
+        }}
+        onBlur={() => setHeld(false)}
+        onPointerCancel={() => setHeld(false)}
         onPointerDown={() => setHeld(true)}
         onPointerUp={() => setHeld(false)}
         onPointerLeave={() => setHeld(false)}
         className="mt-6 min-h-64 select-none border-y border-white/15 py-10 text-center"
       >
-        {held ? (
-          <>
-            <p className="font-serif text-5xl font-semibold">{definition.name}</p>
-            <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
-              {definition.summary}
+        <div id={cardDetailsId} aria-live="polite">
+          {held ? (
+            <>
+              <p className="font-serif text-5xl font-semibold">{definition.name}</p>
+              <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
+                {definition.summary}
+              </p>
+              {you.wordCategory ? (
+                <div className="mt-7">
+                  <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                    the category is
+                  </p>
+                  <p className="mt-1 font-serif text-2xl text-white/85">{you.wordCategory}</p>
+                </div>
+              ) : null}
+              {you.word ? (
+                <div className="mt-6">
+                  <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                    the word is
+                  </p>
+                  <p className="mt-2 font-serif text-5xl font-semibold leading-tight text-[var(--things-amber)] sm:text-6xl">
+                    {you.word}
+                  </p>
+                </div>
+              ) : you.wordCategory ? (
+                <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
+                  you don't have the word — it is one of these
+                </p>
+              ) : null}
+              {you.wordBoard.length > 0 ? (
+                <p className="mt-5 font-mono text-xs text-white/35">
+                  the twelve it could be are on the next screen
+                </p>
+              ) : null}
+              {allies.length > 0 ? (
+                <p className="mt-6 font-mono text-xs text-white/55">
+                  with you · {allies.map(({ name }) => name).join(", ")}
+                </p>
+              ) : null}
+              {/* Mafia roles need their rules on the card; an imposter's summary is the whole rule. */}
+              {snapshot.mode === "mafia" ? (
+                <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
+                  {definition.rules.map((rule, index) => (
+                    <li key={index}>{rule}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <p className="pt-16 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
+              hold to reveal
             </p>
-            {you.wordCategory ? (
-              <div className="mt-7">
-                <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                  the category is
-                </p>
-                <p className="mt-1 font-serif text-2xl text-white/85">{you.wordCategory}</p>
-              </div>
-            ) : null}
-            {you.word ? (
-              <div className="mt-6">
-                <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                  the word is
-                </p>
-                <p className="mt-2 font-serif text-5xl font-semibold leading-tight text-[var(--things-amber)] sm:text-6xl">
-                  {you.word}
-                </p>
-              </div>
-            ) : you.wordCategory ? (
-              <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
-                you don't have the word — it is one of these
-              </p>
-            ) : null}
-            {you.wordBoard.length > 0 ? (
-              <p className="mt-5 font-mono text-xs text-white/35">
-                the twelve it could be are on the next screen
-              </p>
-            ) : null}
-            {allies.length > 0 ? (
-              <p className="mt-6 font-mono text-xs text-white/55">
-                with you · {allies.map(({ name }) => name).join(", ")}
-              </p>
-            ) : null}
-            {/* Mafia roles need their rules on the card; an imposter's summary is the whole rule. */}
-            {snapshot.mode === "mafia" ? (
-              <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
-                {definition.rules.map((rule, index) => (
-                  <li key={index}>{rule}</li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        ) : (
-          <p className="pt-16 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
-            hold to reveal
-          </p>
-        )}
+          )}
+        </div>
       </div>
       <p className="mt-4 font-mono text-xs text-white/30">
         everything about your role lives behind the hold, so a glance over your shoulder gets
@@ -1243,7 +1264,7 @@ function FinalGuessPhase({ snapshot, clockOffset, send }: PhaseProps) {
         <Headline>One guess left</Headline>
         <PhaseTimer endsAt={snapshot.phaseEndsAt} clockOffset={clockOffset} label="they have" />
         <p className="mt-4 font-serif text-lg text-white/65">
-          They have thirty seconds to name the word. If they get it, they take the whole game.
+          They have one chance to name the word. If they get it, they take the whole game.
         </p>
       </>
     );
@@ -1262,6 +1283,7 @@ function FinalGuessPhase({ snapshot, clockOffset, send }: PhaseProps) {
         value={guess}
         onChange={(event) => setGuess(event.target.value)}
         maxLength={60}
+        aria-label="Your final guess"
         autoFocus
         autoComplete="off"
         className="mt-8 min-h-14 w-full border-b border-white/25 bg-transparent font-serif text-3xl text-white outline-none focus-visible:border-[var(--things-amber)]"

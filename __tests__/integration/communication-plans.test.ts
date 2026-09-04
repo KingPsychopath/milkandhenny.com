@@ -1,9 +1,12 @@
+import { raceLockedWrite } from "../helpers/locked-write";
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 
 import {
   listCommunicationPlans,
+  updateCommunicationPlanStage,
+  saveCommunicationTemplate,
   listCommunicationStageDeliveries,
 } from "@/features/communications/communication-plans.server";
 import { hashEmail as hashTicketEmail } from "@/features/tickets/qr.server";
@@ -15,6 +18,69 @@ describeWithDatabase("communication plans (postgres)", () => {
   beforeAll(applySchema);
   afterAll(closeDatabase);
   beforeEach(truncateAll);
+
+  it("rejects a content edit when a scheduler claims the locked stage first", async () => {
+    const planId = randomUUID();
+    const stageId = randomUUID();
+    await query(
+      "insert into events(slug,title,status,starts_at,timezone) values ('race','Race','draft',now(),'UTC')",
+    );
+    await query(
+      "insert into communication_plans(id,event_slug,name,status) values ($1,'race','Race','scheduled')",
+      [planId],
+    );
+    await query(
+      "insert into communication_plan_stages(id,plan_id,stage_key,label,position,kind,audience,subject,body,status) values ($1,$2,'race','Race',0,'event_service','event_attendees','Original','Original','scheduled')",
+      [stageId, planId],
+    );
+    const result = await raceLockedWrite(
+      "select id from communication_plan_stages where id=$1 for update",
+      [stageId],
+      () =>
+        updateCommunicationPlanStage({
+          id: stageId,
+          subject: "Too late",
+          body: "Edited",
+          media: [],
+          sendAt: null,
+        }),
+      "update communication_plan_stages set status='fanout' where id=$1",
+    );
+    expect(result.status).toBe("rejected");
+    expect(
+      (
+        await query("select subject,status from communication_plan_stages where id=$1", [stageId])
+      )[0],
+    ).toMatchObject({ subject: "Original", status: "fanout" });
+  });
+
+  it("keeps the saved template and default when a stale editor saves", async () => {
+    const original = await saveCommunicationTemplate({
+      name: "Original",
+      kind: "newsletter",
+      subject: "Subject",
+      body: "Body",
+      media: [],
+      isDefault: true,
+    });
+    const changed = await saveCommunicationTemplate({
+      ...original,
+      name: "New name",
+      expectedUpdatedAt: original.updatedAt,
+    });
+    await expect(
+      saveCommunicationTemplate({
+        ...original,
+        name: "Stale",
+        expectedUpdatedAt: original.updatedAt,
+      }),
+    ).rejects.toThrow("template changed");
+    expect(
+      (
+        await query("select name,is_default from communication_templates where id=$1", [changed.id])
+      )[0],
+    ).toMatchObject({ name: "New name", is_default: true });
+  });
 
   it("should supersede a failed historical address after its replacement is delivered", async () => {
     const eventSlug = "corrected-recipient-event";

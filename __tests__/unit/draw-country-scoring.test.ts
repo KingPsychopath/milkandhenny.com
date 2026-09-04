@@ -546,6 +546,40 @@ describe("draw-country scoring", () => {
     }
   });
 
+  it("rewards a remembered mainland without giving away the missing islands", () => {
+    for (const [id, exactFloor, roughFloor] of [
+      ["GB", 80, 70],
+      ["IT", 70, 55],
+    ] as const) {
+      const outline = COUNTRIES.find((country) => country.id === id)!;
+      const full = exactDrawing(outline);
+      const mainland = full.slice(0, 1);
+      const step = Math.max(1, Math.floor(mainland[0].length / 20));
+      const rough = [mainland[0].filter((_, index) => index % step === 0)];
+      const result = scoreCountryDrawing(outline, mainland);
+
+      expect(result.score, id).toBeGreaterThanOrEqual(exactFloor);
+      expect(result.score, id).toBeLessThan(95);
+      expect(result.coverageDeviation, id).toBeGreaterThan(0);
+      expect(result.islandDeviation, id).toBeGreaterThan(0);
+      expect(scoreCountryDrawing(outline, rough).score, id).toBeGreaterThanOrEqual(roughFloor);
+      expect(scoreCountryDrawing(outline, rough).score, id).toBeLessThan(result.score);
+      expect(scoreCountryDrawing(outline, full).score, id).toBe(100);
+      expect(
+        scoreCountryDrawing(
+          outline,
+          exactDrawing(outline, { x: -250, y: 400, scale: 0.04 }).slice(0, 1),
+        ).score,
+        id,
+      ).toBe(result.score);
+    }
+  });
+
+  it("still charges for a missing major landmass in an archipelago", () => {
+    const outline = COUNTRIES.find((country) => country.id === "NZ")!;
+    expect(scoreCountryDrawing(outline, exactDrawing(outline).slice(0, 1)).score).toBeLessThan(50);
+  });
+
   it("keeps width errors recognisable across slender countries", () => {
     for (const countryId of ["CL", "IL", "TG", "TV"]) {
       const outline = COUNTRIES.find(({ id }) => id === countryId);

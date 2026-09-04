@@ -1,3 +1,4 @@
+import { settleGamePoolBookkeeping } from "../pool/bookkeeping.server";
 import {
   publishMultiplayerRoomTermination,
   runMultiplayerEffect,
@@ -31,8 +32,8 @@ export function readLiarsSnapshot(input: Parameters<typeof engine.readLiarsSnaps
   return runMultiplayerEffect(LiarsRoomService.use((service) => service.readSnapshot(input))).then(
     async (result) => {
       if (result.ok && input.playerId)
-        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
-          () => undefined,
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }),
         );
       return result;
     },
@@ -44,11 +45,13 @@ export function applyLiarsHostAction(input: Parameters<typeof engine.applyLiarsH
     LiarsRoomService.use((service) => service.applyHostAction(input)),
   ).then(async (result) => {
     if (result.ok && result.accepted && input.action.type === "player.remove") {
-      await markGamePoolPlayersRemoved({
-        roomId: input.roomId,
-        playerIds: [input.action.playerId],
-        actionId: input.action.actionId,
-      }).catch(() => undefined);
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayersRemoved({
+          roomId: input.roomId,
+          playerIds: [input.action.playerId],
+          actionId: input.action.actionId,
+        }),
+      );
       await publishMultiplayerRoomTermination("liars", input.roomId, {
         reason: "removed",
         playerId: input.action.playerId,
@@ -60,11 +63,13 @@ export function applyLiarsHostAction(input: Parameters<typeof engine.applyLiarsH
         (playerId) => !remainingPlayerIds.has(playerId),
       );
       if (removedPlayerIds.length > 0) {
-        await markGamePoolPlayersRemoved({
-          roomId: input.roomId,
-          playerIds: removedPlayerIds,
-          actionId: input.action.actionId,
-        }).catch(() => undefined);
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayersRemoved({
+            roomId: input.roomId,
+            playerIds: removedPlayerIds,
+            actionId: input.action.actionId,
+          }),
+        );
         for (const playerId of removedPlayerIds)
           await publishMultiplayerRoomTermination("liars", input.roomId, {
             reason: "removed",
@@ -81,8 +86,8 @@ export function applyLiarsPlayerAction(input: Parameters<typeof engine.applyLiar
     LiarsRoomService.use((service) => service.applyPlayerAction(input)),
   ).then(async (result) => {
     if (result.ok && result.accepted && input.action.type === "room.leave") {
-      await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
-        () => undefined,
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }),
       );
       await publishMultiplayerRoomTermination("liars", input.roomId, {
         reason: "session_ended",

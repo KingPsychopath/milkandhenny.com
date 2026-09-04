@@ -13,12 +13,48 @@ import { GAME_POOL_DEFAULTS } from "@/features/things/pool/presets";
 import { getGamePoolPublicView } from "@/features/things/pool/pool.server";
 import { cleanupGamePools } from "@/features/things/pool/operations.server";
 import { runMigrations } from "@/lib/platform/migrations.server";
+import { expireStaleGamePoolAssignments } from "@/features/things/pool/membership.server";
+import { transaction } from "@/lib/platform/postgres.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
 describeWithDatabase("game-pool public defaults (postgres)", () => {
   beforeAll(applySchema);
   afterAll(closeDatabase);
+
+  it("retains the same membership through a two-minute phone break and releases abandoned seats", async () => {
+    const entrance = await createGamePoolEntrance({
+      game: "same-brain",
+      label: "Phone break",
+      actionId: "phone-break-entrance",
+    });
+    const opened = await openGamePoolRun(entrance.id, { actionId: "phone-break-run" });
+    const runId = opened!.run!.id;
+    await query(
+      "insert into game_pool_rooms(run_id,room_id,capacity,player_count) values ($1,'BREAK1',8,1)",
+      [runId],
+    );
+    await query(
+      "insert into game_pool_assignments(id,run_id,room_id,client_id,player_id,display_name,last_seen_at) values ('gpa_abcdefghijklmnopqrstuv',$1,'BREAK1','phone-break-client','same-player','Player',now()-interval '2 minutes')",
+      [runId],
+    );
+    expect(
+      await transaction((client) => expireStaleGamePoolAssignments(client, runId)),
+    ).toMatchObject({ staleAssignments: 0 });
+    expect(
+      (
+        await query("select player_id,status from game_pool_assignments where run_id=$1", [runId])
+      )[0],
+    ).toEqual({ player_id: "same-player", status: "active" });
+    await query(
+      "update game_pool_assignments set last_seen_at=now()-interval '7 hours' where run_id=$1",
+      [runId],
+    );
+    expect(
+      await transaction((client) => expireStaleGamePoolAssignments(client, runId)),
+    ).toMatchObject({ staleAssignments: 1 });
+    await query("delete from game_pool_entrances where id=$1", [entrance.id]);
+  });
 
   it("starts a recommended permanent pool on a game's first public visit", async () => {
     const launch = await getDefaultGamePoolPublicLink("twin");

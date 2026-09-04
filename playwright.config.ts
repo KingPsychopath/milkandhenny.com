@@ -22,18 +22,25 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
+      command: "node e2e/support/redis-rest-server.mjs",
+      url: "http://127.0.0.1:56380/health",
+      reuseExistingServer: !process.env.CI,
+    },
+    {
       command: "node scripts/test-s3-server.mjs",
       url: "http://127.0.0.1:4568/health",
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: `pnpm dev --host 127.0.0.1 --port ${webPort}`,
+      command: `pnpm dev --host 127.0.0.1 --port ${webPort} --strictPort`,
       url: `${baseURL}/things/pitches/new`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
         ...process.env,
         DATABASE_URL: testDatabase,
+        REDIS_REST_URL: "http://127.0.0.1:56380",
+        REDIS_REST_TOKEN: "local-browser-test",
         VITE_BASE_URL: baseURL,
         VITE_MEDIA_PUBLIC_URL: "http://127.0.0.1:4568/public",
         AUTH_SECRET: "playwright-auth-secret-at-least-thirty-two-characters",

@@ -588,7 +588,11 @@ export function CentreRoom({
               playCentreSound("wall", sound.effects);
             }}
             onFinish={(finishedRoute) => {
-              const claimedElapsedMs = finishedRoute.segments.at(-1)?.at(-1)?.t ?? elapsed;
+              // Clock-offset estimates can contain fractional milliseconds; the transport uses integers.
+              const claimedElapsedMs = Math.max(
+                0,
+                Math.round(finishedRoute.segments.at(-1)?.at(-1)?.t ?? elapsed),
+              );
               void send({
                 type: "race.finish",
                 courseHash: course!.hash,

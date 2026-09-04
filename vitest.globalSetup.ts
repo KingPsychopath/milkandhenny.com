@@ -17,8 +17,14 @@ export default async function globalSetup() {
     await client.query("select 1");
     process.env.MAH_TEST_DB_READY = "1";
     process.env.TEST_DATABASE_URL = connectionString;
-  } catch {
+  } catch (cause) {
     process.env.MAH_TEST_DB_READY = "0";
+    if (process.env.CI) {
+      throw new Error(
+        "CI requires a reachable TEST_DATABASE_URL; database verification cannot be skipped.",
+        { cause },
+      );
+    }
     console.warn(
       "\n[tests] No Postgres at",
       connectionString.replace(/:[^:@]*@/, ":***@"),

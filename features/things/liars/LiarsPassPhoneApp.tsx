@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { GameShell } from "../shared/GameShell";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { liarsImposterBlurb, liarsImposterRange } from "./liars-rules";
@@ -238,11 +238,31 @@ function HoldToSee({
   onDone: () => void;
 }) {
   const [held, setHeld] = useState(false);
+  const cardDetailsId = useId();
   const [seen, setSeen] = useState(false);
 
   return (
     <>
       <div
+        role="button"
+        tabIndex={0}
+        aria-label="Hold to reveal your role"
+        aria-pressed={held}
+        aria-describedby={held ? cardDetailsId : undefined}
+        onKeyDown={(event) => {
+          if (event.key !== " " && event.key !== "Enter") return;
+          event.preventDefault();
+          setHeld(true);
+          setSeen(true);
+        }}
+        onKeyUp={(event) => {
+          if (event.key === " " || event.key === "Enter") {
+            event.preventDefault();
+            setHeld(false);
+          }
+        }}
+        onBlur={() => setHeld(false)}
+        onPointerCancel={() => setHeld(false)}
         onPointerDown={() => {
           setHeld(true);
           setSeen(true);
@@ -251,51 +271,53 @@ function HoldToSee({
         onPointerLeave={() => setHeld(false)}
         className="mt-8 min-h-56 select-none border-y border-white/15 py-12 text-center"
       >
-        {held ? (
-          <>
-            <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-              the category is
+        <div id={cardDetailsId} aria-live="polite">
+          {held ? (
+            <>
+              <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                the category is
+              </p>
+              <p className="mt-1 font-serif text-2xl text-white/85">{category}</p>
+              {word === null ? (
+                <>
+                  <p className="mt-6 font-serif text-4xl font-semibold text-[var(--liars-dead)]">
+                    you have no word
+                  </p>
+                  <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
+                    {board.length > 0
+                      ? "It is one of these. Work out which."
+                      : "Listen hard and bluff inside the category."}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-6 font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                    the word is
+                  </p>
+                  <p className="mt-2 font-serif text-6xl font-semibold leading-tight text-[var(--things-amber)]">
+                    {word}
+                  </p>
+                </>
+              )}
+              {board.length > 0 ? (
+                <ul className="mx-auto mt-6 grid max-w-xs grid-cols-2 gap-x-4 text-left">
+                  {board.map((candidate) => (
+                    <li
+                      key={candidate}
+                      className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
+                    >
+                      {candidate}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <p className="pt-10 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
+              hold to reveal
             </p>
-            <p className="mt-1 font-serif text-2xl text-white/85">{category}</p>
-            {word === null ? (
-              <>
-                <p className="mt-6 font-serif text-4xl font-semibold text-[var(--liars-dead)]">
-                  you have no word
-                </p>
-                <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
-                  {board.length > 0
-                    ? "It is one of these. Work out which."
-                    : "Listen hard and bluff inside the category."}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mt-6 font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                  the word is
-                </p>
-                <p className="mt-2 font-serif text-6xl font-semibold leading-tight text-[var(--things-amber)]">
-                  {word}
-                </p>
-              </>
-            )}
-            {board.length > 0 ? (
-              <ul className="mx-auto mt-6 grid max-w-xs grid-cols-2 gap-x-4 text-left">
-                {board.map((candidate) => (
-                  <li
-                    key={candidate}
-                    className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
-                  >
-                    {candidate}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </>
-        ) : (
-          <p className="pt-10 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
-            hold to reveal
-          </p>
-        )}
+          )}
+        </div>
       </div>
       <div className="mt-6">
         <ActionButton disabled={!seen} onClick={onDone}>

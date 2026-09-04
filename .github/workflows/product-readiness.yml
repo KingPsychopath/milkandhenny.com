@@ -1,0 +1,28 @@
+name: Product readiness
+
+on:
+  schedule:
+    - cron: "20 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-readiness
+  cancel-in-progress: false
+
+jobs:
+  puzzle-window:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the quality window seven days ahead
+        run: pnpm check:hot-and-cold-quality --date "$(date -u -d '+7 days' +%F)"

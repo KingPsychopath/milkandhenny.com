@@ -168,7 +168,7 @@ async function readReceipt(runId: string, clientId: string) {
     `select true as active from game_pool_assignments
      where run_id = $1 and client_id = $2 and room_id = $3 and player_id = $4
        and status = 'active'
-       and last_seen_at >= now() - interval '90 seconds'`,
+       and last_seen_at >= now() - interval '6 hours'`,
     [runId, clientId, receipt.assignment.roomId, receipt.assignment.playerId],
   );
   if (rows[0]?.active) return receipt;

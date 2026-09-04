@@ -36,14 +36,15 @@ export const SAME_BRAIN_DEFAULT_TIMINGS: SameBrainTimings = {
   submit: 45_000,
   // Three to read and hold your word, then the moment itself.
   sayIt: 4_500,
-  reveal: 20_000,
+  // The host leaves room for conversation before moving on.
+  reveal: 0,
 };
 
 export const SAME_BRAIN_TIMING_BOUNDS: Record<keyof SameBrainTimings, [number, number]> = {
   prompt: [2_000, 20_000],
   submit: [15_000, 180_000],
   sayIt: [3_000, 20_000],
-  reveal: [8_000, 120_000],
+  reveal: [0, 120_000],
 };
 
 /**

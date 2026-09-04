@@ -464,8 +464,10 @@ async function createWordLocked(input: {
   await writeNoteContent(meta.bodyKey, normalisedMarkdown, meta.visibility);
   const redis = getWordRedis();
   if (redis) {
-    await redis.set(wordMetaKey(slug), meta);
-    await redis.sadd(WORD_INDEX_KEY, slug);
+    const commit = redis.multi();
+    commit.set(wordMetaKey(slug), meta);
+    commit.sadd(WORD_INDEX_KEY, slug);
+    await commit.exec();
   } else {
     memoryMeta.set(slug, meta);
   }
@@ -679,11 +681,11 @@ async function deleteWordLocked(slug: string): Promise<boolean> {
   await deleteNoteContent(candidateContentKeys(existing), ["public", "private"]);
   const redis = getWordRedis();
   if (redis) {
-    await Promise.all([
-      redis.del(wordMetaKey(slug)),
-      redis.srem(WORD_INDEX_KEY, slug),
-      deleteAllShareLinksForSlug(slug),
-    ]);
+    await deleteAllShareLinksForSlug(slug);
+    const commit = redis.multi();
+    commit.del(wordMetaKey(slug));
+    commit.srem(WORD_INDEX_KEY, slug);
+    await commit.exec();
   } else {
     memoryMeta.delete(slug);
     await deleteAllShareLinksForSlug(slug);
@@ -730,6 +732,54 @@ async function listAllWords(
   options: Omit<ListWordOptions, "cursor" | "limit"> = {},
 ): Promise<NoteMeta[]> {
   return filterWordMetas(await getAllNoteMetas(), options);
+}
+
+/** Reconcile the discovery index from independently stored metadata; never guess visibility or delete blobs. */
+export async function inspectWordPersistence(repairIndex = false) {
+  const redis = getWordRedis();
+  const indexed = new Set(
+    redis ? ((await redis.smembers(WORD_INDEX_KEY)) as string[]) : [...memoryMeta.keys()],
+  );
+  const records = new Set<string>();
+  if (redis) {
+    let cursor: string | number = "0";
+    do {
+      const [next, keys]: [string, string[]] = await redis.scan(cursor, {
+        match: "words:meta:*",
+        count: 250,
+      });
+      cursor = next;
+      for (const key of keys) {
+        const slug = key.slice("words:meta:".length);
+        if (isValidWordSlug(slug) && (await getWordMeta(slug))) records.add(slug);
+      }
+    } while (String(cursor) !== "0");
+  } else for (const slug of memoryMeta.keys()) records.add(slug);
+  const unindexed = [...records].filter((slug) => !indexed.has(slug));
+  const dangling = [...indexed].filter((slug) => !records.has(slug));
+  const missingBodies: string[] = [];
+  for (const slug of records) if (!(await getWord(slug))) missingBodies.push(slug);
+  if (repairIndex && redis) {
+    for (const slug of unindexed)
+      await redis.eval(
+        "if redis.call('exists',KEYS[1]) == 1 then return redis.call('sadd',KEYS[2],ARGV[1]) else return 0 end",
+        [wordMetaKey(slug), WORD_INDEX_KEY],
+        [slug],
+      );
+    for (const slug of dangling)
+      await redis.eval(
+        "if redis.call('exists',KEYS[1]) == 0 then return redis.call('srem',KEYS[2],ARGV[1]) else return 0 end",
+        [wordMetaKey(slug), WORD_INDEX_KEY],
+        [slug],
+      );
+  }
+  return {
+    records: records.size,
+    unindexed,
+    dangling,
+    missingBodies,
+    repairRequested: repairIndex,
+  };
 }
 
 export {

@@ -2985,12 +2985,19 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
   log(dim(`concurrency ${getCliIoConcurrency()}`));
   console.log();
 
-  const { words } = await listWordRecords({
-    includeNonPublic: true,
-    type: opts.type,
-    visibility: opts.visibility,
-    limit: 1000,
-  });
+  const words = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listWordRecords({
+      includeNonPublic: true,
+      type: opts.type,
+      visibility: opts.visibility,
+      limit: 100,
+      cursor,
+    });
+    words.push(...page.words);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
   if (words.length === 0) {
     log(dim("No words found."));
     console.log();
@@ -2999,7 +3006,7 @@ async function cmdWordsPull(opts: { dir: string; type?: WordType; visibility?: N
 
   const writtenResults = await mapWithConcurrency(words, getCliIoConcurrency(), async (word) => {
     const record = await getWordRecord(word.slug);
-    if (!record) return "skipped";
+    if (!record) throw new Error(`Missing body for ${word.slug}; export is incomplete`);
 
     const typeDir = path.join(rootDir, word.type);
     fs.mkdirSync(typeDir, { recursive: true });

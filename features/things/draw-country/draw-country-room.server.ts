@@ -1,3 +1,4 @@
+import { settleGamePoolBookkeeping } from "../pool/bookkeeping.server";
 import {
   publishMultiplayerRoomTermination,
   runMultiplayerEffect,
@@ -29,8 +30,8 @@ export function readDrawCountrySnapshot(
     DrawCountryRoomService.use((service) => service.readSnapshot(input)),
   ).then(async (result) => {
     if (result.ok)
-      await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
-        () => undefined,
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }),
       );
     return result;
   });
@@ -41,8 +42,8 @@ export function applyDrawCountryAction(input: Parameters<typeof engine.applyDraw
     DrawCountryRoomService.use((service) => service.applyAction(input)),
   ).then(async (result) => {
     if (result.ok && result.accepted && input.action.type === "player.leave") {
-      await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
-        () => undefined,
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }),
       );
       await publishMultiplayerRoomTermination("draw-country", input.roomId, {
         reason: "session_ended",
@@ -54,11 +55,13 @@ export function applyDrawCountryAction(input: Parameters<typeof engine.applyDraw
       const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
         (playerId) => !remainingPlayerIds.has(playerId),
       );
-      await markGamePoolPlayersRemoved({
-        roomId: input.roomId,
-        playerIds: removedPlayerIds,
-        actionId: input.action.actionId ?? crypto.randomUUID(),
-      }).catch(() => undefined);
+      await settleGamePoolBookkeeping(
+        markGamePoolPlayersRemoved({
+          roomId: input.roomId,
+          playerIds: removedPlayerIds,
+          actionId: input.action.actionId ?? crypto.randomUUID(),
+        }),
+      );
       for (const playerId of removedPlayerIds)
         await publishMultiplayerRoomTermination("draw-country", input.roomId, {
           reason: "removed",

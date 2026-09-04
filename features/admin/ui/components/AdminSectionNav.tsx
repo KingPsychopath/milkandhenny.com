@@ -1,3 +1,4 @@
+import { AppSelect } from "@/components/AppSelect";
 import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import { canAccessAdminSection } from "../admin-permissions";
 
@@ -132,10 +133,23 @@ export function AdminSectionNav({
       : ADMIN_SECTIONS.find((section) => section.id === "best-dressed");
 
   return (
-    <div className="mt-7 border-y theme-border py-2">
+    <div className="mt-4 border-y theme-border py-2 sm:mt-7">
+      <nav aria-label="Admin work area" className="sm:hidden">
+        <AppSelect
+          ariaLabel="Admin work area"
+          variant="field"
+          value={active}
+          options={ADMIN_SECTIONS.filter((section) =>
+            canAccessAdminSection(section.id, permissions),
+          ).map((section) => ({ value: section.id, label: section.label }))}
+          onValueChange={(value) => {
+            if (isAdminSection(value)) onChange(value);
+          }}
+        />
+      </nav>
       <nav
         aria-label="Primary admin work areas"
-        className="grid grid-cols-2 gap-x-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-2"
+        className="hidden gap-x-4 sm:grid sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-2"
       >
         {primarySections.map((section) => {
           const selected = section.id === primaryActive;
@@ -161,7 +175,7 @@ export function AdminSectionNav({
         })}
       </nav>
       {utilitySections.length > 0 ? (
-        <div className="mt-1 flex flex-wrap items-center gap-x-5 border-t theme-border-faint pt-2">
+        <div className="mt-1 hidden flex-wrap items-center gap-x-5 sm:flex border-t theme-border-faint pt-2">
           <p className="font-mono text-micro uppercase tracking-widest theme-faint">utilities</p>
           <nav
             aria-label="Admin utilities and policies"
@@ -197,7 +211,7 @@ export function AdminSectionNav({
       canAccessAdminSection(relatedEventSection.id, permissions) ? (
         <nav
           aria-label="Related event tool"
-          className="mt-1 flex items-center gap-x-5 border-t theme-border-faint pt-2"
+          className="mt-1 hidden items-center gap-x-5 sm:flex border-t theme-border-faint pt-2"
         >
           <span className="font-mono text-micro uppercase tracking-widest theme-faint">
             related

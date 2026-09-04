@@ -87,6 +87,8 @@ function HeadsUpExperience({
   const [deckId, setDeckId] = useState(joinedDeck?.id ?? GAME_DECKS[0].id);
   const [cards, setCards] = useState(() => shuffledCards(joinedDeck?.cards ?? GAME_DECKS[0].cards));
   const [cardIndex, setCardIndex] = useState(0);
+  // Undo restores a new attempt, not the already acknowledged decision's identity.
+  const [itemAttempt, setItemAttempt] = useState(0);
   const [countdown, setCountdown] = useState(3);
   // Round length is fixed for Heads Up; sound is the only thing worth remembering.
   const { preferences, set: setPreference } = useGamePreferences("heads-up", {
@@ -190,6 +192,7 @@ function HeadsUpExperience({
 
   const undoDecision = useCallback(() => {
     if (phase !== "playing" || results.length === 0) return;
+    setItemAttempt((attempt) => attempt + 1);
     const cardAlreadyAdvanced = decisionTimeout.current === null;
     clearDecisionTimeout();
     setResults((current) => current.slice(0, -1));
@@ -234,7 +237,7 @@ function HeadsUpExperience({
       label: result.card,
       decision: result.decision,
     })),
-    itemKey: phase === "playing" ? String(cardIndex) : undefined,
+    itemKey: phase === "playing" ? `${itemAttempt}:${cardIndex}` : undefined,
     updatedAt: Date.now(),
   };
   const remoteSetup: RemoteHeadsUpSetup = {

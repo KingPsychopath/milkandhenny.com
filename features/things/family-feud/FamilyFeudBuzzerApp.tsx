@@ -14,6 +14,7 @@ import { familyFeudBrowserKeys } from "./family-feud-keys";
 import { applyFamilyFeudBuzzerActionFn } from "./family-feud-room.functions";
 import type { FamilyFeudBuzzerAction, FamilyFeudTeamId } from "./types";
 import { useFamilyFeudRoom } from "./useFamilyFeudRoom";
+import { RoomConnectionIndicator } from "../shared/RoomHeader";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
@@ -99,16 +100,18 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
     busyRef.current = true;
     setBusy(true);
     setMessage(null);
-    navigator.vibrate?.(24);
     try {
       const result = await dispatchBuzzerAction({ type: "buzzer.hit", teamId });
       if (result.snapshot) live.setSnapshot(result.snapshot);
       if (!result.accepted) {
         if (result.errorCode === "room_unavailable") markUnavailable();
         else setMessage(result.error ?? "Someone already buzzed.");
-      } else live.notify();
+      } else {
+        navigator.vibrate?.(24);
+        live.notify();
+      }
     } catch {
-      setMessage("Connection missed that buzz. The MC can assign it.");
+      setMessage("Buzz not confirmed yet. Check the board or ask the MC before retrying.");
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -126,7 +129,23 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
         className="things-game things-game--night flex items-center justify-center px-6 text-white"
         aria-busy="true"
       >
-        <p className="font-mono text-sm text-white/50">opening buzzers…</p>
+        <main className="text-center">
+          <h1 className="font-mono text-sm">opening buzzers…</h1>
+          {live.message ? (
+            <p role="status" className="mt-4 text-white/65">
+              {live.message}
+            </p>
+          ) : null}
+          {ready ? (
+            <button
+              type="button"
+              className="mh-action mh-action--secondary mt-5"
+              onClick={() => void live.refresh()}
+            >
+              retry connection
+            </button>
+          ) : null}
+        </main>
       </div>
     );
   if (!session)
@@ -149,6 +168,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   return (
     <div className="things-game things-game--night flex min-h-[100dvh] flex-col text-white">
       <header className="px-5 py-4 text-center">
+        <RoomConnectionIndicator state={live.connectionState} />
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
           Family Feud · {session.teamId ? "team buzzer" : "shared buzzer"} · {roomId}
         </p>
@@ -157,6 +177,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
         </h1>
         <p aria-live="polite" className="mt-2 min-h-5 font-mono text-xs text-[var(--things-amber)]">
           {message ??
+            live.message ??
             (open
               ? "Buzzers open"
               : buzzed

@@ -520,16 +520,8 @@ export function GamePoolsPanel({
   return (
     <div>
       <p className="font-mono text-xs leading-relaxed theme-muted">
-        Pooled entrances are the fast game-night option: one permanent QR fills and creates rooms
-        for you. Use a game’s normal room screen only when you want one QR for one fixed room.
+        One permanent QR fills and creates game rooms for your guests.
       </p>
-      <div className="mt-4 border-y theme-border py-4" role="note">
-        <p className="font-mono text-xs font-semibold text-foreground">rooms only</p>
-        <p className="mt-1 font-mono text-xs leading-relaxed theme-muted">
-          These QR entrances only arrange players into game rooms. Results stay in the room and do
-          not change tickets, teams, or attendee accounts.
-        </p>
-      </div>
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">
         <label className="font-mono text-xs theme-muted">
           game
@@ -565,6 +557,13 @@ export function GamePoolsPanel({
           create entrance
         </button>
       </div>
+      <details className="mt-2 font-mono text-xs theme-muted">
+        <summary className="min-h-11 cursor-pointer py-3">How entrances work</summary>
+        <p className="pb-3 leading-relaxed">
+          Entrances arrange players into rooms. Results stay in the room and do not change tickets,
+          teams, or attendee accounts. For one fixed room, use the game’s own launch screen.
+        </p>
+      </details>
       <label className="mt-5 block max-w-40 font-mono text-xs theme-muted">
         open for minutes
         <input

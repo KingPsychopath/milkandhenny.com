@@ -161,27 +161,28 @@ export async function savePoll(input: {
     throw new Error("Add a title, question, and at least two distinct choices");
   }
   const id = input.id || randomUUID();
-  if (input.id) {
-    const existingRows = await query<Record<string, unknown>>(
-      `select id, slug, event_slug, title, intro, question, options, selection_mode,
+  await transaction(async (client) => {
+    if (input.id) {
+      const existingRows = await client.query<Record<string, unknown>>(
+        `select id, slug, event_slug, title, intro, question, options, selection_mode,
               result_visibility, show_percentages, status, response_count, created_at, updated_at
-         from polls where id=$1 limit 1`,
-      [input.id],
-    );
-    const existing = existingRows[0] ? fromRow(existingRows[0]) : null;
-    const choicesChanged =
-      existing &&
-      (existing.selectionMode !== input.selectionMode ||
-        existing.options.map((option) => option.id).join("\n") !==
-          options.map((option) => option.id).join("\n"));
-    if (existing && existing.responseCount > 0 && choicesChanged) {
-      throw new Error(
-        "Choices cannot change after voting begins. Close this poll and create another.",
+         from polls where id=$1 for update`,
+        [input.id],
       );
+      const existing = existingRows.rows[0] ? fromRow(existingRows.rows[0]) : null;
+      const choicesChanged =
+        existing &&
+        (existing.selectionMode !== input.selectionMode ||
+          existing.options.map((option) => option.id).join("\n") !==
+            options.map((option) => option.id).join("\n"));
+      if (existing && existing.responseCount > 0 && choicesChanged) {
+        throw new Error(
+          "Choices cannot change after voting begins. Close this poll and create another.",
+        );
+      }
     }
-  }
-  await query(
-    `insert into polls
+    await client.query(
+      `insert into polls
        (id, slug, event_slug, title, intro, question, options, selection_mode,
         result_visibility, show_percentages, status)
      values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)
@@ -190,20 +191,21 @@ export async function savePoll(input: {
        intro=excluded.intro, question=excluded.question, options=excluded.options,
        selection_mode=excluded.selection_mode, result_visibility=excluded.result_visibility,
        show_percentages=excluded.show_percentages, status=excluded.status, updated_at=now()`,
-    [
-      id,
-      slug,
-      input.eventSlug || null,
-      title,
-      intro,
-      question,
-      JSON.stringify(options),
-      input.selectionMode,
-      input.resultVisibility,
-      input.showPercentages,
-      input.status,
-    ],
-  );
+      [
+        id,
+        slug,
+        input.eventSlug || null,
+        title,
+        intro,
+        question,
+        JSON.stringify(options),
+        input.selectionMode,
+        input.resultVisibility,
+        input.showPercentages,
+        input.status,
+      ],
+    );
+  });
   const poll = await getPoll(slug, true);
   if (!poll) throw new Error("Poll was not saved");
   return { ...poll, results: await resultsForPoll(poll) };
@@ -221,6 +223,17 @@ export async function submitPollVote(input: {
   const selections = validateSelections(poll.options, poll.selectionMode, input.selections);
   const voterHash = createHash("sha256").update(voterId).digest("hex");
   await transaction(async (client) => {
+    const locked = await client.query<Record<string, unknown>>(
+      "select * from polls where id=$1 for update",
+      [poll.id],
+    );
+    const current = locked.rows[0] ? fromRow(locked.rows[0]) : null;
+    if (!current || current.status !== "open") throw new Error("This poll is not open");
+    if (
+      JSON.stringify(current.options) !== JSON.stringify(poll.options) ||
+      current.selectionMode !== poll.selectionMode
+    )
+      throw new Error("This poll changed. Reload its choices before voting.");
     const result = await client.query(
       `insert into poll_votes (id, poll_id, voter_hash, selections)
        values ($1,$2,$3,$4)

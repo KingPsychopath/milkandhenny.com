@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, stat, writeFile } from "node:fs/promises";
+import { access, readFile, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
@@ -70,7 +70,17 @@ if (action === "backup") {
   if (confirmation !== "--confirm-empty-target") {
     throw new Error("Restore requires --confirm-empty-target");
   }
-  await access(archivePath);
+  const metadata = JSON.parse(await readFile(`${archivePath}.json`, "utf8"));
+  if (
+    metadata.format !== "postgres-custom" ||
+    !/^[a-f0-9]{64}$/.test(metadata.sha256) ||
+    metadata.bytes !== (await stat(archivePath)).size ||
+    metadata.sha256 !== (await sha256(archivePath))
+  ) {
+    throw new Error(
+      "Archive checksum or size does not match its backup metadata; no changes were made",
+    );
+  }
   await run("pg_restore", ["--list", archivePath], { stdio: ["ignore", "ignore", "inherit"] });
 
   let tableCount = "";

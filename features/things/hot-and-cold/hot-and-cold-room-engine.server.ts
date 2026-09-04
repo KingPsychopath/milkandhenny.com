@@ -653,7 +653,16 @@ export async function applyHotAndColdAction(
       if (action.type === "player.rename") {
         if (room.phase !== "lobby")
           return reject("action_unavailable", "Names only change in the lobby");
-        player.name = action.name.trim();
+        const name = action.name.trim();
+        if (!name || name.length > 24)
+          return reject("action_unavailable", "Use a name between 1 and 24 characters");
+        if (
+          activePlayers(room).some(
+            (other) => other.id !== player.id && other.name.toLowerCase() === name.toLowerCase(),
+          )
+        )
+          return reject("action_unavailable", "Someone in this room already uses that name");
+        player.name = name;
         setMultiplayerPlayerReady(player, false);
         changed(room);
         return accept();

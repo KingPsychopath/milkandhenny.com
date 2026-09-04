@@ -55,6 +55,7 @@ async function listWordRecords(options?: {
   tag?: string;
   q?: string;
   limit?: number;
+  cursor?: string;
   includeNonPublic?: boolean;
 }) {
   const result = await listWords({
@@ -63,6 +64,7 @@ async function listWordRecords(options?: {
     tag: options?.tag,
     q: options?.q,
     limit: options?.limit ?? 100,
+    cursor: options?.cursor,
     includeNonPublic: options?.includeNonPublic ?? true,
   });
   return { words: result.words, nextCursor: result.nextCursor };

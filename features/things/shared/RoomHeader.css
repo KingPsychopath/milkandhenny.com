@@ -50,7 +50,7 @@
   gap: 0.45rem;
   overflow: hidden;
   text-align: center;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .things-room-header-code,
@@ -92,6 +92,7 @@
 }
 
 .things-room-connection {
+  gap: 0.35rem;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;

@@ -143,6 +143,28 @@ export function FamilyFeudSetupApp() {
             We ranked ten answers from 10 points down to 1. Your teams shout the ones on the board;
             the MC judges and reveals from one phone.
           </p>
+          <button
+            type="button"
+            onClick={() => void createRoom()}
+            disabled={
+              creating || !custom.loaded || (vibeId === "choose-own" && !selectedDeckIds.length)
+            }
+            className="mt-9 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black transition-opacity hover:opacity-85 disabled:opacity-40"
+          >
+            {creating ? "making the room…" : "put Family Feud on this screen"}
+          </button>
+          <p className="mt-4 text-center text-sm text-white/45">
+            Next, the TV shows a one-use QR for the MC’s phone.
+          </p>
+          <p
+            aria-live="polite"
+            className="mt-3 min-h-5 text-center font-mono text-xs text-[var(--things-amber)]"
+          >
+            {message}
+          </p>
+          <p className="mt-6 text-center text-sm text-white/55">
+            Start with London Link-up, or choose your settings below.
+          </p>
           <fieldset className="mt-10">
             <legend className="font-mono text-xs uppercase tracking-[0.18em] text-white/45">
               pick the room's vibe
@@ -340,25 +362,6 @@ export function FamilyFeudSetupApp() {
               </fieldset>
             </section>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void createRoom()}
-            disabled={
-              creating || !custom.loaded || (vibeId === "choose-own" && !selectedDeckIds.length)
-            }
-            className="mt-9 min-h-16 w-full rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black transition-opacity hover:opacity-85 disabled:opacity-40"
-          >
-            {creating ? "making the room…" : "put Family Feud on this screen"}
-          </button>
-          <p className="mt-4 text-center text-sm text-white/45">
-            Next, the TV shows a one-use QR for the MC’s phone.
-          </p>
-          <p
-            aria-live="polite"
-            className="mt-3 min-h-5 text-center font-mono text-xs text-[var(--things-amber)]"
-          >
-            {message}
-          </p>
           <p className="mt-5 text-center text-xs leading-relaxed text-white/30">
             Original London cards, with a small adapted sample from{" "}
             <a

@@ -1,3 +1,4 @@
+import { useActionDialog } from "@/hooks/useActionDialog";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
@@ -27,6 +28,7 @@ import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multi
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { RoomAdmissionControl } from "../shared/MultiplayerLobby";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { RoomConnectionIndicator } from "../shared/RoomHeader";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 type HotAndColdSendErrorCode =
@@ -158,6 +160,7 @@ export function HotAndColdRoomApp({
     initialSnapshot: credentials.snapshot,
   });
   const haptics = useWebHaptics();
+  const { prompt, dialog } = useActionDialog();
   const [message, setMessage] = useState<string | null>(null);
   const [newest, setNewest] = useState<string | null>(null);
   const [confirmingStart, setConfirmingStart] = useState(false);
@@ -296,7 +299,10 @@ export function HotAndColdRoomApp({
           <button type="button" onClick={() => void leave()} className="min-h-11">
             ← hot and cold
           </button>
-          <span>{snapshot.roomId}</span>
+          <span className="flex flex-wrap items-center justify-end gap-2">
+            {snapshot.roomId}
+            <RoomConnectionIndicator state={live.connectionState} />
+          </span>
         </header>
         <main id="main" className="mx-auto max-w-lg px-5 pb-20 pt-12">
           <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">
@@ -344,7 +350,27 @@ export function HotAndColdRoomApp({
           >
             copy invite · {snapshot.roomId}
           </button>
-          <ul className="mt-10 border-t theme-border">
+          <button
+            type="button"
+            className="mh-action mh-action--quiet mt-3"
+            onClick={async () => {
+              const name = (
+                await prompt({
+                  title: "What should we call you?",
+                  description: "This name is shown to everyone in the room.",
+                  label: "Name",
+                  defaultValue: me?.name ?? "",
+                  confirmLabel: "save name",
+                  required: true,
+                })
+              )?.trim();
+              if (name && name !== me?.name) await send({ type: "player.rename", name });
+            }}
+          >
+            change my name
+          </button>
+          {dialog}
+          <ul aria-label="Players in the room" className="mt-10 border-t theme-border">
             {snapshot.players
               .filter(({ withdrawn }) => !withdrawn)
               .map((player) => (
@@ -482,6 +508,7 @@ export function HotAndColdRoomApp({
           id="main"
           className="mx-auto flex min-h-svh max-w-lg flex-col justify-center px-5 py-16 text-center"
         >
+          <RoomConnectionIndicator state={live.connectionState} />
           <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">
             final ledger
           </p>
@@ -534,8 +561,11 @@ export function HotAndColdRoomApp({
         <button type="button" className="min-h-11" onClick={() => void leave()}>
           ← leave
         </button>
-        <span>
-          round {snapshot.round?.number}/{snapshot.round?.total} · {live.connectionState}
+        <span className="flex flex-col items-center gap-1">
+          <span>
+            round {snapshot.round?.number}/{snapshot.round?.total}
+          </span>
+          <RoomConnectionIndicator state={live.connectionState} />
         </span>
         <span className="flex items-center justify-self-end gap-1">
           <WordVisibilityControl wordsHidden={wordsHidden} onToggle={toggleWords} />

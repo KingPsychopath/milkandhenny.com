@@ -318,7 +318,11 @@ export function SpellingSetup({
                     onClick={onEnableAssistant}
                     className="min-h-11 shrink-0 rounded-full border border-white/15 px-4 font-mono text-xs"
                   >
-                    {browserSpeechAvailability === "available" ? "turn on" : "set up once"}
+                    {browserSpeechAvailability === "checking"
+                      ? "check this device"
+                      : browserSpeechAvailability === "available"
+                        ? "turn on"
+                        : "set up once"}
                   </button>
                 )}
               </div>

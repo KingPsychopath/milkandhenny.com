@@ -20,6 +20,7 @@ export function RoomConnectionIndicator({
       title={statusLabel}
     >
       <span aria-hidden="true" className="things-room-connection-dot" />
+      <span>{statusLabel}</span>
     </span>
   );
 }

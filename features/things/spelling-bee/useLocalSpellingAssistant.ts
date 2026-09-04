@@ -106,7 +106,7 @@ function estimatedWhisperDownload() {
 }
 
 export function useLocalSpellingAssistant() {
-  const [status, setStatus] = useState<AssistantStatus>("checking");
+  const [status, setStatus] = useState<AssistantStatus>("disabled");
   const [backend, setBackend] = useState<AssistantBackend>(null);
   const [browserAvailability, setBrowserAvailability] =
     useState<BrowserSpeechAvailability>("checking");
@@ -120,7 +120,7 @@ export function useLocalSpellingAssistant() {
     mismatchAt: null,
   });
   const [message, setMessage] = useState<string | null>(
-    "Checking whether this device can follow the spelling…",
+    "Check this device to turn on optional spoken-letter following.",
   );
   const workerRef = useRef<Worker | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -176,46 +176,7 @@ export function useLocalSpellingAssistant() {
   );
 
   useEffect(() => {
-    let active = true;
     setDownloadEstimate(estimatedWhisperDownload());
-    const check = async () => {
-      const Constructor = recognitionConstructor();
-      if (!Constructor?.available) {
-        if (active) {
-          setBrowserAvailability("unavailable");
-          setStatus("disabled");
-          setMessage(`A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`);
-        }
-        return;
-      }
-      try {
-        const availability = await Constructor.available({
-          langs: ["en-GB"],
-          processLocally: true,
-          quality: "command",
-        });
-        if (!active) return;
-        setBrowserAvailability(availability);
-        setStatus("disabled");
-        setMessage(
-          availability === "available"
-            ? "Ready to turn on—nothing to download."
-            : availability === "downloadable" || availability === "downloading"
-              ? "A one-time speech setup is needed before this device can listen."
-              : `A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`,
-        );
-      } catch {
-        if (active) {
-          setBrowserAvailability("unavailable");
-          setStatus("disabled");
-          setMessage(`A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`);
-        }
-      }
-    };
-    void check();
-    return () => {
-      active = false;
-    };
   }, []);
 
   const stop = useCallback(() => {
@@ -305,6 +266,36 @@ export function useLocalSpellingAssistant() {
 
   const enable = useCallback(async () => {
     const Constructor = recognitionConstructor();
+    // Capability probing can invoke a native speech service. Keep this optional work behind an
+    // explicit gesture so unsupported services cannot prevent the game itself from opening.
+    if (browserAvailability === "checking") {
+      setStatus("checking");
+      let availability: Exclude<BrowserSpeechAvailability, "checking"> = "unavailable";
+      try {
+        availability =
+          (await Constructor?.available?.({
+            langs: ["en-GB"],
+            processLocally: true,
+            quality: "command",
+          })) ?? "unavailable";
+      } catch {
+        // A failed optional capability check leaves manual judging available.
+      }
+      setBrowserAvailability(availability);
+      if (availability === "available") {
+        setBackend("browser");
+        setStatus("ready");
+        setMessage("Ready. What you say stays on this device.");
+      } else {
+        setStatus("disabled");
+        setMessage(
+          availability === "downloadable" || availability === "downloading"
+            ? "A one-time speech setup is needed before this device can listen."
+            : `A one-time 50 MB setup is needed. It takes ${estimatedWhisperDownload()}.`,
+        );
+      }
+      return;
+    }
     if (browserAvailability === "available" && Constructor) {
       setBackend("browser");
       setStatus("ready");

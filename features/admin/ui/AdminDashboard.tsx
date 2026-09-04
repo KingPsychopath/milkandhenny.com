@@ -124,6 +124,13 @@ type ContentSummaryResponse = {
 };
 
 type DebugResponse = SystemCapabilities & {
+  scheduledJobs?: Array<{
+    jobKey: string;
+    nextRunAt: string;
+    lastSucceededAt: string | null;
+    lastError: string | null;
+    failureCount: number;
+  }>;
   emailOutbox: {
     available: boolean;
     pending: number;
@@ -174,10 +181,14 @@ type EventWorkspace = "events" | "pitches";
 
 export function AdminDashboard({
   view,
+  initialCommunications,
   communicationTab,
   communicationEvent,
   operationsTab,
   targetEvent,
+  eventWorkspace = "events",
+  onEventWorkspaceChange,
+  onSelectedEventChange,
   targetTicket,
   targetPerson,
   emailStatus,
@@ -190,11 +201,15 @@ export function AdminDashboard({
   onOperationsPersonChange,
   permissions,
 }: {
+  initialCommunications?: import("./components/CommunicationsPanel").InitialCommunications;
   view: AdminSection;
   communicationTab: CommunicationsTab;
   communicationEvent?: string;
   operationsTab: OperationsTab;
   targetEvent?: string;
+  eventWorkspace?: EventWorkspace;
+  onEventWorkspaceChange?: (workspace: EventWorkspace) => void;
+  onSelectedEventChange?: (slug?: string) => void;
   targetTicket?: string;
   targetPerson?: string;
   emailStatus?: string;
@@ -234,7 +249,6 @@ export function AdminDashboard({
     }>
   >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
-  const [eventWorkspace, setEventWorkspace] = useState<EventWorkspace>("events");
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
   const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
   const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
@@ -300,12 +314,6 @@ export function AdminDashboard({
   useEffect(() => {
     if (view === "overview" || view === "content" || view === "system") void refreshDashboard();
   }, [refreshDashboard, view]);
-
-  useEffect(() => {
-    if (targetEvent) {
-      setEventWorkspace("events");
-    }
-  }, [targetEvent]);
 
   useLayoutEffect(() => {
     const targetTop = pendingEventWorkspaceScrollTop.current;
@@ -418,7 +426,7 @@ export function AdminDashboard({
     }
     pendingEventWorkspaceScrollTop.current =
       eventWorkspaceScrollPositions.current.get(workspace) ?? window.scrollY;
-    setEventWorkspace(workspace);
+    onEventWorkspaceChange?.(workspace);
   };
 
   const openNotification = async (item: (typeof operationsRecent)[number]) => {
@@ -508,7 +516,7 @@ export function AdminDashboard({
     : availableEventWorkspaces[0]?.id;
 
   return (
-    <div className="mx-auto max-w-7xl px-6 pt-12 pb-24 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 pt-5 pb-24 sm:px-6 sm:pt-12 lg:px-8">
       <header className="mb-6">
         <div className="flex items-center justify-end gap-4">
           <div className="flex items-center gap-4">
@@ -670,6 +678,7 @@ export function AdminDashboard({
                   ensureStepUpToken={ensureStepUpTokenResult}
                   withStepUpHeaders={withStepUpHeaders}
                   initialEventSlug={targetEvent}
+                  onSelectedEventChange={onSelectedEventChange}
                   permissions={permissions}
                 />
               ) : null}
@@ -691,6 +700,7 @@ export function AdminDashboard({
         <section aria-label="Communications" className="space-y-10">
           <PanelBoundary label="communications">
             <CommunicationsPanel
+              initialWorkspace={initialCommunications}
               authFetch={authFetch}
               onError={setErrorMessage}
               onStatus={setStatusMessage}
@@ -715,7 +725,12 @@ export function AdminDashboard({
               onError={setErrorMessage}
               onStatus={setStatusMessage}
             />
-            <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
+            <details className="border-t theme-border pt-4">
+              <summary className="min-h-11 cursor-pointer font-mono text-xs">
+                puzzle quality · review upcoming approvals
+              </summary>
+              <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
+            </details>
           </PanelBoundary>
         </section>
       ) : null}

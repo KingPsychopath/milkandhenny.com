@@ -504,3 +504,15 @@ Before implementation or approval, answer all of these:
 
 Any “no” is a design issue to resolve or a documented exception to test. A
 mode that has no credible social-causality answer MUST NOT be called room-first.
+
+## Presence and membership lifetime
+
+Public pool presence expires after 90 seconds without a snapshot read. This is a display signal,
+not evidence that someone left a game. Pool membership and its recovery receipt retain the same
+player for up to six hours of inactivity, so a phone asleep during discussion does not produce a
+second identity. Explicit leave, removal, run closure, and the authoritative room's own expiry still
+apply immediately. Dormant memberships reserve their seats until those boundaries; operators can
+remove departed players. Pool bookkeeping has a 250ms acknowledgement budget after authoritative
+game work commits; failures are logged and do not turn a successful action into a misleading retry.
+
+Same Brain reveals are host-paced by default. The lobby allows a timed 20-second reveal explicitly.

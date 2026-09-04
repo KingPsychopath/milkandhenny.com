@@ -52,6 +52,7 @@ export const getAdminAccessFn = createServerFn({ method: "GET" }).handler(async 
     isAuthed: auth.ok,
     permissions: auth.ok ? auth.permissions : null,
     adminKind: auth.ok ? auth.kind : null,
+    draftScope: auth.ok ? (attendee?.personId ?? auth.kind) : null,
     localDevBypassAvailable: isLocalDevelopment(),
     namedAdminPasskeyRequired: Boolean(namedAdmin && !auth.ok),
     namedAdminHasPasskey: namedAdmin?.has_passkey ?? false,

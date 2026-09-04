@@ -30,6 +30,10 @@ const SEED_AGREEMENT_OFFSET = 0.005;
 // mis-sized islands register two to four times better through moments, while shapes where the
 // two readings merely disagree about which side of the border to straddle sit well above this.
 const MOMENT_PREFERENCE_MARGIN = 0.7;
+const DOMINANT_LAND_AREA_SHARE = 0.7;
+// Missing islands contribute error under every placement; require a small but real improvement
+// across the whole country before accepting the mainland's placement.
+const MAINLAND_PREFERENCE_MARGIN = 0.98;
 const MINIMUM_DRAWING_EXTENT = 8;
 const MAX_POINT_DEVIATION = 0.5;
 const SILHOUETTE_GRID_SIZE = 48;
@@ -511,6 +515,17 @@ function seedsAgree(first: RegistrationSeed, second: RegistrationSeed) {
   );
 }
 
+function dominantLandBounds(rings: CountryDrawing) {
+  const areas = rings.map(ringArea);
+  const largest = Math.max(...areas);
+  if (
+    largest <= 0 ||
+    largest < areas.reduce((sum, area) => sum + area, 0) * DOMINANT_LAND_AREA_SHARE
+  )
+    return null;
+  return robustBounds(sampleShape([rings[areas.indexOf(largest)]], DRAWING_SAMPLES));
+}
+
 /**
  * No single similarity registration reads every honest drawing correctly. Matching bounding
  * boxes keeps the drawing at its drawn proportions — which is how a mainland drawn without its
@@ -520,7 +535,8 @@ function seedsAgree(first: RegistrationSeed, second: RegistrationSeed) {
  * ignores a ring entirely or swings on it. So both interpretations are tried, each polished by
  * the local search, and the better fit is scored — while the guards always get to see the
  * drawn-proportions view, so a container around the country cannot shrink itself onto the
- * border and pass as tracing it.
+ * border and pass as tracing it. A dominant mainland also supplies a placement candidate so
+ * missing offshore islands do not shift the land the player did remember.
  */
 function alignDrawing(input: CountryDrawing, reference: NormalisedShape): AlignedShape | null {
   const usable = input.filter((ring) => ring.length >= 3);
@@ -552,12 +568,28 @@ function alignDrawing(input: CountryDrawing, reference: NormalisedShape): Aligne
   const baselineRings = registerRings(usable, boundsSeed);
   const seeds =
     momentSeed && !seedsAgree(boundsSeed, momentSeed) ? [boundsSeed, momentSeed] : [boundsSeed];
+  // Missing offshore islands must not move an otherwise correct mainland. Still compare each
+  // candidate against the whole country, so missing land costs coverage and island balance.
+  const mainland = dominantLandBounds(reference.rings);
+  const drawnMainland = dominantLandBounds(usable);
+  if (reference.rings.length > 1 && mainland && drawnMainland && boundsExtent(drawnMainland) > 0) {
+    const mainlandSeed: RegistrationSeed = {
+      drawingCentre: boundsCentre(drawnMainland),
+      referenceCentre: boundsCentre(mainland),
+      scale: boundsExtent(mainland) / boundsExtent(drawnMainland),
+    };
+    if (!seeds.some((seed) => seedsAgree(seed, mainlandSeed))) seeds.push(mainlandSeed);
+  }
   const candidates = seeds.map((seed) => {
     const centred = seed === boundsSeed ? baselineRings : registerRings(usable, seed);
-    return { centred, alignment: optimiseAlignment(centred, reference, seed.referenceCentre) };
+    return {
+      centred,
+      alignment: optimiseAlignment(centred, reference, seed.referenceCentre),
+      preference: seed === momentSeed ? MOMENT_PREFERENCE_MARGIN : MAINLAND_PREFERENCE_MARGIN,
+    };
   });
   const winner = candidates.reduce((best, candidate) =>
-    candidate.alignment.error < best.alignment.error * MOMENT_PREFERENCE_MARGIN ? candidate : best,
+    candidate.alignment.error < best.alignment.error * candidate.preference ? candidate : best,
   );
   const preserveBaseline = winner.alignment.preserveBaseline || winner.centred !== baselineRings;
   return {

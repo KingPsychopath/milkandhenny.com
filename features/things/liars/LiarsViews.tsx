@@ -595,10 +595,10 @@ export function NightReportCard({ report }: { report: LiarsNightReport }) {
       <div className="mt-8 border-y border-white/15 py-4">
         <button
           type="button"
-          onPointerDown={() => setPeekUntil(Date.now() + 2_500)}
+          onClick={() => setPeekUntil(Date.now() + 2_500)}
           className="min-h-11 font-mono text-sm text-white/45 hover:text-white/80"
         >
-          hold to read your card again
+          read your card for a moment
         </button>
       </div>
     );
@@ -841,10 +841,10 @@ export function WordPanel({
       ) : (
         <button
           type="button"
-          onPointerDown={() => setShowUntil(Date.now() + 2_500)}
+          onClick={() => setShowUntil(Date.now() + 2_500)}
           className="mt-1 min-h-11 font-mono text-sm text-white/45 hover:text-white/80"
         >
-          hold to see yours
+          show yours briefly
         </button>
       )}
 

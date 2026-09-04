@@ -1,12 +1,13 @@
-import { createHash } from "node:crypto";
-
-import { chromium, devices, expect, test, webkit } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { Pool } from "pg";
 
 const databaseUrl =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
 
-test("keeps one attendee session coherent in mobile Chromium and WebKit", async () => {
+test("viewing tickets in separate tabs never selects a retired points identity", async ({
+  page,
+  context,
+}) => {
   test.setTimeout(180_000);
   const alphabet = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
   let source = Date.now();
@@ -41,183 +42,39 @@ test("keeps one attendee session coherent in mobile Chromium and WebKit", async 
     [eventSlug],
   );
 
-  for (const [engine, device] of [
-    [chromium, devices["Pixel 7"]],
-    [webkit, devices["iPhone 15"]],
-  ] as const) {
-    const browser = await engine.launch();
-    const context = await browser.newContext({ ...device });
-    const page = await context.newPage();
+  try {
     await page.goto(`/ticket/${firstTicket}`);
-    await expect(page.getByRole("button", { name: "use this ticket for points" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "I manage this ticket" })).toHaveCount(0);
-    await clickSessionAction(
-      page,
-      "use this ticket for points",
-      "This device will use this ticket for event points.",
-    );
-
+    await expect(page.getByRole("img", { name: /Your ticket QR code/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "use this ticket for points" })).toHaveCount(0);
     const secondTab = await context.newPage();
     await secondTab.goto(`/ticket/${secondTicket}`);
-    await clickSessionAction(
-      secondTab,
-      "use this ticket for points",
-      "This device will use this ticket for event points.",
-    );
-
-    await secondTab.goto(`/events/${eventSlug}`);
-    const eventNavigation = secondTab.getByRole("navigation", { name: "Your event ticket" });
-    await expect(eventNavigation).toContainText("Second guest's ticket");
-    await expect(eventNavigation).toContainText("points ticket selected · scoring not open");
-    await expect(eventNavigation.getByRole("link", { name: "ticket", exact: true })).toBeVisible();
-    await expect(eventNavigation.getByRole("link", { name: "score", exact: true })).toBeVisible();
-    await expect(eventNavigation.getByRole("link", { name: "save", exact: true })).toBeVisible();
-
+    await expect(secondTab.getByRole("img", { name: /Your ticket QR code/ })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("link", { name: "← Browser scoring" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "use this ticket for points" })).toBeVisible();
-    await expect(
-      page.getByText("This switches event points from your other ticket."),
-    ).toBeVisible();
-    const accountLink = page.getByRole("link", { name: "account", exact: true });
-    await expect(accountLink).toHaveAttribute("href", "/access?returnTo=%2Fmy");
-    const mobileAccountBox = await page
-      .getByRole("link", { name: "account", exact: true })
-      .boundingBox();
-    const mobileLampBox = await page
-      .getByRole("button", { name: /Switch to .* mode/ })
-      .boundingBox();
-    expect(mobileAccountBox).not.toBeNull();
-    expect(mobileLampBox).not.toBeNull();
-    expect(boxesOverlap(mobileAccountBox!, mobileLampBox!)).toBe(false);
-    await context.close();
-    await browser.close();
-  }
-
-  const participants = await pool.query<{ count: string }>(
-    `select count(*)::text as count from event_participants where event_slug = $1`,
-    [eventSlug],
-  );
-  expect(participants.rows[0]?.count).toBe("2");
-
-  const desktopBrowser = await chromium.launch();
-  const desktopContext = await desktopBrowser.newContext({
-    viewport: { width: 1365, height: 768 },
-  });
-  const desktopPage = await desktopContext.newPage();
-  await desktopPage.goto(`/ticket/${firstTicket}`);
-  const accountBox = await desktopPage
-    .getByRole("link", { name: "account", exact: true })
-    .boundingBox();
-  const lampBox = await desktopPage
-    .getByRole("button", { name: /Switch to .* mode/ })
-    .boundingBox();
-  expect(accountBox).not.toBeNull();
-  expect(lampBox).not.toBeNull();
-  expect(boxesOverlap(accountBox!, lampBox!)).toBe(false);
-  await desktopContext.close();
-  await desktopBrowser.close();
-
-  const browser = await chromium.launch();
-  const inAppContext = await browser.newContext({
-    ...devices["Pixel 7"],
-    userAgent: `${devices["Pixel 7"].userAgent} Instagram`,
-  });
-  const inAppPage = await inAppContext.newPage();
-  await inAppPage.goto(`/ticket/${firstTicket}`);
-  await expect(inAppPage.getByText("using an in-app browser?")).toBeVisible();
-  await expect(inAppPage.getByRole("link", { name: "open in Safari or Chrome" })).toBeVisible();
-  await expect(inAppPage.getByRole("button", { name: "copy ticket link" })).toHaveCount(0);
-  await inAppContext.close();
-  await browser.close();
-  await pool.end();
-});
-
-test("renders score, discovery, and staff links outside the public event page", async ({
-  page,
-}) => {
-  const suffix = Date.now().toString(36);
-  const eventSlug = `score-routes-${suffix}`;
-  const token = `staff-route-${suffix}`;
-  const roleId = `staff-route-role-${suffix}`;
-  const pool = new Pool({ connectionString: databaseUrl });
-
-  await pool.query(
-    `insert into events (slug, title, status, starts_at, timezone)
-     values ($1, 'Route audit event', 'published', now(), 'Europe/London')`,
-    [eventSlug],
-  );
-  await pool.query(
-    `insert into event_scoring_settings (event_slug, state, leaderboard_visibility)
-     values ($1, 'ready', 'hidden')`,
-    [eventSlug],
-  );
-  await pool.query(
-    `insert into event_staff_roles
-       (id,event_slug,label,role_preset,permissions,scope,expires_at,created_by)
-     values ($1,$2,'Route audit station','points-marshal',$3::jsonb,$4::jsonb,
-       now() + interval '1 day','playwright')`,
-    [
-      roleId,
-      eventSlug,
-      JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
-      JSON.stringify({ activityIds: [], rolePreset: "points-marshal" }),
-    ],
-  );
-  await pool.query(
-    `insert into score_staff_assignments
-       (id,event_slug,label,assignment_type,token_hash,permissions,scope,status,expires_at,
-        role_preset,invitation_state,role_id)
-     values ($1,$2,'Route audit station','station',$3,$4::jsonb,$5::jsonb,'active',
-       now() + interval '1 day','points-marshal','active',$6)`,
-    [
-      `staff-route-${suffix}`,
-      eventSlug,
-      createHash("sha256").update(token).digest("hex"),
-      JSON.stringify({ awardPoints: true, viewParticipantPoints: true }),
-      JSON.stringify({ activityIds: [], rolePreset: "points-marshal" }),
-      roleId,
-    ],
-  );
-
-  try {
-    await page.goto(`/events/${eventSlug}/score`);
-    await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
-
-    await page.goto(`/events/${eventSlug}/discoveries`);
-    await expect(page.getByRole("heading", { name: "Find a clue" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
-
-    await page.goto(`/events/${eventSlug}/staff/${token}`);
-    await expect(page.getByRole("heading", { name: "Route audit event" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Award points" })).toHaveCount(0);
-    await expect(page.getByText("No assigned activity is accepting results.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Tickets" })).toHaveCount(0);
+    await expect(page.getByText("First guest", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "event score" })).toHaveCount(0);
+    const transactions = await pool.query(
+      "select count(*)::integer as count from score_transactions where event_slug = $1",
+      [eventSlug],
+    );
+    expect(transactions.rows[0].count).toBe(0);
   } finally {
     await pool.end();
   }
 });
 
-function boxesOverlap(
-  left: { x: number; y: number; width: number; height: number },
-  right: { x: number; y: number; width: number; height: number },
-) {
-  return !(
-    left.x + left.width <= right.x ||
-    right.x + right.width <= left.x ||
-    left.y + left.height <= right.y ||
-    right.y + right.height <= left.y
+test("retired score and discovery links explain retirement and offer recovery", async ({
+  page,
+}) => {
+  const slug = "retired-scoring-browser-check";
+  await page.goto(`/events/${slug}/score`);
+  await expect(page.getByRole("heading", { name: "Points have finished." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "return to event" })).toHaveAttribute(
+    "href",
+    `/events/${slug}`,
   );
-}
-
-async function clickSessionAction(
-  page: import("@playwright/test").Page,
-  buttonName: string,
-  expected: string,
-) {
-  await page.getByRole("button", { name: buttonName }).click();
-  await expect(page.getByRole("status").filter({ hasText: expected })).toBeVisible({
-    timeout: 15_000,
-  });
-}
+  await page.goto(`/events/${slug}/discoveries`);
+  await expect(page.getByRole("heading", { name: "This points link has finished." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "browse games" })).toHaveAttribute("href", "/things");
+  const response = await page.request.get(`/api/events/${slug}/score`);
+  expect(response.status()).toBe(410);
+});

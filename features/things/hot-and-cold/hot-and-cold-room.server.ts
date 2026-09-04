@@ -1,3 +1,4 @@
+import { settleGamePoolBookkeeping } from "../pool/bookkeeping.server";
 import {
   publishMultiplayerRoomTermination,
   runMultiplayerEffect,
@@ -24,8 +25,8 @@ export const readHotAndColdSnapshot = (
   runMultiplayerEffect(HotAndColdRoomService.use((service) => service.readSnapshot(input))).then(
     async (result) => {
       if (result.ok)
-        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
-          () => undefined,
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }),
         );
       return result;
     },
@@ -34,8 +35,8 @@ export const applyHotAndColdAction = (input: Parameters<typeof engine.applyHotAn
   runMultiplayerEffect(HotAndColdRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
       if (result.accepted && input.action.type === "player.leave") {
-        await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
-          () => undefined,
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }),
         );
         await publishMultiplayerRoomTermination("hot-and-cold", input.roomId, {
           reason: "session_ended",
@@ -47,11 +48,13 @@ export const applyHotAndColdAction = (input: Parameters<typeof engine.applyHotAn
         const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
           (playerId) => !remainingPlayerIds.has(playerId),
         );
-        await markGamePoolPlayersRemoved({
-          roomId: input.roomId,
-          playerIds: removedPlayerIds,
-          actionId: input.action.actionId,
-        }).catch(() => undefined);
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayersRemoved({
+            roomId: input.roomId,
+            playerIds: removedPlayerIds,
+            actionId: input.action.actionId,
+          }),
+        );
         for (const playerId of removedPlayerIds)
           await publishMultiplayerRoomTermination("hot-and-cold", input.roomId, {
             reason: "removed",

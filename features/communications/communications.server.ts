@@ -137,7 +137,7 @@ function validMedia(value: unknown): CommunicationMedia[] {
     .slice(0, 3);
 }
 
-async function syncContacts(): Promise<void> {
+export async function syncContacts(): Promise<void> {
   const candidates = await query<CandidateRow>(`
     select lower(trim(email)) as email,
            nullif(trim(max(holder_name)), '') as display_name,
@@ -174,20 +174,25 @@ async function syncContacts(): Promise<void> {
       });
     }
   }
-  for (const [emailHash, candidate] of merged) {
+  const records = [...merged].map(([emailHash, candidate]) => ({
+    email_hash: emailHash,
+    email: candidate.email,
+    display_name: candidate.displayName,
+    sources: [...candidate.sources],
+    unsubscribe_token: randomUUID(),
+  }));
+  for (let offset = 0; offset < records.length; offset += 500) {
     await query(
-      `insert into communication_contacts
-         (email_hash, email, display_name, sources, unsubscribe_token)
-       values ($1,$2,$3,$4,$5)
-       on conflict (email_hash) do update
-         set email = excluded.email,
-             display_name = coalesce(
-               nullif(trim(communication_contacts.display_name), ''),
-               nullif(trim(excluded.display_name), '')
-             ),
-             sources = excluded.sources,
-             updated_at = now()`,
-      [emailHash, candidate.email, candidate.displayName, [...candidate.sources], randomUUID()],
+      `insert into communication_contacts (email_hash,email,display_name,sources,unsubscribe_token)
+      select email_hash,email,display_name,sources,unsubscribe_token from jsonb_to_recordset($1::jsonb)
+      as c(email_hash text,email text,display_name text,sources text[],unsubscribe_token uuid)
+      on conflict(email_hash) do update set email=excluded.email,
+        display_name=coalesce(nullif(trim(communication_contacts.display_name),''),excluded.display_name),
+        sources=excluded.sources,updated_at=now()
+      where communication_contacts.email is distinct from excluded.email
+        or communication_contacts.sources is distinct from excluded.sources
+        or (nullif(trim(communication_contacts.display_name),'') is null and excluded.display_name is not null)`,
+      [JSON.stringify(records.slice(offset, offset + 500))],
     );
   }
 }
@@ -218,11 +223,15 @@ function contactFromRow(row: Record<string, unknown>): CommunicationContact {
   };
 }
 
-export async function listCommunicationContacts(): Promise<CommunicationContact[]> {
-  await syncContacts();
-  const rows = await query<
-    Record<string, unknown>
-  >(`select c.email_hash, c.email, c.display_name, c.sources, c.marketing_opted_in,
+export async function listCommunicationContacts(options?: {
+  reconcile?: boolean;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<CommunicationContact[]> {
+  if (options?.reconcile !== false) await syncContacts();
+  const rows = await query<Record<string, unknown>>(
+    `select c.email_hash, c.email, c.display_name, c.sources, c.marketing_opted_in,
             c.opted_in_at, c.opted_out_at, c.unsubscribe_token,
             consent.source as marketing_consent_source,
             consent.decision as marketing_consent_decision,
@@ -237,7 +246,16 @@ export async function listCommunicationContacts(): Promise<CommunicationContact[
           order by occurred_at desc, created_at desc
           limit 1
        ) consent on true
-      order by lower(coalesce(display_name, email)), email_hash`);
+      where ($1::text = '' or c.email ilike '%' || $1 || '%' or c.display_name ilike '%' || $1 || '%')
+        and ($2::text = '' or c.email_hash > $2)
+      order by c.email_hash
+      limit $3`,
+    [
+      options?.query?.trim().slice(0, 200) ?? "",
+      options?.cursor ?? "",
+      options?.limit ? Math.min(500, Math.max(1, options.limit)) : null,
+    ],
+  );
   return rows.map(contactFromRow);
 }
 

@@ -78,6 +78,11 @@ export function TwinCard({
                 className={classes}
                 style={style}
                 disabled={disabled}
+                onKeyDown={(event) => {
+                  if (event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
+                  event.preventDefault();
+                  onTap(placement.symbolId, performance.now());
+                }}
                 onPointerDown={(event) => {
                   // Claim on press rather than click: this is a race, and a click waits for release.
                   if (event.button !== 0 && event.pointerType === "mouse") return;

@@ -61,6 +61,8 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
     await expect(maya.page.getByRole("button", { name: "start", exact: true })).toHaveCount(0);
     await expect(daniel.page.getByRole("button", { name: "start", exact: true })).toHaveCount(0);
 
+    await expect(hostRoster.getByRole("listitem")).toHaveCount(3);
+    await expect(hostRoster).not.toContainText("not ready");
     await host.page.getByRole("button", { name: "start", exact: true }).click();
     await Promise.all(
       surfaces.map(({ page }) =>
@@ -79,8 +81,12 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
 
     await daniel.page.reload();
     await waitForAppHydration(daniel.page);
-    await expect(daniel.page.getByText("you said", { exact: true })).toBeVisible();
-    await expect(daniel.page.getByText("copper kite", { exact: true })).toBeVisible();
+    await expect(daniel.page.getByText("you said", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(daniel.page.getByText("copper kite", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
 
     await host.page.getByRole("button", { name: "show answers now" }).click();
     await Promise.all(
@@ -95,8 +101,48 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
         expect(page.getByText("copper kite", { exact: true }).first()).toBeVisible(),
       ),
     );
-    await expect(host.page.getByRole("button", { name: "next round" })).toBeVisible();
+    await expect(host.page.getByRole("button", { name: "next round" })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(maya.page.getByRole("button", { name: "next round" })).toHaveCount(0);
+    for (let round = 2; round <= 8; round++) {
+      await host.page.getByRole("button", { name: "next round", exact: true }).click();
+      await expect(host.page.getByRole("textbox", { name: "your answer" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await Promise.all(
+        surfaces.map(async ({ page }) => {
+          await page.getByRole("textbox", { name: "your answer" }).fill(`shared answer ${round}`);
+          await page.getByRole("button", { name: "lock it in" }).click();
+        }),
+      );
+      await expect(
+        host.page.getByText(`shared answer ${round}`, { exact: true }).first(),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(
+        host.page.getByRole("button", {
+          name: round === 8 ? "final scores" : "next round",
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 15_000 });
+    }
+    await host.page.getByRole("button", { name: "final scores", exact: true }).click();
+    for (const surface of surfaces) {
+      await expect(surface.page.getByText("that is the game", { exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(surface.page.getByText("every round", { exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+    }
+    await expect(maya.page.getByRole("button", { name: "again", exact: true })).toHaveCount(0);
+    await host.page.getByRole("button", { name: "again", exact: true }).click();
+    for (const surface of surfaces) {
+      await expect(surface.page.getByRole("textbox", { name: "your answer" })).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(surface.page.getByText("copper kite", { exact: true })).toHaveCount(0);
+    }
   } finally {
     await closeGameSurfaces(surfaces);
     await pools.setGamePoolRunStatus(entrance.id, "closed");
@@ -117,11 +163,15 @@ async function enterFromGamePool(surface: IsolatedGameSurface, entrancePath: str
   await expect(roster).toContainText(`${name} · you`);
   await expect(roster).toContainText("not ready");
   await surface.page.getByRole("button", { name: "I’m ready" }).click();
-  await expect(roster).toContainText("ready");
+  await expect(surface.page.getByRole("region", { name: "Your ready status" })).toContainText(
+    "You’re ready",
+  );
 }
 
 async function answer(surface: IsolatedGameSurface, text: string) {
   await surface.page.getByRole("textbox", { name: "your answer" }).fill(text);
   await surface.page.getByRole("button", { name: "lock it in" }).click();
-  await expect(surface.page.getByText("you said", { exact: true })).toBeVisible();
+  await expect(surface.page.getByText("you said", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 }

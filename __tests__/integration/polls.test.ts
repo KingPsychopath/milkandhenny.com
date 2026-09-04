@@ -1,3 +1,4 @@
+import { raceLockedWrite } from "../helpers/locked-write";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 
 import { getPublicPoll, listPolls, savePoll, submitPollVote } from "@/features/polls/polls.server";
@@ -24,6 +25,23 @@ describeWithDatabase("polls (postgres)", () => {
       status: "open",
     });
   }
+
+  it("rejects a ballot if the poll closes while submission waits for its lock", async () => {
+    const poll = await createPoll();
+    const result = await raceLockedWrite(
+      "select id from polls where id=$1 for update",
+      [poll.id],
+      () =>
+        submitPollVote({
+          slug: poll.slug,
+          voterId: "visitor_race_identifier_1",
+          selections: ["tuesday"],
+        }),
+      "update polls set status='closed' where id=$1",
+    );
+    expect(result.status).toBe("rejected");
+    expect((await listPolls())[0]?.responseCount).toBe(0);
+  });
 
   it("should reveal weighted results after a vote without counting a device twice", async () => {
     await createPoll();

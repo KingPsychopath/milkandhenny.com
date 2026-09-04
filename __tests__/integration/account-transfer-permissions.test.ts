@@ -57,9 +57,10 @@ describeWithDatabase("account transfer permissions", () => {
   });
 
   it("fails closed while the person is restricted", async () => {
-    await query("update event_people set acquisition_status = 'restricted' where id = $1", [
-      PERSON_ID,
-    ]);
+    await query(
+      "update event_people set acquisition_status = 'restricted', acquisition_restricted_at = now(), acquisition_restricted_by = 'test-operator', acquisition_restriction_reason = 'test restriction' where id = $1",
+      [PERSON_ID],
+    );
     const result = await setAccountPermission({
       personId: PERSON_ID,
       permission: "create_transfers",

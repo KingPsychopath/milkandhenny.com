@@ -157,6 +157,7 @@ export function HotAndColdReviewPanel({
 }) {
   const [report, setReport] = useState<HotAndColdQualityReport | null>(null);
   const [selectedPuzzle, setSelectedPuzzle] = useState<number | null>(null);
+  const [onlyBlocked, setOnlyBlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,7 +166,13 @@ export function HotAndColdReviewPanel({
       if (!response.ok) throw new Error("Could not load judging quality evidence");
       const next = (await response.json()) as HotAndColdQualityReport;
       setReport(next);
-      setSelectedPuzzle((current) => current ?? next.upcoming[0]?.puzzle ?? null);
+      setSelectedPuzzle(
+        (current) =>
+          current ??
+          next.upcoming.find((review) => !review.approved)?.puzzle ??
+          next.upcoming[0]?.puzzle ??
+          null,
+      );
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load judging quality evidence");
     } finally {
@@ -209,16 +216,45 @@ export function HotAndColdReviewPanel({
 
       {report ? (
         <>
+          {!report.releaseReady ? (
+            <div role="status" className="border theme-border p-4 font-mono text-xs">
+              <p>
+                {report.upcoming.filter((review) => !review.approved).length} puzzles need approval.
+                First affected:{" "}
+                {report.upcoming.find((review) => !review.approved)?.date ?? "see evidence"}.
+              </p>
+              <p className="mt-2 theme-muted">
+                Review the trail, hints, and comparisons, then record approval in the
+                source-controlled review file. Regenerated evidence needs fresh approval.
+              </p>
+              <label className="mt-2 flex min-h-11 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={onlyBlocked}
+                  onChange={(event) => {
+                    setOnlyBlocked(event.target.checked);
+                    if (event.target.checked)
+                      setSelectedPuzzle(
+                        report.upcoming.find((review) => !review.approved)?.puzzle ?? null,
+                      );
+                  }}
+                />
+                show only puzzles needing approval
+              </label>
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="font-mono text-xs theme-muted">
               upcoming puzzle
               <AppSelect
                 value={selectedPuzzle ?? ""}
                 onValueChange={(value) => setSelectedPuzzle(Number(value))}
-                options={report.upcoming.map(({ approved, date, puzzle, target }) => ({
-                  value: puzzle,
-                  label: `#${puzzle} · ${date} · ${target}${approved ? " · approved" : " · review"}`,
-                }))}
+                options={report.upcoming
+                  .filter((review) => !onlyBlocked || review.approved === false)
+                  .map(({ approved, date, puzzle, target }) => ({
+                    value: puzzle,
+                    label: `#${puzzle} · ${date} · ${target}${approved ? " · approved" : " · review"}`,
+                  }))}
                 tone="theme"
                 variant="field"
                 ariaLabel="Upcoming Hot and Cold puzzle"

@@ -1,3 +1,4 @@
+import { raceLockedWrite } from "../helpers/locked-write";
 import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
@@ -65,6 +66,18 @@ describeWithDatabase("survey invitation lifecycle (postgres)", () => {
     const resolved = await recordCommunicationLinkClick(clickToken ?? "");
     return resolved ? (new URL(resolved).searchParams.get("invite") ?? "") : "";
   }
+
+  it("rejects an answer if the survey closes while submission waits for its lock", async () => {
+    const survey = await createSurvey("optional");
+    const result = await raceLockedWrite(
+      "select id from surveys where id=$1 for update",
+      [survey.id],
+      () => submitSurvey({ slug: survey.slug, answers: { feeling: "Great" } }),
+      "update surveys set status='closed' where id=$1",
+    );
+    expect(result.status).toBe("rejected");
+    expect(await listSurveyResponses(survey.id)).toHaveLength(0);
+  });
 
   it("prefills and links an identified response, then prevents reuse", async () => {
     const survey = await createSurvey("identified");

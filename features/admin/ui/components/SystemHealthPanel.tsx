@@ -4,6 +4,13 @@ import type { SystemCapabilities } from "@/features/system/capabilities";
 import { AdminStatus, adminToneBorderClass, adminToneForStatus } from "./AdminStatus";
 
 type SystemHealthSnapshot = SystemCapabilities & {
+  scheduledJobs?: Array<{
+    jobKey: string;
+    nextRunAt: string;
+    lastSucceededAt: string | null;
+    lastError: string | null;
+    failureCount: number;
+  }>;
   emailOutbox: {
     available: boolean;
     pending: number;
@@ -200,6 +207,33 @@ export function SystemHealthPanel({
             ) : null}
           </article>
         </div>
+      </section>
+
+      <p className="font-mono text-xs theme-muted">
+        Oldest pending email:{" "}
+        {duration(
+          snapshot?.emailOutbox.oldestPendingAt
+            ? Date.now() - Date.parse(snapshot.emailOutbox.oldestPendingAt)
+            : null,
+        )}{" "}
+        · latest delivery feedback:{" "}
+        {checkedAt(snapshot?.emailOutbox.latestDeliveryEventAt ?? undefined)}
+      </p>
+      <section aria-label="Scheduled work" className="border-t theme-border pt-5">
+        <h3 className="font-mono text-xs">scheduled work · shared across replicas</h3>
+        <ul className="mt-3 divide-y theme-border font-mono text-xs">
+          {(snapshot?.scheduledJobs ?? []).map((job) => (
+            <li key={job.jobKey} className="py-3">
+              <span>{job.jobKey}</span> · last success {checkedAt(job.lastSucceededAt ?? undefined)}{" "}
+              · next due {checkedAt(job.nextRunAt)}
+              {job.lastError ? (
+                <AdminStatus tone="danger" className="mt-1 block">
+                  {job.lastError}
+                </AdminStatus>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       </section>
 
       <dl className="grid gap-2 border-t theme-border pt-5 font-mono text-xs sm:grid-cols-3">

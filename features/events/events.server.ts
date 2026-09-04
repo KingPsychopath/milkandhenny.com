@@ -1,5 +1,11 @@
 import { log } from "@/lib/platform/logger.server";
-import { deleteEvent, getEvent, listEvents, putEvent } from "./store.server";
+import {
+  EventEditConflictError,
+  deleteEvent,
+  getEvent,
+  listEvents,
+  putEvent,
+} from "./store.server";
 import {
   isEventArrivalExperience,
   isEventHeroHeight,
@@ -394,6 +400,8 @@ export async function updateEvent(
   const existing = await getEvent(slug);
   if (!existing) return { ok: false, status: 404, error: "Event not found" };
 
+  if (typeof input.expectedUpdatedAt === "string" && input.expectedUpdatedAt !== existing.updatedAt)
+    return { ok: false, status: 409, error: new EventEditConflictError().message };
   const normalised = normaliseEventInput(input, existing);
   if (!normalised.ok) return normalised;
 
@@ -409,8 +417,13 @@ export async function updateEvent(
       };
     }
     try {
-      await putEvent(normalised.value, { renameFrom: existing.slug });
+      await putEvent(normalised.value, {
+        renameFrom: existing.slug,
+        expectedUpdatedAt: existing.updatedAt,
+      });
     } catch (error) {
+      if (error instanceof EventEditConflictError)
+        return { ok: false, status: 409, error: error.message };
       const conflict = eventCommitmentConflict(error);
       if (conflict) return conflict;
       throw error;
@@ -426,8 +439,10 @@ export async function updateEvent(
   }
 
   try {
-    await putEvent(normalised.value);
+    await putEvent(normalised.value, { expectedUpdatedAt: existing.updatedAt });
   } catch (error) {
+    if (error instanceof EventEditConflictError)
+      return { ok: false, status: 409, error: error.message };
     const conflict = eventCommitmentConflict(error);
     if (conflict) return conflict;
     throw error;

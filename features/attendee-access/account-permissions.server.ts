@@ -55,7 +55,7 @@ async function recordPermissionAudit(
 ): Promise<void> {
   await client.query(
     `insert into attendee_operations_audit_events
-       (action,actor_type,actor_id,entity_type,entity_id,reason,metadata)
+       (action,actor_type,actor_id,entity_type,entity_id,reason,after_state)
      values ($1,$2,$3,'person',$4,$5,$6::jsonb)`,
     [
       input.enabled ? "account.permission.granted" : "account.permission.revoked",
@@ -63,7 +63,7 @@ async function recordPermissionAudit(
       input.actorId,
       input.personId,
       input.reason,
-      JSON.stringify({ permission: input.permission }),
+      JSON.stringify({ permission: input.permission, enabled: input.enabled }),
     ],
   );
 }

@@ -22,6 +22,7 @@ import {
 
 export type CommunicationPlanStage = {
   id: string;
+  updatedAt: string;
   stageKey: string;
   label: string;
   position: number;
@@ -174,6 +175,7 @@ function fromStage(row: Record<string, unknown>): CommunicationPlanStage {
   const activeRecipientCount = row.audience === "event_attendees" ? audienceCount : recipientCount;
   return {
     id: String(row.id),
+    updatedAt: new Date(row.updated_at as string).toISOString(),
     stageKey: String(row.stage_key),
     label: String(row.label),
     position: Number(row.position) || 0,
@@ -206,6 +208,7 @@ async function rowsForPlans(where = "", values: unknown[] = []): Promise<Communi
             e.title as event_title,
             coalesce(jsonb_agg(jsonb_build_object(
               'id', s.id,
+              'updated_at', s.updated_at,
               'stage_key', s.stage_key,
               'label', s.label,
               'position', s.position,
@@ -439,6 +442,7 @@ export async function listCommunicationTemplates(): Promise<CommunicationTemplat
 
 export async function saveCommunicationTemplate(input: {
   id?: string;
+  expectedUpdatedAt?: string;
   name: string;
   kind: CommunicationKind;
   subject: string;
@@ -451,20 +455,42 @@ export async function saveCommunicationTemplate(input: {
   const body = input.body.trim().slice(0, 8000);
   if (!name || !subject || !body) throw new Error("Add a template name, subject, and message");
   const id = input.id || randomUUID();
-  if (input.isDefault)
-    await query(
-      `update communication_templates set is_default = false, updated_at = now() where kind = $1`,
-      [input.kind],
-    );
-  await query(
-    `insert into communication_templates (id, name, kind, subject, body, media, is_default)
+  await transaction(async (client) => {
+    // Serialize default replacement with template edits; rollback retains the old default on conflict.
+    await client.query("select pg_advisory_xact_lock(hashtext('communication-templates'))");
+    if (input.expectedUpdatedAt) {
+      const current = await client.query<{ updated_at: Date }>(
+        "select updated_at from communication_templates where id = $1 for update",
+        [id],
+      );
+      if (current.rows[0]?.updated_at.toISOString() !== input.expectedUpdatedAt)
+        throw new CommunicationStageConflictError(
+          "This template changed. Reload before editing. Your draft has been kept.",
+        );
+    }
+    if (input.isDefault)
+      await client.query(
+        `update communication_templates set is_default = false, updated_at = now() where kind = $1`,
+        [input.kind],
+      );
+    await client.query(
+      `insert into communication_templates (id, name, kind, subject, body, media, is_default)
      values ($1,$2,$3,$4,$5,$6::jsonb,$7)
      on conflict (id) do update set
        name = excluded.name, kind = excluded.kind, subject = excluded.subject,
        body = excluded.body, media = excluded.media, is_default = excluded.is_default,
-       archived_at = null, updated_at = now()`,
-    [id, name, input.kind, subject, body, JSON.stringify(validMedia(input.media)), input.isDefault],
-  );
+       archived_at = null, updated_at = greatest(now(), communication_templates.updated_at + interval '1 millisecond')`,
+      [
+        id,
+        name,
+        input.kind,
+        subject,
+        body,
+        JSON.stringify(validMedia(input.media)),
+        input.isDefault,
+      ],
+    );
+  });
   const rows = await query<Record<string, unknown>>(
     `select id, name, kind, subject, body, media, is_default, archived_at, updated_at from communication_templates where id = $1`,
     [id],
@@ -773,8 +799,18 @@ export async function createStarterPlan(eventSlug: string): Promise<Communicatio
   return created[0];
 }
 
+export class CommunicationStageConflictError extends Error {
+  constructor(
+    message = "This stage changed or delivery has started. Reload its status before editing. Your draft has been kept.",
+  ) {
+    super(message);
+    this.name = "CommunicationStageConflictError";
+  }
+}
+
 export async function updateCommunicationPlanStage(input: {
   id: string;
+  expectedUpdatedAt?: string;
   subject: string;
   body: string;
   media: unknown;
@@ -786,32 +822,12 @@ export async function updateCommunicationPlanStage(input: {
   if (!subject || !body || (input.sendAt && (!sendAt || Number.isNaN(sendAt.getTime()))))
     throw new Error("Add a subject, message, and valid send time");
   const media = JSON.stringify(validMedia(input.media));
-  const currentRows = await query<{
-    status: string;
-    queued_count: number;
-    last_error: string | null;
-  }>(
-    `select status, queued_count, last_error
-       from communication_plan_stages
-      where id = $1`,
-    [input.id],
-  );
-  const current = currentRows[0];
-  const expiredWithoutSending =
-    current?.status === "complete" &&
-    current.queued_count === 0 &&
-    current.last_error === "send window passed";
-  if (!current) throw new Error("Stage not found");
-  if (!expiredWithoutSending && !["draft", "scheduled", "paused"].includes(current.status)) {
-    throw new Error("This stage has already been sent and can no longer be edited");
-  }
-  await query(
+  const updated = await query<{ id: string }>(
     `update communication_plan_stages s
         set subject = $2, body = $3, media = $4::jsonb, send_at = $5,
             status = case
               when s.status = 'complete' and s.queued_count = 0 and s.last_error = 'send window passed'
                 then case when p.status = 'scheduled' and $5 > now() then 'scheduled' else 'draft' end
-              when s.status not in ('draft', 'scheduled', 'paused') then s.status
               when p.status = 'scheduled' and $5 > now() then 'scheduled'
               else 'draft'
             end,
@@ -820,12 +836,18 @@ export async function updateCommunicationPlanStage(input: {
                 then null
               else s.last_error
             end,
-            updated_at = now()
+            updated_at = greatest(now(), s.updated_at + interval '1 millisecond')
       from communication_plans p
       where s.id = $1 and p.id = s.plan_id
-      `,
-    [input.id, subject, body, media, sendAt],
+        and ($6::timestamptz is null or date_trunc('milliseconds', s.updated_at) = $6)
+        and (s.status in ('draft', 'scheduled', 'paused')
+          or (s.status = 'complete' and s.queued_count = 0 and s.last_error = 'send window passed'))
+      returning s.id`,
+    [input.id, subject, body, media, sendAt, input.expectedUpdatedAt ?? null],
   );
+  if (updated.length === 0) {
+    throw new CommunicationStageConflictError();
+  }
 }
 
 export async function resetCommunicationPlanStageFromTemplate(stageId: string): Promise<void> {

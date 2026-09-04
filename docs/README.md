@@ -56,6 +56,13 @@ These describe how current code should be designed and reviewed.
 These records explain what was checked or what failed at a point in time. They do not prove the
 current tree or deployment is ready.
 
+- [System audit and action checklist — 4 September 2026](./system-audit-2026-09-04.md): prioritized
+  admin, games, correctness, recovery, and verification work, with implementation status and evidence.
+- [Game acceptance and group playtests](./game-playtest-2026-09-04.md): mode-by-mode evidence and
+  the remaining device and first-time-group protocol.
+- [Hot & Cold human review packet](./hot-and-cold-review-2026-09-04.md): six upcoming puzzles awaiting
+  human approval.
+
 | Document                                                                                           | Record                                                    |
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | [event-night-readiness.md](./event-night-readiness.md)                                             | Event-night audit snapshot and physical rehearsal gaps    |

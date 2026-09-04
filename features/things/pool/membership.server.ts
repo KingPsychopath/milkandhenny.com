@@ -16,6 +16,7 @@ export async function clearAssignmentReceipts(
   );
 }
 
+/** Membership survives a co-located session with phones asleep; presence is separately shown for 90 seconds. */
 export async function expireStaleGamePoolAssignments(
   client: PoolClient,
   runId?: string,
@@ -34,7 +35,7 @@ export async function expireStaleGamePoolAssignments(
     `update game_pool_assignments assignment
      set status = 'session_ended', ended_at = $1, display_name = 'session_ended'
      where assignment.status = 'active'
-       and assignment.last_seen_at < now() - interval '90 seconds'
+       and assignment.last_seen_at < now() - interval '6 hours'
        ${runFilter}
      returning run_id, room_id, client_id`,
     runId ? [sweepAt, runId] : [sweepAt],

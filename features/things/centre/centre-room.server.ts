@@ -1,3 +1,4 @@
+import { settleGamePoolBookkeeping } from "../pool/bookkeeping.server";
 import {
   publishMultiplayerRoomTermination,
   runMultiplayerEffect,
@@ -24,8 +25,8 @@ export function readCentreSnapshot(input: Parameters<typeof engine.readCentreSna
   return runMultiplayerEffect(CentreRoomService.use((service) => service.readSnapshot(input))).then(
     async (result) => {
       if (result.ok)
-        await markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }).catch(
-          () => undefined,
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayerSeen({ roomId: input.roomId, playerId: input.playerId }),
         );
       return result;
     },
@@ -38,8 +39,8 @@ export function applyCentreAction(input: Parameters<typeof engine.applyCentreAct
   return runMultiplayerEffect(CentreRoomService.use((service) => service.applyAction(input))).then(
     async (result) => {
       if (result.ok && result.accepted && input.action.type === "player.leave") {
-        await markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }).catch(
-          () => undefined,
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayerLeft({ roomId: input.roomId, playerId: input.playerId }),
         );
         await publishMultiplayerRoomTermination("centre", input.roomId, {
           reason: "session_ended",
@@ -51,11 +52,13 @@ export function applyCentreAction(input: Parameters<typeof engine.applyCentreAct
         const removedPlayerIds = (input.action.removePlayerIds ?? []).filter(
           (playerId) => !remainingPlayerIds.has(playerId),
         );
-        await markGamePoolPlayersRemoved({
-          roomId: input.roomId,
-          playerIds: removedPlayerIds,
-          actionId: input.action.actionId ?? crypto.randomUUID(),
-        }).catch(() => undefined);
+        await settleGamePoolBookkeeping(
+          markGamePoolPlayersRemoved({
+            roomId: input.roomId,
+            playerIds: removedPlayerIds,
+            actionId: input.action.actionId ?? crypto.randomUUID(),
+          }),
+        );
         for (const playerId of removedPlayerIds)
           await publishMultiplayerRoomTermination("centre", input.roomId, {
             reason: "removed",

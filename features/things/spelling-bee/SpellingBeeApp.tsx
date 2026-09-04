@@ -87,6 +87,8 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
     shuffledWords(joinedDeck?.words ?? SPELLING_DECKS[0].words),
   );
   const [wordIndex, setWordIndex] = useState(0);
+  // A restored word must accept a fresh judgement without accepting duplicate commands.
+  const [itemAttempt, setItemAttempt] = useState(0);
   const [countdown, setCountdown] = useState(3);
   const [timerSeconds, setTimerSeconds] = useState(joinedSetup?.timerSeconds ?? 30);
   const [roundTotal, setRoundTotal] = useState(joinedSetup?.roundWordCount ?? 5);
@@ -279,6 +281,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   const undoDecision = useCallback(() => {
     if (phase !== "playing" || results.length === 0) return;
+    setItemAttempt((attempt) => attempt + 1);
     const wordAlreadyAdvanced = transitionTimeout.current === null;
     clearTransition();
     setResults((current) => current.slice(0, -1));
@@ -399,7 +402,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       decision: result.decision,
     })),
     transcript: transcript || undefined,
-    itemKey: phase === "playing" ? `${wordIndex}:${item.id}` : undefined,
+    itemKey: phase === "playing" ? `${itemAttempt}:${wordIndex}:${item.id}` : undefined,
     updatedAt: Date.now(),
   };
   const remoteSetup: RemoteSpellingSetup = {

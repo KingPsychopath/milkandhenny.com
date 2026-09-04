@@ -5,10 +5,12 @@ import {
   waitForAppHydration,
 } from "./support/multiplayer";
 
+test.use({ actionTimeout: 15_000 });
+
 test("keeps the Family Feud TV, MC, and team buzzer in sync through refresh", async ({
   browser,
 }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const baseURL = testInfo.project.use.baseURL;
   if (typeof baseURL !== "string") throw new Error("Playwright baseURL is required");
 
@@ -111,6 +113,41 @@ test("keeps the Family Feud TV, MC, and team buzzer in sync through refresh", as
       timeout: 15_000,
     });
     await expect(mc.page.getByLabel("Score")).toContainText("10");
+    for (let round = 0; round < 12; round++) {
+      await mc.page.getByRole("button", { name: /start 45 seconds/ }).click();
+      await mc.page.getByRole("button", { name: "end main answers", exact: true }).click();
+      await mc.page.getByRole("button", { name: /start .*second steal/ }).click();
+      await mc.page.getByRole("button", { name: "no match · reveal board", exact: true }).click();
+      await mc.page.getByRole("button", { name: "show round score", exact: true }).click();
+      const finish = mc.page.getByRole("button", { name: "finish game", exact: true });
+      await expect(
+        finish.or(mc.page.getByRole("button", { name: "next team and round", exact: true })),
+      ).toBeVisible();
+      if (await finish.isVisible()) {
+        await finish.click();
+        break;
+      }
+      await mc.page.getByRole("button", { name: "next team and round", exact: true }).click();
+      await mc.page.getByRole("button", { name: "use this card", exact: true }).click();
+      await mc.page.getByRole("button", { name: "open buzzers", exact: true }).click();
+      await expect(buzzer.page.getByText("Buzzers open", { exact: true })).toBeVisible({
+        timeout: 15_000,
+      });
+      await buzzer.page.getByRole("button", { name: /Circle team/ }).click();
+      await expect(mc.page.getByText(/Circle team.*answers now/)).toBeVisible({ timeout: 15_000 });
+      await mc.page.getByRole("button", { name: /Reveal answer 1,/ }).click();
+    }
+    await mc.page.getByRole("button", { name: "confirm final result", exact: true }).click();
+    const replay = mc.page.getByRole("button", {
+      name: "play again with the same teams",
+      exact: true,
+    });
+    await expect(replay).toBeVisible();
+    await expect(presenter.page.getByLabel("Score")).toContainText("Circle team");
+    await replay.click();
+    await expect(
+      mc.page.getByRole("button", { name: "start practice", exact: true }),
+    ).toBeVisible();
   } finally {
     await closeGameSurfaces(surfaces);
   }
