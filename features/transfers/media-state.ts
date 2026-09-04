@@ -183,6 +183,17 @@ function isTerminalProcessingFailure(file: { processingErrorCode?: string }): bo
   );
 }
 
+function isRetiredVideoPosterFailure(file: {
+  processingErrorCode?: string;
+  processingErrorDetail?: string;
+}): boolean {
+  return (
+    file.processingErrorCode === "video_too_large_for_poster" ||
+    (file.processingErrorCode === "worker_failed" &&
+      file.processingErrorDetail?.includes("ERR_CHILD_PROCESS_STDIO_MAXBUFFER") === true)
+  );
+}
+
 function canRetryTransferProcessing(
   file: {
     retryCount?: number;
@@ -316,6 +327,7 @@ export {
   getFilenameStem,
   getTransferFileId,
   isHeifUploadLike,
+  isRetiredVideoPosterFailure,
   isTerminalProcessingFailure,
   resolveTransferUploadIds,
   isTransferProcessingStale,

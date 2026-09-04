@@ -17,6 +17,7 @@ import { mapConcurrent } from "@/features/media/processing.server";
 import { getMediaProcessor } from "@/features/transfers/media-processor.server";
 import {
   canRetryTransferProcessing,
+  isRetiredVideoPosterFailure,
   isTransferProcessingStale,
 } from "@/features/transfers/media-state";
 import { listTransferData } from "@/features/transfers/store.server";
@@ -45,6 +46,11 @@ type ReconcileResult = {
 function fileNeedsAttention(file: TransferFile, nowMs: number): boolean {
   // Never classified: the upload recorded it but processing state is unknown.
   if (!file.previewStatus || !file.processingStatus) return true;
+
+  // Older releases intentionally skipped large videos. Poster extraction now
+  // streams through disk, so these records must enter backfill once to create
+  // the derivatives they were denied before.
+  if (isRetiredVideoPosterFailure(file)) return true;
 
   // Claimed long ago and still not finished.
   if (isTransferProcessingStale(file, nowMs)) return true;

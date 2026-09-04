@@ -2484,18 +2484,11 @@ const VisualCard = memo(function VisualCard({
         )}
 
         {item.type !== "single" && (
-          <>
-            <div className="absolute top-2 right-2 z-10">
-              <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-                linked
-              </span>
-            </div>
-            <div className="absolute left-2 bottom-2 z-10">
-              <span className="inline-block font-mono text-pico bg-black/55 text-white/85 px-1.5 py-0.5 rounded tracking-wider uppercase">
-                {item.type === "live_photo" ? "photo + motion" : "preview + raw"}
-              </span>
-            </div>
-          </>
+          <div className="absolute left-2 bottom-2 z-10">
+            <span className="inline-block font-mono text-pico bg-black/55 text-white/85 px-1.5 py-0.5 rounded tracking-wider uppercase">
+              {item.type === "live_photo" ? "live photo" : "RAW + preview"}
+            </span>
+          </div>
         )}
 
         {/* GIF badge */}
@@ -2510,15 +2503,7 @@ const VisualCard = memo(function VisualCard({
         {item.type === "single" && isRawImage(file) && (
           <div className="absolute bottom-2 left-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              {file.previewStatus === "ready" ? "raw preview" : "raw"}
-            </span>
-          </div>
-        )}
-
-        {item.type === "single" && file.convertedFrom && !isRawImage(file) && (
-          <div className="absolute bottom-2 left-2">
-            <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              optimized
+              RAW
             </span>
           </div>
         )}
@@ -2534,7 +2519,7 @@ const VisualCard = memo(function VisualCard({
         {file.processingStatus === "failed" && (
           <div className="absolute bottom-2 right-2">
             <span className="font-mono text-pico bg-black/50 text-white/80 px-1.5 py-0.5 rounded tracking-wider uppercase">
-              original only
+              preview unavailable
             </span>
           </div>
         )}

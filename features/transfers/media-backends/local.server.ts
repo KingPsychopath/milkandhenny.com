@@ -25,6 +25,7 @@ import {
   didTransferFileChange,
   getExpectedTransferAssetKeys,
   getTransferFileId,
+  isRetiredVideoPosterFailure,
   isTransferProcessingStale,
   type ProcessingBackend,
   type ProcessingRoute,
@@ -616,7 +617,7 @@ function needsStateInference(file: TransferFile): boolean {
   // Releases before poster extraction became fully streaming permanently
   // skipped large videos. Re-infer them so reconciliation can enqueue the
   // missing derivatives without an operator finding each transfer.
-  if (file.processingErrorCode === "video_too_large_for_poster") return true;
+  if (isRetiredVideoPosterFailure(file)) return true;
   const inferredRoute = classifyTransferProcessingRoute(file.filename);
   if (file.previewStatus && file.processingStatus) {
     if (file.processingRoute) return false;

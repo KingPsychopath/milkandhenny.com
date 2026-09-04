@@ -1029,6 +1029,11 @@ async function extractVideoFrame(filename: string, timestamp: string): Promise<B
       filename,
       "-frames:v",
       "1",
+      // Bound the decoded frame before it enters Node. A noisy 4K PNG can
+      // exceed child_process's 32 MiB stdout ceiling even though the final
+      // poster is only 1600 px wide.
+      "-vf",
+      `scale=w='min(iw,${FULL_WIDTH})':h=-2`,
       "-f",
       "image2pipe",
       "-vcodec",

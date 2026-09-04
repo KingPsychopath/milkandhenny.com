@@ -115,6 +115,10 @@ lands mid-flight, a derivative gets deleted from object storage. Each leaves a
 file stuck: `queued` with no job behind it, `processing` with no worker on it,
 or `ready` pointing at a thumbnail that is gone.
 
+The sweep also recognizes `video_too_large_for_poster` records from releases
+that capped video poster generation. Those files are no longer terminal: each
+is re-inferred and queued once so existing transfers gain the missing poster.
+
 `backfillTransferMedia` repairs all of those — it re-derives each file's state
 from what is actually in object storage and requeues whatever is genuinely
 unfinished. Two things run it:

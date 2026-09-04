@@ -94,6 +94,52 @@ describe("transfer media reconciliation", () => {
     expect(backfillTransferMedia).toHaveBeenCalled();
   });
 
+  it("repairs a video skipped by the retired poster-size cap", async () => {
+    const skipped = transferWith([
+      {
+        ...readyFile,
+        id: "large-clip",
+        filename: "large-clip.mp4",
+        kind: "video",
+        mimeType: "video/mp4",
+        previewStatus: "original_only",
+        processingStatus: "skipped",
+        processingRoute: "worker_video",
+        processingErrorCode: "video_too_large_for_poster",
+      },
+    ]);
+    listTransferData.mockResolvedValue([skipped]);
+
+    const { reconcileTransferMedia } = await import("@/features/transfers/media-reconcile.server");
+    await reconcileTransferMedia();
+
+    expect(backfillTransferMedia).toHaveBeenCalledWith(skipped);
+  });
+
+  it("repairs video posters that exceeded the old frame buffer", async () => {
+    const failed = transferWith([
+      {
+        ...readyFile,
+        id: "dji-clip",
+        filename: "dji-clip.mp4",
+        kind: "video",
+        mimeType: "video/mp4",
+        previewStatus: "original_only",
+        processingStatus: "failed",
+        processingRoute: "worker_video",
+        processingErrorCode: "worker_failed",
+        processingErrorDetail: "RangeError [ERR_CHILD_PROCESS_STDIO_MAXBUFFER]",
+        retryCount: 3,
+      },
+    ]);
+    listTransferData.mockResolvedValue([failed]);
+
+    const { reconcileTransferMedia } = await import("@/features/transfers/media-reconcile.server");
+    await reconcileTransferMedia();
+
+    expect(backfillTransferMedia).toHaveBeenCalledWith(failed);
+  });
+
   it("does not re-attempt a failure the file itself guarantees", async () => {
     listTransferData.mockResolvedValue([
       transferWith([

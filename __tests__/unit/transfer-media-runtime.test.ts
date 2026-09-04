@@ -96,3 +96,25 @@ describe("terminal processing failures", () => {
     ).toBe(false);
   });
 });
+
+describe("retired video poster failures", () => {
+  it("recognises both historical poster failure modes", async () => {
+    const { isRetiredVideoPosterFailure } = await import("@/features/transfers/media-state");
+
+    expect(isRetiredVideoPosterFailure({ processingErrorCode: "video_too_large_for_poster" })).toBe(
+      true,
+    );
+    expect(
+      isRetiredVideoPosterFailure({
+        processingErrorCode: "worker_failed",
+        processingErrorDetail: "RangeError [ERR_CHILD_PROCESS_STDIO_MAXBUFFER]",
+      }),
+    ).toBe(true);
+    expect(
+      isRetiredVideoPosterFailure({
+        processingErrorCode: "worker_failed",
+        processingErrorDetail: "ffmpeg could not decode input",
+      }),
+    ).toBe(false);
+  });
+});

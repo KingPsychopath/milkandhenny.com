@@ -1739,10 +1739,7 @@ export function UploadDashboard({
                     ? ` · ${transferResult.processingCounts.queuedCount} processing`
                     : ""}
                   {transferResult.processingCounts.failedCount > 0
-                    ? ` · ${transferResult.processingCounts.failedCount} failed`
-                    : ""}
-                  {transferResult.processingCounts.originalOnlyCount > 0
-                    ? ` · ${transferResult.processingCounts.originalOnlyCount} original-only`
+                    ? ` · ${transferResult.processingCounts.failedCount} preview unavailable`
                     : ""}
                 </p>
               ) : null}
