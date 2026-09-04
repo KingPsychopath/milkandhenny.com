@@ -4231,6 +4231,23 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0094_restore_after_school_club_practical_changes",
+    sql: `
+      update communication_templates
+         set body = replace(
+           replace(
+             body,
+             E'\n\nThe poll includes every day of the week. Once you vote, you’ll see the shape of where everybody is leaning without turning it into a noisy leaderboard.',
+             ''
+           ),
+           E'So next time, the technology is going to fade much further into the background. The smaller games will mostly become quick icebreakers; the heart of the night will be hosted games, conversations, presentations and more time together in the room.',
+           E'So next time, the technology is going to fade much further into the background. The smaller games will mostly become quick icebreakers; the heart of the night will be hosted games, conversations, presentations and more time together in the room.\n\n## We’re also changing a few practical things\n\n- You’ll know your team and colour before arriving.\n- Your email will include an icebreaker question.\n- There’ll be fewer screens and less scanning.\n- Food will be catered or pre-portioned so it can be served faster. (with the exception of the BBQ 👀)'
+         ),
+             updated_at = now()
+       where id = '75084696-5c92-41e3-bcad-3289486ff5b8';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
