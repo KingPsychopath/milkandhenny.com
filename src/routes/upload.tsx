@@ -2,13 +2,40 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 import { UploadDashboard } from "@/features/transfers/ui/upload/UploadDashboard";
+import {
+  getTransferAccountOwnerAccessFn,
+  getTransferOwnerAccessFn,
+} from "@/features/transfers/transfer.functions";
 import { getUploadAccessFn, signInUpload } from "@/features/auth/auth.functions";
 
+type UploadSearch = {
+  auth?: "failed";
+  transfer?: string;
+  token?: string;
+};
+
 export const Route = createFileRoute("/upload")({
-  validateSearch: (search: Record<string, unknown>): { auth?: "failed" } =>
-    search.auth === "failed" ? { auth: "failed" } : {},
+  validateSearch: (search: Record<string, unknown>): UploadSearch => ({
+    ...(search.auth === "failed" ? { auth: "failed" as const } : {}),
+    ...(typeof search.transfer === "string" && search.transfer.trim()
+      ? { transfer: search.transfer.trim().slice(0, 128) }
+      : {}),
+    ...(typeof search.token === "string" && search.token.trim()
+      ? { token: search.token.trim().slice(0, 512) }
+      : {}),
+  }),
+  loaderDeps: ({ search }) => ({ transfer: search.transfer, token: search.token }),
   loader: {
-    handler: () => getUploadAccessFn(),
+    handler: async ({ deps }) => {
+      const [access, ownerAccess, accountOwnerAccess] = await Promise.all([
+        getUploadAccessFn(),
+        deps.transfer && deps.token
+          ? getTransferOwnerAccessFn({ data: { id: deps.transfer, token: deps.token } })
+          : false,
+        deps.transfer ? getTransferAccountOwnerAccessFn({ data: { id: deps.transfer } }) : false,
+      ]);
+      return { ...access, ownerAccess, accountOwnerAccess };
+    },
     staleReloadMode: "blocking",
   },
   staleTime: 0,
@@ -26,10 +53,12 @@ export const Route = createFileRoute("/upload")({
 });
 
 function UploadPage() {
-  const { isAuthed, isAdmin, uploadAccessExpiresAt } = Route.useLoaderData();
-  const authFailed = Route.useSearch().auth === "failed";
+  const { isAuthed, isAdmin, uploadAccessExpiresAt, ownerAccess, accountOwnerAccess } =
+    Route.useLoaderData();
+  const { auth, transfer, token } = Route.useSearch();
+  const authFailed = auth === "failed";
 
-  if (!isAuthed) {
+  if (!isAuthed && !ownerAccess) {
     return (
       <main id="main" className="min-h-dvh flex items-center justify-center px-6">
         <form
@@ -75,7 +104,15 @@ function UploadPage() {
             unlock
           </button>
 
-          <p className="mt-8 font-mono text-xs theme-muted">
+          <Link
+            to="/access"
+            search={{ returnTo: "/upload" }}
+            className="mt-4 inline-flex min-h-11 items-center font-mono text-xs underline underline-offset-4 theme-muted transition-colors hover:text-[var(--foreground)]"
+          >
+            sign in with an authorised account
+          </Link>
+
+          <p className="mt-4 font-mono text-xs theme-muted">
             <Link
               to="/"
               className="inline-flex min-h-11 items-center px-2 transition-colors hover:text-[var(--foreground)]"
@@ -90,7 +127,14 @@ function UploadPage() {
 
   return (
     <main id="main" className="min-h-dvh">
-      <UploadDashboard isAdmin={isAdmin} accessExpiresAt={uploadAccessExpiresAt} />
+      <UploadDashboard
+        isAdmin={isAdmin}
+        accessExpiresAt={uploadAccessExpiresAt}
+        initialAppendTransferId={
+          ownerAccess || accountOwnerAccess || isAdmin ? transfer : undefined
+        }
+        initialAppendOwnerToken={ownerAccess ? token : undefined}
+      />
     </main>
   );
 }

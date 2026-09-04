@@ -19,7 +19,6 @@ import {
   type ProcessedVideo,
   type ProcessedImage,
 } from "@/features/media/processing.server";
-import { getVideoPosterMaxBytes } from "@/features/transfers/media-processing-config.server";
 import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
@@ -174,8 +173,7 @@ function buildVideoFile(params: {
  * Poster variants for a video whose original is already in R2.
  *
  * The bytes go object storage → temp file → ffmpeg, never through a Buffer,
- * so a 3 GB clip costs disk rather than heap. Anything past the configured cap
- * is left as a playable original with no poster.
+ * so large clips cost disk rather than heap.
  */
 async function materializeVideoFromStorage(params: {
   file: TransferUploadFileInput;
@@ -191,22 +189,6 @@ async function materializeVideoFromStorage(params: {
   const derivedId = file.mediaId ?? getTransferFileId(filename);
   const archiveStorageKey = buildTransferArchivedOriginalStorageKey(transferId, file);
   const originalUploadSize = file.originalSize ?? 0;
-
-  const maxBytes = getVideoPosterMaxBytes();
-  const head = await headObject(storageKey, { scope: "private" });
-  const sourceSize = head.size ?? file.size;
-
-  if (maxBytes > 0 && sourceSize > maxBytes) {
-    return {
-      file: {
-        ...buildSkippedFile(filename, file.size, storageKey, file, getMimeType(filename), "video"),
-        id: derivedId,
-        processingRoute: route,
-        processingErrorCode: "video_too_large_for_poster",
-      },
-      uploadedBytes: file.size + originalUploadSize,
-    };
-  }
 
   const video = await processVideoVariantsFromSource(
     path.extname(filename) || ".mp4",
@@ -631,6 +613,10 @@ async function inferTransferFileState(
 }
 
 function needsStateInference(file: TransferFile): boolean {
+  // Releases before poster extraction became fully streaming permanently
+  // skipped large videos. Re-infer them so reconciliation can enqueue the
+  // missing derivatives without an operator finding each transfer.
+  if (file.processingErrorCode === "video_too_large_for_poster") return true;
   const inferredRoute = classifyTransferProcessingRoute(file.filename);
   if (file.previewStatus && file.processingStatus) {
     if (file.processingRoute) return false;

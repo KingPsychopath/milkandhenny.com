@@ -172,15 +172,10 @@ function isTransferProcessingStale(
  * Failures that a retry cannot fix.
  *
  * These are properties of the file, not of the attempt: a RAW with no embedded
- * preview has none on the third try either, and a video over the poster cap is
- * still over it. Retrying them costs a download and a decode per attempt and
- * ends in the same state, so the answer is recorded once and left alone.
+ * preview has none on the third try either. Retrying it costs a download and a
+ * decode per attempt and ends in the same state, so the answer is recorded once.
  */
-const TERMINAL_PROCESSING_ERROR_CODES = new Set([
-  "raw_preview_unavailable",
-  "video_too_large_for_poster",
-  "retries_exhausted",
-]);
+const TERMINAL_PROCESSING_ERROR_CODES = new Set(["raw_preview_unavailable", "retries_exhausted"]);
 
 function isTerminalProcessingFailure(file: { processingErrorCode?: string }): boolean {
   return Boolean(

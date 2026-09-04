@@ -40,6 +40,17 @@ export type AttendeeAccount = {
     expiresAt?: string;
     href?: string;
   }>;
+  fileTransfers: {
+    canCreate: boolean;
+    available: boolean;
+    items: Array<{
+      id: string;
+      title: string;
+      fileCount: number;
+      createdAt: string;
+      expiresAt: string;
+    }>;
+  };
 };
 
 export type AttendeeTicketOperation = {
@@ -98,6 +109,7 @@ export function safeReturnTo(value: unknown): string {
     decodedPathname === "/" ||
     [
       "/my",
+      "/upload",
       "/admin",
       "/events",
       "/ticket",

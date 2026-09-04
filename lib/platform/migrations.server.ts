@@ -4152,6 +4152,23 @@ const MIGRATIONS: Migration[] = [
     `,
   },
   {
+    id: "0092_account_transfer_permissions",
+    sql: `
+      create table account_permission_grants (
+        person_id       uuid not null references event_people (id) on delete cascade,
+        permission      text not null check (permission in ('create_transfers')),
+        granted_by_type text not null check (granted_by_type in ('admin','root-owner')),
+        granted_by_id   text not null,
+        grant_reason    text not null,
+        granted_at      timestamptz not null default now(),
+        primary key (person_id, permission)
+      );
+
+      create index account_permission_grants_permission_idx
+        on account_permission_grants (permission, granted_at desc);
+    `,
+  },
+  {
     id: "0093_reusable_polls",
     sql: `
       create table polls (

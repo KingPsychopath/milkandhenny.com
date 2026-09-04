@@ -134,6 +134,69 @@ describe("worker media processing", () => {
     expect(result.file.processingRoute).toBe("worker_video");
   });
 
+  it("should retry a fresh job until its file metadata is visible", async () => {
+    const { processWorkerJob } = await import("@/features/transfers/media-backends/worker.server");
+    getTransfer.mockResolvedValue({
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [],
+    });
+
+    await expect(
+      processWorkerJob({
+        transferId: "transfer-1",
+        mediaId: "clip",
+        file: {
+          name: "clip.mov",
+          mediaId: "clip",
+          size: 512,
+          type: "video/quicktime",
+        },
+        storageKey: "transfers/transfer-1/original/clip.mov",
+        mimeType: "video/quicktime",
+        processingRoute: "worker_video",
+        attempt: 1,
+        enqueuedAt: new Date().toISOString(),
+      }),
+    ).rejects.toThrow("Transfer file metadata is not visible yet");
+  });
+
+  it("should advance the retry generation when a queued file becomes stale", async () => {
+    const { refreshQueuedTransferState } =
+      await import("@/features/transfers/media-backends/worker.server");
+    enqueueTransferMediaJob.mockResolvedValue(undefined);
+    const transfer = {
+      id: "transfer-1",
+      title: "transfer",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      deleteToken: "token",
+      files: [
+        {
+          id: "clip",
+          filename: "clip.mov",
+          kind: "video" as const,
+          size: 512,
+          mimeType: "video/quicktime",
+          storageKey: "transfers/transfer-1/original/clip.mov",
+          previewStatus: "original_only" as const,
+          processingStatus: "queued" as const,
+          processingRoute: "worker_video" as const,
+          enqueuedAt: new Date(Date.now() - 16 * 60_000).toISOString(),
+          retryCount: 0,
+        },
+      ],
+    };
+
+    const updated = await refreshQueuedTransferState(transfer);
+
+    expect(enqueueTransferMediaJob).toHaveBeenCalledWith(expect.objectContaining({ attempt: 2 }));
+    expect(updated.files[0]).toMatchObject({ processingStatus: "queued", retryCount: 1 });
+  });
+
   it("matches worker jobs by mediaId when filenames collide", async () => {
     const { processWorkerJob } = await import("@/features/transfers/media-backends/worker.server");
 

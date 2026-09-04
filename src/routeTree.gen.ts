@@ -46,6 +46,7 @@ import { Route as EventsSlugRouteImport } from './routes/events/$slug'
 import { Route as OrganizeTokenRouteImport } from './routes/organize.$token'
 import { Route as PicsIndexRouteImport } from './routes/pics/index'
 import { Route as PlayTokenRouteImport } from './routes/play.$token'
+import { Route as PollsSlugRouteImport } from './routes/polls.$slug'
 import { Route as ScanIndexRouteImport } from './routes/scan.index'
 import { Route as ScanTokenRouteImport } from './routes/scan.$token'
 import { Route as SurveysSlugRouteImport } from './routes/surveys.$slug'
@@ -79,6 +80,7 @@ import { Route as ApiAdminEventsRouteRouteImport } from './routes/api/admin/even
 import { Route as ApiAdminGamePoolsRouteRouteImport } from './routes/api/admin/game-pools/route'
 import { Route as ApiAdminHotAndColdReviewRouteRouteImport } from './routes/api/admin/hot-and-cold-review/route'
 import { Route as ApiAdminPitchesRouteRouteImport } from './routes/api/admin/pitches/route'
+import { Route as ApiAdminPollsRouteRouteImport } from './routes/api/admin/polls/route'
 import { Route as ApiAdminReportsRouteRouteImport } from './routes/api/admin/reports/route'
 import { Route as ApiAdminStepUpRouteRouteImport } from './routes/api/admin/step-up/route'
 import { Route as ApiAdminSurveysRouteRouteImport } from './routes/api/admin/surveys/route'
@@ -154,6 +156,7 @@ import { Route as ApiAdminOperationsAlertsRouteRouteImport } from './routes/api/
 import { Route as ApiAdminOperationsInboxRouteRouteImport } from './routes/api/admin/operations/inbox/route'
 import { Route as ApiAdminOperationsPeopleRouteRouteImport } from './routes/api/admin/operations/people/route'
 import { Route as ApiAdminOperationsSettingsRouteRouteImport } from './routes/api/admin/operations/settings/route'
+import { Route as ApiAdminPollsIdRouteRouteImport } from './routes/api/admin/polls/$id/route'
 import { Route as ApiAdminSurveysIdRouteRouteImport } from './routes/api/admin/surveys/$id/route'
 import { Route as ApiAdminTokensRevokeRouteRouteImport } from './routes/api/admin/tokens/revoke/route'
 import { Route as ApiAdminTokensSessionsRouteRouteImport } from './routes/api/admin/tokens/sessions/route'
@@ -226,6 +229,7 @@ import { Route as ApiWordsSlugSharesIdRouteRouteImport } from './routes/api/word
 import { Route as ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteImport } from './routes/api/admin/albums/$slug/photos/$photoId/route'
 import { Route as ApiAdminAlbumsSlugUploadFinalizeRouteRouteImport } from './routes/api/admin/albums/$slug/upload/finalize/route'
 import { Route as ApiAdminAlbumsSlugUploadPresignRouteRouteImport } from './routes/api/admin/albums/$slug/upload/presign/route'
+import { Route as ApiAdminTransfersIdFilesFileIdRouteRouteImport } from './routes/api/admin/transfers/$id/files/$fileId/route'
 import { Route as ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport } from './routes/api/albums/$slug/photos/$photoId/original/route'
 import { Route as ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRouteImport } from './routes/api/events/$slug/discoveries/$discoveryId/claim/route'
 import { Route as ApiTransfersIdMediaFileIdVariantRouteRouteImport } from './routes/api/transfers/$id/media/$fileId/$variant/route'
@@ -416,6 +420,11 @@ const PlayTokenRoute = PlayTokenRouteImport.update({
   path: '/play/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PollsSlugRoute = PollsSlugRouteImport.update({
+  id: '/polls/$slug',
+  path: '/polls/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScanIndexRoute = ScanIndexRouteImport.update({
   id: '/scan/',
   path: '/scan/',
@@ -583,6 +592,11 @@ const ApiAdminHotAndColdReviewRouteRoute =
 const ApiAdminPitchesRouteRoute = ApiAdminPitchesRouteRouteImport.update({
   id: '/api/admin/pitches',
   path: '/api/admin/pitches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminPollsRouteRoute = ApiAdminPollsRouteRouteImport.update({
+  id: '/api/admin/polls',
+  path: '/api/admin/polls',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminReportsRouteRoute = ApiAdminReportsRouteRouteImport.update({
@@ -989,6 +1003,11 @@ const ApiAdminOperationsSettingsRouteRoute =
     path: '/api/admin/operations/settings',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiAdminPollsIdRouteRoute = ApiAdminPollsIdRouteRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiAdminPollsRouteRoute,
+} as any)
 const ApiAdminSurveysIdRouteRoute = ApiAdminSurveysIdRouteRouteImport.update({
   id: '/$id',
   path: '/$id',
@@ -1412,6 +1431,12 @@ const ApiAdminAlbumsSlugUploadPresignRouteRoute =
     path: '/upload/presign',
     getParentRoute: () => ApiAdminAlbumsSlugRouteRoute,
   } as any)
+const ApiAdminTransfersIdFilesFileIdRouteRoute =
+  ApiAdminTransfersIdFilesFileIdRouteRouteImport.update({
+    id: '/files/$fileId',
+    path: '/files/$fileId',
+    getParentRoute: () => ApiAdminTransfersIdRouteRoute,
+  } as any)
 const ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute =
   ApiAlbumsSlugPhotosPhotoIdOriginalRouteRouteImport.update({
     id: '/api/albums/$slug/photos/$photoId/original',
@@ -1472,6 +1497,7 @@ export interface FileRoutesByFullPath {
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
+  '/polls/$slug': typeof PollsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/surveys/$slug': typeof SurveysSlugRoute
   '/t/$id': typeof TIdRoute
@@ -1508,6 +1534,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
+  '/api/admin/polls': typeof ApiAdminPollsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
@@ -1583,10 +1610,11 @@ export interface FileRoutesByFullPath {
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
+  '/api/admin/polls/$id': typeof ApiAdminPollsIdRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
-  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
+  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRouteWithChildren
   '/api/admin/transfers/cleanup': typeof ApiAdminTransfersCleanupRouteRoute
   '/api/admin/transfers/nuke': typeof ApiAdminTransfersNukeRouteRoute
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
@@ -1655,6 +1683,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/admin/transfers/$id/files/$fileId': typeof ApiAdminTransfersIdFilesFileIdRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
@@ -1695,6 +1724,7 @@ export interface FileRoutesByTo {
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
+  '/polls/$slug': typeof PollsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/surveys/$slug': typeof SurveysSlugRoute
   '/t/$id': typeof TIdRoute
@@ -1731,6 +1761,7 @@ export interface FileRoutesByTo {
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
+  '/api/admin/polls': typeof ApiAdminPollsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
@@ -1806,10 +1837,11 @@ export interface FileRoutesByTo {
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
+  '/api/admin/polls/$id': typeof ApiAdminPollsIdRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
-  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
+  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRouteWithChildren
   '/api/admin/transfers/cleanup': typeof ApiAdminTransfersCleanupRouteRoute
   '/api/admin/transfers/nuke': typeof ApiAdminTransfersNukeRouteRoute
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
@@ -1878,6 +1910,7 @@ export interface FileRoutesByTo {
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/admin/transfers/$id/files/$fileId': typeof ApiAdminTransfersIdFilesFileIdRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
@@ -1919,6 +1952,7 @@ export interface FileRoutesById {
   '/events/$slug': typeof EventsSlugRoute
   '/organize/$token': typeof OrganizeTokenRoute
   '/play/$token': typeof PlayTokenRoute
+  '/polls/$slug': typeof PollsSlugRoute
   '/scan/$token': typeof ScanTokenRoute
   '/surveys/$slug': typeof SurveysSlugRoute
   '/t/$id': typeof TIdRoute
@@ -1955,6 +1989,7 @@ export interface FileRoutesById {
   '/api/admin/game-pools': typeof ApiAdminGamePoolsRouteRouteWithChildren
   '/api/admin/hot-and-cold-review': typeof ApiAdminHotAndColdReviewRouteRoute
   '/api/admin/pitches': typeof ApiAdminPitchesRouteRoute
+  '/api/admin/polls': typeof ApiAdminPollsRouteRouteWithChildren
   '/api/admin/reports': typeof ApiAdminReportsRouteRoute
   '/api/admin/step-up': typeof ApiAdminStepUpRouteRoute
   '/api/admin/surveys': typeof ApiAdminSurveysRouteRouteWithChildren
@@ -2030,10 +2065,11 @@ export interface FileRoutesById {
   '/api/admin/operations/inbox': typeof ApiAdminOperationsInboxRouteRoute
   '/api/admin/operations/people': typeof ApiAdminOperationsPeopleRouteRoute
   '/api/admin/operations/settings': typeof ApiAdminOperationsSettingsRouteRoute
+  '/api/admin/polls/$id': typeof ApiAdminPollsIdRouteRoute
   '/api/admin/surveys/$id': typeof ApiAdminSurveysIdRouteRoute
   '/api/admin/tokens/revoke': typeof ApiAdminTokensRevokeRouteRoute
   '/api/admin/tokens/sessions': typeof ApiAdminTokensSessionsRouteRouteWithChildren
-  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRoute
+  '/api/admin/transfers/$id': typeof ApiAdminTransfersIdRouteRouteWithChildren
   '/api/admin/transfers/cleanup': typeof ApiAdminTransfersCleanupRouteRoute
   '/api/admin/transfers/nuke': typeof ApiAdminTransfersNukeRouteRoute
   '/api/admin/transfers/process-media': typeof ApiAdminTransfersProcessMediaRouteRoute
@@ -2102,6 +2138,7 @@ export interface FileRoutesById {
   '/api/admin/albums/$slug/photos/$photoId': typeof ApiAdminAlbumsSlugPhotosPhotoIdRouteRouteWithChildren
   '/api/admin/albums/$slug/upload/finalize': typeof ApiAdminAlbumsSlugUploadFinalizeRouteRoute
   '/api/admin/albums/$slug/upload/presign': typeof ApiAdminAlbumsSlugUploadPresignRouteRoute
+  '/api/admin/transfers/$id/files/$fileId': typeof ApiAdminTransfersIdFilesFileIdRouteRoute
   '/api/albums/$slug/photos/$photoId/original': typeof ApiAlbumsSlugPhotosPhotoIdOriginalRouteRoute
   '/api/events/$slug/discoveries/$discoveryId/claim': typeof ApiEventsSlugDiscoveriesDiscoveryIdClaimRouteRoute
   '/api/transfers/$id/media/$fileId/$variant': typeof ApiTransfersIdMediaFileIdVariantRouteRoute
@@ -2144,6 +2181,7 @@ export interface FileRouteTypes {
     | '/events/$slug'
     | '/organize/$token'
     | '/play/$token'
+    | '/polls/$slug'
     | '/scan/$token'
     | '/surveys/$slug'
     | '/t/$id'
@@ -2180,6 +2218,7 @@ export interface FileRouteTypes {
     | '/api/admin/game-pools'
     | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
+    | '/api/admin/polls'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/surveys'
@@ -2255,6 +2294,7 @@ export interface FileRouteTypes {
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
+    | '/api/admin/polls/$id'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -2327,6 +2367,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/admin/transfers/$id/files/$fileId'
     | '/api/albums/$slug/photos/$photoId/original'
     | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
@@ -2367,6 +2408,7 @@ export interface FileRouteTypes {
     | '/events/$slug'
     | '/organize/$token'
     | '/play/$token'
+    | '/polls/$slug'
     | '/scan/$token'
     | '/surveys/$slug'
     | '/t/$id'
@@ -2403,6 +2445,7 @@ export interface FileRouteTypes {
     | '/api/admin/game-pools'
     | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
+    | '/api/admin/polls'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/surveys'
@@ -2478,6 +2521,7 @@ export interface FileRouteTypes {
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
+    | '/api/admin/polls/$id'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -2550,6 +2594,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/admin/transfers/$id/files/$fileId'
     | '/api/albums/$slug/photos/$photoId/original'
     | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
@@ -2590,6 +2635,7 @@ export interface FileRouteTypes {
     | '/events/$slug'
     | '/organize/$token'
     | '/play/$token'
+    | '/polls/$slug'
     | '/scan/$token'
     | '/surveys/$slug'
     | '/t/$id'
@@ -2626,6 +2672,7 @@ export interface FileRouteTypes {
     | '/api/admin/game-pools'
     | '/api/admin/hot-and-cold-review'
     | '/api/admin/pitches'
+    | '/api/admin/polls'
     | '/api/admin/reports'
     | '/api/admin/step-up'
     | '/api/admin/surveys'
@@ -2701,6 +2748,7 @@ export interface FileRouteTypes {
     | '/api/admin/operations/inbox'
     | '/api/admin/operations/people'
     | '/api/admin/operations/settings'
+    | '/api/admin/polls/$id'
     | '/api/admin/surveys/$id'
     | '/api/admin/tokens/revoke'
     | '/api/admin/tokens/sessions'
@@ -2773,6 +2821,7 @@ export interface FileRouteTypes {
     | '/api/admin/albums/$slug/photos/$photoId'
     | '/api/admin/albums/$slug/upload/finalize'
     | '/api/admin/albums/$slug/upload/presign'
+    | '/api/admin/transfers/$id/files/$fileId'
     | '/api/albums/$slug/photos/$photoId/original'
     | '/api/events/$slug/discoveries/$discoveryId/claim'
     | '/api/transfers/$id/media/$fileId/$variant'
@@ -2814,6 +2863,7 @@ export interface RootRouteChildren {
   EventsSlugRoute: typeof EventsSlugRoute
   OrganizeTokenRoute: typeof OrganizeTokenRoute
   PlayTokenRoute: typeof PlayTokenRoute
+  PollsSlugRoute: typeof PollsSlugRoute
   ScanTokenRoute: typeof ScanTokenRoute
   SurveysSlugRoute: typeof SurveysSlugRoute
   TIdRoute: typeof TIdRoute
@@ -2836,6 +2886,7 @@ export interface RootRouteChildren {
   ApiAdminGamePoolsRouteRoute: typeof ApiAdminGamePoolsRouteRouteWithChildren
   ApiAdminHotAndColdReviewRouteRoute: typeof ApiAdminHotAndColdReviewRouteRoute
   ApiAdminPitchesRouteRoute: typeof ApiAdminPitchesRouteRoute
+  ApiAdminPollsRouteRoute: typeof ApiAdminPollsRouteRouteWithChildren
   ApiAdminReportsRouteRoute: typeof ApiAdminReportsRouteRoute
   ApiAdminStepUpRouteRoute: typeof ApiAdminStepUpRouteRoute
   ApiAdminSurveysRouteRoute: typeof ApiAdminSurveysRouteRouteWithChildren
@@ -3173,6 +3224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlayTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/polls/$slug': {
+      id: '/polls/$slug'
+      path: '/polls/$slug'
+      fullPath: '/polls/$slug'
+      preLoaderRoute: typeof PollsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/scan/': {
       id: '/scan/'
       path: '/scan'
@@ -3402,6 +3460,13 @@ declare module '@tanstack/react-router' {
       path: '/api/admin/pitches'
       fullPath: '/api/admin/pitches'
       preLoaderRoute: typeof ApiAdminPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/polls': {
+      id: '/api/admin/polls'
+      path: '/api/admin/polls'
+      fullPath: '/api/admin/polls'
+      preLoaderRoute: typeof ApiAdminPollsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/reports': {
@@ -3929,6 +3994,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminOperationsSettingsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/polls/$id': {
+      id: '/api/admin/polls/$id'
+      path: '/$id'
+      fullPath: '/api/admin/polls/$id'
+      preLoaderRoute: typeof ApiAdminPollsIdRouteRouteImport
+      parentRoute: typeof ApiAdminPollsRouteRoute
+    }
     '/api/admin/surveys/$id': {
       id: '/api/admin/surveys/$id'
       path: '/$id'
@@ -4433,6 +4505,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminAlbumsSlugUploadPresignRouteRouteImport
       parentRoute: typeof ApiAdminAlbumsSlugRouteRoute
     }
+    '/api/admin/transfers/$id/files/$fileId': {
+      id: '/api/admin/transfers/$id/files/$fileId'
+      path: '/files/$fileId'
+      fullPath: '/api/admin/transfers/$id/files/$fileId'
+      preLoaderRoute: typeof ApiAdminTransfersIdFilesFileIdRouteRouteImport
+      parentRoute: typeof ApiAdminTransfersIdRouteRoute
+    }
     '/api/albums/$slug/photos/$photoId/original': {
       id: '/api/albums/$slug/photos/$photoId/original'
       path: '/api/albums/$slug/photos/$photoId/original'
@@ -4766,6 +4845,17 @@ const ApiAdminGamePoolsRouteRouteWithChildren =
     ApiAdminGamePoolsRouteRouteChildren,
   )
 
+interface ApiAdminPollsRouteRouteChildren {
+  ApiAdminPollsIdRouteRoute: typeof ApiAdminPollsIdRouteRoute
+}
+
+const ApiAdminPollsRouteRouteChildren: ApiAdminPollsRouteRouteChildren = {
+  ApiAdminPollsIdRouteRoute: ApiAdminPollsIdRouteRoute,
+}
+
+const ApiAdminPollsRouteRouteWithChildren =
+  ApiAdminPollsRouteRoute._addFileChildren(ApiAdminPollsRouteRouteChildren)
+
 interface ApiAdminSurveysRouteRouteChildren {
   ApiAdminSurveysIdRouteRoute: typeof ApiAdminSurveysIdRouteRoute
 }
@@ -4777,8 +4867,23 @@ const ApiAdminSurveysRouteRouteChildren: ApiAdminSurveysRouteRouteChildren = {
 const ApiAdminSurveysRouteRouteWithChildren =
   ApiAdminSurveysRouteRoute._addFileChildren(ApiAdminSurveysRouteRouteChildren)
 
+interface ApiAdminTransfersIdRouteRouteChildren {
+  ApiAdminTransfersIdFilesFileIdRouteRoute: typeof ApiAdminTransfersIdFilesFileIdRouteRoute
+}
+
+const ApiAdminTransfersIdRouteRouteChildren: ApiAdminTransfersIdRouteRouteChildren =
+  {
+    ApiAdminTransfersIdFilesFileIdRouteRoute:
+      ApiAdminTransfersIdFilesFileIdRouteRoute,
+  }
+
+const ApiAdminTransfersIdRouteRouteWithChildren =
+  ApiAdminTransfersIdRouteRoute._addFileChildren(
+    ApiAdminTransfersIdRouteRouteChildren,
+  )
+
 interface ApiAdminTransfersRouteRouteChildren {
-  ApiAdminTransfersIdRouteRoute: typeof ApiAdminTransfersIdRouteRoute
+  ApiAdminTransfersIdRouteRoute: typeof ApiAdminTransfersIdRouteRouteWithChildren
   ApiAdminTransfersCleanupRouteRoute: typeof ApiAdminTransfersCleanupRouteRoute
   ApiAdminTransfersNukeRouteRoute: typeof ApiAdminTransfersNukeRouteRoute
   ApiAdminTransfersProcessMediaRouteRoute: typeof ApiAdminTransfersProcessMediaRouteRoute
@@ -4786,7 +4891,7 @@ interface ApiAdminTransfersRouteRouteChildren {
 
 const ApiAdminTransfersRouteRouteChildren: ApiAdminTransfersRouteRouteChildren =
   {
-    ApiAdminTransfersIdRouteRoute: ApiAdminTransfersIdRouteRoute,
+    ApiAdminTransfersIdRouteRoute: ApiAdminTransfersIdRouteRouteWithChildren,
     ApiAdminTransfersCleanupRouteRoute: ApiAdminTransfersCleanupRouteRoute,
     ApiAdminTransfersNukeRouteRoute: ApiAdminTransfersNukeRouteRoute,
     ApiAdminTransfersProcessMediaRouteRoute:
@@ -4925,6 +5030,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsSlugRoute: EventsSlugRoute,
   OrganizeTokenRoute: OrganizeTokenRoute,
   PlayTokenRoute: PlayTokenRoute,
+  PollsSlugRoute: PollsSlugRoute,
   ScanTokenRoute: ScanTokenRoute,
   SurveysSlugRoute: SurveysSlugRoute,
   TIdRoute: TIdRoute,
@@ -4948,6 +5054,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminGamePoolsRouteRoute: ApiAdminGamePoolsRouteRouteWithChildren,
   ApiAdminHotAndColdReviewRouteRoute: ApiAdminHotAndColdReviewRouteRoute,
   ApiAdminPitchesRouteRoute: ApiAdminPitchesRouteRoute,
+  ApiAdminPollsRouteRoute: ApiAdminPollsRouteRouteWithChildren,
   ApiAdminReportsRouteRoute: ApiAdminReportsRouteRoute,
   ApiAdminStepUpRouteRoute: ApiAdminStepUpRouteRoute,
   ApiAdminSurveysRouteRoute: ApiAdminSurveysRouteRouteWithChildren,

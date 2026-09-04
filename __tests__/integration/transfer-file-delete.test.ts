@@ -11,6 +11,11 @@ function makeRequest(body: unknown) {
 describe("transfer file delete route", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuth: vi
+        .fn()
+        .mockResolvedValue(Response.json({ error: "Unauthorized" }, { status: 401 })),
+    }));
   });
 
   it("deletes one file and persists the updated transfer", async () => {
@@ -167,6 +172,65 @@ describe("transfer file delete route", () => {
       success: true,
       deletedTransfer: true,
       dataDeleted: true,
+      deletedFileId: "photo",
+    });
+  });
+
+  it("lets an authenticated admin remove a file from either management surface", async () => {
+    const requireAuth = vi.fn().mockResolvedValue(null);
+    vi.doMock("@/features/auth/auth.server", () => ({ requireAuth }));
+    vi.doMock("@/features/transfers/store.server", () => ({
+      getTransfer: vi.fn().mockResolvedValue({
+        id: "transfer-1",
+        title: "party",
+        createdAt: "2026-03-08T10:00:00.000Z",
+        expiresAt: "2999-03-09T10:00:00.000Z",
+        deleteToken: "token",
+        files: [
+          {
+            id: "photo",
+            filename: "photo.jpg",
+            kind: "image",
+            size: 10,
+            mimeType: "image/jpeg",
+            storageKey: "transfers/transfer-1/original/photo.jpg",
+          },
+        ],
+      }),
+      validateDeleteToken: vi.fn().mockResolvedValue(false),
+      removeTransferFileAtomic: vi.fn().mockResolvedValue({ status: "deleted" }),
+    }));
+    vi.doMock("@/features/transfers/media-state", () => ({
+      classifyTransferProcessingRoute: vi.fn().mockReturnValue("local_image"),
+      getExpectedTransferAssetKeys: vi.fn().mockReturnValue({}),
+    }));
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      deleteObjects: vi.fn().mockResolvedValue(1),
+      isTransferStorageConfigured: () => true,
+    }));
+
+    const { DELETE: deleteFromAdmin } =
+      await import("@/src/routes/api/admin/transfers/$id/files/$fileId/route");
+    const adminResponse = await deleteFromAdmin(makeRequest({}), "transfer-1", "photo");
+    expect(adminResponse.status).toBe(200);
+    await expect(adminResponse.json()).resolves.toMatchObject({
+      success: true,
+      deletedTransfer: true,
+      deletedFileId: "photo",
+    });
+
+    const { DELETE: deleteFromTransfer } =
+      await import("@/src/routes/api/transfers/$id/files/$fileId/route");
+    const response = await deleteFromTransfer(makeRequest({}), {
+      params: Promise.resolve({ id: "transfer-1", fileId: "photo" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(requireAuth).toHaveBeenCalledTimes(2);
+    expect(requireAuth).toHaveBeenCalledWith(expect.any(Request), "admin");
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      deletedTransfer: true,
       deletedFileId: "photo",
     });
   });

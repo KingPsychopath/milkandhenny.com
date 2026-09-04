@@ -6,15 +6,6 @@ function readNumberEnv(name: string, fallback: number): number {
 }
 
 /**
- * Above this, skip poster extraction rather than pulling the original through
- * a worker's disk and CPU. The video still uploads, plays, and downloads — it
- * just shows a play card instead of a poster frame.
- */
-function getVideoPosterMaxBytes(): number {
-  return Math.max(0, readNumberEnv("MEDIA_VIDEO_POSTER_MAX_BYTES", 2 * 1024 * 1024 * 1024));
-}
-
-/**
  * Ceiling for work the request path still does itself.
  *
  * Nothing catches a file that blows it — heavy routes are queued before they
@@ -30,4 +21,4 @@ function getWorkerProcessingTimeoutMs(): number {
   return Math.max(0, readNumberEnv("MEDIA_WORKER_JOB_TIMEOUT_MS", 10 * 60_000));
 }
 
-export { getInlineProcessingTimeoutMs, getVideoPosterMaxBytes, getWorkerProcessingTimeoutMs };
+export { getInlineProcessingTimeoutMs, getWorkerProcessingTimeoutMs };

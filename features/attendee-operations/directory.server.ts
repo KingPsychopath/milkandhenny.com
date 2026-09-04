@@ -1,6 +1,8 @@
 import { query } from "@/lib/platform/postgres.server";
 import { attendeeSessionSummaries } from "@/features/attendee-access/session.server";
 import { actionEmailHash, maskActionEmail } from "./action-links.server";
+import { accountPermissionsForPeople } from "@/features/attendee-access/account-permissions.server";
+import type { AccountPermission } from "@/features/attendee-access/account-permissions";
 
 export type PurchaserContactDirectoryEntry = {
   contactId: string;
@@ -66,6 +68,7 @@ export type PersonDirectoryEntry = {
     communication: { total: number; failed: number };
   }>;
   globalRoles: Array<{ role: string; status: string; expiresAt?: string }>;
+  accountPermissions: AccountPermission[];
   eventRoles: Array<{ eventSlug: string; label: string; status: string; expiresAt?: string }>;
   pendingInvitations: number;
   staffDevices: number;
@@ -113,7 +116,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
   );
   if (!people.length) return [];
   const ids = people.map((person) => person.id);
-  const [emails, tickets, globalRoles, eventRoles, invitations, devices, sessions] =
+  const [emails, tickets, globalRoles, eventRoles, invitations, devices, sessions, permissions] =
     await Promise.all([
       query<{
         id: string;
@@ -197,6 +200,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         [ids],
       ),
       attendeeSessionSummaries(ids),
+      accountPermissionsForPeople(ids),
     ]);
   const ticketIds = tickets.map((ticket) => ticket.id);
   const participantIds = tickets.map((ticket) => ticket.participant_id);
@@ -335,6 +339,7 @@ export async function searchPeople(queryText: string, limit = 30): Promise<Perso
         status: grant.status,
         expiresAt: grant.expires_at?.toISOString(),
       })),
+    accountPermissions: permissions.get(person.id) ?? [],
     eventRoles: eventRoles
       .filter((grant) => grant.person_id === person.id)
       .map((grant) => ({

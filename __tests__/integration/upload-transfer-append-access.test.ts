@@ -8,11 +8,12 @@ function request(path: string, body: unknown) {
   });
 }
 
-function mockStore(validOwner: boolean) {
+function mockStore(validOwner: boolean, ownerPersonId?: string) {
   vi.doMock("@/features/transfers/store.server", () => ({
     MAX_TRANSFER_FILE_BYTES: 250,
     MAX_TRANSFER_TOTAL_BYTES: 1_000,
     validateDeleteToken: vi.fn().mockResolvedValue(validOwner),
+    getTransfer: vi.fn().mockResolvedValue(ownerPersonId ? { ownerPersonId } : null),
   }));
 }
 
@@ -24,6 +25,37 @@ describe("transfer append owner access", () => {
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
         payload: { role: "upload", jti: "upload-session" },
+      }),
+    }));
+    mockStore(true);
+    const appendPresign = vi
+      .fn()
+      .mockResolvedValue(Response.json({ urls: [], remainingTtlSeconds: 300 }));
+    vi.doMock("@/features/transfers/append.server", () => ({ appendPresign }));
+
+    const { POST } = await import("@/src/routes/api/upload/transfer/append/presign/route");
+    const response = await POST(
+      request("/api/upload/transfer/append/presign", {
+        transferId: "transfer-1",
+        deleteToken: "owner-secret",
+        files: [{ name: "more.zip", size: 10 }],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(appendPresign).toHaveBeenCalledWith(
+      expect.any(Request),
+      "transfer-1",
+      [{ name: "more.zip", size: 10 }],
+      { maxFileBytes: 250, maxTotalBytes: 1_000 },
+    );
+  });
+
+  it("lets a private owner add files without a separate upload session", async () => {
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({
+        error: Response.json({ error: "Unauthorized" }, { status: 401 }),
+        payload: null,
       }),
     }));
     mockStore(true);
@@ -100,5 +132,38 @@ describe("transfer append owner access", () => {
       [{ name: "more.zip", size: 10 }],
       {},
     );
+  });
+
+  it("lets a permitted account append only to its own transfer", async () => {
+    vi.doMock("@/features/auth/auth.server", () => ({
+      requireAuthWithPayload: vi.fn().mockResolvedValue({
+        error: Response.json({ error: "Unauthorized" }, { status: 401 }),
+        payload: null,
+      }),
+    }));
+    vi.doMock("@/features/attendee-access/session.server", () => ({
+      getAttendeeSession: vi.fn(),
+      getAttendeeSessionForRequest: vi.fn().mockResolvedValue({
+        id: "account-session",
+        personId: "person-1",
+      }),
+    }));
+    vi.doMock("@/features/attendee-access/account-permissions.server", () => ({
+      personHasAccountPermission: vi.fn().mockResolvedValue(true),
+    }));
+    mockStore(false, "person-1");
+    const appendFinalize = vi.fn().mockResolvedValue(Response.json({ addedCount: 1 }));
+    vi.doMock("@/features/transfers/append.server", () => ({ appendFinalize }));
+
+    const { POST } = await import("@/src/routes/api/upload/transfer/append/finalize/route");
+    const response = await POST(
+      request("/api/upload/transfer/append/finalize", {
+        transferId: "transfer-1",
+        files: [{ name: "more.zip", size: 10 }],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(appendFinalize).toHaveBeenCalledOnce();
   });
 });

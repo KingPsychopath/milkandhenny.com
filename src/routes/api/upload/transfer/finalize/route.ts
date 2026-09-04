@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 import { formatBytes } from "@/lib/shared/format";
-import { requireAuthWithPayload } from "@/features/auth/auth.server";
+import { requireTransferUploadAccess } from "@/features/transfers/upload-access.server";
 import {
   MAX_EXPIRY_SECONDS,
   MAX_TRANSFER_FILES,
@@ -60,9 +60,9 @@ function completedResponse(
  * Returns: { shareUrl, adminUrl, transfer, totalSize, fileCounts }
  */
 async function handlePOST(request: Request) {
-  const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
+  const { error: authErr, access } = await requireTransferUploadAccess(request);
   if (authErr) return authErr;
-  const isAdmin = payload?.role === "admin";
+  const isAdmin = access.isAdmin;
 
   let body: {
     transferId?: string;
@@ -177,13 +177,6 @@ async function handlePOST(request: Request) {
     return Response.json({ error: "Invalid expiresSeconds" }, { status: 400 });
   }
 
-  if (!payload?.jti) {
-    return Response.json(
-      { error: "Authenticated upload session is missing an ID" },
-      { status: 401 },
-    );
-  }
-
   try {
     const result = await runMediaEffect(
       Effect.gen(function* () {
@@ -191,11 +184,12 @@ async function handlePOST(request: Request) {
         return yield* transfers.finalizeUpload({
           transferId,
           deleteToken,
-          actorJti: payload.jti,
+          actorJti: access.actorJti,
           title,
           expiresSeconds,
           files,
           maxTotalBytes: isAdmin ? undefined : MAX_TRANSFER_TOTAL_BYTES,
+          ownerPersonId: access.ownerPersonId,
         });
       }),
       request.signal,

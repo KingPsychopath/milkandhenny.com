@@ -78,6 +78,7 @@ type Person = {
     communication: { total: number; failed: number };
   }>;
   globalRoles: Array<{ role: string; status: string }>;
+  accountPermissions: Array<"create_transfers">;
   eventRoles: Array<{ eventSlug: string; label: string; status: string }>;
   pendingInvitations: number;
   staffDevices: number;
@@ -378,36 +379,52 @@ export function AttendeeOperationsPanel({
 
   async function manageIdentity(
     person: Person,
-    action: "sign-out" | "restrict" | "restore" | "remove-email",
+    action:
+      | "sign-out"
+      | "restrict"
+      | "restore"
+      | "remove-email"
+      | "grant-transfer-creator"
+      | "revoke-transfer-creator",
     identifierId?: string,
   ) {
     const label =
       action === "sign-out"
         ? "sign this person out on every device"
-        : action === "remove-email"
-          ? "remove this email as a sign-in identity and sign this person out everywhere"
-          : action === "restrict"
-            ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
-            : "allow this person to acquire new tickets and permissions again";
+        : action === "grant-transfer-creator"
+          ? "allow this account to create file transfers"
+          : action === "revoke-transfer-creator"
+            ? "remove file-transfer creation access from this account"
+            : action === "remove-email"
+              ? "remove this email as a sign-in identity and sign this person out everywhere"
+              : action === "restrict"
+                ? "prevent this person from buying new tickets or receiving new staff/admin permissions"
+                : "allow this person to acquire new tickets and permissions again";
     const reason = (
       await prompt({
         eyebrow: "identity access",
         title: `${label.charAt(0).toUpperCase()}${label.slice(1)}?`,
         description:
-          action === "restore"
-            ? "The person will be able to acquire new tickets and permissions again."
-            : "This takes effect immediately and is recorded in the audit timeline.",
+          action === "grant-transfer-creator"
+            ? "They can use their normal account sign-in to create transfers and manage transfers they own."
+            : action === "restore"
+              ? "The person will be able to acquire new tickets and permissions again."
+              : "This takes effect immediately and is recorded in the audit timeline.",
         label: "reason for the audit log",
         required: true,
         confirmLabel:
           action === "restore"
             ? "restore access"
-            : action === "sign-out"
-              ? "sign out everywhere"
-              : action === "remove-email"
-                ? "remove sign-in"
-                : "restrict access",
-        intent: action === "restore" ? "default" : "danger",
+            : action === "grant-transfer-creator"
+              ? "grant transfer access"
+              : action === "revoke-transfer-creator"
+                ? "revoke transfer access"
+                : action === "sign-out"
+                  ? "sign out everywhere"
+                  : action === "remove-email"
+                    ? "remove sign-in"
+                    : "restrict access",
+        intent: action === "restore" || action === "grant-transfer-creator" ? "default" : "danger",
         validate: (value) =>
           value.trim().length < 3 ? "Enter a reason of at least 3 characters." : null,
       })
@@ -432,11 +449,15 @@ export function AttendeeOperationsPanel({
       onStatus(
         action === "restore"
           ? "New ticket and permission acquisition restored."
-          : action === "remove-email"
-            ? `Email removed and ${revoked} active session${revoked === 1 ? "" : "s"} revoked.`
-            : action === "restrict"
-              ? `New acquisition restricted; ${body.revokedPendingPermissions ?? 0} pending permission invitation${body.revokedPendingPermissions === 1 ? "" : "s"} revoked.`
-              : `${revoked} session${revoked === 1 ? "" : "s"} revoked.`,
+          : action === "grant-transfer-creator"
+            ? "This account can now create and manage its own file transfers."
+            : action === "revoke-transfer-creator"
+              ? "File-transfer creation access revoked. Existing owned transfers remain manageable."
+              : action === "remove-email"
+                ? `Email removed and ${revoked} active session${revoked === 1 ? "" : "s"} revoked.`
+                : action === "restrict"
+                  ? `New acquisition restricted; ${body.revokedPendingPermissions ?? 0} pending permission invitation${body.revokedPendingPermissions === 1 ? "" : "s"} revoked.`
+                  : `${revoked} session${revoked === 1 ? "" : "s"} revoked.`,
       );
       await loadPeople(person.personId);
     } catch (error) {
@@ -1056,7 +1077,13 @@ function PersonDrawer({
   busy: boolean;
   onManage: (
     person: Person,
-    action: "sign-out" | "restrict" | "restore" | "remove-email",
+    action:
+      | "sign-out"
+      | "restrict"
+      | "restore"
+      | "remove-email"
+      | "grant-transfer-creator"
+      | "revoke-transfer-creator",
     identifierId?: string,
   ) => Promise<void>;
   onClose: () => void;
@@ -1067,6 +1094,7 @@ function PersonDrawer({
   const verifiedIdentityCount = person.identities.filter(
     (identity) => identity.status === "verified",
   ).length;
+  const canCreateTransfers = person.accountPermissions.includes("create_transfers");
   return (
     <aside className="border-y theme-border py-5" aria-label="Attendee detail">
       <div className="flex items-center justify-between gap-4">
@@ -1130,6 +1158,33 @@ function PersonDrawer({
               ...person.globalRoles.map((role) => role.role),
               ...person.eventRoles.map((role) => `${role.label} · ${role.eventSlug}`),
             ].join(", ") || "attendee only"}
+          </dd>
+        </div>
+        <div>
+          <dt className="theme-muted">file transfers</dt>
+          <dd className="mt-1 flex flex-wrap items-center gap-3">
+            <AdminStatus tone={canCreateTransfers ? "positive" : "neutral"}>
+              {canCreateTransfers ? "can create transfers" : "no account access"}
+            </AdminStatus>
+            <button
+              type="button"
+              disabled={
+                busy || (!canCreateTransfers && person.access.acquisitionStatus !== "active")
+              }
+              onClick={() =>
+                void onManage(
+                  person,
+                  canCreateTransfers ? "revoke-transfer-creator" : "grant-transfer-creator",
+                )
+              }
+              className={
+                canCreateTransfers
+                  ? "mh-action mh-action--danger disabled:opacity-40"
+                  : "mh-action mh-action--secondary disabled:opacity-40"
+              }
+            >
+              {canCreateTransfers ? "revoke access" : "grant access"}
+            </button>
           </dd>
         </div>
         <div>

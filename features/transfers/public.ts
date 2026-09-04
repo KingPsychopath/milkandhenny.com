@@ -4,7 +4,7 @@ type PublicTransferFile = Omit<
   TransferFile,
   "storageKey" | "originalStorageKey" | "processingErrorDetail" | "storedBytes"
 >;
-type PublicTransfer = Omit<TransferData, "deleteToken" | "files"> & {
+type PublicTransfer = Omit<TransferData, "deleteToken" | "ownerPersonId" | "files"> & {
   files: PublicTransferFile[];
 };
 
@@ -20,7 +20,12 @@ function toPublicTransferFile(file: TransferFile): PublicTransferFile {
 }
 
 function toPublicTransfer(transfer: TransferData): PublicTransfer {
-  const { deleteToken: _deleteToken, files, ...publicTransfer } = transfer;
+  const {
+    deleteToken: _deleteToken,
+    ownerPersonId: _ownerPersonId,
+    files,
+    ...publicTransfer
+  } = transfer;
   return {
     ...publicTransfer,
     files: files.map(toPublicTransferFile),

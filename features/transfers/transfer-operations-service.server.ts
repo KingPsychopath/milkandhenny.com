@@ -156,6 +156,11 @@ export type TransferFileRemovalResult =
   | { status: "deleted"; deletedObjects: number }
   | { status: "updated"; deletedObjects: number; transfer: TransferData };
 
+export type AuthorisedTransferFileRemovalResult = Exclude<
+  TransferFileRemovalResult,
+  { status: "unauthorised" }
+>;
+
 /** Private-transfer side effects; validation and transfer policy remain ordinary TypeScript. */
 export class TransferOperationsService extends Context.Service<
   TransferOperationsService,
@@ -163,6 +168,10 @@ export class TransferOperationsService extends Context.Service<
     readonly adminDelete: (
       id: string,
     ) => Effect.Effect<{ deletedFiles: number; dataDeleted: boolean }, unknown>;
+    readonly adminRemoveFile: (input: {
+      id: string;
+      fileId: string;
+    }) => Effect.Effect<AuthorisedTransferFileRemovalResult, unknown>;
     readonly cleanup: (mode: "deep" | "index") => Effect.Effect<TransferCleanupResult, unknown>;
     readonly abandonUpload: (input: {
       transferId: string;
@@ -183,6 +192,7 @@ export class TransferOperationsService extends Context.Service<
       expiresSeconds: number;
       files: TransferUploadFileInput[];
       maxTotalBytes?: number;
+      ownerPersonId?: string;
     }) => Effect.Effect<TransferFinalizeResult, unknown>;
     readonly presignUpload: (input: {
       transferId: string;
@@ -365,11 +375,6 @@ export class TransferOperationsService extends Context.Service<
           (file) => {
             const primaryKey = buildTransferPrimaryStorageKey(transferId, file);
             const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
-            return Effect.all(
-              {
-                primary,
-                archivedOriginalUrl:
-                  archivedOriginalKey && file.originalName
             const multipart = file.size > MULTIPART_UPLOAD_THRESHOLD_BYTES;
             const primary = multipart
               ? Effect.gen(function* () {
@@ -412,6 +417,11 @@ export class TransferOperationsService extends Context.Service<
                     scope: "private",
                   })
                   .pipe(Effect.map((primaryUrl) => ({ primaryUrl })));
+            return Effect.all(
+              {
+                primary,
+                archivedOriginalUrl:
+                  archivedOriginalKey && file.originalName
                     ? storage.presignPutUrl(
                         archivedOriginalKey,
                         getMimeType(file.originalName),
@@ -434,16 +444,6 @@ export class TransferOperationsService extends Context.Service<
           { concurrency: 4 },
         );
 
-      const inspectUploadedFiles = (transferId: string, files: TransferUploadFileInput[]) =>
-        Effect.forEach(
-          files,
-          (file) =>
-            Effect.gen(function* () {
-              const primary = yield* storage.headObject(
-                buildTransferPrimaryStorageKey(transferId, file),
-                { scope: "private" },
-              );
-              if (!primary.exists || primary.size !== file.size) {
       const completeMultipartFiles = (transferId: string, files: TransferUploadFileInput[]) =>
         Effect.forEach(
           files.filter((file) => file.multipart),
@@ -470,6 +470,16 @@ export class TransferOperationsService extends Context.Service<
           { concurrency: 2 },
         );
 
+      const inspectUploadedFiles = (transferId: string, files: TransferUploadFileInput[]) =>
+        Effect.forEach(
+          files,
+          (file) =>
+            Effect.gen(function* () {
+              const primary = yield* storage.headObject(
+                buildTransferPrimaryStorageKey(transferId, file),
+                { scope: "private" },
+              );
+              if (!primary.exists || primary.size !== file.size) {
                 return {
                   mismatch: { filename: file.name, archivedOriginal: false },
                   bytes: 0,
@@ -554,6 +564,7 @@ export class TransferOperationsService extends Context.Service<
         expiresSeconds: number;
         files: TransferUploadFileInput[];
         maxTotalBytes?: number;
+        ownerPersonId?: string;
       }) =>
         Effect.gen(function* () {
           const reservation = yield* attempt("read_reservation", () =>
@@ -576,6 +587,7 @@ export class TransferOperationsService extends Context.Service<
             return { status: "reservation-mismatch" } as const;
           }
 
+          yield* completeMultipartFiles(input.transferId, input.files);
           const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
           const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
           if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
@@ -587,7 +599,6 @@ export class TransferOperationsService extends Context.Service<
           const results = yield* processFiles(input.transferId, input.files);
           const grouped = applyTransferAssetGroups(
             sortTransferFiles(results.map(({ file }) => file)),
-          yield* completeMultipartFiles(input.transferId, input.files);
           );
           const now = new Date();
           const transfer: TransferData = {
@@ -598,6 +609,7 @@ export class TransferOperationsService extends Context.Service<
             createdAt: now.toISOString(),
             expiresAt: new Date(now.getTime() + input.expiresSeconds * 1000).toISOString(),
             deleteToken: input.deleteToken,
+            ownerPersonId: input.ownerPersonId,
           };
           const created = yield* attempt("create_transfer", () =>
             createTransfer(transfer, input.expiresSeconds),
@@ -646,6 +658,7 @@ export class TransferOperationsService extends Context.Service<
             return { status: "reservation-mismatch" } as const;
           }
 
+          yield* completeMultipartFiles(input.transferId, input.files);
           const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
           const missingFiles = input.files.filter((_, index) => inspected[index]?.mismatch);
           const urls = yield* presignFiles(
@@ -658,7 +671,6 @@ export class TransferOperationsService extends Context.Service<
             urls,
             uploadedNames: input.files
               .filter((_, index) => !inspected[index]?.mismatch)
-          yield* completeMultipartFiles(input.transferId, input.files);
               .map((file) => file.name),
           } as const;
         }).pipe(
@@ -712,6 +724,7 @@ export class TransferOperationsService extends Context.Service<
         maxTotalBytes?: number;
       }) =>
         Effect.gen(function* () {
+          yield* completeMultipartFiles(input.transferId, input.files);
           const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
           const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
           if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
@@ -724,7 +737,6 @@ export class TransferOperationsService extends Context.Service<
               { maxFiles: input.maxFiles, maxTotalBytes: input.maxTotalBytes },
             ),
           );
-          yield* completeMultipartFiles(input.transferId, input.files);
           if (appended.status !== "updated") return { status: appended.status } as const;
 
           let latest = appended.transfer;
@@ -759,24 +771,20 @@ export class TransferOperationsService extends Context.Service<
           }),
         );
 
-      const removeFile = (input: { id: string; fileId: string; token: string }) =>
+      const removeAuthorisedFile = (id: string, fileId: string) =>
         Effect.gen(function* () {
-          const authorised = yield* attempt("authorise_file_removal", () =>
-            validateDeleteToken(input.id, input.token),
-          );
-          if (!authorised) return { status: "unauthorised" } as const;
-          const transfer = yield* attempt("read_file_removal", () => getTransfer(input.id));
+          const transfer = yield* attempt("read_file_removal", () => getTransfer(id));
           if (!transfer) return { status: "missing" } as const;
-          const file = transfer.files.find(({ id }) => id === input.fileId);
+          const file = transfer.files.find((candidate) => candidate.id === fileId);
           if (!file) return { status: "file-missing" } as const;
 
           const keys = storage.port.isTransferStorageConfigured()
-            ? getTransferFileDeleteKeys(input.id, file)
+            ? getTransferFileDeleteKeys(id, file)
             : [];
           let deletedObjects =
             keys.length > 0 ? yield* storage.deleteObjects(keys, { scope: "private" }) : 0;
           const removal = yield* attempt("remove_file_metadata", () =>
-            removeTransferFileAtomic(input.id, input.fileId),
+            removeTransferFileAtomic(id, fileId),
           );
           if (removal.status === "deleted") {
             return { status: "deleted", deletedObjects } as const;
@@ -789,6 +797,15 @@ export class TransferOperationsService extends Context.Service<
           }
           if (removal.status === "missing") return { status: "missing" } as const;
           return { status: "file-missing" } as const;
+        });
+
+      const removeFile = (input: { id: string; fileId: string; token: string }) =>
+        Effect.gen(function* () {
+          const authorised = yield* attempt("authorise_file_removal", () =>
+            validateDeleteToken(input.id, input.token),
+          );
+          if (!authorised) return { status: "unauthorised" } as const;
+          return yield* removeAuthorisedFile(input.id, input.fileId);
         }).pipe(Effect.withSpan("transfers.remove_file"));
 
       const nuke = Effect.gen(function* () {
@@ -818,6 +835,8 @@ export class TransferOperationsService extends Context.Service<
       }).pipe(Effect.withSpan("transfers.nuke"));
 
       return {
+        adminRemoveFile: ({ id, fileId }) =>
+          removeAuthorisedFile(id, fileId).pipe(Effect.withSpan("transfers.admin_remove_file")),
         abandonUpload,
         adminDelete: (id) =>
           Effect.gen(function* () {

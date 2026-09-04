@@ -504,6 +504,21 @@ async function listTransfers(): Promise<TransferSummary[]> {
   );
 }
 
+async function listTransfersForOwner(personId: string): Promise<TransferSummary[]> {
+  const now = Date.now();
+  return (await listTransferData())
+    .filter((transfer) => transfer.ownerPersonId === personId)
+    .map((transfer) => ({
+      id: transfer.id,
+      title: transfer.title,
+      fileCount: transfer.files.length,
+      createdAt: transfer.createdAt,
+      expiresAt: transfer.expiresAt,
+      remainingSeconds: Math.floor((new Date(transfer.expiresAt).getTime() - now) / 1000),
+    }))
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+}
+
 /** Delete a transfer from Redis. Returns true if it existed. */
 async function deleteTransferData(id: string): Promise<boolean> {
   const redis = requireTransferRedis();
@@ -539,6 +554,7 @@ export {
   createTransfer,
   getTransfer,
   listTransfers,
+  listTransfersForOwner,
   listTransferData,
   deleteTransferData,
   removeTransferFile,

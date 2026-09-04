@@ -24,6 +24,8 @@ import { connectPitchDecksToVerifiedPerson } from "@/features/things/pitches/ide
 import { listPitchDecksForPerson } from "@/features/things/pitches/store.server";
 import { achievementCabinetForPerson } from "@/features/achievements/achievements.server";
 import { listAccountCredits } from "@/features/credits/credits.server";
+import { listTransfersForOwner } from "@/features/transfers/store.server";
+import { personHasAccountPermission } from "./account-permissions.server";
 import { safeReturnTo, type AttendeeAccount, type AttendeeTicketIdentity } from "./types";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1_000;
@@ -686,6 +688,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     gameStats,
     achievements,
     credits,
+    canCreateTransfers,
   ] = await Promise.all([
     query<{ id: string; display_hint: string; verified_at: Date }>(
       `select id,coalesce(display_hint, 'verified email') as display_hint, verified_at
@@ -757,7 +760,31 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
     personGameStats(personId),
     achievementCabinetForPerson(personId),
     listAccountCredits(personId),
+    personHasAccountPermission(personId, "create_transfers"),
   ]);
+  let fileTransfers: AttendeeAccount["fileTransfers"] = {
+    canCreate: canCreateTransfers,
+    available: true,
+    items: [],
+  };
+  if (canCreateTransfers) {
+    try {
+      fileTransfers = {
+        ...fileTransfers,
+        items: (await listTransfersForOwner(personId)).map(
+          ({ id, title, fileCount, createdAt, expiresAt }) => ({
+            id,
+            title,
+            fileCount,
+            createdAt,
+            expiresAt,
+          }),
+        ),
+      };
+    } catch {
+      fileTransfers = { ...fileTransfers, available: false };
+    }
+  }
   return {
     name: person.canonical_name,
     pitches,
@@ -785,6 +812,7 @@ export async function attendeeAccount(personId: string): Promise<AttendeeAccount
       managesOrder: row.manages_order,
     })),
     ticketOperations,
+    fileTransfers,
     access: [
       ...globalAccess.map((grant) => ({
         kind: "global" as const,

@@ -80,6 +80,8 @@ const EXPIRY_OPTIONS = [
 type UploadDashboardProps = {
   isAdmin: boolean;
   accessExpiresAt: string | null;
+  initialAppendTransferId?: string;
+  initialAppendOwnerToken?: string;
 };
 
 const DIRECT_UPLOAD_CONCURRENCY = 4;
@@ -239,7 +241,12 @@ function getOwnerToken(result: TransferResult): string | null {
   }
 }
 
-export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardProps) {
+export function UploadDashboard({
+  isAdmin,
+  accessExpiresAt,
+  initialAppendTransferId,
+  initialAppendOwnerToken,
+}: UploadDashboardProps) {
   /* Upload state */
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -252,11 +259,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
   const [recoveryCheckNonce, setRecoveryCheckNonce] = useState(0);
 
   /* Transfer fields */
-  const [transferAction, setTransferAction] = useState<TransferAction>("create");
+  const [transferAction, setTransferAction] = useState<TransferAction>(
+    initialAppendTransferId ? "append" : "create",
+  );
   const [title, setTitle] = useState("");
   const [expiry, setExpiry] = useState("7d");
-  const [appendTransferId, setAppendTransferId] = useState("");
-  const [appendOwnerToken, setAppendOwnerToken] = useState("");
+  const [appendTransferId, setAppendTransferId] = useState(initialAppendTransferId ?? "");
+  const [appendOwnerToken, setAppendOwnerToken] = useState(initialAppendOwnerToken ?? "");
   const [transferResult, setTransferResult] = useState<TransferResult | null>(null);
 
   /* Upload progress (presigned flow) */
@@ -307,8 +316,15 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       setExpiry(saved.expiry);
       return;
     }
+    if (initialAppendTransferId) {
+      setTransferAction("append");
+      setAppendTransferId(initialAppendTransferId);
+      setAppendOwnerToken(initialAppendOwnerToken ?? "");
+      setTransferResult(null);
+      return;
+    }
     setTransferResult(readLastTransferResult());
-  }, []);
+  }, [initialAppendOwnerToken, initialAppendTransferId]);
 
   useEffect(() => {
     if (!uploading) return;
@@ -626,6 +642,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
             const completion = await uploadPresignedTarget(
               {
                 url: entry.url,
+                multipart: entry.multipart,
                 body: entry.file,
                 contentType: entry.contentType,
                 signal,
@@ -642,7 +659,6 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                     uploadedBytes,
                     totalBytes,
                     attempt,
-                multipart: entry.multipart,
                     totalAttempts,
                   });
                 },
@@ -661,6 +677,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                     totalAttempts,
                   });
                 },
+                concurrency: DIRECT_UPLOAD_CONCURRENCY,
               },
             );
             entry.onComplete?.(completion);
@@ -961,6 +978,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     // 2. Upload files directly to R2 (bounded parallelism for faster uploads)
     const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
+    const finalizeByName = new Map(finalizeFiles.map((file) => [file.name, file]));
     const uploadEntries = urls.flatMap((entry) => {
       const prepared = preparedByName.get(entry.name);
       if (!prepared) {
@@ -976,8 +994,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         {
           file: prepared.uploadFile,
           url: entry.primaryUrl,
+          multipart: entry.multipart,
           label: prepared.uploadFile.name,
           contentType: entry.contentType,
+          onComplete: (completion: MultipartUploadCompletion | undefined) => {
+            const file = finalizeByName.get(entry.name);
+            if (file && completion) file.multipart = completion;
+          },
         },
         ...(prepared.originalFile && entry.archivedOriginalUrl
           ? [
@@ -994,19 +1017,24 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     const uploadedNameSet = new Set(uploadedNames);
     const totalBytes = finalizeFiles.reduce(
       (sum, file) => sum + file.size + (file.originalSize ?? 0),
-          multipart: entry.multipart,
       0,
     );
-          onComplete: (completion: MultipartUploadCompletion | undefined) => {
-            const file = finalizeByName.get(entry.name);
-            if (file && completion) file.multipart = completion;
-          },
     const uploadedBytes = finalizeFiles.reduce(
       (sum, file) =>
         sum + (uploadedNameSet.has(file.name) ? file.size + (file.originalSize ?? 0) : 0),
       0,
     );
     await uploadPresignedFiles(uploadEntries, signal, uploadedBytes, totalBytes);
+    const saved = saveTransferUploadRecovery({
+      transferId,
+      deleteToken,
+      title: transferTitle,
+      expiry,
+      expiresSeconds,
+      sourceFiles: selectedFiles,
+      files: finalizeFiles,
+    });
+    setRecovery(saved);
 
     // 3. Finalize — server processes thumbnails and saves metadata
     setUploadProgress({
@@ -1025,16 +1053,6 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           deleteToken,
           title: transferTitle,
           expiresSeconds,
-    const saved = saveTransferUploadRecovery({
-      transferId,
-      deleteToken,
-      title: transferTitle,
-      expiry,
-      expiresSeconds,
-      sourceFiles: selectedFiles,
-      files: finalizeFiles,
-    });
-    setRecovery(saved);
           files: finalizeFiles,
         }),
         signal,
@@ -1112,6 +1130,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     }));
 
     const preparedByName = new Map(preparedFiles.map((file) => [file.uploadName, file]));
+    const finalizeByName = new Map(finalizeFiles.map((file) => [file.name, file]));
     const uploadEntries = urls.flatMap((entry) => {
       const prepared = preparedByName.get(entry.name);
       if (!prepared) throw new Error(`Could not resolve prepared upload for ${entry.name}`);
@@ -1124,8 +1143,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         {
           file: prepared.uploadFile,
           url: entry.primaryUrl,
+          multipart: entry.multipart,
           label: prepared.uploadFile.name,
           contentType: entry.contentType,
+          onComplete: (completion: MultipartUploadCompletion | undefined) => {
+            const file = finalizeByName.get(entry.name);
+            if (file && completion) file.multipart = completion;
+          },
         },
         ...(prepared.originalFile && entry.archivedOriginalUrl
           ? [
@@ -1143,13 +1167,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     setUploadProgress({
       phase: "processing",
-          multipart: entry.multipart,
       current: presignFiles.length,
       total: presignFiles.length,
-          onComplete: (completion: MultipartUploadCompletion | undefined) => {
-            const file = finalizeByName.get(entry.name);
-            if (file && completion) file.multipart = completion;
-          },
     });
     const finalizeRes = await authFetchWithRetry(
       "/api/upload/transfer/append/finalize",

@@ -12,6 +12,7 @@ import {
   restrictPersonAcquisition,
 } from "@/features/attendee-operations/identity-manager.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { setAccountPermission } from "@/features/attendee-access/account-permissions.server";
 
 async function handleGET(request: Request) {
   const auth = await requireAuthWithPayload(request, "admin");
@@ -47,12 +48,27 @@ async function handlePATCH(request: Request) {
       (body.action !== "sign-out" &&
         body.action !== "restrict" &&
         body.action !== "restore" &&
-        body.action !== "remove-email")
+        body.action !== "remove-email" &&
+        body.action !== "grant-transfer-creator" &&
+        body.action !== "revoke-transfer-creator")
     ) {
       return Response.json({ error: "Person, action, and reason are required" }, { status: 400 });
     }
     const actorId = auth.actorId ?? "root-owner";
     const actorType = auth.actorType === "admin" ? "admin" : "root-owner";
+    if (body.action === "grant-transfer-creator" || body.action === "revoke-transfer-creator") {
+      const result = await setAccountPermission({
+        personId: body.personId,
+        permission: "create_transfers",
+        enabled: body.action === "grant-transfer-creator",
+        actorId,
+        actorType,
+        reason: body.reason,
+      });
+      return result.ok
+        ? Response.json({ action: body.action, ...result.value })
+        : Response.json({ error: result.error }, { status: result.status });
+    }
     if (body.action === "remove-email") {
       if (typeof body.identifierId !== "string") {
         return Response.json({ error: "Email identity is required" }, { status: 400 });

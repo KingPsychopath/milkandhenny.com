@@ -5,6 +5,7 @@ import { toPublicTransfer } from "@/features/transfers/public";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { requestOwnsTransfer } from "@/features/transfers/upload-access.server";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -37,7 +38,7 @@ async function handleGET(_request: Request, context: RouteContext) {
 /**
  * DELETE /api/transfers/[id]
  *
- * Takes down a transfer. Requires valid delete token in the request body.
+ * Takes down a transfer. Requires its delete token or signed-in owner identity.
  * Deletes both the R2 objects and the Redis metadata.
  */
 async function handleDELETE(request: Request, context: RouteContext) {
@@ -48,27 +49,40 @@ async function handleDELETE(request: Request, context: RouteContext) {
     const body = (await request.json()) as { token?: unknown };
     token = typeof body.token === "string" ? body.token : null;
   } catch {
-    return Response.json({ error: "Request body must include { token: string }" }, { status: 400 });
-  }
-
-  if (!token) {
-    return Response.json({ error: "Delete token is required" }, { status: 400 });
+    // Signed-in account owners do not need the private token.
   }
 
   try {
-    const result = await runMediaEffect(
-      Effect.gen(function* () {
-        const transfers = yield* TransferOperationsService;
-        return yield* transfers.takedown({ id, token });
-      }),
-      request.signal,
-    );
-    if (!result.authorised) {
+    if (token) {
+      const result = await runMediaEffect(
+        Effect.gen(function* () {
+          const transfers = yield* TransferOperationsService;
+          return yield* transfers.takedown({ id, token });
+        }),
+        request.signal,
+      );
+      if (result.authorised) {
+        return Response.json({
+          success: true,
+          deletedFiles: result.deletedFiles,
+          dataDeleted: result.dataDeleted,
+          message: "Transfer has been taken down.",
+        });
+      }
+    }
+    if (!(await requestOwnsTransfer(request, id))) {
       return Response.json(
         { error: "Invalid delete token or transfer not found" },
         { status: 403 },
       );
     }
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        const transfers = yield* TransferOperationsService;
+        return yield* transfers.adminDelete(id);
+      }),
+      request.signal,
+    );
     return Response.json({
       success: true,
       deletedFiles: result.deletedFiles,

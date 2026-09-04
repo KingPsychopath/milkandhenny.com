@@ -61,6 +61,8 @@ type TransferData = {
   createdAt: string;
   expiresAt: string;
   deleteToken: string;
+  /** Verified account that created this transfer; never exposed publicly. */
+  ownerPersonId?: string;
 };
 
 type TransferSummary = {

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 
-import { requireAuthWithPayload } from "@/features/auth/auth.server";
+import { requireTransferUploadAccess } from "@/features/transfers/upload-access.server";
 import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
@@ -9,7 +9,7 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 export const runtime = "nodejs";
 
 async function handlePOST(request: Request) {
-  const { error: authError, payload } = await requireAuthWithPayload(request, "upload");
+  const { error: authError, access } = await requireTransferUploadAccess(request);
   if (authError) return authError;
 
   let body: { transferId?: string; deleteToken?: string };
@@ -22,13 +22,6 @@ async function handlePOST(request: Request) {
   if (!body.transferId || !body.deleteToken) {
     return Response.json({ error: "Missing transfer recovery details" }, { status: 400 });
   }
-  if (!payload?.jti) {
-    return Response.json(
-      { error: "Authenticated upload session is missing an ID" },
-      { status: 401 },
-    );
-  }
-
   try {
     const result = await runMediaEffect(
       Effect.gen(function* () {
@@ -36,7 +29,7 @@ async function handlePOST(request: Request) {
         return yield* transfers.abandonUpload({
           transferId: body.transferId!,
           deleteToken: body.deleteToken!,
-          actorJti: payload.jti,
+          actorJti: access.actorJti,
         });
       }),
       request.signal,

@@ -37,6 +37,16 @@ describe("upload transfer finalize", () => {
         payload: { role: "upload", jti: "upload-session" },
       }),
     }));
+    vi.doMock("@/features/transfers/upload-access.server", () => ({
+      requireTransferUploadAccess: vi.fn().mockResolvedValue({
+        error: null,
+        access: {
+          actorJti: "account:upload-session",
+          isAdmin: false,
+          ownerPersonId: "01990a1f-3b7c-7000-8000-000000000101",
+        },
+      }),
+    }));
     vi.doMock("@/features/transfers/store.server", () => ({
       createTransfer,
       MAX_EXPIRY_SECONDS: 30 * 24 * 60 * 60,
@@ -51,7 +61,7 @@ describe("upload transfer finalize", () => {
       getTransferUploadReservation: vi.fn().mockResolvedValue({
         transferId: "transfer-1",
         deleteToken: "delete-token",
-        actorJti: "upload-session",
+        actorJti: "account:upload-session",
         expiresSeconds: 3600,
         filesFingerprint: "fingerprint",
       }),
@@ -110,7 +120,10 @@ describe("upload transfer finalize", () => {
       },
       "transfer-1",
     );
-    expect(createTransfer).toHaveBeenCalledOnce();
+    expect(createTransfer).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerPersonId: "01990a1f-3b7c-7000-8000-000000000101" }),
+      3600,
+    );
   });
 
   it("rejects raw heif uploads before processing", async () => {

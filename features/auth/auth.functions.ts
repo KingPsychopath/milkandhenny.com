@@ -23,6 +23,7 @@ import {
 import type { AuthCookieRole } from "./cookies";
 import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { queryOne } from "@/lib/platform/postgres.server";
+import { transferUploadAccessForCurrentAccount } from "@/features/transfers/upload-access.server";
 
 interface Credentials {
   value: string;
@@ -79,9 +80,12 @@ export const getUploadAccessFn = createServerFn({ method: "GET" }).handler(async
     authenticateRequest(request, "upload"),
     authenticateRequest(request, "admin"),
   ]);
+  const accountAccess =
+    auth.ok || openWindow ? null : await transferUploadAccessForCurrentAccount();
   return {
-    isAuthed: auth.ok || Boolean(openWindow),
+    isAuthed: auth.ok || Boolean(openWindow) || Boolean(accountAccess),
     isAdmin: adminAuth.ok,
+    isAccountTransferCreator: Boolean(accountAccess),
     uploadAccessExpiresAt: openWindow?.expiresAt ?? null,
   };
 });

@@ -1,21 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { requireAuthWithPayload } from "@/features/auth/auth.server";
 import { appendFinalize } from "@/features/transfers/append.server";
 import {
+  getTransfer,
   MAX_TRANSFER_FILE_BYTES,
   MAX_TRANSFER_TOTAL_BYTES,
   validateDeleteToken,
 } from "@/features/transfers/store.server";
+import { requireTransferUploadAccess } from "@/features/transfers/upload-access.server";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-/** Record extra files for an admin or the holder of a transfer's private owner token. */
+/** Record extra files for an admin, private-token owner, or signed-in account owner. */
 async function handlePOST(request: Request) {
-  const { error: authErr, payload } = await requireAuthWithPayload(request, "upload");
-  if (authErr) return authErr;
-
   let body: { transferId?: string; deleteToken?: string; files?: TransferUploadFileInput[] };
   try {
     body = await request.json();
@@ -25,8 +23,17 @@ async function handlePOST(request: Request) {
 
   const transferId = body.transferId?.trim();
   if (!transferId) return Response.json({ error: "Missing transferId" }, { status: 400 });
-  const isAdmin = payload?.role === "admin";
-  if (!isAdmin && !(await validateDeleteToken(transferId, body.deleteToken ?? ""))) {
+  const [ownerAccess, auth] = await Promise.all([
+    validateDeleteToken(transferId, body.deleteToken ?? ""),
+    requireTransferUploadAccess(request),
+  ]);
+  if (auth.error && !ownerAccess) return auth.error;
+  const isAdmin = auth.access?.isAdmin === true;
+  const transfer = auth.access?.ownerPersonId ? await getTransfer(transferId) : null;
+  const accountOwner = Boolean(
+    auth.access?.ownerPersonId && transfer?.ownerPersonId === auth.access.ownerPersonId,
+  );
+  if (!isAdmin && !ownerAccess && !accountOwner) {
     return Response.json({ error: "Private owner access is required" }, { status: 403 });
   }
 

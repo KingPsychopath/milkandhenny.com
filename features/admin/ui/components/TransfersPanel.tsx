@@ -79,6 +79,7 @@ type MediaActionResponse = {
 type TransferDetailResponse = {
   error?: string;
   transfer?: AdminTransferDetail;
+  deletedTransfer?: boolean;
 };
 
 type TransferCleanupResponse = {
@@ -360,6 +361,51 @@ export function TransfersPanel({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to retry transfer file";
       onError(msg);
+    } finally {
+      setTransferActionLoading(null);
+    }
+  };
+
+  const handleRemoveTransferFile = async (transferId: string, fileId: string, filename: string) => {
+    if (
+      !(await confirmAction({
+        eyebrow: "transfer manager",
+        title: `Remove “${filename}”?`,
+        description: "This permanently removes the file and its generated previews.",
+        confirmLabel: "remove file",
+        intent: "danger",
+      }))
+    ) {
+      return;
+    }
+
+    const actionId = `remove:${transferId}:${fileId}`;
+    setTransferActionLoading(actionId);
+    onError("");
+    onStatus("");
+    setTransferStatusMessage("");
+    try {
+      const res = await authFetch(
+        `/api/admin/transfers/${encodeURIComponent(transferId)}/files/${encodeURIComponent(fileId)}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as TransferDetailResponse;
+      if (!res.ok) throw new Error(data.error || "Failed to remove transfer file");
+
+      const msg = `Removed ${filename} from transfer ${transferId}.`;
+      onStatus(msg);
+      setTransferStatus(msg);
+      if (data.deletedTransfer) setTransferDetail(null);
+      await Promise.all([
+        loadTransfers(),
+        data.deletedTransfer ? Promise.resolve() : handleLoadTransferDetail(transferId),
+      ]);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to remove transfer file");
     } finally {
       setTransferActionLoading(null);
     }
@@ -702,6 +748,22 @@ export function TransfersPanel({
                           back to transfers
                         </button>
                       </div>
+                      <div className="flex flex-wrap items-center gap-4 font-mono text-xs">
+                        <Link
+                          to="/t/$id"
+                          params={{ id: transferDetail.id }}
+                          className="inline-flex min-h-11 items-center theme-muted underline underline-offset-4 transition-colors hover:text-[var(--foreground)]"
+                        >
+                          open transfer
+                        </Link>
+                        <Link
+                          to="/upload"
+                          search={{ transfer: transferDetail.id }}
+                          className="inline-flex min-h-11 items-center text-amber-600 underline underline-offset-4 transition-colors hover:text-amber-500"
+                        >
+                          add files
+                        </Link>
+                      </div>
                       <div
                         className="flex flex-wrap gap-2 border-t theme-border pt-3 font-mono text-xs"
                         aria-label="Filter selected transfer files"
@@ -752,29 +814,52 @@ export function TransfersPanel({
                                   </div>
                                 ) : null}
                               </div>
-                              {file.processingStatus === "failed" ||
-                              file.processingStatus === "queued" ||
-                              file.processingStatus === "processing" ? (
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                {file.processingStatus === "failed" ||
+                                file.processingStatus === "queued" ||
+                                file.processingStatus === "processing" ? (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      transferActionLoading ===
+                                      `retry:${transferDetail.id}:${file.id}`
+                                    }
+                                    onClick={() =>
+                                      void handleRetryTransferFile(
+                                        transferDetail.id,
+                                        file.id,
+                                        file.filename,
+                                      )
+                                    }
+                                    className="min-h-11 shrink-0 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+                                  >
+                                    {transferActionLoading ===
+                                    `retry:${transferDetail.id}:${file.id}`
+                                      ? "retrying…"
+                                      : "retry"}
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   disabled={
                                     transferActionLoading ===
-                                    `retry:${transferDetail.id}:${file.id}`
+                                    `remove:${transferDetail.id}:${file.id}`
                                   }
                                   onClick={() =>
-                                    void handleRetryTransferFile(
+                                    void handleRemoveTransferFile(
                                       transferDetail.id,
                                       file.id,
                                       file.filename,
                                     )
                                   }
-                                  className="min-h-11 shrink-0 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+                                  className="min-h-11 shrink-0 font-mono text-xs text-[var(--status-danger)] underline underline-offset-4 disabled:opacity-50"
                                 >
-                                  {transferActionLoading === `retry:${transferDetail.id}:${file.id}`
-                                    ? "retrying…"
-                                    : "retry"}
+                                  {transferActionLoading ===
+                                  `remove:${transferDetail.id}:${file.id}`
+                                    ? "removing…"
+                                    : "remove"}
                                 </button>
-                              ) : null}
+                              </div>
                             </div>
                           </div>
                         ))}

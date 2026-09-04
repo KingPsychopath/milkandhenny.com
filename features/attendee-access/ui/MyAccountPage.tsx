@@ -645,6 +645,61 @@ export function MyAccountPage({
         </section>
       ) : null}
 
+      {account.fileTransfers.canCreate ? (
+        <section
+          className="mt-10 border-t theme-border pt-6"
+          aria-labelledby="file-transfers-heading"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 id="file-transfers-heading" className="font-serif text-2xl">
+                File transfers
+              </h2>
+              <p className="mt-1 font-mono text-micro leading-relaxed theme-muted">
+                Create private, expiring galleries and manage the ones owned by this account.
+              </p>
+            </div>
+            <Link to="/upload" className="mh-action mh-action--primary">
+              create transfer
+            </Link>
+          </div>
+          {!account.fileTransfers.available ? (
+            <p className="mt-4 border-y theme-border py-4 font-mono text-xs theme-muted">
+              Transfer history is temporarily unavailable. You can still create a transfer.
+            </p>
+          ) : account.fileTransfers.items.length ? (
+            <ul className="mt-4 divide-y border-y theme-border">
+              {account.fileTransfers.items.map((transfer) => (
+                <li key={transfer.id}>
+                  <Link
+                    to="/t/$id"
+                    params={{ id: transfer.id }}
+                    className="flex min-h-14 items-center justify-between gap-4 py-3 hover:opacity-70"
+                  >
+                    <span>
+                      <span className="block font-serif text-lg">
+                        {transfer.title || "Untitled transfer"}
+                      </span>
+                      <span className="font-mono text-micro theme-muted">
+                        {transfer.fileCount} file{transfer.fileCount === 1 ? "" : "s"} · created{" "}
+                        {formatAccountDate(transfer.createdAt)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-mono text-micro theme-muted">
+                      expires {formatAccountDate(transfer.expiresAt)} →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 border-y theme-border py-4 font-mono text-xs theme-muted">
+              No active transfers owned by this account.
+            </p>
+          )}
+        </section>
+      ) : null}
+
       <SecuritySettingsPanel initialPasskeys={security.passkeys} initialTotp={security.totp} />
 
       <details className="mt-10 border-t theme-border pt-2">

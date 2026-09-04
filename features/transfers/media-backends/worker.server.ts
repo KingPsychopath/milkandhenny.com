@@ -47,6 +47,8 @@ const WORKER_ROUTE_MAP: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   local_video: "worker_video",
 };
 
+const TRANSFER_METADATA_VISIBILITY_GRACE_MS = 5 * 60_000;
+
 /**
  * Persist a file's new state and tell anyone watching the transfer.
  *
@@ -282,11 +284,19 @@ async function processWorkerJob(
   signal?: AbortSignal,
 ): Promise<WorkerJobOutcome> {
   const transfer = await getTransfer(job.transferId);
-  if (!transfer) return "skipped";
+  const metadataMayStillBeSaving =
+    Date.now() - Date.parse(job.enqueuedAt) < TRANSFER_METADATA_VISIBILITY_GRACE_MS;
+  if (!transfer) {
+    if (metadataMayStillBeSaving) throw new Error("Transfer metadata is not visible yet");
+    return "skipped";
+  }
 
   const mediaId = job.mediaId ?? job.file.mediaId ?? getTransferFileId(job.file.name);
   const fileIndex = transfer.files.findIndex((file) => file.id === mediaId);
-  if (fileIndex === -1) return "skipped";
+  if (fileIndex === -1) {
+    if (metadataMayStillBeSaving) throw new Error("Transfer file metadata is not visible yet");
+    return "skipped";
+  }
   const current = transfer.files[fileIndex];
   if (current.processingStatus === "local_done" || current.processingStatus === "worker_done") {
     return "skipped";
@@ -406,7 +416,7 @@ async function requeueTransferFile(
     return file;
   }
 
-  const attempt = (file.retryCount ?? 0) + 1;
+  const attempt = (file.retryCount ?? 0) + 2;
   const result = await enqueueWorkerJob({
     transferId: transfer.id,
     file: {

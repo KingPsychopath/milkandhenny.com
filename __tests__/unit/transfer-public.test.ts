@@ -9,6 +9,7 @@ describe("public transfer projection", () => {
       createdAt: "2026-07-15T00:00:00.000Z",
       expiresAt: "2026-07-16T00:00:00.000Z",
       deleteToken: "delete-secret",
+      ownerPersonId: "01900000-0000-7000-8000-000000000001",
       files: [
         {
           id: "photo",
@@ -23,6 +24,7 @@ describe("public transfer projection", () => {
     });
 
     expect(result).not.toHaveProperty("deleteToken");
+    expect(result).not.toHaveProperty("ownerPersonId");
     expect(result.files[0]).not.toHaveProperty("storageKey");
     expect(result.files[0]).not.toHaveProperty("originalStorageKey");
     expect(result.files[0]).toMatchObject({ id: "photo", filename: "photo.jpg" });

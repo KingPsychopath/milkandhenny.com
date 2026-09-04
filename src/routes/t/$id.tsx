@@ -62,7 +62,7 @@ function formatDate(iso: string) {
 }
 
 function TransferPage() {
-  const { transfer, remainingSeconds, canDelete } = Route.useLoaderData();
+  const { transfer, remainingSeconds, managementMode } = Route.useLoaderData();
   const { token } = Route.useSearch();
 
   /* ─── Not found / expired ─── */
@@ -154,23 +154,44 @@ function TransferPage() {
         </section>
 
         <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Gallery">
+          {managementMode ? (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-y theme-border py-3 font-mono text-xs">
+              <span className="theme-muted">
+                {managementMode === "admin" ? "admin controls" : "owner controls"} · remove files
+                from their cards or previews
+              </span>
+              <Link
+                to="/upload"
+                search={{
+                  transfer: transfer.id,
+                  token: managementMode === "owner" ? token : undefined,
+                }}
+                className="inline-flex min-h-11 items-center text-amber-600 underline underline-offset-4 transition-colors hover:text-amber-500"
+              >
+                add files
+              </Link>
+            </div>
+          ) : null}
           <TransferGallery
             transferId={transfer.id}
             files={transfer.files}
             groups={transfer.groups}
-            deleteToken={canDelete ? token : undefined}
+            canManage={Boolean(managementMode)}
+            deleteToken={managementMode === "owner" ? token : undefined}
           />
         </section>
 
-        {/* Admin takedown */}
-        {canDelete && token && (
-          <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Admin">
+        {managementMode === "owner" || managementMode === "account" ? (
+          <section className="max-w-4xl mx-auto px-6 pb-12" aria-label="Owner controls">
             <div className="border-t theme-border pt-6">
-              <p className="font-mono text-micro theme-muted tracking-wide mb-3">admin controls</p>
-              <TakedownButton transferId={transfer.id} deleteToken={token} />
+              <p className="font-mono text-micro theme-muted tracking-wide mb-3">owner controls</p>
+              <TakedownButton
+                transferId={transfer.id}
+                deleteToken={managementMode === "owner" ? token : undefined}
+              />
             </div>
           </section>
-        )}
+        ) : null}
       </main>
 
       <SiteFooter maxWidth="4xl">

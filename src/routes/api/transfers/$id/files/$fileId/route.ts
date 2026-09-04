@@ -1,9 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
+import { requireAuth } from "@/features/auth/auth.server";
 import { toPublicTransfer } from "@/features/transfers/public";
-import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
+import {
+  TransferOperationsService,
+  type AuthorisedTransferFileRemovalResult,
+  type TransferFileRemovalResult,
+} from "@/features/transfers/transfer-operations-service.server";
 import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { requestOwnsTransfer } from "@/features/transfers/upload-access.server";
 
 type RouteContext = {
   params: Promise<{ id: string; fileId: string }>;
@@ -17,26 +23,36 @@ async function handleDELETE(request: Request, context: RouteContext) {
     const body = (await request.json()) as { token?: unknown };
     token = typeof body.token === "string" ? body.token : null;
   } catch {
-    return Response.json({ error: "Request body must include { token: string }" }, { status: 400 });
-  }
-
-  if (!token) {
-    return Response.json({ error: "Delete token is required" }, { status: 400 });
+    // Admin-cookie requests do not need a body.
   }
 
   try {
-    const removal = await runMediaEffect(
-      Effect.gen(function* () {
-        const transfers = yield* TransferOperationsService;
-        return yield* transfers.removeFile({ id, fileId, token });
-      }),
-      request.signal,
-    );
-    if (removal.status === "unauthorised") {
-      return Response.json(
-        { error: "Invalid delete token or transfer not found" },
-        { status: 403 },
+    const ownerRemoval: TransferFileRemovalResult = token
+      ? await runMediaEffect(
+          Effect.gen(function* () {
+            const transfers = yield* TransferOperationsService;
+            return yield* transfers.removeFile({ id, fileId, token });
+          }),
+          request.signal,
+        )
+      : ({ status: "unauthorised" } as const);
+
+    let removal: AuthorisedTransferFileRemovalResult;
+    if (ownerRemoval.status === "unauthorised") {
+      const accountOwner = await requestOwnsTransfer(request, id);
+      if (!accountOwner) {
+        const authErr = await requireAuth(request, "admin");
+        if (authErr) return authErr;
+      }
+      removal = await runMediaEffect(
+        Effect.gen(function* () {
+          const transfers = yield* TransferOperationsService;
+          return yield* transfers.adminRemoveFile({ id, fileId });
+        }),
+        request.signal,
       );
+    } else {
+      removal = ownerRemoval;
     }
     if (removal.status === "missing") {
       return Response.json({ error: "Transfer not found or expired" }, { status: 404 });

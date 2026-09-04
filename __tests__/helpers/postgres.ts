@@ -117,6 +117,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists hot_and_cold_daily_results cascade;
     drop table if exists person_recovery_codes cascade;
     drop table if exists person_totp_authenticators cascade;
+    drop table if exists account_permission_grants cascade;
     drop table if exists person_passkeys cascade;
     drop table if exists person_webauthn_profiles cascade;
     drop table if exists event_person_identifiers cascade;

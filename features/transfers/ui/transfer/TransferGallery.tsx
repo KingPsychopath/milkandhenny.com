@@ -75,6 +75,7 @@ type TransferGalleryProps = {
   transferId: string;
   files: TransferFileData[];
   groups?: AssetGroup[];
+  canManage?: boolean;
   deleteToken?: string;
 };
 
@@ -683,7 +684,7 @@ function TransferLightbox({
   activeFile,
   setActiveFile,
   saving,
-  deleteToken,
+  canManage,
   deletingFileId,
   deleteError,
   onClose,
@@ -702,7 +703,7 @@ function TransferLightbox({
   activeFile: TransferFileData | null;
   setActiveFile: (file: TransferFileData) => void;
   saving: boolean;
-  deleteToken?: string;
+  canManage: boolean;
   deletingFileId: string | null;
   deleteError: string;
   onClose: () => void;
@@ -788,7 +789,7 @@ function TransferLightbox({
           <span className="font-mono text-micro text-white/30">
             {index + 1} / {total}
           </span>
-          {deleteToken && activeFile ? (
+          {canManage && activeFile ? (
             <button
               type="button"
               onClick={() => onDelete(activeFile)}
@@ -838,7 +839,13 @@ function TransferLightbox({
  * - Videos: masonry grid cards with play overlay, lightbox with <video>
  * - Files/Audio: list section below the gallery with download buttons
  */
-export function TransferGallery({ transferId, files, groups, deleteToken }: TransferGalleryProps) {
+export function TransferGallery({
+  transferId,
+  files,
+  groups,
+  canManage = false,
+  deleteToken,
+}: TransferGalleryProps) {
   const {
     confirm: confirmAction,
     dialog: actionDialog,
@@ -1718,7 +1725,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
 
   const handleDeleteFile = useCallback(
     async (file: TransferFileData) => {
-      if (!deleteToken || deletingFileId) return;
+      if (!canManage || deletingFileId) return;
       const confirmed = await confirmAction({
         eyebrow: "delete file",
         title: `Delete “${file.filename}”?`,
@@ -1737,7 +1744,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: deleteToken }),
+            body: JSON.stringify(deleteToken ? { token: deleteToken } : {}),
           },
         );
         const payload = await readResponsePayload(res);
@@ -1778,7 +1785,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
         setDeletingFileId(null);
       }
     },
-    [confirmAction, deleteToken, deletingFileId, navigate, router, transferId],
+    [canManage, confirmAction, deleteToken, deletingFileId, navigate, router, transferId],
   );
 
   const selectedCount = selectedIds.size;
@@ -1891,7 +1898,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
                   onToggleSelect={() => toggleSelection(file.id)}
                   onDownload={() => downloadSingle(file)}
                   onPreview={isTransferPdf(file) ? () => setPdfPreviewFile(file) : undefined}
-                  onDelete={deleteToken ? () => handleDeleteFile(file) : undefined}
+                  onDelete={canManage ? () => handleDeleteFile(file) : undefined}
                   deleting={deletingFileId === file.id}
                 />
               ))}
@@ -2269,7 +2276,7 @@ export function TransferGallery({ transferId, files, groups, deleteToken }: Tran
           activeFile={activeLightboxFile}
           setActiveFile={setActiveLightboxFile}
           saving={savingSingle}
-          deleteToken={deleteToken}
+          canManage={canManage}
           deletingFileId={deletingFileId}
           deleteError={deleteError}
           onClose={closeLightbox}

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getTransferMediaUrlTtlSeconds } from "@/features/transfers/media-access";
-import { getVideoPosterMaxBytes } from "@/features/transfers/media-processing-config.server";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -18,20 +17,6 @@ describe("signed media URL lifetimes", () => {
   it("keeps derivative URLs short-lived", () => {
     expect(getTransferMediaUrlTtlSeconds("thumb")).toBe(60);
     expect(getTransferMediaUrlTtlSeconds("full")).toBe(60);
-  });
-});
-
-describe("video poster cap", () => {
-  it("defaults to 2 GiB", () => {
-    expect(getVideoPosterMaxBytes()).toBe(2 * 1024 * 1024 * 1024);
-  });
-
-  it("is configurable, and 0 disables the cap", () => {
-    vi.stubEnv("MEDIA_VIDEO_POSTER_MAX_BYTES", "1024");
-    expect(getVideoPosterMaxBytes()).toBe(1024);
-
-    vi.stubEnv("MEDIA_VIDEO_POSTER_MAX_BYTES", "0");
-    expect(getVideoPosterMaxBytes()).toBe(0);
   });
 });
 
@@ -63,7 +48,7 @@ describe("terminal processing failures", () => {
     const { canRetryTransferProcessing, isTerminalProcessingFailure } =
       await import("@/features/transfers/media-state");
 
-    for (const code of ["raw_preview_unavailable", "video_too_large_for_poster"]) {
+    for (const code of ["raw_preview_unavailable"]) {
       const file = {
         processingStatus: "failed" as const,
         retryCount: 0,
@@ -72,6 +57,19 @@ describe("terminal processing failures", () => {
       expect(isTerminalProcessingFailure(file)).toBe(true);
       expect(canRetryTransferProcessing(file)).toBe(false);
     }
+  });
+
+  it("retries videos skipped by the retired poster-size cap", async () => {
+    const { canRetryTransferProcessing, isTerminalProcessingFailure } =
+      await import("@/features/transfers/media-state");
+    const file = {
+      processingStatus: "failed" as const,
+      retryCount: 0,
+      processingErrorCode: "video_too_large_for_poster",
+    };
+
+    expect(isTerminalProcessingFailure(file)).toBe(false);
+    expect(canRetryTransferProcessing(file)).toBe(true);
   });
 
   it("still retries failures that a later attempt could fix", async () => {

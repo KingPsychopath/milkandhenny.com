@@ -100,10 +100,10 @@ and the client closes the stream instead of reconnecting forever.
 - **Replays are safe.** A job whose file is already `local_done`/`worker_done`
   is skipped, derivative keys are deterministic so re-uploads overwrite, and a
   job for a deleted file finds nothing to update.
-- **Terminal failures are not retried.** `raw_preview_unavailable` and
-  `video_too_large_for_poster` are properties of the file, not of the attempt.
-  Retrying costs a download and a decode and ends in the same state, so the
-  answer is recorded once. Everything else retries up to three times.
+- **Terminal failures are not retried.** `raw_preview_unavailable` is a property
+  of the file, not of the attempt. Retrying costs a download and a decode and
+  ends in the same state, so the answer is recorded once. Everything else
+  retries up to three times.
 - **Nothing runs unbounded.** One job may take `MEDIA_WORKER_JOB_TIMEOUT_MS`
   (default 10 min) before it is failed and acked rather than requeued —
   retrying a job that already blew its budget would just wedge the next slot.
@@ -137,26 +137,25 @@ in memory, so a healthy transfer costs no object-storage calls at all. It only
 descends into object storage for files that look unfinished, and it skips
 terminal failures entirely.
 
-What it does **not** do is retry `raw_preview_unavailable` or
-`video_too_large_for_poster` — see the delivery section above. Those are
-properties of the file, and a sweep every 15 minutes re-downloading and
-re-decoding them forever would be the worst possible version of this.
+What it does **not** do is retry `raw_preview_unavailable` — see the delivery
+section above. That is a property of the file, and a sweep every 15 minutes
+re-downloading and re-decoding it forever would be the worst possible version
+of this.
 
 ## Configuration
 
-| Variable                             | Default      | Applies to | Meaning                                               |
-| ------------------------------------ | ------------ | ---------- | ----------------------------------------------------- |
-| `MEDIA_PROCESSOR_MODE`               | `local`      | both       | `local` or `hybrid`                                   |
-| `MEDIA_WORKER_ROLE`                  | `web`        | both       | `web` or `worker`                                     |
-| `MEDIA_WORKER_CONCURRENCY`           | `1`          | worker     | jobs in flight per instance                           |
-| `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000`     | worker     | per-job ceiling                                       |
-| `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`      | worker     | pause after a claim error                             |
-| `MEDIA_WORKER_HEARTBEAT_INTERVAL_MS` | `300000`     | worker     | liveness write interval; minimum 30 seconds           |
-| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000`     | worker     | periodic sweep for stranded files; `0` disables       |
-| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000`     | web        | ceiling for work the request path still does          |
-| `MEDIA_VIDEO_POSTER_MAX_BYTES`       | `2147483648` | worker     | above this, skip the poster; `0` disables the cap     |
-| `REDIS_URL`                          | —            | both       | direct connection; required for the queue and for SSE |
-| `TRANSFER_UPLOAD_URL_TTL_SECONDS`    | `21600`      | web        | how long a batch has to finish uploading              |
+| Variable                             | Default  | Applies to | Meaning                                               |
+| ------------------------------------ | -------- | ---------- | ----------------------------------------------------- |
+| `MEDIA_PROCESSOR_MODE`               | `local`  | both       | `local` or `hybrid`                                   |
+| `MEDIA_WORKER_ROLE`                  | `web`    | both       | `web` or `worker`                                     |
+| `MEDIA_WORKER_CONCURRENCY`           | `1`      | worker     | jobs in flight per instance                           |
+| `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000` | worker     | per-job ceiling                                       |
+| `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`  | worker     | pause after a claim error                             |
+| `MEDIA_WORKER_HEARTBEAT_INTERVAL_MS` | `300000` | worker     | liveness write interval; minimum 30 seconds           |
+| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000` | worker     | periodic sweep for stranded files; `0` disables       |
+| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web        | ceiling for work the request path still does          |
+| `REDIS_URL`                          | —        | both       | direct connection; required for the queue and for SSE |
+| `TRANSFER_UPLOAD_URL_TTL_SECONDS`    | `21600`  | web        | how long a batch has to finish uploading              |
 
 ## Operating it
 

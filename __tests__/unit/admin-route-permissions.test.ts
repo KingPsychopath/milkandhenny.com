@@ -128,6 +128,10 @@ const EXPECTED: Record<string, { GET: string | null; POST: string | null }> = {
   },
   "/api/admin/transfers": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/transfers/sample-id": { GET: "manageContent", POST: "manageContent" },
+  "/api/admin/transfers/sample-id/files/sample-fileId": {
+    GET: "manageContent",
+    POST: "manageContent",
+  },
   "/api/admin/transfers/cleanup": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/transfers/nuke": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/transfers/process-media": { GET: "manageContent", POST: "manageContent" },

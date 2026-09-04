@@ -12,7 +12,10 @@ vi.mock("@/lib/platform/r2.server", () => ({
   uploadBuffer: vi.fn(),
 }));
 
-import { inferTransferFileState } from "@/features/transfers/media-backends/local.server";
+import {
+  inferTransferFileState,
+  needsStateInference,
+} from "@/features/transfers/media-backends/local.server";
 import type { TransferFile } from "@/features/transfers/types";
 
 describe("transfer state inference", () => {
@@ -81,6 +84,31 @@ describe("transfer state inference", () => {
     });
     expect(inferred.previewStatus).toBe("ready");
     expect(inferred.processingStatus).toBe("local_done");
+  });
+
+  it("repairs videos skipped by the retired poster-size cap", async () => {
+    headObject.mockResolvedValueOnce({ exists: false }).mockResolvedValueOnce({ exists: false });
+    const file: TransferFile = {
+      id: "large-clip",
+      filename: "large-clip.mp4",
+      kind: "video",
+      size: 3_000_000_000,
+      mimeType: "video/mp4",
+      storageKey: "transfers/abc123/originals/large-clip.mp4",
+      previewStatus: "original_only",
+      processingStatus: "skipped",
+      processingRoute: "worker_video",
+      processingErrorCode: "video_too_large_for_poster",
+    };
+
+    expect(needsStateInference(file)).toBe(true);
+    const inferred = await inferTransferFileState("abc123", file);
+    expect(inferred).toMatchObject({
+      previewStatus: "original_only",
+      processingStatus: "failed",
+      processingRoute: "local_video",
+      processingErrorCode: "missing_derivatives",
+    });
   });
 
   it("marks incomplete non-visual media skipped", async () => {

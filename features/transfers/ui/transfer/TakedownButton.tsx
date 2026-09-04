@@ -4,12 +4,12 @@ import { useState, useCallback } from "react";
 
 type TakedownButtonProps = {
   transferId: string;
-  deleteToken: string;
+  deleteToken?: string;
 };
 
 /**
- * Admin-only button to permanently take down a transfer.
- * Only rendered when the URL contains a valid ?token= parameter.
+ * Owner control to permanently take down a transfer.
+ * Authorization may come from the private token or the signed-in owner identity.
  * Shows a confirmation step before executing.
  */
 export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps) {
@@ -24,7 +24,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
       const res = await fetch(`/api/transfers/${transferId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: deleteToken }),
+        body: JSON.stringify(deleteToken ? { token: deleteToken } : {}),
       });
 
       const data = (await res.json().catch(() => ({}))) as { error?: string };
