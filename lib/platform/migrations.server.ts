@@ -4151,6 +4151,69 @@ const MIGRATIONS: Migration[] = [
       ));
     `,
   },
+  {
+    id: "0093_reusable_polls",
+    sql: `
+      create table polls (
+        id                 uuid primary key,
+        slug               text not null unique check (slug ~ '^[a-z0-9][a-z0-9-]{1,80}$'),
+        event_slug         text references events (slug) on delete set null,
+        title              text not null check (char_length(title) between 1 and 160),
+        intro              text not null default '' check (char_length(intro) <= 2000),
+        question           text not null check (char_length(question) between 1 and 240),
+        options            jsonb not null check (jsonb_typeof(options) = 'array'),
+        selection_mode     text not null default 'single'
+                           check (selection_mode in ('single','multiple')),
+        result_visibility  text not null default 'after_vote'
+                           check (result_visibility in ('always','after_vote','hidden')),
+        show_percentages   boolean not null default false,
+        status             text not null default 'draft'
+                           check (status in ('draft','open','closed','archived')),
+        response_count     integer not null default 0 check (response_count >= 0),
+        created_at         timestamptz not null default now(),
+        updated_at         timestamptz not null default now()
+      );
+
+      create index polls_event_idx on polls (event_slug, status, updated_at desc);
+
+      create table poll_votes (
+        id          uuid primary key,
+        poll_id     uuid not null references polls (id) on delete cascade,
+        voter_hash  text not null check (char_length(voter_hash) = 64),
+        selections  text[] not null check (cardinality(selections) > 0),
+        created_at  timestamptz not null default now(),
+        updated_at  timestamptz not null default now(),
+        unique (poll_id, voter_hash)
+      );
+
+      create index poll_votes_poll_idx on poll_votes (poll_id, updated_at desc);
+
+      insert into polls
+        (id, slug, title, intro, question, options, selection_mode,
+         result_visibility, show_percentages, status)
+      values (
+        'f22c501d-c4e4-4db0-9421-ea8c9ac90c25',
+        'after-school-club-monthly-day',
+        'Which night should After School Club live on?',
+        'We’re aiming to make After School Club a monthly thing, most likely on the second Tuesday or Wednesday of each month. Before we settle into that rhythm, tell us which evening would genuinely suit you best.',
+        'If you could choose one evening, which would it be?',
+        '[{"id":"monday","label":"Monday"},{"id":"tuesday","label":"Tuesday"},{"id":"wednesday","label":"Wednesday"},{"id":"thursday","label":"Thursday"},{"id":"friday","label":"Friday"},{"id":"saturday","label":"Saturday"},{"id":"sunday","label":"Sunday"}]'::jsonb,
+        'single', 'after_vote', false, 'open'
+      );
+
+      insert into communication_templates
+        (id, name, kind, subject, body, media, is_default)
+      values (
+        '75084696-5c92-41e3-bcad-3289486ff5b8',
+        'After School Club · feedback, photos and monthly date poll',
+        'feedback',
+        'Thank you for coming — help us choose the next After School Club',
+        E'Thank you for coming to **After School Club**.\n\nWe put a lot into the night, but what made it special was you. The room took a little while to warm up—and then, eventually, you practically wouldn’t let us take the microphone back.\n\nThat was probably our favourite lesson.\n\nThe best moments weren’t people looking at scores or working out what to do on their phones. They were the Spelling Bee, the conversations, the unexpected personalities, the team energy and hearing what everybody actually had to say.\n\nSo next time, the technology is going to fade much further into the background. The smaller games will mostly become quick icebreakers; the heart of the night will be hosted games, conversations, presentations and more time together in the room.\n\n## Tell us what you thought\n\nIf the night felt too short—or there was something you wanted more or less of—please tell us. It’s a short survey, and we’re genuinely using the answers to shape the next event.\n\n[give us your feedback →](https://milkandhenny.com/surveys/after-school-club-feedback)\n\n## Add your photos and videos\n\nIf you captured something good, funny or slightly chaotic, we’d love to see the night through your eyes.\n\n[add your photos →](https://milkandhenny.com/drop/drp_VQpLYrPiQDhZkOBWCOAKoVBCDL0)\n\n## Help us choose the night\n\nWe’re aiming to make After School Club a monthly thing—most likely on the **second Tuesday or Wednesday of each month**. But before we settle into a rhythm, we want to know which evening genuinely works best for you.\n\nThe poll includes every day of the week. Once you vote, you’ll see the shape of where everybody is leaning without turning it into a noisy leaderboard.\n\n[choose your day →](https://milkandhenny.com/polls/after-school-club-monthly-day)\n\nThank you for supporting the night before any of us knew quite what it would become.\n\nAll I ask next time is that you promise me one thing:\n\n**you’ll be #early.**\n\nWith love,  \nAbel  \nmilk & henny',
+        '[]'::jsonb,
+        false
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

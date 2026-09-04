@@ -285,6 +285,7 @@ async function requiredNamedAdminPermission(
     pathname.includes("/words") ||
     pathname.includes("/pitches") ||
     pathname.includes("/surveys") ||
+    pathname.includes("/polls") ||
     pathname.includes("/transfers")
   )
     return "manageContent";

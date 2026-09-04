@@ -79,6 +79,7 @@ export const COMMUNICATION_TABS = [
   "delivery",
   "templates",
   "feedback",
+  "polls",
   "credits",
   "people",
 ] as const;

@@ -10,7 +10,7 @@ worker role.
 Browser
   -> TanStack Start / Nitro Node server
        -> feature workflows
-            -> Postgres adapter (relational state, outboxes, leases)
+            -> Postgres adapter (relational state, polls, outboxes, leases)
             -> Redis adapters (sessions, rooms, transfers, queues, realtime)
             -> S3-compatible storage adapter (private sources and public media)
             -> email and payments adapters

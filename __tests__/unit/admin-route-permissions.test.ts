@@ -118,6 +118,8 @@ const EXPECTED: Record<string, { GET: string | null; POST: string | null }> = {
   "/api/admin/step-up": { GET: null, POST: null },
   "/api/admin/surveys": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/surveys/sample-id": { GET: "manageContent", POST: "manageContent" },
+  "/api/admin/polls": { GET: "manageContent", POST: "manageContent" },
+  "/api/admin/polls/sample-id": { GET: "manageContent", POST: "manageContent" },
   "/api/admin/tokens/revoke": { GET: "manageGlobalSettings", POST: "manageGlobalSettings" },
   "/api/admin/tokens/sessions": { GET: "manageGlobalSettings", POST: "manageGlobalSettings" },
   "/api/admin/tokens/sessions/sample-jti": {

@@ -30,6 +30,7 @@ import {
 } from "./AdminStatus";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 import { CreditsPanel } from "./CreditsPanel";
+import { PollsPanel } from "./PollsPanel";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type Kind = "newsletter" | "event_update" | "pitch_nudge" | "event_service" | "feedback";
@@ -1354,6 +1355,14 @@ export function CommunicationsPanel({
               selectedSurvey={selectedSurvey}
               responses={responses}
               busy={busy}
+            />
+          ) : null}
+          {tab === "polls" ? (
+            <PollsPanel
+              authFetch={authFetch}
+              events={events}
+              onError={onError}
+              onStatus={onStatus}
             />
           ) : null}
           {tab === "credits" ? (
