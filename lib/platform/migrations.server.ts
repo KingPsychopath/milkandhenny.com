@@ -4248,6 +4248,56 @@ const MIGRATIONS: Migration[] = [
        where id = '75084696-5c92-41e3-bcad-3289486ff5b8';
     `,
   },
+  {
+    id: "0095_intentional_survey_identity",
+    sql: `
+      alter table surveys
+        add column identity_mode text not null default 'optional'
+        check (identity_mode in ('anonymous','optional','identified'));
+
+      alter table surveys alter column identity_mode set default 'identified';
+
+      create table survey_invitations (
+        id               uuid primary key,
+        survey_id        uuid not null references surveys (id) on delete cascade,
+        recipient_hash   text not null references communication_contacts (email_hash) on delete cascade
+                         check (char_length(recipient_hash) = 64),
+        source_type      text not null check (source_type in ('message','stage','test')),
+        source_id        uuid not null,
+        expires_at       timestamptz not null,
+        opened_at        timestamptz,
+        completed_at     timestamptz,
+        completion_mode  text check (completion_mode in ('anonymous','identified')),
+        created_at       timestamptz not null default now(),
+        updated_at       timestamptz not null default now(),
+        unique (survey_id, recipient_hash, source_type, source_id)
+      );
+
+      create index survey_invitations_survey_idx
+        on survey_invitations (survey_id, completed_at, opened_at);
+      create index survey_invitations_recipient_idx
+        on survey_invitations (recipient_hash, created_at desc);
+
+      alter table survey_responses
+        add column invitation_id uuid references survey_invitations (id) on delete set null,
+        add column identity_source text not null default 'anonymous'
+          check (identity_source in ('anonymous','provided','invitation'));
+
+      update survey_responses
+         set identity_source = case when email_hash is null then 'anonymous' else 'provided' end;
+
+      create unique index survey_responses_invitation_idx
+        on survey_responses (survey_id, invitation_id)
+        where invitation_id is not null;
+
+      alter table communication_links
+        add column survey_invitation_id uuid references survey_invitations (id) on delete set null;
+
+      create index communication_links_survey_invitation_idx
+        on communication_links (survey_invitation_id)
+        where survey_invitation_id is not null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

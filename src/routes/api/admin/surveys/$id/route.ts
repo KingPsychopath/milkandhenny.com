@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
-import { listSurveyResponses } from "@/features/surveys/surveys.server";
+import { listSurveyInvitations, listSurveyResponses } from "@/features/surveys/surveys.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 export const Route = createFileRoute("/api/admin/surveys/$id")({
@@ -11,7 +11,11 @@ export const Route = createFileRoute("/api/admin/surveys/$id")({
         const authError = await requireAuth(request, "admin");
         if (authError) return authError;
         try {
-          return Response.json({ responses: await listSurveyResponses(params.id) });
+          const [responses, invitations] = await Promise.all([
+            listSurveyResponses(params.id),
+            listSurveyInvitations(params.id),
+          ]);
+          return Response.json({ responses, invitations });
         } catch (error) {
           return apiErrorFromRequest(
             request,

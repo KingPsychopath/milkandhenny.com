@@ -4,6 +4,10 @@ import { buildAppUrl } from "@/lib/shared/app-url";
 import { isDatabaseConfigured, query } from "@/lib/platform/postgres.server";
 import { log } from "@/lib/platform/logger.server";
 import {
+  addSurveyInvitationToDestination,
+  issueSurveyInvitationForDestination,
+} from "@/features/surveys/invitations.server";
+import {
   communicationLinkKey,
   extractCommunicationLinks,
   resolveCommunicationTokens,
@@ -158,10 +162,22 @@ export async function prepareCommunicationLinkMap(input: {
   if (definitions.size === 0) return new Map();
 
   const expiresAt = new Date(Date.now() + LINK_LIFETIME_MS);
-  const rows = [...definitions.entries()];
+  const rows = await Promise.all(
+    [...definitions.entries()].map(async ([linkKey, destination]) => ({
+      linkKey,
+      destination,
+      invitation: await issueSurveyInvitationForDestination({
+        destination,
+        origin: input.origin,
+        recipientHash: input.source.recipientHash,
+        sourceType: input.source.sourceType,
+        sourceId: input.source.sourceId,
+      }),
+    })),
+  );
   const values: unknown[] = [];
-  const placeholders = rows.map(([linkKey, destination], index) => {
-    const offset = index * 7;
+  const placeholders = rows.map(({ linkKey, destination, invitation }, index) => {
+    const offset = index * 8;
     const tokenId = randomUUID();
     values.push(
       tokenId,
@@ -171,16 +187,19 @@ export async function prepareCommunicationLinkMap(input: {
       linkKey,
       destination,
       expiresAt,
+      invitation?.id ?? null,
     );
-    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7})`;
+    return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7},$${offset + 8})`;
   });
   const persisted = await query<{ token_id: string; link_key: string; destination: string }>(
     `insert into communication_links (
-       token_id, source_type, source_id, recipient_hash, link_key, destination, expires_at
+       token_id, source_type, source_id, recipient_hash, link_key, destination, expires_at,
+       survey_invitation_id
      ) values ${placeholders.join(",")}
      on conflict (source_type, source_id, recipient_hash, link_key) do update
        set destination = excluded.destination,
-           expires_at = excluded.expires_at
+           expires_at = excluded.expires_at,
+           survey_invitation_id = excluded.survey_invitation_id
      returning token_id, link_key, destination`,
     values,
   );
@@ -204,15 +223,34 @@ export async function recordCommunicationLinkClick(token: string): Promise<strin
   if (!payload) return null;
 
   try {
-    await query(
-      `update communication_links
+    const rows = await query<{
+      destination: string;
+      survey_invitation_id: string | null;
+      invitation_expires_at: Date | null;
+    }>(
+      `with clicked as (
+         update communication_links
           set click_count = click_count + 1,
               first_clicked_at = coalesce(first_clicked_at, now()),
               last_clicked_at = now()
         where token_id = $1
-          and expires_at > now()`,
+          and expires_at > now()
+          returning destination, survey_invitation_id
+       )
+       select clicked.destination, clicked.survey_invitation_id,
+              invitation.expires_at as invitation_expires_at
+         from clicked
+         left join survey_invitations invitation on invitation.id = clicked.survey_invitation_id`,
       [payload.id],
     );
+    const row = rows[0];
+    if (row?.survey_invitation_id && row.invitation_expires_at) {
+      return addSurveyInvitationToDestination(
+        row.destination,
+        row.survey_invitation_id,
+        new Date(row.invitation_expires_at),
+      );
+    }
   } catch (error) {
     // The URL is independently signed. A metrics outage must not break a
     // useful destination in an email that has already reached someone.

@@ -3,26 +3,62 @@ import { useMemo, useState } from "react";
 
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { getPublicSurveyFn, submitSurveyFn } from "@/features/surveys/surveys.functions";
-import type { SurveyQuestion, SurveyRecord } from "@/features/surveys/types";
+import type {
+  SurveyInvitationContext,
+  SurveyQuestion,
+  SurveyRecord,
+} from "@/features/surveys/types";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/surveys/$slug")({
-  loader: ({ params }) => getPublicSurveyFn({ data: { slug: params.slug } }),
+  validateSearch: (search: Record<string, unknown>): { invite?: string } =>
+    typeof search.invite === "string" ? { invite: search.invite } : {},
+  loaderDeps: ({ search }) => ({ invite: search.invite }),
+  loader: ({ params, deps }) =>
+    getPublicSurveyFn({ data: { slug: params.slug, invite: deps.invite } }),
   head: ({ loaderData }) =>
     buildSeoHead({
-      title: loaderData ? `${loaderData.title} — ${SITE_BRAND}` : `Survey — ${SITE_BRAND}`,
-      description: loaderData?.intro || "A small question from Milk & Henny.",
-      path: `/surveys/${loaderData?.slug ?? "survey"}`,
-      robots: loaderData?.status === "open" ? "index, follow" : "noindex, nofollow",
+      title: loaderData ? `${loaderData.survey.title} — ${SITE_BRAND}` : `Survey — ${SITE_BRAND}`,
+      description: loaderData?.survey.intro || "A small question from Milk & Henny.",
+      path: `/surveys/${loaderData?.survey.slug ?? "survey"}`,
+      robots: "noindex, nofollow",
+      referrer: "no-referrer",
     }),
   component: SurveyPage,
 });
 
 function SurveyPage() {
-  const survey = Route.useLoaderData();
-  if (!survey) return <SurveyUnavailable />;
-  return <SurveyForm survey={survey} />;
+  const experience = Route.useLoaderData();
+  const search = Route.useSearch();
+  if (!experience) return <SurveyUnavailable />;
+  if (experience.survey.identityMode === "identified" && !experience.invitation) {
+    return <SurveyAccessNeeded />;
+  }
+  return (
+    <SurveyForm
+      survey={experience.survey}
+      invitation={experience.invitation}
+      invitationToken={search.invite}
+    />
+  );
+}
+
+function SurveyAccessNeeded() {
+  return (
+    <main className="min-h-screen bg-background px-6 py-16 text-foreground">
+      <div className="mx-auto max-w-xl">
+        <p className="font-mono text-micro uppercase tracking-widest theme-muted">
+          milk &amp; henny
+        </p>
+        <h1 className="mt-5 font-serif text-4xl tracking-tight">Use your personal survey link.</h1>
+        <p className="mt-5 font-serif text-lg leading-relaxed theme-muted">
+          This survey records who has responded. Open the link in the email we sent you, or contact
+          hello@milkandhenny.com if you need another one.
+        </p>
+      </div>
+    </main>
+  );
 }
 
 function SurveyUnavailable() {
@@ -40,10 +76,19 @@ function SurveyUnavailable() {
   );
 }
 
-function SurveyForm({ survey }: { survey: SurveyRecord }) {
+function SurveyForm({
+  survey,
+  invitation,
+  invitationToken,
+}: {
+  survey: SurveyRecord;
+  invitation: SurveyInvitationContext | null;
+  invitationToken?: string;
+}) {
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
-  const [respondentName, setRespondentName] = useState("");
-  const [respondentEmail, setRespondentEmail] = useState("");
+  const [respondentName, setRespondentName] = useState(invitation?.respondentName || "");
+  const [respondentEmail, setRespondentEmail] = useState(invitation?.respondentEmail || "");
+  const [submitAnonymously, setSubmitAnonymously] = useState(false);
   const [state, setState] = useState<"ready" | "sending" | "sent" | "error">("ready");
   const [error, setError] = useState("");
   const requiredCount = survey.questions.filter((question) => question.required).length;
@@ -70,10 +115,21 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
     setError("");
     try {
       const result = await submitSurveyFn({
-        data: { slug: survey.slug, respondentName, respondentEmail, answers },
+        data: {
+          slug: survey.slug,
+          respondentName,
+          respondentEmail,
+          answers,
+          invitationToken,
+          submitAnonymously,
+        },
       });
       if (result.alreadySubmitted) {
-        setError("We already have a response from that email address.");
+        setError(
+          invitation
+            ? "This personal link has already been used."
+            : "We already have a response from that email address.",
+        );
         setState("error");
         return;
       }
@@ -85,6 +141,22 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
       setState("error");
     }
   };
+
+  if (invitation?.completed) {
+    return (
+      <main className="min-h-screen bg-background px-6 py-16 text-foreground">
+        <div className="mx-auto max-w-xl">
+          <p className="font-mono text-micro uppercase tracking-widest theme-muted">thank you</p>
+          <h1 className="mt-5 font-serif text-4xl tracking-tight">
+            We already have your response.
+          </h1>
+          <p className="mt-5 font-serif text-lg leading-relaxed theme-muted">
+            This personal link has already been used, so there is nothing else you need to do.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   if (state === "sent") {
     return (
@@ -126,42 +198,73 @@ function SurveyForm({ survey }: { survey: SurveyRecord }) {
             />
           ))}
 
-          <div className="border-t theme-border pt-8">
-            <p className="font-mono text-xs font-bold">Want a reply?</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="block">
-                <span className="font-mono text-micro theme-muted">name (optional)</span>
-                <input
-                  name="respondentName"
-                  value={respondentName}
-                  onChange={(event) => setRespondentName(event.target.value)}
-                  autoComplete="name"
-                  className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
-                />
-              </label>
-              <div>
-                <label className="block">
-                  <span className="font-mono text-micro theme-muted">email (optional)</span>
+          {survey.identityMode === "anonymous" ? (
+            <div className="border-t theme-border pt-8">
+              <p className="font-mono text-xs font-bold">Your response is anonymous</p>
+              <p className="mt-3 font-mono text-micro theme-faint">
+                We do not ask for or attach your name or email to these answers.
+              </p>
+            </div>
+          ) : invitation ? (
+            <div className="border-t theme-border pt-8">
+              <p className="font-mono text-xs font-bold">Your personal survey link</p>
+              <p className="mt-3 font-mono text-micro leading-relaxed theme-muted">
+                Unless you choose anonymous below, these answers will be linked to{" "}
+                {invitation.respondentEmail}
+                so we can see who has responded.
+              </p>
+              {survey.identityMode === "optional" ? (
+                <label className="mt-4 flex items-start gap-3 font-mono text-xs">
                   <input
-                    name="respondentEmail"
-                    type="email"
-                    value={respondentEmail}
-                    onChange={(event) => setRespondentEmail(event.target.value)}
-                    autoComplete="email"
-                    inputMode="email"
+                    type="checkbox"
+                    checked={submitAnonymously}
+                    onChange={(event) => setSubmitAnonymously(event.target.checked)}
+                  />
+                  <span>
+                    Submit my answers anonymously. We will record that this invitation was
+                    completed, but will not link me to the answers.
+                  </span>
+                </label>
+              ) : null}
+            </div>
+          ) : (
+            <div className="border-t theme-border pt-8">
+              <p className="font-mono text-xs font-bold">Want a reply?</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="font-mono text-micro theme-muted">name (optional)</span>
+                  <input
+                    name="respondentName"
+                    value={respondentName}
+                    onChange={(event) => setRespondentName(event.target.value)}
+                    autoComplete="name"
                     className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
                   />
                 </label>
-                <EmailAddressNotice
-                  email={respondentEmail}
-                  onAcceptSuggestion={setRespondentEmail}
-                />
+                <div>
+                  <label className="block">
+                    <span className="font-mono text-micro theme-muted">email (optional)</span>
+                    <input
+                      name="respondentEmail"
+                      type="email"
+                      value={respondentEmail}
+                      onChange={(event) => setRespondentEmail(event.target.value)}
+                      autoComplete="email"
+                      inputMode="email"
+                      className="mt-2 min-h-11 w-full rounded border theme-border bg-transparent px-3 font-mono text-base sm:text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prose-hashtag)]"
+                    />
+                  </label>
+                  <EmailAddressNotice
+                    email={respondentEmail}
+                    onAcceptSuggestion={setRespondentEmail}
+                  />
+                </div>
               </div>
+              <p className="mt-3 font-mono text-micro theme-faint">
+                We will only use this to reply about your feedback.
+              </p>
             </div>
-            <p className="mt-3 font-mono text-micro theme-faint">
-              We will only use this to reply about your feedback.
-            </p>
-          </div>
+          )}
 
           {state === "error" ? (
             <p role="alert" className="font-mono text-xs text-[var(--prose-hashtag)]">

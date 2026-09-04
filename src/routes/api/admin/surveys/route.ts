@@ -1,7 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAuth } from "@/features/auth/auth.server";
-import { listSurveys, saveSurvey, type SurveyRecord } from "@/features/surveys/surveys.server";
+import {
+  listSurveys,
+  saveSurvey,
+  SURVEY_IDENTITY_MODES,
+  type SurveyIdentityMode,
+  type SurveyRecord,
+} from "@/features/surveys/surveys.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
@@ -20,8 +26,12 @@ async function handlePOST(request: Request) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const status = body.status;
+    const identityMode = body.identityMode;
     if (status !== "draft" && status !== "open" && status !== "closed" && status !== "archived") {
       return Response.json({ error: "Choose a survey status" }, { status: 400 });
+    }
+    if (!SURVEY_IDENTITY_MODES.includes(identityMode as SurveyIdentityMode)) {
+      return Response.json({ error: "Choose how responses are identified" }, { status: 400 });
     }
     const survey = await saveSurvey({
       id: typeof body.id === "string" ? body.id : undefined,
@@ -30,6 +40,7 @@ async function handlePOST(request: Request) {
       title: typeof body.title === "string" ? body.title : "",
       intro: typeof body.intro === "string" ? body.intro : "",
       questions: body.questions,
+      identityMode: identityMode as SurveyIdentityMode,
       status: status as SurveyRecord["status"],
     });
     return Response.json({ survey });

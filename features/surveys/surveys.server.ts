@@ -1,18 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { query } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres.server";
 import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import { isValidEmail } from "@/lib/shared/email-address";
 import {
   SURVEY_QUESTION_TYPES,
+  SURVEY_IDENTITY_MODES,
+  type SurveyIdentityMode,
+  type SurveyInvitationAdmin,
+  type SurveyInvitationContext,
   type SurveyQuestion,
   type SurveyRecord,
   type SurveyResponse,
   type SurveyQuestionType,
 } from "./types";
+import { resolveSurveyInvitation } from "./invitations.server";
 
-export { SURVEY_QUESTION_TYPES } from "./types";
-export type { SurveyQuestion, SurveyRecord, SurveyResponse, SurveyQuestionType } from "./types";
+export { SURVEY_QUESTION_TYPES, SURVEY_IDENTITY_MODES } from "./types";
+export type {
+  SurveyIdentityMode,
+  SurveyInvitationAdmin,
+  SurveyQuestion,
+  SurveyRecord,
+  SurveyResponse,
+  SurveyQuestionType,
+} from "./types";
 
 function hashEmail(email: string): string {
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
@@ -57,8 +69,16 @@ function fromRow(row: Record<string, unknown>): SurveyRecord {
     title: String(row.title),
     intro: String(row.intro ?? ""),
     questions: asQuestions(row.questions),
+    identityMode: SURVEY_IDENTITY_MODES.includes(row.identity_mode as SurveyIdentityMode)
+      ? (row.identity_mode as SurveyIdentityMode)
+      : "optional",
     status: row.status as SurveyRecord["status"],
     responseCount: Number(row.response_count) || 0,
+    invitations: {
+      issued: Number(row.invitations_issued) || 0,
+      opened: Number(row.invitations_opened) || 0,
+      completed: Number(row.invitations_completed) || 0,
+    },
     createdAt: asIso(row.created_at as Date),
     updatedAt: asIso(row.updated_at as Date),
   };
@@ -98,26 +118,44 @@ export async function reserveSurveySubmission(
 
 export async function listSurveys(): Promise<SurveyRecord[]> {
   const rows = await query<Record<string, unknown>>(`
-    select id, slug, event_slug, title, intro, questions, status, response_count,
+    select s.id, s.slug, s.event_slug, s.title, s.intro, s.questions, s.identity_mode,
+           s.status, s.response_count,
+           (select count(*) from survey_invitations i where i.survey_id = s.id) as invitations_issued,
+           (select count(*) from survey_invitations i where i.survey_id = s.id and i.opened_at is not null) as invitations_opened,
+           (select count(*) from survey_invitations i where i.survey_id = s.id and i.completed_at is not null) as invitations_completed,
            created_at, updated_at
-      from surveys
-     where status <> 'archived'
-     order by updated_at desc
+      from surveys s
+     where s.status <> 'archived'
+     order by s.updated_at desc
   `);
   return rows.map(fromRow);
 }
 
 export async function getSurvey(slug: string, includeDraft = false): Promise<SurveyRecord | null> {
   const rows = await query<Record<string, unknown>>(
-    `select id, slug, event_slug, title, intro, questions, status, response_count,
+    `select s.id, s.slug, s.event_slug, s.title, s.intro, s.questions, s.identity_mode,
+            s.status, s.response_count,
+            (select count(*) from survey_invitations i where i.survey_id = s.id) as invitations_issued,
+            (select count(*) from survey_invitations i where i.survey_id = s.id and i.opened_at is not null) as invitations_opened,
+            (select count(*) from survey_invitations i where i.survey_id = s.id and i.completed_at is not null) as invitations_completed,
             created_at, updated_at
-       from surveys
-      where slug = $1
-        and ($2 or status in ('open', 'closed'))
+       from surveys s
+      where s.slug = $1
+        and ($2 or s.status in ('open', 'closed'))
       limit 1`,
     [normaliseSlug(slug), includeDraft],
   );
   return rows[0] ? fromRow(rows[0]) : null;
+}
+
+export async function getSurveyExperience(
+  slug: string,
+  invitationToken?: string,
+): Promise<{ survey: SurveyRecord; invitation: SurveyInvitationContext | null } | null> {
+  const survey = await getSurvey(slug);
+  if (!survey) return null;
+  const invitation = await resolveSurveyInvitation(invitationToken, survey.slug, true);
+  return { survey, invitation };
 }
 
 export async function saveSurvey(input: {
@@ -127,12 +165,15 @@ export async function saveSurvey(input: {
   title: string;
   intro: string;
   questions: unknown;
+  identityMode: SurveyIdentityMode;
   status: SurveyRecord["status"];
 }): Promise<SurveyRecord> {
   const slug = normaliseSlug(input.slug);
   const title = input.title.trim().slice(0, 160);
   const intro = input.intro.trim().slice(0, 2000);
   const questions = asQuestions(input.questions);
+  if (!SURVEY_IDENTITY_MODES.includes(input.identityMode))
+    throw new Error("Choose how responses are identified");
   if (!slug || !title || questions.length === 0)
     throw new Error("Add a title and at least one question");
   if (input.status === "open" && questions.some((question) => !question.label)) {
@@ -140,17 +181,27 @@ export async function saveSurvey(input: {
   }
   const id = input.id || randomUUID();
   await query(
-    `insert into surveys (id, slug, event_slug, title, intro, questions, status)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7)
+    `insert into surveys (id, slug, event_slug, title, intro, questions, identity_mode, status)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
      on conflict (id) do update set
        slug = excluded.slug,
        event_slug = excluded.event_slug,
        title = excluded.title,
        intro = excluded.intro,
        questions = excluded.questions,
+       identity_mode = excluded.identity_mode,
        status = excluded.status,
        updated_at = now()`,
-    [id, slug, input.eventSlug || null, title, intro, JSON.stringify(questions), input.status],
+    [
+      id,
+      slug,
+      input.eventSlug || null,
+      title,
+      intro,
+      JSON.stringify(questions),
+      input.identityMode,
+      input.status,
+    ],
   );
   const survey = await getSurvey(slug, true);
   if (!survey) throw new Error("Survey was not saved");
@@ -184,10 +235,16 @@ export async function submitSurvey(input: {
   slug: string;
   respondentName?: string;
   respondentEmail?: string;
+  invitationToken?: string;
+  submitAnonymously?: boolean;
   answers: Record<string, unknown>;
 }): Promise<{ accepted: true; alreadySubmitted: boolean }> {
   const survey = await getSurvey(input.slug);
   if (!survey || survey.status !== "open") throw new Error("This survey is not open");
+  const invitation = await resolveSurveyInvitation(input.invitationToken, survey.slug);
+  if (survey.identityMode === "identified" && !invitation) {
+    throw new Error("Open the personal survey link from your email to respond");
+  }
   const answers: Record<string, string | string[]> = {};
   for (const question of survey.questions) {
     const answer = cleanAnswer(question, input.answers[question.id]);
@@ -195,40 +252,66 @@ export async function submitSurvey(input: {
       throw new Error(`Answer “${question.label}” to continue`);
     if (answer !== null) answers[question.id] = answer;
   }
-  const email = input.respondentEmail?.trim().toLowerCase() || null;
+  const anonymous =
+    survey.identityMode === "anonymous" ||
+    (survey.identityMode === "optional" && Boolean(input.submitAnonymously));
+  const invitedIdentity = !anonymous ? invitation : null;
+  const email = anonymous
+    ? null
+    : invitedIdentity?.respondentEmail || input.respondentEmail?.trim().toLowerCase() || null;
   if (email && !isValidEmail(email)) throw new Error("Enter a valid email address");
   const emailHash = email ? hashEmail(email) : null;
-  const rows = await query<{ inserted: boolean }>(
-    `with inserted as (
-       insert into survey_responses
-         (id, survey_id, respondent_email, email_hash, respondent_name, answers)
-       values ($1,$2,$3,$4,$5,$6::jsonb)
-       on conflict (survey_id, email_hash) where email_hash is not null do nothing
-       returning id
-     )
-     select exists(select 1 from inserted) as inserted`,
-    [
-      randomUUID(),
-      survey.id,
-      email,
-      emailHash,
-      input.respondentName?.trim().slice(0, 160) || null,
-      JSON.stringify(answers),
-    ],
-  );
-  const inserted = Boolean(rows[0]?.inserted);
-  if (inserted) {
-    await query(
-      `update surveys set response_count = response_count + 1, updated_at = now() where id = $1`,
-      [survey.id],
+  const respondentName = anonymous
+    ? null
+    : invitedIdentity?.respondentName || input.respondentName?.trim().slice(0, 160) || null;
+  const invitationId = invitedIdentity?.id ?? null;
+  const identitySource = invitationId ? "invitation" : email ? "provided" : "anonymous";
+  const inserted = await transaction(async (client) => {
+    if (invitation) {
+      const claimed = await client.query<{ id: string }>(
+        `update survey_invitations
+            set completed_at = now(), completion_mode = $2, updated_at = now()
+          where id = $1 and completed_at is null
+          returning id`,
+        [invitation.id, anonymous ? "anonymous" : "identified"],
+      );
+      if (!claimed.rows[0]) return false;
+    }
+    const result = await client.query<{ id: string }>(
+      `insert into survey_responses
+         (id, survey_id, respondent_email, email_hash, respondent_name, answers,
+          invitation_id, identity_source)
+       values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+       on conflict do nothing
+       returning id`,
+      [
+        randomUUID(),
+        survey.id,
+        email,
+        emailHash,
+        respondentName,
+        JSON.stringify(answers),
+        invitationId,
+        identitySource,
+      ],
     );
-  }
-  return { accepted: true, alreadySubmitted: !inserted && Boolean(emailHash) };
+    if (result.rows[0]) {
+      await client.query(
+        `update surveys set response_count = response_count + 1, updated_at = now() where id = $1`,
+        [survey.id],
+      );
+    }
+    return Boolean(result.rows[0]);
+  });
+  return {
+    accepted: true,
+    alreadySubmitted: !inserted && Boolean(emailHash || invitationId),
+  };
 }
 
 export async function listSurveyResponses(surveyId: string): Promise<SurveyResponse[]> {
   const rows = await query<Record<string, unknown>>(
-    `select id, respondent_email, respondent_name, answers, submitted_at
+    `select id, respondent_email, respondent_name, identity_source, answers, submitted_at
        from survey_responses
       where survey_id = $1
       order by submitted_at desc`,
@@ -238,10 +321,35 @@ export async function listSurveyResponses(surveyId: string): Promise<SurveyRespo
     id: String(row.id),
     respondentEmail: typeof row.respondent_email === "string" ? row.respondent_email : null,
     respondentName: typeof row.respondent_name === "string" ? row.respondent_name : null,
+    identitySource: row.identity_source as SurveyResponse["identitySource"],
     answers: (row.answers && typeof row.answers === "object" ? row.answers : {}) as Record<
       string,
       string | string[]
     >,
     submittedAt: asIso(row.submitted_at as Date),
+  }));
+}
+
+export async function listSurveyInvitations(surveyId: string): Promise<SurveyInvitationAdmin[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select i.id, c.email, c.display_name, i.opened_at, i.completed_at,
+            i.completion_mode, i.expires_at
+       from survey_invitations i
+       join communication_contacts c on c.email_hash = i.recipient_hash
+      where i.survey_id = $1
+      order by i.created_at desc`,
+    [surveyId],
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    respondentEmail: String(row.email),
+    respondentName: typeof row.display_name === "string" ? row.display_name : null,
+    openedAt: row.opened_at ? asIso(row.opened_at as Date) : null,
+    completedAt: row.completed_at ? asIso(row.completed_at as Date) : null,
+    completionMode:
+      row.completion_mode === "anonymous" || row.completion_mode === "identified"
+        ? row.completion_mode
+        : null,
+    expiresAt: asIso(row.expires_at as Date),
   }));
 }

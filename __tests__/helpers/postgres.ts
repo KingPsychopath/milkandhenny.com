@@ -133,6 +133,7 @@ export async function applySchema(): Promise<void> {
     drop table if exists poll_votes cascade;
     drop table if exists polls cascade;
     drop table if exists survey_responses cascade;
+    drop table if exists survey_invitations cascade;
     drop table if exists surveys cascade;
     drop table if exists communication_stage_deliveries cascade;
     drop table if exists communication_plan_stages cascade;
@@ -174,7 +175,7 @@ export async function applySchema(): Promise<void> {
 export async function truncateAll(): Promise<void> {
   const { query } = await import("@/lib/platform/postgres.server");
   await query(
-    `truncate application_scheduled_jobs, email_delivery_events, email_suppressions, email_outbox, communication_links, poll_votes, polls, pitch_decks,
+    `truncate application_scheduled_jobs, email_delivery_events, email_suppressions, email_outbox, communication_links, survey_responses, survey_invitations, surveys, poll_votes, polls, pitch_decks,
               attendee_credit_claim_links, attendee_credit_grants, attendee_credit_campaigns,
               event_waitlist_inventory, event_waitlist_entries, checkout_sessions, tickets,
               ticket_types, events restart identity cascade`,

@@ -150,15 +150,27 @@ type Survey = {
   title: string;
   intro: string;
   questions: SurveyQuestion[];
+  identityMode: "anonymous" | "optional" | "identified";
   status: "draft" | "open" | "closed" | "archived";
   responseCount: number;
+  invitations: { issued: number; opened: number; completed: number };
 };
 type SurveyResponse = {
   id: string;
   respondentEmail: string | null;
   respondentName: string | null;
+  identitySource: "anonymous" | "provided" | "invitation";
   answers: Record<string, string | string[]>;
   submittedAt: string;
+};
+type SurveyInvitation = {
+  id: string;
+  respondentEmail: string;
+  respondentName: string | null;
+  openedAt: string | null;
+  completedAt: string | null;
+  completionMode: "anonymous" | "identified" | null;
+  expiresAt: string;
 };
 type StageDraft = {
   subject: string;
@@ -187,6 +199,7 @@ type SurveyDraft = {
   eventSlug: string;
   title: string;
   intro: string;
+  identityMode: Survey["identityMode"];
   status: Survey["status"];
   questions: SurveyQuestion[];
 };
@@ -206,6 +219,11 @@ const SURVEY_STATUS_OPTIONS: readonly AppSelectOption[] = [
   { value: "draft", label: "draft" },
   { value: "open", label: "open" },
   { value: "closed", label: "closed" },
+];
+const SURVEY_IDENTITY_OPTIONS: readonly AppSelectOption[] = [
+  { value: "identified", label: "personal — link answers to each invitee" },
+  { value: "optional", label: "optional — invitee can answer anonymously" },
+  { value: "anonymous", label: "anonymous — never collect identity" },
 ];
 const QUESTION_TYPE_OPTIONS: readonly AppSelectOption[] = [
   { value: "rating", label: "1–5 rating" },
@@ -559,11 +577,13 @@ export function CommunicationsPanel({
     eventSlug: "",
     title: "",
     intro: "",
+    identityMode: "identified",
     status: "draft",
     questions: [],
   });
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
+  const [surveyInvitations, setSurveyInvitations] = useState<SurveyInvitation[]>([]);
   const { confirm, dialog } = useActionDialog();
   const tab = communicationTab || localTab;
   const selectedEvent = communicationEvent || localSelectedEvent;
@@ -1095,14 +1115,26 @@ export function CommunicationsPanel({
   };
   const loadResponses = async (survey: Survey) => {
     setSelectedSurvey(survey.id);
+    setSurveyDraft({
+      id: survey.id,
+      slug: survey.slug,
+      eventSlug: survey.eventSlug || "",
+      title: survey.title,
+      intro: survey.intro,
+      identityMode: survey.identityMode,
+      status: survey.status,
+      questions: survey.questions,
+    });
     try {
       const response = await authFetch(`/api/admin/surveys/${survey.id}`);
       const data = (await response.json().catch(() => ({}))) as {
         responses?: SurveyResponse[];
+        invitations?: SurveyInvitation[];
         error?: string;
       };
       if (!response.ok) throw new Error(data.error || "Could not load feedback");
       setResponses(data.responses || []);
+      setSurveyInvitations(data.invitations || []);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load feedback");
     }
@@ -1114,11 +1146,13 @@ export function CommunicationsPanel({
       eventSlug: "",
       title: "",
       intro: "",
+      identityMode: "identified",
       status: "draft",
       questions: [{ id: "question-1", type: "long_text", label: "", required: true }],
     });
     setSelectedSurvey(null);
     setResponses([]);
+    setSurveyInvitations([]);
   };
   const audienceOptions: Array<[Audience, string]> =
     kind === "newsletter"
@@ -1354,6 +1388,7 @@ export function CommunicationsPanel({
               loadResponses={loadResponses}
               selectedSurvey={selectedSurvey}
               responses={responses}
+              invitations={surveyInvitations}
               busy={busy}
             />
           ) : null}
@@ -2321,6 +2356,7 @@ function FeedbackView(props: {
   loadResponses: (survey: Survey) => void;
   selectedSurvey: string | null;
   responses: SurveyResponse[];
+  invitations: SurveyInvitation[];
   busy: boolean;
 }) {
   const {
@@ -2333,6 +2369,7 @@ function FeedbackView(props: {
     loadResponses,
     selectedSurvey,
     responses,
+    invitations,
     busy,
   } = props;
   const updateQuestion = (index: number, patch: Partial<SurveyQuestion>) =>
@@ -2377,6 +2414,12 @@ function FeedbackView(props: {
                       <p className="font-serif text-xl">{survey.title}</p>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro">
                         <span className="theme-muted">{survey.responseCount} responses</span>
+                        {survey.invitations.issued > 0 ? (
+                          <span className="theme-muted">
+                            {survey.invitations.completed}/{survey.invitations.issued} invites
+                            complete
+                          </span>
+                        ) : null}
                         <AdminStatus tone={adminToneForStatus(survey.status)}>
                           {survey.status}
                         </AdminStatus>
@@ -2398,6 +2441,7 @@ function FeedbackView(props: {
             <ResponseList
               survey={surveys.find((survey) => survey.id === selectedSurvey)}
               responses={responses}
+              invitations={invitations}
             />
           ) : null}
           <form onSubmit={save} className="space-y-4 border-t theme-border pt-6">
@@ -2431,6 +2475,26 @@ function FeedbackView(props: {
                 variant="field"
                 className="mt-2"
               />
+            </label>
+            <label className="block">
+              <span className="font-mono text-micro theme-muted">response identity</span>
+              <AppSelect
+                value={draft.identityMode}
+                onValueChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    identityMode: value as Survey["identityMode"],
+                  }))
+                }
+                options={SURVEY_IDENTITY_OPTIONS}
+                ariaLabel="response identity"
+                variant="field"
+                className="mt-2"
+              />
+              <span className="mt-2 block font-mono text-micro leading-relaxed theme-faint">
+                Personal links are created only when this survey is sent by email. Anonymous
+                completions are counted without linking the person to their answers.
+              </span>
             </label>
             <label className="block">
               <span className="font-mono text-micro theme-muted">status</span>
@@ -2551,13 +2615,27 @@ function FeedbackView(props: {
   );
 }
 
-function ResponseList({ survey, responses }: { survey?: Survey; responses: SurveyResponse[] }) {
+function ResponseList({
+  survey,
+  responses,
+  invitations,
+}: {
+  survey?: Survey;
+  responses: SurveyResponse[];
+  invitations: SurveyInvitation[];
+}) {
   if (!survey) return null;
   return (
     <div className="border-y theme-border py-5">
       <div>
         <p className="font-mono text-xs font-bold">responses</p>
         <p className="mt-1 font-mono text-micro theme-muted">{responses.length} loaded</p>
+        {survey.invitations.issued > 0 ? (
+          <p className="mt-1 font-mono text-micro theme-muted">
+            {survey.invitations.issued} invited · {survey.invitations.opened} opened ·{" "}
+            {survey.invitations.completed} completed
+          </p>
+        ) : null}
       </div>
       <div className="mt-5 space-y-5">
         {responses.length ? (
@@ -2566,7 +2644,7 @@ function ResponseList({ survey, responses }: { survey?: Survey; responses: Surve
               <p className="font-mono text-micro theme-muted">
                 {response.respondentName || "anonymous"}
                 {response.respondentEmail ? ` · ${response.respondentEmail}` : ""} ·{" "}
-                {dateLabel(response.submittedAt)}
+                {response.identitySource} · {dateLabel(response.submittedAt)}
               </p>
               <dl className="mt-3 space-y-3">
                 {survey.questions.map((question) => {
@@ -2587,6 +2665,23 @@ function ResponseList({ survey, responses }: { survey?: Survey; responses: Surve
           <p className="font-mono text-xs theme-muted">No responses yet.</p>
         )}
       </div>
+      {invitations.length ? (
+        <div className="mt-6 border-t theme-border pt-5">
+          <p className="font-mono text-xs font-bold">invitation lifecycle</p>
+          <div className="mt-3 space-y-2">
+            {invitations.map((invitation) => (
+              <p key={invitation.id} className="font-mono text-micro theme-muted">
+                {invitation.respondentName || invitation.respondentEmail} ·{" "}
+                {invitation.completedAt
+                  ? `completed ${invitation.completionMode}`
+                  : invitation.openedAt
+                    ? "opened"
+                    : "sent"}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

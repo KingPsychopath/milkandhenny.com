@@ -3,7 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { authenticateRequest, getClientIp } from "@/features/auth/auth.server";
 import {
-  getSurvey,
+  getSurveyExperience,
+  listSurveyInvitations,
   listSurveyResponses,
   listSurveys,
   saveSurvey,
@@ -13,8 +14,8 @@ import {
 } from "./surveys.server";
 
 export const getPublicSurveyFn = createServerFn({ method: "GET" })
-  .validator((data: { slug: string }) => data)
-  .handler(async ({ data }) => getSurvey(data.slug));
+  .validator((data: { slug: string; invite?: string }) => data)
+  .handler(async ({ data }) => getSurveyExperience(data.slug, data.invite));
 
 export const submitSurveyFn = createServerFn({ method: "POST" })
   .validator(
@@ -22,6 +23,8 @@ export const submitSurveyFn = createServerFn({ method: "POST" })
       slug: string;
       respondentName?: string;
       respondentEmail?: string;
+      invitationToken?: string;
+      submitAnonymously?: boolean;
       answers: Record<string, unknown>;
     }) => data,
   )
@@ -48,6 +51,7 @@ export const saveAdminSurveyFn = createServerFn({ method: "POST" })
       title: string;
       intro: string;
       questions: unknown;
+      identityMode: SurveyRecord["identityMode"];
       status: SurveyRecord["status"];
     }) => data,
   )
@@ -61,6 +65,10 @@ export const getAdminSurveyResponsesFn = createServerFn({ method: "GET" })
   .validator((data: { surveyId: string }) => data)
   .handler(async ({ data }) => {
     const auth = await authenticateRequest(getRequest(), "admin");
-    if (!auth.ok) return { authorised: false as const, responses: [] };
-    return { authorised: true as const, responses: await listSurveyResponses(data.surveyId) };
+    if (!auth.ok) return { authorised: false as const, responses: [], invitations: [] };
+    const [responses, invitations] = await Promise.all([
+      listSurveyResponses(data.surveyId),
+      listSurveyInvitations(data.surveyId),
+    ]);
+    return { authorised: true as const, responses, invitations };
   });
