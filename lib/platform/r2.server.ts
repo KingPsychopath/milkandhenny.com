@@ -20,6 +20,10 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   HeadBucketCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
@@ -735,6 +739,117 @@ async function presignPutUrl(
   return getSignedUrl(client, command, { expiresIn });
 }
 
+type CompletedMultipartPart = {
+  partNumber: number;
+  etag: string;
+};
+
+async function createMultipartUpload(
+  key: string,
+  contentType: string,
+  options: R2UploadOptions,
+): Promise<string> {
+  assertObjectKey(key);
+  const { client } = getClient(options.scope);
+  const response = await client.send(
+    new CreateMultipartUploadCommand({
+      Bucket: getBucket(options.scope),
+      Key: key,
+      ContentType: contentType,
+      CacheControl: options.cacheControl,
+      ContentDisposition: options.contentDisposition,
+    }),
+    { abortSignal: currentOperationSignal() },
+  );
+  if (!response.UploadId) throw new Error("Object storage did not return a multipart upload ID");
+  return response.UploadId;
+}
+
+async function presignMultipartUploadParts(
+  key: string,
+  uploadId: string,
+  partCount: number,
+  expiresIn: number,
+  options: R2OperationOptions,
+): Promise<Array<{ partNumber: number; url: string }>> {
+  assertObjectKey(key);
+  if (!uploadId || !Number.isSafeInteger(partCount) || partCount < 1 || partCount > 10_000) {
+    throw new Error("Invalid multipart upload request");
+  }
+  const { client } = getClient(options.scope);
+  const bucket = getBucket(options.scope);
+  return Promise.all(
+    Array.from({ length: partCount }, async (_, index) => {
+      const partNumber = index + 1;
+      const url = await getSignedUrl(
+        client,
+        new UploadPartCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+        }),
+        { expiresIn },
+      );
+      return { partNumber, url };
+    }),
+  );
+}
+
+async function completeMultipartUpload(
+  key: string,
+  uploadId: string,
+  parts: CompletedMultipartPart[],
+  options: R2OperationOptions,
+): Promise<void> {
+  assertObjectKey(key);
+  if (!uploadId || parts.length < 1 || parts.length > 10_000) {
+    throw new Error("Invalid multipart completion request");
+  }
+  const ordered = [...parts].sort((a, b) => a.partNumber - b.partNumber);
+  if (
+    ordered.some(
+      (part, index) =>
+        part.partNumber !== index + 1 ||
+        typeof part.etag !== "string" ||
+        part.etag.length < 2 ||
+        part.etag.length > 200,
+    )
+  ) {
+    throw new Error("Multipart completion contains invalid or missing parts");
+  }
+  const { client } = getClient(options.scope);
+  await client.send(
+    new CompleteMultipartUploadCommand({
+      Bucket: getBucket(options.scope),
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: ordered.map((part) => ({ ETag: part.etag, PartNumber: part.partNumber })),
+      },
+    }),
+    { abortSignal: currentOperationSignal() },
+  );
+}
+
+async function abortMultipartUpload(
+  key: string,
+  uploadId: string,
+  options: R2OperationOptions,
+): Promise<void> {
+  assertObjectKey(key);
+  if (!uploadId) throw new Error("Invalid multipart upload ID");
+  const { client } = getClient(options.scope);
+  await client.send(
+    new AbortMultipartUploadCommand({
+      Bucket: getBucket(options.scope),
+      Key: key,
+      UploadId: uploadId,
+    }),
+    { abortSignal: currentOperationSignal() },
+  );
+}
+
 async function presignGetUrl(
   key: string,
   options: {
@@ -780,6 +895,10 @@ export {
   getBucketInfo,
   presignGetUrl,
   presignPutUrl,
+  createMultipartUpload,
+  presignMultipartUploadParts,
+  completeMultipartUpload,
+  abortMultipartUpload,
 };
 
 export type {
@@ -789,4 +908,5 @@ export type {
   R2UploadOptions,
   R2CopyOptions,
   StorageScope,
+  CompletedMultipartPart,
 };

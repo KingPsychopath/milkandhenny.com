@@ -16,10 +16,10 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Upload constraints for public transfers (enforced in upload API routes; admins are exempt).
- * The per-file cap matches the total so a single large video can use the whole allowance.
+ * Large files use multipart transport; aggregate allowance remains an independent product rule.
  */
-const MAX_TRANSFER_FILE_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
-const MAX_TRANSFER_TOTAL_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
+const MAX_TRANSFER_FILE_BYTES = 50 * 1024 * 1024 * 1024;
+const MAX_TRANSFER_TOTAL_BYTES = 100 * 1024 * 1024 * 1024;
 const MAX_TRANSFER_FILES = 500;
 const MAX_TRANSFER_TITLE_LENGTH = 160;
 

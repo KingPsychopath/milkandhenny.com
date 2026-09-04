@@ -18,6 +18,17 @@ interface PresignedUploadOptions {
   onAttempt?: (attempt: number, totalAttempts: number) => void;
 }
 
+export type PresignedMultipartUpload = {
+  uploadId: string;
+  partSize: number;
+  parts: Array<{ partNumber: number; url: string }>;
+};
+
+export type MultipartUploadCompletion = {
+  uploadId: string;
+  parts: Array<{ partNumber: number; etag: string }>;
+};
+
 // Direct uploads share the six-hour validity window of transfer PUT URLs. A
 // short generic HTTP deadline restarts large uploads that are still progressing.
 const DEFAULT_UPLOAD_TIMEOUT_MS = 6 * 60 * 60 * 1000;
@@ -162,4 +173,65 @@ export async function uploadPresignedObject(
       request,
     },
   );
+}
+
+export async function uploadPresignedTarget(
+  input: Omit<PresignedUploadInput, "url"> & {
+    url?: string;
+    multipart?: PresignedMultipartUpload;
+  },
+  options?: PresignedUploadOptions & { concurrency?: number },
+): Promise<MultipartUploadCompletion | undefined> {
+  if (!input.multipart) {
+    if (!input.url) throw new Error("The upload service did not return a destination URL");
+    const response = await uploadPresignedObject({ ...input, url: input.url }, options);
+    if (!response.ok) throw new Error(`Storage rejected the upload (${response.status})`);
+    return undefined;
+  }
+
+  const { multipart } = input;
+  const expectedParts = Math.ceil(input.body.size / multipart.partSize);
+  if (multipart.parts.length !== expectedParts || expectedParts < 1) {
+    throw new Error("The upload service returned an incomplete multipart plan");
+  }
+  const progress = multipart.parts.map(() => 0);
+  const completed: Array<{ partNumber: number; etag: string }> = [];
+  let nextIndex = 0;
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      const part = multipart.parts[index];
+      if (!part) return;
+      const start = (part.partNumber - 1) * multipart.partSize;
+      const body = input.body.slice(start, Math.min(input.body.size, start + multipart.partSize));
+      const response = await uploadPresignedObject(
+        { ...input, url: part.url, body },
+        {
+          ...options,
+          onProgress: (loaded) => {
+            progress[index] = loaded;
+            options?.onProgress?.(
+              progress.reduce((sum, value) => sum + value, 0),
+              input.body.size,
+            );
+          },
+        },
+      );
+      if (!response.ok)
+        throw new Error(`Storage rejected part ${part.partNumber} (${response.status})`);
+      const etag = response.headers.get("etag");
+      if (!etag) {
+        throw new Error(
+          "Storage completed a part but did not expose its ETag. Add ETag to the bucket CORS exposeHeaders setting.",
+        );
+      }
+      completed.push({ partNumber: part.partNumber, etag });
+    }
+  };
+  const concurrency = Math.min(options?.concurrency ?? 4, multipart.parts.length);
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return {
+    uploadId: multipart.uploadId,
+    parts: completed.sort((a, b) => a.partNumber - b.partNumber),
+  };
 }

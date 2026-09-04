@@ -16,7 +16,11 @@ import { collectDroppedFiles } from "@/features/media/collect-dropped-files.clie
 import { inferTransferTitle } from "@/features/transfers/presentation";
 import type { TransferUploadFileInput } from "@/features/transfers/upload-types";
 import { copyText } from "@/lib/client/share";
-import { uploadPresignedObject } from "@/lib/client/presigned-upload";
+import {
+  uploadPresignedTarget,
+  type MultipartUploadCompletion,
+  type PresignedMultipartUpload,
+} from "@/lib/client/presigned-upload";
 import { fetchWithRetry } from "@/lib/http/fetch-with-retry";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 import {
@@ -573,7 +577,14 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
   const uploadPresignedFiles = useCallback(
     async (
-      entries: Array<{ file: File; url: string; label: string; contentType: string }>,
+      entries: Array<{
+        file: File;
+        url?: string;
+        multipart?: PresignedMultipartUpload;
+        label: string;
+        contentType: string;
+        onComplete?: (completion: MultipartUploadCompletion | undefined) => void;
+      }>,
       signal: AbortSignal,
       initialUploadedBytes = 0,
       completeTotalBytes?: number,
@@ -608,11 +619,11 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           if (index >= entries.length) return;
 
           const entry = entries[index];
-          let putRes: Response | null = null;
+          let uploaded = false;
           let lastPutError: unknown;
 
           try {
-            putRes = await uploadPresignedObject(
+            const completion = await uploadPresignedTarget(
               {
                 url: entry.url,
                 body: entry.file,
@@ -631,6 +642,7 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                     uploadedBytes,
                     totalBytes,
                     attempt,
+                multipart: entry.multipart,
                     totalAttempts,
                   });
                 },
@@ -651,19 +663,18 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
                 },
               },
             );
-            if (!putRes.ok) {
-              throw new Error(`Failed to upload ${entry.file.name} (${putRes.status})`);
-            }
+            entry.onComplete?.(completion);
+            uploaded = true;
           } catch (error) {
             lastPutError = await toFriendlyUploadError(error, entry.file);
           }
 
-          if (!putRes?.ok) {
+          if (!uploaded) {
             throw buildUploadFailureMessage({
               file: entry.file,
               label: entry.label,
               contentType: entry.contentType,
-              url: entry.url,
+              url: entry.url ?? entry.multipart?.parts[0]?.url ?? "",
               error: lastPutError,
               attempt: totalAttempts,
               totalAttempts,
@@ -863,7 +874,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
       name: string;
       mediaId?: string;
       contentType: string;
-      primaryUrl: string;
+      primaryUrl?: string;
+      multipart?: PresignedMultipartUpload;
       archivedOriginalUrl?: string;
     }>;
     let uploadedNames: string[] = [];
@@ -982,8 +994,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
     const uploadedNameSet = new Set(uploadedNames);
     const totalBytes = finalizeFiles.reduce(
       (sum, file) => sum + file.size + (file.originalSize ?? 0),
+          multipart: entry.multipart,
       0,
     );
+          onComplete: (completion: MultipartUploadCompletion | undefined) => {
+            const file = finalizeByName.get(entry.name);
+            if (file && completion) file.multipart = completion;
+          },
     const uploadedBytes = finalizeFiles.reduce(
       (sum, file) =>
         sum + (uploadedNameSet.has(file.name) ? file.size + (file.originalSize ?? 0) : 0),
@@ -1008,6 +1025,16 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
           deleteToken,
           title: transferTitle,
           expiresSeconds,
+    const saved = saveTransferUploadRecovery({
+      transferId,
+      deleteToken,
+      title: transferTitle,
+      expiry,
+      expiresSeconds,
+      sourceFiles: selectedFiles,
+      files: finalizeFiles,
+    });
+    setRecovery(saved);
           files: finalizeFiles,
         }),
         signal,
@@ -1073,7 +1100,8 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
         name: string;
         mediaId: string;
         contentType: string;
-        primaryUrl: string;
+        primaryUrl?: string;
+        multipart?: PresignedMultipartUpload;
         archivedOriginalUrl?: string;
       }>;
     };
@@ -1115,8 +1143,13 @@ export function UploadDashboard({ isAdmin, accessExpiresAt }: UploadDashboardPro
 
     setUploadProgress({
       phase: "processing",
+          multipart: entry.multipart,
       current: presignFiles.length,
       total: presignFiles.length,
+          onComplete: (completion: MultipartUploadCompletion | undefined) => {
+            const file = finalizeByName.get(entry.name);
+            if (file && completion) file.multipart = completion;
+          },
     });
     const finalizeRes = await authFetchWithRetry(
       "/api/upload/transfer/append/finalize",

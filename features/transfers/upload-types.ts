@@ -13,6 +13,11 @@ type TransferUploadFileInput = {
   originalSize?: number;
   originalType?: string;
   convertedFrom?: ConvertedFrom;
+  /** Provider completion data returned after all independently retryable parts upload. */
+  multipart?: {
+    uploadId: string;
+    parts: Array<{ partNumber: number; etag: string }>;
+  };
 };
 
 type ProcessFileResult = {

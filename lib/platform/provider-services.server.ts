@@ -83,6 +83,21 @@ export class ObjectStorageService extends Context.Service<
     readonly presignPutUrl: (
       ...args: Parameters<typeof r2.presignPutUrl>
     ) => Effect.Effect<string, InfrastructureError>;
+    readonly createMultipartUpload?: (
+      ...args: Parameters<typeof r2.createMultipartUpload>
+    ) => Effect.Effect<string, InfrastructureError>;
+    readonly presignMultipartUploadParts?: (
+      ...args: Parameters<typeof r2.presignMultipartUploadParts>
+    ) => Effect.Effect<
+      Awaited<ReturnType<typeof r2.presignMultipartUploadParts>>,
+      InfrastructureError
+    >;
+    readonly completeMultipartUpload?: (
+      ...args: Parameters<typeof r2.completeMultipartUpload>
+    ) => Effect.Effect<void, InfrastructureError>;
+    readonly abortMultipartUpload?: (
+      ...args: Parameters<typeof r2.abortMultipartUpload>
+    ) => Effect.Effect<void, InfrastructureError>;
     readonly port: ObjectStorageProvider;
   }
 >()("ObjectStorageService") {
@@ -102,6 +117,14 @@ export class ObjectStorageService extends Context.Service<
       attempt("r2", "presign_get", () => r2ObjectStorageProvider.presignGetUrl(...args)),
     presignPutUrl: (...args: Parameters<typeof r2.presignPutUrl>) =>
       attempt("r2", "presign_put", () => r2ObjectStorageProvider.presignPutUrl(...args)),
+    createMultipartUpload: (...args: Parameters<typeof r2.createMultipartUpload>) =>
+      attempt("r2", "create_multipart", () => r2.createMultipartUpload(...args)),
+    presignMultipartUploadParts: (...args: Parameters<typeof r2.presignMultipartUploadParts>) =>
+      attempt("r2", "presign_multipart_parts", () => r2.presignMultipartUploadParts(...args)),
+    completeMultipartUpload: (...args: Parameters<typeof r2.completeMultipartUpload>) =>
+      attempt("r2", "complete_multipart", () => r2.completeMultipartUpload(...args)),
+    abortMultipartUpload: (...args: Parameters<typeof r2.abortMultipartUpload>) =>
+      attempt("r2", "abort_multipart", () => r2.abortMultipartUpload(...args)),
   });
 }
 

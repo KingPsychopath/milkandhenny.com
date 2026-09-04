@@ -24,7 +24,7 @@ import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import {
   getUploadUrlTtlSeconds,
-  MAX_SINGLE_PUT_BYTES,
+  MAX_MULTIPART_FILE_BYTES,
 } from "@/features/transfers/upload-window.server";
 import { isSafeTransferFilename } from "@/features/transfers/upload.server";
 
@@ -112,13 +112,10 @@ async function handlePOST(request: Request) {
         { status: 400 },
       );
     }
-    // A single presigned PUT tops out at 5 GiB in S3/R2 and we do not do
-    // multipart, so this ceiling binds admins too — otherwise an oversized file
-    // uploads for hours and dies with an opaque EntityTooLarge from storage.
-    if (file.size > MAX_SINGLE_PUT_BYTES) {
+    if (file.size > MAX_MULTIPART_FILE_BYTES) {
       return Response.json(
         {
-          error: `File too large to upload in one piece. Max ${formatBytes(MAX_SINGLE_PUT_BYTES)} per file.`,
+          error: `File too large. Max ${formatBytes(MAX_MULTIPART_FILE_BYTES)} per file.`,
         },
         { status: 400 },
       );

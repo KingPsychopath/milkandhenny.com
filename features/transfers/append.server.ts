@@ -12,7 +12,7 @@ import {
   isHeifUploadLike,
   resolveTransferUploadIds,
 } from "./media-state";
-import { getUploadUrlTtlSeconds, MAX_SINGLE_PUT_BYTES } from "./upload-window.server";
+import { getUploadUrlTtlSeconds, MAX_MULTIPART_FILE_BYTES } from "./upload-window.server";
 import { buildTransferUrl } from "./routes";
 import type { TransferUploadFileInput } from "./upload-types";
 import { TransferOperationsService } from "./transfer-operations-service.server";
@@ -32,7 +32,7 @@ type FileEntry = TransferUploadFileInput;
 export type AppendLimits = {
   /** Cap per request — guests upload in batches, not archives. */
   maxFiles?: number;
-  /** Per-file byte cap below the hard single-PUT limit. */
+  /** Per-file byte cap within the multipart object limit. */
   maxFileBytes?: number;
   /** Total live bytes after this batch is recorded. */
   maxTotalBytes?: number;
@@ -88,7 +88,10 @@ async function prepare(
     transfer.files.map((f) => f.id),
   );
 
-  const maxBytes = Math.min(limits.maxFileBytes ?? MAX_SINGLE_PUT_BYTES, MAX_SINGLE_PUT_BYTES);
+  const maxBytes = Math.min(
+    limits.maxFileBytes ?? MAX_MULTIPART_FILE_BYTES,
+    MAX_MULTIPART_FILE_BYTES,
+  );
   const existingArchivedNames = new Set(
     transfer.files.flatMap((f) =>
       [f.filename, f.originalFilename].filter(

@@ -33,6 +33,7 @@ import {
 } from "./upload-reservation.server";
 import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
 import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
+import { getMultipartPartSize, MULTIPART_UPLOAD_THRESHOLD_BYTES } from "./upload-window.server";
 
 export class TransferOperationError extends Data.TaggedError("TransferOperationError")<{
   readonly cause: unknown;
@@ -96,7 +97,12 @@ export type TransferPresignResult =
         name: string;
         mediaId?: string;
         contentType: string;
-        primaryUrl: string;
+        primaryUrl?: string;
+        multipart?: {
+          uploadId: string;
+          partSize: number;
+          parts: Array<{ partNumber: number; url: string }>;
+        };
         archivedOriginalUrl?: string;
       }>;
     }
@@ -361,14 +367,51 @@ export class TransferOperationsService extends Context.Service<
             const archivedOriginalKey = buildTransferArchivedOriginalStorageKey(transferId, file);
             return Effect.all(
               {
-                primaryUrl: storage.presignPutUrl(
-                  primaryKey,
-                  getMimeType(file.name),
-                  uploadUrlTtlSeconds,
-                  { scope: "private" },
-                ),
+                primary,
                 archivedOriginalUrl:
                   archivedOriginalKey && file.originalName
+            const multipart = file.size > MULTIPART_UPLOAD_THRESHOLD_BYTES;
+            const primary = multipart
+              ? Effect.gen(function* () {
+                  if (!storage.createMultipartUpload || !storage.presignMultipartUploadParts) {
+                    return yield* Effect.fail(
+                      new TransferOperationError({
+                        cause: new Error("Multipart object storage is unavailable"),
+                        operation: "presign_multipart",
+                      }),
+                    );
+                  }
+                  const uploadId = yield* storage.createMultipartUpload(
+                    primaryKey,
+                    getMimeType(file.name),
+                    { scope: "private" },
+                  );
+                  const partSize = getMultipartPartSize(file.size);
+                  const partCount = Math.ceil(file.size / partSize);
+                  const parts = yield* storage
+                    .presignMultipartUploadParts(
+                      primaryKey,
+                      uploadId,
+                      partCount,
+                      uploadUrlTtlSeconds,
+                      { scope: "private" },
+                    )
+                    .pipe(
+                      Effect.tapError(() =>
+                        storage.abortMultipartUpload
+                          ? storage
+                              .abortMultipartUpload(primaryKey, uploadId, { scope: "private" })
+                              .pipe(Effect.catch(() => Effect.void))
+                          : Effect.void,
+                      ),
+                    );
+                  return { multipart: { uploadId, partSize, parts } };
+                })
+              : storage
+                  .presignPutUrl(primaryKey, getMimeType(file.name), uploadUrlTtlSeconds, {
+                    scope: "private",
+                  })
+                  .pipe(Effect.map((primaryUrl) => ({ primaryUrl })));
                     ? storage.presignPutUrl(
                         archivedOriginalKey,
                         getMimeType(file.originalName),
@@ -379,11 +422,11 @@ export class TransferOperationsService extends Context.Service<
               },
               { concurrency: 2 },
             ).pipe(
-              Effect.map(({ primaryUrl, archivedOriginalUrl }) => ({
+              Effect.map(({ primary, archivedOriginalUrl }) => ({
                 name: file.name,
                 mediaId: file.mediaId,
                 contentType: getMimeType(file.name),
-                primaryUrl,
+                ...primary,
                 archivedOriginalUrl,
               })),
             );
@@ -401,6 +444,32 @@ export class TransferOperationsService extends Context.Service<
                 { scope: "private" },
               );
               if (!primary.exists || primary.size !== file.size) {
+      const completeMultipartFiles = (transferId: string, files: TransferUploadFileInput[]) =>
+        Effect.forEach(
+          files.filter((file) => file.multipart),
+          (file) =>
+            Effect.gen(function* () {
+              const key = buildTransferPrimaryStorageKey(transferId, file);
+              const existing = yield* storage.headObject(key, { scope: "private" });
+              if (existing.exists && existing.size === file.size) return;
+              if (!storage.completeMultipartUpload || !file.multipart) {
+                return yield* Effect.fail(
+                  new TransferOperationError({
+                    cause: new Error("Multipart object storage is unavailable"),
+                    operation: "complete_multipart",
+                  }),
+                );
+              }
+              yield* storage.completeMultipartUpload(
+                key,
+                file.multipart.uploadId,
+                file.multipart.parts,
+                { scope: "private" },
+              );
+            }),
+          { concurrency: 2 },
+        );
+
                 return {
                   mismatch: { filename: file.name, archivedOriginal: false },
                   bytes: 0,
@@ -518,6 +587,7 @@ export class TransferOperationsService extends Context.Service<
           const results = yield* processFiles(input.transferId, input.files);
           const grouped = applyTransferAssetGroups(
             sortTransferFiles(results.map(({ file }) => file)),
+          yield* completeMultipartFiles(input.transferId, input.files);
           );
           const now = new Date();
           const transfer: TransferData = {
@@ -588,6 +658,7 @@ export class TransferOperationsService extends Context.Service<
             urls,
             uploadedNames: input.files
               .filter((_, index) => !inspected[index]?.mismatch)
+          yield* completeMultipartFiles(input.transferId, input.files);
               .map((file) => file.name),
           } as const;
         }).pipe(
@@ -653,6 +724,7 @@ export class TransferOperationsService extends Context.Service<
               { maxFiles: input.maxFiles, maxTotalBytes: input.maxTotalBytes },
             ),
           );
+          yield* completeMultipartFiles(input.transferId, input.files);
           if (appended.status !== "updated") return { status: appended.status } as const;
 
           let latest = appended.transfer;

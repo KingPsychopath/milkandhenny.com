@@ -7,8 +7,8 @@ import { MAX_TRANSFER_TOTAL_BYTES } from "@/features/transfers/store.server";
 export const maxDuration = 15;
 export const runtime = "nodejs";
 
-const GUEST_MAX_FILES = 30;
-const GUEST_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+const GUEST_MAX_FILES = 100;
+const GUEST_MAX_FILE_BYTES = 50 * 1024 * 1024 * 1024;
 
 /** Guest drop finalize — same bearer authorisation as presign. */
 async function handlePOST(request: Request) {

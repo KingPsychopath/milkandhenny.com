@@ -15,6 +15,10 @@ describe("upload transfer presign", () => {
   });
 
   it("should bypass transfer size caps for admins", async () => {
+    const multipartParts = Array.from({ length: 16 }, (_, index) => ({
+      partNumber: index + 1,
+      url: `https://example.com/upload-part-${index + 1}`,
+    }));
     vi.doMock("@/features/auth/auth.server", () => ({
       requireAuthWithPayload: vi.fn().mockResolvedValue({
         error: null,
@@ -24,6 +28,8 @@ describe("upload transfer presign", () => {
     vi.doMock("@/lib/platform/r2.server", () => ({
       isTransferStorageConfigured: () => true,
       presignPutUrl: vi.fn().mockResolvedValue("https://example.com/upload"),
+      createMultipartUpload: vi.fn().mockResolvedValue("multipart-upload-id"),
+      presignMultipartUploadParts: vi.fn().mockResolvedValue(multipartParts),
     }));
     vi.doMock("@/features/transfers/store.server", () => ({
       generateTransferId: () => "transfer-id",
@@ -52,7 +58,16 @@ describe("upload transfer presign", () => {
     await expect(response.json()).resolves.toMatchObject({
       transferId: "transfer-id",
       deleteToken: "delete-token",
-      urls: [{ name: "huge.mov", primaryUrl: "https://example.com/upload" }],
+      urls: [
+        {
+          name: "huge.mov",
+          multipart: {
+            uploadId: "multipart-upload-id",
+            partSize: 128 * 1024 * 1024,
+            parts: multipartParts,
+          },
+        },
+      ],
     });
   });
 

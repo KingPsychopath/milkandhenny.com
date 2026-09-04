@@ -5,7 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { registerApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
 import { prepareBrowserImage } from "@/features/media/browser-image-prep.client";
 import { collectDroppedFiles } from "@/features/media/collect-dropped-files.client";
-import { uploadPresignedObject } from "@/lib/client/presigned-upload";
+import {
+  uploadPresignedObject,
+  uploadPresignedTarget,
+  type PresignedMultipartUpload,
+} from "@/lib/client/presigned-upload";
 import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
 
 /**
@@ -17,12 +21,14 @@ import { mapWithConcurrency } from "@/lib/shared/map-with-concurrency";
  * doesn't work on my iPhone" never happens at a party.
  */
 
-type ItemStatus = "preparing" | "uploading" | "done" | "failed";
+type ItemStatus = "preparing" | "queued" | "uploading" | "retrying" | "done" | "failed";
 
 type UploadItem = {
   id: number;
   label: string;
   status: ItemStatus;
+  sourceFile: File;
+  progress?: number;
   error?: string;
 };
 
@@ -34,6 +40,10 @@ type FilePayload = {
   originalSize?: number;
   originalType?: string;
   convertedFrom?: "browser_image";
+  multipart?: {
+    uploadId: string;
+    parts: Array<{ partNumber: number; etag: string }>;
+  };
 };
 
 const UPLOAD_ATTEMPTS = 4;
@@ -109,7 +119,7 @@ export function DropPage({
       setBusy(true);
       setNotice(null);
 
-      const batch = picked.slice(0, 30).map((file) => {
+      const batch = picked.slice(0, 100).map((file) => {
         const id = nextIdRef.current++;
         return { id, file };
       });
@@ -118,6 +128,7 @@ export function DropPage({
         ...batch.map(({ id, file }) => ({
           id,
           label: file.name,
+          sourceFile: file,
           status: "preparing" as ItemStatus,
         })),
       ]);
@@ -138,6 +149,7 @@ export function DropPage({
               requireBrowserDecode: true,
             });
             const name = tagFilename(result.uploadName, id);
+            setItem(id, { status: "queued", progress: 0 });
             return {
               id,
               uploadFile: result.uploadFile,
@@ -171,7 +183,8 @@ export function DropPage({
           urls?: {
             name: string;
             contentType: string;
-            primaryUrl: string;
+            primaryUrl?: string;
+            multipart?: PresignedMultipartUpload;
             archivedOriginalUrl?: string;
           }[];
           error?: string;
@@ -187,9 +200,29 @@ export function DropPage({
             setItem(entry.id, { status: "failed", error: "no upload slot" });
             return null;
           }
-          setItem(entry.id, { status: "uploading" });
+          setItem(entry.id, { status: "uploading", progress: 0, error: undefined });
           try {
-            await putFile(target.primaryUrl, entry.uploadFile, target.contentType);
+            const completion = await uploadPresignedTarget(
+              {
+                url: target.primaryUrl,
+                multipart: target.multipart,
+                body: entry.uploadFile,
+                contentType: target.contentType,
+              },
+              {
+                retries: UPLOAD_ATTEMPTS - 1,
+                concurrency: 4,
+                onAttempt: (attempt) => {
+                  if (attempt > 1) setItem(entry.id, { status: "retrying" });
+                },
+                onProgress: (loaded, total) => {
+                  setItem(entry.id, {
+                    progress: total > 0 ? Math.round((loaded / total) * 100) : 0,
+                  });
+                },
+              },
+            );
+            if (completion) entry.payload.multipart = completion;
             if (entry.originalFile) {
               const archivedOriginalUrl = target.archivedOriginalUrl;
               if (!archivedOriginalUrl) {
@@ -201,10 +234,10 @@ export function DropPage({
                 entry.originalFile.type || "application/octet-stream",
               );
             }
-            setItem(entry.id, { status: "done" });
+            setItem(entry.id, { status: "done", progress: 100 });
             return entry.payload;
           } catch {
-            setItem(entry.id, { status: "failed", error: "upload failed — try again" });
+            setItem(entry.id, { status: "failed", error: "upload failed · ready to retry" });
             return null;
           }
         });
@@ -235,6 +268,14 @@ export function DropPage({
     },
     [busy, setItem, token],
   );
+
+  const retryFailed = useCallback(() => {
+    if (busy) return;
+    const failed = items.filter((item) => item.status === "failed");
+    if (failed.length === 0) return;
+    setItems((current) => current.filter((item) => item.status !== "failed"));
+    void upload(failed.map((item) => item.sourceFile));
+  }, [busy, items, upload]);
 
   useEffect(
     () =>
@@ -286,7 +327,7 @@ export function DropPage({
           onClick={() => inputRef.current?.click()}
           className="mt-8 min-h-16 w-full rounded-2xl bg-foreground font-mono text-base text-background disabled:opacity-60"
         >
-          {busy ? "uploading…" : "add photos & videos"}
+          {busy ? "uploading…" : items.length > 0 ? "add more" : "add photos & videos"}
         </button>
         <p className="mt-2 text-center font-mono text-micro theme-faint">
           you can also drop or paste files anywhere on this page
@@ -309,6 +350,16 @@ export function DropPage({
           </p>
         )}
 
+        {items.some((item) => item.status === "failed") && !busy ? (
+          <button
+            type="button"
+            onClick={retryFailed}
+            className="mt-3 min-h-12 w-full rounded-2xl border theme-border-strong font-mono text-sm text-foreground"
+          >
+            retry failed uploads
+          </button>
+        ) : null}
+
         {items.length > 0 && (
           <ul className="mt-6 divide-y theme-border border-y theme-border">
             {items.map((item) => (
@@ -328,7 +379,15 @@ export function DropPage({
                   )}
                   {(item.status === "preparing" || item.status === "uploading") && (
                     <span className="theme-muted">
-                      {item.status === "preparing" ? "preparing…" : "uploading…"}
+                      {item.status === "preparing"
+                        ? "preparing…"
+                        : `uploading${item.progress ? ` · ${item.progress}%` : "…"}`}
+                    </span>
+                  )}
+                  {item.status === "queued" && <span className="theme-muted">ready</span>}
+                  {item.status === "retrying" && (
+                    <span className="theme-muted">
+                      retrying{item.progress ? ` · ${item.progress}%` : "…"}
                     </span>
                   )}
                 </span>

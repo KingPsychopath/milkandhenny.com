@@ -18,7 +18,7 @@ function readSecondsEnv(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
 }
 
-/** Six hours covers a 5 GiB file on a slow connection with room to spare. */
+/** Six hours covers large resumable uploads without leaving credentials open indefinitely. */
 const DEFAULT_UPLOAD_URL_TTL_SECONDS = 6 * 60 * 60;
 
 /** Margin for the client to finish its last PUT and call finalize. */
@@ -33,16 +33,27 @@ function getUploadReservationTtlSeconds(): number {
 }
 
 /**
- * A single presigned PUT cannot carry more than 5 GiB — that is the S3/R2
- * limit, not ours, and we do not implement multipart. Enforced for everyone,
- * admins included: without this an oversized file uploads for hours and then
- * fails with an opaque `EntityTooLarge` from storage.
+ * Small objects use one PUT. Larger objects are split into independently
+ * retryable parts before reaching the provider's single-PUT ceiling.
  */
 const MAX_SINGLE_PUT_BYTES = 5 * 1024 * 1024 * 1024;
+const MULTIPART_UPLOAD_THRESHOLD_BYTES = 1024 * 1024 * 1024;
+const MULTIPART_MIN_PART_BYTES = 128 * 1024 * 1024;
+const MULTIPART_TARGET_MAX_PARTS = 1_000;
+const MAX_MULTIPART_FILE_BYTES = 500 * 1024 * 1024 * 1024;
+
+function getMultipartPartSize(size: number): number {
+  const fiveMiB = 5 * 1024 * 1024;
+  const needed = Math.ceil(size / MULTIPART_TARGET_MAX_PARTS / fiveMiB) * fiveMiB;
+  return Math.max(MULTIPART_MIN_PART_BYTES, needed);
+}
 
 export {
   getUploadReservationTtlSeconds,
   getUploadUrlTtlSeconds,
   MAX_SINGLE_PUT_BYTES,
+  MAX_MULTIPART_FILE_BYTES,
+  MULTIPART_UPLOAD_THRESHOLD_BYTES,
+  getMultipartPartSize,
   RESERVATION_GRACE_SECONDS,
 };
