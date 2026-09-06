@@ -24,7 +24,8 @@ intentionally absent; do not add them or their configuration.
 Use blast-radius-based verification:
 
 - During iteration, run the narrowest relevant test or check.
-- Before handing off a source change, run `pnpm check` and `pnpm test`.
+- For source changes, use `pnpm check` and the tests covering the changed behavior.
+  Run the full `pnpm test` suite for cross-feature changes or release candidates.
 - Run `pnpm build` when bundling, server/client boundaries, build inputs, or deployment packaging
   changed.
 - Run focused Playwright journeys when browser behavior changed. Run `pnpm verify:release` for a
@@ -137,7 +138,8 @@ add or reuse theme tokens in `src/styles/globals.css`.
 
 ## 7. Deeper rules
 
-Load the relevant rule before working in that domain:
+Use the rule covering the changed contract; do not load the entire table or
+reread unchanged references before each edit:
 
 | Task domain                                     | Rule or document                        |
 | ----------------------------------------------- | --------------------------------------- |
