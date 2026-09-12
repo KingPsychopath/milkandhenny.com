@@ -103,7 +103,7 @@
     "onnxruntime-node": "^1.27.0",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.78.0",
-    "sharp": "^0.35.3",
+    "sharp": "0.35.4",
     "subtlex-word-frequencies": "2.0.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
