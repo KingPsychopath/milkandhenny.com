@@ -37,9 +37,9 @@ function getDirectRedisUrl(): string {
   );
 }
 
-function createRedisClient(): Redis {
+function createRedisClient(commandTimeout?: number): Redis {
   return new Redis(getDirectRedisUrl(), {
-    commandTimeout: 15_000,
+    ...(commandTimeout === undefined ? {} : { commandTimeout }),
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
     lazyConnect: false,
@@ -51,6 +51,11 @@ function createRedisClient(): Redis {
  * ordinary commands, so it must not share with the queue clients.
  */
 function createDirectRedisClient(): Redis {
+  return createRedisClient(15_000);
+}
+
+/** A blocking queue claim must not inherit the ordinary command deadline. */
+function createBlockingRedisClient(): Redis {
   return createRedisClient();
 }
 
@@ -78,6 +83,7 @@ async function closeDirectRedisConnections(): Promise<void> {
 
 export {
   closeDirectRedisConnections,
+  createBlockingRedisClient,
   createDirectRedisClient,
   getCommandRedis,
   getDirectRedisConfig,

@@ -46,7 +46,7 @@ vi.mock("@/features/transfers/media-worker-status.server", () => ({
 }));
 
 vi.mock("@/lib/platform/redis-direct.server", () => ({
-  createDirectRedisClient: vi.fn(() => {
+  createBlockingRedisClient: vi.fn(() => {
     const client = {
       disconnect: vi.fn(() => {
         state.pendingClaims.get(client)?.(new Error("connection closed"));
@@ -75,7 +75,7 @@ afterEach(async () => {
 });
 
 describe("long-running media worker", () => {
-  it("uses one bounded blocking claim per concurrency slot while idle", async () => {
+  it("holds one indefinite blocking claim per concurrency slot while idle", async () => {
     const { startMediaWorkerLoop, stopMediaWorkerLoop } =
       await import("@/features/system/media-worker-runtime.server");
 
@@ -83,7 +83,7 @@ describe("long-running media worker", () => {
 
     await vi.waitFor(() => expect(state.claim).toHaveBeenCalledTimes(2));
     expect(state.clients).toHaveLength(2);
-    expect(state.claim.mock.calls.map(([, timeout]) => timeout)).toEqual([10, 10]);
+    expect(state.claim.mock.calls.map(([, timeout]) => timeout)).toEqual([0, 0]);
     expect(new Set(state.claim.mock.calls.map(([client]) => client)).size).toBe(2);
 
     await stopMediaWorkerLoop();

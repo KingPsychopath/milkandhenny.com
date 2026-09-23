@@ -23,7 +23,7 @@ import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
-import { createDirectRedisClient } from "@/lib/platform/redis-direct.server";
+import { createBlockingRedisClient } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
 import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
 import { withOperationSignal } from "@/lib/platform/operation-context.server";
@@ -116,7 +116,7 @@ async function recordWorkerError(error: unknown): Promise<void> {
 }
 
 function createBlockingClients(concurrency: number): Redis[] {
-  return Array.from({ length: concurrency }, () => createDirectRedisClient());
+  return Array.from({ length: concurrency }, () => createBlockingRedisClient());
 }
 
 const disconnectedBlockingClients = new WeakSet<Redis>();
@@ -151,14 +151,12 @@ function workerAttempt<A>(operation: string, run: (signal: AbortSignal) => Promi
   }).pipe(Effect.withSpan(`media.worker.${operation}`, { attributes: { operation } }));
 }
 
-function claimJob(client: Redis, timeoutSeconds = DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS) {
+function claimJob(client: Redis, timeoutSeconds = 0) {
   return workerAttempt("claim", async (signal) => {
     const disconnect = () => disconnectBlockingClient(client);
     signal.addEventListener("abort", disconnect, { once: true });
     try {
-      // The direct Redis client has a 15-second command deadline. A finite
-      // Redis-side block returns normally before that deadline and keeps an
-      // idle worker from reporting a false infrastructure failure.
+      // Worker clients have no command deadline, so an empty queue stays blocked.
       return await claimTransferMediaJobBlocking(client, timeoutSeconds);
     } finally {
       signal.removeEventListener("abort", disconnect);
