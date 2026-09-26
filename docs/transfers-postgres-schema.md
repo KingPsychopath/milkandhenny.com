@@ -35,8 +35,11 @@ transaction, counting every other active reservation against the quota. The Post
 plan queues every visual route without publishing a job early; when supplied to create or append
 finalization, each matching generation-one job commits in the same transaction as its file row.
 Finalizers reject a queued file without its job plan, and the Redis-era enqueue helper refuses
-Postgres queue mode so a split switch cannot silently lose work. The live upload path has not
-selected this plan. A staged
+Postgres queue mode so a split switch cannot silently lose work. Initial presign, resume,
+finalize and abandon can select the Postgres reservation and job plan together under
+`TRANSFER_CATALOGUE_STORE=postgres` and `TRANSFER_MEDIA_JOB_STORE=postgres`. This remains a
+staged switch; append, deletion and cleanup are guarded until their Postgres implementations
+are connected. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
@@ -52,18 +55,18 @@ deletes once. The live cleanup cron still selects Redis until the request and cl
 switch together.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
-Live request and cleanup selection are still pending, so the application has not selected this
-repository.
+The shared transfer read functions select the Postgres catalogue under the paired flags.
+Legacy transfer mutations fail closed in that mode. Production has not selected the flags.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and
-bytes, admits one concurrent claimant, and hides expired rows. It is not wired into the upload
-workflow yet: finalization, resume, abandon and orphan-object cleanup must switch together so
-all of them consult the same reservation authority.
+bytes, admits one concurrent claimant, and hides expired rows. The initial upload workflow now
+uses it in staged Postgres mode: finalization, resume and abandon consult the same reservation
+authority. Orphan-object cleanup remains open.
 The staged finalization transaction locks the matching reservation, verifies the hashed
 capabilities and selected file IDs, bounds stored bytes by the presign reservation, creates the
-transfer catalogue, and consumes the reservation in one commit. Resume, abandon, object cleanup
-and the live upload path still use Redis.
+transfer catalogue, and consumes the reservation in one commit. The default live path still
+uses Redis.
 Append presign/finalize still use Redis-era workflows, so the new append reservation and
 finalizer are not selected. Late uploads, abandon and deep object cleanup must be wired before
 that switch.
@@ -98,8 +101,8 @@ path remains unchanged.
 The supplied RDB contains one active transfer and eight unleased entries in the processing
 list. One entry has no surviving transfer and no R2 source object. The importer retains that
 orphan's provenance in a restricted quarantine record and does not enqueue it as runnable work.
-A fresh source delta is needed before cutover. No migration in this stage reads or mutates
-production data.
+The user authorized the verified first export as the Redis cutoff on 2026-09-26, accepting later
+Redis-only changes as excluded. No migration in this stage reads or mutates production data.
 
 The offline extractor's last optional output now writes a private transfer bundle with the
 verified RDB SHA-256, transfer/index records, and all three media lists. Migration
@@ -119,4 +122,4 @@ processing-list entry is recorded as completed rather than requeued. Missing or 
 source jobs are retained in restricted quarantine. The supplied export rehearsed as one transfer,
 52 files, seven completed jobs, zero runnable jobs and one quarantined orphan on an isolated
 production restore. The same-source import repeated, and a different hash was refused.
-Production remains unchanged; obtain and reconcile a fresh source delta before cutover.
+Production remains unchanged; reconcile the authorized first export before cutover.

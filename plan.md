@@ -642,6 +642,10 @@ derived exports. No read path silently repairs/deletes product state.
         first-generation jobs with file rows and reservation consumption. Reject queued files
         without a job plan and reject legacy enqueue in Postgres mode. Live upload selection and
         cleanup remain open.
+  - [x] Stage paired Postgres catalogue/queue selection for initial presign, finalization,
+        resume and abandon, plus shared transfer reads and delete-capability verification.
+        Finalization commits file rows and jobs with its reservation. Legacy mutations fail
+        closed in this mode. Append, deletion and cleanup must switch before enabling it.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
@@ -1108,6 +1112,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   repeat cleanup; `pnpm check` passed. The full suite and production build are deferred until
   live cleanup selection changes bundling or crosses feature boundaries. The production cron
   still selects Redis.
+  The staged `TRANSFER_CATALOGUE_STORE=postgres` path now reads transfers from Postgres and
+  sends initial presign, finalize, resume and abandon through one Postgres reservation authority.
+  Finalization uses the all-visual media plan and commits its jobs beside file rows. Other
+  legacy transfer mutations fail closed if the catalogue flag is selected. A real-Postgres
+  service test passed completion, idempotency and missing-object retry; the five neighboring
+  upload route suites and the catalogue suite passed (six files, 28 tests). `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (274 files, 2,119 tests). This staged flag
+  must stay unset until append, deletion, cleanup and orphan handling are complete.
   A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
   while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
   from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
@@ -1135,8 +1147,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: wire transfer request flows and cleanup against the same Postgres authority, then
-  implement safe file removal with generation-specific derivatives. Reconcile orphan transfer prefixes
+- Next action: finish Postgres append reservations/finalization, transfer deletion and cleanup
+  request paths so the catalogue flag can be enabled safely. Reconcile orphan transfer prefixes
   and qualify the opt-in deletion runner before cutover. Complete media queue operations and
   old-attempt object reconciliation, then reconcile the authorized first export against the importer.
   Wire recoverable word/album object operations before any release candidate. Do not

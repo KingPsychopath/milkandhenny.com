@@ -2,6 +2,12 @@ import { randomBytes, timingSafeEqual } from "crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { FILE_KINDS } from "@/features/media/file-kinds";
 import type { AssetGroup, TransferData, TransferFile, TransferSummary } from "./types";
+import {
+  getPostgresTransfer,
+  listPostgresTransferSummaries,
+  validatePostgresTransferDeleteToken,
+} from "./catalogue-postgres.server";
+import { postgresTransferCatalogueSelected } from "./store-selection.server";
 
 /* ─── Constants ─── */
 
@@ -114,6 +120,8 @@ function allowInMemoryTransferStore(): boolean {
 }
 
 function requireTransferRedis() {
+  if (postgresTransferCatalogueSelected())
+    throw new Error("Legacy transfer mutation is unavailable with the Postgres catalogue");
   const redis = getRedis();
   if (redis) return redis;
   if (allowInMemoryTransferStore()) return null;
@@ -391,6 +399,7 @@ async function removeTransferFileAtomic(
 
 /** Get a transfer by ID. Returns null if expired or not found. */
 async function getTransfer(id: string): Promise<TransferData | null> {
+  if (postgresTransferCatalogueSelected()) return getPostgresTransfer(id);
   const key = `${TRANSFER_PREFIX}${id}`;
   const redis = getRedis();
 
@@ -415,6 +424,15 @@ async function getTransfer(id: string): Promise<TransferData | null> {
  * a side effect, which is the only place that garbage gets collected.
  */
 async function listTransferData(): Promise<TransferData[]> {
+  if (postgresTransferCatalogueSelected()) {
+    const summaries = await listPostgresTransferSummaries();
+    const transfers: TransferData[] = [];
+    for (const summary of summaries) {
+      const transfer = await getPostgresTransfer(summary.id);
+      if (transfer) transfers.push(transfer);
+    }
+    return transfers;
+  }
   const redis = requireTransferRedis();
   const now = Date.now();
 
@@ -465,6 +483,7 @@ async function listTransferData(): Promise<TransferData[]> {
 }
 
 async function listTransfers(): Promise<TransferSummary[]> {
+  if (postgresTransferCatalogueSelected()) return listPostgresTransferSummaries();
   const now = Date.now();
   const redis = requireTransferRedis();
 
@@ -505,6 +524,7 @@ async function listTransfers(): Promise<TransferSummary[]> {
 }
 
 async function listTransfersForOwner(personId: string): Promise<TransferSummary[]> {
+  if (postgresTransferCatalogueSelected()) return listPostgresTransferSummaries(personId);
   const now = Date.now();
   return (await listTransferData())
     .filter((transfer) => transfer.ownerPersonId === personId)
@@ -538,6 +558,7 @@ async function deleteTransferData(id: string): Promise<boolean> {
 /** Validate a delete token against a transfer */
 async function validateDeleteToken(id: string, token: string): Promise<boolean> {
   if (!token || typeof token !== "string") return false;
+  if (postgresTransferCatalogueSelected()) return validatePostgresTransferDeleteToken(id, token);
   const transfer = await getTransfer(id);
   if (!transfer) return false;
   const expected = Buffer.from(transfer.deleteToken);
