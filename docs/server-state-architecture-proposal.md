@@ -273,18 +273,27 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   passed through typed route context. The poll route now seeds and observes one public Query entry;
   its browser-only voter lookup, vote mutation, and public result invalidation use feature queries.
   Identity transitions cancel/clear Query snapshots with Router state. Unmigrated loaders keep the
-  existing Router preload policy; migrated routes opt into Query freshness.
-- Verification: `pnpm check`, `pnpm build`, poll integration tests, focused poll Playwright journey,
-  and identity-reset unit test passed. The browser journey proved SSR poll content, vote submission,
-  and restored device view. Full suite is deferred until cross-feature slices are integrated.
+  existing Router preload policy; migrated routes opt into Query freshness. Public home, words,
+  albums, and events listings, the event detail read, and the attendee account/security summary now
+  use feature-owned queries. Public listings no longer serialize the same DTO in loader output and
+  the Query cache. The event loader retains only head metadata. The account view is a single private
+  Query entry, with local form drafts and recovery codes kept outside it.
+- Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
+  four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
+  account, and poll Playwright journeys passed. The browser journeys proved SSR content, poll vote
+  submission and restored device view, and account sign-out isolation. The album listing journey
+  passed with `ALBUM_STORE=postgres`; the default E2E S3 stub does not serve album manifests. The
+  default 20-worker Vitest run stalled behind database lock contention and was replaced by the
+  passing capped run.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
-- Next action: migrate admin and attendee/public resource slices; verify each workflow, then
-  revisit all M1 acceptance checks and complete integrated verification before declaring done.
+- Next action: migrate admin workspaces, transfer metadata, and remaining resource families.
+  Revisit all M1 acceptance checks and integrated verification before declaring done.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
-  implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset.
+  implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
+  `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views.
 
 ## References
 
