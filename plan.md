@@ -803,7 +803,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   Staged reservation repository `7a379dae`; deletion-token codec `babb2e62`; catalogue
   creation `012bbdf9`; row-locked append `da0c5fbf`; media-job repository `09d95c3a`;
   fenced file-result commit `5d244771`.
-  Verified transfer source import `44ebe3fc`.
+  Verified transfer source import `44ebe3fc`; transactional regrouping `341b3fc3`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -981,6 +981,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   preserves the latest worker processing fields and rejects invalid membership. Five focused
   real-Postgres catalogue tests and `pnpm check` passed. File removal, deletion, and quota
   coordination with reservations remain open.
+  A staged transfer tombstone now hides the record and cancels outstanding claimed or pending
+  media jobs in the same transaction. A real-Postgres case checked idempotence, visibility and
+  cleared claim tokens; all six catalogue tests and `pnpm check` passed. Object cleanup is not
+  yet coupled to this tombstone, so runtime deletion still uses Redis.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

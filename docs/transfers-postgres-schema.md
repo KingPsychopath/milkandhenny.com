@@ -21,8 +21,10 @@ Web reads decrypt the deletion token; worker reads omit the ciphertext columns e
 no web secret. Its staged append operation locks the transfer row and checks existing IDs,
 filenames, file count and stored-byte totals before inserting new files. Its regroup operation
 locks the same row, rejects a changed file set, and preserves worker-owned processing fields.
-It does not yet coordinate outstanding append reservations or worker generations. File removal,
-deletion and expiry workflows are still pending, so the application has not selected this repository.
+It does not yet coordinate outstanding append reservations or worker generations. A staged
+tombstone hides a deleted transfer and cancels pending/claimed jobs in the same transaction.
+Object deletion, file removal and expiry workflows are still pending, so the application has
+not selected this repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and

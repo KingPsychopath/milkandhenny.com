@@ -5,6 +5,7 @@ import {
   createPostgresTransfer,
   getPostgresTransfer,
   getPostgresTransferForWorker,
+  tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
 import type { TransferData } from "@/features/transfers/types";
@@ -164,5 +165,26 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       updatePostgresTransferGrouping(transfer.id, desired, [transfer.groups![0]]),
     ).rejects.toThrow("Invalid transfer group member");
     expect((await getPostgresTransfer(transfer.id))?.groups).toBeUndefined();
+  });
+
+  it("tombstones a transfer and cancels claimed media work", async () => {
+    await createPostgresTransfer(transfer);
+    await query(
+      `insert into transfer_media_jobs
+         (id,transfer_id,file_id,operation,generation,idempotency_key,payload,
+          status,enqueued_at,attempts,claim_token,claim_owner,lease_until)
+       values ('00000000-0000-0000-0000-000000000111',$1,'raw','process',1,
+               'delete-race-job','{}','claimed',now(),1,
+               '00000000-0000-0000-0000-000000000112','worker-one',now()+interval '1 hour')`,
+      [transfer.id],
+    );
+    expect(await tombstonePostgresTransfer(transfer.id)).toBe(true);
+    expect(await tombstonePostgresTransfer(transfer.id)).toBe(false);
+    expect(await getPostgresTransfer(transfer.id)).toBeNull();
+    const rows = await query<{ status: string; claim_token: string | null }>(
+      "select status,claim_token from transfer_media_jobs where transfer_id=$1",
+      [transfer.id],
+    );
+    expect(rows).toEqual([{ status: "cancelled", claim_token: null }]);
   });
 });

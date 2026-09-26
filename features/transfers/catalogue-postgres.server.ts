@@ -424,6 +424,28 @@ export async function updatePostgresTransferGrouping(
   });
 }
 
+/** Hide a transfer and fence its unfinished jobs before object cleanup begins. */
+export async function tombstonePostgresTransfer(transferId: string): Promise<boolean> {
+  return transaction(async (client) => {
+    const deleted = await client.query<{ id: string }>(
+      `update transfers
+          set deleted_at=clock_timestamp(),revision=revision+1
+        where id=$1 and deleted_at is null
+        returning id`,
+      [transferId],
+    );
+    if (!deleted.rows[0]) return false;
+    await client.query(
+      `update transfer_media_jobs
+          set status='cancelled',claim_token=null,claim_owner=null,lease_until=null,
+              last_error='transfer deleted'
+        where transfer_id=$1 and status in ('pending','claimed')`,
+      [transferId],
+    );
+    return true;
+  });
+}
+
 function toFile(row: FileRow, member?: MemberRow): TransferFile {
   return {
     id: row.id,
