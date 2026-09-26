@@ -38,21 +38,28 @@ Finalizers reject a queued file without its job plan, and the Redis-era enqueue 
 Postgres queue mode so a split switch cannot silently lose work. Initial presign, resume,
 finalize and abandon can select the Postgres reservation and job plan together under
 `TRANSFER_CATALOGUE_STORE=postgres` and `TRANSFER_MEDIA_JOB_STORE=postgres`. This remains a
-staged switch; deletion and expiry cleanup select Postgres too, while R2 orphan reconciliation
-and the production deletion runner remain open. A staged
+staged switch; deletion and expiry cleanup select Postgres too. A conservative deep scan stages
+old unreferenced R2 objects for deletion after rechecking database ownership. The production
+deletion runner remains unset. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
 can claim only transfer-owned deletes, retry an uncertain R2 response, and leave album/word
 operations untouched. The Media runtime starts a bounded 30-second deletion loop only with
-`TRANSFER_OBJECT_DELETION_RUNNER=postgres`; the production switch remains unset. Orphan-prefix
-reconciliation is also required before selecting this delete path.
+`TRANSFER_OBJECT_DELETION_RUNNER=postgres`; the production switch remains unset. Deep cleanup
+checks at most 100 transfer prefixes and 2,000 objects in any one prefix, failing visibly above
+those limits. It only stages objects older than both 24 hours and the configured upload URL plus
+reservation grace, and skips active reservations and unfinished media jobs. It retains every
+known source and derivative key for an active transfer.
 Single-file removal uses the same durable key collection, deletes the file and its jobs in one
 transaction, and removes groups left with fewer than two members. Removing the last file
 tombstones the transfer. Deletion staging failure rolls the file removal back.
 An indexed, bounded expiry sweep tombstones expired transfers and stages their known object
 deletes once. The staged cleanup route selects this sweep and expires old reservations in
-Postgres mode. Deep R2 orphan reconciliation is still pending, so the production flag remains off.
+Postgres mode. New append reservations refuse stable source keys with unfinished deletion work,
+and initial reservations refuse a reused transfer ID with unfinished orphan deletion work, so a
+queued delete cannot remove a newly uploaded source. The production flag
+remains off until the deletion runner and load bounds are qualified.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
 The shared transfer read functions select the Postgres catalogue under the paired flags.

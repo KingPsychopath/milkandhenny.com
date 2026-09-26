@@ -629,19 +629,18 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
         Runtime selection and full quota transactions remain open.
   - [x] Add a staged Postgres reservation repository with hashed matching fields, bounded
-        count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
+        count/bytes and expiry cleanup. Initial upload flows select it under paired opt-in flags.
   - [x] Add transfer-bound authenticated encryption and hash verification for deletion tokens;
         web-only catalogue reads use it without exposing ciphertext to the worker.
   - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Update,
-        file removal, object cleanup, full quota and expiry flows remain open.
+        file removal, object cleanup, quotas and expiry are covered by later staged steps.
   - [x] Add row-locked file append with ID/name/count/byte checks; outstanding reservation
-        accounting and final upload integration are staged but not wired to requests.
+        accounting and final upload integration are selected under the paired flags.
   - [x] Add multi-batch append reservations and atomic finalization that counts outstanding
-        capacity and consumes only the matching selection. Live request wiring remains open.
+        capacity and consumes only the matching selection. Live request wiring is staged.
   - [x] Build an all-visual Postgres media plan and let create/append finalizers commit matching
         first-generation jobs with file rows and reservation consumption. Reject queued files
-        without a job plan and reject legacy enqueue in Postgres mode. Live upload selection and
-        cleanup remain open.
+        without a job plan and reject legacy enqueue in Postgres mode. Live selection is staged.
   - [x] Stage paired Postgres catalogue/queue selection for initial presign, finalization,
         resume and abandon, plus shared transfer reads and delete-capability verification.
         Finalization commits file rows and jobs with its reservation. Legacy mutations fail
@@ -651,18 +650,22 @@ derived exports. No read path silently repairs/deletes product state.
         one transaction. Subsequent steps connect deletion and cleanup.
   - [x] Route Postgres takedown, admin deletion, file removal and expiry cleanup through the
         catalogue tombstone/object ledger; make event guest-drop transfer and token creation
-        one Postgres transaction. The UI describes queued file cleanup accurately. Deep orphan
-        reconciliation and the production deletion runner remain open.
+        one Postgres transaction. The UI describes queued file cleanup accurately.
+  - [x] Stage old R2 orphan objects after rechecking active transfer/file/job/reservation ownership
+        under Postgres locks. A 24-hour/upload-TTL grace protects late writes; a completed
+        deletion can be restaged with a new revision. New append and initial reservations reject
+        source keys/IDs with unfinished deletes. The production deletion runner and resource limits still need
+        qualification.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
-        worker loop; orphan reconciliation and live cleanup remain open.
+        worker loop; later steps stage orphan reconciliation and live cleanup selection.
   - [x] Remove one Postgres file with its jobs and group membership in one transaction, staging
         all known private keys for deletion; tombstone when it was the last file. Request callers
-        and orphan-prefix reconciliation remain open.
+        select this path under the paired flags.
   - [x] Add a bounded, indexed expiry sweep that tombstones expired transfers and stages their
         known object deletions once. Live cleanup selection and orphan-prefix reconciliation
-        remain open.
+        are staged under the paired flags.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -1142,6 +1145,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (274 files, 2,123 tests)
   after these route and UI changes. Focused Playwright and release verification remain for
   the integrated release candidate.
+  The deep Postgres cleanup path now lists transfer prefixes, waits until objects are older
+  than the longer of 24 hours or the upload reservation lifetime plus one hour, then stages
+  unreferenced private keys after locked DB rechecks. It fails visibly if the current scan
+  exceeds 100 prefixes or 2,000 objects in one prefix. A shared advisory lock serializes
+  no-owner scans with new initial reservations; initial and append reservations block key reuse
+  while a prior delete is unfinished. Four focused real-Postgres suites passed 18 cases,
+  including a late object recreated after a completed deletion.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on the final code
+  (275 files, 2,128 tests). The production deletion runner remains unset.
+  The last read-only production inventory found one transfer prefix and 168 objects, but measured peak
+  load and deletion-runner soak remain release gates.
   A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
   while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
   from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
@@ -1169,8 +1183,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: reconcile orphan transfer prefixes, abandoned append/upload objects and late
-  presigned writes; qualify the opt-in deletion runner before enabling the catalogue flag.
+- Next action: qualify the orphan scan's resource limits and the opt-in deletion runner with
+  old/late uploads, interrupted deletion and retry. Then enable the catalogue flag only after
+  the authorized first export is imported and reconciled.
   Complete media queue operations and
   old-attempt object reconciliation, then reconcile the authorized first export against the importer.
   Wire recoverable word/album object operations before any release candidate. Do not

@@ -228,4 +228,27 @@ describeWithDatabase("Postgres transfer upload workflow", () => {
     );
     expect(await getTransfer(input.transferId)).toBeNull();
   });
+
+  it("stages old orphan R2 keys during deep cleanup", async () => {
+    const orphanId = "postgres-orphan-one";
+    const key = `transfers/${orphanId}/originals/late.jpg`;
+    vi.spyOn(r2ObjectStorageProvider, "listPrefixes").mockResolvedValue([`transfers/${orphanId}/`]);
+    vi.spyOn(r2ObjectStorageProvider, "listObjects").mockResolvedValue([
+      { key, size: 1, lastModified: new Date("2026-09-20T00:00:00.000Z") },
+    ]);
+    expect(
+      await run(TransferOperationsService.use((service) => service.cleanup("deep"))),
+    ).toMatchObject({
+      mode: "deep",
+      scannedPrefixes: 1,
+      stagedObjects: 1,
+      deletedObjects: 0,
+    });
+    expect(
+      await query<{ target_key: string }>(
+        "select target_key from media_object_operations where owner_kind='transfer' and owner_id=$1",
+        [orphanId],
+      ),
+    ).toEqual([{ target_key: key }]);
+  });
 });

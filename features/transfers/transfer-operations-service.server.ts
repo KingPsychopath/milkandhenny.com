@@ -33,7 +33,12 @@ import {
 } from "./upload-reservation.server";
 import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
 import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
-import { getMultipartPartSize, MULTIPART_UPLOAD_THRESHOLD_BYTES } from "./upload-window.server";
+import {
+  getMultipartPartSize,
+  getUploadReservationTtlSeconds,
+  MULTIPART_UPLOAD_THRESHOLD_BYTES,
+} from "./upload-window.server";
+import { stagePostgresTransferOrphanObjects } from "./orphan-cleanup-postgres.server";
 import {
   cleanupExpiredPostgresTransfers,
   finalizePostgresTransferAppend,
@@ -95,6 +100,7 @@ export type TransferCleanupResult = {
   expiredIndexEntries: number;
   scannedPrefixes: number;
   deletedObjects: number;
+  stagedObjects?: number;
 };
 
 type TransferFileCounts = {
@@ -309,6 +315,8 @@ export class TransferOperationsService extends Context.Service<
             const expired = yield* attempt("expire_transfers", () =>
               cleanupExpiredPostgresTransfers(),
             );
+            let scannedPrefixes = 0;
+            let stagedObjects = 0;
             if (mode === "deep") {
               yield* attempt("expire_upload_reservations", () =>
                 cleanupPostgresTransferUploadReservations(),
@@ -316,12 +324,60 @@ export class TransferOperationsService extends Context.Service<
               yield* attempt("expire_append_reservations", () =>
                 cleanupPostgresTransferAppendReservations(),
               );
+              const prefixes = yield* storage.listPrefixes("transfers/", { scope: "private" });
+              if (
+                prefixes.length > 100 ||
+                prefixes.some((prefix) => !/^transfers\/[A-Za-z0-9_-]{1,128}\/$/.test(prefix))
+              )
+                return yield* Effect.fail(
+                  new TransferOperationError({
+                    cause: new Error("Transfer orphan scan exceeds supported prefix inventory"),
+                    operation: "cleanup_orphans",
+                  }),
+                );
+              const graceMs = Math.max(
+                24 * 60 * 60_000,
+                getUploadReservationTtlSeconds() * 1_000 + 60 * 60_000,
+              );
+              if (!Number.isFinite(graceMs) || graceMs >= Date.now())
+                return yield* Effect.fail(
+                  new TransferOperationError({
+                    cause: new Error("Invalid transfer orphan cleanup grace period"),
+                    operation: "cleanup_orphans",
+                  }),
+                );
+              const olderThan = new Date(Date.now() - graceMs);
+              const staged = yield* Effect.forEach(
+                prefixes,
+                (prefix) =>
+                  Effect.gen(function* () {
+                    const objects = yield* storage.listObjects(prefix, { scope: "private" });
+                    if (objects.length > 2_000)
+                      return yield* Effect.fail(
+                        new TransferOperationError({
+                          cause: new Error("Transfer orphan scan exceeds per-prefix object limit"),
+                          operation: "cleanup_orphans",
+                        }),
+                      );
+                    return yield* attempt("stage_orphan_objects", () =>
+                      stagePostgresTransferOrphanObjects(
+                        prefix.slice("transfers/".length, -1),
+                        objects,
+                        olderThan,
+                      ),
+                    );
+                  }),
+                { concurrency: 2 },
+              );
+              scannedPrefixes = prefixes.length;
+              stagedObjects = staged.reduce((sum, count) => sum + count, 0);
             }
             return {
               mode,
               expiredIndexEntries: expired,
-              scannedPrefixes: 0,
+              scannedPrefixes,
               deletedObjects: 0,
+              ...(mode === "deep" ? { stagedObjects } : {}),
             };
           }
           const client = yield* redis.client;
