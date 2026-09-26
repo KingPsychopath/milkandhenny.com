@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 import {
+  appendPostgresTransferFiles,
   createPostgresTransfer,
   getPostgresTransfer,
   getPostgresTransferForWorker,
@@ -105,5 +106,38 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       transfer.id,
     ]);
     expect(await getPostgresTransfer(transfer.id)).toBeNull();
+  });
+
+  it("serializes concurrent appends against file and byte limits", async () => {
+    await createPostgresTransfer(transfer);
+    const makeFile = (id: string) => ({
+      id,
+      filename: `${id}.jpg`,
+      kind: "image" as const,
+      size: 50,
+      mimeType: "image/jpeg",
+      storageKey: `transfers/${transfer.id}/original/${id}.jpg`,
+    });
+    const outcomes = await Promise.all([
+      appendPostgresTransferFiles(transfer.id, [makeFile("new-a")], {
+        maxFiles: 3,
+        maxTotalBytes: 400,
+      }),
+      appendPostgresTransferFiles(transfer.id, [makeFile("new-b")], {
+        maxFiles: 3,
+        maxTotalBytes: 400,
+      }),
+    ]);
+    expect(outcomes.map((result) => result.status).sort()).toEqual(["limit", "updated"]);
+    expect((await getPostgresTransfer(transfer.id))?.files).toHaveLength(3);
+    expect(
+      await appendPostgresTransferFiles(transfer.id, [makeFile("photo")], { maxFiles: 10 }),
+    ).toEqual({ status: "conflict" });
+    expect(
+      await appendPostgresTransferFiles(transfer.id, [makeFile("oversize")], {
+        maxFiles: 10,
+        maxTotalBytes: 320,
+      }),
+    ).toEqual({ status: "limit" });
   });
 });

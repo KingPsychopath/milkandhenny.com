@@ -631,8 +631,10 @@ derived exports. No read path silently repairs/deletes product state.
         count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
   - [x] Add transfer-bound authenticated encryption and hash verification for deletion tokens;
         web-only catalogue reads use it without exposing ciphertext to the worker.
-  - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Append,
-        update, delete, quota and expiry flows remain open.
+  - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Update,
+        delete, full quota and expiry flows remain open.
+  - [x] Add row-locked file append with ID/name/count/byte checks; outstanding reservation
+        accounting and final upload integration remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -944,7 +946,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   public metadata on a consistent read, and offers a worker read that never selects token
   ciphertext. Focused real-Postgres tests passed three cases: exact round-trip and duplicate
   refusal, worker read without the web secret, and rollback/expiry behavior. `pnpm check`
-  passed. Append, quota, update, delete and production source import are still unimplemented.
+  passed; commit `012bbdf9`. A row-locked append admits one of two concurrent file additions
+  at the final slot, rejects duplicate IDs and enforces stored-byte limits. Four focused
+  real-Postgres cases and typecheck passed. Full quota accounting, update, delete and production
+  source import remain unimplemented.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

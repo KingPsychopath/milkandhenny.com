@@ -18,8 +18,10 @@ presign creates them before finalization creates the transfer.
 The staged [catalogue repository](../features/transfers/catalogue-postgres.server.ts) commits a
 transfer, its files and its groups together. It reads them under one repeatable-read snapshot.
 Web reads decrypt the deletion token; worker reads omit the ciphertext columns entirely and need
-no web secret. Append, update, delete, quota and expiry workflows are still pending, so the
-application has not selected this repository.
+no web secret. Its staged append operation locks the transfer row and checks existing IDs,
+filenames, file count and stored-byte totals before inserting new files. It does not yet
+coordinate outstanding append reservations or worker generations. Update, delete and expiry
+workflows are still pending, so the application has not selected this repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and

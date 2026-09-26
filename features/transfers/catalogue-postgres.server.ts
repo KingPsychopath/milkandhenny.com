@@ -59,20 +59,10 @@ type MemberRow = {
   mime_type: string;
 };
 
-function validateTransfer(data: TransferData): void {
-  if (
-    !data.id ||
-    !data.deleteToken ||
-    !data.title ||
-    data.files.length > 500 ||
-    !Number.isFinite(Date.parse(data.createdAt)) ||
-    !Number.isFinite(Date.parse(data.expiresAt)) ||
-    Date.parse(data.expiresAt) <= Date.parse(data.createdAt)
-  )
-    throw new Error("Invalid transfer");
+function validateFiles(files: TransferFile[]): void {
   const ids = new Set<string>();
   const names = new Set<string>();
-  for (const file of data.files) {
+  for (const file of files) {
     if (
       !file.id ||
       !file.filename ||
@@ -90,6 +80,20 @@ function validateTransfer(data: TransferData): void {
     names.add(file.filename);
     if (file.originalFilename) names.add(file.originalFilename);
   }
+}
+
+function validateTransfer(data: TransferData): void {
+  if (
+    !data.id ||
+    !data.deleteToken ||
+    !data.title ||
+    data.files.length > 500 ||
+    !Number.isFinite(Date.parse(data.createdAt)) ||
+    !Number.isFinite(Date.parse(data.expiresAt)) ||
+    Date.parse(data.expiresAt) <= Date.parse(data.createdAt)
+  )
+    throw new Error("Invalid transfer");
+  validateFiles(data.files);
   const assigned = new Set<string>();
   for (const group of data.groups ?? []) {
     if (!group.id || group.members.length < 2) throw new Error("Invalid transfer group");
@@ -115,11 +119,16 @@ function validateTransfer(data: TransferData): void {
     throw new Error("Invalid transfer file group");
 }
 
-async function insertFiles(client: PoolClient, data: TransferData): Promise<void> {
-  if (data.files.length === 0) return;
-  const rows = data.files.map((file, position) => ({
+async function insertFiles(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  startPosition = 0,
+): Promise<void> {
+  if (files.length === 0) return;
+  const rows = files.map((file, index) => ({
     ...file,
-    position,
+    position: startPosition + index,
     sizeBytes: file.size,
     storedBytes: file.storedBytes ?? null,
   }));
@@ -146,7 +155,7 @@ async function insertFiles(client: PoolClient, data: TransferData): Promise<void
          processing_error_code text, processing_error_detail text, retry_count integer
        )`,
     [
-      data.id,
+      transferId,
       JSON.stringify(
         rows.map((file) => ({
           id: file.id,
@@ -244,9 +253,74 @@ export async function createPostgresTransfer(data: TransferData): Promise<boolea
       ],
     );
     if (!inserted.rows[0]) return false;
-    await insertFiles(client, data);
+    await insertFiles(client, data.id, data.files);
     await insertGroups(client, data);
     return true;
+  });
+}
+
+export type AppendPostgresTransferFilesResult =
+  | { status: "updated"; transfer: TransferData }
+  | { status: "missing" | "conflict" | "limit" };
+
+/** Lock the owner row so two concurrent appends cannot both pass the same quota check. */
+export async function appendPostgresTransferFiles(
+  transferId: string,
+  files: TransferFile[],
+  limits: { maxFiles?: number; maxTotalBytes?: number } = {},
+): Promise<AppendPostgresTransferFilesResult> {
+  validateFiles(files);
+  return transaction(async (client) => {
+    const transfer = await client.query<{ id: string }>(
+      `select id from transfers
+        where id=$1 and deleted_at is null and expires_at > clock_timestamp()
+        for update`,
+      [transferId],
+    );
+    if (!transfer.rows[0]) return { status: "missing" };
+    const existing = await client.query<{
+      id: string;
+      filename: string;
+      original_filename: string | null;
+      position: number;
+      bytes: string;
+    }>(
+      `select id,filename,original_filename,position,
+              coalesce(stored_bytes,size_bytes)::text as bytes
+         from transfer_files where transfer_id=$1 order by position`,
+      [transferId],
+    );
+    const ids = new Set(existing.rows.map((file) => file.id));
+    const names = new Set(
+      existing.rows.flatMap((file) =>
+        [file.filename, file.original_filename].filter((name): name is string => name !== null),
+      ),
+    );
+    if (
+      files.some(
+        (file) =>
+          ids.has(file.id) ||
+          names.has(file.filename) ||
+          (file.originalFilename ? names.has(file.originalFilename) : false),
+      )
+    )
+      return { status: "conflict" };
+    const maxFiles = limits.maxFiles ?? 0;
+    const maxBytes = limits.maxTotalBytes ?? 0;
+    const bytes =
+      existing.rows.reduce((total, file) => total + Number(file.bytes), 0) +
+      files.reduce((total, file) => total + (file.storedBytes ?? file.size), 0);
+    if (
+      !Number.isSafeInteger(bytes) ||
+      (maxFiles > 0 && existing.rows.length + files.length > maxFiles) ||
+      (maxBytes > 0 && bytes > maxBytes)
+    )
+      return { status: "limit" };
+    await insertFiles(client, transferId, files, (existing.rows.at(-1)?.position ?? -1) + 1);
+    await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
+    const updated = await readTransfer(client, transferId, true, false);
+    if (!updated) throw new Error("Transfer disappeared during append");
+    return { status: "updated", transfer: updated };
   });
 }
 
@@ -290,18 +364,21 @@ async function readTransfer(
   client: PoolClient,
   id: string,
   includeToken: true,
+  snapshot?: boolean,
 ): Promise<TransferData | null>;
 async function readTransfer(
   client: PoolClient,
   id: string,
   includeToken: false,
+  snapshot?: boolean,
 ): Promise<Omit<TransferData, "deleteToken"> | null>;
 async function readTransfer(
   client: PoolClient,
   id: string,
   includeToken: boolean,
+  snapshot = true,
 ): Promise<TransferData | Omit<TransferData, "deleteToken"> | null> {
-  await client.query("set transaction isolation level repeatable read read only");
+  if (snapshot) await client.query("set transaction isolation level repeatable read read only");
   const tokenColumns = includeToken
     ? "delete_token_ciphertext,delete_token_nonce"
     : "null::bytea as delete_token_ciphertext,null::bytea as delete_token_nonce";
