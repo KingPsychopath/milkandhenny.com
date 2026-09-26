@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 
 import {
   appendPostgresTransferFiles,
+  cleanupExpiredPostgresTransfers,
   createPostgresTransfer,
   finalizePostgresTransferReservation,
   getPostgresTransfer,
@@ -364,6 +365,28 @@ describeWithDatabase("Postgres transfer catalogue", () => {
         "select count(*)::text as count from media_object_operations where owner_kind='transfer'",
       ),
     ).toEqual([{ count: "0" }]);
+  });
+
+  it("tombstones expired transfers and records their object cleanup once", async () => {
+    await createPostgresTransfer(transfer);
+    expect(await cleanupExpiredPostgresTransfers()).toBe(0);
+    await query("update transfers set expires_at=now()-interval '1 second' where id=$1", [
+      transfer.id,
+    ]);
+    expect(await cleanupExpiredPostgresTransfers()).toBe(1);
+    expect(await cleanupExpiredPostgresTransfers()).toBe(0);
+    expect(
+      await query<{ deleted: boolean }>(
+        "select deleted_at is not null as deleted from transfers where id=$1",
+        [transfer.id],
+      ),
+    ).toEqual([{ deleted: true }]);
+    const operations = await query<{ target_key: string }>(
+      "select target_key from media_object_operations where owner_kind='transfer'",
+    );
+    expect(operations.map((operation) => operation.target_key)).toContain(
+      transfer.files[0].storageKey,
+    );
   });
 
   it("commits planned visual jobs atomically with a new transfer", async () => {

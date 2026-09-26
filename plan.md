@@ -648,6 +648,9 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Remove one Postgres file with its jobs and group membership in one transaction, staging
         all known private keys for deletion; tombstone when it was the last file. Request callers
         and orphan-prefix reconciliation remain open.
+  - [x] Add a bounded, indexed expiry sweep that tombstones expired transfers and stages their
+        known object deletions once. Live cleanup selection and orphan-prefix reconciliation
+        remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -833,7 +836,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   Append quota reservations `716422f7`; generation-fenced derivatives `35ed7f66`;
   Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
   queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`;
-  atomic media job planning `30b161b2`.
+  atomic media job planning `30b161b2`; atomic file removal `a5f67945`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1091,6 +1094,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   missing-file results and rollback when deletion staging rejects a malformed key. `pnpm check`,
   `pnpm build` and the full `pnpm test` suite passed (273 files, 2,115 tests). Live request
   selection and R2 prefix reconciliation remain open.
+  The staged Postgres expiry sweep now locks a bounded expired set, tombstones it, and enqueues
+  known object deletions through the same transaction as explicit removal. Thirteen focused
+  real-Postgres catalogue cases passed, including active-transfer exclusion and idempotent
+  repeat cleanup; `pnpm check` passed. The full suite and production build are deferred until
+  live cleanup selection changes bundling or crosses feature boundaries. The production cron
+  still selects Redis.
   A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
   while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
   from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`

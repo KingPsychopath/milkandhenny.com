@@ -712,6 +712,23 @@ export async function tombstonePostgresTransfer(transferId: string): Promise<boo
   return transaction((client) => tombstonePostgresTransferInTransaction(client, transferId));
 }
 
+/** Expiry is a tombstone plus durable object work, never an implicit row disappearance. */
+export async function cleanupExpiredPostgresTransfers(limit = 10): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Error("Invalid transfer expiry cleanup limit");
+  return transaction(async (client) => {
+    const expired = await client.query<{ id: string }>(
+      `select id from transfers
+        where deleted_at is null and expires_at <= clock_timestamp()
+        order by expires_at,id
+        limit $1 for update skip locked`,
+      [limit],
+    );
+    for (const row of expired.rows) await tombstonePostgresTransferInTransaction(client, row.id);
+    return expired.rowCount ?? 0;
+  });
+}
+
 /** Remove one file without losing another worker's result or leaving its R2 objects behind. */
 export async function removePostgresTransferFile(
   transferId: string,

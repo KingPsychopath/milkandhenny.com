@@ -47,10 +47,13 @@ reconciliation is also required before selecting this delete path.
 Single-file removal uses the same durable key collection, deletes the file and its jobs in one
 transaction, and removes groups left with fewer than two members. Removing the last file
 tombstones the transfer. Deletion staging failure rolls the file removal back.
+An indexed, bounded expiry sweep tombstones expired transfers and stages their known object
+deletes once. The live cleanup cron still selects Redis until the request and cleanup paths
+switch together.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
-Live request selection and expiry workflows are still pending, so the application has not
-selected this repository.
+Live request and cleanup selection are still pending, so the application has not selected this
+repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and
