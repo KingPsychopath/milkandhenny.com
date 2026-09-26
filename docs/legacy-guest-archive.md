@@ -34,7 +34,7 @@ These hashes establish file identity; they do not prove that the export is the f
 Use the pinned Upstash RDB parser from commit
 `acce847ecb5c86b38602fec8ac2a2d11e3256f9f`. The extractor
 `ops/legacy-guest-rdb-extract.go` verifies the entire RDB CRC/type structure, reads all entries
-strictly and writes only `guest:list` to a new mode-0600 file. Its output is a raw copy of the
+strictly and writes `guest:list` to a new mode-0600 file. Its output is a raw copy of the
 stored JSON string, not a serialization of parsed records. Run it in a private workspace:
 
 ```sh
@@ -42,13 +42,27 @@ git clone https://github.com/upstash/rdb.git /private/path/upstash-rdb
 git -C /private/path/upstash-rdb checkout acce847ecb5c86b38602fec8ac2a2d11e3256f9f
 cd /private/path/upstash-rdb
 go run /absolute/path/to/milkandhenny.com/ops/legacy-guest-rdb-extract.go \
-  /private/path/export.rdb /private/path/legacy-guests.json
+  /private/path/export.rdb /private/path/legacy-guests.json \
+  /private/path/upload-audit.json
 ```
 
 Check the export hash with `shasum -a 256 /private/path/export.rdb` and record the extractor's
 JSON hash and counts without printing names or other personal details. Keep both files outside
 Git with restricted filesystem access. Do not send the RDB to a third-party converter; it also
 contains sessions and queued work.
+The optional third output is a private JSON array preserving the order of
+`auth:upload-open:audit`. It contains four events in the supplied export. Import it into the
+application audit table before switching `UPLOAD_ACCESS_STORE=postgres`:
+
+```sh
+DATABASE_URL=… node ops/import-upload-audit.mjs RDB_SHA256 /private/path/upload-audit.json
+```
+
+Use a database migration credential and an empty audit table. The importer verifies exact event
+identity, timestamps, duration and source list position inside one transaction. Repeating the same
+import is safe; an existing runtime event or a different source export causes a rollback. The
+supplied export has no active `auth:upload-open` window. Recheck that exact key in a fresh cutover
+export; if it is then active, preserve its existing token and expiry before switching the backend.
 
 ## Import and verify
 

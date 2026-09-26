@@ -16,6 +16,7 @@ import (
 type guestExtractor struct {
 	value string
 	found bool
+	audit []json.RawMessage
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
@@ -36,8 +37,13 @@ func (*guestExtractor) HandleStreamEnding(string, uint64)                   {}
 func (*guestExtractor) HandleArrayEnding(string, uint64, uint64)            {}
 func (*guestExtractor) HandleLibrary(string) error                          { return nil }
 func (*guestExtractor) HandleModule(string, string, rdb.ModuleMarker) error { return nil }
-func (*guestExtractor) ListEntryHandler(string) func(string) error {
-	return func(string) error { return nil }
+func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
+	return func(value string) error {
+		if key == "auth:upload-open:audit" {
+			g.audit = append(g.audit, json.RawMessage(value))
+		}
+		return nil
+	}
 }
 func (*guestExtractor) SetEntryHandler(string) func(string) error {
 	return func(string) error { return nil }
@@ -62,8 +68,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) != 3 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-json-path>")
+	if len(os.Args) != 3 && len(os.Args) != 4 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -107,4 +113,33 @@ func main() {
 	}
 	hash := sha256.Sum256([]byte(extractor.value))
 	fmt.Printf("guest_json_sha256=%x top_level=%d plus_ones=%d\n", hash, len(guests), plusOnes)
+	if len(os.Args) == 4 {
+		for _, raw := range extractor.audit {
+			var event struct {
+				ID     string `json:"id"`
+				Action string `json:"action"`
+				At     string `json:"at"`
+			}
+			if err := json.Unmarshal(raw, &event); err != nil || event.ID == "" ||
+				(event.Action != "opened" && event.Action != "closed") || event.At == "" {
+				panic("auth:upload-open:audit has an invalid event")
+			}
+		}
+		payload, err := json.Marshal(extractor.audit)
+		if err != nil {
+			panic(err)
+		}
+		auditFile, err := os.OpenFile(os.Args[3], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := auditFile.Write(payload); err != nil {
+			auditFile.Close()
+			panic(err)
+		}
+		if err := auditFile.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("upload_audit_events=%d\n", len(extractor.audit))
+	}
 }

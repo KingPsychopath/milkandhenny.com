@@ -230,6 +230,10 @@ records, distributed locks, and the leased media queue. Mutable independently re
 key each. Specialized queues, indexes, and aggregate-adjacent outboxes document why they require an
 atomic structure. The fixed-window limiter also has an opt-in Postgres backend selected with
 `RATE_LIMIT_STORE=postgres`; Redis remains its default until active windows are reconciled.
+Upload access windows and their bounded audit history also have an opt-in Postgres backend selected
+with `UPLOAD_ACCESS_STORE=postgres`. The recoverable bearer token is encrypted with a key derived
+from `AUTH_SECRET`; switching this backend requires reconciling the active window and audit list at
+cutover. Redis remains the default until then.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

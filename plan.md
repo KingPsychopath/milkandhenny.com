@@ -554,6 +554,10 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 - [x] Add an opt-in Postgres fixed-window rate limiter with atomic identity/global caps,
       privacy-preserving subject hashes, fail-closed handling and bounded cleanup. Redis remains
       the default until active source windows are reconciled at cutover.
+- [x] Add opt-in encrypted Postgres upload windows and bounded audit history. The supplied RDB
+      holds four audit entries and no active window. A provenance-checked importer rehearsed
+      those four entries on isolated Postgres; production import and fresh cutover reconciliation
+      remain open.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
 - [ ] Implement report storage/receipts and transactional notification work.
@@ -729,8 +733,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
   restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
-  pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`. The rate-limit
-  backend accompanies the next local implementation commit.
+  pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`; Postgres rate
+  limiting `d1a353d5`. The upload-window backend accompanies the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -767,7 +771,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   integration suite passed atomic global cap, expiry, privacy, clear and cleanup cases. The
   restored clone accepted migration `0098` and its restricted runtime role reserved a window.
   The rate-limit change passed `pnpm check`, `pnpm build` and the full `pnpm test` suite
-  (252 files, 2,029 tests).
+  (252 files, 2,029 tests). For upload access, the focused Postgres integration and migration
+  ledger suites passed eight cases. The pinned strict RDB extractor produced four upload audit
+  events in a private file; importing them into isolated `mah_test` twice left four matching
+  rows, and a different source hash was rejected. `pnpm check`, `pnpm build`, and the full
+  `pnpm test` suite (253 files, 2,033 tests) passed for this milestone. No production import
+  occurred.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

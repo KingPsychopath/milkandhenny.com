@@ -4353,6 +4353,40 @@ const MIGRATIONS: Migration[] = [
         on rate_limit_windows (expires_at);
     `,
   },
+  {
+    id: "0099_upload_access_window",
+    sql: `
+      create table upload_access_window (
+        singleton        boolean primary key default true check (singleton),
+        id               uuid not null,
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce      bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag   bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id     text not null check (token_key_id = 'auth-secret-v1'),
+        opened_at        timestamptz not null,
+        expires_at       timestamptz not null,
+        duration_minutes integer not null check (duration_minutes in (15, 60)),
+        check (expires_at > opened_at)
+      );
+
+      create table upload_access_audit (
+        window_id        uuid not null,
+        action           text not null check (action in ('opened', 'closed')),
+        at               timestamptz not null,
+        duration_minutes integer check (duration_minutes in (15, 60)),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        ),
+        source_list_index integer check (source_list_index is null or source_list_index >= 0),
+        check ((source_rdb_sha256 is null) = (source_list_index is null)),
+        primary key (window_id, action)
+      );
+      create index upload_access_audit_recent_idx on upload_access_audit (at desc);
+      create unique index upload_access_audit_source_idx
+        on upload_access_audit (source_rdb_sha256, source_list_index)
+        where source_rdb_sha256 is not null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
