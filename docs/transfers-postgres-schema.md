@@ -3,6 +3,9 @@
 Migration `0111_transfer_catalogue_and_media_jobs` creates separate transfer, file, group,
 group-member, presign-reservation and media-job tables. It is additive. The application still
 reads and writes Redis transfers and jobs; no production switch or import has occurred.
+Migration `0114` adds append reservations keyed by the selected file fingerprint. Separate
+batches can reserve capacity concurrently under the locked transfer row; overlapping IDs or
+names and aggregate file/byte overbooking are refused.
 
 The transfer row preserves the public capability ID, owner, title and expiry. It has a deletion
 token hash for verification and ciphertext/nonce columns for the existing resume flow, which
@@ -21,7 +24,9 @@ Web reads decrypt the deletion token; worker reads omit the ciphertext columns e
 no web secret. Its staged append operation locks the transfer row and checks existing IDs,
 filenames, file count and stored-byte totals before inserting new files. Its regroup operation
 locks the same row, rejects a changed file set, and preserves worker-owned processing fields.
-It does not yet coordinate outstanding append reservations or worker generations. A staged
+Its append finalizer commits inspected files and consumes the matching reservation in one
+transaction, counting every other active reservation against the quota. It does not yet
+coordinate worker generations. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
@@ -43,6 +48,9 @@ The staged finalization transaction locks the matching reservation, verifies the
 capabilities and selected file IDs, bounds stored bytes by the presign reservation, creates the
 transfer catalogue, and consumes the reservation in one commit. Resume, abandon, object cleanup
 and the live upload path still use Redis.
+Append presign/finalize still use Redis-era workflows, so the new append reservation and
+finalizer are not selected. Late uploads, abandon and deep object cleanup must be wired before
+that switch.
 
 Jobs have a unique source/operation/generation identity, a claim token, lease, attempt count and
 indexed pending/expired-lease states. Their JSON payload retains source request details while

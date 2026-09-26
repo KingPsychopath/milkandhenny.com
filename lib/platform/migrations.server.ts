@@ -4963,6 +4963,24 @@ const MIGRATIONS: Migration[] = [
         check (owner_kind in ('album', 'word', 'transfer'));
     `,
   },
+  {
+    id: "0114_transfer_append_reservations",
+    sql: `
+      create table transfer_append_reservations (
+        transfer_id text not null references transfers (id) on delete cascade,
+        fingerprint_sha256 text not null check (fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        file_ids text[] not null check (cardinality(file_ids) > 0),
+        filenames text[] not null check (cardinality(filenames) > 0),
+        reserved_file_count integer not null check (reserved_file_count > 0),
+        reserved_bytes bigint not null check (reserved_bytes >= 0),
+        created_at timestamptz not null default clock_timestamp(),
+        expires_at timestamptz not null check (expires_at > created_at),
+        primary key (transfer_id, fingerprint_sha256)
+      );
+      create index transfer_append_reservations_expiry_idx
+        on transfer_append_reservations (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

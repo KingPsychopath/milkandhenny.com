@@ -634,7 +634,9 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Update,
         file removal, object cleanup, full quota and expiry flows remain open.
   - [x] Add row-locked file append with ID/name/count/byte checks; outstanding reservation
-        accounting and final upload integration remain open.
+        accounting and final upload integration are staged but not wired to requests.
+  - [x] Add multi-batch append reservations and atomic finalization that counts outstanding
+        capacity and consumes only the matching selection. Live request wiring remains open.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
@@ -808,7 +810,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   creation `012bbdf9`; row-locked append `da0c5fbf`; media-job repository `09d95c3a`;
   fenced file-result commit `5d244771`.
   Verified transfer source import `44ebe3fc`; transactional regrouping `341b3fc3`;
-  fenced tombstone `2dbb9021`; atomic reservation finalization `5da05019`.
+  fenced tombstone `2dbb9021`; atomic reservation finalization `5da05019`; summary reads
+  `fa57f8bb`; durable object cleanup `d5814528`; deletion runner `ef1270ec`; opt-in worker
+  schedule `07b83ea2`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1011,6 +1015,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   `TRANSFER_OBJECT_DELETION_RUNNER=postgres`, reusing its one managed lifecycle and R2 provider.
   The switch is unset in production. Focused worker-loop and deletion tests (four cases) and
   `pnpm check` and `pnpm build` passed.
+  Migration `0114` adds per-selection append reservations. Concurrent presigns lock the
+  transfer row; file IDs/names and file/byte capacity include all active reservations. Append
+  finalization validates the inspected file set and bytes, commits file rows, and consumes the
+  reservation in one transaction. Five focused real-Postgres cases covered overbooking,
+  independent batches, conflicts, expiry cleanup, mismatch and concurrent finalization. The
+  isolated production restore accepted `0114`, and `mah_app_runtime` retained DML access.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on isolated Postgres
+  (272 files, 2,098 tests). The live upload workflow still needs to select this path with
+  object cleanup.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1029,8 +1042,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: implement transfer file removal and full quota transactions, then wire
-  reservation flows and cleanup against the same authority. Reconcile orphan transfer prefixes
+- Next action: wire transfer request flows and cleanup against the same Postgres authority, then
+  implement safe file removal with generation-specific derivatives. Reconcile orphan transfer prefixes
   and qualify the opt-in deletion runner before cutover. Wire media-job execution with
   fenced R2 publication and reconcile a fresh source export against the rehearsed importer.
   Wire recoverable word/album object operations before any release candidate. Do not

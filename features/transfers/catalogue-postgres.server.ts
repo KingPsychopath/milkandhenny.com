@@ -4,6 +4,10 @@ import { enqueueMediaObjectOperation } from "@/features/media/object-operations.
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getTransferFileDeleteKeys } from "./delete";
 import {
+  appendReservationFingerprint,
+  lockPostgresTransferAppendReservation,
+} from "./append-reservation-postgres.server";
+import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
 } from "./delete-token-postgres.server";
@@ -334,12 +338,110 @@ export type AppendPostgresTransferFilesResult =
   | { status: "missing" | "conflict" | "limit" };
 
 /** Lock the owner row so two concurrent appends cannot both pass the same quota check. */
+async function appendPostgresTransferFilesInTransaction(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  limits: { maxFiles?: number; maxTotalBytes?: number },
+  consumedReservation?: string,
+): Promise<AppendPostgresTransferFilesResult> {
+  validateFiles(files);
+  const transfer = await client.query<{ id: string }>(
+    `select id from transfers
+        where id=$1 and deleted_at is null and expires_at > clock_timestamp()
+        for update`,
+    [transferId],
+  );
+  if (!transfer.rows[0]) return { status: "missing" };
+  await client.query(
+    "delete from transfer_append_reservations where transfer_id=$1 and expires_at <= clock_timestamp()",
+    [transferId],
+  );
+  const existing = await client.query<{
+    id: string;
+    filename: string;
+    original_filename: string | null;
+    position: number;
+    bytes: string;
+  }>(
+    `select id,filename,original_filename,position,
+              coalesce(stored_bytes,size_bytes)::text as bytes
+         from transfer_files where transfer_id=$1 order by position`,
+    [transferId],
+  );
+  const ids = new Set(existing.rows.map((file) => file.id));
+  const names = new Set(
+    existing.rows.flatMap((file) =>
+      [file.filename, file.original_filename].filter((name): name is string => name !== null),
+    ),
+  );
+  const pending = await client.query<{
+    file_ids: string[];
+    filenames: string[];
+    reserved_file_count: number;
+    reserved_bytes: string;
+  }>(
+    `select file_ids,filenames,reserved_file_count,reserved_bytes::text
+         from transfer_append_reservations
+        where transfer_id=$1 and fingerprint_sha256 is distinct from $2`,
+    [transferId, consumedReservation ?? null],
+  );
+  for (const reservation of pending.rows) {
+    reservation.file_ids.forEach((id) => ids.add(id));
+    reservation.filenames.forEach((name) => names.add(name));
+  }
+  if (
+    files.some(
+      (file) =>
+        ids.has(file.id) ||
+        names.has(file.filename) ||
+        (file.originalFilename ? names.has(file.originalFilename) : false),
+    )
+  )
+    return { status: "conflict" };
+  const maxFiles = limits.maxFiles ?? 500;
+  const bytes =
+    existing.rows.reduce((total, file) => total + Number(file.bytes), 0) +
+    pending.rows.reduce((total, row) => total + Number(row.reserved_bytes), 0) +
+    files.reduce((total, file) => total + (file.storedBytes ?? file.size), 0);
+  const count =
+    existing.rows.length +
+    pending.rows.reduce((total, row) => total + row.reserved_file_count, 0) +
+    files.length;
+  if (
+    !Number.isSafeInteger(bytes) ||
+    count > maxFiles ||
+    (limits.maxTotalBytes !== undefined && bytes > limits.maxTotalBytes)
+  )
+    return { status: "limit" };
+  await insertFiles(client, transferId, files, (existing.rows.at(-1)?.position ?? -1) + 1);
+  await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
+  const updated = await readTransfer(client, transferId, true, false);
+  if (!updated) throw new Error("Transfer disappeared during append");
+  return { status: "updated", transfer: updated };
+}
+
 export async function appendPostgresTransferFiles(
   transferId: string,
   files: TransferFile[],
   limits: { maxFiles?: number; maxTotalBytes?: number } = {},
 ): Promise<AppendPostgresTransferFilesResult> {
-  validateFiles(files);
+  return transaction((client) =>
+    appendPostgresTransferFilesInTransaction(client, transferId, files, limits),
+  );
+}
+
+export type FinalizePostgresTransferAppendResult =
+  | AppendPostgresTransferFilesResult
+  | { status: "missing-reservation" | "reservation-mismatch" };
+
+/** Append the inspected objects and release their reserved quota in one commit. */
+export async function finalizePostgresTransferAppend(
+  transferId: string,
+  selectedFiles: TransferUploadFileInput[],
+  files: TransferFile[],
+  limits: { maxFiles?: number; maxTotalBytes?: number } = {},
+): Promise<FinalizePostgresTransferAppendResult> {
   return transaction(async (client) => {
     const transfer = await client.query<{ id: string }>(
       `select id from transfers
@@ -348,49 +450,44 @@ export async function appendPostgresTransferFiles(
       [transferId],
     );
     if (!transfer.rows[0]) return { status: "missing" };
-    const existing = await client.query<{
-      id: string;
-      filename: string;
-      original_filename: string | null;
-      position: number;
-      bytes: string;
-    }>(
-      `select id,filename,original_filename,position,
-              coalesce(stored_bytes,size_bytes)::text as bytes
-         from transfer_files where transfer_id=$1 order by position`,
-      [transferId],
+    const reservation = await lockPostgresTransferAppendReservation(
+      client,
+      transferId,
+      selectedFiles,
     );
-    const ids = new Set(existing.rows.map((file) => file.id));
-    const names = new Set(
-      existing.rows.flatMap((file) =>
-        [file.filename, file.original_filename].filter((name): name is string => name !== null),
-      ),
+    if (!reservation) return { status: "missing-reservation" };
+    const byId = new Map(
+      selectedFiles.map((selected) => [selected.mediaId ?? selected.name, selected]),
     );
+    const bytes = files.reduce((sum, file) => sum + (file.storedBytes ?? file.size), 0);
     if (
-      files.some(
-        (file) =>
-          ids.has(file.id) ||
-          names.has(file.filename) ||
-          (file.originalFilename ? names.has(file.originalFilename) : false),
-      )
-    )
-      return { status: "conflict" };
-    const maxFiles = limits.maxFiles ?? 0;
-    const maxBytes = limits.maxTotalBytes ?? 0;
-    const bytes =
-      existing.rows.reduce((total, file) => total + Number(file.bytes), 0) +
-      files.reduce((total, file) => total + (file.storedBytes ?? file.size), 0);
-    if (
+      files.length !== reservation.reservedFileCount ||
+      byId.size !== files.length ||
+      files.some((file) => {
+        const selected = byId.get(file.id);
+        return (
+          !selected ||
+          selected.name !== file.filename ||
+          (selected.originalName ?? undefined) !== file.originalFilename
+        );
+      }) ||
       !Number.isSafeInteger(bytes) ||
-      (maxFiles > 0 && existing.rows.length + files.length > maxFiles) ||
-      (maxBytes > 0 && bytes > maxBytes)
+      bytes > reservation.reservedBytes
     )
-      return { status: "limit" };
-    await insertFiles(client, transferId, files, (existing.rows.at(-1)?.position ?? -1) + 1);
-    await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
-    const updated = await readTransfer(client, transferId, true, false);
-    if (!updated) throw new Error("Transfer disappeared during append");
-    return { status: "updated", transfer: updated };
+      return { status: "reservation-mismatch" };
+    const result = await appendPostgresTransferFilesInTransaction(
+      client,
+      transferId,
+      files,
+      limits,
+      appendReservationFingerprint(selectedFiles),
+    );
+    if (result.status !== "updated") return result;
+    await client.query(
+      "delete from transfer_append_reservations where transfer_id=$1 and fingerprint_sha256=$2",
+      [transferId, appendReservationFingerprint(selectedFiles)],
+    );
+    return result;
   });
 }
 
