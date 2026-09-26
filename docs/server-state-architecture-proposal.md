@@ -278,22 +278,32 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   use feature-owned queries. Public listings no longer serialize the same DTO in loader output and
   the Query cache. The event loader retains only head metadata. The account view is a single private
   Query entry, with local form drafts and recovery codes kept outside it.
+- Admin progress: the content summary and system health read models now live in feature workflows
+  shared by their existing HTTP endpoints and new server functions. The overview and system routes
+  seed their private Query entries on the server. AdminDashboard observes those entries instead of
+  fetching and copying both snapshots after mount. The existing visibility scheduler still controls
+  system checks, including a hard minimum gap and a stop on 4xx; confirmed content edits invalidate
+  their admin summary and the affected public listing families. The operations inbox,
+  communications workspace, and other admin panels remain to migrate.
 - Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
   four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
-  account, and poll Playwright journeys passed. The browser journeys proved SSR content, poll vote
-  submission and restored device view, and account sign-out isolation. The album listing journey
-  passed with `ALBUM_STORE=postgres`; the default E2E S3 stub does not serve album manifests. The
-  default 20-worker Vitest run stalled behind database lock contention and was replaced by the
-  passing capped run.
+  account, poll, and admin Playwright journeys passed. The browser journeys proved SSR content,
+  poll vote submission and restored device view, account sign-out isolation, and admin overview
+  content/system hydration. The Playwright app now uses the Postgres album store, since its S3 stub
+  does not serve album manifests. The default 20-worker Vitest run stalled behind database lock
+  contention and was replaced by the passing capped run. The final build and focused admin browser
+  rerun passed after the 4xx polling adjustment.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
-- Next action: migrate admin workspaces, transfer metadata, and remaining resource families.
+- Next action: migrate the operations inbox, communications workspace, transfer metadata, and
+  remaining resource families.
   Revisit all M1 acceptance checks and integrated verification before declaring done.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
-  `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views.
+  `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
+  recorded that checkpoint; `0dc90b31` hydrated admin content and system snapshots.
 
 ## References
 
