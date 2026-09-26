@@ -17,6 +17,14 @@ end
 $$;
 grant usage on schema public to mah_app_runtime;
 grant select, insert, update, delete on all tables in schema public to mah_app_runtime;
+-- The retired report format is held for recovery, not served by application routes.
+do $$
+begin
+  if to_regclass('public.diagnostic_legacy_reports') is not null then
+    revoke all on table diagnostic_legacy_reports from mah_app_runtime;
+  end if;
+end
+$$;
 grant usage, select on all sequences in schema public to mah_app_runtime;
 alter default privileges in schema public
   grant select, insert, update, delete on tables to mah_app_runtime;

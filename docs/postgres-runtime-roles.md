@@ -31,6 +31,8 @@ Before production credential change, prove all of the following with the runtime
   are false.
 - `has_schema_privilege(current_user, 'public', 'CREATE')` and
   `has_schema_privilege(current_user, 'legacy_archive', 'USAGE')` are false.
+- `has_table_privilege(current_user, 'diagnostic_legacy_reports', 'SELECT')` is false
+  after migration `0104`; current diagnostic reports remain readable.
 - `pnpm database:verify` succeeds, representative web/worker reads and writes succeed, and
   the [guest archive importer](./legacy-guest-archive.md) remains the only archive login.
 

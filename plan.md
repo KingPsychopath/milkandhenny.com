@@ -578,7 +578,11 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
       after a fresh source import, including any newly active JWT sessions or revocations.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
-- [ ] Implement report storage/receipts and transactional notification work.
+- [x] Implement opt-in Postgres report storage/receipts, report rate admission, follow-up and
+      admin updates with a bounded cleanup path; rehearse the supplied RDB import.
+- [x] Audit report notification work: the current report workflow has no notification side
+      effect to preserve. Any later report alert must use a transactional outbox.
+- [ ] Reconcile the final report source delta before switching the backend.
 - [ ] Implement Best Dressed totals, receipts, codes and reset behavior.
 - [ ] Add domain importers with legacy-version, expiry, one-time race and baseline-vote fixtures.
 - [ ] Verify cookies, step-up/MFA, parent-session binding, PKCE, admin session management,
@@ -754,7 +758,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`; Postgres rate
   limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`;
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
-  throttles `741662f2`. The action-link/Pitch throttle work accompanies the next local commit.
+  throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
+  milestone accompanies the next local commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -830,6 +835,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   was refused, and concurrent Pitch recovery admitted exactly four of five requests without
   storing the email in the rate table. `pnpm check` and the full `pnpm test` suite (258 files,
   2,049 tests) passed. These optional Postgres paths have not been selected in production.
+  For diagnostic reports, migration `0104` applied on a fresh production-dump restore and
+  read-only verification recognized 105 source migrations. The pinned RDB extractor found
+  three current reports, one retired-format report and no active receipt/rate keys. The
+  import preserved all four records and their original expiries on the isolated restore;
+  repeating the same source succeeded, while a different source hash failed. The restricted
+  runtime role could read current reports but not the retired-format table. The focused
+  report/migration suites passed 14 cases, `pnpm check` and `pnpm build` passed, and the full
+  `pnpm test` suite passed (259 files, 2,054 tests). Production remains on Redis.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -844,14 +857,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   Its 192 attendee sessions include 189 current and three legacy shapes; 27 are person-bound,
   none has pending MFA, and no person-version key survives.
 - Unresolved: exact Redis snapshot time/fresh cutover delta; archive retention duration and
-  production role separation; backup coverage; measured load/resource budgets; physical DDL;
-  migration duration; operational command/credential setup; restore drill;
-  quantified acceptance and observation/retention periods.
-- Next action: finish verification and commit the action-link/Pitch throttle milestone, then
-  implement report storage/voting and source importers. Continue
-  into words/albums and the
-  transfer/media queue before any release candidate. Do not start production migration from the
-  table sketches in this document.
+  production role separation; backup coverage; measured load/resource budgets; remaining
+  domain DDL and import durations; operational command/credential setup; quantified acceptance
+  and observation/retention periods. The local Postgres restore drill does not establish
+  production backup or R2 restore coverage.
+- Next action: commit the diagnostic-report milestone, then implement Best Dressed
+  voting and its import with the supplied baseline. Continue into words/albums and the
+  transfer/media queue before any release candidate. Do not start production migration from
+  the table sketches in this document.
 
 ### Milestone checkpoint template
 

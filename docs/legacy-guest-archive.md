@@ -67,6 +67,8 @@ An optional fourth output extracts the role token-version counters for
 [the JWT migration](./auth-token-postgres.md).
 An optional fifth output extracts attendee sessions and their absolute expiries for
 [the attendee-session migration](./attendee-session-postgres.md).
+An optional sixth output extracts current and retired diagnostic reports and their
+absolute expiries for [the report migration](./diagnostic-report-postgres.md).
 
 ## Import and verify
 

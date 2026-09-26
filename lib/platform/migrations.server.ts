@@ -4513,6 +4513,61 @@ const MIGRATIONS: Migration[] = [
         on attendee_passkey_ceremonies (expires_at);
     `,
   },
+  {
+    id: "0104_diagnostic_reports",
+    sql: `
+      create table diagnostic_reports (
+        id uuid primary key,
+        type text not null check (type in ('client_error', 'site_feedback', 'draw_country_result_issue', 'things_room_issue', 'pitch_issue', 'upload_issue')),
+        subject_key text not null,
+        severity text not null check (severity in ('low', 'medium', 'high')),
+        status text not null check (status in ('new', 'investigating', 'resolved', 'ignored', 'duplicate')),
+        source text not null check (source in ('user', 'automatic')),
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        expires_at timestamptz not null,
+        record jsonb not null check (jsonb_typeof(record) = 'object'),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_key text,
+        check (expires_at > created_at)
+      );
+      create index diagnostic_reports_recent_idx on diagnostic_reports (created_at desc);
+      create index diagnostic_reports_group_idx on diagnostic_reports (type, subject_key, created_at desc);
+      create index diagnostic_reports_expiry_idx on diagnostic_reports (expires_at);
+
+      create table diagnostic_report_receipts (
+        key_hash text primary key check (key_hash ~ '^[a-f0-9]{64}$'),
+        kind text not null check (kind in ('idempotency', 'duplicate')),
+        report_id uuid not null references diagnostic_reports (id) on delete cascade,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index diagnostic_report_receipts_expiry_idx on diagnostic_report_receipts (expires_at);
+
+      create table diagnostic_report_rates (
+        fingerprint_hash text primary key check (fingerprint_hash ~ '^[a-f0-9]{64}$'),
+        count integer not null check (count between 1 and 8),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index diagnostic_report_rates_expiry_idx on diagnostic_report_rates (expires_at);
+
+      create table diagnostic_legacy_reports (
+        source_key text primary key,
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        original_record jsonb not null check (jsonb_typeof(original_record) = 'object'),
+        expires_at timestamptz not null
+      );
+      create index diagnostic_legacy_reports_expiry_idx on diagnostic_legacy_reports (expires_at);
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'mah_app_runtime') then
+          revoke all on table diagnostic_legacy_reports from mah_app_runtime;
+        end if;
+      end
+      $$;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

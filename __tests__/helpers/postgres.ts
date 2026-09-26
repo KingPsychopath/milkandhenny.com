@@ -55,6 +55,10 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists diagnostic_report_receipts cascade;
+    drop table if exists diagnostic_report_rates cascade;
+    drop table if exists diagnostic_legacy_reports cascade;
+    drop table if exists diagnostic_reports cascade;
     drop table if exists attendee_passkey_ceremonies cascade;
     drop table if exists auth_cli_codes cascade;
     drop table if exists auth_cli_requests cascade;

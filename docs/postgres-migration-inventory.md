@@ -105,6 +105,15 @@ Redis remains the default during transition. The supplied RDB has no `ratelimit:
 a fresh cutover export must still reconcile active windows before the switch. The local restored
 database accepted the migration, and a non-superuser runtime role reserved a synthetic window.
 
+Local migration `0104_diagnostic_reports` adds typed current reports, hashed admission
+receipts and rate windows, and a separately restricted table for the retired report format.
+The strict RDB extractor found three current reports and one retired-format report, each
+with an absolute expiry; no receipt/rate keys survived in this snapshot. A source-hash
+import on a fresh restored production clone installed all four rows and repeated
+idempotently. A different source hash was refused. The restricted runtime role could
+read current reports but not the retired-format table. The Postgres backend remains opt-in;
+see [the report runbook](./diagnostic-report-postgres.md).
+
 This validates logical restore and ledger upgrade for this snapshot. It does not establish
 Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key
 recovery or the final cutover snapshot. The production web credential remains the `postgres`
