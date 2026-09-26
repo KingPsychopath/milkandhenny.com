@@ -143,19 +143,19 @@ and a strict database-0 read. The one-off auditor and parser checkout are outsid
 credential-bearing keys. No Redis function libraries were present in the export; Upstash states
 that exports omit functions, so source code remains the authority for Lua behavior.
 
-| Export family                      | Keys | Data and reconciliation finding                                                                                                            |
-| ---------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC                                                                        |
-| `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                     |
-| `auth:token-version:*`             |    3 | Persistent admin=3, upload=2 and historical staff=2 counters; preserve staff provenance without enabling a staff role                      |
-| `auth:upload-open:audit`           |    1 | Persistent audit list with four entries (two opens, two closes); the active `auth:upload-open` window key is absent                        |
-| `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                          |
-| `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                                 |
-| `transfer:media:processing`        |    1 | Eight raw, unleased jobs; queue and dead-letter keys absent                                                                                |
-| `transfer:media:worker-status`     |    1 | Four-field hash                                                                                                                            |
-| `diagnostic-report:v1:*` and index |    4 | Three expiring records; five index members, two stale                                                                                      |
-| `best-dressed:session` and votes   |    2 | Persistent strings                                                                                                                         |
-| `guest:list` and `user-report:*`   |    3 | Original guest list with 274 guests and 157 nested plus-ones; one expiring legacy report record and its matching one-member expiring index |
+| Export family                      | Keys | Data and reconciliation finding                                                                                                                     |
+| ---------------------------------- | ---: | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC; 189 schema v1, three legacy, 27 person-bound; no surviving person-version keys |
+| `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                              |
+| `auth:token-version:*`             |    3 | Persistent admin=3, upload=2 and historical staff=2 counters; preserve staff provenance without enabling a staff role                               |
+| `auth:upload-open:audit`           |    1 | Persistent audit list with four entries (two opens, two closes); the active `auth:upload-open` window key is absent                                 |
+| `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                                   |
+| `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                                          |
+| `transfer:media:processing`        |    1 | Eight raw, unleased jobs; queue and dead-letter keys absent                                                                                         |
+| `transfer:media:worker-status`     |    1 | Four-field hash                                                                                                                                     |
+| `diagnostic-report:v1:*` and index |    4 | Three expiring records; five index members, two stale                                                                                               |
+| `best-dressed:session` and votes   |    2 | Persistent strings                                                                                                                                  |
+| `guest:list` and `user-report:*`   |    3 | Original guest list with 274 guests and 157 nested plus-ones; one expiring legacy report record and its matching one-member expiring index          |
 
 All 224 keys were decoded; 199 have absolute expiry. None had expired by the file's download
 time. This snapshot is evidence, not the final cutover delta: source writes and TTL expiry must be

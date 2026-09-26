@@ -237,7 +237,10 @@ cutover. Redis remains the default until then.
 Admin/upload JWT versions, session records, revocations and 15-second login deduplication have an
 opt-in Postgres backend selected with `AUTH_TOKEN_STORE=postgres`. Recent bearer tokens are
 encrypted with a key derived from `AUTH_SECRET`; version and active-state import is required before
-switching. CLI authorization handshakes and attendee sessions still use Redis.
+switching. Attendee sessions have a separate opt-in Postgres backend selected with
+`ATTENDEE_SESSION_STORE=postgres`; it stores hashed cookie lookups and indexed person revocation.
+The source session and person-version keys must be imported with original expiry before switching.
+CLI authorization handshakes still use Redis.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

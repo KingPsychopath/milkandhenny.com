@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,14 +17,28 @@ import (
 )
 
 type guestExtractor struct {
-	value    string
-	found    bool
-	audit    []json.RawMessage
-	versions map[string]int
+	value          string
+	found          bool
+	audit          []json.RawMessage
+	versions       map[string]int
+	sessions       map[string]json.RawMessage
+	sessionExpiry  map[string]time.Time
+	personVersions map[string]string
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	if strings.HasPrefix(key, "event-scoring:attendee-session:") {
+		if !json.Valid([]byte(value)) {
+			return errors.New("invalid attendee session JSON")
+		}
+		g.sessions[key] = json.RawMessage(value)
+		return nil
+	}
+	if strings.HasPrefix(key, "event-scoring:attendee-person-session-version:") {
+		g.personVersions[strings.TrimPrefix(key, "event-scoring:attendee-person-session-version:")] = value
+		return nil
+	}
 	if strings.HasPrefix(key, "auth:token-version:") {
 		role := strings.TrimPrefix(key, "auth:token-version:")
 		if role != "admin" && role != "upload" && role != "staff" {
@@ -48,7 +63,11 @@ func (g *guestExtractor) HandleString(key, value string) error {
 	g.value, g.found = value, true
 	return nil
 }
-func (*guestExtractor) HandleExpireTime(string, time.Time)                  {}
+func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
+	if strings.HasPrefix(key, "event-scoring:attendee-session:") {
+		g.sessionExpiry[key] = expires
+	}
+}
 func (*guestExtractor) HandleListEnding(string, uint64)                     {}
 func (*guestExtractor) HandleZsetEnding(string, uint64)                     {}
 func (*guestExtractor) HandleStreamEnding(string, uint64)                   {}
@@ -86,8 +105,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 5 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 6 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -96,41 +115,50 @@ func main() {
 	}); err != nil {
 		panic(fmt.Errorf("RDB integrity verification failed: %w", err))
 	}
-	extractor := &guestExtractor{versions: make(map[string]int)}
+	extractor := &guestExtractor{
+		versions:       make(map[string]int),
+		sessions:       make(map[string]json.RawMessage),
+		sessionExpiry:  make(map[string]time.Time),
+		personVersions: make(map[string]string),
+	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
 	}
 	if !extractor.found {
-		panic("guest:list is absent")
-	}
-	var guests []struct {
-		ID       string            `json:"id"`
-		Name     string            `json:"name"`
-		PlusOnes []json.RawMessage `json:"plusOnes"`
-	}
-	if err := json.Unmarshal([]byte(extractor.value), &guests); err != nil || guests == nil {
-		panic("guest:list is not a JSON guest array")
-	}
-	plusOnes := 0
-	for _, guest := range guests {
-		if guest.ID == "" || guest.Name == "" || guest.PlusOnes == nil {
-			panic("guest:list contains an invalid top-level guest")
+		if len(os.Args) == 3 {
+			panic("guest:list is absent")
 		}
-		plusOnes += len(guest.PlusOnes)
+		fmt.Println("guest_list_absent")
+	} else {
+		var guests []struct {
+			ID       string            `json:"id"`
+			Name     string            `json:"name"`
+			PlusOnes []json.RawMessage `json:"plusOnes"`
+		}
+		if err := json.Unmarshal([]byte(extractor.value), &guests); err != nil || guests == nil {
+			panic("guest:list is not a JSON guest array")
+		}
+		plusOnes := 0
+		for _, guest := range guests {
+			if guest.ID == "" || guest.Name == "" || guest.PlusOnes == nil {
+				panic("guest:list contains an invalid top-level guest")
+			}
+			plusOnes += len(guest.PlusOnes)
+		}
+		file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err = file.Write([]byte(extractor.value)); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err = file.Close(); err != nil {
+			panic(err)
+		}
+		hash := sha256.Sum256([]byte(extractor.value))
+		fmt.Printf("guest_json_sha256=%x top_level=%d plus_ones=%d\n", hash, len(guests), plusOnes)
 	}
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		panic(err)
-	}
-	if _, err = file.Write([]byte(extractor.value)); err != nil {
-		file.Close()
-		panic(err)
-	}
-	if err = file.Close(); err != nil {
-		panic(err)
-	}
-	hash := sha256.Sum256([]byte(extractor.value))
-	fmt.Printf("guest_json_sha256=%x top_level=%d plus_ones=%d\n", hash, len(guests), plusOnes)
 	if len(os.Args) >= 4 {
 		for _, raw := range extractor.audit {
 			var event struct {
@@ -160,7 +188,7 @@ func main() {
 		}
 		fmt.Printf("upload_audit_events=%d\n", len(extractor.audit))
 	}
-	if len(os.Args) == 5 {
+	if len(os.Args) >= 5 {
 		payload, err := json.Marshal(extractor.versions)
 		if err != nil {
 			panic(err)
@@ -177,5 +205,51 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("auth_token_roles=%d\n", len(extractor.versions))
+	}
+	if len(os.Args) == 6 {
+		type attendeeRow struct {
+			ID        string          `json:"id"`
+			Value     json.RawMessage `json:"value"`
+			ExpiresAt string          `json:"expiresAt"`
+		}
+		keys := make([]string, 0, len(extractor.sessions))
+		for key := range extractor.sessions {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		rows := make([]attendeeRow, 0, len(keys))
+		for _, key := range keys {
+			id := strings.TrimPrefix(key, "event-scoring:attendee-session:")
+			var identity struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(extractor.sessions[key], &identity); err != nil || identity.ID != id {
+				panic("attendee session ID does not match its key")
+			}
+			expires, ok := extractor.sessionExpiry[key]
+			if !ok {
+				panic("attendee session lacks absolute expiry")
+			}
+			rows = append(rows, attendeeRow{ID: id, Value: extractor.sessions[key], ExpiresAt: expires.UTC().Format(time.RFC3339Nano)})
+		}
+		payload, err := json.Marshal(struct {
+			Sessions       []attendeeRow     `json:"sessions"`
+			PersonVersions map[string]string `json:"personVersions"`
+		}{rows, extractor.personVersions})
+		if err != nil {
+			panic(err)
+		}
+		sessionFile, err := os.OpenFile(os.Args[5], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := sessionFile.Write(payload); err != nil {
+			sessionFile.Close()
+			panic(err)
+		}
+		if err := sessionFile.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("attendee_sessions=%d person_versions=%d\n", len(rows), len(extractor.personVersions))
 	}
 }

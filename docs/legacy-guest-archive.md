@@ -65,6 +65,8 @@ supplied export has no active `auth:upload-open` window. Recheck that exact key 
 export; if it is then active, preserve its existing token and expiry before switching the backend.
 An optional fourth output extracts the role token-version counters for
 [the JWT migration](./auth-token-postgres.md).
+An optional fifth output extracts attendee sessions and their absolute expiries for
+[the attendee-session migration](./attendee-session-postgres.md).
 
 ## Import and verify
 

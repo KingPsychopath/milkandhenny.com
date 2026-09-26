@@ -161,4 +161,5 @@ export const HISTORICAL_MIGRATION_SHA256 = {
   "0098_rate_limit_windows": "c440921c3d31b9c4ae686040abd5eba0112610a9221eeefaaf5f1abed710f5bd",
   "0099_upload_access_window": "ebee61d6b09311abd73b4820decd2ecd99108e8a0f2007938a3f37b023b2fad4",
   "0100_auth_token_state": "f9a261438e2e99ca1ce016d12e38cf5019863b5b9f1c16d03df11e9d2fa8cf1d",
+  "0101_attendee_sessions": "f2a06d37b4f89cac31b9d7ac98e0b6004eb1467d4b6214f7e0a5cfd5902f9464",
 } as const;

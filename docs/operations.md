@@ -32,6 +32,9 @@ The rate-limit cleanup removes at most 10,000 expired rows per daily run. Check 
 When `AUTH_TOKEN_STORE=postgres`, the runner also removes up to 10,000 expired login dedupe and
 revocation rows and token-session records older than 60 days past expiry. Check the reported
 counts if any category reaches that bound repeatedly.
+With `ATTENDEE_SESSION_STORE=postgres`, the runner also removes up to 10,000 expired attendee
+session rows per daily pass. The person-version rows remain until a separate account-retention
+decision because they preserve person-wide revocation semantics.
 
 ## Capability checks
 

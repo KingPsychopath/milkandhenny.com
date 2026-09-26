@@ -10,6 +10,16 @@ import { getEvent } from "@/features/events/store.server";
 import { getTicketByCurrentReference, getTickets } from "@/features/tickets/store.server";
 import { participantForTicket } from "@/features/event-scoring/store.server";
 import { ATTENDEE_SESSION_COOKIE_NAME } from "./session-cookie";
+import {
+  deletePostgresAttendeeSession,
+  listPostgresSessionsForPeople,
+  mutatePostgresAttendeeSession,
+  postgresAttendeeSessionsSelected,
+  readPostgresAttendeeSession,
+  readPostgresPersonSessionVersion,
+  revokePostgresPersonSessions,
+  writePostgresAttendeeSession,
+} from "./session-postgres.server";
 
 const SESSION_PREFIX = "event-scoring:attendee-session:";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 60;
@@ -173,6 +183,7 @@ async function legacyPersonExists(personId: string): Promise<boolean> {
 }
 
 async function personSessionVersion(personId: string): Promise<string | undefined> {
+  if (postgresAttendeeSessionsSelected()) return readPostgresPersonSessionVersion(personId);
   const redis = getRedis();
   if (redis) {
     const value = await redis.get<string>(`${PERSON_SESSION_VERSION_PREFIX}${personId}`);
@@ -258,12 +269,14 @@ async function normalizeStoredSession(session: AttendeeSession): Promise<{
 }
 
 async function readById(id: string): Promise<SessionRead | null> {
-  const redis = getRedis();
-  const parsed = redis
-    ? parseStored(await redis.get(`${SESSION_PREFIX}${id}`))
-    : allowMemoryFallback()
-      ? (developmentSessions.get(id) ?? null)
-      : null;
+  const redis = postgresAttendeeSessionsSelected() ? null : getRedis();
+  const parsed = postgresAttendeeSessionsSelected()
+    ? parseStored(await readPostgresAttendeeSession(id))
+    : redis
+      ? parseStored(await redis.get(`${SESSION_PREFIX}${id}`))
+      : allowMemoryFallback()
+        ? (developmentSessions.get(id) ?? null)
+        : null;
   if (!parsed) return null;
   const normalized = await normalizeStoredSession(parsed);
   return {
@@ -272,7 +285,8 @@ async function readById(id: string): Promise<SessionRead | null> {
   };
 }
 
-async function storedSessions(): Promise<AttendeeSession[]> {
+async function storedSessions(personIds: readonly string[] = []): Promise<AttendeeSession[]> {
+  if (postgresAttendeeSessionsSelected()) return listPostgresSessionsForPeople(personIds);
   const redis = getRedis();
   if (redis) {
     const sessions: AttendeeSession[] = [];
@@ -305,7 +319,7 @@ export async function attendeeSessionSummaries(
   const summaries = new Map<string, PersonAttendeeSessionSummary>();
   const versions = new Map<string, Promise<string | undefined>>();
   if (wanted.size === 0) return summaries;
-  for (const session of await storedSessions()) {
+  for (const session of await storedSessions([...wanted])) {
     if (!session.personId || !wanted.has(session.personId)) continue;
     let expectedVersion = versions.get(session.personId);
     if (!expectedVersion) {
@@ -334,6 +348,7 @@ export async function attendeeSessionSummaries(
 }
 
 export async function revokeAttendeeSessionsForPerson(personId: string): Promise<number> {
+  if (postgresAttendeeSessionsSelected()) return revokePostgresPersonSessions(personId);
   await revokePersonSessionVersion(personId);
   const sessions = (await storedSessions()).filter(
     (session) => session.personId === personId || session.pendingMfa?.personId === personId,
@@ -353,6 +368,7 @@ export async function revokeAttendeeSessionsForPerson(personId: string): Promise
 }
 
 async function write(session: AttendeeSession): Promise<void> {
+  if (postgresAttendeeSessionsSelected()) return writePostgresAttendeeSession(session);
   const redis = getRedis();
   if (redis) {
     await redis.set(`${SESSION_PREFIX}${session.id}`, session, { ex: SESSION_TTL_SECONDS });
@@ -371,6 +387,7 @@ async function withSessionMutation<T>(
   id: string,
   use: (mutation: SessionMutation) => Promise<T>,
 ): Promise<T> {
+  if (postgresAttendeeSessionsSelected()) return mutatePostgresAttendeeSession(id, use);
   const redis = getRedis();
   if (redis) {
     const owner = randomBytes(18).toString("base64url");
@@ -494,7 +511,7 @@ async function rotateSession(
     | "pendingMfa"
   >,
 ): Promise<AttendeeSession> {
-  return withSessionMutation(session.id, async (mutation) => {
+  const rotated = await withSessionMutation(session.id, async (mutation) => {
     const current = await readById(session.id);
     if (!current) throw new Error("Attendee session changed; try again");
     const now = new Date().toISOString();
@@ -506,9 +523,10 @@ async function rotateSession(
       lastSeenAt: now,
     } satisfies AttendeeSession;
     await mutation.replaceCurrent(rotated);
-    setSessionCookie(rotated.id);
     return rotated;
   });
+  setSessionCookie(rotated.id);
+  return rotated;
 }
 
 export async function authenticateAttendeeSession(input: {
@@ -841,9 +859,12 @@ export async function openedParticipantForEvent(
 export async function clearAttendeeSession(): Promise<void> {
   const id = readSessionId();
   if (!id) return;
-  const redis = getRedis();
-  if (redis) await redis.del(`${SESSION_PREFIX}${id}`);
-  else if (allowMemoryFallback()) developmentSessions.delete(id);
+  if (postgresAttendeeSessionsSelected()) await deletePostgresAttendeeSession(id);
+  else {
+    const redis = getRedis();
+    if (redis) await redis.del(`${SESSION_PREFIX}${id}`);
+    else if (allowMemoryFallback()) developmentSessions.delete(id);
+  }
   setCookie(ATTENDEE_SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",

@@ -4431,6 +4431,39 @@ const MIGRATIONS: Migration[] = [
       create index auth_recent_logins_expiry_idx on auth_recent_logins (expires_at);
     `,
   },
+  {
+    id: "0101_attendee_sessions",
+    sql: `
+      create table attendee_session_versions (
+        person_id uuid primary key,
+        version text not null check (char_length(version) between 32 and 64),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        )
+      );
+
+      create table attendee_sessions (
+        id_hash text primary key check (id_hash ~ '^[a-f0-9]{64}$'),
+        session_data jsonb not null check (jsonb_typeof(session_data) = 'object'),
+        person_id uuid,
+        pending_person_id uuid,
+        created_at timestamptz not null,
+        last_seen_at timestamptz not null,
+        authenticated_at timestamptz,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        ),
+        check (expires_at > created_at)
+      );
+      create index attendee_sessions_person_idx
+        on attendee_sessions (person_id, expires_at) where person_id is not null;
+      create index attendee_sessions_pending_person_idx
+        on attendee_sessions (pending_person_id, expires_at)
+        where pending_person_id is not null;
+      create index attendee_sessions_expiry_idx on attendee_sessions (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

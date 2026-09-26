@@ -15,6 +15,7 @@ const jobs = [
   { path: "/api/cron/cleanup-communication-links" },
   { path: "/api/cron/cleanup-email" },
   { path: "/api/cron/cleanup-attendee-access" },
+  { path: "/api/cron/cleanup-attendee-sessions" },
   { path: "/api/cron/cleanup-rate-limits" },
   { path: "/api/cron/cleanup-auth-state" },
   { path: "/api/cron/cleanup-word-shares" },
