@@ -1,6 +1,7 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { readPublishedPitchFn } from "@/features/things/pitches/pitches.functions";
+import { publishedPitchQuery } from "@/features/things/pitches/pitches.queries";
 import { PitchViewer } from "@/features/things/pitches/ui/PitchViewer";
 import { PitchOperationalNotice } from "@/features/things/pitches/ui/PitchOperationalNotice";
 import { SITE_NAME } from "@/lib/shared/config";
@@ -12,31 +13,38 @@ export const Route = createFileRoute("/things/pitches_/$deckId")({
       ? { edition: search.edition }
       : {},
   loaderDeps: ({ search }) => ({ edition: search.edition }),
-  loader: async ({ params, deps }) => {
-    const result = await readPublishedPitchFn({
-      data: { deckId: params.deckId, editionNumber: deps.edition },
-    });
-    if (!result.operationalStatus.canRead) return result;
+  loader: async ({ context, params, deps }) => {
+    const result = await context.queryClient.fetchQuery(
+      publishedPitchQuery(params.deckId, deps.edition),
+    );
     if (!result.pitch && !result.loadError) throw notFound();
-    return result;
+    return {
+      title: result.pitch?.title,
+      ownerName: result.pitch?.ownerName,
+      thumbnail: result.pitch?.thumbnail,
+      indexable: Boolean(result.pitch),
+    };
   },
+  preloadStaleTime: 0,
   component: PublishedPitchRoute,
   head: ({ loaderData, params }) => {
-    const title = loaderData?.pitch?.title ?? "Pitch";
-    const thumbnail = loaderData?.pitch?.thumbnail;
+    const title = loaderData?.title ?? "Pitch";
+    const thumbnail = loaderData?.thumbnail;
     return buildSeoHead({
       title: `${title} — ${SITE_NAME}`,
-      description: `A sealed six-slide pitch by ${loaderData?.pitch?.ownerName ?? "a Milk & Henny maker"}.`,
+      description: `A sealed six-slide pitch by ${loaderData?.ownerName ?? "a Milk & Henny maker"}.`,
       path: `/things/pitches/${params.deckId}`,
       image: thumbnail?.src || OG_IMAGES.pitchStudio,
       imageAlt: `${title} — a sealed pitch from Milk & Henny`,
-      robots: loaderData?.pitch ? "index, follow" : "noindex, nofollow",
+      robots: loaderData?.indexable ? "index, follow" : "noindex, nofollow",
     });
   },
 });
 
 function PublishedPitchRoute() {
-  const data = Route.useLoaderData();
+  const { deckId } = Route.useParams();
+  const { edition } = Route.useSearch();
+  const { data } = useSuspenseQuery(publishedPitchQuery(deckId, edition));
   if (data.pitch) return <PitchViewer pitch={data.pitch} />;
   if (!data.operationalStatus.canRead) {
     return <PitchOperationalNotice status={data.operationalStatus} />;

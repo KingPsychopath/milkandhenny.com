@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type {
   PitchAsset,
@@ -13,6 +14,10 @@ import type {
 } from "@/features/things/pitches/types";
 import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
+import {
+  pitchWallQueryRoot,
+  publishedPitchQueryRoot,
+} from "@/features/things/pitches/pitches.queries";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
@@ -125,6 +130,13 @@ export function PitchesPanel({
   >;
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
+  const queryClient = useQueryClient();
+  const invalidatePitchViews = (deckId?: string) => {
+    void queryClient.invalidateQueries({ queryKey: pitchWallQueryRoot });
+    void queryClient.invalidateQueries({
+      queryKey: deckId ? [...publishedPitchQueryRoot, deckId] : publishedPitchQueryRoot,
+    });
+  };
   const [pitches, setPitches] = useState<PitchDeckAdminSummary[]>([]);
   const [detail, setDetail] = useState<PitchDetail>();
   const [query, setQuery] = useState("");
@@ -228,6 +240,7 @@ export function PitchesPanel({
         body: JSON.stringify({ action: "archive", deckId: pitch.id, archived }),
       });
       if (!response.ok) throw new Error("Could not update pitch");
+      invalidatePitchViews(pitch.id);
       onStatus(archived ? "Pitch hidden from the wall." : "Pitch restored.");
       setDetail(undefined);
       await refresh();
@@ -247,6 +260,7 @@ export function PitchesPanel({
         body: JSON.stringify({ action: "restore-trash", deckId }),
       });
       if (!response.ok) throw new Error("Could not restore pitch from Trash");
+      invalidatePitchViews(deckId);
       onStatus("Pitch restored from Trash.");
       setDetail(undefined);
       await refresh();
@@ -271,6 +285,7 @@ export function PitchesPanel({
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not update pitch");
+      if (action !== "resend-access") invalidatePitchViews(detail.pitch.id);
       onStatus(
         action === "resend-access"
           ? "A fresh private editing link was sent."
@@ -337,6 +352,7 @@ export function PitchesPanel({
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not delete pitch");
+      invalidatePitchViews(detail.pitch.id);
       setDetail(undefined);
       setDeleteConfirmation("");
       onStatus("Pitch moved to Trash. It can be restored for 30 days.");
@@ -374,6 +390,7 @@ export function PitchesPanel({
       if (!response.ok || !body.operationalStatus) {
         throw new Error(body.error ?? "Could not change the studio mode");
       }
+      invalidatePitchViews();
       setOperationalStatus(body.operationalStatus);
       setModeDraft(body.operationalStatus.adminMode);
       onStatus(
