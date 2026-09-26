@@ -9,6 +9,7 @@ export { TicketSalesBreakdown } from "./EventOperationsPanel";
 import { AdminTextField as Field } from "./AdminTextField";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 
 import { useAdminDraftState } from "../hooks/useAdminDraftState";
@@ -33,6 +34,8 @@ import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 
 import { AdminStatus } from "./AdminStatus";
 import { pickDefaultAdminEvent } from "./event-admin-selection";
+import { adminEventsQuery } from "@/features/events/events.queries";
+import { homePageQuery } from "@/features/site/home.queries";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
   natural: "natural — the image's own height",
@@ -40,6 +43,7 @@ const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
   medium: "medium — 45% of the screen",
   short: "short — 28% of the screen",
 };
+const EMPTY_EVENTS: EventRecord[] = [];
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
@@ -113,9 +117,11 @@ export function EventsPanel({
 }) {
   const statusId = useId();
   const heroHeightId = useId();
-  const [events, setEvents] = useState<EventRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const eventQuery = useQuery(adminEventsQuery);
+  const events = eventQuery.data ?? EMPTY_EVENTS;
+  const loading = eventQuery.isFetching;
+  const loadError = eventQuery.error?.message ?? null;
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
   const editorErrorRef = useRef<HTMLParagraphElement>(null);
@@ -159,30 +165,20 @@ export function EventsPanel({
       : null;
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
     onError("");
-    try {
-      const response = await authFetch("/api/admin/events");
-      const data: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error("Failed to load events");
-      const list =
-        data && typeof data === "object" && "events" in data && Array.isArray(data.events)
-          ? (data.events as EventRecord[])
-          : [];
-      setEvents(list);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load events";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
+    const result = await eventQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [eventQuery, onError]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const refreshEventViews = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminEventsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["events"] }),
+        queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
+      ]),
+    [queryClient],
+  );
 
   useEffect(() => {
     let settleFrame = 0;
@@ -482,7 +478,7 @@ export function EventsPanel({
       );
       setSelection(null);
       setDraft(null);
-      await load();
+      await refreshEventViews();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save event";
       setEditorError(message);
@@ -519,7 +515,7 @@ export function EventsPanel({
         setDraft(null);
         setOperations(null);
       }
-      await load();
+      await refreshEventViews();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to delete event");
     }

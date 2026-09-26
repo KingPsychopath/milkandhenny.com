@@ -1,11 +1,19 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getEventsIndexFn } from "./events.functions";
+import { getAdminEventsFn, getEventsIndexFn } from "./events.functions";
 import { getEventPageFn } from "@/features/event-operations/event-page.functions";
 
 export const eventsIndexQuery = queryOptions({
   queryKey: ["events", "public", "index"] as const,
   queryFn: () => getEventsIndexFn(),
   staleTime: 15_000,
+});
+
+/** Private admin event catalogue; identity transitions clear this entry. */
+export const adminEventsQuery = queryOptions({
+  queryKey: ["admin", "events", "catalogue"] as const,
+  queryFn: () => getAdminEventsFn(),
+  staleTime: 10_000,
+  retry: false,
 });
 
 /** The page can include attendee-specific fields; clear it on every identity transition. */
