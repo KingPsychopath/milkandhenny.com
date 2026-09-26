@@ -627,6 +627,8 @@ derived exports. No read path silently repairs/deletes product state.
 - [ ] Implement transfer/file/group/reservation tables and quota transactions.
   - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
         Runtime repository, quota transactions, token encryption and source import remain open.
+  - [x] Add a staged Postgres reservation repository with hashed matching fields, bounded
+        count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -785,7 +787,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
   milestone `d31e61c8`; Best Dressed `e39554d3`; album catalogue `48ff4c8a`. The word
   body/metadata milestone `415e9430`; word-share state `28261237`; media-object ledger
-  foundation `50d624d6`.
+  foundation `50d624d6`; per-instance worker status `0ce8c529`; transfer schema `62c95d46`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -926,6 +928,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   claim fields and pre-transfer reservations. `pnpm check`, `pnpm build`, documentation links and
   the full `pnpm test` suite passed (266 files, 2,073 tests). There is no runtime caller or import
   yet; the one orphan exported job requires restricted quarantine rather than runnable import.
+  The staged reservation repository admits one of two concurrent claims, verifies hashed
+  deletion token/actor/file selection, stores 320 reserved bytes for a synthetic two-file
+  upload, and hides/cleans expired rows. Its three focused real-Postgres tests and typecheck
+  passed. Runtime flows still use Redis until transfer metadata and cleanup change with them.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -944,8 +950,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: implement transfer token encryption, repositories, quota/reservation transactions,
-  and media-job enqueue/claims with fenced R2 publication; add the export importer with an orphan
+- Next action: implement transfer token encryption, catalogue and quota transactions, then wire
+  reservation flows and cleanup against the same authority. Add media-job enqueue/claims with
+  fenced R2 publication and the export importer with an orphan
   quarantine. Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
 

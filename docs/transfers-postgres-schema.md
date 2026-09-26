@@ -12,6 +12,12 @@ positions and media-processing fields. Composite foreign keys keep group members
 attached to files in their own transfer. Reservations intentionally have no transfer FK because
 presign creates them before finalization creates the transfer.
 
+The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
+hashes the deletion token, actor JTI and file selection separately, records reserved count and
+bytes, admits one concurrent claimant, and hides expired rows. It is not wired into the upload
+workflow yet: finalization, resume, abandon and orphan-object cleanup must switch together so
+all of them consult the same reservation authority.
+
 Jobs have a unique source/operation/generation identity, a claim token, lease, attempt count and
 indexed pending/expired-lease states. Their JSON payload retains source request details while
 the relational columns own routing and concurrency. The table is only a foundation: enqueue
