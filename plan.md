@@ -486,6 +486,8 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
 
 - [ ] Enumerate direct/indirect storage users, all key families, object prefixes, tables,
       mutations, read models, scheduled work and browser recovery contracts.
+- [x] Match the exported word and transfer object references to R2; parse and validate editable
+      album/word-image manifests and their referenced objects without exposing private content.
 - [ ] Obtain permitted production inventory and effective schema; verify server features,
       backup coverage, storage sizes, key/row counts and data-quality contradictions.
 - [ ] Specify complete DDL, relationships, indexes, retention and source mappings for each
@@ -695,31 +697,36 @@ targets for publication/deletion tests, and never send real user email/payment e
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
-- Commits: planning `b982c582`; first production inventory `39481052`. Source implementation
-  commits have not started.
+- Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
+  recovery inventory `dfb0cee1`. Source implementation commits have not started.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
-  decode; its audit printed aggregate counts only. Documentation formatting, links and whitespace
-  will be checked before this checkpoint's commit. Source/release tests remain pending.
+  decode; its audit printed aggregate counts only. A read-only R2 listing and selected manifest
+  downloads matched all 13 word bodies, all 64 active-transfer storage references, and all 14
+  album originals/84 public variants/14 OG objects; three word image manifests and 18 variants
+  also matched. Documentation formatting, links and whitespace will be checked before this
+  checkpoint's commit. Source/release tests remain pending.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. PITR is disabled, no backup schedule is listed, and the only listed
   backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
   The export has 224 keys, including 192 attendee sessions and eight raw, unleased media jobs in
   `transfer:media:processing`. Seven jobs reference the one exported transfer; one references a
-  missing transfer. The token-session index has 190 stale entries and the report index has two.
+  missing transfer. Seven of eight job storage keys exist in R2, and only one transfer prefix is
+  present there; matching the missing object to the missing transfer still needs proof. The
+  token-session index has 190 stale entries and the report index has two.
 - Unresolved: exact Redis snapshot time/fresh cutover delta; legacy `guest:*`/`user-report:*`
   disposition and missing transfer job; full object/reference inventory and backup coverage;
   measured load/resource
   budgets; physical DDL; migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: inspect production R2 manifests/references and the effective relational schema,
-  resolve migration ledger baseline, then specify physical DDL/source mapping. Do not start
-  production migration from the table sketches in this document.
+- Next action: inspect pitch asset references and the effective relational schema, resolve the
+  migration-ledger baseline, then specify physical DDL/source mapping. Do not start production
+  migration from the table sketches in this document.
 
 ### Milestone checkpoint template
 

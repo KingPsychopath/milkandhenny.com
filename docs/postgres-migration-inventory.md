@@ -32,6 +32,25 @@ printing keys or contents:
 
 Object counts are not proof of application references, backup coverage or content integrity.
 
+A second read-only listing and selected manifest reads reconciled the supplied RDB to object
+storage without printing keys or private content:
+
+| Reference family                                         |                Source references | Present | Finding                                                        |
+| -------------------------------------------------------- | -------------------------------: | ------: | -------------------------------------------------------------- |
+| Word Markdown body keys                                  |                               13 |      13 | Six private and seven public `content.md` objects              |
+| Active transfer file storage keys                        |                               64 |      64 | All in the private bucket                                      |
+| Media-processing job storage keys                        |                                8 |       7 | One missing private object; see orphan-job investigation below |
+| Album manifests                                          |                                2 |       2 | Both parse, both published; 14 photos total                    |
+| Album photo originals, public variants and OG references | 14 originals, 84 variants, 14 OG |     All | All referenced objects present                                 |
+| Public word image manifests                              |                                3 |       3 | Three image entries; all originals and 18 variants present     |
+
+There is only one distinct transfer prefix among the 168 private transfer objects. The one
+unmatched job source and the job referencing a missing transfer may be the same item, but that
+identity has not yet been proven. A file may also be absent because its transfer expired; the
+import must use source expiry and ownership before deciding whether to replay or discard it.
+The public pitch thumbnail manifests and other pitch objects have only been counted, not
+cross-checked against relational asset rows. Object backup/restore coverage remains unverified.
+
 ## Upstash export received
 
 The user supplied a fresh `guestlist-kv` RDB export on 2026-09-26. A copy with mode 0600 is held at
@@ -126,8 +145,10 @@ object reference or browser recovery path is accounted for.
       `guest:*` and `user-report:*` keys and decide how to retain or retire them.
 - [ ] Establish exact production counts and contradictions from the source and target, including
       transfers, active work, content, credentials, rooms, receipts and revocations.
-- [ ] Inventory all R2 object references and editable manifests, not just top-level prefixes;
-      verify object backup coverage and integrity policy.
+- [x] Reconcile exported word/transfer references and editable album/word-image manifests to R2
+      objects without printing private content.
+- [ ] Reconcile pitch asset references, classify the unmatched job source, and verify object
+      backup coverage and integrity policy.
 - [ ] Resolve the `0025_site_settings` migration-ledger mismatch without rewriting applied SQL.
 - [ ] Specify physical DDL and source mapping for every new table family; audit the full effective
       117-table schema before selecting existing-domain integrity changes.
