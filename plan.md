@@ -596,6 +596,10 @@ double-consume a credential, vote, report submission or protected quota.
 
 ### M5 — Words, albums and media catalogue
 
+- [x] Add a transactional Postgres media copy/delete operation ledger with idempotent enqueue,
+      leased claims, retry limits and fenced completion; it is not yet connected to R2 workflows.
+- [ ] Bind owner generations and object references to the ledger, add the Media-runtime executor,
+      and prove interrupted-operation repair and reference-safe deletion.
 - [x] Add an opt-in Postgres word body/metadata store with transactional revisions; rehearse the
       13-word Redis/R2 import on an isolated production restore.
 - [x] Add an opt-in Postgres share-link store with PIN invalidation, revocation, expiry cleanup and
@@ -773,7 +777,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
   milestone `d31e61c8`; Best Dressed `e39554d3`; album catalogue `48ff4c8a`. The word
-  body/metadata milestone `415e9430`. The word-share milestone is in this change.
+  body/metadata milestone `415e9430`; word-share state `28261237`. The media-object ledger
+  foundation is in this change.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -889,6 +894,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   PIN admission, token rotation, revocation, stale edits, expiry cleanup and word deletion.
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed against isolated Postgres
   (263 files, 2,065 tests). Production remains on Redis.
+  For media object operations, migration `0109` added a transactional ledger with bounded
+  claims, lease expiry, retry/dead-letter state and claim-token completion. Focused real-Postgres
+  tests covered transaction rollback, idempotency conflict, disjoint claims, lost-lease recovery
+  and exhausted retries. The restored production clone accepted migration `0109`, and the
+  restricted runtime role had DML on its table. `pnpm check`, `pnpm build` and the full
+  `pnpm test` suite passed against isolated Postgres (264 files, 2,068 tests). This foundation
+  has no R2 executor or production caller yet.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

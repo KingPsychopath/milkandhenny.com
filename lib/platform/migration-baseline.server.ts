@@ -169,4 +169,6 @@ export const HISTORICAL_MIGRATION_SHA256 = {
   "0106_gallery_albums": "92009dfddd60fd52293402b19f5cae9eb5679402e612e90044c0336c175d5675",
   "0107_words": "3f510f6fb1345df8d388b507598eb96b22c65a2b39b002761423d3771485367f",
   "0108_word_shares": "1dad3aead45929727c4d1233c74b07a60ad7b45a4cb9d8934b8398113335230c",
+  "0109_media_object_operations":
+    "c169f17dfde2fca120e3e92e566c4427141dc685bbb8040e3acd73e452183ef1",
 } as const;

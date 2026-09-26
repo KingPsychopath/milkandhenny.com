@@ -4733,6 +4733,47 @@ const MIGRATIONS: Migration[] = [
         on word_share_links (expires_at);
     `,
   },
+  {
+    id: "0109_media_object_operations",
+    sql: `
+      create table media_object_operations (
+        id uuid primary key,
+        owner_kind text not null check (owner_kind in ('album', 'word')),
+        owner_id text not null,
+        owner_revision integer not null check (owner_revision >= 1),
+        operation text not null check (operation in ('copy', 'delete')),
+        source_scope text check (source_scope in ('private', 'public')),
+        source_key text,
+        target_scope text not null check (target_scope in ('private', 'public')),
+        target_key text not null,
+        content_type text,
+        cache_control text,
+        status text not null default 'pending'
+          check (status in ('pending', 'claimed', 'completed', 'dead')),
+        available_at timestamptz not null default now(),
+        attempts integer not null default 0 check (attempts >= 0),
+        max_attempts integer not null default 8 check (max_attempts > 0),
+        claim_token uuid,
+        claim_owner text,
+        lease_until timestamptz,
+        last_error text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        completed_at timestamptz,
+        unique (owner_kind, owner_id, owner_revision, operation, target_scope, target_key),
+        check (operation = 'delete' or (source_scope is not null and source_key is not null)),
+        check ((status = 'claimed') = (claim_token is not null and claim_owner is not null and lease_until is not null))
+      );
+      create index media_object_operations_claim_idx
+        on media_object_operations (available_at, id)
+        where status in ('pending', 'claimed');
+      create index media_object_operations_expired_lease_idx
+        on media_object_operations (lease_until)
+        where status = 'claimed';
+      create index media_object_operations_owner_idx
+        on media_object_operations (owner_kind, owner_id, owner_revision, status);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

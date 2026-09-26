@@ -267,6 +267,8 @@ The word repository also has an opt-in Postgres body and metadata store selected
 `WORD_STORE=postgres`, and an opt-in Postgres share-link store selected with
 `WORD_SHARE_STORE=postgres`; their imports and remaining media gates are in
 [words](./words-postgres.md).
+The [media object operation ledger](./media-object-operations.md) is an opt-in foundation for
+tracked R2 copy/delete work; it is not yet wired to album or word mutations.
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
 
