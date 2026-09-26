@@ -4707,6 +4707,32 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0108_word_shares",
+    sql: `
+      create table word_share_links (
+        id uuid primary key,
+        slug text not null references words (slug) on delete cascade,
+        token_hash text not null unique check (token_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        pin_required boolean not null,
+        pin_hash text check (pin_hash is null or pin_hash ~ '^[a-f0-9]{64}$'),
+        pin_updated_at timestamptz,
+        revoked_at timestamptz,
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        created_by_role text not null check (created_by_role = 'admin'),
+        revision integer not null check (revision >= 1),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_record_sha256 text check (source_record_sha256 ~ '^[a-f0-9]{64}$'),
+        check (pin_required = false or pin_hash is not null)
+      );
+      create index word_share_links_slug_created_idx
+        on word_share_links (slug, created_at desc);
+      create index word_share_links_expiry_idx
+        on word_share_links (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

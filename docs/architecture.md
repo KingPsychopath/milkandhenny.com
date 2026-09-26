@@ -264,7 +264,8 @@ published derivatives and editorial media. The album repository also has an opt-
 catalogue selected with `ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety
 gate are described in [gallery albums](./gallery-albums-postgres.md).
 The word repository also has an opt-in Postgres body and metadata store selected with
-`WORD_STORE=postgres`; its import and remaining share/media gates are in
+`WORD_STORE=postgres`, and an opt-in Postgres share-link store selected with
+`WORD_SHARE_STORE=postgres`; their imports and remaining media gates are in
 [words](./words-postgres.md).
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.

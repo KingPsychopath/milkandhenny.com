@@ -598,8 +598,10 @@ double-consume a credential, vote, report submission or protected quota.
 
 - [x] Add an opt-in Postgres word body/metadata store with transactional revisions; rehearse the
       13-word Redis/R2 import on an isolated production restore.
-- [ ] Move word share links, PIN invalidation, visibility media operations and cleanup off Redis/R2
-      metadata paths before selecting the Postgres word store in production.
+- [x] Add an opt-in Postgres share-link store with PIN invalidation, revocation, expiry cleanup and
+      a zero-record RDB import rehearsal.
+- [ ] Move visibility media operations and reference-safe cleanup off R2 metadata paths before
+      selecting the Postgres word and share stores in production.
 - [x] Add an opt-in Postgres album/photo catalogue with revision checks and same-album cover
       ownership; rehearse the two-manifest, 14-photo private R2 import in an isolated restore.
 - [ ] Make album publication, deletion and derivative changes recoverable across Postgres/R2
@@ -771,7 +773,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
   milestone `d31e61c8`; Best Dressed `e39554d3`; album catalogue `48ff4c8a`. The word
-  body/metadata milestone is in this change.
+  body/metadata milestone `415e9430`. The word-share milestone is in this change.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -880,6 +882,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   concurrent create/edit rejection. `pnpm check`, `pnpm build` and the full `pnpm test`
   suite passed against isolated Postgres (262 files, 2,063 tests). No production import or
   switch occurred.
+  For word shares, migration `0108` applied to the isolated production restore. The supplied
+  RDB had no share records or tracked slugs; the empty import repeated and a count mismatch
+  failed. A synthetic one-link import repeated and rejected a different source hash. The
+  restricted runtime role has DML on the new table. Focused Postgres tests covered
+  PIN admission, token rotation, revocation, stale edits, expiry cleanup and word deletion.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed against isolated Postgres
+  (263 files, 2,065 tests). Production remains on Redis.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -898,7 +907,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: move word shares/PINs and add recoverable media object operations, then the
+- Next action: add recoverable word/album media object operations, then the
   transfer/media queue before any release candidate. Do not start production migration from
   the table sketches in this document.
 

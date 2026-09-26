@@ -39,6 +39,7 @@ export interface ShareLink {
   createdAt: string;
   updatedAt: string;
   createdByRole: "admin";
+  revision?: number;
 }
 
 export type ShareLinkView = Omit<

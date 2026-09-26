@@ -55,6 +55,7 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists word_share_links cascade;
     drop table if exists word_revisions cascade;
     drop table if exists words cascade;
     drop table if exists gallery_album_photos cascade;

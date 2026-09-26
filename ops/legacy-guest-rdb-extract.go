@@ -17,21 +17,25 @@ import (
 )
 
 type guestExtractor struct {
-	value          string
-	found          bool
-	audit          []json.RawMessage
-	versions       map[string]int
-	sessions       map[string]json.RawMessage
-	sessionExpiry  map[string]time.Time
-	personVersions map[string]string
-	reports        map[string]json.RawMessage
-	reportState    map[string]string
-	reportExpiry   map[string]time.Time
-	votingStrings  map[string]string
-	votingHashes   map[string]map[string]string
-	votingExpiry   map[string]time.Time
-	wordMetas      map[string]json.RawMessage
-	wordIndex      map[string]bool
+	value           string
+	found           bool
+	audit           []json.RawMessage
+	versions        map[string]int
+	sessions        map[string]json.RawMessage
+	sessionExpiry   map[string]time.Time
+	personVersions  map[string]string
+	reports         map[string]json.RawMessage
+	reportState     map[string]string
+	reportExpiry    map[string]time.Time
+	votingStrings   map[string]string
+	votingHashes    map[string]map[string]string
+	votingExpiry    map[string]time.Time
+	wordMetas       map[string]json.RawMessage
+	wordIndex       map[string]bool
+	wordShares      map[string]json.RawMessage
+	wordShareIndex  map[string]map[string]bool
+	wordShareSlugs  map[string]bool
+	wordShareExpiry map[string]time.Time
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
@@ -41,6 +45,13 @@ func (g *guestExtractor) HandleString(key, value string) error {
 			return errors.New("invalid word metadata JSON")
 		}
 		g.wordMetas[strings.TrimPrefix(key, "words:meta:")] = json.RawMessage(value)
+		return nil
+	}
+	if strings.HasPrefix(key, "words:share:") && !strings.HasPrefix(key, "words:share:pin-rl:") {
+		if !json.Valid([]byte(value)) {
+			return errors.New("invalid word share JSON")
+		}
+		g.wordShares[strings.TrimPrefix(key, "words:share:")] = json.RawMessage(value)
 		return nil
 	}
 	if strings.HasPrefix(key, "best-dressed:") {
@@ -97,6 +108,9 @@ func (g *guestExtractor) HandleString(key, value string) error {
 	return nil
 }
 func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
+	if strings.HasPrefix(key, "words:share:") && !strings.HasPrefix(key, "words:share:pin-rl:") {
+		g.wordShareExpiry[strings.TrimPrefix(key, "words:share:")] = expires
+	}
 	if strings.HasPrefix(key, "event-scoring:attendee-session:") {
 		g.sessionExpiry[key] = expires
 	}
@@ -125,6 +139,16 @@ func (g *guestExtractor) SetEntryHandler(key string) func(string) error {
 	return func(value string) error {
 		if key == "words:index" {
 			g.wordIndex[value] = true
+		}
+		if key == "words:share-slugs" {
+			g.wordShareSlugs[value] = true
+		}
+		if strings.HasPrefix(key, "words:share-index:") {
+			slug := strings.TrimPrefix(key, "words:share-index:")
+			if g.wordShareIndex[slug] == nil {
+				g.wordShareIndex[slug] = make(map[string]bool)
+			}
+			g.wordShareIndex[slug][value] = true
 		}
 		return nil
 	}
@@ -157,8 +181,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 9 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 10 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path] [absolute-new-word-shares-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -168,18 +192,22 @@ func main() {
 		panic(fmt.Errorf("RDB integrity verification failed: %w", err))
 	}
 	extractor := &guestExtractor{
-		versions:       make(map[string]int),
-		sessions:       make(map[string]json.RawMessage),
-		sessionExpiry:  make(map[string]time.Time),
-		personVersions: make(map[string]string),
-		reports:        make(map[string]json.RawMessage),
-		reportState:    make(map[string]string),
-		reportExpiry:   make(map[string]time.Time),
-		votingStrings:  make(map[string]string),
-		votingHashes:   make(map[string]map[string]string),
-		votingExpiry:   make(map[string]time.Time),
-		wordMetas:      make(map[string]json.RawMessage),
-		wordIndex:      make(map[string]bool),
+		versions:        make(map[string]int),
+		sessions:        make(map[string]json.RawMessage),
+		sessionExpiry:   make(map[string]time.Time),
+		personVersions:  make(map[string]string),
+		reports:         make(map[string]json.RawMessage),
+		reportState:     make(map[string]string),
+		reportExpiry:    make(map[string]time.Time),
+		votingStrings:   make(map[string]string),
+		votingHashes:    make(map[string]map[string]string),
+		votingExpiry:    make(map[string]time.Time),
+		wordMetas:       make(map[string]json.RawMessage),
+		wordIndex:       make(map[string]bool),
+		wordShares:      make(map[string]json.RawMessage),
+		wordShareIndex:  make(map[string]map[string]bool),
+		wordShareSlugs:  make(map[string]bool),
+		wordShareExpiry: make(map[string]time.Time),
 	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
@@ -464,7 +492,7 @@ func main() {
 		fmt.Printf("best_dressed_active_vote_candidates=%d legacy_votes_present=%t credentials=%d voted_hashes=%d\n",
 			len(votes), extractor.votingStrings["best-dressed:votes"] != "", len(stringsOut), len(hashesOut))
 	}
-	if len(os.Args) == 9 {
+	if len(os.Args) >= 9 {
 		type wordRow struct {
 			Slug  string          `json:"slug"`
 			Value json.RawMessage `json:"value"`
@@ -500,5 +528,67 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("word_metadata=%d index_members=%d\n", len(rows), len(extractor.wordIndex))
+	}
+	if len(os.Args) == 10 {
+		type shareRow struct {
+			ID              string          `json:"id"`
+			Value           json.RawMessage `json:"value"`
+			RecordExpiresAt string          `json:"recordExpiresAt"`
+		}
+		ids := make([]string, 0, len(extractor.wordShares))
+		for id, raw := range extractor.wordShares {
+			var identity struct {
+				ID   string `json:"id"`
+				Slug string `json:"slug"`
+			}
+			if err := json.Unmarshal(raw, &identity); err != nil || identity.ID != id || identity.Slug == "" {
+				panic("word share identity mismatch")
+			}
+			if !extractor.wordShareIndex[identity.Slug][id] || !extractor.wordShareSlugs[identity.Slug] {
+				panic("word share missing from index")
+			}
+			if _, ok := extractor.wordShareExpiry[id]; !ok {
+				panic("word share lacks absolute record expiry")
+			}
+			ids = append(ids, id)
+		}
+		for _, index := range extractor.wordShareIndex {
+			for id := range index {
+				if _, ok := extractor.wordShares[id]; !ok {
+					panic("word share index has a stale member")
+				}
+			}
+		}
+		for slug := range extractor.wordShareSlugs {
+			if len(extractor.wordShareIndex[slug]) == 0 {
+				panic("word share slug index has a stale member")
+			}
+		}
+		for slug := range extractor.wordShareIndex {
+			if !extractor.wordShareSlugs[slug] {
+				panic("word share index is missing its tracked slug")
+			}
+		}
+		sort.Strings(ids)
+		rows := make([]shareRow, 0, len(ids))
+		for _, id := range ids {
+			rows = append(rows, shareRow{id, extractor.wordShares[id], extractor.wordShareExpiry[id].UTC().Format(time.RFC3339Nano)})
+		}
+		payload, err := json.Marshal(rows)
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(os.Args[9], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("word_shares=%d indexed_slugs=%d\n", len(rows), len(extractor.wordShareSlugs))
 	}
 }
