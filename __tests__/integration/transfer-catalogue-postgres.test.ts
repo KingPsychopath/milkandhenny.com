@@ -179,9 +179,12 @@ describeWithDatabase("Postgres transfer catalogue", () => {
          (id,transfer_id,file_id,operation,generation,idempotency_key,payload,
           status,enqueued_at,attempts,claim_token,claim_owner,lease_until)
        values ('00000000-0000-0000-0000-000000000111',$1,'raw','process',1,
-               'delete-race-job','{}','claimed',now(),1,
+               'delete-race-job',$2::jsonb,'claimed',now(),1,
                '00000000-0000-0000-0000-000000000112','worker-one',now()+interval '1 hour')`,
-      [transfer.id],
+      [
+        transfer.id,
+        JSON.stringify({ expectedThumbKey: `transfers/${transfer.id}/thumb/raw/g1.webp` }),
+      ],
     );
     expect(await tombstonePostgresTransfer(transfer.id)).toBe(true);
     expect(await tombstonePostgresTransfer(transfer.id)).toBe(false);
@@ -202,6 +205,9 @@ describeWithDatabase("Postgres transfer catalogue", () => {
     );
     expect(operations.map((operation) => operation.target_key)).toContain(
       transfer.files[1].storageKey,
+    );
+    expect(operations.map((operation) => operation.target_key)).toContain(
+      `transfers/${transfer.id}/thumb/raw/g1.webp`,
     );
     expect(operations.length).toBeGreaterThanOrEqual(2);
   });

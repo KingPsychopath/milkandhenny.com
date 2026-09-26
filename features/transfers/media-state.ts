@@ -131,6 +131,23 @@ function getExpectedTransferAssetKeys(
   };
 }
 
+function getGenerationTransferAssetKeys(
+  transferId: string,
+  filename: string,
+  route: ProcessingRoute | null,
+  mediaId: string,
+  generation: number,
+): { thumbKey?: string; fullKey?: string } {
+  if (!Number.isInteger(generation) || generation < 1)
+    throw new Error("Invalid transfer processing generation");
+  const expected = getExpectedTransferAssetKeys(transferId, filename, route, mediaId);
+  const prefix = `transfers/${transferId}`;
+  return {
+    ...(expected.thumbKey ? { thumbKey: `${prefix}/thumb/${mediaId}/g${generation}.webp` } : {}),
+    ...(expected.fullKey ? { fullKey: `${prefix}/full/${mediaId}/g${generation}.webp` } : {}),
+  };
+}
+
 function buildTransferProcessingCounts<
   T extends { previewStatus?: PreviewStatus; processingStatus?: ProcessingStatus },
 >(files: T[]): TransferProcessingCounts {
@@ -324,6 +341,7 @@ export {
   classifyTransferProcessingRoute,
   didTransferFileChange,
   getExpectedTransferAssetKeys,
+  getGenerationTransferAssetKeys,
   getFilenameStem,
   getTransferFileId,
   isHeifUploadLike,

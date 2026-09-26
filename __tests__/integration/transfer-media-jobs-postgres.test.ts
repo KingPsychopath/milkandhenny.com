@@ -10,6 +10,7 @@ import {
   renewPostgresTransferMediaJob,
 } from "@/features/transfers/media-jobs-postgres.server";
 import type { TransferMediaJob } from "@/features/transfers/media-queue.server";
+import { getGenerationTransferAssetKeys } from "@/features/transfers/media-state";
 import type { TransferData } from "@/features/transfers/types";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
@@ -43,6 +44,7 @@ const transfer: TransferData = {
 };
 
 function job(id: string): TransferMediaJob {
+  const expected = getGenerationTransferAssetKeys(transfer.id, `${id}.dng`, "worker_raw", id, 1);
   return {
     transferId: transfer.id,
     file: { name: `${id}.dng`, mediaId: id, size: 100 },
@@ -50,6 +52,8 @@ function job(id: string): TransferMediaJob {
     storageKey: `transfers/${transfer.id}/original/${id}.dng`,
     mimeType: "image/x-adobe-dng",
     processingRoute: "worker_raw",
+    expectedThumbKey: expected.thumbKey,
+    expectedFullKey: expected.fullKey,
     attempt: 1,
     enqueuedAt: "2026-09-26T18:01:00.000Z",
   };
@@ -69,6 +73,15 @@ describeWithDatabase("Postgres transfer media jobs", () => {
 
   it("enqueues with source state and refuses a conflicting replay", async () => {
     await expect(
+      transaction((client) =>
+        enqueuePostgresTransferMediaJob(
+          client,
+          { ...job("raw-one"), expectedThumbKey: `transfers/${transfer.id}/thumb/raw-one.webp` },
+          1,
+        ),
+      ),
+    ).rejects.toThrow("Transfer media job output generation is invalid");
+    await expect(
       transaction(async (client) => {
         await enqueuePostgresTransferMediaJob(client, job("raw-one"), 1);
         throw new Error("source rolled back");
@@ -85,11 +98,7 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     ).toBe(id);
     await expect(
       transaction((client) =>
-        enqueuePostgresTransferMediaJob(
-          client,
-          { ...job("raw-one"), storageKey: "changed-source" },
-          1,
-        ),
+        enqueuePostgresTransferMediaJob(client, { ...job("raw-one"), mimeType: "changed-type" }, 1),
       ),
     ).rejects.toThrow("Conflicting transfer media job identity");
   });
@@ -143,11 +152,11 @@ describeWithDatabase("Postgres transfer media jobs", () => {
       ),
     ).toBe(true);
     expect(
-      await query<{ processing_status: string }>(
-        "select processing_status from transfer_files where transfer_id=$1 and id=$2",
+      await query<{ processing_status: string; derivative_generation: number }>(
+        "select processing_status,derivative_generation from transfer_files where transfer_id=$1 and id=$2",
         [transfer.id, sourceFile.id],
       ),
-    ).toEqual([{ processing_status: "worker_done" }]);
+    ).toEqual([{ processing_status: "worker_done", derivative_generation: 1 }]);
   });
 
   it("dead-letters exhausted retries and cancels a superseded generation", async () => {

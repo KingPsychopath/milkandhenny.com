@@ -56,6 +56,7 @@ type FileRow = {
   processing_error_code: string | null;
   processing_error_detail: string | null;
   retry_count: number | null;
+  derivative_generation: number | null;
 };
 
 type GroupRow = {
@@ -150,12 +151,14 @@ async function insertFiles(
         original_storage_key,original_filename,original_mime_type,converted_from,preview_source,
         width,height,taken_at,live_photo_content_id,preview_status,processing_status,
         processing_backend,processing_route,enqueued_at,processing_started_at,
-        processing_completed_at,processing_error_code,processing_error_detail,retry_count)
+        processing_completed_at,processing_error_code,processing_error_detail,retry_count,
+        derivative_generation)
      select $1,id,position,filename,kind,size_bytes,stored_bytes,mime_type,storage_key,
             original_storage_key,original_filename,original_mime_type,converted_from,preview_source,
             width,height,taken_at,live_photo_content_id,preview_status,processing_status,
             processing_backend,processing_route,enqueued_at,processing_started_at,
-            processing_completed_at,processing_error_code,processing_error_detail,retry_count
+            processing_completed_at,processing_error_code,processing_error_detail,retry_count,
+            derivative_generation
        from jsonb_to_recordset($2::jsonb) as f(
          id text, position integer, filename text, kind text, size_bytes bigint,
          stored_bytes bigint, mime_type text, storage_key text, original_storage_key text,
@@ -164,7 +167,8 @@ async function insertFiles(
          live_photo_content_id text, preview_status text, processing_status text,
          processing_backend text, processing_route text, enqueued_at timestamptz,
          processing_started_at timestamptz, processing_completed_at timestamptz,
-         processing_error_code text, processing_error_detail text, retry_count integer
+         processing_error_code text, processing_error_detail text, retry_count integer,
+         derivative_generation integer
        )`,
     [
       transferId,
@@ -197,6 +201,7 @@ async function insertFiles(
           processing_error_code: file.processingErrorCode ?? null,
           processing_error_detail: file.processingErrorDetail ?? null,
           retry_count: file.retryCount ?? null,
+          derivative_generation: file.derivativeGeneration ?? null,
         })),
       ),
     ],
@@ -591,8 +596,10 @@ export async function tombstonePostgresTransfer(transferId: string): Promise<boo
       storage_key: string;
       original_storage_key: string | null;
       processing_route: TransferFile["processingRoute"] | null;
+      derivative_generation: number | null;
     }>(
-      `select id,filename,storage_key,original_storage_key,processing_route
+      `select id,filename,storage_key,original_storage_key,processing_route,
+              derivative_generation
          from transfer_files where transfer_id=$1`,
       [transferId],
     );
@@ -604,9 +611,19 @@ export async function tombstonePostgresTransfer(transferId: string): Promise<boo
           storageKey: file.storage_key,
           originalStorageKey: file.original_storage_key ?? undefined,
           processingRoute: file.processing_route ?? undefined,
+          derivativeGeneration: file.derivative_generation ?? undefined,
         }),
       ),
     );
+    const jobKeys = await client.query<{ thumb_key: string | null; full_key: string | null }>(
+      `select payload->>'expectedThumbKey' as thumb_key,
+              payload->>'expectedFullKey' as full_key
+         from transfer_media_jobs where transfer_id=$1`,
+      [transferId],
+    );
+    for (const job of jobKeys.rows)
+      for (const key of [job.thumb_key, job.full_key])
+        if (key?.startsWith(`transfers/${transferId}/`)) keys.add(key);
     for (const key of keys)
       await enqueueMediaObjectOperation(client, {
         ownerKind: "transfer",
@@ -660,6 +677,9 @@ function toFile(row: FileRow, member?: MemberRow): TransferFile {
     ...(row.processing_error_code ? { processingErrorCode: row.processing_error_code } : {}),
     ...(row.processing_error_detail ? { processingErrorDetail: row.processing_error_detail } : {}),
     ...(row.retry_count !== null ? { retryCount: row.retry_count } : {}),
+    ...(row.derivative_generation !== null
+      ? { derivativeGeneration: row.derivative_generation }
+      : {}),
   };
 }
 

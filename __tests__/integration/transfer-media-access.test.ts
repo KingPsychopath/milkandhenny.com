@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { transferContainsStorageKey } from "@/features/transfers/media-access";
+import type { TransferData } from "@/features/transfers/types";
 
 const transfer = {
   id: "private-transfer",
@@ -85,5 +87,37 @@ describe("protected transfer media", () => {
 
     expect(response.status).toBe(404);
     expect(presignGetUrl).not.toHaveBeenCalled();
+  });
+
+  it("signs only the currently published derivative generation", async () => {
+    const generated: TransferData = {
+      ...transfer,
+      files: [
+        { ...transfer.files[0], kind: "image", previewStatus: "ready", derivativeGeneration: 2 },
+      ],
+    };
+    const presignGetUrl = vi.fn().mockResolvedValue("https://private.example/generated");
+    vi.doMock("@/features/transfers/store.server", () => ({
+      getTransfer: vi.fn().mockResolvedValue(generated),
+    }));
+    vi.doMock("@/lib/platform/r2.server", () => ({
+      isTransferStorageConfigured: () => true,
+      presignGetUrl,
+    }));
+    const { GET } = await import("@/src/routes/api/transfers/$id/media/$fileId/$variant/route");
+    const response = await GET(makeRequest("/api/transfers/private-transfer/media/photo/thumb"), {
+      params: Promise.resolve({ id: "private-transfer", fileId: "photo", variant: "thumb" }),
+    });
+    expect(response.status).toBe(307);
+    expect(presignGetUrl).toHaveBeenCalledWith(
+      "transfers/private-transfer/thumb/photo/g2.webp",
+      expect.any(Object),
+    );
+    expect(
+      transferContainsStorageKey(generated, "transfers/private-transfer/thumb/photo.webp"),
+    ).toBe(false);
+    expect(
+      transferContainsStorageKey(generated, "transfers/private-transfer/thumb/photo/g2.webp"),
+    ).toBe(true);
   });
 });

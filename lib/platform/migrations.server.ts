@@ -4981,6 +4981,13 @@ const MIGRATIONS: Migration[] = [
         on transfer_append_reservations (expires_at);
     `,
   },
+  {
+    id: "0115_transfer_derivative_generation",
+    sql: `
+      alter table transfer_files add column derivative_generation integer
+        check (derivative_generation > 0 and derivative_generation <= processing_generation);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

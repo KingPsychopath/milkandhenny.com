@@ -6,6 +6,10 @@ reads and writes Redis transfers and jobs; no production switch or import has oc
 Migration `0114` adds append reservations keyed by the selected file fingerprint. Separate
 batches can reserve capacity concurrently under the locked transfer row; overlapping IDs or
 names and aggregate file/byte overbooking are refused.
+Migration `0115` adds a nullable published derivative generation. Null retains the existing
+fixed-key URLs for imported legacy files. A Postgres worker job must name generation-specific
+private output keys such as `thumb/<file-id>/g2.webp`; fenced completion publishes that
+generation on the file. Media access signs only the currently published generation.
 
 The transfer row preserves the public capability ID, owner, title and expiry. It has a deletion
 token hash for verification and ciphertext/nonce columns for the existing resume flow, which
@@ -65,7 +69,10 @@ with `SKIP LOCKED`, renew with a claim token, retry or dead-letter failed attemp
 jobs whose source is deleted, expired or superseded. Completion locks the transfer and file,
 checks the claim, and updates the file result in the caller's transaction. It does not execute
 R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration and
-generation-specific object keys remain open.
+generation-specific R2 writes remain open.
+The repository now validates generation-specific output keys before enqueue and records the
+published generation on fenced completion. The worker still needs to write those keys and clean
+stale generation objects; the Redis worker's fixed-key path remains unchanged.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing
 list. One entry has no surviving transfer and no R2 source object. The importer retains that

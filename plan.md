@@ -648,6 +648,8 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add staged transactional enqueue, indexed disjoint claims, renewals, fenced completion,
         bounded retry/dead-letter and obsolete-source cancellation. Worker/R2 integration,
         explicit dead-letter retry and queue snapshots remain open.
+  - [x] Require generation-specific Postgres job output keys and publish the winning generation
+        on fenced completion; worker execution and obsolete-object collection remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
@@ -813,6 +815,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   fenced tombstone `2dbb9021`; atomic reservation finalization `5da05019`; summary reads
   `fa57f8bb`; durable object cleanup `d5814528`; deletion runner `ef1270ec`; opt-in worker
   schedule `07b83ea2`.
+  Append quota reservations `716422f7`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1024,6 +1027,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on isolated Postgres
   (272 files, 2,098 tests). The live upload workflow still needs to select this path with
   object cleanup.
+  Migration `0115` adds nullable published derivative generations. New Postgres jobs require
+  generation-specific output keys and fenced completion publishes that generation; legacy
+  imported files retain their fixed-key URLs. Media access resolves only the published key.
+  The isolated production restore accepted `0115`; five focused suites passed 26 cases and
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on isolated Postgres
+  (272 files, 2,100 tests). The R2 worker still needs to write generation-specific outputs.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

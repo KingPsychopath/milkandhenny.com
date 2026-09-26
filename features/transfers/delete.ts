@@ -1,4 +1,8 @@
-import { classifyTransferProcessingRoute, getExpectedTransferAssetKeys } from "./media-state";
+import {
+  classifyTransferProcessingRoute,
+  getExpectedTransferAssetKeys,
+  getGenerationTransferAssetKeys,
+} from "./media-state";
 import type { ProcessingRoute } from "./media-state";
 import type { TransferFile } from "./types";
 
@@ -6,13 +10,26 @@ function getTransferFileDeleteKeys(
   transferId: string,
   file: Pick<
     TransferFile,
-    "id" | "filename" | "storageKey" | "originalStorageKey" | "processingRoute"
+    | "id"
+    | "filename"
+    | "storageKey"
+    | "originalStorageKey"
+    | "processingRoute"
+    | "derivativeGeneration"
   >,
 ): string[] {
   const route: ProcessingRoute | null =
     file.processingRoute ?? classifyTransferProcessingRoute(file.filename);
   const expected = route
-    ? getExpectedTransferAssetKeys(transferId, file.filename, route, file.id)
+    ? file.derivativeGeneration
+      ? getGenerationTransferAssetKeys(
+          transferId,
+          file.filename,
+          route,
+          file.id,
+          file.derivativeGeneration,
+        )
+      : getExpectedTransferAssetKeys(transferId, file.filename, route, file.id)
     : {};
 
   return Array.from(

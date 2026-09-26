@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { query, transaction } from "@/lib/platform/postgres.server";
+import { getGenerationTransferAssetKeys } from "./media-state";
 import type { TransferMediaJob } from "./media-queue.server";
 import type { TransferFile } from "./types";
 
@@ -63,15 +64,31 @@ export async function enqueuePostgresTransferMediaJob(
   const normalized = normalizedJob(job);
   const fileId = normalized.mediaId;
   if (!fileId) throw new Error("Transfer media job has no source file");
-  const source = await client.query<{ processing_generation: number }>(
-    `select f.processing_generation
+  const expected = getGenerationTransferAssetKeys(
+    job.transferId,
+    job.file.name,
+    job.processingRoute,
+    fileId,
+    generation,
+  );
+  if (
+    !expected.thumbKey ||
+    job.expectedThumbKey !== expected.thumbKey ||
+    job.expectedFullKey !== expected.fullKey
+  )
+    throw new Error("Transfer media job output generation is invalid");
+  const source = await client.query<{ processing_generation: number; storage_key: string }>(
+    `select f.processing_generation,f.storage_key
        from transfer_files f join transfers t on t.id=f.transfer_id
       where f.transfer_id=$1 and f.id=$2
         and t.deleted_at is null and t.expires_at > clock_timestamp()
       for update of f,t`,
     [job.transferId, fileId],
   );
-  if (source.rows[0]?.processing_generation !== generation)
+  if (
+    source.rows[0]?.processing_generation !== generation ||
+    source.rows[0].storage_key !== job.storageKey
+  )
     throw new Error("Transfer media job source generation is unavailable");
   const id = randomUUID();
   const inserted = await client.query<{ id: string }>(
@@ -245,7 +262,8 @@ export async function completePostgresTransferMediaJob(
               live_photo_content_id=$7,preview_status=$8,processing_status=$9,
               processing_backend=$10,processing_route=$11,enqueued_at=$12,
               processing_started_at=$13,processing_completed_at=$14,
-              processing_error_code=$15,processing_error_detail=$16,retry_count=$17
+              processing_error_code=$15,processing_error_detail=$16,retry_count=$17,
+              derivative_generation=case when $8='ready' then $18 else derivative_generation end
         where transfer_id=$1 and id=$2`,
       [
         target.transfer_id,
@@ -265,6 +283,7 @@ export async function completePostgresTransferMediaJob(
         file.processingErrorCode ?? null,
         file.processingErrorDetail ?? null,
         file.retryCount ?? null,
+        target.generation,
       ],
     );
   }

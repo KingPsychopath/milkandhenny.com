@@ -180,4 +180,6 @@ export const HISTORICAL_MIGRATION_SHA256 = {
     "bf0fcb3a29e570e52f944b4ee449112a5217ab9db812c6b82006e0bf7598755f",
   "0114_transfer_append_reservations":
     "e8489d0a950566aedf6c16037d9472f7decdf65af3fb2c93bd9dd65fbfc26f17",
+  "0115_transfer_derivative_generation":
+    "14fd48112fac01313a9122fbdc8cc0c7c3c3da6834bec31653f725f8f72f315f",
 } as const;
