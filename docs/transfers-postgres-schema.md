@@ -69,15 +69,15 @@ The staged [media-job repository](../features/transfers/media-jobs-postgres.serv
 an existing file with the matching generation in the enqueue transaction. Workers claim due jobs
 with `SKIP LOCKED`, renew with a claim token, retry or dead-letter failed attempts, and cancel
 jobs whose source is deleted, expired or superseded. Completion locks the transfer and file,
-checks the claim, and updates the file result in the caller's transaction. It does not execute
-R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration and
-generation-specific R2 writes remain open.
+checks the claim, and updates the file result in the caller's transaction. Manual dead-letter
+retry, queue snapshots and old-attempt object reconciliation remain open.
 The repository validates the generation namespace before enqueue, assigns distinct keys to each
 claim, and records the winning attempt on fenced completion. A staged Postgres executor processes
 images, GIFs, videos and RAW previews, retries failed claims, and removes its own outputs when a
-late completion loses the lease. The Media runtime still needs to select and schedule this
-executor. Older orphaned attempt objects also need reconciliation. The Redis worker's fixed-key
-path remains unchanged.
+late completion loses the lease. The Media runtime selects this executor with
+`TRANSFER_MEDIA_JOB_STORE=postgres` and requires `MEDIA_WORKER_STATUS_STORE=postgres`. Both the
+long-running worker and one-shot drain avoid Redis queue claims in this mode. Older orphaned
+attempt objects still need reconciliation. The Redis worker's fixed-key path remains unchanged.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing
 list. One entry has no surviving transfer and no R2 source object. The importer retains that
