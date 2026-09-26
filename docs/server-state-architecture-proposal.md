@@ -318,7 +318,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 - Word and session verification: `pnpm check`, production builds, the private-token integration
   test, and focused word/share and session browser journeys passed. The Playwright server now uses
   the Postgres word store by default so its seeded word detail journey also passes without a
-  special environment override. A full Vitest run against the isolated database is in progress.
+  special environment override. The full Vitest suite against the isolated database passed (275
+  files, 2,107 tests) after these slices.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
