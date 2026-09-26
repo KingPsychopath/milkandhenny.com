@@ -463,7 +463,7 @@ domain implementation follows listed dependencies. M12 and M13 remain operationa
 | --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
 | M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
 | M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
-| M2 — database foundation and migration safety       | M1                                       | In progress: scoped ledger safeguards                         |
+| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
 | M3 — existing relational integrity improvements     | M1, M2                                   | Pending                                                       |
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                                                       |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
@@ -513,7 +513,9 @@ mapping are reviewable. Production-dependent facts remain visible blockers if un
       the verified production-only `0025_site_settings` ledger entry and reject unknown IDs or
       changed hashes. Historical hashes pin current source SQL, not proof of originally run SQL.
 - [ ] Implement the remaining additive migrations using the ordered runner and locking.
-- [ ] Separate schema installation from unprivileged worker startup; define connection/role grants.
+- [x] Add read-only schema verification mode, migration/verification CLI commands and a
+      non-superuser runtime-role grant script. Production credential separation remains a
+      release gate; see [the role runbook](./docs/postgres-runtime-roles.md).
 - [ ] Implement dedicated listener/reconnect lifecycle and advisory publication primitives.
 - [ ] Implement bounded expiry/cleanup and lease primitives consumed by real feature workflows.
 - [ ] Verify clean database creation, upgrade from current schema, failed migration recovery,
@@ -709,8 +711,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
-  audit `feffa644`; migration-ledger safeguards `44d5cfe6`. The archive tooling accompanies
-  the next local implementation commit.
+  audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`.
+  The runtime-role safeguard accompanies the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -733,10 +735,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   verified a synthetic archive record, while the wrong key and conflicting duplicate failed.
   The SQL installed twice without changing the row. `pnpm check`, documentation link checks,
   `gofmt` and `git diff --check` passed for the archive tooling. Broader feature tests and a
-  production restore drill remain pending.
+  production restore drill remain pending. For runtime role separation, the five-case migration
+  ledger suite, `pnpm check` and `pnpm build` passed. Local Postgres accepted the grant script;
+  `mah_app_runtime` could verify all 96 migrations and could not CREATE in `public` or use
+  `legacy_archive`. Full feature tests are deferred until the wider persistence change.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
-  `0025_site_settings_v2`. PITR is disabled, no backup schedule is listed, and the only listed
+  `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
+  restrictions require a new runtime role. PITR is disabled, no backup schedule is listed, and the only listed
   backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
   The export has 224 keys, including 192 attendee sessions and eight raw, unleased media jobs in
   `transfer:media:processing`. Seven jobs reference the one exported transfer; one references a
@@ -748,7 +754,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   production role separation; backup coverage; measured load/resource budgets; physical DDL;
   migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: verify and commit the archive tooling, then specify physical DDL/source mapping
+- Next action: verify and commit runtime role separation, then specify physical DDL/source mapping
   and implement remaining foundations. Do not start production migration from the table sketches
   in this document.
 

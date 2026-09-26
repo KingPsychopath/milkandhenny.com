@@ -4473,6 +4473,45 @@ export async function runMigrations(): Promise<MigrationResult> {
   return { applied, alreadyApplied, pitchDocuments };
 }
 
+/** Read-only startup gate for runtimes using a role without schema privileges. */
+export async function verifyMigrations(): Promise<MigrationResult> {
+  if (!getPool()) throw new Error("DATABASE_URL is not configured");
+  const hashes = migrationHashes();
+  const rows = await query<MigrationLedgerRow>(
+    "select id, sql_sha256 from schema_migrations order by id",
+  );
+  const observed = new Set<string>();
+  for (const row of rows) {
+    const expected = hashes.get(row.id);
+    if (!expected) {
+      if (!LEGACY_PRODUCTION_MIGRATION_IDS.has(row.id) || row.sql_sha256 !== null) {
+        throw new Error(`Unknown applied migration: ${row.id}`);
+      }
+      const siteSettings = await query<{ exists: boolean }>(
+        "select to_regclass('public.site_settings') is not null as exists",
+      );
+      if (!siteSettings[0]?.exists) {
+        throw new Error("Historical site-settings migration baseline is inconsistent");
+      }
+      continue;
+    }
+    if (row.sql_sha256 !== expected) {
+      throw new Error(`Applied migration checksum mismatch: ${row.id}`);
+    }
+    observed.add(row.id);
+  }
+  if (observed.size !== hashes.size) {
+    throw new Error(`Database schema is behind source migrations: ${observed.size}/${hashes.size}`);
+  }
+  const pitchDocuments = await readPitchDocumentSchemaInventory();
+  if (pitchDocuments.unsupported > 0) {
+    throw new Error(
+      `Unsupported pitch document schemas remain: ${JSON.stringify(pitchDocuments.versions)}`,
+    );
+  }
+  return { applied: [], alreadyApplied: observed.size, pitchDocuments };
+}
+
 /** Test helper — the migration list, so tests can build a schema. */
 export function __migrationsForTesting(): readonly Migration[] {
   return MIGRATIONS;

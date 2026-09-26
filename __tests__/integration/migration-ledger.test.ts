@@ -22,9 +22,16 @@ describeWithDatabase("migration ledger integrity", () => {
     expect(rows[0]?.count).toBe("96");
   });
 
+  it("verifies the complete ledger without applying migrations", async () => {
+    const { verifyMigrations } = await import("@/lib/platform/migrations.server");
+    const result = await verifyMigrations();
+    expect(result.applied).toEqual([]);
+    expect(result.alreadyApplied).toBe(96);
+  });
+
   it("rejects a changed applied checksum", async () => {
     const { query } = await import("@/lib/platform/postgres.server");
-    const { runMigrations } = await import("@/lib/platform/migrations.server");
+    const { runMigrations, verifyMigrations } = await import("@/lib/platform/migrations.server");
     const id = "0095_intentional_survey_identity";
     const original = await query<{ sql_sha256: string }>(
       "select sql_sha256 from schema_migrations where id = $1",
@@ -37,6 +44,7 @@ describeWithDatabase("migration ledger integrity", () => {
         "a".repeat(64),
       ]);
       await expect(runMigrations()).rejects.toThrow("Applied migration checksum mismatch");
+      await expect(verifyMigrations()).rejects.toThrow("Applied migration checksum mismatch");
     } finally {
       await query("update schema_migrations set sql_sha256 = $2 where id = $1", [
         id,

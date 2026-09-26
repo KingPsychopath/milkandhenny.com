@@ -2,7 +2,7 @@ import { definePlugin } from "nitro";
 
 import { log } from "@/lib/platform/logger.server";
 import { closePool, isDatabaseConfigured } from "@/lib/platform/postgres.server";
-import { runMigrations } from "@/lib/platform/migrations.server";
+import { runMigrations, verifyMigrations } from "@/lib/platform/migrations.server";
 import { disposeEventsRuntime } from "@/features/events/events-runtime.server";
 import {
   startApplicationScheduler,
@@ -15,12 +15,11 @@ import {
 } from "@/lib/platform/database-readiness.server";
 
 /**
- * Apply migrations on boot, close the pool on shutdown.
+ * Apply or verify migrations on boot, close the pool on shutdown.
  *
- * Migrations run here rather than as a separate deploy step so a fresh
- * environment is self-configuring, and so the schema can never lag the code
- * that expects it. They take an advisory lock, so several replicas booting
- * together is safe.
+ * A privileged local environment may apply migrations on boot. Production can
+ * set DATABASE_SCHEMA_MODE=verify after running the separate migration command
+ * and use an unprivileged runtime role. Verification never attempts DDL.
  *
  * A migration failure is deliberately not fatal to the process: the
  * `/api/health` database probe reports it, and the rest of the site — words,
@@ -31,7 +30,11 @@ export default definePlugin(async (nitroApp) => {
   if (isDatabaseConfigured()) {
     markDatabaseMigrationsStarted();
     try {
-      const result = await runMigrations();
+      const schemaMode = process.env.DATABASE_SCHEMA_MODE ?? "migrate";
+      if (schemaMode !== "migrate" && schemaMode !== "verify") {
+        throw new Error("DATABASE_SCHEMA_MODE must be migrate or verify");
+      }
+      const result = schemaMode === "verify" ? await verifyMigrations() : await runMigrations();
       if (result.applied.length > 0) {
         log.info("postgres.migrate", "Migrations applied", {
           applied: result.applied,

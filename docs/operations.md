@@ -1,5 +1,12 @@
 # Operations
 
+## Database schema access
+
+The default web boot applies database migrations. A restricted runtime can set
+`DATABASE_SCHEMA_MODE=verify` after the administrator runs `pnpm database:migrate`.
+Use `pnpm database:verify` with the runtime credential before switching production.
+The role grants and production gates are in [the Postgres runtime-role runbook](./postgres-runtime-roles.md).
+
 ## Daily maintenance
 
 Run once per day:

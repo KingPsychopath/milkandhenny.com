@@ -218,7 +218,11 @@ transactions, relational constraints, or durable queryable history. Examples inc
 - Single admission is `update tickets set redeemed_at = now() where id = $1 and redeemed_at is null returning *`. The second scanner gets zero rows.
 - `tickets` references `ticket_types` with `on delete restrict`, so deleting an event that sold tickets fails loudly instead of orphaning receipts.
 
-Migrations are an append-only list in `lib/platform/migrations.server.ts`, applied on boot under an advisory lock so several replicas can start together. A migration failure is logged and surfaced on `/health` rather than killing the process — the rest of the site keeps serving.
+Migrations are an append-only list in `lib/platform/migrations.server.ts`. The default boot mode
+applies them under an advisory lock. `DATABASE_SCHEMA_MODE=verify` checks the ledger without DDL
+for a restricted runtime role after a separate `pnpm database:migrate` step. A migration or
+verification failure is logged and surfaced on `/health` rather than killing the process.
+See [runtime role separation](./postgres-runtime-roles.md).
 
 **Redis** (`REDIS_REST_*`) holds expiring or coordination-heavy state: authentication sessions,
 rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
