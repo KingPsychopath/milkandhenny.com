@@ -30,7 +30,6 @@ import { formatRemaining } from "./format";
 import { AdminStatus } from "./components/AdminStatus";
 import { adminContentSummaryQuery } from "../content-summary.queries";
 import { homePageQuery } from "@/features/site/home.queries";
-import { wordsPageQuery } from "@/features/words/reader.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
 
@@ -203,7 +202,7 @@ export function AdminDashboard({
       Promise.all([
         refreshContentSummary(),
         queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
-        queryClient.invalidateQueries({ queryKey: wordsPageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["words", "public"] }),
         queryClient.invalidateQueries({ queryKey: ["albums", "public"] }),
       ]),
     [queryClient, refreshContentSummary],
