@@ -7,16 +7,16 @@ the migration or executable target DDL. [The implementation plan](../plan.md) ow
 
 Read-only Railway production inspection found:
 
-| Item                     | Observation                                                                                                                                                                                                                                                                     |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Postgres                 | 18.6; `max_connections=500`; database size 28 MB                                                                                                                                                                                                                                |
-| Effective schema         | 117 public tables; schema-only `pg_dump` captured outside Git at `/tmp/milkandhenny-prod-schema-20260926.sql`, SHA-256 `3dfa0733650f3f600f5c4404caf5e513e84ed608ef58f0ccf49a018f59ff3b63`                                                                                       |
-| Migration ledger         | Production snapshot: 97 rows through `0095_intentional_survey_identity`; source then had 96 entries. Production alone records `0025_site_settings`, while source contains `0025_site_settings_v2`. Local source migration `0096_pitch_thumbnail_ownership` was added afterward. |
-| Installed extensions     | `plpgsql` only                                                                                                                                                                                                                                                                  |
-| WAL and timeout settings | `wal_level=replica`; default `statement_timeout=0`; default `idle_in_transaction_session_timeout=0`                                                                                                                                                                             |
-| Railway backup coverage  | PITR disabled; no scheduled backup; one listed backup created 2026-08-23, named `Pre-Security-Patch Backup`. No restore evidence established.                                                                                                                                   |
-| Runtime database role    | Production web uses `postgres` with `rolsuper=true`, `rolcreaterole=true` and `rolcreatedb=true`. A separate non-superuser runtime role is required before restricted archive installation.                                                                                     |
-| Table statistics         | `pg_stat_user_tables` snapshot held outside Git at `/tmp/milkandhenny-prod-tablestats-20260926.csv`. These are estimates, not reconciliation counts.                                                                                                                            |
+| Item                     | Observation                                                                                                                                                                                                                                                    |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Postgres                 | 18.6; `max_connections=500`; database size 28 MB                                                                                                                                                                                                               |
+| Effective schema         | 117 public tables; schema-only `pg_dump` captured outside Git at `/tmp/milkandhenny-prod-schema-20260926.sql`, SHA-256 `3dfa0733650f3f600f5c4404caf5e513e84ed608ef58f0ccf49a018f59ff3b63`                                                                      |
+| Migration ledger         | Production snapshot: 97 rows through `0095_intentional_survey_identity`; source then had 96 entries. Production alone records `0025_site_settings`, while source contains `0025_site_settings_v2`. Local source migrations `0096`–`0098` were added afterward. |
+| Installed extensions     | `plpgsql` only                                                                                                                                                                                                                                                 |
+| WAL and timeout settings | `wal_level=replica`; default `statement_timeout=0`; default `idle_in_transaction_session_timeout=0`                                                                                                                                                            |
+| Railway backup coverage  | PITR disabled; no scheduled backup; one listed backup created 2026-08-23, named `Pre-Security-Patch Backup`. No restore evidence established.                                                                                                                  |
+| Runtime database role    | Production web uses `postgres` with `rolsuper=true`, `rolcreaterole=true` and `rolcreatedb=true`. A separate non-superuser runtime role is required before restricted archive installation.                                                                    |
+| Table statistics         | `pg_stat_user_tables` snapshot held outside Git at `/tmp/milkandhenny-prod-tablestats-20260926.csv`. These are estimates, not reconciliation counts.                                                                                                           |
 
 Read-only R2 listing through the production web service credentials counted objects without
 printing keys or contents:
@@ -97,6 +97,13 @@ participant's ticket FK with `(event_slug, ticket_id)`. Both new FKs cascade an 
 rename; deleting a parent ticket still clears only `parent_ticket_id`, and deleting a ticket
 linked to a participant remains restricted. Direct cross-event writes are rejected. Existing
 ticket-exchange and event-scoring rename journeys passed locally. Production schema is unchanged.
+
+Local migration `0098_rate_limit_windows` adds a row per policy, identity/global scope and
+HMAC-SHA-256 subject hash. Attempts and absolute expiry are columns under a composite primary
+key, with an expiry index for bounded cleanup. `RATE_LIMIT_STORE=postgres` is opt-in; source
+Redis remains the default during transition. The supplied RDB has no `ratelimit:*` records, but
+a fresh cutover export must still reconcile active windows before the switch. The local restored
+database accepted the migration, and a non-superuser runtime role reserved a synthetic window.
 
 This validates logical restore and ledger upgrade for this snapshot. It does not establish
 Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key

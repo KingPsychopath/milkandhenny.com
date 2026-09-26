@@ -55,6 +55,7 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists rate_limit_windows cascade;
     drop table if exists application_scheduled_jobs cascade;
     drop table if exists achievement_unlocks cascade;
     drop table if exists achievement_progress cascade;

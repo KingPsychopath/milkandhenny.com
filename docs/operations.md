@@ -24,8 +24,11 @@ deployment mode.
 The daily runner invokes Pitch reminders, email delivery, transfer and Pitch cleanup, game-pool
 cleanup, official-result recovery, operations digests, communication-link and email retention,
 attendee-access cleanup, word-share and orphaned-word-media cleanup, and transfer-media
-reconciliation. It is the independent housekeeping and recovery backstop. Each request emits one
+reconciliation. It also removes expired Postgres rate-limit windows in bounded batches. It is
+the independent housekeeping and recovery backstop. Each request emits one
 structured result, and the runner exits non-zero if any job fails.
+The rate-limit cleanup removes at most 10,000 expired rows per daily run. Check its reported
+`removed` count and raise the schedule or batch budget if it repeatedly reaches that ceiling.
 
 ## Capability checks
 

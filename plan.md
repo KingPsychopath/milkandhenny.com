@@ -458,8 +458,9 @@ recovery coverage explicitly; moving metadata to Postgres does not back up exclu
 The default sequence is M0 through M13. The verified source migration ledger permits scoped M2
 ledger-safety work while M1 backup, peak-load and final-snapshot evidence remains open. A
 restored production clone and exact contradiction counts permit scoped M3 constraints for those
-audited relationships. Other domain implementation follows listed dependencies. M12 and M13
-remain operational gates.
+audited relationships. Scoped M4 rate-limit work uses the verified transaction and migration
+foundation and remains opt-in until source windows and load are reconciled. Other domain
+implementation follows listed dependencies. M12 and M13 remain operational gates.
 
 | Milestone                                           | Dependencies                             | Status                                                        |
 | --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
@@ -467,7 +468,7 @@ remain operational gates.
 | M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
 | M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
 | M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                                                       |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate-limit backend                               |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
 | M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
 | M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
@@ -522,7 +523,8 @@ mapping are reviewable. Production-dependent facts remain visible blockers if un
       non-superuser runtime-role grant script. Production credential separation remains a
       release gate; see [the role runbook](./docs/postgres-runtime-roles.md).
 - [ ] Implement dedicated listener/reconnect lifecycle and advisory publication primitives.
-- [ ] Implement bounded expiry/cleanup and lease primitives consumed by real feature workflows.
+- [x] Implement a bounded Postgres expiry cleanup for rate-limit windows, invoked by maintenance.
+- [ ] Implement remaining expiry/cleanup and lease primitives consumed by real feature workflows.
 - [ ] Verify clean database creation, upgrade from current schema, failed migration recovery,
       concurrent startup, pool-setting isolation and least-privilege access.
 
@@ -549,6 +551,9 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 
 ### M4 — Identity, rates, reports and voting
 
+- [x] Add an opt-in Postgres fixed-window rate limiter with atomic identity/global caps,
+      privacy-preserving subject hashes, fail-closed handling and bounded cleanup. Redis remains
+      the default until active source windows are reconciled at cutover.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
 - [ ] Implement report storage/receipts and transactional notification work.
@@ -724,8 +729,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
   restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
-  pitch-ownership constraint `0af6c55b`. Ticket-event ownership accompanies the next local
-  implementation commit.
+  pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`. The rate-limit
+  backend accompanies the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -758,7 +763,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   production clone; focused pitch tests passed for cross-deck refusal, asset unlink and deck
   deletion. Migration `0097` applied to the same clone; 54 existing exchange/scoring tests and
   direct mismatch/rename tests passed. `pnpm check` and the full `pnpm test` suite passed
-  (251 files, 2,024 tests) after the cross-feature constraint change.
+  (251 files, 2,024 tests) after the cross-feature constraint change. The Postgres rate-limit
+  integration suite passed atomic global cap, expiry, privacy, clear and cleanup cases. The
+  restored clone accepted migration `0098` and its restricted runtime role reserved a window.
+  The rate-limit change passed `pnpm check`, `pnpm build` and the full `pnpm test` suite
+  (252 files, 2,029 tests).
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

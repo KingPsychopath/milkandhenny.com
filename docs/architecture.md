@@ -228,7 +228,8 @@ See [runtime role separation](./postgres-runtime-roles.md).
 rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
 records, distributed locks, and the leased media queue. Mutable independently read records use one
 key each. Specialized queues, indexes, and aggregate-adjacent outboxes document why they require an
-atomic structure.
+atomic structure. The fixed-window limiter also has an opt-in Postgres backend selected with
+`RATE_LIMIT_STORE=postgres`; Redis remains its default until active windows are reconciled.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

@@ -1,7 +1,7 @@
 /**
- * Source SQL fingerprints for migrations already shipped before the Postgres consolidation.
- * This pins the repository's historical SQL from 2026-09-26 onward. Production did not store
- * applied SQL hashes, so these entries are a source baseline, not proof of original execution.
+ * Source SQL fingerprints pinned on 2026-09-26. Rows through 0095 are a source baseline:
+ * production did not store originally applied SQL hashes, so they are not proof of execution.
+ * New append-only migrations are pinned here as they are committed.
  */
 export const HISTORICAL_MIGRATION_SHA256 = {
   "0001_events_and_tickets": "157f3a44a1f112481cf13a1dc25e0fd8157f63bd6b050d59d73525735a830bad",
@@ -155,4 +155,8 @@ export const HISTORICAL_MIGRATION_SHA256 = {
     "2db9a15cc7078755405ab916fae4fb79a25c1dddbe9e7bd7972d42bd72c71a32",
   "0095_intentional_survey_identity":
     "8436ef28385ca8b8593239dafae507311a13bba661ef3dbad449f8df1e948def",
+  "0096_pitch_thumbnail_ownership":
+    "8e3e270a20236ec696c746f2fa05807e055fd51f103657b44e834f9c96aadc36",
+  "0097_ticket_event_ownership": "1a2955703882bbcf4eb748d1865cca5956414e70b08080a66acd909ec8d2cd43",
+  "0098_rate_limit_windows": "c440921c3d31b9c4ae686040abd5eba0112610a9221eeefaaf5f1abed710f5bd",
 } as const;

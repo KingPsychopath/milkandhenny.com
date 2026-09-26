@@ -4337,6 +4337,22 @@ const MIGRATIONS: Migration[] = [
         on delete restrict;
     `,
   },
+  {
+    id: "0098_rate_limit_windows",
+    sql: `
+      create table rate_limit_windows (
+        policy       text not null check (char_length(policy) between 1 and 120),
+        scope        text not null check (scope in ('identity', 'global')),
+        subject_hash text not null check (subject_hash ~ '^[a-f0-9]{64}$'),
+        attempts     integer not null check (attempts > 0),
+        expires_at   timestamptz not null,
+        primary key (policy, scope, subject_hash)
+      );
+
+      create index rate_limit_windows_expiry_idx
+        on rate_limit_windows (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
