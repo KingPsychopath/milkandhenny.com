@@ -202,6 +202,18 @@ autosave serialization, conflicts, and recovery; Query observes saved remote ver
 or IndexedDB inputs can legitimately require a client-only read after SSR, as with a remembered
 poll voter. Such reads should be explicitly enabled when that identity becomes available.
 
+#### Transfer metadata implementation decision
+
+The no-token transfer page uses one viewer-scoped Query entry for its remote metadata. Explicit
+identity transitions clear that entry with the rest of the private cache. A transfer URL carrying
+an owner management token stays on a route-local read path: the token is passed to the server
+function and never used in a Query key or dehydrated cache identity. Both paths render one gallery
+whose files and groups come from the parent snapshot; selection, downloads, and browser file state
+remain local. Media SSE frames are advisory wakes, not authoritative file patches. Opening or
+reconnecting the stream and receiving a file event trigger a bounded authoritative refresh; a
+visible-tab safety interval repairs missed frames. Confirmed file deletion updates the snapshot
+and invalidates it. Expiry or takedown removes the remote view.
+
 ### Backend and operations
 
 Keep feature policies, transactions, provider adapters, durable jobs/outboxes, and the existing
