@@ -1,7 +1,6 @@
 # Postgres and object-storage implementation plan
 
-Status: implementation in progress; M1 inventory and scoped M2 migration-safety work are underway.
-Production migration has not started.
+Status: implementation in progress; production cutover is authorized but has not started.
 
 Created: 2026-09-26.
 
@@ -898,6 +897,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   M6 worker/admin parity, source import rehearsal, operational backup gates and full Redis-free
   release verification before any production cutover. The first verified RDB remains the agreed
   Redis cutoff; Upstash is still serving live production traffic.
+- 2026-09-27 production recovery checkpoint: the user authorized the Upstash swap and confirmed
+  the first verified RDB as the cutoff. Railway's managed on-demand Postgres backup returned
+  `OAUTH_INSUFFICIENT_GRANT`; its PITR status is disabled and there is no backup schedule. A
+  separate production `pg_dump` over Railway SSH was written with mode 0600 to the ignored
+  private migration directory, SHA-256 `b966e21973a630f70fa84025464aef2a6853895d47b224817974ed8f8ce5b846`.
+  `pg_restore --list` passed, and a single-transaction restore into isolated local Postgres 18
+  produced 117 public tables and 97 migration-ledger rows. This is a verified local recovery
+  checkpoint, not provider PITR or an off-site retention policy. Production media-worker still
+  lacks `DATABASE_URL`; web, worker and maintenance have no Postgres cutover flags. Do not remove
+  production Redis configuration before those runtime paths and the remaining M6–M13 gates pass.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
