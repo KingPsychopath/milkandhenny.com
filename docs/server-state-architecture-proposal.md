@@ -339,14 +339,21 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   the wall/deck migration. The journey covers create, save, publish, filtered search, sealed page,
   and remote presentation controls. The first run typed into a server-rendered search input before
   hydration; the rerun waited for hydration and passed.
+- Transfer metadata: the ordinary viewer route now hydrates one Query snapshot, while owner-token
+  views retain a route-local capability snapshot. Gallery metadata derives from that owner instead
+  of copying loader props. Worker events and reconnects wake a bounded authoritative refresh;
+  expiry schedules its own refresh and confirmed deletion updates the snapshot. Download, selection,
+  and upload execution remain local controllers. Three transfer Playwright journeys, four focused
+  transfer tests, `pnpm check`, and `pnpm build` passed. The browser journey seeded a processing
+  transfer, observed eventual readiness, and checked valid and invalid owner-token views.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
-- Next action: migrate remaining public and admin resource families, then design the transfer
-  capability scope and event reconciliation before moving its metadata into Query. Classify the
-  remaining loaders against the target ownership table, revisit M1 acceptance checks, and run
-  integrated verification before declaring completion.
+- Next action: migrate remaining admin workspace reads, classify the remaining loaders against
+  the target ownership table, revisit M1 identity and request-count acceptance, and run integrated
+  verification before declaring completion. Preserve capability-bearing loaders and live room
+  controllers where Query would weaken their ownership or isolation.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
@@ -355,7 +362,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   checkpoint; `cb2815b7` migrated communications; `f1a7a634` shared album detail; `087a05d8`
   added the album browser journey; `94aa4cea` hydrated public word detail; `2174a3ce` hydrated
   token sessions; `ba800f7f` recorded their checkpoint; `f200286b` recorded the full-suite pass;
-  `0a35f058` migrated pitch reads.
+  `0a35f058` migrated pitch reads; `4695c2c7` recorded the pitch checkpoint; `6310677a`
+  specified the transfer cache boundary; `a21f3c91` migrated transfer metadata.
 
 ## References
 
