@@ -639,6 +639,9 @@ derived exports. No read path silently repairs/deletes product state.
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
         Worker execution and transactional enqueue remain open.
+  - [x] Add staged transactional enqueue, indexed disjoint claims, renewals, fenced completion,
+        bounded retry/dead-letter and obsolete-source cancellation. Worker/R2 integration,
+        explicit dead-letter retry and queue snapshots remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
@@ -794,6 +797,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   milestone `d31e61c8`; Best Dressed `e39554d3`; album catalogue `48ff4c8a`. The word
   body/metadata milestone `415e9430`; word-share state `28261237`; media-object ledger
   foundation `50d624d6`; per-instance worker status `0ce8c529`; transfer schema `62c95d46`.
+  Staged reservation repository `7a379dae`; deletion-token codec `babb2e62`; catalogue
+  creation `012bbdf9`; row-locked append `da0c5fbf`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -950,6 +955,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   at the final slot, rejects duplicate IDs and enforces stored-byte limits. Four focused
   real-Postgres cases and typecheck passed. Full quota accounting, update, delete and production
   source import remain unimplemented.
+  The staged media-job repository requires the matching file generation on enqueue and supports
+  disjoint indexed claims, lease recovery, token fencing, bounded retry/dead-letter and obsolete
+  source cancellation. Completion locks the transfer/file before checking the claim, in the
+  caller's transaction. Three focused real-Postgres cases passed, including rollback,
+  idempotency conflict, disjoint claims, old-token refusal, exhausted retries and superseded
+  generation refusal. No runtime caller, R2 executor or production switch exists yet.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -968,8 +979,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: implement transfer append/update/delete and quota transactions, then wire
-  reservation flows and cleanup against the same authority. Add media-job enqueue/claims with
+- Next action: implement transfer update/delete and full quota transactions, then wire
+  reservation flows and cleanup against the same authority. Wire media-job execution with
   fenced R2 publication and the export importer with an orphan
   quarantine. Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
