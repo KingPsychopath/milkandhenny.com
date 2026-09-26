@@ -11,6 +11,7 @@ import type { PoolClient } from "pg";
 
 import { getAttendeeSession } from "@/features/attendee-access/session.server";
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit as reserveSharedRateLimit } from "@/lib/platform/rate-limit.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { describeEmailCapability, sendEmail } from "@/lib/platform/email.server";
 import { buildAppUrl } from "@/lib/shared/app-url";
@@ -101,6 +102,15 @@ export function requestFingerprint(request: Request): string {
 }
 
 async function reserveRateLimit(key: string, maximum: number): Promise<boolean> {
+  if (process.env.RATE_LIMIT_STORE === "postgres") {
+    const decision = await reserveSharedRateLimit({
+      name: "attendee-access-login",
+      identity: key,
+      limit: maximum,
+      windowSeconds: RATE_LIMIT_WINDOW_SECONDS,
+    });
+    return decision.backendAvailable && decision.allowed;
+  }
   const redis = getRedis();
   if (redis) {
     try {

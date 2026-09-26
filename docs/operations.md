@@ -37,6 +37,8 @@ request and one-time code rows. Monitor both counts for repeated batch saturatio
 With `ATTENDEE_SESSION_STORE=postgres`, the runner also removes up to 10,000 expired attendee
 session rows per daily pass. The person-version rows remain until a separate account-retention
 decision because they preserve person-wide revocation semantics.
+When `PASSKEY_CEREMONY_STORE=postgres`, the same attendee cleanup call also removes up to 10,000
+expired passkey ceremonies and reports `ceremoniesRemoved`.
 
 ## Capability checks
 

@@ -243,6 +243,10 @@ The source session and person-version keys must be imported with original expiry
 CLI authorization handshakes have their own opt-in Postgres backend selected with
 `AUTH_CLI_STORE=postgres`; request decisions, encrypted codes and one-time exchange are
 transactional. Redis remains the default until the short-lived source keys are reconciled.
+Passkey challenges have a separate opt-in Postgres store selected with
+`PASSKEY_CEREMONY_STORE=postgres`. Attendee login, passkey and TOTP throttles use the shared
+Postgres limiter when `RATE_LIMIT_STORE=postgres` is selected. Their source expiry windows remain
+a cutover gate.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

@@ -462,22 +462,22 @@ audited relationships. Scoped M4 rate-limit work uses the verified transaction a
 foundation and remains opt-in until source windows and load are reconciled. Other domain
 implementation follows listed dependencies. M12 and M13 remain operational gates.
 
-| Milestone                                           | Dependencies                             | Status                                                              |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
-| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                             |
-| M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending       |
-| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                             |
-| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership                     |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, upload access, JWT, attendee and CLI auth |
-| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                             |
-| M6 — transfers and media execution                  | M4, M5                                   | Pending                                                             |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                             |
-| M8 — application and realtime integration           | M3–M7                                    | Pending                                                             |
-| M9 — operations, recovery and documentation         | M8                                       | Pending                                                             |
-| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                             |
-| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                             |
-| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                             |
-| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                             |
+| Milestone                                           | Dependencies                             | Status                                                        |
+| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
+| M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
+| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
+| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies  |
+| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
+| M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
+| M8 — application and realtime integration           | M3–M7                                    | Pending                                                       |
+| M9 — operations, recovery and documentation         | M8                                       | Pending                                                       |
+| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                       |
+| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                       |
+| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                       |
+| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                       |
 
 ### M1 — Inventory and physical schema specification
 
@@ -569,6 +569,9 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 - [x] Add opt-in Postgres CLI authorization with hashed opaque lookups, encrypted callback/code
       payloads, atomic approval plus JWT registration, and one-time PKCE exchange. The supplied
       RDB has no active CLI keys; a final source check and expiry drain remain open.
+- [x] Add opt-in one-time Postgres passkey ceremonies and connect attendee login, passkey and
+      TOTP throttles to the shared Postgres limiter when selected. Their final source expiry
+      windows still require reconciliation.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
       after a fresh source import, including any newly active JWT sessions or revocations.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
@@ -746,9 +749,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
   restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
   pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`; Postgres rate
-  limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`. The
-  attendee sessions `7f373ed6`. The CLI authorization backend accompanies the next local
-  implementation commit.
+  limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`;
+  attendee sessions `7f373ed6`; CLI authorization `29bc862f`. The passkey ceremony and attendee
+  throttle work accompanies the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -803,8 +806,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   192 private session records and zero person-version rows; an isolated Postgres import repeated
   without extra rows and rejected a changed source hash. The same import succeeded on a restored
   production database after migration `0101`; all 27 person-bound records referenced existing
-  people there. The restricted runtime role had DML on both new tables. `pnpm check` and
-  `pnpm build` and the full `pnpm test` suite (255 files, 2,040 tests) passed. No production
+  people there. The restricted runtime role had DML on both new tables. `pnpm check`,
+  `pnpm build`, and the full `pnpm test` suite (255 files, 2,040 tests) passed. No production
   import or switch occurred.
   For CLI authorization, the focused Postgres, JWT, existing step-up and migration-ledger suites
   passed 15 cases, including concurrent approvals/exchanges and a forced code-write failure that
@@ -814,6 +817,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   Centre generator timeout; that test passed alone and the full rerun passed (256 files, 2,045
   tests). The supplied export has no active CLI keys; a fresh source check and expiry drain are
   still required. No production switch occurred.
+  The passkey ceremony Postgres suite and neighboring tests passed eight cases, including
+  concurrent one-time consumption and expiry cleanup. Migration `0103` applied to the restored
+  production clone and the restricted runtime role had DML on its table. `pnpm check` and
+  `pnpm build` and the full `pnpm test` suite (257 files, 2,047 tests) passed; read-only database
+  verification recognized 104 source migrations. The supplied export has no passkey ceremony or
+  attendee login/passkey/TOTP rate keys. No production switch occurred.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -831,8 +840,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   production role separation; backup coverage; measured load/resource budgets; physical DDL;
   migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: finish verification and commit the CLI authorization milestone, then implement
-  reports/voting and source importers. Continue into words/albums and the
+- Next action: finish verification and commit the passkey ceremony/attendee throttle milestone,
+  then implement remaining Redis-specific rates, reports/voting and source importers. Continue
+  into words/albums and the
   transfer/media queue before any release candidate. Do not start production migration from the
   table sketches in this document.
 

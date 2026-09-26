@@ -21,6 +21,7 @@ import {
 } from "@/features/attendee-access/session.server";
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit as reserveSharedRateLimit } from "@/lib/platform/rate-limit.server";
 import { SITE_NAME } from "@/lib/shared/config";
 import { sendPersonSecurityNotice } from "./security-notifications.server";
 
@@ -135,6 +136,15 @@ function safeHashEquals(left: string, right: string): boolean {
 }
 
 async function reserveAttempt(sessionId: string): Promise<boolean> {
+  if (process.env.RATE_LIMIT_STORE === "postgres") {
+    const decision = await reserveSharedRateLimit({
+      name: "attendee-totp",
+      identity: sessionId,
+      limit: RATE_MAXIMUM,
+      windowSeconds: RATE_WINDOW_SECONDS,
+    });
+    return decision.backendAvailable && decision.allowed;
+  }
   const key = `${RATE_PREFIX}${sha256(sessionId).slice(0, 32)}`;
   const redis = getRedis();
   if (redis) {

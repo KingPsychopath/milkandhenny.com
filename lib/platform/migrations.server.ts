@@ -4501,6 +4501,18 @@ const MIGRATIONS: Migration[] = [
       create index auth_cli_codes_expiry_idx on auth_cli_codes (expires_at);
     `,
   },
+  {
+    id: "0103_passkey_ceremonies",
+    sql: `
+      create table attendee_passkey_ceremonies (
+        id_hash text primary key check (id_hash ~ '^[a-f0-9]{64}$'),
+        ceremony_data jsonb not null check (jsonb_typeof(ceremony_data) = 'object'),
+        expires_at timestamptz not null
+      );
+      create index attendee_passkey_ceremonies_expiry_idx
+        on attendee_passkey_ceremonies (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
