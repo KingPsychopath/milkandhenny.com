@@ -25,6 +25,10 @@ deadlines, bounded concurrency, recovery telemetry, and private-transfer orchest
 queue, processing leases, transfer records, and R2 objects remain durable authority; Effect owns
 their execution lifecycle, not their data model.
 
+An [opt-in Postgres worker-status store](./media-worker-status-postgres.md) is staged for the
+Redis-to-Postgres migration. It is not enabled in production; queue claims, reconciliation and
+live updates still require Redis.
+
 There is no second build, no separate worker bundle, and no way for the
 worker's copy of the processing code to drift from the app's — it _is_ the
 app's.

@@ -42,6 +42,7 @@ vi.mock("@/features/transfers/media-reconcile.server", () => ({
 }));
 
 vi.mock("@/features/transfers/media-worker-status.server", () => ({
+  stopTransferMediaWorkerStatus: vi.fn().mockResolvedValue(undefined),
   updateTransferMediaWorkerStatus: vi.fn().mockResolvedValue(undefined),
 }));
 

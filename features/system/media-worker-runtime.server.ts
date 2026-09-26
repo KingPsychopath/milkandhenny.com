@@ -15,7 +15,10 @@ import {
   requeueTransferMediaJob,
 } from "@/features/transfers/media-queue.server";
 import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
-import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status.server";
+import {
+  stopTransferMediaWorkerStatus,
+  updateTransferMediaWorkerStatus,
+} from "@/features/transfers/media-worker-status.server";
 import { summarizeMediaWorkerError } from "@/features/transfers/media-worker-health";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { TransferMediaOperationsService } from "@/features/transfers/transfer-media-operations-service.server";
@@ -465,11 +468,15 @@ async function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): Prom
 }
 
 async function stopMediaWorkerLoop(): Promise<void> {
-  await mediaWorkerRuntime.run(
-    Effect.gen(function* () {
-      yield* (yield* MediaWorkerService).stop;
-    }),
-  );
+  try {
+    await mediaWorkerRuntime.run(
+      Effect.gen(function* () {
+        yield* (yield* MediaWorkerService).stop;
+      }),
+    );
+  } finally {
+    await stopTransferMediaWorkerStatus();
+  }
 }
 
 function disposeMediaWorkerRuntime(): Promise<void> {

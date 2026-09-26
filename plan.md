@@ -469,8 +469,8 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
 | M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies  |
-| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
-| M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
+| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger           |
+| M6 — transfers and media execution                  | M4, M5                                   | In progress: opt-in per-instance status                       |
 | M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
 | M8 — application and realtime integration           | M3–M7                                    | Pending                                                       |
 | M9 — operations, recovery and documentation         | M8                                       | Pending                                                       |
@@ -628,6 +628,9 @@ derived exports. No read path silently repairs/deletes product state.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
+  - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
+        worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
+        monitor cutover remain open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
 - [ ] Test worker death before/after upload, stale completion, duplicate claims, reservation
@@ -763,7 +766,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26, M1–M5 in progress
+### Current checkpoint — 2026-09-26, M1–M6 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
@@ -777,8 +780,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
   milestone `d31e61c8`; Best Dressed `e39554d3`; album catalogue `48ff4c8a`. The word
-  body/metadata milestone `415e9430`; word-share state `28261237`. The media-object ledger
-  foundation is in this change.
+  body/metadata milestone `415e9430`; word-share state `28261237`; media-object ledger
+  foundation `50d624d6`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -901,6 +904,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   restricted runtime role had DML on its table. `pnpm check`, `pnpm build` and the full
   `pnpm test` suite passed against isolated Postgres (264 files, 2,068 tests). This foundation
   has no R2 executor or production caller yet.
+  For worker status, migration `0110` adds process-specific heartbeat and stopped-state rows.
+  The supplied RDB yielded four status fields. Its private import on the restored production
+  clone produced one stopped provenance row; same-source reimport succeeded and a conflicting
+  source hash failed. The restricted runtime role has DML on the table. Focused Postgres and
+  migration tests passed seven cases, the worker-loop test passed two cases, `pnpm check`,
+  `pnpm build`, `gofmt` and documentation link checks passed. The full `pnpm test` rerun passed
+  on isolated Postgres (265 files, 2,070 tests) after updating the worker-loop mock for the new
+  shutdown call. The switch remains unset;
+  queue, reconciliation, events, worker credential setup and per-instance alerting remain open.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -919,9 +931,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: add recoverable word/album media object operations, then the
-  transfer/media queue before any release candidate. Do not start production migration from
-  the table sketches in this document.
+- Next action: wire recoverable word/album object operations and design transfer records,
+  reservations and transactional media jobs with fenced R2 publication before any release
+  candidate. Do not start production migration from the table sketches in this document.
 
 ### Milestone checkpoint template
 

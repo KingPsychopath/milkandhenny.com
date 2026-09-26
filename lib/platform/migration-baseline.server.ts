@@ -171,4 +171,5 @@ export const HISTORICAL_MIGRATION_SHA256 = {
   "0108_word_shares": "1dad3aead45929727c4d1233c74b07a60ad7b45a4cb9d8934b8398113335230c",
   "0109_media_object_operations":
     "c169f17dfde2fca120e3e92e566c4427141dc685bbb8040e3acd73e452183ef1",
+  "0110_media_worker_instances": "a4bf89e77bbc8afee1722b7b9366a1019f83a0242f5a5895920cd1bf257a5bea",
 } as const;

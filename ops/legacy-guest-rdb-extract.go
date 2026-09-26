@@ -36,6 +36,7 @@ type guestExtractor struct {
 	wordShareIndex  map[string]map[string]bool
 	wordShareSlugs  map[string]bool
 	wordShareExpiry map[string]time.Time
+	workerStatus    map[string]string
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
@@ -158,6 +159,9 @@ func (*guestExtractor) ZsetEntryHandler(string) func(string, float64) error {
 }
 func (g *guestExtractor) HashEntryHandler(key string) func(string, string) error {
 	return func(field, value string) error {
+		if key == "transfer:media:worker-status" {
+			g.workerStatus[field] = value
+		}
 		if key == "best-dressed:votes:v2" || strings.HasPrefix(key, "best-dressed:voted:") {
 			if g.votingHashes[key] == nil {
 				g.votingHashes[key] = make(map[string]string)
@@ -181,8 +185,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 10 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path] [absolute-new-word-shares-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 11 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path] [absolute-new-word-shares-json-path] [absolute-new-worker-status-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -208,6 +212,7 @@ func main() {
 		wordShareIndex:  make(map[string]map[string]bool),
 		wordShareSlugs:  make(map[string]bool),
 		wordShareExpiry: make(map[string]time.Time),
+		workerStatus:    make(map[string]string),
 	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
@@ -529,7 +534,7 @@ func main() {
 		}
 		fmt.Printf("word_metadata=%d index_members=%d\n", len(rows), len(extractor.wordIndex))
 	}
-	if len(os.Args) == 10 {
+	if len(os.Args) >= 10 {
 		type shareRow struct {
 			ID              string          `json:"id"`
 			Value           json.RawMessage `json:"value"`
@@ -590,5 +595,32 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("word_shares=%d indexed_slugs=%d\n", len(rows), len(extractor.wordShareSlugs))
+	}
+	if len(os.Args) == 11 {
+		allowed := map[string]bool{
+			"lastHeartbeatAt": true, "lastProcessedAt": true,
+			"lastErrorAt": true, "lastErrorMessage": true,
+		}
+		for field := range extractor.workerStatus {
+			if !allowed[field] {
+				panic("unexpected media worker status field")
+			}
+		}
+		payload, err := json.Marshal(extractor.workerStatus)
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(os.Args[10], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("media_worker_status_fields=%d\n", len(extractor.workerStatus))
 	}
 }

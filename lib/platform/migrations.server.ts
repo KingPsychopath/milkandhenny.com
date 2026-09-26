@@ -4774,6 +4774,25 @@ const MIGRATIONS: Migration[] = [
         on media_object_operations (owner_kind, owner_id, owner_revision, status);
     `,
   },
+  {
+    id: "0110_media_worker_instances",
+    sql: `
+      create table media_worker_instances (
+        instance_id uuid primary key,
+        deployment_id text not null,
+        started_at timestamptz not null,
+        last_heartbeat_at timestamptz,
+        last_processed_at timestamptz,
+        last_error_at timestamptz,
+        last_error_message text check (last_error_message is null or length(last_error_message) <= 500),
+        stopped_at timestamptz,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index media_worker_instances_active_idx
+        on media_worker_instances (last_heartbeat_at desc)
+        where stopped_at is null;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
