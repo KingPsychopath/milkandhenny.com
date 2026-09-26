@@ -856,6 +856,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   Indexed transfer expiry cleanup `6bf88e21`; verified Postgres deletion token `1064caf8`;
   initial transfer upload/read selection `196f1c0c`; atomic append planning `e66ae34d`;
   Postgres deletion/event-drop selection `1a44f6a6`; conservative R2 orphan staging `213c542d`.
+  M7 room transaction foundation `1da75b22`; opt-in Postgres result delivery `111f152d`;
+  opt-in Hot & Cold room mapping `b7f3f784`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -891,6 +893,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   result atomicity. Remaining M7 modes, replay/credentials and realtime are open.
   Verification: `pnpm check`, the complete one-worker suite (278 files, 2,136 tests), and
   `pnpm build` passed after the mode-specific selector was added.
+- Next action: map the remaining multiplayer engines and their specialized replay/journal and
+  credential records, then wire Postgres notifications and process-restart recovery. Continue
+  M6 worker/admin parity, source import rehearsal, operational backup gates and full Redis-free
+  release verification before any production cutover. The first verified RDB remains the agreed
+  Redis cutoff; Upstash is still serving live production traffic.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
