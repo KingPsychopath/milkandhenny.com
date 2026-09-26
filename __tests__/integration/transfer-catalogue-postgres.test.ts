@@ -3,12 +3,15 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import {
   appendPostgresTransferFiles,
   createPostgresTransfer,
+  finalizePostgresTransferReservation,
   getPostgresTransfer,
   getPostgresTransferForWorker,
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
 import type { TransferData } from "@/features/transfers/types";
+import { createPostgresTransferUploadReservation } from "@/features/transfers/upload-reservation-postgres.server";
+import { transferUploadFilesFingerprint } from "@/features/transfers/upload-reservation.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
@@ -186,5 +189,51 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       [transfer.id],
     );
     expect(rows).toEqual([{ status: "cancelled", claim_token: null }]);
+  });
+
+  it("consumes the presign reservation in the transfer creation transaction", async () => {
+    const selected = [
+      { name: "photo.jpg", mediaId: "photo", size: 100, originalSize: 20 },
+      { name: "photo.dng", mediaId: "raw", size: 200 },
+    ];
+    const claim = {
+      transferId: transfer.id,
+      deleteToken: transfer.deleteToken,
+      actorJti: "actor-one",
+      expiresSeconds: 3600,
+      filesFingerprint: transferUploadFilesFingerprint(selected),
+      createdAt: "2026-09-26T18:00:00.000Z",
+    };
+    expect(await createPostgresTransferUploadReservation(claim, selected)).toBe(true);
+    expect(await finalizePostgresTransferReservation(transfer, "wrong-actor", 3600, selected)).toBe(
+      "reservation-mismatch",
+    );
+    expect(
+      await finalizePostgresTransferReservation(
+        { ...transfer, files: [{ ...transfer.files[0], id: "unreserved" }, transfer.files[1]] },
+        claim.actorJti,
+        3600,
+        selected,
+      ),
+    ).toBe("too-large");
+    expect(
+      await finalizePostgresTransferReservation(
+        { ...transfer, files: [{ ...transfer.files[0], storedBytes: 400 }, transfer.files[1]] },
+        claim.actorJti,
+        3600,
+        selected,
+      ),
+    ).toBe("too-large");
+    const outcomes = await Promise.all([
+      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected),
+      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected),
+    ]);
+    expect(outcomes.sort()).toEqual(["created", "missing-reservation"]);
+    expect(await getPostgresTransfer(transfer.id)).toEqual(transfer);
+    const rows = await query<{ count: string }>(
+      "select count(*)::text as count from transfer_upload_reservations where transfer_id=$1",
+      [transfer.id],
+    );
+    expect(rows[0].count).toBe("0");
   });
 });

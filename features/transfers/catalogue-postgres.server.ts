@@ -6,6 +6,12 @@ import {
   encryptTransferDeleteToken,
 } from "./delete-token-postgres.server";
 import type { AssetGroup, TransferData, TransferFile } from "./types";
+import {
+  lockPostgresTransferUploadReservation,
+  matchesPostgresTransferUploadReservation,
+} from "./upload-reservation-postgres.server";
+import { transferUploadFilesFingerprint } from "./upload-reservation.server";
+import type { TransferUploadFileInput } from "./upload-types";
 
 type TransferRow = {
   id: string;
@@ -277,6 +283,48 @@ export async function createPostgresTransferInTransaction(
 /** The transfer and its relational children become visible in one commit. */
 export async function createPostgresTransfer(data: TransferData): Promise<boolean> {
   return transaction((client) => createPostgresTransferInTransaction(client, data));
+}
+
+export type FinalizePostgresTransferResult =
+  | "created"
+  | "missing-reservation"
+  | "reservation-mismatch"
+  | "too-large"
+  | "transfer-conflict";
+
+/** Consume the presign claim and create its transfer as one durable handoff. */
+export async function finalizePostgresTransferReservation(
+  data: TransferData,
+  actorJti: string,
+  expiresSeconds: number,
+  selectedFiles: TransferUploadFileInput[],
+): Promise<FinalizePostgresTransferResult> {
+  return transaction(async (client) => {
+    const reservation = await lockPostgresTransferUploadReservation(client, data.id);
+    if (!reservation) return "missing-reservation";
+    if (
+      !matchesPostgresTransferUploadReservation(reservation, {
+        deleteToken: data.deleteToken,
+        actorJti,
+        expiresSeconds,
+        filesFingerprint: transferUploadFilesFingerprint(selectedFiles),
+      })
+    )
+      return "reservation-mismatch";
+    const bytes = data.files.reduce((total, file) => total + (file.storedBytes ?? file.size), 0);
+    const selectedIds = new Set(selectedFiles.map((file) => file.mediaId ?? file.name));
+    if (
+      data.files.length !== reservation.reservedFileCount ||
+      selectedIds.size !== data.files.length ||
+      data.files.some((file) => !selectedIds.has(file.id)) ||
+      !Number.isSafeInteger(bytes) ||
+      bytes > reservation.reservedBytes
+    )
+      return "too-large";
+    if (!(await createPostgresTransferInTransaction(client, data))) return "transfer-conflict";
+    await client.query("delete from transfer_upload_reservations where transfer_id=$1", [data.id]);
+    return "created";
+  });
 }
 
 export type AppendPostgresTransferFilesResult =

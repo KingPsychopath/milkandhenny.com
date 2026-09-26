@@ -31,6 +31,10 @@ hashes the deletion token, actor JTI and file selection separately, records rese
 bytes, admits one concurrent claimant, and hides expired rows. It is not wired into the upload
 workflow yet: finalization, resume, abandon and orphan-object cleanup must switch together so
 all of them consult the same reservation authority.
+The staged finalization transaction locks the matching reservation, verifies the hashed
+capabilities and selected file IDs, bounds stored bytes by the presign reservation, creates the
+transfer catalogue, and consumes the reservation in one commit. Resume, abandon, object cleanup
+and the live upload path still use Redis.
 
 Jobs have a unique source/operation/generation identity, a claim token, lease, attempt count and
 indexed pending/expired-lease states. Their JSON payload retains source request details while

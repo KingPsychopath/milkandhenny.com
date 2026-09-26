@@ -985,6 +985,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   media jobs in the same transaction. A real-Postgres case checked idempotence, visibility and
   cleared claim tokens; all six catalogue tests and `pnpm check` passed. Object cleanup is not
   yet coupled to this tombstone, so runtime deletion still uses Redis.
+  The staged upload finalizer now locks and validates the hashed reservation, enforces the
+  selected file IDs and reserved-byte bound, inserts the transfer, and consumes the reservation
+  in one transaction. Concurrent finalization created exactly one transfer. Ten focused
+  reservation/catalogue real-Postgres tests and `pnpm check` passed. The live upload service,
+  resume, abandon and cleanup still use Redis and must switch together.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import type { PoolClient } from "pg";
 
 import { query, queryOne } from "@/lib/platform/postgres.server";
 import { getUploadReservationTtlSeconds } from "./upload-window.server";
@@ -29,6 +30,20 @@ export type PostgresTransferUploadReservation = {
   createdAt: string;
   expiresAt: string;
 };
+
+function toReservation(row: ReservationRow): PostgresTransferUploadReservation {
+  return {
+    transferId: row.transfer_id,
+    deleteTokenHash: row.delete_token_hash,
+    actorJtiHash: row.actor_jti_hash,
+    filesFingerprintHash: row.files_fingerprint_sha256,
+    reservedFileCount: row.reserved_file_count,
+    reservedBytes: Number(row.reserved_bytes),
+    expiresSeconds: row.expires_seconds,
+    createdAt: row.created_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+  };
+}
 
 function fingerprint(kind: "delete" | "actor" | "files", value: string): string {
   return createHash("sha256")
@@ -110,19 +125,23 @@ export async function getPostgresTransferUploadReservation(
       where transfer_id=$1 and finalized_at is null and expires_at > clock_timestamp()`,
     [transferId],
   );
-  return row
-    ? {
-        transferId: row.transfer_id,
-        deleteTokenHash: row.delete_token_hash,
-        actorJtiHash: row.actor_jti_hash,
-        filesFingerprintHash: row.files_fingerprint_sha256,
-        reservedFileCount: row.reserved_file_count,
-        reservedBytes: Number(row.reserved_bytes),
-        expiresSeconds: row.expires_seconds,
-        createdAt: row.created_at.toISOString(),
-        expiresAt: row.expires_at.toISOString(),
-      }
-    : null;
+  return row ? toReservation(row) : null;
+}
+
+/** The finalization transaction owns this lock until transfer creation commits. */
+export async function lockPostgresTransferUploadReservation(
+  client: PoolClient,
+  transferId: string,
+): Promise<PostgresTransferUploadReservation | null> {
+  const result = await client.query<ReservationRow>(
+    `select transfer_id,delete_token_hash,actor_jti_hash,files_fingerprint_sha256,
+            reserved_file_count,reserved_bytes,expires_seconds,created_at,expires_at
+       from transfer_upload_reservations
+      where transfer_id=$1 and finalized_at is null and expires_at > clock_timestamp()
+      for update`,
+    [transferId],
+  );
+  return result.rows[0] ? toReservation(result.rows[0]) : null;
 }
 
 export function matchesPostgresTransferUploadReservation(
