@@ -62,3 +62,51 @@ test("transfer metadata reconciles processing and keeps owner capability scoped"
     await redis.del(key);
   }
 });
+
+test("concurrent admin and anonymous SSR transfer views keep private Query data isolated", async ({
+  page,
+  request,
+}) => {
+  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const id = randomBytes(16).toString("base64url");
+  const key = `transfer:${id}`;
+  try {
+    await redis.set(
+      key,
+      JSON.stringify({
+        id,
+        title: "Isolated transfer view",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        deleteToken: randomBytes(16).toString("base64url"),
+        files: [],
+      }),
+      { ex: 600 },
+    );
+    await page.goto("/admin?view=overview");
+    await waitForAppHydration(page);
+    const password = page.getByLabel("admin password", { exact: true });
+    if (await password.isVisible()) {
+      await password.fill("playwright-admin-password");
+      await page.getByRole("button", { name: "unlock", exact: true }).click();
+      await waitForAppHydration(page);
+    }
+
+    const [adminResponse, anonymousResponse] = await Promise.all([
+      page.request.get(`/t/${id}`),
+      request.get(`/t/${id}`),
+    ]);
+    expect(adminResponse.ok()).toBe(true);
+    expect(anonymousResponse.ok()).toBe(true);
+    const [adminHtml, anonymousHtml] = await Promise.all([
+      adminResponse.text(),
+      anonymousResponse.text(),
+    ]);
+    expect(adminHtml).toContain("Isolated transfer view");
+    expect(anonymousHtml).toContain("Isolated transfer view");
+    expect(adminHtml).toContain("admin controls");
+    expect(anonymousHtml).not.toContain("admin controls");
+  } finally {
+    await redis.del(key);
+  }
+});

@@ -34,8 +34,14 @@ test("server-renders a poll, records a vote, and restores the device view", asyn
     expect(response.ok()).toBe(true);
     expect(await response.text()).toContain("Which day works?");
 
+    const hydrationRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.resourceType() === "fetch" || request.resourceType() === "xhr")
+        hydrationRequests.push(request.url());
+    });
     await page.goto(`/polls/${slug}`);
     await waitForAppHydration(page);
+    expect(hydrationRequests).toEqual([]);
     await page.getByText("Tuesday", { exact: true }).click();
     await page.getByRole("button", { name: "show me the shape" }).click();
     await expect(page.getByText("Your answer is in.", { exact: false })).toBeVisible();
