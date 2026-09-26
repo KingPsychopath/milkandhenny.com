@@ -2,6 +2,7 @@ import { type FormEvent, type RefObject, useCallback, useRef, useState } from "r
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 import { requestAttendeeAccessFn, verifyAttendeeAccessFn } from "../access.functions";
 import { PasskeySignIn } from "./PasskeySignIn";
 
@@ -21,8 +22,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
   const completeSignIn = useCallback(
     async (destination: string) => {
       window.history.replaceState(null, "", window.location.pathname);
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
       await navigate({ to: destination, replace: true });
     },
     [navigate, router],

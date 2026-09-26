@@ -4,6 +4,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { copyText } from "@/lib/client/share";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 import {
   beginPasskeyRegistrationFn,
   finishPasskeyRegistrationFn,
@@ -122,8 +123,7 @@ export function SecuritySettingsPanel({
         return;
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch {
       setMessage("The passkey could not be removed. Check your connection and try again.");
     } finally {
@@ -196,8 +196,7 @@ export function SecuritySettingsPanel({
         return;
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch {
       setMessage("Authenticator MFA could not be disabled. Check your connection and try again.");
     } finally {

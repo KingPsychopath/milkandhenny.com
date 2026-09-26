@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 
 import { verifyRecoveryCodeFn, verifyTotpFn } from "../totp.functions";
 import { PasskeySignIn } from "./PasskeySignIn";
@@ -14,8 +15,7 @@ export function MfaChallengePage({ returnTo }: { returnTo: string }) {
 
   async function complete(destination: string) {
     window.history.replaceState(null, "", "/access/mfa");
-    router.clearCache();
-    await router.invalidate();
+    await resetAuthenticatedData(router);
     await navigate({ to: destination, replace: true });
   }
 

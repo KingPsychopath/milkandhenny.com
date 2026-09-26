@@ -6,6 +6,7 @@ import {
   verifyAttendeeAccessFn,
 } from "@/features/attendee-access/access.functions";
 import { safeReturnTo } from "@/features/attendee-access/types";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
@@ -92,8 +93,7 @@ function AccessVerificationPage() {
       });
       if (!result.ok) throw new Error(result.error);
       credential.current = null;
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
       await navigate({ to: result.value.returnTo ?? search.returnTo, replace: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "That link could not be verified");

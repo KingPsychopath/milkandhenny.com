@@ -3,11 +3,12 @@ import {
   Link,
   Outlet,
   Scripts,
-  createRootRoute,
+  createRootRouteWithContext,
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
 import type { ErrorComponentProps } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Suspense, lazy, useEffect } from "react";
 import { BackToTop } from "@/components/BackToTop";
@@ -31,7 +32,7 @@ const LostGuest404 = lazy(() =>
   })),
 );
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => {
     const seo = buildSeoHead({
       title: SITE_NAME,

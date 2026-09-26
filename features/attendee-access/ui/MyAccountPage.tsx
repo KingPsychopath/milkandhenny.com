@@ -4,6 +4,7 @@ import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { rememberBrowserProfile } from "@/lib/client/browser-profile";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 import {
   cancelTicketOperationFn,
   resendTicketOperationFn,
@@ -224,8 +225,7 @@ export function MyAccountPage({
     try {
       await signOutAttendeeFn();
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
@@ -259,8 +259,7 @@ export function MyAccountPage({
         throw new Error(result.error);
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
       setBusy(false);
