@@ -15,6 +15,7 @@ import {
 import type { TransferMediaJob } from "@/features/transfers/media-queue.server";
 import {
   describeTransferMediaQueue,
+  enqueueTransferMediaJob,
   getTransferMediaQueueLength,
   retryDeadTransferMediaJobs,
 } from "@/features/transfers/media-queue.server";
@@ -265,6 +266,13 @@ describeWithDatabase("Postgres transfer media jobs", () => {
         [id],
       ),
     ).toEqual([{ attempts: 2, max_attempts: 2 }]);
+  });
+
+  it("refuses Redis-era enqueue when the Postgres worker store is selected", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    await expect(enqueueTransferMediaJob(job("raw-one"))).rejects.toThrow(
+      "must enqueue with their file transaction",
+    );
   });
 
   it("does not retry a dead job after its source generation changes", async () => {

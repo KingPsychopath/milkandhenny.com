@@ -10,6 +10,8 @@ import {
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
+import { planPostgresTransferMedia } from "@/features/transfers/media-plan-postgres.server";
+import { getGenerationTransferAssetKeys } from "@/features/transfers/media-state";
 import type { TransferData } from "@/features/transfers/types";
 import { createPostgresTransferUploadReservation } from "@/features/transfers/upload-reservation-postgres.server";
 import { transferUploadFilesFingerprint } from "@/features/transfers/upload-reservation.server";
@@ -251,6 +253,25 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       filesFingerprint: transferUploadFilesFingerprint(selected),
       createdAt: "2026-09-26T18:00:00.000Z",
     };
+    const expected = getGenerationTransferAssetKeys(
+      transfer.id,
+      "photo.dng",
+      "worker_raw",
+      "raw",
+      1,
+    );
+    const rawJob = {
+      transferId: transfer.id,
+      file: selected[1],
+      mediaId: "raw",
+      storageKey: transfer.files[1].storageKey,
+      mimeType: "image/x-adobe-dng",
+      processingRoute: "worker_raw" as const,
+      attempt: 1,
+      enqueuedAt: transfer.files[1].enqueuedAt!,
+      expectedThumbKey: expected.thumbKey,
+      expectedFullKey: expected.fullKey,
+    };
     expect(await createPostgresTransferUploadReservation(claim, selected)).toBe(true);
     expect(await finalizePostgresTransferReservation(transfer, "wrong-actor", 3600, selected)).toBe(
       "reservation-mismatch",
@@ -271,9 +292,12 @@ describeWithDatabase("Postgres transfer catalogue", () => {
         selected,
       ),
     ).toBe("too-large");
+    await expect(
+      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected),
+    ).rejects.toThrow("Incomplete transfer media job plan");
     const outcomes = await Promise.all([
-      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected),
-      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected),
+      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected, [rawJob]),
+      finalizePostgresTransferReservation(transfer, claim.actorJti, 3600, selected, [rawJob]),
     ]);
     expect(outcomes.sort()).toEqual(["created", "missing-reservation"]);
     expect(await getPostgresTransfer(transfer.id)).toEqual(transfer);
@@ -282,6 +306,41 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       [transfer.id],
     );
     expect(rows[0].count).toBe("0");
+  });
+
+  it("commits planned visual jobs atomically with a new transfer", async () => {
+    const selected = [
+      { name: "photo.jpg", mediaId: "photo", size: 100 },
+      { name: "notes.pdf", mediaId: "notes", size: 20 },
+    ];
+    const planned = planPostgresTransferMedia(transfer.id, selected);
+    expect(planned.files.map((file) => file.processingStatus)).toEqual(["queued", "skipped"]);
+    expect(planned.jobs).toHaveLength(1);
+    const data = { ...transfer, files: planned.files, groups: [] };
+    const claim = {
+      transferId: transfer.id,
+      deleteToken: transfer.deleteToken,
+      actorJti: "actor-one",
+      expiresSeconds: 3600,
+      filesFingerprint: transferUploadFilesFingerprint(selected),
+      createdAt: new Date().toISOString(),
+    };
+    expect(await createPostgresTransferUploadReservation(claim, selected)).toBe(true);
+    await expect(
+      finalizePostgresTransferReservation(data, claim.actorJti, 3600, selected, [
+        { ...planned.jobs[0], expectedThumbKey: "wrong" },
+      ]),
+    ).rejects.toThrow("output generation is invalid");
+    expect(await getPostgresTransfer(transfer.id)).toBeNull();
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from transfer_media_jobs"),
+    ).toEqual([{ count: "0" }]);
+    expect(
+      await finalizePostgresTransferReservation(data, claim.actorJti, 3600, selected, planned.jobs),
+    ).toBe("created");
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from transfer_media_jobs"),
+    ).toEqual([{ count: "1" }]);
   });
 
   it("lists active summaries in SQL and filters by owner", async () => {

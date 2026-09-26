@@ -11,6 +11,8 @@ import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
 } from "./delete-token-postgres.server";
+import { enqueuePostgresTransferMediaJob } from "./media-jobs-postgres.server";
+import type { TransferMediaJob } from "./media-queue.server";
 import type { AssetGroup, TransferData, TransferFile, TransferSummary } from "./types";
 import {
   lockPostgresTransferUploadReservation,
@@ -298,6 +300,36 @@ export async function createPostgresTransfer(data: TransferData): Promise<boolea
   return transaction((client) => createPostgresTransferInTransaction(client, data));
 }
 
+async function enqueuePlannedMediaJobs(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  jobs: TransferMediaJob[] | undefined,
+): Promise<void> {
+  const plannedJobs = jobs ?? [];
+  const queued = new Map(
+    files.filter((file) => file.processingStatus === "queued").map((file) => [file.id, file]),
+  );
+  if (queued.size !== plannedJobs.length) throw new Error("Incomplete transfer media job plan");
+  const seen = new Set<string>();
+  for (const job of plannedJobs) {
+    const fileId = job.mediaId ?? job.file.mediaId ?? job.file.name;
+    const file = queued.get(fileId);
+    if (
+      !file ||
+      seen.has(fileId) ||
+      job.transferId !== transferId ||
+      job.file.name !== file.filename ||
+      job.storageKey !== file.storageKey ||
+      job.processingRoute !== file.processingRoute ||
+      job.attempt !== 1
+    )
+      throw new Error("Transfer media job plan does not match its file");
+    seen.add(fileId);
+    await enqueuePostgresTransferMediaJob(client, job, 1);
+  }
+}
+
 export type FinalizePostgresTransferResult =
   | "created"
   | "missing-reservation"
@@ -311,6 +343,7 @@ export async function finalizePostgresTransferReservation(
   actorJti: string,
   expiresSeconds: number,
   selectedFiles: TransferUploadFileInput[],
+  mediaJobs?: TransferMediaJob[],
 ): Promise<FinalizePostgresTransferResult> {
   return transaction(async (client) => {
     const reservation = await lockPostgresTransferUploadReservation(client, data.id);
@@ -335,6 +368,7 @@ export async function finalizePostgresTransferReservation(
     )
       return "too-large";
     if (!(await createPostgresTransferInTransaction(client, data))) return "transfer-conflict";
+    await enqueuePlannedMediaJobs(client, data.id, data.files, mediaJobs);
     await client.query("delete from transfer_upload_reservations where transfer_id=$1", [data.id]);
     return "created";
   });
@@ -448,6 +482,7 @@ export async function finalizePostgresTransferAppend(
   selectedFiles: TransferUploadFileInput[],
   files: TransferFile[],
   limits: { maxFiles?: number; maxTotalBytes?: number } = {},
+  mediaJobs?: TransferMediaJob[],
 ): Promise<FinalizePostgresTransferAppendResult> {
   return transaction(async (client) => {
     const transfer = await client.query<{ id: string }>(
@@ -490,6 +525,7 @@ export async function finalizePostgresTransferAppend(
       appendReservationFingerprint(selectedFiles),
     );
     if (result.status !== "updated") return result;
+    await enqueuePlannedMediaJobs(client, transferId, files, mediaJobs);
     await client.query(
       "delete from transfer_append_reservations where transfer_id=$1 and fingerprint_sha256=$2",
       [transferId, appendReservationFingerprint(selectedFiles)],

@@ -62,6 +62,8 @@ function requireTransferMediaQueueRedis() {
 }
 
 async function enqueueTransferMediaJob(job: TransferMediaJob): Promise<void> {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres")
+    throw new Error("Postgres transfer media jobs must enqueue with their file transaction");
   const redis = requireTransferMediaQueueRedis();
   const normalized = normalizedJob(job);
   const key = `transfer:media:idempotency:${normalized.idempotencyKey}`;

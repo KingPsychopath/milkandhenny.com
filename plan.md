@@ -637,6 +637,10 @@ derived exports. No read path silently repairs/deletes product state.
         accounting and final upload integration are staged but not wired to requests.
   - [x] Add multi-batch append reservations and atomic finalization that counts outstanding
         capacity and consumes only the matching selection. Live request wiring remains open.
+  - [x] Build an all-visual Postgres media plan and let create/append finalizers commit matching
+        first-generation jobs with file rows and reservation consumption. Reject queued files
+        without a job plan and reject legacy enqueue in Postgres mode. Live upload selection and
+        cleanup remain open.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
@@ -825,7 +829,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   schedule `07b83ea2`.
   Append quota reservations `716422f7`; generation-fenced derivatives `35ed7f66`;
   Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
-  queue health and dead-job retry `a61ff521`.
+  queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1070,6 +1074,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   passed 15 cases against real Postgres or the worker runtime. `pnpm check`, `pnpm build` and the
   full `pnpm test` suite passed (273 files, 2,110 tests). R2 prefix sweeps for unrecorded or late
   objects remain open.
+  A staged Postgres media plan now creates queued file metadata and generation-specific job
+  payloads for visual uploads without an early Redis or R2 mutation. Initial transfer and append
+  finalization can enqueue those jobs in their catalogue transaction, and reject an incomplete or
+  mismatched plan. The Redis-era enqueue path now fails closed if Postgres job mode is selected.
+  Three focused real-Postgres suites passed 23 cases, including rollback when a job plan is
+  invalid. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (273 files, 2,113
+  tests). Live upload requests still select Redis and need a coordinated switch.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

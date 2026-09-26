@@ -31,8 +31,12 @@ no web secret. Its staged append operation locks the transfer row and checks exi
 filenames, file count and stored-byte totals before inserting new files. Its regroup operation
 locks the same row, rejects a changed file set, and preserves worker-owned processing fields.
 Its append finalizer commits inspected files and consumes the matching reservation in one
-transaction, counting every other active reservation against the quota. It does not yet
-coordinate worker generations. A staged
+transaction, counting every other active reservation against the quota. The Postgres media
+plan queues every visual route without publishing a job early; when supplied to create or append
+finalization, each matching generation-one job commits in the same transaction as its file row.
+Finalizers reject a queued file without its job plan, and the Redis-era enqueue helper refuses
+Postgres queue mode so a split switch cannot silently lose work. The live upload path has not
+selected this plan. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
@@ -60,9 +64,9 @@ that switch.
 
 Jobs have a unique source/operation/generation identity, a claim token, lease, attempt count and
 indexed pending/expired-lease states. Their JSON payload retains source request details while
-the relational columns own routing and concurrency. The table is only a foundation: enqueue
-must commit beside file state, and completion must check the current claim token and file
-generation before publishing. Output keys must include the generation so a stale worker cannot
+the relational columns own routing and concurrency. Enqueue commits beside file state when the
+Postgres media plan is supplied, and completion checks the current claim token and file
+generation before publishing. Output keys include the generation so a stale worker cannot
 overwrite a current derivative.
 
 The staged [media-job repository](../features/transfers/media-jobs-postgres.server.ts) requires
