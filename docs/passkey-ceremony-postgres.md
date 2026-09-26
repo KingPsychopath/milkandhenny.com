@@ -15,5 +15,6 @@ cannot authenticate. Daily maintenance removes expired rows in bounded batches. 
 When `RATE_LIMIT_STORE=postgres`, attendee email login, passkey and TOTP throttles use the shared
 Postgres fixed-window limiter. Their Redis behavior remains the default until the corresponding
 active source windows are reconciled. The supplied export has no keys in those three rate-limit
-families; recheck the final snapshot. Other feature-specific Redis rate limits have their own
-migration work and still block the overall Redis retirement gate.
+families; recheck the final snapshot. Action-link redemption and Pitch recovery also use the
+shared limiter when selected. Report submission and multiplayer command throttles still have
+their own migration work and block the overall Redis retirement gate.

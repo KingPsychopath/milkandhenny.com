@@ -572,6 +572,9 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 - [x] Add opt-in one-time Postgres passkey ceremonies and connect attendee login, passkey and
       TOTP throttles to the shared Postgres limiter when selected. Their final source expiry
       windows still require reconciliation.
+- [x] Connect action-link redemption and Pitch recovery throttles to the shared Postgres limiter
+      when selected. Concurrent Pitch recovery admits four of five attempts; final source-window
+      reconciliation remains open.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
       after a fresh source import, including any newly active JWT sessions or revocations.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
@@ -750,8 +753,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
   pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`; Postgres rate
   limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`;
-  attendee sessions `7f373ed6`; CLI authorization `29bc862f`. The passkey ceremony and attendee
-  throttle work accompanies the next local implementation commit.
+  attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
+  throttles `741662f2`. The action-link/Pitch throttle work accompanies the next local commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -823,6 +826,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   `pnpm build` and the full `pnpm test` suite (257 files, 2,047 tests) passed; read-only database
   verification recognized 104 source migrations. The supplied export has no passkey ceremony or
   attendee login/passkey/TOTP rate keys. No production switch occurred.
+  The action-link/Pitch throttle integration suite passed two cases: the 13th redemption attempt
+  was refused, and concurrent Pitch recovery admitted exactly four of five requests without
+  storing the email in the rate table. `pnpm check` and the full `pnpm test` suite (258 files,
+  2,049 tests) passed. These optional Postgres paths have not been selected in production.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -840,8 +847,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   production role separation; backup coverage; measured load/resource budgets; physical DDL;
   migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: finish verification and commit the passkey ceremony/attendee throttle milestone,
-  then implement remaining Redis-specific rates, reports/voting and source importers. Continue
+- Next action: finish verification and commit the action-link/Pitch throttle milestone, then
+  implement report storage/voting and source importers. Continue
   into words/albums and the
   transfer/media queue before any release candidate. Do not start production migration from the
   table sketches in this document.

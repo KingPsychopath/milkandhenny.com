@@ -247,6 +247,8 @@ Passkey challenges have a separate opt-in Postgres store selected with
 `PASSKEY_CEREMONY_STORE=postgres`. Attendee login, passkey and TOTP throttles use the shared
 Postgres limiter when `RATE_LIMIT_STORE=postgres` is selected. Their source expiry windows remain
 a cutover gate.
+Action-link redemption and Pitch recovery also select the shared Postgres limiter through
+`RATE_LIMIT_STORE=postgres`; their source windows must be reconciled before that switch.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published
