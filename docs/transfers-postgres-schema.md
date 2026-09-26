@@ -22,10 +22,13 @@ no web secret. Its staged append operation locks the transfer row and checks exi
 filenames, file count and stored-byte totals before inserting new files. Its regroup operation
 locks the same row, rejects a changed file set, and preserves worker-owned processing fields.
 It does not yet coordinate outstanding append reservations or worker generations. A staged
-tombstone hides a deleted transfer and cancels pending/claimed jobs in the same transaction.
+tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
+known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
+object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
+and orphan-prefix reconciliation are still required before selecting this delete path.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
-Object deletion, file removal and expiry workflows are still pending, so the application has
+Object execution, file removal and expiry workflows are still pending, so the application has
 not selected this repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)

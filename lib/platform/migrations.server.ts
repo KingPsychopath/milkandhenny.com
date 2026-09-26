@@ -4953,6 +4953,16 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0113_transfer_object_deletions",
+    sql: `
+      alter table media_object_operations
+        drop constraint media_object_operations_owner_kind_check;
+      alter table media_object_operations
+        add constraint media_object_operations_owner_kind_check
+        check (owner_kind in ('album', 'word', 'transfer'));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

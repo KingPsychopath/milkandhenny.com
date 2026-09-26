@@ -74,6 +74,7 @@ describeWithDatabase("Postgres transfer catalogue", () => {
   beforeEach(async () => {
     vi.stubEnv("AUTH_SECRET", "integration-test-transfer-secret-at-least-32-bytes");
     await query("truncate transfers cascade");
+    await query("truncate media_object_operations");
   });
 
   it("creates a transfer with files and groups in one commit and preserves read shape", async () => {
@@ -190,6 +191,35 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       [transfer.id],
     );
     expect(rows).toEqual([{ status: "cancelled", claim_token: null }]);
+    const operations = await query<{ target_key: string }>(
+      `select target_key from media_object_operations
+        where owner_kind='transfer' and owner_id=$1 and operation='delete'
+        order by target_key`,
+      [transfer.id],
+    );
+    expect(operations.map((operation) => operation.target_key)).toContain(
+      transfer.files[0].storageKey,
+    );
+    expect(operations.map((operation) => operation.target_key)).toContain(
+      transfer.files[1].storageKey,
+    );
+    expect(operations.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rolls back a tombstone when durable cleanup cannot be recorded", async () => {
+    await createPostgresTransfer(transfer);
+    await query(
+      "update transfer_files set storage_key='/invalid' where transfer_id=$1 and id='raw'",
+      [transfer.id],
+    );
+    await expect(tombstonePostgresTransfer(transfer.id)).rejects.toThrow(
+      "Invalid media object operation",
+    );
+    expect(await getPostgresTransfer(transfer.id)).not.toBeNull();
+    const rows = await query<{ count: string }>(
+      "select count(*)::text as count from media_object_operations where owner_kind='transfer'",
+    );
+    expect(rows[0].count).toBe("0");
   });
 
   it("consumes the presign reservation in the transfer creation transaction", async () => {

@@ -470,7 +470,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies  |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger           |
-| M6 — transfers and media execution                  | M4, M5                                   | In progress: opt-in per-instance status                       |
+| M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs         |
 | M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
 | M8 — application and realtime integration           | M3–M7                                    | Pending                                                       |
 | M9 — operations, recovery and documentation         | M8                                       | Pending                                                       |
@@ -626,15 +626,19 @@ derived exports. No read path silently repairs/deletes product state.
 
 - [ ] Implement transfer/file/group/reservation tables and quota transactions.
   - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
-        Runtime repository, quota transactions, token-codec wiring and source import remain open.
+        Runtime selection and full quota transactions remain open.
   - [x] Add a staged Postgres reservation repository with hashed matching fields, bounded
         count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
   - [x] Add transfer-bound authenticated encryption and hash verification for deletion tokens;
         web-only catalogue reads use it without exposing ciphertext to the worker.
   - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Update,
-        delete, full quota and expiry flows remain open.
+        file removal, object cleanup, full quota and expiry flows remain open.
   - [x] Add row-locked file append with ID/name/count/byte checks; outstanding reservation
         accounting and final upload integration remain open.
+  - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
+        finalization and indexed admin/owner summary reads. Runtime selection remains open.
+  - [x] Enqueue known private object deletions with the transfer tombstone; executor, orphan
+        reconciliation, file removal and live cleanup remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -994,6 +998,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   An indexed Postgres summary query now serves all active transfers or a single owner without
   reading token-bearing catalogue rows. A focused real-Postgres case covered counts, owner
   filtering and tombstone visibility; eight catalogue tests and `pnpm check` passed.
+  Migration `0113` admits transfer-owned object-operation rows. The staged tombstone now enqueues
+  all known private file/derivative keys before commit; an invalid key rolls back the deletion.
+  The isolated production restore accepted `0113`; the focused migration, ledger and catalogue
+  suites passed 17 cases. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on
+  isolated Postgres (270 files, 2,091 tests). No executor or live transfer deletion is selected.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1012,8 +1021,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: implement transfer update/delete and full quota transactions, then wire
-  reservation flows and cleanup against the same authority. Wire media-job execution with
+- Next action: implement transfer file removal and full quota transactions, then wire
+  reservation flows and cleanup against the same authority. Build the object-operation executor
+  and reconcile orphan transfer prefixes. Wire media-job execution with
   fenced R2 publication and reconcile a fresh source export against the rehearsed importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.

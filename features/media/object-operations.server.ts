@@ -5,7 +5,7 @@ import { query, transaction } from "@/lib/platform/postgres.server";
 
 export type ObjectScope = "private" | "public";
 export type MediaObjectOperationInput = {
-  ownerKind: "album" | "word";
+  ownerKind: "album" | "word" | "transfer";
   ownerId: string;
   ownerRevision: number;
   operation: "copy" | "delete";

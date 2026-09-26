@@ -1,6 +1,8 @@
 import type { PoolClient } from "pg";
 
+import { enqueueMediaObjectOperation } from "@/features/media/object-operations.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
+import { getTransferFileDeleteKeys } from "./delete";
 import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
@@ -475,14 +477,48 @@ export async function updatePostgresTransferGrouping(
 /** Hide a transfer and fence its unfinished jobs before object cleanup begins. */
 export async function tombstonePostgresTransfer(transferId: string): Promise<boolean> {
   return transaction(async (client) => {
-    const deleted = await client.query<{ id: string }>(
+    const deleted = await client.query<{ revision: string }>(
       `update transfers
           set deleted_at=clock_timestamp(),revision=revision+1
         where id=$1 and deleted_at is null
-        returning id`,
+        returning revision::text`,
       [transferId],
     );
     if (!deleted.rows[0]) return false;
+    const revision = Number(deleted.rows[0].revision);
+    if (!Number.isInteger(revision) || revision < 1 || revision > 2_147_483_647)
+      throw new Error("Transfer deletion revision exceeds object ledger range");
+    const files = await client.query<{
+      id: string;
+      filename: string;
+      storage_key: string;
+      original_storage_key: string | null;
+      processing_route: TransferFile["processingRoute"] | null;
+    }>(
+      `select id,filename,storage_key,original_storage_key,processing_route
+         from transfer_files where transfer_id=$1`,
+      [transferId],
+    );
+    const keys = new Set(
+      files.rows.flatMap((file) =>
+        getTransferFileDeleteKeys(transferId, {
+          id: file.id,
+          filename: file.filename,
+          storageKey: file.storage_key,
+          originalStorageKey: file.original_storage_key ?? undefined,
+          processingRoute: file.processing_route ?? undefined,
+        }),
+      ),
+    );
+    for (const key of keys)
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "transfer",
+        ownerId: transferId,
+        ownerRevision: revision,
+        operation: "delete",
+        targetScope: "private",
+        targetKey: key,
+      });
     await client.query(
       `update transfer_media_jobs
           set status='cancelled',claim_token=null,claim_owner=null,lease_until=null,
