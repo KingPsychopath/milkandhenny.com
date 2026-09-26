@@ -4568,6 +4568,61 @@ const MIGRATIONS: Migration[] = [
       $$;
     `,
   },
+  {
+    id: "0105_best_dressed",
+    sql: `
+      create table best_dressed_state (
+        singleton boolean primary key default true check (singleton),
+        session text not null,
+        open_until timestamptz,
+        runtime_revision bigint not null default 0 check (runtime_revision >= 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      insert into best_dressed_state (singleton, session) values (true, 'initial');
+
+      create table best_dressed_totals (
+        session text not null,
+        candidate_name text not null,
+        vote_count integer not null check (vote_count >= 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        primary key (session, candidate_name)
+      );
+      create table best_dressed_voters (
+        session text not null,
+        voter_hash text not null check (voter_hash ~ '^[a-f0-9]{64}$'),
+        candidate_name text not null,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        primary key (session, voter_hash)
+      );
+      create index best_dressed_voters_expiry_idx on best_dressed_voters (expires_at);
+      create table best_dressed_tokens (
+        token_hash text primary key check (token_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index best_dressed_tokens_expiry_idx on best_dressed_tokens (expires_at);
+      create table best_dressed_codes (
+        code_hash text primary key check (code_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index best_dressed_codes_expiry_idx on best_dressed_codes (expires_at);
+
+      create table best_dressed_legacy_votes (
+        singleton boolean primary key default true check (singleton),
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        original_value text not null
+      );
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'mah_app_runtime') then
+          revoke all on table best_dressed_legacy_votes from mah_app_runtime;
+        end if;
+      end
+      $$;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

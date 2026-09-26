@@ -39,6 +39,11 @@ session rows per daily pass. The person-version rows remain until a separate acc
 decision because they preserve person-wide revocation semantics.
 When `PASSKEY_CEREMONY_STORE=postgres`, the same attendee cleanup call also removes up to 10,000
 expired passkey ceremonies and reports `ceremoniesRemoved`.
+With `REPORT_STORE=postgres`, daily maintenance also removes up to 1,000 expired
+current report rows, report receipts and report rate windows per category. With
+`BEST_DRESSED_STORE=postgres`, it removes up to 1,000 expired voter receipts,
+vote tokens and codes per category. Read and vote paths enforce expiry even if a
+cleanup pass is delayed. Check for repeated batch saturation.
 
 ## Capability checks
 

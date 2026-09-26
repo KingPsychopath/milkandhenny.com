@@ -249,6 +249,14 @@ Postgres limiter when `RATE_LIMIT_STORE=postgres` is selected. Their source expi
 a cutover gate.
 Action-link redemption and Pitch recovery also select the shared Postgres limiter through
 `RATE_LIMIT_STORE=postgres`; their source windows must be reconciled before that switch.
+Diagnostic reports have an opt-in Postgres backend selected with `REPORT_STORE=postgres`;
+submission receipts, rate admission, report creation, follow-up and admin updates use
+transactions. Best Dressed has a separate opt-in backend selected with
+`BEST_DRESSED_STORE=postgres`; its vote transaction binds the voter receipt, tally,
+token and code. Select `RATE_LIMIT_STORE=postgres` with it so voting no longer needs
+Redis for network throttling. Both require a final source import before switching;
+see [reports](./diagnostic-report-postgres.md) and
+[Best Dressed](./best-dressed-postgres.md).
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

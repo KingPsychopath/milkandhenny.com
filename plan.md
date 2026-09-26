@@ -583,7 +583,10 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
 - [x] Audit report notification work: the current report workflow has no notification side
       effect to preserve. Any later report alert must use a transactional outbox.
 - [ ] Reconcile the final report source delta before switching the backend.
-- [ ] Implement Best Dressed totals, receipts, codes and reset behavior.
+- [x] Implement opt-in Best Dressed totals, receipts, codes, voting window and reset
+      behavior as a transactional Postgres path; archive the retired tally without
+      activating it. Rehearse the supplied RDB import.
+- [ ] Reconcile the final Best Dressed source delta before switching the backend.
 - [ ] Add domain importers with legacy-version, expiry, one-time race and baseline-vote fixtures.
 - [ ] Verify cookies, step-up/MFA, parent-session binding, PKCE, admin session management,
       revocation and disabled/expired access, plus admin/CLI parity.
@@ -759,7 +762,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`;
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
-  milestone accompanies the next local commit.
+  milestone `d31e61c8`; Best Dressed implementation is in this milestone change.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -843,6 +846,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   runtime role could read current reports but not the retired-format table. The focused
   report/migration suites passed 14 cases, `pnpm check` and `pnpm build` passed, and the full
   `pnpm test` suite passed (259 files, 2,054 tests). Production remains on Redis.
+  For Best Dressed, migration `0105` applied on a fresh production-dump restore and
+  read-only verification recognized 106 source migrations. The supplied RDB has one
+  retired `best-dressed:votes` value with 23 entries and no active v2 tally, credentials
+  or receipts. The old tally was archived separately while active totals remained zero;
+  the same-source import repeated and a different source was refused. The runtime role
+  could read active tables but not the retired tally. A synthetic import preserved a
+  seven-vote baseline and one voter receipt; the imported voter could not vote twice,
+  a new ballot raised the total to eight, and a post-write reimport was refused. Focused
+  voting tests passed ten cases. A local Docker timeout led to an isolated loopback-only
+  PostgreSQL 18.4 cluster for final verification; `pnpm check`, `pnpm build` and the
+  full `pnpm test` suite passed there (260 files, 2,058 tests). Production is unchanged.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -861,8 +875,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: commit the diagnostic-report milestone, then implement Best Dressed
-  voting and its import with the supplied baseline. Continue into words/albums and the
+- Next action: continue into words/albums and the
   transfer/media queue before any release candidate. Do not start production migration from
   the table sketches in this document.
 

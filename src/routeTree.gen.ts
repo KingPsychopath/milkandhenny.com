@@ -95,6 +95,7 @@ import { Route as ApiCommunicationsClickRouteRouteImport } from './routes/api/co
 import { Route as ApiCronCleanupAttendeeAccessRouteRouteImport } from './routes/api/cron/cleanup-attendee-access/route'
 import { Route as ApiCronCleanupAttendeeSessionsRouteRouteImport } from './routes/api/cron/cleanup-attendee-sessions/route'
 import { Route as ApiCronCleanupAuthStateRouteRouteImport } from './routes/api/cron/cleanup-auth-state/route'
+import { Route as ApiCronCleanupBestDressedRouteRouteImport } from './routes/api/cron/cleanup-best-dressed/route'
 import { Route as ApiCronCleanupCommunicationLinksRouteRouteImport } from './routes/api/cron/cleanup-communication-links/route'
 import { Route as ApiCronCleanupEmailRouteRouteImport } from './routes/api/cron/cleanup-email/route'
 import { Route as ApiCronCleanupGamePoolsRouteRouteImport } from './routes/api/cron/cleanup-game-pools/route'
@@ -677,6 +678,12 @@ const ApiCronCleanupAuthStateRouteRoute =
   ApiCronCleanupAuthStateRouteRouteImport.update({
     id: '/api/cron/cleanup-auth-state',
     path: '/api/cron/cleanup-auth-state',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupBestDressedRouteRoute =
+  ApiCronCleanupBestDressedRouteRouteImport.update({
+    id: '/api/cron/cleanup-best-dressed',
+    path: '/api/cron/cleanup-best-dressed',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronCleanupCommunicationLinksRouteRoute =
@@ -1577,6 +1584,7 @@ export interface FileRoutesByFullPath {
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
   '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -1808,6 +1816,7 @@ export interface FileRoutesByTo {
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
   '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -2040,6 +2049,7 @@ export interface FileRoutesById {
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
   '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
   '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -2273,6 +2283,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-attendee-sessions'
     | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2504,6 +2515,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-attendee-sessions'
     | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2735,6 +2747,7 @@ export interface FileRouteTypes {
     | '/api/cron/cleanup-attendee-access'
     | '/api/cron/cleanup-attendee-sessions'
     | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2953,6 +2966,7 @@ export interface RootRouteChildren {
   ApiCronCleanupAttendeeAccessRouteRoute: typeof ApiCronCleanupAttendeeAccessRouteRoute
   ApiCronCleanupAttendeeSessionsRouteRoute: typeof ApiCronCleanupAttendeeSessionsRouteRoute
   ApiCronCleanupAuthStateRouteRoute: typeof ApiCronCleanupAuthStateRouteRoute
+  ApiCronCleanupBestDressedRouteRoute: typeof ApiCronCleanupBestDressedRouteRoute
   ApiCronCleanupCommunicationLinksRouteRoute: typeof ApiCronCleanupCommunicationLinksRouteRoute
   ApiCronCleanupEmailRouteRoute: typeof ApiCronCleanupEmailRouteRoute
   ApiCronCleanupGamePoolsRouteRoute: typeof ApiCronCleanupGamePoolsRouteRoute
@@ -3621,6 +3635,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/cleanup-auth-state'
       fullPath: '/api/cron/cleanup-auth-state'
       preLoaderRoute: typeof ApiCronCleanupAuthStateRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-best-dressed': {
+      id: '/api/cron/cleanup-best-dressed'
+      path: '/api/cron/cleanup-best-dressed'
+      fullPath: '/api/cron/cleanup-best-dressed'
+      preLoaderRoute: typeof ApiCronCleanupBestDressedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/cleanup-communication-links': {
@@ -5155,6 +5176,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCronCleanupAttendeeSessionsRouteRoute:
     ApiCronCleanupAttendeeSessionsRouteRoute,
   ApiCronCleanupAuthStateRouteRoute: ApiCronCleanupAuthStateRouteRoute,
+  ApiCronCleanupBestDressedRouteRoute: ApiCronCleanupBestDressedRouteRoute,
   ApiCronCleanupCommunicationLinksRouteRoute:
     ApiCronCleanupCommunicationLinksRouteRoute,
   ApiCronCleanupEmailRouteRoute: ApiCronCleanupEmailRouteRoute,

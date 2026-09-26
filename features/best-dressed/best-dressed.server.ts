@@ -4,6 +4,20 @@ import { getRedis } from "@/lib/platform/redis.server";
 import { reserveRateLimit } from "@/lib/platform/rate-limit.server";
 import { generateHumanCode } from "@/lib/server/human-code";
 import { getAttendeeNames } from "./attendees.server";
+import {
+  clearPostgresBestDressed,
+  getPostgresVotingWindow,
+  issuePostgresVoteToken,
+  mintPostgresBestDressedCodes,
+  postgresVotedFor,
+  postgresVoteCodeExists,
+  postgresVoteTokenExists,
+  readPostgresVotingState,
+  revokePostgresBestDressedCodes,
+  setPostgresOpenUntilSeconds,
+  setPostgresVotingWindow,
+  votePostgresBestDressed,
+} from "./best-dressed-postgres.server";
 
 const VOTES_HASH_KEY = "best-dressed:votes:v2";
 const SESSION_KEY = "best-dressed:session";
@@ -32,6 +46,10 @@ const memoryVotes = new Map<string, number>();
 const memoryTokens = new Set<string>(); // stores issued tokens until consumed/expired (no TTL in memory mode)
 let memorySession = "initial";
 const memoryVotedBySession = new Map<string, Map<string, string>>(); // session -> (voterId -> votedFor)
+
+function usePostgresVoting() {
+  return process.env.BEST_DRESSED_STORE === "postgres";
+}
 
 export type LeaderboardEntry = { name: string; count: number };
 
@@ -168,6 +186,7 @@ async function getOpenUntilSeconds(): Promise<number> {
 }
 
 export async function setOpenUntilSeconds(openUntil: number): Promise<void> {
+  if (usePostgresVoting()) return setPostgresOpenUntilSeconds(openUntil);
   const redis = getRedis();
   const safe = Number.isFinite(openUntil) ? Math.max(0, Math.floor(openUntil)) : 0;
   if (redis) {
@@ -276,6 +295,21 @@ async function getVotedFor(session: string, voterId: string): Promise<string | n
 }
 
 export async function getBestDressedSnapshot(): Promise<BestDressedSnapshot> {
+  if (usePostgresVoting()) {
+    const [voterId, state, voteToken] = await Promise.all([
+      getExistingVoterId(),
+      readPostgresVotingState(),
+      issuePostgresVoteToken(),
+    ]);
+    const votedFor = voterId ? await postgresVotedFor(state.session, voterId) : null;
+    return {
+      ...state,
+      voteToken,
+      votedFor,
+      codeRequired: state.openUntil === 0,
+      openUntil: state.openUntil || null,
+    };
+  }
   const [voterId, votes, session, voteToken, openUntil] = await Promise.all([
     getExistingVoterId(),
     getVotes(),
@@ -310,6 +344,16 @@ export async function searchBestDressedGuests(input: {
   code?: string;
 }): Promise<{ names: string[] }> {
   const query = typeof input.query === "string" ? input.query.trim().toLocaleLowerCase() : "";
+  if (usePostgresVoting()) {
+    if (query.length < 2 || !(await postgresVoteTokenExists(input.voteToken))) return { names: [] };
+    const state = await readPostgresVotingState();
+    if (state.openUntil === 0 && !(await postgresVoteCodeExists(input.code ?? "")))
+      return { names: [] };
+    const attendees = await getAttendeeNames();
+    return {
+      names: attendees.filter((name) => name.toLocaleLowerCase().includes(query)).slice(0, 8),
+    };
+  }
   if (query.length < 2 || !(await tokenExists(input.voteToken))) return { names: [] };
   const openUntil = await getOpenUntilSeconds();
   if (openUntil <= Math.floor(Date.now() / 1000)) {
@@ -326,6 +370,14 @@ export async function searchBestDressedGuests(input: {
 }
 
 export async function getBestDressedLeaderboardSnapshot(): Promise<BestDressedLeaderboardSnapshot> {
+  if (usePostgresVoting()) {
+    const state = await readPostgresVotingState();
+    return {
+      ...state,
+      codeRequired: state.openUntil === 0,
+      openUntil: state.openUntil || null,
+    };
+  }
   const [votes, session, openUntil] = await Promise.all([
     getVotes(),
     getSession(),
@@ -376,6 +428,11 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
       status: 429,
       error: "Too many votes from this network. Please wait a bit and try again.",
     };
+  }
+
+  if (usePostgresVoting()) {
+    const [{ voterId }, names] = await Promise.all([getOrCreateVoterId(), getAttendeeNames()]);
+    return votePostgresBestDressed(input, voterId, new Set(names));
   }
 
   const [{ voterId }, session, openUntil] = await Promise.all([
@@ -513,6 +570,7 @@ export async function voteBestDressed(input: VoteInput): Promise<VoteResult> {
 }
 
 export async function clearBestDressedVotes(): Promise<{ ok: true; session: string }> {
+  if (usePostgresVoting()) return clearPostgresBestDressed();
   const redis = getRedis();
   if (redis) {
     await redis.del(VOTES_HASH_KEY);
@@ -527,6 +585,7 @@ export async function mintBestDressedCodes(input: {
   ttlMinutes?: number;
   words?: number | string;
 }) {
+  if (usePostgresVoting()) return mintPostgresBestDressedCodes(input);
   const redis = getRedis();
   if (!redis) return { ok: false as const, status: 503, error: "Vote codes are unavailable" };
   const count =
@@ -577,6 +636,7 @@ export async function mintBestDressedCodes(input: {
 }
 
 export async function revokeAllBestDressedCodes() {
+  if (usePostgresVoting()) return revokePostgresBestDressedCodes();
   const redis = getRedis();
   if (!redis) return { ok: false as const, status: 503, error: "Vote codes are unavailable" };
   const codes = await redis.smembers<string[]>(CODE_INDEX_KEY);
@@ -619,6 +679,7 @@ export async function revokeAllBestDressedCodes() {
 }
 
 export async function getBestDressedVotingWindow() {
+  if (usePostgresVoting()) return getPostgresVotingWindow();
   const redis = getRedis();
   if (!redis) return { ok: false as const, status: 503, error: "Voting window is unavailable" };
   const value = await redis.get<number | string>(OPEN_UNTIL_KEY);
@@ -636,6 +697,7 @@ export async function getBestDressedVotingWindow() {
 }
 
 export async function setBestDressedVotingWindow(minutesInput: unknown) {
+  if (usePostgresVoting()) return setPostgresVotingWindow(minutesInput);
   const redis = getRedis();
   if (!redis) return { ok: false as const, status: 503, error: "Voting window is unavailable" };
   const minutes =

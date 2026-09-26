@@ -23,6 +23,9 @@ begin
   if to_regclass('public.diagnostic_legacy_reports') is not null then
     revoke all on table diagnostic_legacy_reports from mah_app_runtime;
   end if;
+  if to_regclass('public.best_dressed_legacy_votes') is not null then
+    revoke all on table best_dressed_legacy_votes from mah_app_runtime;
+  end if;
 end
 $$;
 grant usage, select on all sequences in schema public to mah_app_runtime;

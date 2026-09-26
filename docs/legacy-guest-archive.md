@@ -69,6 +69,8 @@ An optional fifth output extracts attendee sessions and their absolute expiries 
 [the attendee-session migration](./attendee-session-postgres.md).
 An optional sixth output extracts current and retired diagnostic reports and their
 absolute expiries for [the report migration](./diagnostic-report-postgres.md).
+An optional seventh output extracts active and retired Best Dressed voting state for
+[the voting migration](./best-dressed-postgres.md).
 
 ## Import and verify
 

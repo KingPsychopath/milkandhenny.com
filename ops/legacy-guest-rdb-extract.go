@@ -27,10 +27,17 @@ type guestExtractor struct {
 	reports        map[string]json.RawMessage
 	reportState    map[string]string
 	reportExpiry   map[string]time.Time
+	votingStrings  map[string]string
+	votingHashes   map[string]map[string]string
+	votingExpiry   map[string]time.Time
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	if strings.HasPrefix(key, "best-dressed:") {
+		g.votingStrings[key] = value
+		return nil
+	}
 	if strings.HasPrefix(key, "diagnostic-report:v1:") || strings.HasPrefix(key, "user-report:") {
 		if !json.Valid([]byte(value)) {
 			return errors.New("invalid report JSON")
@@ -87,6 +94,9 @@ func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
 	if strings.HasPrefix(key, "diagnostic-report:") || strings.HasPrefix(key, "user-report:") {
 		g.reportExpiry[key] = expires
 	}
+	if strings.HasPrefix(key, "best-dressed:") {
+		g.votingExpiry[key] = expires
+	}
 }
 func (*guestExtractor) HandleListEnding(string, uint64)                     {}
 func (*guestExtractor) HandleZsetEnding(string, uint64)                     {}
@@ -108,8 +118,16 @@ func (*guestExtractor) SetEntryHandler(string) func(string) error {
 func (*guestExtractor) ZsetEntryHandler(string) func(string, float64) error {
 	return func(string, float64) error { return nil }
 }
-func (*guestExtractor) HashEntryHandler(string) func(string, string) error {
-	return func(string, string) error { return nil }
+func (g *guestExtractor) HashEntryHandler(key string) func(string, string) error {
+	return func(field, value string) error {
+		if key == "best-dressed:votes:v2" || strings.HasPrefix(key, "best-dressed:voted:") {
+			if g.votingHashes[key] == nil {
+				g.votingHashes[key] = make(map[string]string)
+			}
+			g.votingHashes[key][field] = value
+		}
+		return nil
+	}
 }
 func (*guestExtractor) HashWithExpEntryHandler(string) func(string, string, time.Time) error {
 	return func(string, string, time.Time) error { return nil }
@@ -125,8 +143,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 7 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 8 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -143,6 +161,9 @@ func main() {
 		reports:        make(map[string]json.RawMessage),
 		reportState:    make(map[string]string),
 		reportExpiry:   make(map[string]time.Time),
+		votingStrings:  make(map[string]string),
+		votingHashes:   make(map[string]map[string]string),
+		votingExpiry:   make(map[string]time.Time),
 	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
@@ -275,7 +296,7 @@ func main() {
 		}
 		fmt.Printf("attendee_sessions=%d person_versions=%d\n", len(rows), len(extractor.personVersions))
 	}
-	if len(os.Args) == 7 {
+	if len(os.Args) >= 7 {
 		type reportRow struct {
 			Key       string          `json:"key"`
 			Value     json.RawMessage `json:"value"`
@@ -331,5 +352,100 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("diagnostic_report_records=%d diagnostic_report_state=%d\n", len(reports), len(state))
+	}
+	if len(os.Args) == 8 {
+		type expiringString struct {
+			Key       string `json:"key"`
+			Value     string `json:"value"`
+			ExpiresAt string `json:"expiresAt"`
+		}
+		type expiringHash struct {
+			Key       string            `json:"key"`
+			Values    map[string]string `json:"values"`
+			ExpiresAt string            `json:"expiresAt"`
+		}
+		votes := extractor.votingHashes["best-dressed:votes:v2"]
+		if raw, ok := extractor.votingStrings["best-dressed:votes:v2"]; ok {
+			if votes != nil {
+				panic("Best Dressed votes appear as two Redis types")
+			}
+			var parsed map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(raw), &parsed); err != nil || parsed == nil {
+				panic("Best Dressed votes string is not a JSON object")
+			}
+			votes = make(map[string]string, len(parsed))
+			for name, count := range parsed {
+				var number json.Number
+				if err := json.Unmarshal(count, &number); err != nil {
+					panic("Best Dressed votes JSON has a nonnumeric count")
+				}
+				votes[name] = string(number)
+			}
+		}
+		if votes == nil {
+			votes = make(map[string]string)
+		}
+		stringsOut := []expiringString{}
+		for key, value := range extractor.votingStrings {
+			if key == "best-dressed:session" || key == "best-dressed:open-until" ||
+				key == "best-dressed:votes:v2" || key == "best-dressed:votes" {
+				continue
+			}
+			if !strings.HasPrefix(key, "best-dressed:token:") && !strings.HasPrefix(key, "best-dressed:code:") {
+				panic(fmt.Sprintf("unexpected Best Dressed string key hash=%x", sha256.Sum256([]byte(key))))
+			}
+			expires, ok := extractor.votingExpiry[key]
+			if !ok {
+				panic("Best Dressed credential lacks absolute expiry")
+			}
+			stringsOut = append(stringsOut, expiringString{key, value, expires.UTC().Format(time.RFC3339Nano)})
+		}
+		sort.Slice(stringsOut, func(i, j int) bool { return stringsOut[i].Key < stringsOut[j].Key })
+		hashesOut := []expiringHash{}
+		for key, values := range extractor.votingHashes {
+			if key == "best-dressed:votes:v2" {
+				continue
+			}
+			if !strings.HasPrefix(key, "best-dressed:voted:") {
+				panic("unexpected Best Dressed hash key")
+			}
+			expires, ok := extractor.votingExpiry[key]
+			if !ok {
+				panic("Best Dressed voter receipt lacks absolute expiry")
+			}
+			hashesOut = append(hashesOut, expiringHash{key, values, expires.UTC().Format(time.RFC3339Nano)})
+		}
+		sort.Slice(hashesOut, func(i, j int) bool { return hashesOut[i].Key < hashesOut[j].Key })
+		payload, err := json.Marshal(struct {
+			Session     string            `json:"session"`
+			OpenUntil   string            `json:"openUntil"`
+			Votes       map[string]string `json:"votes"`
+			LegacyVotes string            `json:"legacyVotes"`
+			Strings     []expiringString  `json:"strings"`
+			Voted       []expiringHash    `json:"voted"`
+		}{
+			extractor.votingStrings["best-dressed:session"],
+			extractor.votingStrings["best-dressed:open-until"],
+			votes,
+			extractor.votingStrings["best-dressed:votes"],
+			stringsOut,
+			hashesOut,
+		})
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(os.Args[7], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("best_dressed_active_vote_candidates=%d legacy_votes_present=%t credentials=%d voted_hashes=%d\n",
+			len(votes), extractor.votingStrings["best-dressed:votes"] != "", len(stringsOut), len(hashesOut))
 	}
 }

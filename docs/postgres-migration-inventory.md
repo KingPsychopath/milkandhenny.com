@@ -114,6 +114,14 @@ idempotently. A different source hash was refused. The restricted runtime role c
 read current reports but not the retired-format table. The Postgres backend remains opt-in;
 see [the report runbook](./diagnostic-report-postgres.md).
 
+Local migration `0105_best_dressed` stores the active voting round, candidate totals,
+one-time credentials and voter receipts. The supplied RDB has no active v2 tally, but it
+has an older `best-dressed:votes` value with 23 entries. Current source code reads only
+`best-dressed:votes:v2`; the old tally is archived without activating it. The restored
+production clone accepted an idempotent import of the session and retired value. The
+runtime role reads active tables but cannot read the retired table. See
+[the voting runbook](./best-dressed-postgres.md).
+
 This validates logical restore and ledger upgrade for this snapshot. It does not establish
 Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key
 recovery or the final cutover snapshot. The production web credential remains the `postgres`
