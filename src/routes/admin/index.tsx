@@ -1,4 +1,6 @@
 import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
+import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
+import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -91,9 +93,9 @@ export const Route = createFileRoute("/admin/")({
     eventSlug: search.communicationEvent,
   }),
   loader: {
-    handler: async ({ deps }) => {
+    handler: async ({ deps, context }) => {
       const access = await getAdminAccessFn();
-      const communications =
+      const communicationsPromise =
         access.isAuthed &&
         access.permissions?.manageCommunications &&
         deps.view === "communications"
@@ -105,6 +107,23 @@ export const Route = createFileRoute("/admin/")({
               }),
             )
           : null;
+      const summaryPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        (deps.view === "overview" || deps.view === "content")
+          ? context.queryClient.prefetchQuery(adminContentSummaryQuery)
+          : null;
+      const healthPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        (deps.view === "overview" || deps.view === "system")
+          ? context.queryClient.prefetchQuery(adminSystemHealthQuery)
+          : null;
+      const [communications] = await Promise.all([
+        communicationsPromise,
+        summaryPromise,
+        healthPromise,
+      ]);
       return { ...access, communications };
     },
     staleReloadMode: "blocking",

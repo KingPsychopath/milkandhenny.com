@@ -8,6 +8,7 @@ test("public listing queries render on the server and survive client navigation"
   for (const [path, marker] of [
     ["/", "thoughts, stories, and things worth sharing"],
     ["/words", "search or scroll"],
+    ["/pics", "photos from the motives"],
     ["/events", "Upcoming"],
   ]) {
     const response = await request.get(path);

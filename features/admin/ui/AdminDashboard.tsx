@@ -11,8 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link } from "@tanstack/react-router";
-import type { SystemCapabilities } from "@/features/system/capabilities";
-import type { MultiplayerTelemetrySnapshot } from "@/features/things/shared/multiplayer-telemetry";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { AdminCommandPalette } from "./components/AdminCommandPalette";
@@ -29,6 +28,11 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 import { useAdminAutoRefresh } from "./hooks/useAdminAutoRefresh";
 import { formatRemaining } from "./format";
 import { AdminStatus } from "./components/AdminStatus";
+import { adminContentSummaryQuery } from "../content-summary.queries";
+import { homePageQuery } from "@/features/site/home.queries";
+import { wordsPageQuery } from "@/features/words/reader.queries";
+import { albumsPageQuery } from "@/features/media/albums.queries";
+import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 
 const TokenSessionsPanel = lazy(() =>
   import("./components/TokenSessionsPanel").then((module) => ({
@@ -89,89 +93,6 @@ const AttendeeSettingsPanel = lazy(() =>
   })),
 );
 
-type BlogSummary = {
-  totalPosts: number;
-  featuredPosts: number;
-  postsWithImages: number;
-  totalReadingMinutes: number;
-  latestPostDate: string | null;
-  recent: Array<{
-    slug: string;
-    title: string;
-    date: string;
-    readingTime: number;
-    featured: boolean;
-  }>;
-};
-
-type GallerySummary = {
-  totalAlbums: number;
-  totalPhotos: number;
-  albumsWithoutDescription: number;
-  invalidAlbumCount: number;
-  latestAlbumDate: string | null;
-  recent: Array<{
-    slug: string;
-    title: string;
-    date: string;
-    photoCount: number;
-  }>;
-};
-
-type ContentSummaryResponse = {
-  blog: BlogSummary;
-  gallery: GallerySummary;
-};
-
-type DebugResponse = SystemCapabilities & {
-  scheduledJobs?: Array<{
-    jobKey: string;
-    nextRunAt: string;
-    lastSucceededAt: string | null;
-    lastError: string | null;
-    failureCount: number;
-  }>;
-  emailOutbox: {
-    available: boolean;
-    pending: number;
-    processing: number;
-    accepted: number;
-    failed: number;
-    cancelled: number;
-    delivered: number;
-    awaitingProviderFeedback: number;
-    oldestPendingAt: string | null;
-    latestDeliveryEventAt: string | null;
-  };
-  mediaQueue: {
-    available: boolean;
-    enabled: boolean;
-    queued: number;
-    leased: number;
-    permanentFailures: number;
-    backlogAgeMs: number | null;
-    reason?: string;
-  };
-  multiplayer: MultiplayerTelemetrySnapshot;
-  gamePools: {
-    activeAssignments: number;
-    openRooms: number;
-    openRuns: number;
-    allocation: {
-      attempts: number;
-      failures: number;
-      contention: number;
-      averageMs: number | null;
-      maxMs: number | null;
-    };
-  };
-  securityWarnings: string[];
-  help?: {
-    forceReload?: string;
-    bootstrap?: string;
-  };
-};
-
 type SessionRevokeResponse = {
   error?: string;
   revoked?: Array<{ role?: string; tokenVersion?: number }>;
@@ -222,16 +143,27 @@ export function AdminDashboard({
   onOperationsPersonChange: (personId?: string) => void;
   permissions: GlobalAdminPermissionSet;
 }) {
+  const queryClient = useQueryClient();
+  const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
+  const contentQuery = useQuery({
+    ...adminContentSummaryQuery,
+    enabled: permissions.manageContent && (view === "overview" || view === "content"),
+  });
+  const content = contentQuery.data ?? null;
+  const systemQuery = useQuery({
+    ...adminSystemHealthQuery,
+    enabled:
+      permissions.viewOperations &&
+      !systemRefreshHalted &&
+      (view === "overview" || view === "system"),
+  });
+  const debugData = systemQuery.data ?? null;
+  const refetchSystem = systemQuery.refetch;
+  const loading = contentQuery.isFetching || systemQuery.isFetching;
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
-  const [loading, setLoading] = useState(
-    view === "overview" || view === "content" || view === "system",
-  );
-  const [dashboardLoaded, setDashboardLoaded] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [content, setContent] = useState<ContentSummaryResponse | null>(null);
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
-  const [debugData, setDebugData] = useState<DebugResponse | null>(null);
   const [operationsUnread, setOperationsUnread] = useState(0);
   const [operationsUnresolvedByCategory, setOperationsUnresolvedByCategory] = useState<
     Record<string, number>
@@ -252,8 +184,12 @@ export function AdminDashboard({
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
   const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
   const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
-  const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
   const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
+
+  useEffect(() => {
+    const status = (systemQuery.error as { status?: number } | null)?.status;
+    if (status && status >= 400 && status < 500) setSystemRefreshHalted(true);
+  }, [systemQuery.error]);
 
   const {
     authFetch,
@@ -262,58 +198,21 @@ export function AdminDashboard({
     authDialog,
   } = useAdminAuth();
 
-  const refreshDashboard = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
-    const errors: string[] = [];
-    try {
-      const [contentResult, debugResult] = await Promise.allSettled([
-        permissions.manageContent ? authFetch("/api/admin/content-summary") : Promise.resolve(null),
-        permissions.viewOperations ? authFetch("/api/debug") : Promise.resolve(null),
-      ]);
+  const refreshContentSummary = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: adminContentSummaryQuery.queryKey }),
+    [queryClient],
+  );
 
-      if (
-        permissions.manageContent &&
-        contentResult.status === "fulfilled" &&
-        contentResult.value?.ok
-      ) {
-        try {
-          setContent((await contentResult.value.json()) as ContentSummaryResponse);
-        } catch {
-          errors.push("The content summary returned an unreadable response.");
-        }
-      } else if (permissions.manageContent) {
-        errors.push("The content summary could not be loaded.");
-      }
-
-      if (
-        permissions.viewOperations &&
-        debugResult.status === "fulfilled" &&
-        debugResult.value?.ok
-      ) {
-        try {
-          setDebugData((await debugResult.value.json()) as DebugResponse);
-          setSystemRefreshHalted(false);
-        } catch {
-          errors.push("The system check returned an unreadable response.");
-        }
-      } else if (permissions.viewOperations) {
-        errors.push("The system check could not be loaded.");
-      }
-
-      setErrorMessage(errors.join(" "));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to refresh dashboard";
-      setErrorMessage(msg);
-    } finally {
-      setLoading(false);
-      setDashboardLoaded(true);
-    }
-  }, [authFetch, permissions.manageContent, permissions.viewOperations]);
-
-  useEffect(() => {
-    if (view === "overview" || view === "content" || view === "system") void refreshDashboard();
-  }, [refreshDashboard, view]);
+  const refreshPublishedContent = useCallback(
+    () =>
+      Promise.all([
+        refreshContentSummary(),
+        queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: wordsPageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: albumsPageQuery.queryKey }),
+      ]),
+    [queryClient, refreshContentSummary],
+  );
 
   useLayoutEffect(() => {
     const targetTop = pendingEventWorkspaceScrollTop.current;
@@ -337,14 +236,14 @@ export function AdminDashboard({
   }, [view]);
 
   const refreshSystemSnapshot = useCallback(async () => {
-    const response = await authFetch("/api/debug");
-    if (!response.ok) {
-      if (response.status >= 400 && response.status < 500) setSystemRefreshHalted(true);
-      throw new Error("Could not refresh system status");
+    const result = await refetchSystem();
+    if (result.isError) {
+      const status = (result.error as { status?: number })?.status;
+      if (status && status >= 400 && status < 500) setSystemRefreshHalted(true);
+      throw result.error;
     }
     setSystemRefreshHalted(false);
-    setDebugData((await response.json()) as DebugResponse);
-  }, [authFetch]);
+  }, [refetchSystem]);
 
   useAdminAutoRefresh({
     enabled: view === "system" && !systemRefreshHalted,
@@ -612,7 +511,7 @@ export function AdminDashboard({
         <AdminSectionNav active={view} onChange={handleViewChange} permissions={permissions} />
       </header>
 
-      {statusMessage || errorMessage ? (
+      {statusMessage || errorMessage || contentQuery.isError || systemQuery.isError ? (
         <div className="mb-4 font-mono text-xs" aria-live="polite">
           {statusMessage ? (
             <p role="status">
@@ -622,6 +521,16 @@ export function AdminDashboard({
           {errorMessage ? (
             <p role="alert">
               <AdminStatus tone="danger">{errorMessage}</AdminStatus>
+            </p>
+          ) : null}
+          {contentQuery.isError ? (
+            <p role="alert">
+              <AdminStatus tone="danger">The content summary could not be loaded.</AdminStatus>
+            </p>
+          ) : null}
+          {systemQuery.isError ? (
+            <p role="alert">
+              <AdminStatus tone="danger">The system check could not be loaded.</AdminStatus>
             </p>
           ) : null}
         </div>
@@ -775,9 +684,15 @@ export function AdminDashboard({
               <AdminOverviewPanel
                 content={content}
                 system={debugData}
-                loading={loading || !dashboardLoaded}
+                loading={loading}
                 unresolvedByCategory={operationsUnresolvedByCategory}
-                onRefresh={() => void Promise.all([refreshDashboard(), refreshOperationsInbox()])}
+                onRefresh={() =>
+                  void Promise.all([
+                    refreshSystemSnapshot(),
+                    refreshOperationsInbox(),
+                    refreshContentSummary(),
+                  ])
+                }
                 onNavigate={handleNavigate}
                 permissions={permissions}
               />
@@ -819,8 +734,8 @@ export function AdminDashboard({
             <PanelBoundary label="system health">
               <SystemHealthPanel
                 snapshot={debugData}
-                loading={loading || !dashboardLoaded}
-                onRefresh={() => void refreshDashboard()}
+                loading={loading}
+                onRefresh={() => void refreshSystemSnapshot()}
               />
             </PanelBoundary>
 
@@ -996,7 +911,7 @@ export function AdminDashboard({
               onError={setErrorMessage}
               onStatus={setStatusMessage}
               content={content}
-              onContentChanged={() => void refreshDashboard()}
+              onContentChanged={() => void refreshPublishedContent()}
             />
           </PanelBoundary>
         ) : null}
