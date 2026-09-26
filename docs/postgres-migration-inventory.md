@@ -15,6 +15,7 @@ Read-only Railway production inspection found:
 | Installed extensions     | `plpgsql` only                                                                                                                                                                                                                                                          |
 | WAL and timeout settings | `wal_level=replica`; default `statement_timeout=0`; default `idle_in_transaction_session_timeout=0`                                                                                                                                                                     |
 | Railway backup coverage  | PITR disabled; no scheduled backup; one listed backup created 2026-08-23, named `Pre-Security-Patch Backup`. No restore evidence established.                                                                                                                           |
+| Runtime database role    | Production web uses `postgres` with `rolsuper=true`, `rolcreaterole=true` and `rolcreatedb=true`. A separate non-superuser runtime role is required before restricted archive installation.                                                                             |
 | Table statistics         | `pg_stat_user_tables` snapshot held outside Git at `/tmp/milkandhenny-prod-tablestats-20260926.csv`. These are estimates, not reconciliation counts.                                                                                                                    |
 
 Read-only R2 listing through the production web service credentials counted objects without
@@ -69,6 +70,24 @@ One 10-second idle-period sample observed 21 committed transactions (2.1/s), zer
 zero block reads and 879 buffer hits. This is only an incident-period point sample while Redis
 calls are failing; it does not bound event-night room concurrency, media throughput or peak
 database demand. Load tests and a representative healthy period remain M1/M11 gates.
+
+## Isolated Postgres restore drill
+
+A read-only full production `pg_dump` in custom format was captured on 2026-09-26 at
+`tmp/private-migration/postgres-production-20260926.dump`, mode 0600, size 1,636,143 bytes,
+SHA-256 `27e62f4d806a68cf3e6d4a49161b13e188cee49a48b741ced8d079f1e8e3c0b9`.
+The file contains personal data and remains outside Git. `pg_restore --list` succeeded. A
+single-transaction restore into isolated local Postgres 18 completed without error; it contained
+117 public tables, 97 migration rows, three events, 119 tickets and 908 email-outbox rows,
+matching the source counts. The new `pnpm database:migrate` command then returned 96
+already-applied source migrations and zero new migrations, recognizing the production-only
+`0025_site_settings` row. After installing local runtime grants, `pnpm database:verify`
+succeeded as `mah_app_runtime`.
+
+This validates logical restore and ledger upgrade for this snapshot. It does not establish
+Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key
+recovery or the final cutover snapshot. The production web credential remains the `postgres`
+superuser until a separately authorized role switch.
 
 A second read-only listing and selected manifest reads reconciled the supplied RDB to object
 storage without printing keys or private content:

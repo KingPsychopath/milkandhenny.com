@@ -494,6 +494,9 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
       mutations, read models, scheduled work and browser recovery contracts.
 - [x] Match the exported word and transfer object references to R2; parse and validate editable
       album/word-image manifests and their referenced objects without exposing private content.
+- [x] Capture a private read-only production Postgres dump and restore it into isolated local
+      Postgres; confirm sampled counts and exercise the migration-ledger upgrade and restricted
+      verification path. Independent scheduled/off-host backup coverage remains open.
 - [ ] Obtain permitted production inventory and effective schema; verify server features,
       backup coverage, storage sizes, key/row counts and data-quality contradictions.
 - [ ] Specify complete DDL, relationships, indexes, retention and source mappings for each
@@ -711,8 +714,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
-  audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`.
-  The runtime-role safeguard accompanies the next local implementation commit.
+  audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
+  restricted runtime verification `379bb872`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -738,7 +741,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   production restore drill remain pending. For runtime role separation, the five-case migration
   ledger suite, `pnpm check` and `pnpm build` passed. Local Postgres accepted the grant script;
   `mah_app_runtime` could verify all 96 migrations and could not CREATE in `public` or use
-  `legacy_archive`. Full feature tests are deferred until the wider persistence change.
+  `legacy_archive`. A private full production dump restored transactionally to an isolated
+  database with 117 tables and 97 ledger rows; the migration command applied zero SQL
+  migrations and the runtime verification succeeded on the restored data. Full feature tests
+  are deferred until the wider persistence change.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
