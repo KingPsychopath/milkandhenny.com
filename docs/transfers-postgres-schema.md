@@ -9,11 +9,17 @@ token hash for verification and ciphertext/nonce columns for the existing resume
 must return the token after finalization. The staged
 [deletion-token codec](../features/transfers/delete-token-postgres.server.ts) derives a distinct
 AES-GCM key from the web role's `AUTH_SECRET`, binds ciphertext to the transfer ID, and appends
-the authentication tag. A future repository must omit token decryption on the worker role and
-keep the same secret available for the lifetime of surviving transfers. Files keep stable IDs,
+the authentication tag. Keep the same secret available for the lifetime of surviving transfers.
+Files keep stable IDs,
 positions and media-processing fields. Composite foreign keys keep group members and jobs
 attached to files in their own transfer. Reservations intentionally have no transfer FK because
 presign creates them before finalization creates the transfer.
+
+The staged [catalogue repository](../features/transfers/catalogue-postgres.server.ts) commits a
+transfer, its files and its groups together. It reads them under one repeatable-read snapshot.
+Web reads decrypt the deletion token; worker reads omit the ciphertext columns entirely and need
+no web secret. Append, update, delete, quota and expiry workflows are still pending, so the
+application has not selected this repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and
