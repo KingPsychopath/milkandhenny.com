@@ -222,7 +222,8 @@ storage migration remains governed by its own data integrity, cutover, and opera
 
 ## Proposed implementation milestones
 
-These are future implementation steps. No application milestone is complete in this proposal.
+These are implementation milestones. The foundation and poll slice are implemented; broader M1
+acceptance evidence and later slices remain open.
 
 | Milestone                             | Outcome                                                                                                                      | Dependencies and acceptance                                                                                                                                            |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -268,15 +269,22 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   Created an isolated worktree and branch at the recorded `main` base. Selected polls for M1
   because its SSR read, browser-local voter identity, and vote mutation cover the full query
   lifecycle without mixing into the concurrent storage migration.
-- Application implementation: in progress. No Query-backed feature is complete yet.
-- Verification: previous proposal's formatting, link/path and script-name checks passed.
-  Application checks will be recorded by milestone.
-- Open: measured workload/freshness budgets, exact package compatibility, full endpoint-consumer
-  inventory, capability-view cache scopes, and per-feature invalidation relationships.
-- Next action: implement and verify M1, including request-scoped SSR hydration and complete poll
-  ownership; then take the next feature slice. Keep this checkpoint current as evidence changes.
-- Commit record: `aba7708d` proposed the architecture on `main`; implementation commits will be
-  recorded here when each milestone is complete.
+- Application implementation: QueryClient is created per router, integrated with Start SSR, and
+  passed through typed route context. The poll route now seeds and observes one public Query entry;
+  its browser-only voter lookup, vote mutation, and public result invalidation use feature queries.
+  Identity transitions cancel/clear Query snapshots with Router state. Unmigrated loaders keep the
+  existing Router preload policy; migrated routes opt into Query freshness.
+- Verification: `pnpm check`, `pnpm build`, poll integration tests, focused poll Playwright journey,
+  and identity-reset unit test passed. The browser journey proved SSR poll content, vote submission,
+  and restored device view. Full suite is deferred until cross-feature slices are integrated.
+- Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
+  and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
+  per-feature invalidation relationships. M1 implementation is a foundation, not full M1
+  acceptance closure.
+- Next action: migrate admin and attendee/public resource slices; verify each workflow, then
+  revisit all M1 acceptance checks and complete integrated verification before declaring done.
+- Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
+  implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset.
 
 ## References
 
