@@ -1,6 +1,7 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute, notFound } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { JourneyRail } from "@/components/SiteFooter";
-import { getPhotoPageFn } from "@/features/media/albums.functions";
+import { albumPageQuery } from "@/features/media/albums.queries";
 import {
   getAlbumImageData,
   getOgUrl,
@@ -16,7 +17,22 @@ import { BrandedImage } from "@/features/media/components/BrandedImage";
 
 export const Route = createFileRoute("/pics/$album/$photo")({
   component: PhotoPage,
-  loader: ({ params }) => getPhotoPageFn({ data: params }),
+  loader: async ({ context, params }) => {
+    const { album } = await context.queryClient.fetchQuery(albumPageQuery(params.album));
+    const photoIndex = album.photos.findIndex((photo) => photo.id === params.photo);
+    if (photoIndex < 0) throw notFound();
+    const photo = album.photos[photoIndex];
+    return {
+      albumSlug: album.slug,
+      albumTitle: album.title,
+      photoId: photo.id,
+      photoTitle: photo.title,
+      photoIndex,
+      photoCount: album.photos.length,
+      photoVersion: photo.version,
+    };
+  },
+  preloadStaleTime: 0,
   head: ({ loaderData }) => {
     if (!loaderData) {
       return buildSeoHead({
@@ -26,21 +42,23 @@ export const Route = createFileRoute("/pics/$album/$photo")({
         robots: "noindex, nofollow",
       });
     }
-    const { album, photoIndex } = loaderData;
-    const photo = album.photos[photoIndex];
-    const description = `Photo ${photoIndex + 1} of ${album.photos.length} from ${album.title}`;
+    const { albumSlug, albumTitle, photoId, photoTitle, photoIndex, photoCount, photoVersion } =
+      loaderData;
+    const description = `Photo ${photoIndex + 1} of ${photoCount} from ${albumTitle}`;
     return buildSeoHead({
-      title: `${photo.title ?? `Photo ${photoIndex + 1}`} — ${album.title} — ${SITE_NAME}`,
+      title: `${photoTitle ?? `Photo ${photoIndex + 1}`} — ${albumTitle} — ${SITE_NAME}`,
       description,
-      path: `/pics/${album.slug}/${photo.id}`,
-      image: getOgUrl(album.slug, photo.id, photo.version),
-      imageAlt: `${album.title}, photo ${photoIndex + 1} — Milk & Henny photos`,
+      path: `/pics/${albumSlug}/${photoId}`,
+      image: getOgUrl(albumSlug, photoId, photoVersion),
+      imageAlt: `${albumTitle}, photo ${photoIndex + 1} — Milk & Henny photos`,
     });
   },
 });
 
 function PhotoPage() {
-  const { album, photoIndex } = Route.useLoaderData();
+  const { album } = useSuspenseQuery(albumPageQuery(Route.useParams().album)).data;
+  const photoIndex = album.photos.findIndex((photo) => photo.id === Route.useParams().photo);
+  if (photoIndex < 0) throw notFound();
   const albumSlug = album.slug;
   const photo = album.photos[photoIndex];
   const photoId = photo.id;

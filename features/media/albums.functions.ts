@@ -20,13 +20,3 @@ export const getAlbumPageFn = createServerFn({ method: "GET" })
       newerAlbum: newerAlbum ? { slug: newerAlbum.slug, title: newerAlbum.title } : null,
     };
   });
-
-export const getPhotoPageFn = createServerFn({ method: "GET" })
-  .validator((data: { album: string; photo: string }) => data)
-  .handler(async ({ data }) => {
-    const album = await getAlbumBySlug(data.album);
-    if (!album) throw notFound();
-    const photoIndex = album.photos.findIndex((photo) => photo.id === data.photo);
-    if (photoIndex === -1) throw notFound();
-    return { album, photoIndex };
-  });
