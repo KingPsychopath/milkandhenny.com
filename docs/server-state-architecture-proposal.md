@@ -283,13 +283,16 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   seed their private Query entries on the server. AdminDashboard observes those entries instead of
   fetching and copying both snapshots after mount. The existing visibility scheduler still controls
   system checks, including a hard minimum gap and a stop on 4xx; confirmed content edits invalidate
-  their admin summary and the affected public listing families. The operations inbox,
-  communications workspace, and other admin panels remain to migrate.
+  their admin summary and the affected public listing families. The operations inbox now has a
+  shared feature read, a streamed private Query snapshot, and a Query-backed notification summary;
+  its bounded refresh scheduler and 4xx stop remain in place. Communications and other admin panels
+  remain to migrate.
 - Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
   four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
   account, poll, and admin Playwright journeys passed. The browser journeys proved SSR content,
   poll vote submission and restored device view, account sign-out isolation, and admin overview
-  content/system hydration. The Playwright app now uses the Postgres album store, since its S3 stub
+  content/system hydration and the inbox badge/popover with a seeded notification. The full suite
+  and production build passed again after the inbox change. The Playwright app now uses the Postgres album store, since its S3 stub
   does not serve album manifests. The default 20-worker Vitest run stalled behind database lock
   contention and was replaced by the passing capped run. The final build and focused admin browser
   rerun passed after the 4xx polling adjustment.
@@ -297,13 +300,14 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
-- Next action: migrate the operations inbox, communications workspace, transfer metadata, and
+- Next action: migrate the communications workspace, transfer metadata, and
   remaining resource families.
   Revisit all M1 acceptance checks and integrated verification before declaring done.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
-  recorded that checkpoint; `0dc90b31` hydrated admin content and system snapshots.
+  recorded that checkpoint; `0dc90b31` hydrated admin content and system snapshots; `60c85235`
+  recorded that checkpoint; `ba41fc9c` hydrated the operations inbox.
 
 ## References
 
