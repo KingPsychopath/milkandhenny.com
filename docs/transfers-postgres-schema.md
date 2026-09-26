@@ -44,10 +44,13 @@ can claim only transfer-owned deletes, retry an uncertain R2 response, and leave
 operations untouched. The Media runtime starts a bounded 30-second deletion loop only with
 `TRANSFER_OBJECT_DELETION_RUNNER=postgres`; the production switch remains unset. Orphan-prefix
 reconciliation is also required before selecting this delete path.
+Single-file removal uses the same durable key collection, deletes the file and its jobs in one
+transaction, and removes groups left with fewer than two members. Removing the last file
+tombstones the transfer. Deletion staging failure rolls the file removal back.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
-Object execution, file removal and expiry workflows are still pending, so the application has
-not selected this repository.
+Live request selection and expiry workflows are still pending, so the application has not
+selected this repository.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and

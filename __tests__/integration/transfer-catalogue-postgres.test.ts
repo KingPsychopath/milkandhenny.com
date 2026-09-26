@@ -7,6 +7,7 @@ import {
   getPostgresTransfer,
   getPostgresTransferForWorker,
   listPostgresTransferSummaries,
+  removePostgresTransferFile,
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
@@ -306,6 +307,63 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       [transfer.id],
     );
     expect(rows[0].count).toBe("0");
+  });
+
+  it("removes one file with its group and jobs, then tombstones the last file", async () => {
+    await createPostgresTransfer(transfer);
+    await query(
+      `insert into transfer_media_jobs
+         (id,transfer_id,file_id,operation,generation,idempotency_key,payload,enqueued_at)
+       values ('00000000-0000-0000-0000-000000000211',$1,'raw','process',1,
+               'file-delete-job',$2::jsonb,now())`,
+      [
+        transfer.id,
+        JSON.stringify({ expectedThumbKey: `transfers/${transfer.id}/thumb/raw/g1.webp` }),
+      ],
+    );
+    await query(
+      `insert into transfer_media_job_attempt_outputs
+         (job_id,claim_token,thumb_key)
+       values ('00000000-0000-0000-0000-000000000211',
+               '00000000-0000-0000-0000-000000000212',$1)`,
+      [`transfers/${transfer.id}/thumb/raw/g1/00000000-0000-0000-0000-000000000212.webp`],
+    );
+    expect(await removePostgresTransferFile(transfer.id, "absent")).toBe("file-missing");
+    expect(await removePostgresTransferFile(transfer.id, "raw")).toBe("updated");
+    const remaining = await getPostgresTransfer(transfer.id);
+    expect(remaining?.files).toHaveLength(1);
+    expect(remaining?.files[0].id).toBe("photo");
+    expect(remaining?.groups).toBeUndefined();
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from transfer_media_jobs"),
+    ).toEqual([{ count: "0" }]);
+    const keys = await query<{ target_key: string }>(
+      "select target_key from media_object_operations where owner_kind='transfer'",
+    );
+    expect(keys.map((row) => row.target_key)).toContain(transfer.files[1].storageKey);
+    expect(keys.map((row) => row.target_key)).toContain(
+      `transfers/${transfer.id}/thumb/raw/g1/00000000-0000-0000-0000-000000000212.webp`,
+    );
+    expect(await removePostgresTransferFile(transfer.id, "photo")).toBe("deleted");
+    expect(await getPostgresTransfer(transfer.id)).toBeNull();
+    expect(await removePostgresTransferFile(transfer.id, "photo")).toBe("missing");
+  });
+
+  it("keeps the file if its object deletion cannot be staged", async () => {
+    await createPostgresTransfer(transfer);
+    await query(
+      "update transfer_files set storage_key='../bad' where transfer_id=$1 and id='raw'",
+      [transfer.id],
+    );
+    await expect(removePostgresTransferFile(transfer.id, "raw")).rejects.toThrow(
+      "Invalid media object operation",
+    );
+    expect((await getPostgresTransfer(transfer.id))?.files).toHaveLength(2);
+    expect(
+      await query<{ count: string }>(
+        "select count(*)::text as count from media_object_operations where owner_kind='transfer'",
+      ),
+    ).toEqual([{ count: "0" }]);
   });
 
   it("commits planned visual jobs atomically with a new transfer", async () => {

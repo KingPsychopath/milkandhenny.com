@@ -644,7 +644,10 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
-        worker loop; orphan reconciliation, file removal and live cleanup remain open.
+        worker loop; orphan reconciliation and live cleanup remain open.
+  - [x] Remove one Postgres file with its jobs and group membership in one transaction, staging
+        all known private keys for deletion; tombstone when it was the last file. Request callers
+        and orphan-prefix reconciliation remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -829,7 +832,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   schedule `07b83ea2`.
   Append quota reservations `716422f7`; generation-fenced derivatives `35ed7f66`;
   Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
-  queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`.
+  queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`;
+  atomic media job planning `30b161b2`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1081,6 +1085,20 @@ targets for publication/deletion tests, and never send real user email/payment e
   Three focused real-Postgres suites passed 23 cases, including rollback when a job plan is
   invalid. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (273 files, 2,113
   tests). Live upload requests still select Redis and need a coordinated switch.
+  A staged file-removal transaction now gathers source, published derivative and attempt keys,
+  queues private deletion, removes jobs and collapses the affected group. The last-file path
+  tombstones the transfer. Twelve focused real-Postgres cases passed, including idempotent
+  missing-file results and rollback when deletion staging rejects a malformed key. `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (273 files, 2,115 tests). Live request
+  selection and R2 prefix reconciliation remain open.
+  A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
+  while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
+  from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
+  returned PONG, but a follow-up queue read returned `ERR max requests limit exceeded` at
+  500,000/500,000; no queue values or fresh source delta were obtained. These failures align
+  with the exhausted Redis allowance; the maintenance runner deliberately exits nonzero when
+  any job fails. Stop live source reads until the allowance is restored or a fresh export is
+  supplied. No production data or configuration was changed.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1094,7 +1112,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   has two. The export's admin/upload token versions are 3/2; the retired staff version is 2.
   Its 192 attendee sessions include 189 current and three legacy shapes; 27 are person-bound,
   none has pending MFA, and no person-version key survives.
-- Unresolved: exact Redis snapshot time/fresh cutover delta; archive retention duration and
+- Unresolved: exact Redis snapshot time/fresh cutover delta; renewed Upstash command cap and
+  failed production maintenance tasks; archive retention duration and
   production role separation; backup coverage; measured load/resource budgets; remaining
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
