@@ -346,6 +346,12 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   and upload execution remain local controllers. Three transfer Playwright journeys, four focused
   transfer tests, `pnpm check`, and `pnpm build` passed. The browser journey seeded a processing
   transfer, observed eventual readiness, and checked valid and invalid owner-token views.
+- Communications subworkspaces: the poll studio and credit campaign reads now hydrate only when
+  their tab is active. Polls, campaigns, and selected campaign grants are private Query entries;
+  the existing HTTP commands remain available to operational consumers. Confirmed poll saves
+  invalidate the admin list and both old/new public slugs; credit writes invalidate the campaign
+  and affected grant entries. Poll, credit, and recipient browser journeys passed, as did the five
+  credit integration tests, `pnpm check`, and the production build.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
@@ -363,7 +369,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   added the album browser journey; `94aa4cea` hydrated public word detail; `2174a3ce` hydrated
   token sessions; `ba800f7f` recorded their checkpoint; `f200286b` recorded the full-suite pass;
   `0a35f058` migrated pitch reads; `4695c2c7` recorded the pitch checkpoint; `6310677a`
-  specified the transfer cache boundary; `a21f3c91` migrated transfer metadata.
+  specified the transfer cache boundary; `a21f3c91` migrated transfer metadata; `ddc22a13`
+  recorded its checkpoint; `aae6db7c` hydrated admin polls; `3c77f34e` hydrated credits.
 
 ## References
 
