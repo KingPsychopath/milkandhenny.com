@@ -17,6 +17,12 @@ import { getRequestIP } from "@tanstack/react-start/server";
 import { getCookie } from "@/lib/http/cookies";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  getPostgresRoleVersion,
+  getPostgresTokenValidation,
+  postgresTokenStoreSelected,
+  registerPostgresTokenSession,
+} from "./token-state-postgres.server";
+import {
   getAuthCookieName,
   LOCAL_DEV_ADMIN_COOKIE,
   LOCAL_DEV_ADMIN_COOKIE_MAX_AGE_SECONDS,
@@ -198,6 +204,13 @@ export function getRoleSecretStatus(role: AuthRole): {
 }
 
 export async function getCurrentTokenVersion(role: RevocableRole): Promise<number | null> {
+  if (postgresTokenStoreSelected()) {
+    try {
+      return await getPostgresRoleVersion(role);
+    } catch {
+      return null;
+    }
+  }
   const redis = getRedis();
   if (!redis) {
     return process.env.NODE_ENV === "production" ? null : 1;
@@ -220,6 +233,13 @@ async function getTokenValidationState(
   jti: string,
   role: RevocableRole,
 ): Promise<{ revoked: boolean; version: number } | null> {
+  if (postgresTokenStoreSelected()) {
+    try {
+      return await getPostgresTokenValidation(jti, role);
+    } catch {
+      return null;
+    }
+  }
   const redis = getRedis();
   if (!redis) {
     return process.env.NODE_ENV === "production" ? null : { revoked: false, version: 1 };
@@ -282,6 +302,17 @@ export async function registerTokenSession(
   metadata: { ip: string; ua: string; source: TokenSessionSource },
   dedupeKey?: string,
 ): Promise<boolean> {
+  if (postgresTokenStoreSelected()) {
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return false;
+      const payload = JSON.parse(base64UrlDecode(parts[1]).toString()) as TokenPayload;
+      if (payload.role !== "admin" && payload.role !== "upload") return false;
+      return await registerPostgresTokenSession(payload, token, metadata, dedupeKey);
+    } catch {
+      return false;
+    }
+  }
   const redis = getRedis();
   if (!redis) return process.env.NODE_ENV !== "production";
 

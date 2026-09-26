@@ -8,19 +8,37 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/upstash/rdb"
 )
 
 type guestExtractor struct {
-	value string
-	found bool
-	audit []json.RawMessage
+	value    string
+	found    bool
+	audit    []json.RawMessage
+	versions map[string]int
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	if strings.HasPrefix(key, "auth:token-version:") {
+		role := strings.TrimPrefix(key, "auth:token-version:")
+		if role != "admin" && role != "upload" && role != "staff" {
+			return errors.New("unknown auth token-version role")
+		}
+		version, err := strconv.Atoi(value)
+		if err != nil || version < 1 {
+			return errors.New("invalid auth token version")
+		}
+		if g.versions == nil {
+			g.versions = make(map[string]int)
+		}
+		g.versions[role] = version
+		return nil
+	}
 	if key != "guest:list" {
 		return nil
 	}
@@ -68,8 +86,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) != 3 && len(os.Args) != 4 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 5 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -78,7 +96,7 @@ func main() {
 	}); err != nil {
 		panic(fmt.Errorf("RDB integrity verification failed: %w", err))
 	}
-	extractor := &guestExtractor{}
+	extractor := &guestExtractor{versions: make(map[string]int)}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
 	}
@@ -113,7 +131,7 @@ func main() {
 	}
 	hash := sha256.Sum256([]byte(extractor.value))
 	fmt.Printf("guest_json_sha256=%x top_level=%d plus_ones=%d\n", hash, len(guests), plusOnes)
-	if len(os.Args) == 4 {
+	if len(os.Args) >= 4 {
 		for _, raw := range extractor.audit {
 			var event struct {
 				ID     string `json:"id"`
@@ -141,5 +159,23 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("upload_audit_events=%d\n", len(extractor.audit))
+	}
+	if len(os.Args) == 5 {
+		payload, err := json.Marshal(extractor.versions)
+		if err != nil {
+			panic(err)
+		}
+		versionFile, err := os.OpenFile(os.Args[4], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := versionFile.Write(payload); err != nil {
+			versionFile.Close()
+			panic(err)
+		}
+		if err := versionFile.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("auth_token_roles=%d\n", len(extractor.versions))
 	}
 }

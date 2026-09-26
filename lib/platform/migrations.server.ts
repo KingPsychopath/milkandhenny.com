@@ -4387,6 +4387,50 @@ const MIGRATIONS: Migration[] = [
         where source_rdb_sha256 is not null;
     `,
   },
+  {
+    id: "0100_auth_token_state",
+    sql: `
+      create table auth_role_token_versions (
+        role text primary key check (role in ('admin', 'upload', 'staff')),
+        version integer not null check (version >= 1),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        )
+      );
+
+      create table auth_token_sessions (
+        jti text primary key check (char_length(jti) between 1 and 128),
+        role text not null check (role in ('admin', 'upload')),
+        issued_at timestamptz not null,
+        expires_at timestamptz not null,
+        token_version integer not null check (token_version >= 1),
+        ip text,
+        ua text,
+        source text not null check (source in ('browser', 'cli', 'unknown')),
+        check (expires_at > issued_at)
+      );
+      create index auth_token_sessions_issued_idx on auth_token_sessions (issued_at desc);
+      create index auth_token_sessions_expiry_idx on auth_token_sessions (expires_at);
+
+      create table auth_revoked_tokens (
+        jti text primary key check (char_length(jti) between 1 and 128),
+        expires_at timestamptz not null
+      );
+      create index auth_revoked_tokens_expiry_idx on auth_revoked_tokens (expires_at);
+
+      create table auth_recent_logins (
+        role text not null check (role in ('admin', 'upload')),
+        fingerprint text not null check (fingerprint ~ '^[a-f0-9]{24}$'),
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id text not null check (token_key_id = 'auth-secret-v1'),
+        expires_at timestamptz not null,
+        primary key (role, fingerprint)
+      );
+      create index auth_recent_logins_expiry_idx on auth_recent_logins (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

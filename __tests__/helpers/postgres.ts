@@ -55,6 +55,10 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists auth_recent_logins cascade;
+    drop table if exists auth_revoked_tokens cascade;
+    drop table if exists auth_token_sessions cascade;
+    drop table if exists auth_role_token_versions cascade;
     drop table if exists upload_access_audit cascade;
     drop table if exists upload_access_window cascade;
     drop table if exists rate_limit_windows cascade;

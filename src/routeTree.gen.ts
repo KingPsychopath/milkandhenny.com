@@ -93,6 +93,7 @@ import { Route as ApiAttendeeSessionRouteRouteImport } from './routes/api/attend
 import { Route as ApiAttendeeTicketOperationsRouteRouteImport } from './routes/api/attendee/ticket-operations/route'
 import { Route as ApiCommunicationsClickRouteRouteImport } from './routes/api/communications/click/route'
 import { Route as ApiCronCleanupAttendeeAccessRouteRouteImport } from './routes/api/cron/cleanup-attendee-access/route'
+import { Route as ApiCronCleanupAuthStateRouteRouteImport } from './routes/api/cron/cleanup-auth-state/route'
 import { Route as ApiCronCleanupCommunicationLinksRouteRouteImport } from './routes/api/cron/cleanup-communication-links/route'
 import { Route as ApiCronCleanupEmailRouteRouteImport } from './routes/api/cron/cleanup-email/route'
 import { Route as ApiCronCleanupGamePoolsRouteRouteImport } from './routes/api/cron/cleanup-game-pools/route'
@@ -662,6 +663,12 @@ const ApiCronCleanupAttendeeAccessRouteRoute =
   ApiCronCleanupAttendeeAccessRouteRouteImport.update({
     id: '/api/cron/cleanup-attendee-access',
     path: '/api/cron/cleanup-attendee-access',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupAuthStateRouteRoute =
+  ApiCronCleanupAuthStateRouteRouteImport.update({
+    id: '/api/cron/cleanup-auth-state',
+    path: '/api/cron/cleanup-auth-state',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronCleanupCommunicationLinksRouteRoute =
@@ -1554,6 +1561,7 @@ export interface FileRoutesByFullPath {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -1782,6 +1790,7 @@ export interface FileRoutesByTo {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -2011,6 +2020,7 @@ export interface FileRoutesById {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
@@ -2241,6 +2251,7 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-auth-state'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2469,6 +2480,7 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-auth-state'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2697,6 +2709,7 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-auth-state'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
@@ -2912,6 +2925,7 @@ export interface RootRouteChildren {
   ApiAttendeeTicketOperationsRouteRoute: typeof ApiAttendeeTicketOperationsRouteRoute
   ApiCommunicationsClickRouteRoute: typeof ApiCommunicationsClickRouteRoute
   ApiCronCleanupAttendeeAccessRouteRoute: typeof ApiCronCleanupAttendeeAccessRouteRoute
+  ApiCronCleanupAuthStateRouteRoute: typeof ApiCronCleanupAuthStateRouteRoute
   ApiCronCleanupCommunicationLinksRouteRoute: typeof ApiCronCleanupCommunicationLinksRouteRoute
   ApiCronCleanupEmailRouteRoute: typeof ApiCronCleanupEmailRouteRoute
   ApiCronCleanupGamePoolsRouteRoute: typeof ApiCronCleanupGamePoolsRouteRoute
@@ -3565,6 +3579,13 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/cleanup-attendee-access'
       fullPath: '/api/cron/cleanup-attendee-access'
       preLoaderRoute: typeof ApiCronCleanupAttendeeAccessRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-auth-state': {
+      id: '/api/cron/cleanup-auth-state'
+      path: '/api/cron/cleanup-auth-state'
+      fullPath: '/api/cron/cleanup-auth-state'
+      preLoaderRoute: typeof ApiCronCleanupAuthStateRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/cleanup-communication-links': {
@@ -5089,6 +5110,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCommunicationsClickRouteRoute: ApiCommunicationsClickRouteRoute,
   ApiCronCleanupAttendeeAccessRouteRoute:
     ApiCronCleanupAttendeeAccessRouteRoute,
+  ApiCronCleanupAuthStateRouteRoute: ApiCronCleanupAuthStateRouteRoute,
   ApiCronCleanupCommunicationLinksRouteRoute:
     ApiCronCleanupCommunicationLinksRouteRoute,
   ApiCronCleanupEmailRouteRoute: ApiCronCleanupEmailRouteRoute,

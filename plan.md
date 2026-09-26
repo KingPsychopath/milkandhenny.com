@@ -468,7 +468,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
 | M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
 | M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate-limit backend                               |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, upload access and JWT token state   |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
 | M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
 | M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
@@ -558,7 +558,12 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
       holds four audit entries and no active window. A provenance-checked importer rehearsed
       those four entries on isolated Postgres; production import and fresh cutover reconciliation
       remain open.
-- [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes.
+- [x] Add an opt-in Postgres JWT session/version/revocation and encrypted login-dedupe backend,
+      with admin session listing/revocation and bounded retention. The supplied RDB's admin,
+      upload and historical staff versions are extracted and rehearsed on isolated Postgres;
+      active-session/revocation delta import and production switch remain open.
+- [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
+      after a fresh source import, including any newly active JWT sessions or revocations.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
 - [ ] Implement report storage/receipts and transactional notification work.
 - [ ] Implement Best Dressed totals, receipts, codes and reset behavior.
@@ -724,7 +729,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26, M1 and scoped M2 in progress
+### Current checkpoint — 2026-09-26, M1–M4 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
@@ -734,7 +739,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
   restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
   pitch-ownership constraint `0af6c55b`; ticket-event ownership `50f6d050`; Postgres rate
-  limiting `d1a353d5`. The upload-window backend accompanies the next local implementation commit.
+  limiting `d1a353d5`; Postgres upload access `59a3db50`. The JWT token-state backend accompanies
+  the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -776,7 +782,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   events in a private file; importing them into isolated `mah_test` twice left four matching
   rows, and a different source hash was rejected. `pnpm check`, `pnpm build`, and the full
   `pnpm test` suite (253 files, 2,033 tests) passed for this milestone. No production import
-  occurred.
+  occurred. The JWT token-state integration and existing auth suites passed 19 cases, including
+  concurrent role increments, revocation, encrypted deduplication and bounded cleanup. The strict
+  extractor found admin=3, upload=2 and historical staff=2; their source-hash import into
+  isolated Postgres was idempotent and a different source was rejected. A fresh restore of the
+  private production dump accepted migrations `0096`–`0100`; verification reported 101 applied
+  source migrations, and `mah_app_runtime` had DML on the auth tables without schema CREATE.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite (254 files, 2,037 tests) passed for
+  the JWT milestone. The supplied export had no active JWT session/revocation/dedupe keys; this
+  fact must be rechecked against the final source snapshot. No production import or switch occurred.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -787,14 +801,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   missing transfer; this is also the one job whose source object is absent from R2. The
   original `guest:list` contains 274 top-level guests and 157 plus-ones; one legacy report and
   its index remain. The token-session index has 190 stale entries and the current report index
-  has two.
+  has two. The export's admin/upload token versions are 3/2; the retired staff version is 2.
 - Unresolved: exact Redis snapshot time/fresh cutover delta; archive retention duration and
   production role separation; backup coverage; measured load/resource budgets; physical DDL;
   migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: verify and commit runtime role separation, then specify physical DDL/source mapping
-  and implement remaining foundations. Do not start production migration from the table sketches
-  in this document.
+- Next action: commit the JWT token-state milestone, then implement attendee sessions and CLI
+  one-time handshakes, reports/voting and source importers. Continue into words/albums and the
+  transfer/media queue before any release candidate. Do not start production migration from the
+  table sketches in this document.
 
 ### Milestone checkpoint template
 

@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { isValidTokenJti, requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
+import {
+  postgresTokenStoreSelected,
+  revokePostgresRegisteredToken,
+} from "@/features/auth/internal/token-state-postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -13,18 +17,35 @@ async function handleDELETE(request: Request, context: RouteContext) {
   const stepUpErr = await requireAdminStepUp(request);
   if (stepUpErr) return stepUpErr;
 
+  const { jti } = await context.params;
+  const clean = decodeURIComponent(jti).trim();
+  if (!isValidTokenJti(clean)) {
+    return Response.json({ error: "Invalid session id" }, { status: 400 });
+  }
+
+  if (postgresTokenStoreSelected()) {
+    try {
+      const ttl = await revokePostgresRegisteredToken(clean);
+      return ttl === null
+        ? Response.json({ error: "Session not found" }, { status: 404 })
+        : Response.json({ success: true, jti: clean, ttlSeconds: ttl });
+    } catch (error) {
+      return apiErrorFromRequest(
+        request,
+        "admin.tokens.sessions.revoke",
+        "Failed to revoke session",
+        error,
+        { jti: clean },
+      );
+    }
+  }
+
   const redis = getRedis();
   if (!redis) {
     return Response.json(
       { error: "Redis not configured (session revoke unavailable)" },
       { status: 503 },
     );
-  }
-
-  const { jti } = await context.params;
-  const clean = decodeURIComponent(jti).trim();
-  if (!isValidTokenJti(clean)) {
-    return Response.json({ error: "Invalid session id" }, { status: 400 });
   }
 
   try {

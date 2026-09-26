@@ -147,7 +147,7 @@ that exports omit functions, so source code remains the authority for Lua behavi
 | ---------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC                                                                        |
 | `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                     |
-| `auth:token-version:*`             |    3 | Persistent strings                                                                                                                         |
+| `auth:token-version:*`             |    3 | Persistent admin=3, upload=2 and historical staff=2 counters; preserve staff provenance without enabling a staff role                      |
 | `auth:upload-open:audit`           |    1 | Persistent audit list with four entries (two opens, two closes); the active `auth:upload-open` window key is absent                        |
 | `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                          |
 | `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                                 |

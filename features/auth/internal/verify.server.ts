@@ -1,14 +1,17 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import {
+  getPostgresRecentLogin,
+  incrementPostgresRoleVersion,
+  postgresTokenStoreSelected,
+} from "./token-state-postgres.server";
 import { checkRateLimit, clearRateLimit } from "./rate-limit.server";
 import {
-  LOGIN_DEDUPE_WINDOW_SECONDS,
   MIN_ADMIN_PASSWORD_LENGTH,
   MIN_AUTH_SECRET_LENGTH,
   MIN_UPLOAD_PIN_LENGTH,
   REVOCABLE_ROLES,
   ROLES,
   TOKEN_ROLES,
-  base64UrlDecode,
   getAuthSecretStatus,
   getClientIp,
   getRawEnv,
@@ -17,17 +20,20 @@ import {
   safeCompare,
   signToken,
   tokenVersionKey,
+  registerTokenSession,
   validateSecretStrength,
   verifyToken,
   type AuthRole,
   type RevocableRole,
-  type TokenPayload,
   type TokenRole,
 } from "./token-session.server";
 
 export async function revokeRoleTokens(
   role: RevocableRole,
 ): Promise<{ role: RevocableRole; tokenVersion: number }> {
+  if (postgresTokenStoreSelected()) {
+    return { role, tokenVersion: await incrementPostgresRoleVersion(role) };
+  }
   const redis = getRedis();
   if (!redis) {
     throw new Error("Redis not configured");
@@ -150,9 +156,11 @@ export async function handleVerifyRequest(request: Request, role: AuthRole): Pro
     const ua = request.headers.get("user-agent") ?? "";
     const redis = getRedis();
     const dedupeKey = loginDedupeKey(tokenRole, ip, ua);
-    if (redis) {
+    if (postgresTokenStoreSelected() || redis) {
       try {
-        const recent = await redis.get<string>(dedupeKey);
+        const recent = postgresTokenStoreSelected()
+          ? await getPostgresRecentLogin(dedupeKey)
+          : await redis!.get<string>(dedupeKey);
         if (typeof recent === "string" && recent) {
           const payload = await verifyToken(recent, tokenRole);
           if (payload) {
@@ -173,37 +181,10 @@ export async function handleVerifyRequest(request: Request, role: AuthRole): Pro
     if (!token) {
       return Response.json({ error: "Token generation failed" }, { status: 503 });
     }
-    // Best-effort session registration and dedupe tracking (Redis-backed).
-    if (redis) {
-      try {
-        const issuedAt = Math.floor(Date.now() / 1000);
-        const parts = token.split(".");
-        if (parts.length === 3) {
-          const payloadJson = JSON.parse(base64UrlDecode(parts[1]).toString()) as TokenPayload;
-          const ttlSeconds = Math.max(1, payloadJson.exp - issuedAt);
-          await redis.set(`auth:session:${payloadJson.jti}`, {
-            role: payloadJson.role,
-            iat: payloadJson.iat,
-            exp: payloadJson.exp,
-            tv: payloadJson.tv,
-            ip,
-            ua,
-          });
-          await redis.expire(`auth:session:${payloadJson.jti}`, ttlSeconds + 60);
-          await redis.sadd("auth:sessions:index", payloadJson.jti);
-          await redis.expire("auth:sessions:index", 60 * 60 * 24 * 60); // keep index around for 60 days
-          await redis.set(dedupeKey, token);
-          await redis.expire(dedupeKey, LOGIN_DEDUPE_WINDOW_SECONDS);
-        }
-      } catch {
-        if (process.env.NODE_ENV === "production") {
-          return Response.json(
-            { error: "Session storage is temporarily unavailable" },
-            { status: 503 },
-          );
-        }
-      }
-    } else if (process.env.NODE_ENV === "production") {
+    if (
+      !(await registerTokenSession(token, { ip, ua, source: "browser" }, dedupeKey)) &&
+      process.env.NODE_ENV === "production"
+    ) {
       return Response.json(
         { error: "Session storage is temporarily unavailable" },
         { status: 503 },

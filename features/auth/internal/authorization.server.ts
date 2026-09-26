@@ -2,6 +2,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { getCookie } from "@/lib/http/cookies";
 import { getRedis } from "@/lib/platform/redis.server";
+import { postgresTokenStoreSelected, revokePostgresToken } from "./token-state-postgres.server";
 import { getAuthCookieName } from "../cookies";
 import {
   ADMIN_STEP_UP_TTL_SECONDS,
@@ -487,6 +488,14 @@ export async function revokeCurrentSession(request: Request, role: TokenRole): P
   const payload = await verifyToken(token, role);
   if (!payload) return process.env.NODE_ENV !== "production";
 
+  if (postgresTokenStoreSelected()) {
+    try {
+      await revokePostgresToken(payload.jti, payload.exp);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const redis = getRedis();
   if (!redis) return process.env.NODE_ENV !== "production";
   try {

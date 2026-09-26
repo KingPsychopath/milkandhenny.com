@@ -63,6 +63,8 @@ identity, timestamps, duration and source list position inside one transaction. 
 import is safe; an existing runtime event or a different source export causes a rollback. The
 supplied export has no active `auth:upload-open` window. Recheck that exact key in a fresh cutover
 export; if it is then active, preserve its existing token and expiry before switching the backend.
+An optional fourth output extracts the role token-version counters for
+[the JWT migration](./auth-token-postgres.md).
 
 ## Import and verify
 

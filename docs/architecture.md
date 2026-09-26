@@ -234,6 +234,10 @@ Upload access windows and their bounded audit history also have an opt-in Postgr
 with `UPLOAD_ACCESS_STORE=postgres`. The recoverable bearer token is encrypted with a key derived
 from `AUTH_SECRET`; switching this backend requires reconciling the active window and audit list at
 cutover. Redis remains the default until then.
+Admin/upload JWT versions, session records, revocations and 15-second login deduplication have an
+opt-in Postgres backend selected with `AUTH_TOKEN_STORE=postgres`. Recent bearer tokens are
+encrypted with a key derived from `AUTH_SECRET`; version and active-state import is required before
+switching. CLI authorization handshakes and attendee sessions still use Redis.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

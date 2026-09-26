@@ -29,6 +29,9 @@ the independent housekeeping and recovery backstop. Each request emits one
 structured result, and the runner exits non-zero if any job fails.
 The rate-limit cleanup removes at most 10,000 expired rows per daily run. Check its reported
 `removed` count and raise the schedule or batch budget if it repeatedly reaches that ceiling.
+When `AUTH_TOKEN_STORE=postgres`, the runner also removes up to 10,000 expired login dedupe and
+revocation rows and token-session records older than 60 days past expiry. Check the reported
+counts if any category reaches that bound repeatedly.
 
 ## Capability checks
 

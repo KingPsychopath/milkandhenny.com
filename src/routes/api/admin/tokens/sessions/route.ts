@@ -1,5 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
+import {
+  listPostgresTokenSessions,
+  postgresTokenStoreSelected,
+} from "@/features/auth/internal/token-state-postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -21,6 +25,25 @@ const MAX_SESSION_PAGE_SIZE = 250;
 async function handleGET(request: Request) {
   const authErr = await requireAuth(request, "admin");
   if (authErr) return authErr;
+
+  if (postgresTokenStoreSelected()) {
+    try {
+      const rawLimit = Number(
+        new URL(request.url).searchParams.get("limit") ?? DEFAULT_SESSION_PAGE_SIZE,
+      );
+      const limit = Number.isFinite(rawLimit)
+        ? Math.min(MAX_SESSION_PAGE_SIZE, Math.max(1, Math.floor(rawLimit)))
+        : DEFAULT_SESSION_PAGE_SIZE;
+      return Response.json(await listPostgresTokenSessions(limit));
+    } catch (error) {
+      return apiErrorFromRequest(
+        request,
+        "admin.tokens.sessions",
+        "Failed to list token sessions",
+        error,
+      );
+    }
+  }
 
   const redis = getRedis();
   if (!redis) {
