@@ -1,5 +1,13 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getPollVoteFn, getPublicPollFn } from "./polls.functions";
+import { getAdminPollsFn, getPollVoteFn, getPublicPollFn } from "./polls.functions";
+
+/** Private admin view; identity transitions clear this entry. */
+export const adminPollsQuery = queryOptions({
+  queryKey: ["admin", "polls"] as const,
+  queryFn: () => getAdminPollsFn(),
+  staleTime: 10_000,
+  retry: false,
+});
 
 export const pollQueryKeys = {
   public: (slug: string) => ["polls", slug, "public"] as const,

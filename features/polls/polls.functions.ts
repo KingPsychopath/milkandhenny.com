@@ -1,8 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
-import { getClientIp } from "@/features/auth/auth.server";
-import { getPollVote, getPublicPoll, reservePollSubmission, submitPollVote } from "./polls.server";
+import { getAdminWorkspaceAccess, getClientIp } from "@/features/auth/auth.server";
+import {
+  getPollVote,
+  getPublicPoll,
+  listPolls,
+  reservePollSubmission,
+  submitPollVote,
+} from "./polls.server";
+
+export const getAdminPollsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const access = await getAdminWorkspaceAccess(getRequest());
+  if (!access.ok || !access.permissions.manageCommunications)
+    throw new Error("Communications access required");
+  return listPolls();
+});
 
 export const getPublicPollFn = createServerFn({ method: "GET" })
   .validator((data: { slug: string }) => data)

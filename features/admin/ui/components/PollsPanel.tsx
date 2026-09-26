@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { PollDistribution } from "@/features/polls/ui/PollDistribution";
 import type { AdminPoll, PollOption, PollRecord } from "@/features/polls/types";
+import { adminPollsQuery, pollQueryKeys } from "@/features/polls/polls.queries";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
@@ -81,36 +83,19 @@ export function PollsPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [polls, setPolls] = useState<AdminPoll[]>([]);
+  const queryClient = useQueryClient();
+  const pollQuery = useQuery(adminPollsQuery);
+  const polls = pollQuery.data ?? [];
   const [draft, setDraft] = useState<PollDraft>(EMPTY_DRAFT);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const loading = pollQuery.isPending;
   const [busy, setBusy] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadError = pollQuery.error?.message ?? null;
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/polls");
-      const data = (await response.json().catch(() => ({}))) as {
-        polls?: AdminPoll[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Could not load polls");
-      setPolls(data.polls ?? []);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Could not load polls";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+    const result = await pollQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [pollQuery, onError]);
 
   const selectPoll = (poll: AdminPoll) => {
     setSelectedId(poll.id);
@@ -141,6 +126,7 @@ export function PollsPanel({
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
+    const previousSlug = polls.find((poll) => poll.id === selectedId)?.slug;
     try {
       const response = await authFetch("/api/admin/polls", {
         method: "POST",
@@ -155,9 +141,15 @@ export function PollsPanel({
       if (data.poll) {
         setSelectedId(data.poll.id);
         selectPoll(data.poll);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: pollQueryKeys.public(data.poll.slug) }),
+          ...(previousSlug && previousSlug !== data.poll.slug
+            ? [queryClient.invalidateQueries({ queryKey: pollQueryKeys.public(previousSlug) })]
+            : []),
+        ]);
       }
       onStatus("Poll saved.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminPollsQuery.queryKey });
     } catch (cause) {
       onError(cause instanceof Error ? cause.message : "Could not save poll");
     } finally {
@@ -217,7 +209,7 @@ export function PollsPanel({
                 </span>
               </button>
             ))
-          ) : !loading ? (
+          ) : !loading && !loadError ? (
             <p className="py-5 font-mono text-xs theme-muted">No polls yet.</p>
           ) : null}
         </div>
