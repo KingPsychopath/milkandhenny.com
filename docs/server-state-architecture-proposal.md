@@ -285,8 +285,14 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   system checks, including a hard minimum gap and a stop on 4xx; confirmed content edits invalidate
   their admin summary and the affected public listing families. The operations inbox now has a
   shared feature read, a streamed private Query snapshot, and a Query-backed notification summary;
-  its bounded refresh scheduler and 4xx stop remain in place. Communications and other admin panels
+  its bounded refresh scheduler and 4xx stop remain in place. The communications workspace now
+  prefetches its exact tab/event query on the server, and its panel observes one Query-owned snapshot
+  instead of copying contacts, plans, messages, templates, surveys, and email status into local
+  state. Search is keyed separately; composition and editor drafts remain local. Other admin panels
   remain to migrate.
+- Album detail: the album and photo routes reuse a single hydrated album query. Their loaders retain
+  only head metadata and photo existence checks. Admin content edits invalidate the entire public
+  album query family.
 - Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
   four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
   account, poll, and admin Playwright journeys passed. The browser journeys proved SSR content,
@@ -296,18 +302,28 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   does not serve album manifests. The default 20-worker Vitest run stalled behind database lock
   contention and was replaced by the passing capped run. The final build and focused admin browser
   rerun passed after the 4xx polling adjustment.
+- Recent verification: `pnpm check` and `pnpm build` passed after the communications and album
+  changes. Focused communications and album integration tests passed against a task-isolated local
+  PostgreSQL database. Five communications/public Playwright journeys and one seeded album/photo
+  journey passed against that database and task-isolated Redis. The first browser attempt timed out
+  while the shared container runtime was unavailable; isolated services resolved it. The full
+  Vitest suite was last run before these two slices; final cross-feature verification remains due.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
-- Next action: migrate the communications workspace, transfer metadata, and
+- Next action: migrate remaining public and admin resource families, then design the transfer
+  capability scope and event reconciliation before moving its metadata into Query. Classify the
+  remaining route loaders against the target ownership table and
   remaining resource families.
   Revisit all M1 acceptance checks and integrated verification before declaring done.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
   recorded that checkpoint; `0dc90b31` hydrated admin content and system snapshots; `60c85235`
-  recorded that checkpoint; `ba41fc9c` hydrated the operations inbox.
+  recorded that checkpoint; `ba41fc9c` hydrated the operations inbox; `ab255a88` recorded its
+  checkpoint; `cb2815b7` migrated communications; `f1a7a634` shared album detail; `087a05d8`
+  added the album browser journey.
 
 ## References
 
