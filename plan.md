@@ -648,6 +648,9 @@ derived exports. No read path silently repairs/deletes product state.
         monitor cutover remain open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
+  - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
+        seven terminal jobs retained without replay, one orphan quarantined, no runnable work.
+        Fresh source delta, nonterminal-job rehearsal and production import remain open.
 - [ ] Test worker death before/after upload, stale completion, duplicate claims, reservation
       races, late uploads, RAW/live-photo groups and transfer expiry/deletion during processing.
 
@@ -798,7 +801,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   body/metadata milestone `415e9430`; word-share state `28261237`; media-object ledger
   foundation `50d624d6`; per-instance worker status `0ce8c529`; transfer schema `62c95d46`.
   Staged reservation repository `7a379dae`; deletion-token codec `babb2e62`; catalogue
-  creation `012bbdf9`; row-locked append `da0c5fbf`.
+  creation `012bbdf9`; row-locked append `da0c5fbf`; media-job repository `09d95c3a`;
+  fenced file-result commit `5d244771`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -953,14 +957,25 @@ targets for publication/deletion tests, and never send real user email/payment e
   refusal, worker read without the web secret, and rollback/expiry behavior. `pnpm check`
   passed; commit `012bbdf9`. A row-locked append admits one of two concurrent file additions
   at the final slot, rejects duplicate IDs and enforces stored-byte limits. Four focused
-  real-Postgres cases and typecheck passed. Full quota accounting, update, delete and production
-  source import remain unimplemented.
+  real-Postgres cases and typecheck passed. Full quota accounting, update and delete remain
+  unimplemented; production source import has not occurred.
   The staged media-job repository requires the matching file generation on enqueue and supports
   disjoint indexed claims, lease recovery, token fencing, bounded retry/dead-letter and obsolete
   source cancellation. Completion locks the transfer/file before checking the claim and updates
   the file result in the caller's transaction. Three focused real-Postgres cases passed, including rollback,
   idempotency conflict, disjoint claims, old-token refusal, exhausted retries and superseded
   generation refusal. No runtime caller, R2 executor or production switch exists yet.
+  The strict offline extractor produced a mode-0600 transfer bundle whose embedded source hash
+  matched the supplied RDB. The isolated production restore accepted migration `0112` and a
+  one-transaction import: one active transfer, 52 files, seven completed historical jobs, zero
+  runnable jobs and one orphan in `legacy_archive`. A second import was idempotent, a changed
+  source hash was rejected, and `mah_app_runtime` lacked archive schema access. The seven jobs
+  point at files already marked `worker_done`; the quarantined orphan has no surviving transfer
+  or R2 source. The embedded RDB SHA-256 matched the supplied file; a different web encryption
+  secret also failed to authenticate the stored token on repeat import. `gofmt`, local documentation
+  links, `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on isolated Postgres
+  (270 files, 2,086 tests). This is snapshot rehearsal, not a fresh cutover delta or production
+  write.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -981,8 +996,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   production backup or R2 restore coverage.
 - Next action: implement transfer update/delete and full quota transactions, then wire
   reservation flows and cleanup against the same authority. Wire media-job execution with
-  fenced R2 publication and the export importer with an orphan
-  quarantine. Wire recoverable word/album object operations before any release candidate. Do not
+  fenced R2 publication and reconcile a fresh source export against the rehearsed importer.
+  Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
 
 ### Milestone checkpoint template

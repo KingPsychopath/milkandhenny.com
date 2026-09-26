@@ -4923,6 +4923,36 @@ const MIGRATIONS: Migration[] = [
         on transfer_media_jobs (enqueued_at) where status = 'dead';
     `,
   },
+  {
+    id: "0112_transfer_media_import_quarantine",
+    sql: `
+      alter table transfers add column source_payload_sha256 text
+        check (source_payload_sha256 ~ '^[a-f0-9]{64}$');
+      alter table transfer_media_jobs
+        add column source_list text check (source_list in ('queued','processing','dead')),
+        add column source_index integer check (source_index >= 0),
+        add column source_entry_sha256 text check (source_entry_sha256 ~ '^[a-f0-9]{64}$');
+      alter table transfer_media_jobs add constraint transfer_media_jobs_source_complete
+        check ((source_rdb_sha256 is null and source_list is null and source_index is null
+                and source_entry_sha256 is null)
+            or (source_rdb_sha256 is not null and source_list is not null
+                and source_index is not null and source_entry_sha256 is not null));
+      create unique index transfer_media_jobs_source_entry_idx
+        on transfer_media_jobs (source_rdb_sha256,source_list,source_index)
+        where source_rdb_sha256 is not null;
+      create schema if not exists legacy_archive;
+      create table legacy_archive.transfer_media_job_quarantine (
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_list text not null check (source_list in ('queued','processing','dead')),
+        source_index integer not null check (source_index >= 0),
+        entry_sha256 text not null check (entry_sha256 ~ '^[a-f0-9]{64}$'),
+        reason text not null check (length(reason) between 1 and 100),
+        payload jsonb not null,
+        imported_at timestamptz not null default now(),
+        primary key (source_rdb_sha256,source_list,source_index)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

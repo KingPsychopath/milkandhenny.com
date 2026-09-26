@@ -174,4 +174,6 @@ export const HISTORICAL_MIGRATION_SHA256 = {
   "0110_media_worker_instances": "a4bf89e77bbc8afee1722b7b9366a1019f83a0242f5a5895920cd1bf257a5bea",
   "0111_transfer_catalogue_and_media_jobs":
     "9a2e691878c6e8cc20c8c0ba4db244cb4e8b84e319b5b97ebbb3aa246eef6e43",
+  "0112_transfer_media_import_quarantine":
+    "0d65976ca55e5d8e419af6547104f5d1f95b9b833ac617896e7cfb1a2f07d85e",
 } as const;

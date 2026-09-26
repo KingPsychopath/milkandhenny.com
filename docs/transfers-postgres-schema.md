@@ -45,7 +45,27 @@ R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration 
 generation-specific object keys remain open.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing
-list. One entry has no surviving transfer and no R2 source object. The future importer must
-retain that orphan's provenance in a restricted quarantine record and must not enqueue it as
-runnable work. A fresh source delta is needed before cutover. No migration in this stage reads
-or mutates production data.
+list. One entry has no surviving transfer and no R2 source object. The importer retains that
+orphan's provenance in a restricted quarantine record and does not enqueue it as runnable work.
+A fresh source delta is needed before cutover. No migration in this stage reads or mutates
+production data.
+
+The offline extractor's last optional output now writes a private transfer bundle with the
+verified RDB SHA-256, transfer/index records, and all three media lists. Migration
+`0112_transfer_media_import_quarantine` adds source provenance and a table under
+`legacy_archive`; the runtime role has no access to that schema. The staged importer runs as:
+
+```sh
+AUTH_SECRET="$WEB_AUTH_SECRET" DATABASE_URL="$RESTORE_DATABASE_URL" \
+  pnpm exec tsx --tsconfig tsconfig.cli.json \
+  ops/import-legacy-transfers.ts "$PRIVATE_TRANSFER_BUNDLE" "$VERIFIED_RDB_SHA256"
+```
+
+Use the same web secret at cutover so surviving management tokens remain decryptable. The
+importer requires a mode-0600 bundle whose embedded source hash matches the argument. It
+preserves the transfer and media-job provenance in one transaction. A terminal file's stale
+processing-list entry is recorded as completed rather than requeued. Missing or mismatched
+source jobs are retained in restricted quarantine. The supplied export rehearsed as one transfer,
+52 files, seven completed jobs, zero runnable jobs and one quarantined orphan on an isolated
+production restore. The same-source import repeated, and a different hash was refused.
+Production remains unchanged; obtain and reconcile a fresh source delta before cutover.

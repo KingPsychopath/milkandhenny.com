@@ -37,10 +37,21 @@ type guestExtractor struct {
 	wordShareSlugs  map[string]bool
 	wordShareExpiry map[string]time.Time
 	workerStatus    map[string]string
+	transfers       map[string]json.RawMessage
+	transferExpiry  map[string]time.Time
+	transferIndex   map[string]bool
+	mediaLists      map[string][]json.RawMessage
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	if strings.HasPrefix(key, "transfer:") && strings.Count(key, ":") == 1 && key != "transfer:index" {
+		if !json.Valid([]byte(value)) {
+			return errors.New("invalid transfer JSON")
+		}
+		g.transfers[strings.TrimPrefix(key, "transfer:")] = json.RawMessage(value)
+		return nil
+	}
 	if strings.HasPrefix(key, "words:meta:") && !strings.HasSuffix(key, ":mutation-lock") {
 		if !json.Valid([]byte(value)) {
 			return errors.New("invalid word metadata JSON")
@@ -109,6 +120,9 @@ func (g *guestExtractor) HandleString(key, value string) error {
 	return nil
 }
 func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
+	if strings.HasPrefix(key, "transfer:") && strings.Count(key, ":") == 1 && key != "transfer:index" {
+		g.transferExpiry[strings.TrimPrefix(key, "transfer:")] = expires
+	}
 	if strings.HasPrefix(key, "words:share:") && !strings.HasPrefix(key, "words:share:pin-rl:") {
 		g.wordShareExpiry[strings.TrimPrefix(key, "words:share:")] = expires
 	}
@@ -130,6 +144,12 @@ func (*guestExtractor) HandleLibrary(string) error                          { re
 func (*guestExtractor) HandleModule(string, string, rdb.ModuleMarker) error { return nil }
 func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
 	return func(value string) error {
+		if key == "transfer:media:queue" || key == "transfer:media:processing" || key == "transfer:media:dead" {
+			if !json.Valid([]byte(value)) {
+				return errors.New("invalid transfer media job JSON")
+			}
+			g.mediaLists[key] = append(g.mediaLists[key], json.RawMessage(value))
+		}
 		if key == "auth:upload-open:audit" {
 			g.audit = append(g.audit, json.RawMessage(value))
 		}
@@ -138,6 +158,9 @@ func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
 }
 func (g *guestExtractor) SetEntryHandler(key string) func(string) error {
 	return func(value string) error {
+		if key == "transfer:index" {
+			g.transferIndex[value] = true
+		}
 		if key == "words:index" {
 			g.wordIndex[value] = true
 		}
@@ -185,8 +208,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 11 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path] [absolute-new-word-shares-json-path] [absolute-new-worker-status-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 12 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path] [absolute-new-word-shares-json-path] [absolute-new-worker-status-json-path] [absolute-new-transfer-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -213,6 +236,10 @@ func main() {
 		wordShareSlugs:  make(map[string]bool),
 		wordShareExpiry: make(map[string]time.Time),
 		workerStatus:    make(map[string]string),
+		transfers:       make(map[string]json.RawMessage),
+		transferExpiry:  make(map[string]time.Time),
+		transferIndex:   make(map[string]bool),
+		mediaLists:      make(map[string][]json.RawMessage),
 	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
@@ -596,7 +623,7 @@ func main() {
 		}
 		fmt.Printf("word_shares=%d indexed_slugs=%d\n", len(rows), len(extractor.wordShareSlugs))
 	}
-	if len(os.Args) == 11 {
+	if len(os.Args) >= 11 {
 		allowed := map[string]bool{
 			"lastHeartbeatAt": true, "lastProcessedAt": true,
 			"lastErrorAt": true, "lastErrorMessage": true,
@@ -622,5 +649,58 @@ func main() {
 			panic(err)
 		}
 		fmt.Printf("media_worker_status_fields=%d\n", len(extractor.workerStatus))
+	}
+	if len(os.Args) == 12 {
+		rdbBytes, err := os.ReadFile(source)
+		if err != nil {
+			panic(err)
+		}
+		rdbHash := fmt.Sprintf("%x", sha256.Sum256(rdbBytes))
+		type transferRow struct {
+			ID        string          `json:"id"`
+			Value     json.RawMessage `json:"value"`
+			ExpiresAt string          `json:"expiresAt,omitempty"`
+		}
+		rows := make([]transferRow, 0, len(extractor.transfers))
+		for id, value := range extractor.transfers {
+			row := transferRow{ID: id, Value: value}
+			if expiry, found := extractor.transferExpiry[id]; found {
+				row.ExpiresAt = expiry.UTC().Format(time.RFC3339Nano)
+			}
+			rows = append(rows, row)
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+		indexedIDs := make([]string, 0, len(extractor.transferIndex))
+		for id := range extractor.transferIndex {
+			indexedIDs = append(indexedIDs, id)
+		}
+		sort.Strings(indexedIDs)
+		payload, err := json.Marshal(struct {
+			RdbSha256  string            `json:"rdbSha256"`
+			Transfers  []transferRow     `json:"transfers"`
+			IndexedIDs []string          `json:"indexedIds"`
+			Queued     []json.RawMessage `json:"queued"`
+			Processing []json.RawMessage `json:"processing"`
+			Dead       []json.RawMessage `json:"dead"`
+		}{rdbHash, rows, indexedIDs, append([]json.RawMessage{}, extractor.mediaLists["transfer:media:queue"]...),
+			append([]json.RawMessage{}, extractor.mediaLists["transfer:media:processing"]...),
+			append([]json.RawMessage{}, extractor.mediaLists["transfer:media:dead"]...)})
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(os.Args[11], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("transfers=%d indexed_ids=%d queued_jobs=%d processing_jobs=%d dead_jobs=%d\n",
+			len(rows), len(indexedIDs), len(extractor.mediaLists["transfer:media:queue"]),
+			len(extractor.mediaLists["transfer:media:processing"]), len(extractor.mediaLists["transfer:media:dead"]))
 	}
 }

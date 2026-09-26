@@ -230,33 +230,49 @@ async function insertGroups(client: PoolClient, data: TransferData): Promise<voi
   );
 }
 
+/** Call inside the import or upload transaction that owns related durable work. */
+export async function createPostgresTransferInTransaction(
+  client: PoolClient,
+  data: TransferData,
+  sourceRdbSha256?: string,
+  sourcePayloadSha256?: string,
+): Promise<boolean> {
+  validateTransfer(data);
+  if (sourceRdbSha256 && !/^[a-f0-9]{64}$/.test(sourceRdbSha256))
+    throw new Error("Invalid transfer source fingerprint");
+  if (sourcePayloadSha256 && !/^[a-f0-9]{64}$/.test(sourcePayloadSha256))
+    throw new Error("Invalid transfer payload fingerprint");
+  if (Boolean(sourceRdbSha256) !== Boolean(sourcePayloadSha256))
+    throw new Error("Incomplete transfer source provenance");
+  const sealed = encryptTransferDeleteToken(data.id, data.deleteToken);
+  const inserted = await client.query<{ id: string }>(
+    `insert into transfers
+         (id,title,owner_person_id,delete_token_hash,delete_token_ciphertext,
+          delete_token_nonce,created_at,expires_at,source_rdb_sha256,source_payload_sha256)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       on conflict (id) do nothing returning id`,
+    [
+      data.id,
+      data.title,
+      data.ownerPersonId ?? null,
+      sealed.hash,
+      sealed.ciphertext,
+      sealed.nonce,
+      data.createdAt,
+      data.expiresAt,
+      sourceRdbSha256 ?? null,
+      sourcePayloadSha256 ?? null,
+    ],
+  );
+  if (!inserted.rows[0]) return false;
+  await insertFiles(client, data.id, data.files);
+  await insertGroups(client, data);
+  return true;
+}
+
 /** The transfer and its relational children become visible in one commit. */
 export async function createPostgresTransfer(data: TransferData): Promise<boolean> {
-  validateTransfer(data);
-  const sealed = encryptTransferDeleteToken(data.id, data.deleteToken);
-  return transaction(async (client) => {
-    const inserted = await client.query<{ id: string }>(
-      `insert into transfers
-         (id,title,owner_person_id,delete_token_hash,delete_token_ciphertext,
-          delete_token_nonce,created_at,expires_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)
-       on conflict (id) do nothing returning id`,
-      [
-        data.id,
-        data.title,
-        data.ownerPersonId ?? null,
-        sealed.hash,
-        sealed.ciphertext,
-        sealed.nonce,
-        data.createdAt,
-        data.expiresAt,
-      ],
-    );
-    if (!inserted.rows[0]) return false;
-    await insertFiles(client, data.id, data.files);
-    await insertGroups(client, data);
-    return true;
-  });
+  return transaction((client) => createPostgresTransferInTransaction(client, data));
 }
 
 export type AppendPostgresTransferFilesResult =
