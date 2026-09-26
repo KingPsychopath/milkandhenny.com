@@ -1,4 +1,4 @@
-import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
+import { communicationsWorkspaceQuery } from "@/features/communications/admin-workspace.queries";
 import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
@@ -100,11 +100,11 @@ export const Route = createFileRoute("/admin/")({
         access.isAuthed &&
         access.permissions?.manageCommunications &&
         deps.view === "communications"
-          ? await readCommunicationsWorkspaceFn({ data: deps }).then(
-              (data) => ({ data, error: null }),
-              () => ({
-                data: null,
-                error: "Could not load this communications workspace. Retry below.",
+          ? context.queryClient.prefetchQuery(
+              communicationsWorkspaceQuery({
+                tab: deps.tab ?? "event-plan",
+                eventSlug: deps.eventSlug ?? "",
+                query: "",
               }),
             )
           : null;
@@ -128,12 +128,8 @@ export const Route = createFileRoute("/admin/")({
         // The notification summary is secondary. The SSR Query stream carries its pending result.
         void context.queryClient.prefetchQuery(adminOperationsInboxQuery);
       }
-      const [communications] = await Promise.all([
-        communicationsPromise,
-        summaryPromise,
-        healthPromise,
-      ]);
-      return { ...access, communications };
+      await Promise.all([communicationsPromise, summaryPromise, healthPromise]);
+      return access;
     },
     staleReloadMode: "blocking",
   },
@@ -154,7 +150,6 @@ function AdminPage() {
   const {
     isAuthed,
     draftScope,
-    communications,
     permissions,
     localDevBypassAvailable,
     namedAdminPasskeyRequired,
@@ -280,7 +275,6 @@ function AdminPage() {
         <Suspense fallback={<AdminDashboardFallback />}>
           <AdminDashboard
             view={availableView}
-            initialCommunications={communications}
             communicationTab={communicationTab ?? "event-plan"}
             communicationEvent={communicationEvent}
             operationsTab={availableOperationsTab}

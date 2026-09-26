@@ -31,7 +31,6 @@ import { AdminStatus } from "./components/AdminStatus";
 import { adminContentSummaryQuery } from "../content-summary.queries";
 import { homePageQuery } from "@/features/site/home.queries";
 import { wordsPageQuery } from "@/features/words/reader.queries";
-import { albumsPageQuery } from "@/features/media/albums.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
 
@@ -103,7 +102,6 @@ type EventWorkspace = "events" | "pitches";
 
 export function AdminDashboard({
   view,
-  initialCommunications,
   communicationTab,
   communicationEvent,
   operationsTab,
@@ -123,7 +121,6 @@ export function AdminDashboard({
   onOperationsPersonChange,
   permissions,
 }: {
-  initialCommunications?: import("./components/CommunicationsPanel").InitialCommunications;
   view: AdminSection;
   communicationTab: CommunicationsTab;
   communicationEvent?: string;
@@ -207,7 +204,7 @@ export function AdminDashboard({
         refreshContentSummary(),
         queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
         queryClient.invalidateQueries({ queryKey: wordsPageQuery.queryKey }),
-        queryClient.invalidateQueries({ queryKey: albumsPageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: ["albums", "public"] }),
       ]),
     [queryClient, refreshContentSummary],
   );
@@ -595,7 +592,6 @@ export function AdminDashboard({
         <section aria-label="Communications" className="space-y-10">
           <PanelBoundary label="communications">
             <CommunicationsPanel
-              initialWorkspace={initialCommunications}
               authFetch={authFetch}
               onError={setErrorMessage}
               onStatus={setStatusMessage}
