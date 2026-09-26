@@ -38,7 +38,7 @@ Finalizers reject a queued file without its job plan, and the Redis-era enqueue 
 Postgres queue mode so a split switch cannot silently lose work. Initial presign, resume,
 finalize and abandon can select the Postgres reservation and job plan together under
 `TRANSFER_CATALOGUE_STORE=postgres` and `TRANSFER_MEDIA_JOB_STORE=postgres`. This remains a
-staged switch; append, deletion and cleanup are guarded until their Postgres implementations
+staged switch; deletion and cleanup are guarded until their Postgres implementations
 are connected. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
@@ -67,9 +67,11 @@ The staged finalization transaction locks the matching reservation, verifies the
 capabilities and selected file IDs, bounds stored bytes by the presign reservation, creates the
 transfer catalogue, and consumes the reservation in one commit. The default live path still
 uses Redis.
-Append presign/finalize still use Redis-era workflows, so the new append reservation and
-finalizer are not selected. Late uploads, abandon and deep object cleanup must be wired before
-that switch.
+Append presign now reserves count, names and bytes against concurrent batches in Postgres before
+minting URLs. Append finalization commits inspected files and their media jobs, infers RAW/live
+photo groups and consumes the matching reservation in one transaction. The default live path
+still uses Redis. Late uploads and deep object cleanup must be reconciled before selecting the
+Postgres flags in production.
 
 Jobs have a unique source/operation/generation identity, a claim token, lease, attempt count and
 indexed pending/expired-lease states. Their JSON payload retains source request details while

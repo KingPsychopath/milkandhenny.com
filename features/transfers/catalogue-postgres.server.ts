@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { enqueueMediaObjectOperation } from "@/features/media/object-operations.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getTransferFileDeleteKeys } from "./delete";
+import { inferTransferAssetGroups } from "./live-photo";
 import {
   appendReservationFingerprint,
   lockPostgresTransferAppendReservation,
@@ -540,92 +541,113 @@ export async function finalizePostgresTransferAppend(
     );
     if (result.status !== "updated") return result;
     await enqueuePlannedMediaJobs(client, transferId, files, mediaJobs);
+    const grouped = inferTransferAssetGroups(result.transfer.files);
+    if (
+      !(await updatePostgresTransferGroupingInTransaction(
+        client,
+        transferId,
+        grouped.files,
+        grouped.groups,
+      ))
+    )
+      throw new Error("Transfer changed during append grouping");
     await client.query(
       "delete from transfer_append_reservations where transfer_id=$1 and fingerprint_sha256=$2",
       [transferId, appendReservationFingerprint(selectedFiles)],
     );
-    return result;
+    const updated = await readTransfer(client, transferId, true, false);
+    if (!updated) throw new Error("Transfer disappeared during append finalization");
+    return { status: "updated", transfer: updated };
   });
 }
 
 /** Reorder and regroup the current file set without replacing worker-owned file fields. */
+async function updatePostgresTransferGroupingInTransaction(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  groups: AssetGroup[] | undefined,
+): Promise<boolean> {
+  const owner = await client.query<{ id: string }>(
+    `select id from transfers
+        where id=$1 and deleted_at is null and expires_at > clock_timestamp()
+        for update`,
+    [transferId],
+  );
+  if (!owner.rows[0]) return false;
+  const current = await client.query<{ id: string; position: number }>(
+    "select id,position from transfer_files where transfer_id=$1 order by position",
+    [transferId],
+  );
+  const currentIds = new Set(current.rows.map((row) => row.id));
+  if (
+    currentIds.size !== files.length ||
+    files.some((file) => !currentIds.has(file.id)) ||
+    new Set(files.map((file) => file.id)).size !== files.length
+  )
+    return false;
+  const assignments = new Map(
+    files.map((file) => [file.id, { groupId: file.groupId, groupRole: file.groupRole }]),
+  );
+  const seenGroups = new Set<string>();
+  const seenMembers = new Set<string>();
+  for (const group of groups ?? []) {
+    if (
+      !group.id ||
+      seenGroups.has(group.id) ||
+      (group.type !== "live_photo" && group.type !== "raw_pair") ||
+      group.members.length < 2
+    )
+      throw new Error("Invalid transfer group");
+    seenGroups.add(group.id);
+    for (const member of group.members) {
+      const assignment = assignments.get(member.fileId);
+      if (
+        !assignment ||
+        seenMembers.has(member.fileId) ||
+        assignment.groupId !== group.id ||
+        assignment.groupRole !== member.role
+      )
+        throw new Error("Invalid transfer group member");
+      seenMembers.add(member.fileId);
+    }
+  }
+  if (
+    files.some(
+      (file) =>
+        Boolean(file.groupId) !== seenMembers.has(file.id) ||
+        Boolean(file.groupId) !== Boolean(file.groupRole),
+    )
+  )
+    throw new Error("Invalid transfer file group");
+
+  // The temporary range avoids intermediate collisions with the unique position constraint.
+  const offset = (current.rows.at(-1)?.position ?? -1) + files.length + 1;
+  await client.query("update transfer_files set position=position+$2 where transfer_id=$1", [
+    transferId,
+    offset,
+  ]);
+  for (const [position, file] of files.entries()) {
+    await client.query("update transfer_files set position=$3 where transfer_id=$1 and id=$2", [
+      transferId,
+      file.id,
+      position,
+    ]);
+  }
+  await client.query("delete from transfer_groups where transfer_id=$1", [transferId]);
+  await insertGroups(client, transferId, groups);
+  await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
+  return true;
+}
+
 export async function updatePostgresTransferGrouping(
   transferId: string,
   files: TransferFile[],
   groups: AssetGroup[] | undefined,
 ): Promise<boolean> {
-  return transaction(async (client) => {
-    const owner = await client.query<{ id: string }>(
-      `select id from transfers
-        where id=$1 and deleted_at is null and expires_at > clock_timestamp()
-        for update`,
-      [transferId],
-    );
-    if (!owner.rows[0]) return false;
-    const current = await client.query<{ id: string; position: number }>(
-      "select id,position from transfer_files where transfer_id=$1 order by position",
-      [transferId],
-    );
-    const currentIds = new Set(current.rows.map((row) => row.id));
-    if (
-      currentIds.size !== files.length ||
-      files.some((file) => !currentIds.has(file.id)) ||
-      new Set(files.map((file) => file.id)).size !== files.length
-    )
-      return false;
-    const assignments = new Map(
-      files.map((file) => [file.id, { groupId: file.groupId, groupRole: file.groupRole }]),
-    );
-    const seenGroups = new Set<string>();
-    const seenMembers = new Set<string>();
-    for (const group of groups ?? []) {
-      if (
-        !group.id ||
-        seenGroups.has(group.id) ||
-        (group.type !== "live_photo" && group.type !== "raw_pair") ||
-        group.members.length < 2
-      )
-        throw new Error("Invalid transfer group");
-      seenGroups.add(group.id);
-      for (const member of group.members) {
-        const assignment = assignments.get(member.fileId);
-        if (
-          !assignment ||
-          seenMembers.has(member.fileId) ||
-          assignment.groupId !== group.id ||
-          assignment.groupRole !== member.role
-        )
-          throw new Error("Invalid transfer group member");
-        seenMembers.add(member.fileId);
-      }
-    }
-    if (
-      files.some(
-        (file) =>
-          Boolean(file.groupId) !== seenMembers.has(file.id) ||
-          Boolean(file.groupId) !== Boolean(file.groupRole),
-      )
-    )
-      throw new Error("Invalid transfer file group");
-
-    // The temporary range avoids intermediate collisions with the unique position constraint.
-    const offset = (current.rows.at(-1)?.position ?? -1) + files.length + 1;
-    await client.query("update transfer_files set position=position+$2 where transfer_id=$1", [
-      transferId,
-      offset,
-    ]);
-    for (const [position, file] of files.entries()) {
-      await client.query("update transfer_files set position=$3 where transfer_id=$1 and id=$2", [
-        transferId,
-        file.id,
-        position,
-      ]);
-    }
-    await client.query("delete from transfer_groups where transfer_id=$1", [transferId]);
-    await insertGroups(client, transferId, groups);
-    await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
-    return true;
-  });
+  return transaction((client) =>
+    updatePostgresTransferGroupingInTransaction(client, transferId, files, groups),
+  );
 }
 
 type TransferDeleteFileRow = {

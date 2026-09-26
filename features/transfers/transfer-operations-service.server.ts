@@ -35,10 +35,12 @@ import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from
 import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
 import { getMultipartPartSize, MULTIPART_UPLOAD_THRESHOLD_BYTES } from "./upload-window.server";
 import {
+  finalizePostgresTransferAppend,
   finalizePostgresTransferReservation,
   getPostgresTransfer,
   validatePostgresTransferDeleteToken,
 } from "./catalogue-postgres.server";
+import { reservePostgresTransferAppend } from "./append-reservation-postgres.server";
 import { planPostgresTransferMedia } from "./media-plan-postgres.server";
 import {
   createPostgresTransferUploadReservation,
@@ -164,7 +166,7 @@ export type TransferAppendResult =
       fileCounts: TransferFileCounts;
       processingCounts: TransferProcessingCounts;
     }
-  | { status: "missing" | "conflict" | "limit" }
+  | { status: "missing" | "conflict" | "limit" | "missing-reservation" | "reservation-mismatch" }
   | { status: "size-mismatch"; filename: string; archivedOriginal: boolean };
 
 export type TransferFileRemovalResult =
@@ -224,7 +226,13 @@ export class TransferOperationsService extends Context.Service<
       transferId: string;
       files: TransferUploadFileInput[];
       uploadUrlTtlSeconds: number;
-    }) => Effect.Effect<Extract<TransferPresignResult, { status: "ready" }>, unknown>;
+      maxFiles?: number;
+      maxTotalBytes?: number;
+    }) => Effect.Effect<
+      | Extract<TransferPresignResult, { status: "ready" }>
+      | { status: "missing" | "conflict" | "limit" },
+      unknown
+    >;
     readonly resumeUpload: (input: {
       transferId: string;
       deleteToken: string;
@@ -801,12 +809,26 @@ export class TransferOperationsService extends Context.Service<
         transferId: string;
         files: TransferUploadFileInput[];
         uploadUrlTtlSeconds: number;
+        maxFiles?: number;
+        maxTotalBytes?: number;
       }) =>
-        Effect.sync(() => requireLegacyTransferCatalogue("Transfer append")).pipe(
-          Effect.flatMap(() =>
-            presignFiles(input.transferId, input.files, input.uploadUrlTtlSeconds),
-          ),
-          Effect.map((urls) => ({ status: "ready", urls }) as const),
+        Effect.gen(function* () {
+          if (postgresTransferCatalogueSelected()) {
+            const reserved = yield* attempt("reserve_append", () =>
+              reservePostgresTransferAppend(input.transferId, input.files, {
+                maxFiles: input.maxFiles,
+                maxTotalBytes: input.maxTotalBytes,
+              }),
+            );
+            if (reserved !== "reserved") return { status: reserved } as const;
+          }
+          const urls = yield* presignFiles(
+            input.transferId,
+            input.files,
+            input.uploadUrlTtlSeconds,
+          );
+          return { status: "ready", urls } as const;
+        }).pipe(
           Effect.withSpan("transfers.presign_append", {
             attributes: { fileCount: input.files.length },
           }),
@@ -819,11 +841,33 @@ export class TransferOperationsService extends Context.Service<
         maxTotalBytes?: number;
       }) =>
         Effect.gen(function* () {
-          requireLegacyTransferCatalogue("Transfer append");
+          const postgres = postgresTransferCatalogueSelected();
           yield* completeMultipartFiles(input.transferId, input.files);
           const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
           const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
           if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
+
+          if (postgres) {
+            const planned = planPostgresTransferMedia(input.transferId, input.files);
+            const appended = yield* attempt("append_files", () =>
+              finalizePostgresTransferAppend(
+                input.transferId,
+                input.files,
+                planned.files,
+                { maxFiles: input.maxFiles, maxTotalBytes: input.maxTotalBytes },
+                planned.jobs,
+              ),
+            );
+            if (appended.status !== "updated") return appended;
+            return {
+              status: "completed",
+              transfer: appended.transfer,
+              addedCount: planned.files.length,
+              totalSize: inspected.reduce((sum, entry) => sum + entry.bytes, 0),
+              fileCounts: countTransferFiles(planned.files),
+              processingCounts: buildTransferProcessingCounts(planned.files),
+            } as const;
+          }
 
           const results = yield* processFiles(input.transferId, input.files);
           const appended = yield* attempt("append_files", () =>

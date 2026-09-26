@@ -118,4 +118,55 @@ describeWithDatabase("Postgres transfer upload workflow", () => {
       status: "completed",
     });
   });
+
+  it("reserves append capacity and commits a RAW pair with its job", async () => {
+    const initial = {
+      transferId: "postgres-append-one",
+      deleteToken: "private-token",
+      actorJti: "upload-session",
+      expiresSeconds: 3600,
+      files: [{ mediaId: "photo", name: "photo.jpg", size: 123 }],
+    };
+    await run(
+      TransferOperationsService.use((service) =>
+        service.presignUpload({ ...initial, uploadUrlTtlSeconds: 3600 }),
+      ),
+    );
+    await run(TransferOperationsService.use((service) => service.finalizeUpload(initial)));
+    const files = [{ mediaId: "raw", name: "photo.dng", size: 123 }];
+    expect(
+      await run(
+        TransferOperationsService.use((service) =>
+          service.presignAppend({
+            transferId: initial.transferId,
+            files,
+            uploadUrlTtlSeconds: 3600,
+            maxFiles: 2,
+            maxTotalBytes: 246,
+          }),
+        ),
+      ),
+    ).toMatchObject({ status: "ready" });
+    const appended = await run(
+      TransferOperationsService.use((service) =>
+        service.finalizeAppend({
+          transferId: initial.transferId,
+          files,
+          maxFiles: 2,
+          maxTotalBytes: 246,
+        }),
+      ),
+    );
+    expect(appended).toMatchObject({ status: "completed", addedCount: 1 });
+    const transfer = await getPostgresTransfer(initial.transferId);
+    expect(transfer?.groups).toMatchObject([
+      { type: "raw_pair", members: [{ fileId: "photo" }, { fileId: "raw" }] },
+    ]);
+    expect(
+      await query<{ count: string }>(
+        "select count(*)::text as count from transfer_media_jobs where transfer_id=$1",
+        [initial.transferId],
+      ),
+    ).toEqual([{ count: "2" }]);
+  });
 });

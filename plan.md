@@ -645,7 +645,10 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Stage paired Postgres catalogue/queue selection for initial presign, finalization,
         resume and abandon, plus shared transfer reads and delete-capability verification.
         Finalization commits file rows and jobs with its reservation. Legacy mutations fail
-        closed in this mode. Append, deletion and cleanup must switch before enabling it.
+        closed in this mode. Deletion and cleanup must switch before enabling it.
+  - [x] Stage Postgres append presign with serialized multi-batch quota reservations and
+        finalization with file rows, media jobs, inferred groups and reservation consumption in
+        one transaction. Deletion and cleanup remain guarded in Postgres mode.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
@@ -1119,7 +1122,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   service test passed completion, idempotency and missing-object retry; the five neighboring
   upload route suites and the catalogue suite passed (six files, 28 tests). `pnpm check`,
   `pnpm build` and the full `pnpm test` suite passed (274 files, 2,119 tests). This staged flag
-  must stay unset until append, deletion, cleanup and orphan handling are complete.
+  must stay unset until deletion, cleanup and orphan handling are complete.
+  Postgres append presign now reserves each selected batch against existing files and other
+  reservations. Its finalization infers groups and commits ordering, files, media jobs and
+  reservation consumption together. The original insertion order remains stable; an initial
+  sorting change was reverted after a focused regression test. Four focused suites passed
+  25 cases, including a RAW pair and concurrent reservation capacity. `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (274 files, 2,120 tests).
   A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
   while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
   from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
