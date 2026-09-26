@@ -40,6 +40,7 @@ export default defineConfig({
         ...process.env,
         DATABASE_URL: testDatabase,
         ALBUM_STORE: process.env.ALBUM_STORE ?? "postgres",
+        WORD_STORE: process.env.WORD_STORE ?? "postgres",
         REDIS_REST_URL: "http://127.0.0.1:56380",
         REDIS_REST_TOKEN: "local-browser-test",
         VITE_BASE_URL: baseURL,

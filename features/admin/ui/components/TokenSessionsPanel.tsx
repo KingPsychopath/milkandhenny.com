@@ -42,7 +42,7 @@ export function TokenSessionsPanel(props: {
     filtered,
     visible,
     refresh,
-  } = useTokenSessions({ isAuthed, authFetch });
+  } = useTokenSessions({ isAuthed });
 
   const handleRevokeSingleSession = async (jti: string) => {
     if (

@@ -2,6 +2,7 @@ import { communicationsWorkspaceQuery } from "@/features/communications/admin-wo
 import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
+import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -120,6 +121,10 @@ export const Route = createFileRoute("/admin/")({
         (deps.view === "overview" || deps.view === "system")
           ? context.queryClient.prefetchQuery(adminSystemHealthQuery)
           : null;
+      const sessionsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "system"
+          ? context.queryClient.prefetchQuery(adminTokenSessionsQuery)
+          : null;
       if (
         access.isAuthed &&
         access.permissions?.viewOperations &&
@@ -128,7 +133,7 @@ export const Route = createFileRoute("/admin/")({
         // The notification summary is secondary. The SSR Query stream carries its pending result.
         void context.queryClient.prefetchQuery(adminOperationsInboxQuery);
       }
-      await Promise.all([communicationsPromise, summaryPromise, healthPromise]);
+      await Promise.all([communicationsPromise, summaryPromise, healthPromise, sessionsPromise]);
       return access;
     },
     staleReloadMode: "blocking",
