@@ -4,6 +4,7 @@ import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
 import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
 import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries";
 import { adminPollsQuery } from "@/features/polls/polls.queries";
+import { adminCreditsQuery } from "@/features/credits/credits.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -117,6 +118,13 @@ export const Route = createFileRoute("/admin/")({
         deps.tab === "polls"
           ? context.queryClient.prefetchQuery(adminPollsQuery)
           : null;
+      const creditsPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "credits"
+          ? context.queryClient.prefetchQuery(adminCreditsQuery)
+          : null;
       const summaryPromise =
         access.isAuthed &&
         access.permissions?.manageContent &&
@@ -144,6 +152,7 @@ export const Route = createFileRoute("/admin/")({
       await Promise.all([
         communicationsPromise,
         pollsPromise,
+        creditsPromise,
         summaryPromise,
         healthPromise,
         sessionsPromise,

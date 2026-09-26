@@ -1,42 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
+import { adminCreditGrantsQuery, adminCreditsQuery } from "@/features/credits/credits.queries";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
-type Campaign = {
-  id: string;
-  campaignKey: string;
-  name: string;
-  amountMinor: number;
-  currency: string;
-  claimExpiresAt: string;
-  status: string;
-  recipients: number;
-  units: number;
-  claimedRecipients: number;
-  claimedUnits: number;
-  redeemedUnits: number;
-  revokedRecipients: number;
-  redemptionEventSlug: string | null;
-  redeemExpiresAt: string | null;
-};
-type Grant = {
-  id: string;
-  email: string;
-  displayName: string | null;
-  units: number;
-  reservedUnits: number;
-  redeemedUnits: number;
-  remainingUnits: number;
-  claimedAt: string | null;
-  revokedAt: string | null;
-};
-type EventOption = { slug: string; title: string; startsAt: string };
-
 function money(minor: number, currency: string) {
   return new Intl.NumberFormat("en-GB", {
     style: "currency",
@@ -55,14 +27,20 @@ export function CreditsPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [events, setEvents] = useState<EventOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const queryClient = useQueryClient();
+  const creditsQuery = useQuery(adminCreditsQuery);
+  const campaigns = creditsQuery.data?.campaigns ?? [];
+  const events = creditsQuery.data?.events ?? [];
+  const loading = creditsQuery.isPending;
+  const loadError = creditsQuery.error?.message ?? "";
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [grants, setGrants] = useState<Grant[]>([]);
+  const grantsQuery = useQuery({
+    ...adminCreditGrantsQuery(expanded ?? ""),
+    enabled: Boolean(expanded),
+  });
+  const grants = grantsQuery.data ?? [];
   const [grantDraft, setGrantDraft] = useState({ email: "", displayName: "", units: "1" });
   const [redemptionDraft, setRedemptionDraft] = useState({ eventSlug: "", expiresAt: "" });
   const [draft, setDraft] = useState({
@@ -76,28 +54,9 @@ export function CreditsPanel({
   });
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await authFetch("/api/admin/credits");
-      const data = (await response.json()) as {
-        campaigns?: Campaign[];
-        events?: EventOption[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Could not load credits");
-      setCampaigns(data.campaigns || []);
-      setEvents(data.events || []);
-      setLoadError("");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load credits";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
-
-  useEffect(() => void load(), [load]);
+    const result = await creditsQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [creditsQuery, onError]);
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -118,7 +77,7 @@ export function CreditsPanel({
       if (!response.ok) throw new Error(data.error || "Could not create campaign");
       onStatus("Credit campaign created from the current valid tickets. Nothing was emailed.");
       setOpen(false);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminCreditsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not create campaign");
     } finally {
@@ -126,30 +85,17 @@ export function CreditsPanel({
     }
   }
 
-  async function toggleCampaign(campaignId: string) {
+  function toggleCampaign(campaignId: string) {
     if (expanded === campaignId) {
       setExpanded(null);
       return;
     }
-    setBusy(true);
-    try {
-      const response = await authFetch(
-        `/api/admin/credits?campaignId=${encodeURIComponent(campaignId)}`,
-      );
-      const data = (await response.json()) as { grants?: Grant[]; error?: string };
-      if (!response.ok) throw new Error(data.error || "Could not load recipients");
-      setGrants(data.grants || []);
-      const campaign = campaigns.find((item) => item.id === campaignId);
-      setRedemptionDraft({
-        eventSlug: campaign?.redemptionEventSlug ?? "",
-        expiresAt: campaign?.redeemExpiresAt?.slice(0, 16) ?? "",
-      });
-      setExpanded(campaignId);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load recipients");
-    } finally {
-      setBusy(false);
-    }
+    const campaign = campaigns.find((item) => item.id === campaignId);
+    setRedemptionDraft({
+      eventSlug: campaign?.redemptionEventSlug ?? "",
+      expiresAt: campaign?.redeemExpiresAt?.slice(0, 16) ?? "",
+    });
+    setExpanded(campaignId);
   }
 
   async function saveRedemptionEvent(campaignId: string) {
@@ -174,7 +120,7 @@ export function CreditsPanel({
           ? "Credits will apply automatically to that event, one unit per admission ticket."
           : "Automatic redemption is paused until an event is selected.",
       );
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminCreditsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not update redemption");
     } finally {
@@ -198,9 +144,10 @@ export function CreditsPanel({
       if (!response.ok) throw new Error(data.error || "Could not update recipient");
       onStatus(action === "grant" ? "Credit recipient saved." : "Credit revoked.");
       setGrantDraft({ email: "", displayName: "", units: "1" });
-      setExpanded(null);
-      await toggleCampaign(campaignId);
-      await load();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: adminCreditsQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: adminCreditGrantsQuery(campaignId).queryKey }),
+      ]);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not update recipient");
     } finally {
@@ -310,7 +257,7 @@ export function CreditsPanel({
             <article key={campaign.id} className="border-b theme-border py-5">
               <button
                 type="button"
-                onClick={() => void toggleCampaign(campaign.id)}
+                onClick={() => toggleCampaign(campaign.id)}
                 aria-expanded={expanded === campaign.id}
                 className="grid min-h-11 w-full gap-4 text-left sm:grid-cols-[1fr_auto]"
               >
@@ -443,6 +390,13 @@ export function CreditsPanel({
                     </button>
                   </form>
                   <div className="mt-4 divide-y theme-border-faint border-y theme-border">
+                    {grantsQuery.isPending ? <AdminLoading label="Loading recipients…" /> : null}
+                    {grantsQuery.error ? (
+                      <AdminLoadError
+                        message={grantsQuery.error.message}
+                        retry={() => void grantsQuery.refetch()}
+                      />
+                    ) : null}
                     {grants.map((grant) => (
                       <div
                         key={grant.id}
