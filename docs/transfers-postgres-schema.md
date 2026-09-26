@@ -72,14 +72,18 @@ jobs whose source is deleted, expired or superseded. Completion locks the transf
 checks the claim, and updates the file result in the caller's transaction. A Postgres queue
 snapshot reports pending, claimed, dead and expired work to admin/CLI health, and an explicit
 dead-job retry grants one more attempt only while its source generation still matches.
-Old-attempt object reconciliation remains open.
+The Media runtime periodically stages private-object deletion for known attempt outputs after
+the claim loses publication rights, while keeping the file's published claim. A bounded worker
+timeout stops lease renewal on interruption; expired claims are then recoverable. An R2 prefix
+sweep for objects uploaded after a deletion, or never recorded in Postgres, remains open.
 The repository validates the generation namespace before enqueue, assigns distinct keys to each
 claim, and records the winning attempt on fenced completion. A staged Postgres executor processes
 images, GIFs, videos and RAW previews, retries failed claims, and removes its own outputs when a
 late completion loses the lease. The Media runtime selects this executor with
 `TRANSFER_MEDIA_JOB_STORE=postgres` and requires `MEDIA_WORKER_STATUS_STORE=postgres`. Both the
-long-running worker and one-shot drain avoid Redis queue claims in this mode. Older orphaned
-attempt objects still need reconciliation. The Redis worker's fixed-key path remains unchanged.
+long-running worker and one-shot drain avoid Redis queue claims in this mode. Orphan objects
+outside the attempt ledger still need reconciliation. The Redis worker's fixed-key
+path remains unchanged.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing
 list. One entry has no surviving transfer and no R2 source object. The importer retains that

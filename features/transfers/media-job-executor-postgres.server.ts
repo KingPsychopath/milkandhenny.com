@@ -138,9 +138,12 @@ export async function runPostgresTransferMediaBatch(
   };
   for (const claim of claimed) {
     const renew = setInterval(() => {
+      if (signal?.aborted) return;
       void renewPostgresTransferMediaJob(claim.id, claim.claimToken).catch(() => undefined);
     }, 5 * 60_000);
     renew.unref?.();
+    const stopRenewing = () => clearInterval(renew);
+    signal?.addEventListener("abort", stopRenewing, { once: true });
     try {
       const file = await processClaim(claim, signal);
       if (!file) {
@@ -160,7 +163,10 @@ export async function runPostgresTransferMediaBatch(
         await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
       }
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) {
+        await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
+        throw error;
+      }
       if (error instanceof RawPreviewUnavailableError) {
         const transfer = await getPostgresTransferForWorker(claim.job.transferId);
         const file = transfer?.files.find((entry) => entry.id === claim.job.mediaId);
@@ -192,6 +198,7 @@ export async function runPostgresTransferMediaBatch(
       else result.lostClaim += 1;
       await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
     } finally {
+      signal?.removeEventListener("abort", stopRenewing);
       clearInterval(renew);
     }
   }

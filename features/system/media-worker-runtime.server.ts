@@ -6,7 +6,10 @@ import { AlbumOperationsService } from "@/features/media/album-operations-servic
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
 import { runPostgresTransferMediaBatch } from "@/features/transfers/media-job-executor-postgres.server";
-import { cancelObsoletePostgresTransferMediaJobs } from "@/features/transfers/media-jobs-postgres.server";
+import {
+  cancelObsoletePostgresTransferMediaJobs,
+  enqueueAbandonedPostgresTransferMediaOutputs,
+} from "@/features/transfers/media-jobs-postgres.server";
 import { runTransferObjectDeletionBatch } from "@/features/transfers/object-deletions.server";
 import {
   markWorkerJobTimedOut,
@@ -239,10 +242,12 @@ function workerSlot(client: Redis, errorBackoffMs: number, storage: ObjectStorag
 
 function postgresWorkerSlot(errorBackoffMs: number, storage: ObjectStorageProvider) {
   const owner = `transfer-media:${randomUUID()}`;
+  const timeoutMs = getWorkerProcessingTimeoutMs();
+  const claim = workerAttempt("postgres_claim", (signal) =>
+    withObjectStorageProvider(storage, () => runPostgresTransferMediaBatch(owner, 1, signal)),
+  );
   return Effect.forever(
-    workerAttempt("postgres_claim", (signal) =>
-      withObjectStorageProvider(storage, () => runPostgresTransferMediaBatch(owner, 1, signal)),
-    ).pipe(
+    (timeoutMs > 0 ? claim.pipe(Effect.timeout(timeoutMs)) : claim).pipe(
       Effect.flatMap((result) =>
         result.claimed > 0
           ? workerAttempt("status", () => markMediaJobProcessed())
@@ -294,7 +299,19 @@ function drainPostgresMediaQueues(
               withObjectStorageProvider(storage, () =>
                 runPostgresTransferMediaBatch(owner, 1, signal),
               ),
-            );
+            ).pipe((effect) => {
+              const timeoutMs = getWorkerProcessingTimeoutMs();
+              return timeoutMs > 0
+                ? effect.pipe(
+                    Effect.timeout(timeoutMs),
+                    Effect.mapError((cause) =>
+                      cause instanceof MediaWorkerError
+                        ? cause
+                        : new MediaWorkerError({ cause, operation: "postgres_drain_timeout" }),
+                    ),
+                  )
+                : effect;
+            });
             if (result.claimed === 0) return summary;
             summary.processedJobs += result.claimed;
             summary.succeeded += result.completed;
@@ -418,7 +435,15 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
     reconcileIntervalMs <= 0
       ? Effect.never
       : process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
-        ? workerAttempt("postgres_reconcile", () => cancelObsoletePostgresTransferMediaJobs()).pipe(
+        ? workerAttempt("postgres_reconcile", async () => {
+            const cancelled = await cancelObsoletePostgresTransferMediaJobs();
+            const abandonedOutputs = await enqueueAbandonedPostgresTransferMediaOutputs();
+            if (cancelled > 0 || abandonedOutputs > 0)
+              log.info("media.worker", "Postgres media reconciliation completed", {
+                cancelled,
+                abandonedOutputs,
+              });
+          }).pipe(
             Effect.catch((error) =>
               workerAttempt("record_postgres_reconcile_error", () => recordWorkerError(error)),
             ),

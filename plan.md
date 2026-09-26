@@ -646,21 +646,22 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
         Worker execution and transactional enqueue remain open.
   - [x] Add staged transactional enqueue, indexed disjoint claims, renewals, fenced completion,
-        bounded retry/dead-letter and obsolete-source cancellation. Worker/R2 integration,
-        explicit dead-letter retry and queue snapshots remain open.
+        bounded retry/dead-letter and obsolete-source cancellation.
   - [x] Require generation-specific Postgres job output keys and publish the winning generation
-        on fenced completion; worker execution and obsolete-object collection remain open.
+        on fenced completion.
   - [x] Give each claim distinct R2 keys and persist attempt outputs so an expired claim cannot
         overwrite its replacement; a staged executor handles supported media routes.
   - [x] Select the staged Postgres executor in the Media runtime and one-shot drain without
         Redis blocking clients; require Postgres heartbeat storage in this opt-in mode.
   - [x] Add a Postgres queue snapshot for health and one-attempt manual dead-letter retry,
-        preserving attempt counts and refusing stale source generations. Attempt-object
-        reconciliation and complete admin/CLI mutation parity remain open.
+        preserving attempt counts and refusing stale source generations.
+  - [x] Stage deletion of old claim-specific derivative objects after publication is impossible,
+        preserving the winning output; bound worker processing and stop lease renewal when
+        interrupted. R2 prefix reconciliation and complete admin/CLI mutation parity remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
-        worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
-        monitor cutover remain open.
+        worker-status snapshot as stopped provenance. Events and aggregate monitor cutover remain
+        open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
   - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
@@ -823,7 +824,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   `fa57f8bb`; durable object cleanup `d5814528`; deletion runner `ef1270ec`; opt-in worker
   schedule `07b83ea2`.
   Append quota reservations `716422f7`; generation-fenced derivatives `35ed7f66`;
-  Postgres media executor and attempt fencing `26dfdcd4`.
+  Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
+  queue health and dead-job retry `a61ff521`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -1061,6 +1063,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   prior attempts and refuses stale generations. Five focused real-Postgres cases pass, including
   queue state and source-change retry cases. `pnpm check`, `pnpm build` and the full `pnpm test`
   suite passed (273 files, 2,107 tests). Remaining operations still need Postgres parity.
+  Known abandoned claim outputs are now selected only after the attempt loses publication rights,
+  then private deletion is staged in the durable object-operation ledger. The current published
+  claim is excluded, including while a replacement is still running. A bounded worker timeout
+  stops lease renewal and interruption attempts best-effort output deletion. Three focused suites
+  passed 15 cases against real Postgres or the worker runtime. `pnpm check`, `pnpm build` and the
+  full `pnpm test` suite passed (273 files, 2,110 tests). R2 prefix sweeps for unrecorded or late
+  objects remain open.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

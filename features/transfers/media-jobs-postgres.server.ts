@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
+import { enqueueMediaObjectOperation } from "@/features/media/object-operations.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getGenerationTransferAssetKeys } from "./media-state";
 import type { TransferMediaJob } from "./media-queue.server";
@@ -102,6 +103,54 @@ export async function retryDeadPostgresTransferMediaJobs(limit = 25): Promise<nu
     [limit],
   );
   return rows.length;
+}
+
+/** Stage private-object deletion only after an attempt can no longer publish. */
+export async function enqueueAbandonedPostgresTransferMediaOutputs(limit = 50): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("Invalid transfer media cleanup limit");
+  return transaction(async (client) => {
+    const rows = await client.query<{
+      transfer_id: string;
+      generation: number;
+      thumb_key: string;
+      full_key: string | null;
+    }>(
+      `select j.transfer_id,j.generation,o.thumb_key,o.full_key
+         from transfer_media_job_attempt_outputs o
+         join transfer_media_jobs j on j.id=o.job_id
+         left join transfer_files f on f.transfer_id=j.transfer_id and f.id=j.file_id
+        where o.created_at < clock_timestamp()-interval '35 minutes'
+          and o.claim_token is distinct from f.derivative_claim_token
+          and not (j.status='claimed' and j.claim_token=o.claim_token
+                   and j.lease_until > clock_timestamp())
+          and not exists (
+            select 1 from media_object_operations m
+             where m.owner_kind='transfer' and m.owner_id=j.transfer_id
+               and m.owner_revision=j.generation and m.operation='delete'
+               and m.target_scope='private' and m.target_key=o.thumb_key
+          )
+        order by o.created_at,o.job_id,o.claim_token
+        limit $1 for update of o,j skip locked`,
+      [limit],
+    );
+    for (const row of rows.rows) {
+      for (const key of [row.thumb_key, row.full_key]) {
+        if (!key) continue;
+        if (!key.startsWith(`transfers/${row.transfer_id}/`))
+          throw new Error("Transfer media attempt output escaped its owner prefix");
+        await enqueueMediaObjectOperation(client, {
+          ownerKind: "transfer",
+          ownerId: row.transfer_id,
+          ownerRevision: row.generation,
+          operation: "delete",
+          targetScope: "private",
+          targetKey: key,
+        });
+      }
+    }
+    return rows.rowCount ?? 0;
+  });
 }
 
 function validateLease(leaseMs: number): void {

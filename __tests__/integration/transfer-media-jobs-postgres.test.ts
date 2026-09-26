@@ -5,6 +5,7 @@ import {
   cancelObsoletePostgresTransferMediaJobs,
   claimPostgresTransferMediaJobs,
   completePostgresTransferMediaJob,
+  enqueueAbandonedPostgresTransferMediaOutputs,
   enqueuePostgresTransferMediaJob,
   failPostgresTransferMediaJob,
   getPostgresTransferMediaQueueSnapshot,
@@ -75,6 +76,7 @@ describeWithDatabase("Postgres transfer media jobs", () => {
   beforeEach(async () => {
     vi.stubEnv("AUTH_SECRET", "integration-test-transfer-secret-at-least-32-bytes");
     await query("truncate transfers cascade");
+    await query("truncate media_object_operations");
     await createPostgresTransfer(transfer);
   });
 
@@ -276,5 +278,41 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     );
     expect(await retryDeadPostgresTransferMediaJobs()).toBe(0);
     expect(await getPostgresTransferMediaQueueSnapshot()).toMatchObject({ dead: 1, due: 0 });
+  });
+
+  it("stages deletion of abandoned attempt keys but preserves the published winner", async () => {
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-one"), 1));
+    const old = (await claimPostgresTransferMediaJobs("worker-one"))[0];
+    if (!old) throw new Error("Expected first claim");
+    await query("update transfer_media_jobs set lease_until=now()-interval '1 second'");
+    const winner = (await claimPostgresTransferMediaJobs("worker-two"))[0];
+    if (!winner) throw new Error("Expected replacement claim");
+    await query("update transfer_media_job_attempt_outputs set created_at=now()-interval '1 hour'");
+    expect(await enqueueAbandonedPostgresTransferMediaOutputs()).toBe(1);
+    expect(
+      await query<{ target_key: string }>(
+        "select target_key from media_object_operations order by target_key",
+      ),
+    ).toEqual(
+      [old.job.expectedThumbKey, old.job.expectedFullKey]
+        .filter((key): key is string => Boolean(key))
+        .sort()
+        .map((target_key) => ({ target_key })),
+    );
+    const file = transfer.files.find((entry) => entry.id === winner.job.mediaId);
+    if (!file) throw new Error("Expected winner source file");
+    expect(
+      await transaction((client) =>
+        completePostgresTransferMediaJob(client, winner.id, winner.claimToken, {
+          ...file,
+          previewStatus: "ready",
+          processingStatus: "worker_done",
+        }),
+      ),
+    ).toBe(true);
+    expect(await enqueueAbandonedPostgresTransferMediaOutputs()).toBe(0);
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from media_object_operations"),
+    ).toEqual([{ count: "2" }]);
   });
 });
