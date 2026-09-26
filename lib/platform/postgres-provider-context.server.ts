@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { PoolClient, QueryResultRow } from "pg";
 
 import * as postgres from "./postgres.server";
 
@@ -23,6 +24,23 @@ export function withPostgresProvider<A>(
   run: () => Promise<A>,
 ): Promise<A> {
   return activePostgresProvider.run(provider, run);
+}
+
+/** Reuse an owning transaction for nested workflow calls without opening another connection. */
+export function withPostgresClient<A>(client: PoolClient, run: () => Promise<A>): Promise<A> {
+  const parent = current();
+  const queryInClient: PostgresProvider["query"] = async (text, values = []) => {
+    const result = await client.query(text, values as unknown[]);
+    return result.rows;
+  };
+  const provider: PostgresProvider = {
+    getPool: parent.getPool,
+    query: queryInClient,
+    queryOne: async <T extends QueryResultRow>(text: string, values: readonly unknown[] = []) =>
+      (await queryInClient<T>(text, values))[0] ?? null,
+    transaction: async (fn) => fn(client),
+  };
+  return withPostgresProvider(provider, run);
 }
 
 function current(): PostgresProvider {

@@ -240,7 +240,9 @@ encrypted with a key derived from `AUTH_SECRET`; version and active-state import
 switching. Attendee sessions have a separate opt-in Postgres backend selected with
 `ATTENDEE_SESSION_STORE=postgres`; it stores hashed cookie lookups and indexed person revocation.
 The source session and person-version keys must be imported with original expiry before switching.
-CLI authorization handshakes still use Redis.
+CLI authorization handshakes have their own opt-in Postgres backend selected with
+`AUTH_CLI_STORE=postgres`; request decisions, encrypted codes and one-time exchange are
+transactional. Redis remains the default until the short-lived source keys are reconciled.
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests, and transfer files. The public bucket contains only intentionally published

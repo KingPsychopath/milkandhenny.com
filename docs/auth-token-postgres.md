@@ -8,8 +8,10 @@ planned writer freeze. The supplied 2026-09-26 RDB has no `auth:session:*`,
 
 `AUTH_TOKEN_STORE=postgres` switches JWT version reads and increments, verification, session
 registration, login deduplication, logout revocation, and admin session listing/revocation as one
-contract. It does not switch attendee sessions or CLI authorization handshakes. The latter still
-require Redis and block the overall Redis retirement gate.
+contract. It does not switch attendee sessions or CLI authorization handshakes. Those have
+separate opt-in Postgres backends and source-reconciliation gates; see
+[attendee sessions](./attendee-session-postgres.md) and
+[CLI authorization](./cli-auth-postgres.md).
 
 The RDB contains `auth:token-version:admin=3`, `upload=2` and historical `staff=2`. Current code
 accepts admin and upload JWTs only. The staff value is retained in Postgres with source provenance

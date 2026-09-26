@@ -4464,6 +4464,43 @@ const MIGRATIONS: Migration[] = [
       create index attendee_sessions_expiry_idx on attendee_sessions (expires_at);
     `,
   },
+  {
+    id: "0102_cli_authorization",
+    sql: `
+      create table auth_cli_requests (
+        request_hash text primary key check (request_hash ~ '^[a-f0-9]{64}$'),
+        request_data jsonb not null check (jsonb_typeof(request_data) = 'object'),
+        status text not null default 'pending' check (status in ('pending', 'approved', 'denied')),
+        redirect_ciphertext bytea,
+        redirect_nonce bytea,
+        redirect_auth_tag bytea,
+        redirect_key_id text,
+        expires_at timestamptz not null,
+        check (
+          (status = 'pending' and redirect_ciphertext is null and redirect_nonce is null
+            and redirect_auth_tag is null and redirect_key_id is null)
+          or
+          (status <> 'pending' and coalesce(octet_length(redirect_ciphertext), 0) > 0
+            and coalesce(octet_length(redirect_nonce), 0) = 12
+            and coalesce(octet_length(redirect_auth_tag), 0) = 16
+            and coalesce(redirect_key_id, '') = 'auth-secret-v1')
+        )
+      );
+      create index auth_cli_requests_expiry_idx on auth_cli_requests (expires_at);
+
+      create table auth_cli_codes (
+        code_hash text primary key check (code_hash ~ '^[a-f0-9]{64}$'),
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id text not null check (token_key_id = 'auth-secret-v1'),
+        code_challenge text not null check (char_length(code_challenge) = 43),
+        expires_at timestamptz not null,
+        consumed_at timestamptz
+      );
+      create index auth_cli_codes_expiry_idx on auth_cli_codes (expires_at);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
