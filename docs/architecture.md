@@ -263,6 +263,9 @@ album manifests during migration, and transfer files. The public bucket contains
 published derivatives and editorial media. The album repository also has an opt-in Postgres
 catalogue selected with `ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety
 gate are described in [gallery albums](./gallery-albums-postgres.md).
+The word repository also has an opt-in Postgres body and metadata store selected with
+`WORD_STORE=postgres`; its import and remaining share/media gates are in
+[words](./words-postgres.md).
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
 
@@ -319,7 +322,7 @@ recipient hash and a masked hint until reviewed.
 
 ## Media
 
-R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` is the durable source of truth for album manifests, draft derivatives, originals, private words, pitch assets, and transfers. `R2_PUBLIC_BUCKET` contains only published album display derivatives, published social cards, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
+R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` holds album manifests, draft derivatives, originals, private word bodies during migration, pitch assets, and transfers. `R2_PUBLIC_BUCKET` holds published album display derivatives, published social cards, public word bodies during migration, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
 
 Album manifests are currently JSON objects in private R2. They are a storage format, not repository content. The admin panel and CLI call the same durable workflows. The opt-in Postgres album repository stores editable metadata and photo order; R2 keeps binary objects. Upload finalisation keeps an album in draft. Publishing copies only AVIF, WebP, and social-card derivatives to the public bucket; unpublishing removes those public objects. Originals remain private and downloads are authorised against the published catalogue after cutover.
 

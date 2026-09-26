@@ -24,6 +24,7 @@ export interface WordMeta {
   tags: string[];
   featured?: boolean;
   authorRole: "admin";
+  revision?: number;
 }
 
 export interface ShareLink {

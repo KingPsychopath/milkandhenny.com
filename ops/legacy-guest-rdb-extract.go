@@ -30,10 +30,19 @@ type guestExtractor struct {
 	votingStrings  map[string]string
 	votingHashes   map[string]map[string]string
 	votingExpiry   map[string]time.Time
+	wordMetas      map[string]json.RawMessage
+	wordIndex      map[string]bool
 }
 
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	if strings.HasPrefix(key, "words:meta:") && !strings.HasSuffix(key, ":mutation-lock") {
+		if !json.Valid([]byte(value)) {
+			return errors.New("invalid word metadata JSON")
+		}
+		g.wordMetas[strings.TrimPrefix(key, "words:meta:")] = json.RawMessage(value)
+		return nil
+	}
 	if strings.HasPrefix(key, "best-dressed:") {
 		g.votingStrings[key] = value
 		return nil
@@ -112,8 +121,13 @@ func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
 		return nil
 	}
 }
-func (*guestExtractor) SetEntryHandler(string) func(string) error {
-	return func(string) error { return nil }
+func (g *guestExtractor) SetEntryHandler(key string) func(string) error {
+	return func(value string) error {
+		if key == "words:index" {
+			g.wordIndex[value] = true
+		}
+		return nil
+	}
 }
 func (*guestExtractor) ZsetEntryHandler(string) func(string, float64) error {
 	return func(string, float64) error { return nil }
@@ -143,8 +157,8 @@ func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
 }
 
 func main() {
-	if len(os.Args) < 3 || len(os.Args) > 8 {
-		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path]")
+	if len(os.Args) < 3 || len(os.Args) > 9 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-guest-json-path> [absolute-new-upload-audit-json-path] [absolute-new-auth-versions-json-path] [absolute-new-attendee-sessions-json-path] [absolute-new-reports-json-path] [absolute-new-best-dressed-json-path] [absolute-new-words-json-path]")
 	}
 	source, destination := os.Args[1], os.Args[2]
 	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
@@ -164,6 +178,8 @@ func main() {
 		votingStrings:  make(map[string]string),
 		votingHashes:   make(map[string]map[string]string),
 		votingExpiry:   make(map[string]time.Time),
+		wordMetas:      make(map[string]json.RawMessage),
+		wordIndex:      make(map[string]bool),
 	}
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
@@ -353,7 +369,7 @@ func main() {
 		}
 		fmt.Printf("diagnostic_report_records=%d diagnostic_report_state=%d\n", len(reports), len(state))
 	}
-	if len(os.Args) == 8 {
+	if len(os.Args) >= 8 {
 		type expiringString struct {
 			Key       string `json:"key"`
 			Value     string `json:"value"`
@@ -447,5 +463,42 @@ func main() {
 		}
 		fmt.Printf("best_dressed_active_vote_candidates=%d legacy_votes_present=%t credentials=%d voted_hashes=%d\n",
 			len(votes), extractor.votingStrings["best-dressed:votes"] != "", len(stringsOut), len(hashesOut))
+	}
+	if len(os.Args) == 9 {
+		type wordRow struct {
+			Slug  string          `json:"slug"`
+			Value json.RawMessage `json:"value"`
+		}
+		if len(extractor.wordMetas) != len(extractor.wordIndex) {
+			panic("word metadata and index counts differ")
+		}
+		slugs := make([]string, 0, len(extractor.wordMetas))
+		for slug := range extractor.wordMetas {
+			if !extractor.wordIndex[slug] {
+				panic("word metadata is missing from index")
+			}
+			slugs = append(slugs, slug)
+		}
+		sort.Strings(slugs)
+		rows := make([]wordRow, 0, len(slugs))
+		for _, slug := range slugs {
+			rows = append(rows, wordRow{slug, extractor.wordMetas[slug]})
+		}
+		payload, err := json.Marshal(rows)
+		if err != nil {
+			panic(err)
+		}
+		file, err := os.OpenFile(os.Args[8], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := file.Write(payload); err != nil {
+			file.Close()
+			panic(err)
+		}
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+		fmt.Printf("word_metadata=%d index_members=%d\n", len(rows), len(extractor.wordIndex))
 	}
 }

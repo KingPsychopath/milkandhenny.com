@@ -4667,6 +4667,46 @@ const MIGRATIONS: Migration[] = [
         deferrable initially deferred;
     `,
   },
+  {
+    id: "0107_words",
+    sql: `
+      create table words (
+        slug text primary key check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        title text not null check (length(trim(title)) > 0),
+        subtitle text,
+        image text,
+        type text not null check (type in ('blog', 'note', 'recipe', 'review')),
+        body_key text not null,
+        visibility text not null check (visibility in ('public', 'unlisted', 'private')),
+        markdown text not null,
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        published_at timestamptz,
+        reading_time integer not null check (reading_time > 0),
+        reading_time_version integer not null check (reading_time_version >= 0),
+        tags text[] not null default '{}',
+        featured boolean not null default false,
+        author_role text not null check (author_role = 'admin'),
+        revision integer not null check (revision >= 1),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_meta_sha256 text check (source_meta_sha256 ~ '^[a-f0-9]{64}$'),
+        source_body_sha256 text check (source_body_sha256 ~ '^[a-f0-9]{64}$'),
+        check (visibility != 'public' or published_at is not null)
+      );
+      create index words_public_updated_idx on words (updated_at desc)
+        where visibility = 'public';
+      create index words_tags_idx on words using gin (tags);
+
+      create table word_revisions (
+        slug text not null references words (slug) on delete cascade,
+        revision integer not null check (revision >= 1),
+        meta jsonb not null,
+        markdown text not null,
+        saved_at timestamptz not null,
+        primary key (slug, revision)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
