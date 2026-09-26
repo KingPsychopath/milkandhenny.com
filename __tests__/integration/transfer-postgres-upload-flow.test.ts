@@ -169,4 +169,63 @@ describeWithDatabase("Postgres transfer upload workflow", () => {
       ),
     ).toEqual([{ count: "2" }]);
   });
+
+  it("tombstones on owner takedown and stages private-object deletion", async () => {
+    const input = {
+      transferId: "postgres-delete-one",
+      deleteToken: "private-token",
+      actorJti: "upload-session",
+      expiresSeconds: 3600,
+      files: [{ mediaId: "photo", name: "photo.jpg", size: 123 }],
+    };
+    await run(
+      TransferOperationsService.use((service) =>
+        service.presignUpload({ ...input, uploadUrlTtlSeconds: 3600 }),
+      ),
+    );
+    await run(TransferOperationsService.use((service) => service.finalizeUpload(input)));
+    expect(
+      await run(
+        TransferOperationsService.use((service) =>
+          service.takedown({ id: input.transferId, token: input.deleteToken }),
+        ),
+      ),
+    ).toEqual({ authorised: true, deletedFiles: 0, dataDeleted: true });
+    expect(await getTransfer(input.transferId)).toBeNull();
+    expect(
+      await query<{ count: string }>(
+        "select count(*)::text as count from media_object_operations where owner_kind='transfer' and owner_id=$1",
+        [input.transferId],
+      ),
+    ).toEqual([{ count: "5" }]);
+  });
+
+  it("expires transfer rows through Postgres cleanup without a Redis index", async () => {
+    const input = {
+      transferId: "postgres-expire-one",
+      deleteToken: "private-token",
+      actorJti: "upload-session",
+      expiresSeconds: 3600,
+      files: [{ mediaId: "photo", name: "photo.jpg", size: 123 }],
+    };
+    await run(
+      TransferOperationsService.use((service) =>
+        service.presignUpload({ ...input, uploadUrlTtlSeconds: 3600 }),
+      ),
+    );
+    await run(TransferOperationsService.use((service) => service.finalizeUpload(input)));
+    await query(
+      "update transfers set created_at=now()-interval '2 hours', expires_at=now()-interval '1 hour' where id=$1",
+      [input.transferId],
+    );
+    expect(await run(TransferOperationsService.use((service) => service.cleanup("index")))).toEqual(
+      {
+        mode: "index",
+        expiredIndexEntries: 1,
+        scannedPrefixes: 0,
+        deletedObjects: 0,
+      },
+    );
+    expect(await getTransfer(input.transferId)).toBeNull();
+  });
 });

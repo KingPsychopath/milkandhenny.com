@@ -5,6 +5,8 @@ import {
 } from "./media-worker-status.server";
 import { deleteObjects, listObjects } from "@/lib/platform/object-storage-provider-context.server";
 import { deleteTransferData, getTransfer, listTransfers } from "./store.server";
+import { tombstonePostgresTransfer } from "./catalogue-postgres.server";
+import { postgresTransferCatalogueSelected } from "./store-selection.server";
 import type { TransferData } from "./types";
 
 const SAFE_TRANSFER_ID = /^[A-Za-z0-9_-]+$/;
@@ -64,6 +66,10 @@ async function adminDeleteTransfer(id: string): Promise<{
 }> {
   if (!isSafeTransferId(id)) {
     throw new Error("Invalid transfer id");
+  }
+
+  if (postgresTransferCatalogueSelected()) {
+    return { deletedFiles: 0, dataDeleted: await tombstonePostgresTransfer(id) };
   }
 
   const prefix = `transfers/${id}/`;

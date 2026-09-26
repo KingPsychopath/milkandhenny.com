@@ -1,7 +1,7 @@
-import { it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
+import { it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 
 /**
- * Event guest drops, against real Postgres (the transfer itself uses the
+ * Event guest drops, against real Postgres (legacy transfers use the
  * in-memory test store). What matters: a token only resolves while the drop
  * is live, the kill switch is instant, and re-enabling keeps the album.
  */
@@ -28,6 +28,7 @@ import {
   scheduleEventDrop,
 } from "@/features/events/drop.server";
 import { getTransfer } from "@/features/transfers/store.server";
+import { query } from "@/lib/platform/postgres.server";
 
 const SLUG = "drop-night";
 const DAY = 24 * 60 * 60;
@@ -62,6 +63,7 @@ describeWithDatabase("event drops (postgres)", () => {
   afterAll(async () => {
     await closeDatabase();
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   beforeEach(async () => {
     await truncateAll();
@@ -96,6 +98,23 @@ describeWithDatabase("event drops (postgres)", () => {
     expect(second.value.transferId).toBe(first.value.transferId);
     expect(second.value.live).toBe(true);
     expect(await resolveDropToken(first.value.token)).not.toBeNull();
+  });
+
+  it("creates the drop and empty transfer in one Postgres transaction", async () => {
+    vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    const enabled = await enableEventDrop(SLUG, 7 * DAY);
+    expect(enabled.ok).toBe(true);
+    if (!enabled.ok) return;
+    expect(await getTransfer(enabled.value.transferId)).toMatchObject({ files: [] });
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from transfers where id=$1", [
+        enabled.value.transferId,
+      ]),
+    ).toEqual([{ count: "1" }]);
+    await disableEventDrop(SLUG);
+    const reopened = await enableEventDrop(SLUG, 7 * DAY);
+    expect(reopened.ok && reopened.value.transferId).toBe(enabled.value.transferId);
   });
 
   it("rejects silly expiries and unknown events", async () => {

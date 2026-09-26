@@ -53,7 +53,7 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
       <div className="transfer-takedown-done">
         <p className="font-mono text-sm text-red-500 tracking-tight">transfer taken down</p>
         <p className="font-mono text-micro theme-muted mt-1">
-          all files have been permanently deleted.
+          access is removed; file cleanup is underway.
         </p>
       </div>
     );

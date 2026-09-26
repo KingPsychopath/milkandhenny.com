@@ -645,10 +645,14 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Stage paired Postgres catalogue/queue selection for initial presign, finalization,
         resume and abandon, plus shared transfer reads and delete-capability verification.
         Finalization commits file rows and jobs with its reservation. Legacy mutations fail
-        closed in this mode. Deletion and cleanup must switch before enabling it.
+        closed in this mode. Subsequent steps connect deletion and cleanup before enabling it.
   - [x] Stage Postgres append presign with serialized multi-batch quota reservations and
         finalization with file rows, media jobs, inferred groups and reservation consumption in
-        one transaction. Deletion and cleanup remain guarded in Postgres mode.
+        one transaction. Subsequent steps connect deletion and cleanup.
+  - [x] Route Postgres takedown, admin deletion, file removal and expiry cleanup through the
+        catalogue tombstone/object ledger; make event guest-drop transfer and token creation
+        one Postgres transaction. The UI describes queued file cleanup accurately. Deep orphan
+        reconciliation and the production deletion runner remain open.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
@@ -1122,13 +1126,22 @@ targets for publication/deletion tests, and never send real user email/payment e
   service test passed completion, idempotency and missing-object retry; the five neighboring
   upload route suites and the catalogue suite passed (six files, 28 tests). `pnpm check`,
   `pnpm build` and the full `pnpm test` suite passed (274 files, 2,119 tests). This staged flag
-  must stay unset until deletion, cleanup and orphan handling are complete.
+  must stay unset until deep orphan handling and the deletion runner are qualified.
   Postgres append presign now reserves each selected batch against existing files and other
   reservations. Its finalization infers groups and commits ordering, files, media jobs and
   reservation consumption together. The original insertion order remains stable; an initial
   sorting change was reverted after a focused regression test. Four focused suites passed
   25 cases, including a RAW pair and concurrent reservation capacity. `pnpm check`,
   `pnpm build` and the full `pnpm test` suite passed (274 files, 2,120 tests).
+  Owner/admin takedown and file removal now select Postgres tombstones and queue private-object
+  deletion instead of deleting R2 first. Postgres cleanup tombstones expired transfers and
+  expires reservations without consulting the Redis index. Event guest-drop creation couples
+  its empty transfer and token row in one Postgres transaction. Five focused suites passed
+  31 cases, including a real-Postgres deletion and event-drop path. Deep R2 orphan scans and
+  late upload cleanup remain open; the catalogue flag remains unset in production.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (274 files, 2,123 tests)
+  after these route and UI changes. Focused Playwright and release verification remain for
+  the integrated release candidate.
   A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
   while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
   from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
@@ -1156,9 +1169,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: finish Postgres append reservations/finalization, transfer deletion and cleanup
-  request paths so the catalogue flag can be enabled safely. Reconcile orphan transfer prefixes
-  and qualify the opt-in deletion runner before cutover. Complete media queue operations and
+- Next action: reconcile orphan transfer prefixes, abandoned append/upload objects and late
+  presigned writes; qualify the opt-in deletion runner before enabling the catalogue flag.
+  Complete media queue operations and
   old-attempt object reconciliation, then reconcile the authorized first export against the importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.

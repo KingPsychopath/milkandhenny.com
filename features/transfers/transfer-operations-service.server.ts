@@ -35,14 +35,21 @@ import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from
 import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
 import { getMultipartPartSize, MULTIPART_UPLOAD_THRESHOLD_BYTES } from "./upload-window.server";
 import {
+  cleanupExpiredPostgresTransfers,
   finalizePostgresTransferAppend,
   finalizePostgresTransferReservation,
   getPostgresTransfer,
+  removePostgresTransferFile,
+  tombstonePostgresTransfer,
   validatePostgresTransferDeleteToken,
 } from "./catalogue-postgres.server";
-import { reservePostgresTransferAppend } from "./append-reservation-postgres.server";
+import {
+  cleanupPostgresTransferAppendReservations,
+  reservePostgresTransferAppend,
+} from "./append-reservation-postgres.server";
 import { planPostgresTransferMedia } from "./media-plan-postgres.server";
 import {
+  cleanupPostgresTransferUploadReservations,
   createPostgresTransferUploadReservation,
   deletePostgresTransferUploadReservation,
   getPostgresTransferUploadReservation,
@@ -281,11 +288,16 @@ export class TransferOperationsService extends Context.Service<
 
       const takedown = (input: { id: string; token: string }) =>
         Effect.gen(function* () {
-          requireLegacyTransferCatalogue("Transfer takedown");
           const authorised = yield* attempt("authorise_takedown", () =>
             validateDeleteToken(input.id, input.token),
           );
           if (!authorised) return { authorised: false, deletedFiles: 0, dataDeleted: false };
+          if (postgresTransferCatalogueSelected()) {
+            const dataDeleted = yield* attempt("tombstone_transfer", () =>
+              tombstonePostgresTransfer(input.id),
+            );
+            return { authorised: true, deletedFiles: 0, dataDeleted };
+          }
           const deletedFiles = yield* removeObjects(input.id);
           const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(input.id));
           return { authorised: true, deletedFiles, dataDeleted };
@@ -293,7 +305,25 @@ export class TransferOperationsService extends Context.Service<
 
       const cleanup = (mode: "deep" | "index") =>
         Effect.gen(function* () {
-          requireLegacyTransferCatalogue("Transfer cleanup");
+          if (postgresTransferCatalogueSelected()) {
+            const expired = yield* attempt("expire_transfers", () =>
+              cleanupExpiredPostgresTransfers(),
+            );
+            if (mode === "deep") {
+              yield* attempt("expire_upload_reservations", () =>
+                cleanupPostgresTransferUploadReservations(),
+              );
+              yield* attempt("expire_append_reservations", () =>
+                cleanupPostgresTransferAppendReservations(),
+              );
+            }
+            return {
+              mode,
+              expiredIndexEntries: expired,
+              scannedPrefixes: 0,
+              deletedObjects: 0,
+            };
+          }
           const client = yield* redis.client;
           if (!client) {
             return yield* Effect.fail(
@@ -913,7 +943,19 @@ export class TransferOperationsService extends Context.Service<
 
       const removeAuthorisedFile = (id: string, fileId: string) =>
         Effect.gen(function* () {
-          requireLegacyTransferCatalogue("Transfer file removal");
+          if (postgresTransferCatalogueSelected()) {
+            const removal = yield* attempt("remove_file_metadata", () =>
+              removePostgresTransferFile(id, fileId),
+            );
+            if (removal === "deleted") return { status: "deleted", deletedObjects: 0 } as const;
+            if (removal === "missing" || removal === "file-missing")
+              return { status: removal } as const;
+            const transfer = yield* attempt("read_after_file_removal", () =>
+              getPostgresTransfer(id),
+            );
+            if (!transfer) return { status: "missing" } as const;
+            return { status: "updated", deletedObjects: 0, transfer } as const;
+          }
           const transfer = yield* attempt("read_file_removal", () => getTransfer(id));
           if (!transfer) return { status: "missing" } as const;
           const file = transfer.files.find((candidate) => candidate.id === fileId);
@@ -942,7 +984,6 @@ export class TransferOperationsService extends Context.Service<
 
       const removeFile = (input: { id: string; fileId: string; token: string }) =>
         Effect.gen(function* () {
-          requireLegacyTransferCatalogue("Transfer file removal");
           const authorised = yield* attempt("authorise_file_removal", () =>
             validateDeleteToken(input.id, input.token),
           );
@@ -983,7 +1024,6 @@ export class TransferOperationsService extends Context.Service<
         abandonUpload,
         adminDelete: (id) =>
           Effect.gen(function* () {
-            requireLegacyTransferCatalogue("Admin transfer deletion");
             if (!isSafeTransferId(id)) {
               return yield* Effect.fail(
                 new TransferOperationError({
@@ -991,6 +1031,12 @@ export class TransferOperationsService extends Context.Service<
                   operation: "admin_delete",
                 }),
               );
+            }
+            if (postgresTransferCatalogueSelected()) {
+              const dataDeleted = yield* attempt("tombstone_transfer", () =>
+                tombstonePostgresTransfer(id),
+              );
+              return { deletedFiles: 0, dataDeleted };
             }
             const deletedFiles = yield* removeObjects(id);
             const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(id));

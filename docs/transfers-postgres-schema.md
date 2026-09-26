@@ -38,8 +38,8 @@ Finalizers reject a queued file without its job plan, and the Redis-era enqueue 
 Postgres queue mode so a split switch cannot silently lose work. Initial presign, resume,
 finalize and abandon can select the Postgres reservation and job plan together under
 `TRANSFER_CATALOGUE_STORE=postgres` and `TRANSFER_MEDIA_JOB_STORE=postgres`. This remains a
-staged switch; deletion and cleanup are guarded until their Postgres implementations
-are connected. A staged
+staged switch; deletion and expiry cleanup select Postgres too, while R2 orphan reconciliation
+and the production deletion runner remain open. A staged
 tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues deletion of its
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
@@ -51,12 +51,16 @@ Single-file removal uses the same durable key collection, deletes the file and i
 transaction, and removes groups left with fewer than two members. Removing the last file
 tombstones the transfer. Deletion staging failure rolls the file removal back.
 An indexed, bounded expiry sweep tombstones expired transfers and stages their known object
-deletes once. The live cleanup cron still selects Redis until the request and cleanup paths
-switch together.
+deletes once. The staged cleanup route selects this sweep and expires old reservations in
+Postgres mode. Deep R2 orphan reconciliation is still pending, so the production flag remains off.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
 The shared transfer read functions select the Postgres catalogue under the paired flags.
-Legacy transfer mutations fail closed in that mode. Production has not selected the flags.
+Legacy transfer mutations that lack a Postgres implementation fail closed in that mode.
+Takedown, admin deletion and single-file removal now stage known object keys before reporting
+the transfer hidden or updated. The owner takedown UI reports that file cleanup is underway.
+Event guest drops create the empty transfer and drop token row in one Postgres transaction.
+Production has not selected the flags.
 
 The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and

@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
 
 import { log } from "@/lib/platform/logger.server";
-import { query, queryOne } from "@/lib/platform/postgres.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import { createPostgresTransferInTransaction } from "@/features/transfers/catalogue-postgres.server";
+import { postgresTransferCatalogueSelected } from "@/features/transfers/store-selection.server";
 import {
   MAX_EXPIRY_SECONDS,
   createTransfer,
@@ -271,22 +273,16 @@ export async function enableEventDrop(
 
   const transferId = generateTransferId();
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-  const created = await createTransfer(
-    {
-      id: transferId,
-      title: `${event.title} — guest album`,
-      files: [],
-      createdAt: new Date().toISOString(),
-      expiresAt,
-      deleteToken: generateDeleteToken(),
-    },
-    ttlSeconds,
-  );
-  if (!created) return { ok: false, status: 500, error: "Failed to create the album" };
-
+  const transfer = {
+    id: transferId,
+    title: `${event.title} — guest album`,
+    files: [],
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    deleteToken: generateDeleteToken(),
+  };
   const token = `drp_${randomBytes(20).toString("base64url")}`;
-  const row = await queryOne<EventDropRow>(
-    `insert into event_drops (event_slug, token, transfer_id, expires_at)
+  const upsertDrop = `insert into event_drops (event_slug, token, transfer_id, expires_at)
      values ($1, $2, $3, $4)
      on conflict (event_slug) do update
        set token = excluded.token,
@@ -294,9 +290,19 @@ export async function enableEventDrop(
            expires_at = excluded.expires_at,
            created_at = now(),
            disabled_at = null
-     returning *`,
-    [eventSlug, token, transferId, expiresAt],
-  );
+     returning *`;
+  const params = [eventSlug, token, transferId, expiresAt];
+  let row: EventDropRow | null;
+  if (postgresTransferCatalogueSelected()) {
+    row = await transaction(async (client) => {
+      if (!(await createPostgresTransferInTransaction(client, transfer))) return null;
+      return (await client.query<EventDropRow>(upsertDrop, params)).rows[0] ?? null;
+    });
+  } else {
+    const created = await createTransfer(transfer, ttlSeconds);
+    if (!created) return { ok: false, status: 500, error: "Failed to create the album" };
+    row = await queryOne<EventDropRow>(upsertDrop, params);
+  }
   if (!row) return { ok: false, status: 500, error: "Failed to save the drop" };
 
   log.info("event-drop.enable", "Guest uploads enabled", { slug: eventSlug, ttlSeconds });
