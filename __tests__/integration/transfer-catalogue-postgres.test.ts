@@ -5,6 +5,7 @@ import {
   createPostgresTransfer,
   getPostgresTransfer,
   getPostgresTransferForWorker,
+  updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
 import type { TransferData } from "@/features/transfers/types";
 import { query } from "@/lib/platform/postgres.server";
@@ -139,5 +140,29 @@ describeWithDatabase("Postgres transfer catalogue", () => {
         maxTotalBytes: 320,
       }),
     ).toEqual({ status: "limit" });
+  });
+
+  it("regroups and reorders without reverting a worker result", async () => {
+    await createPostgresTransfer(transfer);
+    await query(
+      `update transfer_files set processing_status='worker_done',retry_count=2
+        where transfer_id=$1 and id='raw'`,
+      [transfer.id],
+    );
+    const desired = [
+      { ...transfer.files[1], groupId: undefined, groupRole: undefined },
+      { ...transfer.files[0], groupId: undefined, groupRole: undefined },
+    ];
+    expect(await updatePostgresTransferGrouping(transfer.id, desired, undefined)).toBe(true);
+    const updated = await getPostgresTransfer(transfer.id);
+    expect(updated?.files.map((file) => file.id)).toEqual(["raw", "photo"]);
+    expect(updated?.groups).toBeUndefined();
+    expect(updated?.files[0].processingStatus).toBe("worker_done");
+    expect(updated?.files[0].retryCount).toBe(2);
+    expect(await updatePostgresTransferGrouping(transfer.id, [desired[0]], undefined)).toBe(false);
+    await expect(
+      updatePostgresTransferGrouping(transfer.id, desired, [transfer.groups![0]]),
+    ).rejects.toThrow("Invalid transfer group member");
+    expect((await getPostgresTransfer(transfer.id))?.groups).toBeUndefined();
   });
 });
