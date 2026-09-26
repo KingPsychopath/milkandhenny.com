@@ -300,6 +300,10 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 - Session security: the token session HTTP endpoint and new server function call one feature read
   workflow. The system route hydrates the private session query, and its hook keeps only local
   filter/paging state. Single-session revocation refetches; global revocation reloads the auth gate.
+- Pitch reads: the public wall and sealed deck pages now hydrate feature queries. The wall search
+  uses a debounced key instead of copying server results into component state. Confirmed create,
+  publish, and admin pitch changes invalidate the affected wall/deck entries. The editor's offline
+  draft and the presentation room protocol retain their existing controllers.
 - Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
   four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
   account, poll, and admin Playwright journeys passed. The browser journeys proved SSR content,
@@ -313,13 +317,16 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   changes. Focused communications and album integration tests passed against a task-isolated local
   PostgreSQL database. Five communications/public Playwright journeys and one seeded album/photo
   journey passed against that database and task-isolated Redis. The first browser attempt timed out
-  while the shared container runtime was unavailable; isolated services resolved it. The full
-  Vitest suite was last run before these two slices; final cross-feature verification remains due.
+  while the shared container runtime was unavailable; isolated services resolved it.
 - Word and session verification: `pnpm check`, production builds, the private-token integration
   test, and focused word/share and session browser journeys passed. The Playwright server now uses
   the Postgres word store by default so its seeded word detail journey also passes without a
   special environment override. The full Vitest suite against the isolated database passed (275
   files, 2,107 tests) after these slices.
+- Pitch verification: `pnpm check`, `pnpm build`, and the complete pitch browser journey passed after
+  the wall/deck migration. The journey covers create, save, publish, filtered search, sealed page,
+  and remote presentation controls. The first run typed into a server-rendered search input before
+  hydration; the rerun waited for hydration and passed.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
@@ -335,7 +342,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   recorded that checkpoint; `ba41fc9c` hydrated the operations inbox; `ab255a88` recorded its
   checkpoint; `cb2815b7` migrated communications; `f1a7a634` shared album detail; `087a05d8`
   added the album browser journey; `94aa4cea` hydrated public word detail; `2174a3ce` hydrated
-  token sessions.
+  token sessions; `ba800f7f` recorded their checkpoint; `f200286b` recorded the full-suite pass;
+  `0a35f058` migrated pitch reads.
 
 ## References
 
