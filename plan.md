@@ -1,6 +1,6 @@
 # Postgres and object-storage implementation plan
 
-Status: planned; implementation and production migration have not started under this plan.
+Status: implementation in progress; M1 inventory is underway. Production migration has not started.
 
 Created: 2026-09-26.
 
@@ -454,24 +454,34 @@ recovery coverage explicitly; moving metadata to Postgres does not back up exclu
 The default sequence is M0 through M13. Domain implementation can overlap only when its listed
 dependencies are complete and work ownership is explicit. M12 and M13 remain operational gates.
 
-| Milestone                                           | Dependencies                             | Status                  |
-| --------------------------------------------------- | ---------------------------------------- | ----------------------- |
-| M0 — durable plan                                   | User architecture decisions              | Complete: this document |
-| M1 — inventory and physical schema specification    | M0                                       | Pending                 |
-| M2 — database foundation and migration safety       | M1                                       | Pending                 |
-| M3 — existing relational integrity improvements     | M1, M2                                   | Pending                 |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                 |
-| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                 |
-| M6 — transfers and media execution                  | M4, M5                                   | Pending                 |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                 |
-| M8 — application and realtime integration           | M3–M7                                    | Pending                 |
-| M9 — operations, recovery and documentation         | M8                                       | Pending                 |
-| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                 |
-| M11 — release qualification and cutover readiness   | M10                                      | Pending                 |
-| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                 |
-| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                 |
+| Milestone                                           | Dependencies                             | Status                             |
+| --------------------------------------------------- | ---------------------------------------- | ---------------------------------- |
+| M0 — durable plan                                   | User architecture decisions              | Complete: this document            |
+| M1 — inventory and physical schema specification    | M0                                       | In progress; source export pending |
+| M2 — database foundation and migration safety       | M1                                       | Pending                            |
+| M3 — existing relational integrity improvements     | M1, M2                                   | Pending                            |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                            |
+| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                            |
+| M6 — transfers and media execution                  | M4, M5                                   | Pending                            |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                            |
+| M8 — application and realtime integration           | M3–M7                                    | Pending                            |
+| M9 — operations, recovery and documentation         | M8                                       | Pending                            |
+| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                            |
+| M11 — release qualification and cutover readiness   | M10                                      | Pending                            |
+| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                            |
+| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                            |
 
 ### M1 — Inventory and physical schema specification
+
+Evidence ledger: [production and source inventory](./docs/postgres-migration-inventory.md).
+
+- [x] Capture the effective production Postgres schema, migration ledger, server limits and
+      top-level object-storage counts without reading private content.
+- [x] Identify the production migration-ledger mismatch and missing scheduled database backup
+      coverage as explicit blockers.
+- [ ] Validate the user's verified Redis backup/export, including capture time, complete key
+      families, data types and original TTLs. Upstash command-limit errors currently prevent a
+      live source read.
 
 - [ ] Enumerate direct/indirect storage users, all key families, object prefixes, tables,
       mutations, read models, scheduled work and browser recovery contracts.
@@ -679,11 +689,12 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26
+### Current checkpoint — 2026-09-26, M1 in progress
 
-- Completed: M0 planning document; architecture and schema improvement scope captured.
+- Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
+  inventory captured in [the inventory](./docs/postgres-migration-inventory.md).
 - Implementation commits: none under this plan. The planning commit is the Git commit introducing
-  this file; record subsequent milestone hashes here when implementation starts.
+  this file (`b982c582`); record subsequent milestone hashes here when implementation starts.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback.
@@ -692,11 +703,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   link targets and all four referenced package scripts. Whitespace is checked with
   `git diff --cached --check` before the planning commit. Source tests are unnecessary for this
   documentation-only change. Implementation/release tests remain pending.
-- Unresolved: production inventory/source readability; effective live schema; data contradictions;
-  measured load/resource budgets; exact DDL; migration duration; operational command/credential
-  setup; backup coverage; quantified acceptance and observation/retention periods.
-- Next action: M1 inventory and physical schema specification. Do not start production migration
-  from the table sketches in this document.
+- Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
+  migration ledger has `0025_site_settings`, absent from the source list, while source has
+  `0025_site_settings_v2`. PITR is disabled, no backup schedule is listed, and the only listed
+  backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
+- Unresolved: verified complete Redis export/source readability; exact source counts and data
+  contradictions; full object/reference inventory and backup coverage; measured load/resource
+  budgets; physical DDL; migration duration; operational command/credential setup; restore drill;
+  quantified acceptance and observation/retention periods.
+- Next action: finish M1 static key/contract inventory and validate the supplied Redis export when
+  available. Do not start production migration from the table sketches in this document.
 
 ### Milestone checkpoint template
 
