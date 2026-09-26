@@ -30,10 +30,77 @@ printing keys or contents:
 | Public `pitches`         |      25 |       345,010 |
 | Public `words`           |      32 |    12,200,329 |
 
-Object counts are not proof of application references, backup coverage or content integrity. A
-production Redis namespace/type/TTL inventory remains unavailable while the Upstash monthly
-command limit rejects reads. A verified readable export is required for M1 source mapping and M10
-rehearsal; a words-only archive is insufficient.
+Object counts are not proof of application references, backup coverage or content integrity.
+
+## Upstash export received
+
+The user supplied a fresh `guestlist-kv` RDB export on 2026-09-26. A copy with mode 0600 is held at
+`tmp/private-migration/upstash-20260926.rdb` (repository-ignored); SHA-256
+`9dbb17f1c44765ca74892bc00ba2eca46f2f2904f09c47768f184db8c0fc17c4`. The downloaded
+file's modification time was 05:53:26 UTC; this is a download timestamp, not proof of the exact
+source snapshot time. The export is RDB format 14. Redis 8.2/8.4 cannot load it. The
+[Upstash RDB parser](https://github.com/upstash/rdb) at commit
+`acce847ecb5c86b38602fec8ac2a2d11e3256f9f` passed full file checksum/type verification
+and a strict database-0 read. The one-off auditor and parser checkout are outside Git under
+`/tmp/milkandhenny-upstash-rdb-20260926`. It printed only aggregate counts, never values or
+credential-bearing keys. No Redis function libraries were present in the export; Upstash states
+that exports omit functions, so source code remains the authority for Lua behavior.
+
+| Export family                      | Keys | Data and reconciliation finding                                                                                                        |
+| ---------------------------------- | ---: | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC                                                                    |
+| `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                 |
+| `auth:token-version:*`             |    3 | Persistent strings                                                                                                                     |
+| `auth:upload-open`                 |    1 | Persistent list with four entries                                                                                                      |
+| `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                      |
+| `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                             |
+| `transfer:media:processing`        |    1 | Eight raw, unleased jobs; queue and dead-letter keys absent                                                                            |
+| `transfer:media:worker-status`     |    1 | Four-field hash                                                                                                                        |
+| `diagnostic-report:v1:*` and index |    4 | Three expiring records; five index members, two stale                                                                                  |
+| `best-dressed:session` and votes   |    2 | Persistent strings                                                                                                                     |
+| `guest:*` and `user-report:*`      |    3 | Legacy keys absent from current source references: one persistent guest string, one expiring report string and one expiring report set |
+
+All 224 keys were decoded; 199 have absolute expiry. None had expired by the file's download
+time. This snapshot is evidence, not the final cutover delta: source writes and TTL expiry must be
+reconciled again at the maintenance window. The eight processing items decode as valid raw jobs
+with distinct idempotency keys, spanning two transfers. Seven point at the one exported transfer;
+one points at a missing transfer. Do not replay the orphan without checking expiry and R2 object
+ownership. Do not import the stale session/report index members as valid records. The legacy
+`guest:*` and `user-report:*` records need explicit provenance and disposition before M1 exits.
+
+The [Upstash export contract](https://upstash.com/docs/redis/howto/importexport) says Redis
+Functions are excluded from RDB exports. The absence of a namespace in this snapshot also does
+not remove its implementation requirement: an empty queue, room family or rate-limit family can
+be populated by future traffic.
+
+## Static Redis and browser contracts
+
+The following source key families are mapped even when no key exists in the supplied export.
+Values and original absolute expiry must be migrated per record; transient locks and advisory
+channels have no durable row to copy.
+
+| Owner                  | Source key families / contract                                                                                                                                                                                                                                                    | Target concern                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Words                  | `words:meta:*`, `words:index`, `words:share:*`, `words:share-index:*`, `words:share-slugs`, `words:share:pin-rl:*`, `words:meta:*:mutation-lock`                                                                                                                                  | Content, share/PIN/revocation rows and rate windows; replace mutation lock with row revision |
+| Transfers              | `transfer:*`, `transfer:index`, `transfer:upload-reservation:*`, `transfer:media:{queue,processing,dead,idempotency:*,worker-status,reconcile-lock}` and event channel                                                                                                            | Transfer, reservation, job, lease and worker records; notifications advisory                 |
+| Authentication         | `auth:token-version:*`, `auth:recent-login:*`, `auth:revoked-jti:*`, `auth:session:*`, `auth:sessions:index`, `auth:cli-{request,request-approved,code,code-claimed}:*`, `auth:upload-open`, `auth:upload-open:audit`                                                             | Scoped sessions, revocations, CLI challenges and upload access                               |
+| Attendee access        | `event-scoring:attendee-session:*`, attendee lock/version keys, `attendee-access:rate:v1:*`, `attendee-passkey:{ceremony,rate}:v1:*`, `attendee-totp:rate:v1:*`, `attendee-action:redeem:*`                                                                                       | Session, ceremony, rate-window and one-time action rows                                      |
+| Reports and voting     | `diagnostic-report:{index:v1,v1:*,rate:v1:*,duplicate:v1:*,idempotency:v1:*,follow-up-lock:v1:*}`; `best-dressed:{votes:v2,session,open-until,token:*,voted:*,code:*,code-index}`                                                                                                 | Reports/receipts/retention and atomic vote eligibility                                       |
+| General rate/cache     | `ratelimit:*`, `pitches:recover:*`, `admin:content-audit:v1`, `mah:health:probe`                                                                                                                                                                                                  | Rate windows, disposable cache and health probe                                              |
+| Multiplayer            | `things:{same-brain,liars,draw-country,centre,twin,spelling-party,hot-and-cold,family-feud}:v*:room:*:{state,lock,join-receipt:*,log,replay:*}`; `things:remote:v3:room:*` meta/setup/snapshot/commands/receipts/presence/epochs/rate/sequence; `things:official-result-outbox:*` | Versioned room state, credentials, action receipts and result outbox                         |
+| Pool and presentations | `things:game-pool:v1:run:*:{room:*:join-token,assignment:*}`, `pitches:presentation:*` and locks                                                                                                                                                                                  | Expiring assignment/presentation recovery                                                    |
+
+The `events:*` and `tickets:*` record/index helpers in
+[events/config.server.ts](../features/events/config.server.ts) have no active callers. Ticket
+workflows import only its rate-limit key builders, passed as identities to the general
+`ratelimit:*` adapter. The supplied export contains none of the old event/ticket record keys.
+
+Browser state remains on the device: transfer upload recovery and last result in session storage,
+gallery selections, local multiplayer credentials/invites/pending commands/drafts and preferences,
+game-pool membership/client ID, and Pitch Studio IndexedDB credentials/drafts/media (plus its
+device ID in local storage). [Active room recovery](../features/things/shared/active-room-recovery.ts)
+discovers local and session credentials by key pattern. Server migration must preserve their
+existing expiry, credential and action-reconciliation contracts without a browser wipe.
 
 ## Source ownership map
 
@@ -53,8 +120,10 @@ object reference or browser recovery path is accounted for.
 
 ## Open M1 evidence and decisions
 
-- [ ] Obtain the complete readable Redis export with capture time, types, values and remaining TTLs;
-      enumerate unknown key families and independently stored records.
+- [x] Obtain and checksum-validate a readable Redis export, decode all 224 keys, types and absolute
+      TTLs without printing private values.
+- [ ] Establish exact source snapshot time and refresh the export at cutover; classify the legacy
+      `guest:*` and `user-report:*` keys and decide how to retain or retire them.
 - [ ] Establish exact production counts and contradictions from the source and target, including
       transfers, active work, content, credentials, rooms, receipts and revocations.
 - [ ] Inventory all R2 object references and editable manifests, not just top-level prefixes;

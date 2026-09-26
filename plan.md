@@ -479,9 +479,10 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
       top-level object-storage counts without reading private content.
 - [x] Identify the production migration-ledger mismatch and missing scheduled database backup
       coverage as explicit blockers.
-- [ ] Validate the user's verified Redis backup/export, including capture time, complete key
-      families, data types and original TTLs. Upstash command-limit errors currently prevent a
-      live source read.
+- [x] Checksum-validate and fully decode the user's RDB export, including all 224 keys, value types
+      and absolute expiry. Exact source capture time remains unproven; its download time is known.
+- [ ] Reconcile the export against a fresh source snapshot at cutover and classify the legacy
+      `guest:*` and `user-report:*` keys. Upstash command-limit errors still prevent a live read.
 
 - [ ] Enumerate direct/indirect storage users, all key families, object prefixes, tables,
       mutations, read models, scheduled work and browser recovery contracts.
@@ -692,27 +693,33 @@ targets for publication/deletion tests, and never send real user email/payment e
 ### Current checkpoint — 2026-09-26, M1 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
-  inventory captured in [the inventory](./docs/postgres-migration-inventory.md).
-- Implementation commits: none under this plan. The planning commit is the Git commit introducing
-  this file (`b982c582`); record subsequent milestone hashes here when implementation starts.
+  inventory; full checksum/type decode of the supplied Upstash RDB export and a static
+  Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
+- Commits: planning `b982c582`; first production inventory `39481052`. Source implementation
+  commits have not started.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
-- Verification: `pnpm exec oxfmt --check plan.md` passed; a local validator confirmed all 40 local
-  link targets and all four referenced package scripts. Whitespace is checked with
-  `git diff --cached --check` before the planning commit. Source tests are unnecessary for this
-  documentation-only change. Implementation/release tests remain pending.
+- Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
+  The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
+  decode; its audit printed aggregate counts only. Documentation formatting, links and whitespace
+  will be checked before this checkpoint's commit. Source/release tests remain pending.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. PITR is disabled, no backup schedule is listed, and the only listed
   backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
-- Unresolved: verified complete Redis export/source readability; exact source counts and data
-  contradictions; full object/reference inventory and backup coverage; measured load/resource
+  The export has 224 keys, including 192 attendee sessions and eight raw, unleased media jobs in
+  `transfer:media:processing`. Seven jobs reference the one exported transfer; one references a
+  missing transfer. The token-session index has 190 stale entries and the report index has two.
+- Unresolved: exact Redis snapshot time/fresh cutover delta; legacy `guest:*`/`user-report:*`
+  disposition and missing transfer job; full object/reference inventory and backup coverage;
+  measured load/resource
   budgets; physical DDL; migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: finish M1 static key/contract inventory and validate the supplied Redis export when
-  available. Do not start production migration from the table sketches in this document.
+- Next action: inspect production R2 manifests/references and the effective relational schema,
+  resolve migration ledger baseline, then specify physical DDL/source mapping. Do not start
+  production migration from the table sketches in this document.
 
 ### Milestone checkpoint template
 
