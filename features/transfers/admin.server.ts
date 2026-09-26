@@ -18,6 +18,15 @@ async function listAdminTransfers() {
 }
 
 async function getAdminTransferMediaStats() {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") {
+    if (process.env.MEDIA_WORKER_STATUS_STORE !== "postgres")
+      throw new Error("Postgres media queue requires Postgres worker status");
+    const [worker, queue] = await Promise.all([
+      getTransferMediaWorkerStatus(),
+      describeTransferMediaQueue(),
+    ]);
+    return { queueLength: queue.queued, worker, queue };
+  }
   const [queueLength, worker, queue] = await Promise.all([
     getTransferMediaQueueLength().catch(() => 0),
     getTransferMediaWorkerStatus().catch((): TransferMediaWorkerStatus => ({})),

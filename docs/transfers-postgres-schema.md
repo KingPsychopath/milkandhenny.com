@@ -69,8 +69,10 @@ The staged [media-job repository](../features/transfers/media-jobs-postgres.serv
 an existing file with the matching generation in the enqueue transaction. Workers claim due jobs
 with `SKIP LOCKED`, renew with a claim token, retry or dead-letter failed attempts, and cancel
 jobs whose source is deleted, expired or superseded. Completion locks the transfer and file,
-checks the claim, and updates the file result in the caller's transaction. Manual dead-letter
-retry, queue snapshots and old-attempt object reconciliation remain open.
+checks the claim, and updates the file result in the caller's transaction. A Postgres queue
+snapshot reports pending, claimed, dead and expired work to admin/CLI health, and an explicit
+dead-job retry grants one more attempt only while its source generation still matches.
+Old-attempt object reconciliation remains open.
 The repository validates the generation namespace before enqueue, assigns distinct keys to each
 claim, and records the winning attempt on fenced completion. A staged Postgres executor processes
 images, GIFs, videos and RAW previews, retries failed claims, and removes its own outputs when a

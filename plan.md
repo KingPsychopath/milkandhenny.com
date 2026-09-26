@@ -653,8 +653,10 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Give each claim distinct R2 keys and persist attempt outputs so an expired claim cannot
         overwrite its replacement; a staged executor handles supported media routes.
   - [x] Select the staged Postgres executor in the Media runtime and one-shot drain without
-        Redis blocking clients; require Postgres heartbeat storage in this opt-in mode. Queue
-        snapshots, manual dead-letter retry and attempt-object reconciliation remain open.
+        Redis blocking clients; require Postgres heartbeat storage in this opt-in mode.
+  - [x] Add a Postgres queue snapshot for health and one-attempt manual dead-letter retry,
+        preserving attempt counts and refusing stale source generations. Attempt-object
+        reconciliation and complete admin/CLI mutation parity remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
@@ -1052,8 +1054,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis queue recovery, and drains Postgres claims without Redis blocking clients. The focused
   worker-loop suite covers opt-in startup, required status configuration and one-shot drain.
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (273 files, 2,105 tests).
-  The switch remains unset in production; queue snapshots, dead-letter retry, attempt-object
-  reconciliation and live transfer request wiring remain open.
+  The switch remains unset in production; attempt-object reconciliation and live transfer
+  request wiring remain open.
+  The queue snapshot now drives opt-in admin/CLI health without Redis reads. Postgres mode
+  propagates queue/status read failures instead of showing zero work; dead-job retry preserves
+  prior attempts and refuses stale generations. Five focused real-Postgres cases pass, including
+  queue state and source-change retry cases. `pnpm check`, `pnpm build` and the full `pnpm test`
+  suite passed (273 files, 2,107 tests). Remaining operations still need Postgres parity.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1074,7 +1081,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   production backup or R2 restore coverage.
 - Next action: wire transfer request flows and cleanup against the same Postgres authority, then
   implement safe file removal with generation-specific derivatives. Reconcile orphan transfer prefixes
-  and qualify the opt-in deletion runner before cutover. Add media queue operations and
+  and qualify the opt-in deletion runner before cutover. Complete media queue operations and
   old-attempt object reconciliation, then reconcile a fresh source export against the rehearsed importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.

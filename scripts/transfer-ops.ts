@@ -787,10 +787,16 @@ async function deleteTransferFile(
 }
 
 async function getTransferMediaStatus(): Promise<TransferMediaStatusResult> {
-  requireRedis();
+  if (process.env.TRANSFER_MEDIA_JOB_STORE !== "postgres") requireRedis();
+  else if (process.env.MEDIA_WORKER_STATUS_STORE !== "postgres")
+    throw new Error("Postgres media queue requires Postgres worker status");
   const [queueLength, worker] = await Promise.all([
-    getTransferMediaQueueLength().catch(() => 0),
-    getTransferMediaWorkerStatus().catch(() => ({})),
+    process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
+      ? getTransferMediaQueueLength()
+      : getTransferMediaQueueLength().catch(() => 0),
+    process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
+      ? getTransferMediaWorkerStatus()
+      : getTransferMediaWorkerStatus().catch(() => ({})),
   ]);
 
   return { queueLength, worker };
@@ -803,14 +809,13 @@ async function drainTransferMediaQueue(limit = 8): Promise<{
   skipped: number;
   queueLength: number;
 }> {
-  requireRedis();
-  return runMediaEffect(
+  if (process.env.TRANSFER_MEDIA_JOB_STORE !== "postgres") requireRedis();
+  const result = await runMediaEffect(
     Effect.gen(function* () {
-      const result = yield* (yield* MediaWorkerService).drain(limit);
-      const queueLength = yield* (yield* TransferMediaOperationsService).queueLength;
-      return { ...result, queueLength };
+      return yield* (yield* MediaWorkerService).drain(limit);
     }),
   );
+  return { ...result, queueLength: await getTransferMediaQueueLength() };
 }
 
 async function reconcileTransferMedia(
