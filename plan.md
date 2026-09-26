@@ -875,6 +875,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   passed 8 cases; `pnpm check`, `pnpm build`, and the full suite with one worker passed (276 files,
   2,131 tests). The default parallel full-suite attempt timed out in shared Postgres setup, so
   one-worker execution is the applicable complete verification for this milestone.
+- 2026-09-27 M7 result delivery: migration `0118` adds fenced, expiring outbox claims and retry
+  scheduling. The opt-in `OFFICIAL_GAME_RESULT_OUTBOX_STORE=postgres` drain calls the existing
+  consumer outside its claim transaction, keeps delivered rows, and retries interrupted or
+  rejected delivery with the consumer's idempotency contract. Redis pub/sub is bypassed in this
+  staged mode; cross-process Postgres notification and all room producers are still open. The
+  three focused Postgres suites passed 10 cases; after selector coverage was added, `pnpm check`,
+  the complete one-worker suite (277 files, 2,134 tests), and `pnpm build` passed.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0

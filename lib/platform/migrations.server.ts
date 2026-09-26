@@ -5049,6 +5049,22 @@ const MIGRATIONS: Migration[] = [
         where status = 'pending';
     `,
   },
+  {
+    id: "0118_multiplayer_result_claims",
+    sql: `
+      alter table multiplayer_game_result_outbox
+        add column claim_token uuid,
+        add column claim_until timestamptz,
+        add column next_attempt_at timestamptz not null default clock_timestamp(),
+        add column attempt_count integer not null default 0 check (attempt_count >= 0),
+        add constraint multiplayer_result_claim_pair
+          check ((claim_token is null) = (claim_until is null));
+      drop index multiplayer_game_result_outbox_pending_idx;
+      create index multiplayer_game_result_outbox_pending_idx
+        on multiplayer_game_result_outbox (next_attempt_at, created_at, channel_id, result_id, revision)
+        where status = 'pending';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
