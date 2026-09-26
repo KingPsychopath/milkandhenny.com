@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { SITE_NAME } from "@/lib/shared/config";
-import { getEventsIndexFn } from "@/features/events/events.functions";
+import { eventsIndexQuery } from "@/features/events/events.queries";
 import { EventsIndexPage } from "@/features/events/ui/EventsIndexPage";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/events/")({
-  loader: () => getEventsIndexFn(),
+  loader: async ({ context }) => {
+    await context.queryClient.fetchQuery(eventsIndexQuery);
+  },
+  preloadStaleTime: 0,
   component: EventsRoute,
   head: () =>
     buildSeoHead({
@@ -19,6 +23,8 @@ export const Route = createFileRoute("/events/")({
 });
 
 function EventsRoute() {
-  const { upcoming, past } = Route.useLoaderData();
+  const {
+    data: { upcoming, past },
+  } = useSuspenseQuery(eventsIndexQuery);
   return <EventsIndexPage upcoming={upcoming} past={past} />;
 }

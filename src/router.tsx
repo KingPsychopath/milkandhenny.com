@@ -1,22 +1,13 @@
-import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 import { routeTree } from "./routeTree.gen";
+import { createAppQueryClient } from "./query-client";
 
 export function getRouter() {
   // Pitch Night prepares full-document restoration before hydration. Skipping the
   // router's first reset prevents it from seizing the first user scroll later.
   let isInitialRender = true;
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 30_000,
-        retry: false,
-        refetchOnWindowFocus: false,
-        refetchOnReconnect: false,
-      },
-    },
-  });
+  const queryClient = createAppQueryClient();
 
   const router = createRouter({
     routeTree,

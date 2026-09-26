@@ -1,7 +1,8 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { SITE_NAME } from "@/lib/shared/config";
-import { getEventPageFn } from "@/features/event-operations/event-page.functions";
+import { eventPageQuery } from "@/features/events/events.queries";
 import { buildEventJsonLd } from "@/features/events/ics";
 import { buildEventUrl } from "@/features/events/routes";
 import { EventDetailPage } from "@/features/events/ui/EventDetailPage";
@@ -16,14 +17,24 @@ export const Route = createFileRoute("/events/$slug")({
   // `search` a required prop on every existing link to an event page.
   validateSearch: (search: Record<string, unknown>): { checkout?: "cancelled" } =>
     search.checkout === "cancelled" ? { checkout: "cancelled" } : {},
-  loader: async ({ params }) => {
-    const result = await getEventPageFn({ data: { slug: params.slug } });
+  loader: async ({ context, params }) => {
+    const result = await context.queryClient.fetchQuery(eventPageQuery(params.slug));
     if (!result.found) throw notFound();
-    return result;
+    const { event } = result.data;
+    return {
+      title: event.title,
+      tagline: event.tagline,
+      area: event.area,
+      slug: event.slug,
+      ogImage: event.ogImage,
+      heroImage: event.heroImage,
+      origin: result.origin,
+    };
   },
+  preloadStaleTime: 0,
   component: EventDetailRoute,
   head: ({ loaderData }) => {
-    if (!loaderData?.found) {
+    if (!loaderData) {
       return buildSeoHead({
         title: `Event — ${SITE_NAME}`,
         description: "An event from Milk & Henny.",
@@ -31,8 +42,8 @@ export const Route = createFileRoute("/events/$slug")({
         robots: "noindex, nofollow",
       });
     }
-    const { event } = loaderData.data;
-    const url = buildEventUrl(loaderData.origin, event.slug);
+    const event = loaderData;
+    const url = buildEventUrl(event.origin, event.slug);
     const description = event.tagline ?? `${event.title} — ${event.area ?? "London"}`;
     const image = event.ogImage ?? event.heroImage ?? OG_IMAGES.events;
 
@@ -47,7 +58,9 @@ export const Route = createFileRoute("/events/$slug")({
 });
 
 function EventDetailRoute() {
-  const { data, origin, waitlistEmail } = Route.useLoaderData();
+  const { data: result } = useSuspenseQuery(eventPageQuery(Route.useParams().slug));
+  if (!result.found) throw notFound();
+  const { data, origin, waitlistEmail } = result;
   const { checkout } = Route.useSearch();
   const { event, availability } = data;
 

@@ -30,7 +30,7 @@ export function PollPage({ slug }: { slug: string }) {
   const [selections, setSelections] = useState<string[]>([]);
   const [edited, setEdited] = useState(false);
   const poll = publicPoll
-    ? { ...publicPoll, results: deviceVote?.results ?? publicPoll.results }
+    ? { ...publicPoll, results: publicPoll.results ?? deviceVote?.results ?? null }
     : null;
   const results = poll?.results ?? null;
 

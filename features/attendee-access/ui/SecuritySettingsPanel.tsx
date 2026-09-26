@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { copyText } from "@/lib/client/share";
 import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
+import { myAccountQuery } from "../account.queries";
 import {
   beginPasskeyRegistrationFn,
   finishPasskeyRegistrationFn,
@@ -42,24 +44,38 @@ type Enrollment = {
   qrDataUrl: string;
 };
 
-export function SecuritySettingsPanel({
-  initialPasskeys,
-  initialTotp,
-}: {
-  initialPasskeys: Passkey[];
-  initialTotp: Totp;
-}) {
+export function SecuritySettingsPanel() {
   const navigate = useNavigate();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: accountView } = useSuspenseQuery(myAccountQuery);
+  const { passkeys, totp } = accountView.security;
   const { confirm, dialog } = useActionDialog();
-  const [passkeys, setPasskeys] = useState(initialPasskeys);
-  const [totp, setTotp] = useState(initialTotp);
   const [passkeyLabel, setPasskeyLabel] = useState("My passkey");
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [totpCode, setTotpCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
+  function setPasskeys(update: (current: Passkey[]) => Passkey[]) {
+    queryClient.setQueryData(myAccountQuery.queryKey, (current) =>
+      current
+        ? {
+            ...current,
+            security: { ...current.security, passkeys: update(current.security.passkeys) },
+          }
+        : current,
+    );
+  }
+
+  function setTotp(update: (current: Totp) => Totp) {
+    queryClient.setQueryData(myAccountQuery.queryKey, (current) =>
+      current
+        ? { ...current, security: { ...current.security, totp: update(current.security.totp) } }
+        : current,
+    );
+  }
 
   async function addPasskey(event: FormEvent) {
     event.preventDefault();
@@ -156,12 +172,12 @@ export function SecuritySettingsPanel({
       });
       if (result.ok) {
         setRecoveryCodes(result.value.recoveryCodes);
-        setTotp({
+        setTotp(() => ({
           enabled: true,
           label: "Authenticator app",
           createdAt: new Date().toISOString(),
           recoveryCodesRemaining: result.value.recoveryCodes.length,
-        });
+        }));
         setEnrollment(null);
         setTotpCode("");
         setMessage("Authenticator app enabled. Save the recovery codes now.");

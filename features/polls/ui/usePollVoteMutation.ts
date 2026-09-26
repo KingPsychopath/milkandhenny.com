@@ -11,9 +11,11 @@ export function usePollVoteMutation(slug: string) {
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: pollQueryKeys.deviceVote(slug) });
     },
-    onSuccess: async (vote) => {
+    onSuccess: (vote) => {
       queryClient.setQueryData(pollQueryKeys.deviceVote(slug), vote);
-      await queryClient.invalidateQueries({ queryKey: pollQueryKeys.public(slug) });
+      void queryClient
+        .invalidateQueries({ queryKey: pollQueryKeys.public(slug) })
+        .catch(() => undefined);
     },
   });
 }

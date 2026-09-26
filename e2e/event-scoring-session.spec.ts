@@ -43,6 +43,9 @@ test("viewing tickets in separate tabs never selects a retired points identity",
   );
 
   try {
+    const eventResponse = await page.request.get(`/events/${eventSlug}`);
+    expect(eventResponse.ok()).toBe(true);
+    expect(await eventResponse.text()).toContain("Browser scoring");
     await page.goto(`/ticket/${firstTicket}`);
     await expect(page.getByRole("img", { name: /Your ticket QR code/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "use this ticket for points" })).toHaveCount(0);
