@@ -4314,6 +4314,29 @@ const MIGRATIONS: Migration[] = [
         on delete set null (thumbnail_asset_id);
     `,
   },
+  {
+    id: "0097_ticket_event_ownership",
+    sql: `
+      create unique index tickets_event_slug_id_uq
+        on tickets (event_slug, id);
+
+      alter table tickets drop constraint tickets_parent_ticket_id_fkey;
+      alter table tickets
+        add constraint tickets_parent_same_event_fkey
+        foreign key (event_slug, parent_ticket_id)
+        references tickets (event_slug, id)
+        on update cascade
+        on delete set null (parent_ticket_id);
+
+      alter table event_participants drop constraint event_participants_ticket_id_fkey;
+      alter table event_participants
+        add constraint event_participants_ticket_same_event_fkey
+        foreign key (event_slug, ticket_id)
+        references tickets (event_slug, id)
+        on update cascade
+        on delete restrict;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

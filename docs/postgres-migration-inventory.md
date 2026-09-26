@@ -90,6 +90,14 @@ clone. It adds a unique `(deck_id, id)` index on `pitch_assets` and a composite 
 asset clears only `thumbnail_asset_id`; deleting a deck still cascades its assets. The production
 snapshot had zero cross-deck or missing-thumbnail references. No production schema was changed.
 
+Local migration `0097_ticket_event_ownership` also applied to the restored clone without
+contradictory rows. It adds a unique `(event_slug, id)` index on `tickets`, replaces the
+single-column parent-ticket FK with `(event_slug, parent_ticket_id)`, and replaces the
+participant's ticket FK with `(event_slug, ticket_id)`. Both new FKs cascade an event-slug
+rename; deleting a parent ticket still clears only `parent_ticket_id`, and deleting a ticket
+linked to a participant remains restricted. Direct cross-event writes are rejected. Existing
+ticket-exchange and event-scoring rename journeys passed locally. Production schema is unchanged.
+
 This validates logical restore and ledger upgrade for this snapshot. It does not establish
 Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key
 recovery or the final cutover snapshot. The production web credential remains the `postgres`

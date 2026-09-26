@@ -466,7 +466,7 @@ remain operational gates.
 | M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
 | M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
 | M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
-| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch ownership                          |
+| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                                                       |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
 | M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
@@ -534,6 +534,9 @@ unimplemented compatibility assumption. Commit source, tests and updated contrac
 - [x] Enforce that a pitch thumbnail asset belongs to its deck with a composite FK. The restored
       production clone had no contradictory rows; focused creation, reassignment, asset deletion
       and deck deletion tests pass.
+- [x] Enforce same-event parent tickets and participant ticket links with composite FKs.
+      Restored production data accepted the migration; focused rejection, event rename and
+      existing ticket-exchange/scoring tests pass.
 - [ ] Implement the approved identity, ownership, action-target and relationship changes.
 - [ ] Apply justified money/allocation, active-record uniqueness and state consistency changes.
 - [ ] Backfill/validate before tightening constraints; record contradictory-data resolution.
@@ -720,8 +723,9 @@ targets for publication/deletion tests, and never send real user email/payment e
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
-  restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`. The
-  pitch-ownership constraint accompanies the next local implementation commit.
+  restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`;
+  pitch-ownership constraint `0af6c55b`. Ticket-event ownership accompanies the next local
+  implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -752,7 +756,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   migrations and the runtime verification succeeded on the restored data. Full feature tests
   are deferred until the wider persistence change. Migration `0096` applied to the restored
   production clone; focused pitch tests passed for cross-deck refusal, asset unlink and deck
-  deletion.
+  deletion. Migration `0097` applied to the same clone; 54 existing exchange/scoring tests and
+  direct mismatch/rename tests passed. `pnpm check` and the full `pnpm test` suite passed
+  (251 files, 2,024 tests) after the cross-feature constraint change.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
