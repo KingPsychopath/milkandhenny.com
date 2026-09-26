@@ -1,7 +1,9 @@
 # Server state and data loading proposal
 
-Status: architecture recommendation; application migration has not started.
+Status: implementation in progress on `codex/tanstack-query-architecture`.
 Prepared: 2026-09-26.
+Implementation base: `f2bfadb810ba354bc39713c355e49335bab87c36` from `main`, in a separate
+managed worktree. The active `main` checkout has unrelated uncommitted storage work.
 
 ## Decision
 
@@ -224,7 +226,7 @@ These are future implementation steps. No application milestone is complete in t
 
 | Milestone                             | Outcome                                                                                                                      | Dependencies and acceptance                                                                                                                                            |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M1: Foundation and one complete slice | QueryClient/SSR integration, typed keys, failure conventions, auth reset, and one admin workspace read plus mutation         | Confirm package compatibility. Prove SSR content, isolated concurrent requests, no duplicate fresh hydration read, cache reuse, targeted invalidation, and auth reset. |
+| M1: Foundation and one complete slice | QueryClient/SSR integration, typed keys, failure conventions, auth reset, and the public poll read/vote slice                | Confirm package compatibility. Prove SSR content, isolated concurrent requests, no duplicate fresh hydration read, cache reuse, targeted invalidation, and auth reset. |
 | M2: Admin workspaces                  | Move dashboard, communications, operational lists and session views to query ownership; remove redundant fetch/loading state | M1. Preserve CLI/HTTP contracts, step-up, filters, partial failures and bounded refresh. Load active workspace from its route boundary.                                |
 | M3: Public and attendee resources     | Consistent queries for events, words, albums, pitches, polls, tickets and account views                                      | M1. Distinguish public/private scopes, preserve metadata/status/expiry and browser-only identities; use measured streaming candidates.                                 |
 | M4: Transfers and editor integration  | One remote metadata owner; event-to-query bridge; drafts and file execution stay in controllers                              | M1 and relevant metadata contracts. Prove reconnect reconciliation, monotonic processing updates, deletion, expiry, dirty-draft survival and recovery.                 |
@@ -262,18 +264,19 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 ## Checkpoint
 
 - Completed: source inventory, target ownership, replacement decisions, implementation milestones,
-  and acceptance checks in this document; corrected the React rule's description of isomorphic
-  loader execution.
-- Application implementation: none. This proposal does not claim a completed Query migration.
-- Verification: documentation formatting, all 28 local link/path checks, all three documented
-  package script names, and diff review passed. Source tests/build are unnecessary for this
-  documentation change; application acceptance remains future work.
+  and acceptance checks; corrected the React rule's description of isomorphic loader execution.
+  Created an isolated worktree and branch at the recorded `main` base. Selected polls for M1
+  because its SSR read, browser-local voter identity, and vote mutation cover the full query
+  lifecycle without mixing into the concurrent storage migration.
+- Application implementation: in progress. No Query-backed feature is complete yet.
+- Verification: previous proposal's formatting, link/path and script-name checks passed.
+  Application checks will be recorded by milestone.
 - Open: measured workload/freshness budgets, exact package compatibility, full endpoint-consumer
   inventory, capability-view cache scopes, and per-feature invalidation relationships.
-- Next action: implement M1 as a complete read/mutation/identity slice when this proposal is taken
-  into implementation. Keep this checkpoint current as evidence and scope change.
-- Commit record: the documentation milestone is identified by Conventional Commit message
-  `docs: propose unified server state architecture`; subsequent implementation commits belong here.
+- Next action: implement and verify M1, including request-scoped SSR hydration and complete poll
+  ownership; then take the next feature slice. Keep this checkpoint current as evidence changes.
+- Commit record: `aba7708d` proposed the architecture on `main`; implementation commits will be
+  recorded here when each milestone is complete.
 
 ## References
 
