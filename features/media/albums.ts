@@ -39,6 +39,7 @@ export interface Album {
   photos: Photo[];
   status?: "draft" | "published";
   updatedAt?: string;
+  revision?: number;
 }
 
 export type { FocalPreset } from "./focal";

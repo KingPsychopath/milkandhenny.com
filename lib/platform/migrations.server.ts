@@ -4623,6 +4623,50 @@ const MIGRATIONS: Migration[] = [
       $$;
     `,
   },
+  {
+    id: "0106_gallery_albums",
+    sql: `
+      create table gallery_albums (
+        slug text primary key check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        title text not null check (length(trim(title)) > 0),
+        album_date date not null,
+        description text,
+        cover_photo_id text,
+        status text not null check (status in ('draft', 'published')),
+        updated_at timestamptz not null,
+        revision integer not null default 1 check (revision >= 1),
+        source_manifest_key text,
+        source_manifest_sha256 text check (source_manifest_sha256 ~ '^[a-f0-9]{64}$'),
+        check (status = 'draft' or cover_photo_id is not null)
+      );
+      create index gallery_albums_public_date_idx
+        on gallery_albums (album_date desc) where status = 'published';
+
+      create table gallery_album_photos (
+        album_slug text not null references gallery_albums (slug) on delete cascade,
+        photo_id text not null,
+        position integer not null check (position >= 0),
+        width integer not null check (width > 0),
+        height integer not null check (height > 0),
+        version text not null,
+        widths integer[] not null,
+        placeholder jsonb not null check (jsonb_typeof(placeholder) = 'object'),
+        title text,
+        alt text,
+        caption text,
+        size_bytes bigint check (size_bytes >= 0),
+        taken_at text,
+        focal_point text,
+        auto_focal jsonb check (auto_focal is null or jsonb_typeof(auto_focal) = 'object'),
+        primary key (album_slug, photo_id),
+        unique (album_slug, position)
+      );
+      alter table gallery_albums add constraint gallery_albums_cover_owned_fk
+        foreign key (slug, cover_photo_id)
+        references gallery_album_photos (album_slug, photo_id)
+        deferrable initially deferred;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

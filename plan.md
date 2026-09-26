@@ -596,6 +596,10 @@ double-consume a credential, vote, report submission or protected quota.
 
 ### M5 — Words, albums and media catalogue
 
+- [x] Add an opt-in Postgres album/photo catalogue with revision checks and same-album cover
+      ownership; rehearse the two-manifest, 14-photo private R2 import in an isolated restore.
+- [ ] Make album publication, deletion and derivative changes recoverable across Postgres/R2
+      failures before selecting the Postgres repository in production.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -749,7 +753,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26, M1–M4 in progress
+### Current checkpoint — 2026-09-26, M1–M5 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
@@ -762,7 +766,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   limiting `d1a353d5`; Postgres upload access `59a3db50`; JWT token state `85221402`;
   attendee sessions `7f373ed6`; CLI authorization `29bc862f`; passkey ceremonies and attendee
   throttles `741662f2`; action-link/Pitch throttles `e57b1e37`. The diagnostic-report
-  milestone `d31e61c8`; Best Dressed implementation is in this milestone change.
+  milestone `d31e61c8`; Best Dressed `e39554d3`. The album catalogue milestone is in this
+  change.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -857,6 +862,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   voting tests passed ten cases. A local Docker timeout led to an isolated loopback-only
   PostgreSQL 18.4 cluster for final verification; `pnpm check`, `pnpm build` and the
   full `pnpm test` suite passed there (260 files, 2,058 tests). Production is unchanged.
+  For albums, migration `0106` applied to a local restored production database. The importer
+  read two private R2 manifests into 2 album and 14 photo rows; a repeat import was idempotent,
+  an incorrect expected count failed, and the restricted runtime role could use the tables.
+  Focused real-Postgres tests covered same-album cover ownership, revision conflicts, ordering,
+  listing and deletion. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed
+  against isolated Postgres (261 files, 2,061 tests). No production import or switch occurred.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -875,7 +886,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: continue into words/albums and the
+- Next action: add recoverable album object operations, continue into words and the
   transfer/media queue before any release candidate. Do not start production migration from
   the table sketches in this document.
 

@@ -55,6 +55,8 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists gallery_album_photos cascade;
+    drop table if exists gallery_albums cascade;
     drop table if exists best_dressed_codes cascade;
     drop table if exists best_dressed_legacy_votes cascade;
     drop table if exists best_dressed_tokens cascade;

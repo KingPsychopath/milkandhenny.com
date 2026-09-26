@@ -166,4 +166,5 @@ export const HISTORICAL_MIGRATION_SHA256 = {
   "0103_passkey_ceremonies": "7bb99c76945d2b11b931b29383ea2024d8b9e896020f2505482468ce10f14c01",
   "0104_diagnostic_reports": "1a20fb9c1dba966016608929e27bddd433d227eccf74257dd77c4110d9d3f562",
   "0105_best_dressed": "5823b6b50670c80ee7d059f6cd425a5292fd344ae8bd703d866a797d2911e96a",
+  "0106_gallery_albums": "92009dfddd60fd52293402b19f5cae9eb5679402e612e90044c0336c175d5675",
 } as const;

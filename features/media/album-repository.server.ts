@@ -9,6 +9,12 @@ import {
 import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { isValidFocalPreset } from "./focal";
+import {
+  deletePostgresAlbum,
+  listPostgresAlbums,
+  readPostgresAlbum,
+  writePostgresAlbum,
+} from "./album-postgres.server";
 
 const ALBUM_MANIFEST_PREFIX = "albums/_manifests/";
 const SAFE_ALBUM_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -84,7 +90,8 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
       (value.cover !== "" && !value.photos.some((photo) => photo.id === value.cover)) ||
       (value.status !== undefined && value.status !== "draft" && value.status !== "published") ||
       (value.status === "published" && (!value.cover || value.photos.length === 0)) ||
-      !isOptionalString(value.updatedAt)
+      !isOptionalString(value.updatedAt) ||
+      (value.revision !== undefined && (!Number.isInteger(value.revision) || value.revision < 1))
     ) {
       return null;
     }
@@ -103,6 +110,7 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
 
 async function readAlbumManifest(slug: string): Promise<Album | null> {
   if (!isSafeAlbumSlug(slug)) return null;
+  if (process.env.ALBUM_STORE === "postgres") return readPostgresAlbum(slug);
   if (!isConfigured()) return null;
   const key = albumManifestKey(slug);
   if (!(await headObject(key, { scope: "private" })).exists) return null;
@@ -111,6 +119,7 @@ async function readAlbumManifest(slug: string): Promise<Album | null> {
 }
 
 async function listAlbumManifests(): Promise<Album[]> {
+  if (process.env.ALBUM_STORE === "postgres") return listPostgresAlbums();
   if (!isConfigured()) return [];
 
   const objects = await listObjects(ALBUM_MANIFEST_PREFIX, { scope: "private" });
@@ -127,6 +136,10 @@ async function listAlbumManifests(): Promise<Album[]> {
 }
 
 async function writeAlbumManifest(album: Album): Promise<Album> {
+  if (process.env.ALBUM_STORE === "postgres") {
+    if (!parseAlbumManifest(JSON.stringify(album), album.slug)) throw new Error("Invalid album");
+    return writePostgresAlbum(album);
+  }
   if (!isConfigured()) {
     throw new Error("Object storage is not configured");
   }
@@ -141,6 +154,7 @@ async function writeAlbumManifest(album: Album): Promise<Album> {
 }
 
 async function deleteAlbumManifest(slug: string): Promise<void> {
+  if (process.env.ALBUM_STORE === "postgres") return deletePostgresAlbum(slug);
   await deleteObject(albumManifestKey(slug), { scope: "private" });
 }
 
