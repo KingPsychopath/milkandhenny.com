@@ -10,6 +10,7 @@ import {
 import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
+  verifyTransferDeleteToken,
 } from "./delete-token-postgres.server";
 import { enqueuePostgresTransferMediaJob } from "./media-jobs-postgres.server";
 import type { TransferMediaJob } from "./media-queue.server";
@@ -298,6 +299,19 @@ export async function createPostgresTransferInTransaction(
 /** The transfer and its relational children become visible in one commit. */
 export async function createPostgresTransfer(data: TransferData): Promise<boolean> {
   return transaction((client) => createPostgresTransferInTransaction(client, data));
+}
+
+export async function validatePostgresTransferDeleteToken(
+  transferId: string,
+  token: string,
+): Promise<boolean> {
+  if (!token) return false;
+  const rows = await query<{ delete_token_hash: string }>(
+    `select delete_token_hash from transfers
+      where id=$1 and deleted_at is null and expires_at > clock_timestamp()`,
+    [transferId],
+  );
+  return rows[0] ? verifyTransferDeleteToken(token, rows[0].delete_token_hash) : false;
 }
 
 async function enqueuePlannedMediaJobs(

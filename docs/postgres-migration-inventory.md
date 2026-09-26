@@ -102,7 +102,7 @@ Local migration `0098_rate_limit_windows` adds a row per policy, identity/global
 HMAC-SHA-256 subject hash. Attempts and absolute expiry are columns under a composite primary
 key, with an expiry index for bounded cleanup. `RATE_LIMIT_STORE=postgres` is opt-in; source
 Redis remains the default during transition. The supplied RDB has no `ratelimit:*` records, but
-a fresh cutover export must still reconcile active windows before the switch. The local restored
+the user's 2026-09-26 cutoff decision accepts later Redis-only windows as excluded. The local restored
 database accepted the migration, and a non-superuser runtime role reserved a synthetic window.
 
 Local migration `0104_diagnostic_reports` adds typed current reports, hashed admission

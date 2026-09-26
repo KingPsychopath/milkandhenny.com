@@ -360,7 +360,9 @@ Record integrity hashes; do not treat multipart ETags as universal content check
 
 Export archives must be encrypted, checksummed and stored outside Git. Reports contain counts,
 identifiers as safely appropriate, hashes and errors, not raw credentials or personal content.
-Restore source access or obtain a verified backup if Redis is unreadable. Missing metadata/body
+The verified first RDB export is the authorized Redis cutoff. Redis writes made after that export
+are outside the preservation requirement; do not query the exhausted source for a final delta.
+Missing metadata/body
 records require evidence and resolution; never infer publication or permission from orphan blobs.
 
 ### 6.2 Import and rehearsal
@@ -386,7 +388,8 @@ the same product state to Redis and Postgres.
 Before scheduling cutover, record:
 
 - Authorized deployment/release identifiers, operators, maintenance duration and abort criteria.
-- Verified source accessibility; final export command/version and expected counts.
+- Verified first-export integrity, import manifest and expected counts; document the accepted
+  exclusion of later Redis writes.
 - Database backup, object coverage, restore evidence and independent archive location.
 - Exact writer-stop procedure for web, rooms, workers, scheduler, cron and operational CLI.
 - Existing presigned uploads and their reservation/finalization policy.
@@ -408,8 +411,8 @@ runbook. Do not substitute guessed provider commands or undocumented environment
    use verified provider retries. Never acknowledge an event that was not durably recorded.
 5. Allow already issued upload URLs to land only under existing scope; prevent conflicting
    finalization. Preserve original reservations/expiry and inventory late-arriving objects.
-6. Capture the final consistent source export and object manifest after the writer barrier.
-7. Import additively into the new tables and reconcile source/target totals and references.
+6. Revalidate the supplied first export and capture the object manifest after the writer barrier.
+7. Import additively into the new tables and reconcile against that export and object references.
 8. Start the new app/worker with public access restricted. Test via purpose-created canary data
    and isolated side effects; track any mutations that affect the rollback boundary.
 9. Confirm content, access/revocation, transfer/reservation recovery, room recovery, durable
@@ -444,8 +447,8 @@ Use a known compatible application revision that understands the Postgres schema
 forward. Prepare and test that compatible fallback before release. Returning to Redis would need
 a separately implemented and rehearsed reverse migration, which this plan does not assume.
 
-Retain the final source export through the recorded acceptance/retention interval. Delete the
-old service only under M13 authorization. Redact/expire sensitive archives under the agreed
+Retain the verified first export through the recorded acceptance/retention interval. The user
+authorized retirement of Upstash on 2026-09-26 once the replacement is working. Redact/expire sensitive archives under the agreed
 retention policy; leaving them indefinitely is not a recovery strategy.
 
 Disaster restore is different from planned migration: restoring an older database can resurrect
@@ -462,22 +465,22 @@ audited relationships. Scoped M4 rate-limit work uses the verified transaction a
 foundation and remains opt-in until source windows and load are reconciled. Other domain
 implementation follows listed dependencies. M12 and M13 remain operational gates.
 
-| Milestone                                           | Dependencies                             | Status                                                        |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
-| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
-| M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
-| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
-| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies  |
-| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger           |
-| M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs         |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
-| M8 — application and realtime integration           | M3–M7                                    | Pending                                                       |
-| M9 — operations, recovery and documentation         | M8                                       | Pending                                                       |
-| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                       |
-| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                       |
-| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                       |
-| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                       |
+| Milestone                                           | Dependencies                             | Status                                                       |
+| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                      |
+| M1 — inventory and physical schema specification    | M0                                       | In progress; operational gates pending                       |
+| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                      |
+| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership              |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies |
+| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger          |
+| M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs        |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                      |
+| M8 — application and realtime integration           | M3–M7                                    | Pending                                                      |
+| M9 — operations, recovery and documentation         | M8                                       | Pending                                                      |
+| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                      |
+| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                      |
+| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                      |
+| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                      |
 
 ### M1 — Inventory and physical schema specification
 
@@ -489,9 +492,9 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
       coverage as explicit blockers.
 - [x] Checksum-validate and fully decode the user's RDB export, including all 224 keys, value types
       and absolute expiry. Exact source capture time remains unproven; its download time is known.
-- [ ] Reconcile the export against a fresh source snapshot at cutover and classify the legacy
-      `guest:*` and `user-report:*` keys. The guest list is assigned to a restricted Postgres archive;
-      Upstash command-limit errors still prevent a live read.
+- [x] Record the first verified export as the authorized Redis cutoff. The user explicitly accepts
+      losing later Redis-only writes. The historical guest list is assigned to a restricted
+      Postgres archive; no fresh Upstash read is required.
 
 - [ ] Enumerate direct/indirect storage users, all key families, object prefixes, tables,
       mutations, read models, scheduled work and browser recovery contracts.
@@ -556,37 +559,35 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
       the default until active source windows are reconciled at cutover.
 - [x] Add opt-in encrypted Postgres upload windows and bounded audit history. The supplied RDB
       holds four audit entries and no active window. A provenance-checked importer rehearsed
-      those four entries on isolated Postgres; production import and fresh cutover reconciliation
-      remain open.
+      those four entries on isolated Postgres; production import remains open.
 - [x] Add an opt-in Postgres JWT session/version/revocation and encrypted login-dedupe backend,
       with admin session listing/revocation and bounded retention. The supplied RDB's admin,
       upload and historical staff versions are extracted and rehearsed on isolated Postgres;
       active-session/revocation delta import and production switch remain open.
 - [x] Add opt-in Postgres attendee sessions with hashed lookup, transactional rotation and
       person-wide revocation. A strict offline import rehearsed all 192 supplied sessions with
-      original absolute expiries on isolated Postgres; final source reconciliation and the
-      production switch remain open.
+      original absolute expiries on isolated Postgres; the production switch remains open.
 - [x] Add opt-in Postgres CLI authorization with hashed opaque lookups, encrypted callback/code
       payloads, atomic approval plus JWT registration, and one-time PKCE exchange. The supplied
-      RDB has no active CLI keys; a final source check and expiry drain remain open.
+      RDB has no active CLI keys; expiry drain remains open.
 - [x] Add opt-in one-time Postgres passkey ceremonies and connect attendee login, passkey and
-      TOTP throttles to the shared Postgres limiter when selected. Their final source expiry
-      windows still require reconciliation.
+      TOTP throttles to the shared Postgres limiter when selected. Import only the authorized
+      first-export windows that remain valid at cutover.
 - [x] Connect action-link redemption and Pitch recovery throttles to the shared Postgres limiter
-      when selected. Concurrent Pitch recovery admits four of five attempts; final source-window
-      reconciliation remains open.
+      when selected. Concurrent Pitch recovery admits four of five attempts.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
-      after a fresh source import, including any newly active JWT sessions or revocations.
+      after importing the authorized first export. Later Redis-only sessions and revocations are
+      intentionally excluded; verify the resulting access policy before release.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
 - [x] Implement opt-in Postgres report storage/receipts, report rate admission, follow-up and
       admin updates with a bounded cleanup path; rehearse the supplied RDB import.
 - [x] Audit report notification work: the current report workflow has no notification side
       effect to preserve. Any later report alert must use a transactional outbox.
-- [ ] Reconcile the final report source delta before switching the backend.
+- [ ] Reconcile the report backend against the authorized first export before switching.
 - [x] Implement opt-in Best Dressed totals, receipts, codes, voting window and reset
       behavior as a transactional Postgres path; archive the retired tally without
       activating it. Rehearse the supplied RDB import.
-- [ ] Reconcile the final Best Dressed source delta before switching the backend.
+- [ ] Reconcile the Best Dressed backend against the authorized first export before switching.
 - [ ] Add domain importers with legacy-version, expiry, one-time race and baseline-vote fixtures.
 - [ ] Verify cookies, step-up/MFA, parent-session binding, PKCE, admin session management,
       revocation and disabled/expired access, plus admin/CLI parity.
@@ -676,7 +677,8 @@ derived exports. No read path silently repairs/deletes product state.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
   - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
         seven terminal jobs retained without replay, one orphan quarantined, no runnable work.
-        Fresh source delta, nonterminal-job rehearsal and production import remain open.
+        Nonterminal-job rehearsal and production import remain open; later Redis-only jobs are
+        outside the authorized cutoff.
 - [ ] Test worker death before/after upload, stale completion, duplicate claims, reservation
       races, late uploads, RAW/live-photo groups and transfer expiry/deletion during processing.
 
@@ -771,8 +773,8 @@ no unexplained data loss or violated access invariant.
 - [ ] Remove obsolete runtime Redis code/dependencies/configuration and update lockfile/fixtures.
       Keep any needed import reader isolated from the runtime until archive obligations end.
 - [ ] Verify no old writer, cron, dashboard or deployment still requires Redis.
-- [ ] Confirm archive retention and restore readiness, then obtain required removal authorization
-      and retire old service/credentials. Record completion without exposing secrets.
+- [ ] Confirm archive retention and restore readiness, then retire old service/credentials under
+      the user's 2026-09-26 authorization. Record completion without exposing secrets.
 - [ ] Run affected checks after cleanup and finish documentation/checkpoint.
 - [ ] Verify every requirement below; record final commits/releases and operational evidence.
 
@@ -837,10 +839,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
   queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`;
   atomic media job planning `30b161b2`; atomic file removal `a5f67945`.
+  Indexed transfer expiry cleanup `6bf88e21`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
-  import the unused historical guest list into a restricted Postgres archive table with provenance.
+  import the unused historical guest list into a restricted Postgres archive table with provenance;
+  use the verified first RDB export as the Redis cutoff, accepting loss of later Redis-only writes.
+- 2026-09-26 cutoff update: the user authorized retiring Upstash and explicitly waived any
+  Redis-only data written after the first verified export. This supersedes earlier checkpoint
+  references to a fresh source delta. The source command cap no longer blocks the migration;
+  application completeness, rehearsal, backup/restore and production verification still do.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
@@ -1106,8 +1114,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   returned PONG, but a follow-up queue read returned `ERR max requests limit exceeded` at
   500,000/500,000; no queue values or fresh source delta were obtained. These failures align
   with the exhausted Redis allowance; the maintenance runner deliberately exits nonzero when
-  any job fails. Stop live source reads until the allowance is restored or a fresh export is
-  supplied. No production data or configuration was changed.
+  any job fails. The later cutoff decision supersedes the fresh-export requirement: stop live
+  source reads and use the verified first export. No production data or configuration was changed.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1121,7 +1129,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   has two. The export's admin/upload token versions are 3/2; the retired staff version is 2.
   Its 192 attendee sessions include 189 current and three legacy shapes; 27 are person-bound,
   none has pending MFA, and no person-version key survives.
-- Unresolved: exact Redis snapshot time/fresh cutover delta; renewed Upstash command cap and
+- Unresolved: exact Redis snapshot time; exhausted Upstash command cap and
   failed production maintenance tasks; archive retention duration and
   production role separation; backup coverage; measured load/resource budgets; remaining
   domain DDL and import durations; operational command/credential setup; quantified acceptance
@@ -1130,7 +1138,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 - Next action: wire transfer request flows and cleanup against the same Postgres authority, then
   implement safe file removal with generation-specific derivatives. Reconcile orphan transfer prefixes
   and qualify the opt-in deletion runner before cutover. Complete media queue operations and
-  old-attempt object reconciliation, then reconcile a fresh source export against the rehearsed importer.
+  old-attempt object reconciliation, then reconcile the authorized first export against the importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
 

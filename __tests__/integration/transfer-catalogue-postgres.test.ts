@@ -11,6 +11,7 @@ import {
   removePostgresTransferFile,
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
+  validatePostgresTransferDeleteToken,
 } from "@/features/transfers/catalogue-postgres.server";
 import { planPostgresTransferMedia } from "@/features/transfers/media-plan-postgres.server";
 import { getGenerationTransferAssetKeys } from "@/features/transfers/media-state";
@@ -101,6 +102,19 @@ describeWithDatabase("Postgres transfer catalogue", () => {
     expect(worker).not.toHaveProperty("deleteToken");
     await expect(getPostgresTransfer(transfer.id)).rejects.toThrow(
       "Transfer token encryption key unavailable",
+    );
+  });
+
+  it("validates only a live transfer's delete capability", async () => {
+    await createPostgresTransfer(transfer);
+    expect(await validatePostgresTransferDeleteToken(transfer.id, transfer.deleteToken)).toBe(true);
+    expect(await validatePostgresTransferDeleteToken(transfer.id, "wrong-token")).toBe(false);
+    expect(await validatePostgresTransferDeleteToken(transfer.id, "")).toBe(false);
+    await query("update transfers set expires_at=now()-interval '1 second' where id=$1", [
+      transfer.id,
+    ]);
+    expect(await validatePostgresTransferDeleteToken(transfer.id, transfer.deleteToken)).toBe(
+      false,
     );
   });
 
