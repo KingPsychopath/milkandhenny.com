@@ -16,6 +16,7 @@ function getTransferFileDeleteKeys(
     | "originalStorageKey"
     | "processingRoute"
     | "derivativeGeneration"
+    | "derivativeClaimToken"
   >,
 ): string[] {
   const route: ProcessingRoute | null =
@@ -28,6 +29,7 @@ function getTransferFileDeleteKeys(
           route,
           file.id,
           file.derivativeGeneration,
+          file.derivativeClaimToken,
         )
       : getExpectedTransferAssetKeys(transferId, file.filename, route, file.id)
     : {};

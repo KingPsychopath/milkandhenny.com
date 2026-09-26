@@ -186,6 +186,13 @@ describeWithDatabase("Postgres transfer catalogue", () => {
         JSON.stringify({ expectedThumbKey: `transfers/${transfer.id}/thumb/raw/g1.webp` }),
       ],
     );
+    await query(
+      `insert into transfer_media_job_attempt_outputs
+         (job_id,claim_token,thumb_key)
+       values ('00000000-0000-0000-0000-000000000111',
+               '00000000-0000-0000-0000-000000000112',$1)`,
+      [`transfers/${transfer.id}/thumb/raw/g1/00000000-0000-0000-0000-000000000112.webp`],
+    );
     expect(await tombstonePostgresTransfer(transfer.id)).toBe(true);
     expect(await tombstonePostgresTransfer(transfer.id)).toBe(false);
     expect(await getPostgresTransfer(transfer.id)).toBeNull();
@@ -208,6 +215,9 @@ describeWithDatabase("Postgres transfer catalogue", () => {
     );
     expect(operations.map((operation) => operation.target_key)).toContain(
       `transfers/${transfer.id}/thumb/raw/g1.webp`,
+    );
+    expect(operations.map((operation) => operation.target_key)).toContain(
+      `transfers/${transfer.id}/thumb/raw/g1/00000000-0000-0000-0000-000000000112.webp`,
     );
     expect(operations.length).toBeGreaterThanOrEqual(2);
   });

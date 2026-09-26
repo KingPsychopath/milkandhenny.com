@@ -182,4 +182,6 @@ export const HISTORICAL_MIGRATION_SHA256 = {
     "e8489d0a950566aedf6c16037d9472f7decdf65af3fb2c93bd9dd65fbfc26f17",
   "0115_transfer_derivative_generation":
     "14fd48112fac01313a9122fbdc8cc0c7c3c3da6834bec31653f725f8f72f315f",
+  "0116_transfer_attempt_outputs":
+    "50a0caaa702797cd477ce582e492a8892d1bf595a55938fc3f215de0a08c4dc3",
 } as const;

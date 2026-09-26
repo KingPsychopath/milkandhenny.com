@@ -8,8 +8,10 @@ batches can reserve capacity concurrently under the locked transfer row; overlap
 names and aggregate file/byte overbooking are refused.
 Migration `0115` adds a nullable published derivative generation. Null retains the existing
 fixed-key URLs for imported legacy files. A Postgres worker job must name generation-specific
-private output keys such as `thumb/<file-id>/g2.webp`; fenced completion publishes that
-generation on the file. Media access signs only the currently published generation.
+private output keys. Migration `0116` records claim-specific output keys for each job attempt.
+The worker writes keys such as `thumb/<file-id>/g2/<claim-token>.webp`; fenced completion
+publishes that generation and claim token on the file. Media access signs only the published
+attempt. An expired claim can finish its R2 upload without overwriting the winning attempt.
 
 The transfer row preserves the public capability ID, owner, title and expiry. It has a deletion
 token hash for verification and ciphertext/nonce columns for the existing resume flow, which
@@ -70,9 +72,12 @@ jobs whose source is deleted, expired or superseded. Completion locks the transf
 checks the claim, and updates the file result in the caller's transaction. It does not execute
 R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration and
 generation-specific R2 writes remain open.
-The repository now validates generation-specific output keys before enqueue and records the
-published generation on fenced completion. The worker still needs to write those keys and clean
-stale generation objects; the Redis worker's fixed-key path remains unchanged.
+The repository validates the generation namespace before enqueue, assigns distinct keys to each
+claim, and records the winning attempt on fenced completion. A staged Postgres executor processes
+images, GIFs, videos and RAW previews, retries failed claims, and removes its own outputs when a
+late completion loses the lease. The Media runtime still needs to select and schedule this
+executor. Older orphaned attempt objects also need reconciliation. The Redis worker's fixed-key
+path remains unchanged.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing
 list. One entry has no surviving transfer and no R2 source object. The importer retains that

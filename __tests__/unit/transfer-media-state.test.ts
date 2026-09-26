@@ -41,6 +41,19 @@ describe("transfer media state helpers", () => {
     ).toEqual({
       thumbKey: "transfers/capability/thumb/clip/g1.webp",
     });
+    expect(
+      getGenerationTransferAssetKeys(
+        "capability",
+        "photo.jpg",
+        "worker_image",
+        "photo",
+        2,
+        "00000000-0000-0000-0000-000000000123",
+      ),
+    ).toEqual({
+      thumbKey: "transfers/capability/thumb/photo/g2/00000000-0000-0000-0000-000000000123.webp",
+      fullKey: "transfers/capability/full/photo/g2/00000000-0000-0000-0000-000000000123.webp",
+    });
     expect(() =>
       getGenerationTransferAssetKeys("capability", "photo.jpg", "worker_image", "photo", 0),
     ).toThrow("Invalid transfer processing generation");

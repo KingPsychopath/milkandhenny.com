@@ -137,14 +137,18 @@ function getGenerationTransferAssetKeys(
   route: ProcessingRoute | null,
   mediaId: string,
   generation: number,
+  claimToken?: string,
 ): { thumbKey?: string; fullKey?: string } {
   if (!Number.isInteger(generation) || generation < 1)
     throw new Error("Invalid transfer processing generation");
+  if (claimToken && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(claimToken))
+    throw new Error("Invalid transfer media claim token");
   const expected = getExpectedTransferAssetKeys(transferId, filename, route, mediaId);
   const prefix = `transfers/${transferId}`;
+  const suffix = claimToken ? `g${generation}/${claimToken}.webp` : `g${generation}.webp`;
   return {
-    ...(expected.thumbKey ? { thumbKey: `${prefix}/thumb/${mediaId}/g${generation}.webp` } : {}),
-    ...(expected.fullKey ? { fullKey: `${prefix}/full/${mediaId}/g${generation}.webp` } : {}),
+    ...(expected.thumbKey ? { thumbKey: `${prefix}/thumb/${mediaId}/${suffix}` } : {}),
+    ...(expected.fullKey ? { fullKey: `${prefix}/full/${mediaId}/${suffix}` } : {}),
   };
 }
 

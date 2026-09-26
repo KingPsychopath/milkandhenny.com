@@ -650,6 +650,8 @@ derived exports. No read path silently repairs/deletes product state.
         explicit dead-letter retry and queue snapshots remain open.
   - [x] Require generation-specific Postgres job output keys and publish the winning generation
         on fenced completion; worker execution and obsolete-object collection remain open.
+  - [x] Give each claim distinct R2 keys and persist attempt outputs so an expired claim cannot
+        overwrite its replacement; a staged executor handles supported media routes.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
@@ -1033,6 +1035,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   The isolated production restore accepted `0115`; five focused suites passed 26 cases and
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on isolated Postgres
   (272 files, 2,100 tests). The R2 worker still needs to write generation-specific outputs.
+  Migration `0116` pairs a published generation with its winning claim token and retains every
+  attempt's output keys. The staged executor handles image, GIF, video and RAW routes; it
+  publishes through the fenced Postgres transaction and retries or cancels failed/obsolete jobs.
+  Two real-Postgres executor cases covered successful dual R2 writes and an expired claim after
+  upload: only the replacement claim became visible. Focused migration/catalogue/media tests
+  passed 26 cases plus the executor cases. `pnpm check`, `pnpm build` and the full `pnpm test`
+  suite passed on isolated Postgres (273 files, 2,102 tests). The restricted app role can use the
+  new attempt table. Media runtime selection and old-attempt object reconciliation remain open.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

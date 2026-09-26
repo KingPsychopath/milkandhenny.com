@@ -4988,6 +4988,22 @@ const MIGRATIONS: Migration[] = [
         check (derivative_generation > 0 and derivative_generation <= processing_generation);
     `,
   },
+  {
+    id: "0116_transfer_attempt_outputs",
+    sql: `
+      alter table transfer_files add column derivative_claim_token uuid;
+      alter table transfer_files add constraint transfer_derivative_claim_pair
+        check ((derivative_generation is null) = (derivative_claim_token is null));
+      create table transfer_media_job_attempt_outputs (
+        job_id uuid not null references transfer_media_jobs (id) on delete cascade,
+        claim_token uuid not null,
+        thumb_key text not null,
+        full_key text,
+        created_at timestamptz not null default clock_timestamp(),
+        primary key (job_id, claim_token)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

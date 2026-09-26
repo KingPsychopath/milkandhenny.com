@@ -167,6 +167,21 @@ export async function claimPostgresTransferMediaJobs(
     const claimed: ClaimedPostgresTransferMediaJob[] = [];
     for (const row of picked.rows) {
       const claimToken = randomUUID();
+      const outputs = getGenerationTransferAssetKeys(
+        row.transfer_id,
+        row.payload.file.name,
+        row.payload.processingRoute,
+        row.file_id,
+        row.generation,
+        claimToken,
+      );
+      if (!outputs.thumbKey) throw new Error("Transfer media claim has no output key");
+      await client.query(
+        `insert into transfer_media_job_attempt_outputs
+           (job_id,claim_token,thumb_key,full_key)
+         values ($1,$2,$3,$4)`,
+        [row.id, claimToken, outputs.thumbKey, outputs.fullKey ?? null],
+      );
       await client.query(
         `update transfer_media_jobs
             set status='claimed',attempts=attempts+1,claim_token=$2,
@@ -178,7 +193,12 @@ export async function claimPostgresTransferMediaJobs(
         id: row.id,
         claimToken,
         generation: row.generation,
-        job: { ...row.payload, deliveryAttempt: row.attempts },
+        job: {
+          ...row.payload,
+          expectedThumbKey: outputs.thumbKey,
+          expectedFullKey: outputs.fullKey,
+          deliveryAttempt: row.attempts,
+        },
       });
     }
     return claimed;
@@ -238,6 +258,14 @@ export async function completePostgresTransferMediaJob(
     [id, token],
   );
   if (!claim.rows[0]) return false;
+  if (file?.previewStatus === "ready") {
+    const outputs = await client.query<{ claim_token: string }>(
+      `select claim_token from transfer_media_job_attempt_outputs
+        where job_id=$1 and claim_token=$2`,
+      [id, token],
+    );
+    if (!outputs.rows[0]) throw new Error("Transfer media claim outputs are unavailable");
+  }
   if (
     file &&
     (file.id !== target.file_id ||
@@ -263,7 +291,8 @@ export async function completePostgresTransferMediaJob(
               processing_backend=$10,processing_route=$11,enqueued_at=$12,
               processing_started_at=$13,processing_completed_at=$14,
               processing_error_code=$15,processing_error_detail=$16,retry_count=$17,
-              derivative_generation=case when $8='ready' then $18 else derivative_generation end
+              derivative_generation=case when $8='ready' then $18 else derivative_generation end,
+              derivative_claim_token=case when $8='ready' then $19::uuid else derivative_claim_token end
         where transfer_id=$1 and id=$2`,
       [
         target.transfer_id,
@@ -284,6 +313,7 @@ export async function completePostgresTransferMediaJob(
         file.processingErrorDetail ?? null,
         file.retryCount ?? null,
         target.generation,
+        token,
       ],
     );
   }
@@ -312,6 +342,21 @@ export async function failPostgresTransferMediaJob(
         and lease_until > clock_timestamp()
       returning id`,
     [id, token, errorCode, retryDelayMs],
+  );
+  return rows.length === 1;
+}
+
+export async function cancelClaimedPostgresTransferMediaJob(
+  id: string,
+  token: string,
+): Promise<boolean> {
+  const rows = await query<{ id: string }>(
+    `update transfer_media_jobs
+        set status='cancelled',claim_token=null,claim_owner=null,lease_until=null,
+            last_error='source unavailable'
+      where id=$1 and claim_token=$2 and status='claimed'
+      returning id`,
+    [id, token],
   );
   return rows.length === 1;
 }

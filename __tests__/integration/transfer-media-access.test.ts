@@ -90,10 +90,17 @@ describe("protected transfer media", () => {
   });
 
   it("signs only the currently published derivative generation", async () => {
+    const claimToken = "00000000-0000-0000-0000-000000000123";
     const generated: TransferData = {
       ...transfer,
       files: [
-        { ...transfer.files[0], kind: "image", previewStatus: "ready", derivativeGeneration: 2 },
+        {
+          ...transfer.files[0],
+          kind: "image",
+          previewStatus: "ready",
+          derivativeGeneration: 2,
+          derivativeClaimToken: claimToken,
+        },
       ],
     };
     const presignGetUrl = vi.fn().mockResolvedValue("https://private.example/generated");
@@ -110,14 +117,17 @@ describe("protected transfer media", () => {
     });
     expect(response.status).toBe(307);
     expect(presignGetUrl).toHaveBeenCalledWith(
-      "transfers/private-transfer/thumb/photo/g2.webp",
+      `transfers/private-transfer/thumb/photo/g2/${claimToken}.webp`,
       expect.any(Object),
     );
     expect(
       transferContainsStorageKey(generated, "transfers/private-transfer/thumb/photo.webp"),
     ).toBe(false);
     expect(
-      transferContainsStorageKey(generated, "transfers/private-transfer/thumb/photo/g2.webp"),
+      transferContainsStorageKey(
+        generated,
+        `transfers/private-transfer/thumb/photo/g2/${claimToken}.webp`,
+      ),
     ).toBe(true);
   });
 });

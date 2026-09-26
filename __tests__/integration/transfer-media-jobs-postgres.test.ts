@@ -115,6 +115,7 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     expect(first).toHaveLength(1);
     expect(second).toHaveLength(1);
     expect(first[0]?.id).not.toBe(second[0]?.id);
+    expect(first[0]?.job.expectedThumbKey).toContain(`/${first[0]?.claimToken}.webp`);
     const old = first[0];
     if (!old) throw new Error("Expected first claim");
     await query(
@@ -124,6 +125,13 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     const recovered = (await claimPostgresTransferMediaJobs("worker-three"))[0];
     expect(recovered?.id).toBe(old.id);
     expect(recovered?.claimToken).not.toBe(old.claimToken);
+    expect(recovered?.job.expectedThumbKey).not.toBe(old.job.expectedThumbKey);
+    expect(
+      await query<{ count: string }>(
+        "select count(*)::text as count from transfer_media_job_attempt_outputs where job_id=$1",
+        [old.id],
+      ),
+    ).toEqual([{ count: "2" }]);
     expect(await renewPostgresTransferMediaJob(old.id, old.claimToken)).toBe(false);
     expect(
       await transaction((client) =>
@@ -152,11 +160,21 @@ describeWithDatabase("Postgres transfer media jobs", () => {
       ),
     ).toBe(true);
     expect(
-      await query<{ processing_status: string; derivative_generation: number }>(
-        "select processing_status,derivative_generation from transfer_files where transfer_id=$1 and id=$2",
+      await query<{
+        processing_status: string;
+        derivative_generation: number;
+        derivative_claim_token: string;
+      }>(
+        "select processing_status,derivative_generation,derivative_claim_token from transfer_files where transfer_id=$1 and id=$2",
         [transfer.id, sourceFile.id],
       ),
-    ).toEqual([{ processing_status: "worker_done", derivative_generation: 1 }]);
+    ).toEqual([
+      {
+        processing_status: "worker_done",
+        derivative_generation: 1,
+        derivative_claim_token: recovered!.claimToken,
+      },
+    ]);
   });
 
   it("dead-letters exhausted retries and cancels a superseded generation", async () => {

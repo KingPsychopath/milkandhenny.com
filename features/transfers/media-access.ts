@@ -29,10 +29,11 @@ function resolveTransferMediaTarget(
   }
 
   if (file.previewStatus !== "ready") return null;
+  if (file.derivativeGeneration && !file.derivativeClaimToken) return null;
 
   return {
     key: file.derivativeGeneration
-      ? `transfers/${transfer.id}/${variant}/${file.id}/g${file.derivativeGeneration}.webp`
+      ? `transfers/${transfer.id}/${variant}/${file.id}/g${file.derivativeGeneration}/${file.derivativeClaimToken}.webp`
       : `transfers/${transfer.id}/${variant}/${file.id}.webp`,
     filename: `${file.id}.webp`,
     contentType: "image/webp",
@@ -65,11 +66,14 @@ function transferContainsStorageKey(transfer: TransferData, key: string): boolea
   return transfer.files.some((file) => {
     if (key === file.storageKey || key === file.originalStorageKey) return true;
     if (file.previewStatus !== "ready") return false;
-    if (file.derivativeGeneration)
+    if (file.derivativeGeneration && file.derivativeClaimToken)
       return (
-        key === `transfers/${transfer.id}/thumb/${file.id}/g${file.derivativeGeneration}.webp` ||
-        key === `transfers/${transfer.id}/full/${file.id}/g${file.derivativeGeneration}.webp`
+        key ===
+          `transfers/${transfer.id}/thumb/${file.id}/g${file.derivativeGeneration}/${file.derivativeClaimToken}.webp` ||
+        key ===
+          `transfers/${transfer.id}/full/${file.id}/g${file.derivativeGeneration}/${file.derivativeClaimToken}.webp`
       );
+    if (file.derivativeGeneration) return false;
     return (
       key === `transfers/${transfer.id}/thumb/${file.id}.webp` ||
       key === `transfers/${transfer.id}/full/${file.id}.webp`
