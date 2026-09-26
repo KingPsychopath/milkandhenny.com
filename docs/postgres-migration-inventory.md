@@ -56,6 +56,20 @@ relationships. The production `site_settings` shape matches the source
 `0025_site_settings` ID. Treat the latter as an explicit legacy baseline entry; do not rewrite
 the ledger or pretend to know the originally applied SQL checksum.
 
+At the read-only sampling point, `pg_stat_database` showed three database connections (one
+active, two idle), zero cumulative deadlocks and zero temp files. It reported 19,874,315
+committed transactions; `stats_reset` was null, so this cannot be converted to a rate or used
+as a peak baseline. High cumulative scan/update counters include `application_scheduled_jobs`
+(694,880 sequential scans and 693,378 updates) and `communication_contacts` (2,977,334
+updates). These may reflect long-lived polling/churn and require a timed baseline before adding
+session, room and media workloads. No `pg_stat_statements` extension is installed, so per-query
+latency has not been measured.
+
+One 10-second idle-period sample observed 21 committed transactions (2.1/s), zero rollbacks,
+zero block reads and 879 buffer hits. This is only an incident-period point sample while Redis
+calls are failing; it does not bound event-night room concurrency, media throughput or peak
+database demand. Load tests and a representative healthy period remain M1/M11 gates.
+
 A second read-only listing and selected manifest reads reconciled the supplied RDB to object
 storage without printing keys or private content:
 
@@ -72,9 +86,8 @@ There is only one distinct transfer prefix among the 168 private transfer object
 referencing a missing transfer is also the one whose source object is missing. A file may be
 absent because its transfer expired; the import must use source expiry and ownership before
 deciding whether to replay or discard it. All 47 `pitch_assets` rows match the 47 private pitch
-objects exactly (42 images and five thumbnails). Public pitch publication objects and their
-five thumbnail manifests have only been counted. Object backup/restore coverage remains
-unverified.
+objects exactly (42 images and five thumbnails). The five public pitch thumbnail manifests
+parse and point to all 20 expected variants. Object backup/restore coverage remains unverified.
 
 ## Upstash export received
 
@@ -112,9 +125,11 @@ one points at a missing transfer. Do not replay the orphan without checking expi
 ownership. Do not import the stale session/report index members as valid records. Git history
 identifies `guest:list` as the original whole-list guest store (initial commit `b8d61e2b`);
 current source has no reader. Commit `9f6dc320` identifies the two `user-report:*` keys as the
-prior report format. Retain the guest list in the protected source archive while its privacy
-and retention disposition is decided; retain/import the unexpired legacy report with its
-original expiry if the target report schema can represent it.
+prior report format. The user directed import of the historical guest list into a restricted
+Postgres archive table, with source provenance and no active guest-list behavior. Retain the
+protected source export for recovery until a retention period and archive access policy are
+agreed. Retain/import the unexpired legacy report with its original expiry if the target report
+schema can represent it.
 
 The [Upstash export contract](https://upstash.com/docs/redis/howto/importexport) says Redis
 Functions are excluded from RDB exports. The absence of a namespace in this snapshot also does
@@ -170,18 +185,21 @@ object reference or browser recovery path is accounted for.
 
 - [x] Obtain and checksum-validate a readable Redis export, decode all 224 keys, types and absolute
       TTLs without printing private values.
-- [x] Identify the three legacy keys and their original owning code in Git history; preserve the
-      guest list in the protected export pending a retention decision.
-- [ ] Establish exact source snapshot time, refresh the export at cutover, and decide whether
-      legacy guest data is imported to a restricted archive or retained only in the source export.
+- [x] Identify the three legacy keys and their original owning code in Git history; the user
+      selected a restricted Postgres archive table for the guest list.
+- [ ] Establish exact source snapshot time and refresh the export at cutover. Set archive
+      retention and privileged access policy before import.
 - [ ] Establish exact production counts and contradictions from the source and target, including
       transfers, active work, content, credentials, rooms, receipts and revocations.
 - [x] Reconcile exported word/transfer references and editable album/word-image manifests to R2
       objects without printing private content.
 - [x] Reconcile all 47 private pitch asset references and prove the orphan job is the one with a
       missing source object.
-- [ ] Verify public pitch publication references, object backup coverage and integrity policy.
-- [ ] Resolve the `0025_site_settings` migration-ledger mismatch without rewriting applied SQL.
+- [x] Verify all five public pitch thumbnail manifests and their 20 variant references.
+- [ ] Verify independent object backup coverage and restore integrity policy.
+- [x] Pin current historical source migration SQL hashes and recognize the verified production-only
+      `0025_site_settings` row without rewriting applied SQL. Original execution bytes remain
+      unverifiable because the old ledger stored no checksums.
 - [ ] Specify physical DDL and source mapping for every new table family; audit the full effective
       117-table schema before selecting existing-domain integrity changes.
 - [ ] Measure query/connection and media/room load; set numerical performance and recovery gates.

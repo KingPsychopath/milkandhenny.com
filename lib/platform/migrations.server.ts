@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import type { QueryResultRow } from "pg";
 
 import type { PitchDocumentSchemaInventory } from "./database-readiness.server";
 import { log } from "./logger.server";
+import { HISTORICAL_MIGRATION_SHA256 } from "./migration-baseline.server";
 import { getPool, query, transaction } from "./postgres.server";
 
 /**
@@ -17,6 +19,7 @@ import { getPool, query, transaction } from "./postgres.server";
  */
 
 const ADVISORY_LOCK_KEY = 8_147_231;
+const LEGACY_PRODUCTION_MIGRATION_IDS = new Set(["0025_site_settings"]);
 
 type Migration = { id: string; sql: string };
 
@@ -4340,6 +4343,85 @@ export type MigrationResult = {
   pitchDocuments?: PitchDocumentSchemaInventory;
 };
 
+interface MigrationLedgerRow extends QueryResultRow {
+  id: string;
+  sql_sha256: string | null;
+}
+
+function migrationHashes(): Map<string, string> {
+  const hashes = new Map<string, string>();
+  for (const migration of MIGRATIONS) {
+    if (hashes.has(migration.id)) throw new Error(`Duplicate migration id: ${migration.id}`);
+    hashes.set(migration.id, createHash("sha256").update(migration.sql).digest("hex"));
+  }
+  for (const [id, pinned] of Object.entries(HISTORICAL_MIGRATION_SHA256)) {
+    if (hashes.get(id) !== pinned) {
+      throw new Error(`Historical migration SQL changed or disappeared: ${id}`);
+    }
+  }
+  return hashes;
+}
+
+async function prepareMigrationLedger(hashes: ReadonlyMap<string, string>): Promise<void> {
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock($1)", [ADVISORY_LOCK_KEY]);
+    await client.query(`
+      create table if not exists schema_migrations (
+        id              text primary key,
+        applied_at      timestamptz not null default now(),
+        sql_sha256      text,
+        checksum_origin text
+      )
+    `);
+    await client.query(`
+      alter table schema_migrations
+        add column if not exists sql_sha256 text,
+        add column if not exists checksum_origin text
+    `);
+
+    const { rows } = await client.query<MigrationLedgerRow>(
+      "select id, sql_sha256 from schema_migrations order by id",
+    );
+    const baselineIds: string[] = [];
+    const baselineHashes: string[] = [];
+    for (const row of rows) {
+      const expected = hashes.get(row.id);
+      if (!expected) {
+        if (!LEGACY_PRODUCTION_MIGRATION_IDS.has(row.id)) {
+          throw new Error(`Unknown applied migration: ${row.id}`);
+        }
+        const { rows: siteSettings } = await client.query<{ exists: boolean }>(
+          "select to_regclass('public.site_settings') is not null as exists",
+        );
+        if (!siteSettings[0]?.exists || row.sql_sha256 !== null) {
+          throw new Error("Historical site-settings migration baseline is inconsistent");
+        }
+        continue;
+      }
+      if (row.sql_sha256 !== null && row.sql_sha256 !== expected) {
+        throw new Error(`Applied migration checksum mismatch: ${row.id}`);
+      }
+      if (row.sql_sha256 === null) {
+        baselineIds.push(row.id);
+        baselineHashes.push(expected);
+      }
+    }
+    if (baselineIds.length > 0) {
+      const result = await client.query(
+        `update schema_migrations as ledger
+            set sql_sha256 = pinned.sql_sha256,
+                checksum_origin = 'source-baseline'
+           from unnest($1::text[], $2::text[]) as pinned(id, sql_sha256)
+          where ledger.id = pinned.id and ledger.sql_sha256 is null`,
+        [baselineIds, baselineHashes],
+      );
+      if (result.rowCount !== baselineIds.length) {
+        throw new Error("Migration source baseline changed during installation");
+      }
+    }
+  });
+}
+
 /**
  * Apply any migrations this database has not seen.
  *
@@ -4348,14 +4430,8 @@ export type MigrationResult = {
 export async function runMigrations(): Promise<MigrationResult> {
   if (!getPool()) return { applied: [], alreadyApplied: 0 };
 
-  await transaction(async (client) => {
-    await client.query(`
-      create table if not exists schema_migrations (
-        id         text primary key,
-        applied_at timestamptz not null default now()
-      );
-    `);
-  });
+  const hashes = migrationHashes();
+  await prepareMigrationLedger(hashes);
 
   const applied: string[] = [];
   let alreadyApplied = 0;
@@ -4366,17 +4442,23 @@ export async function runMigrations(): Promise<MigrationResult> {
       // when the transaction ends, so a crash cannot wedge it.
       await client.query("select pg_advisory_xact_lock($1)", [ADVISORY_LOCK_KEY]);
 
-      const { rows } = await client.query<{ id: string }>(
-        "select id from schema_migrations where id = $1",
+      const { rows } = await client.query<MigrationLedgerRow>(
+        "select id, sql_sha256 from schema_migrations where id = $1",
         [migration.id],
       );
       if (rows.length > 0) {
+        if (rows[0]?.sql_sha256 !== hashes.get(migration.id)) {
+          throw new Error(`Applied migration checksum mismatch: ${migration.id}`);
+        }
         alreadyApplied += 1;
         return;
       }
 
       await client.query(migration.sql);
-      await client.query("insert into schema_migrations (id) values ($1)", [migration.id]);
+      await client.query(
+        "insert into schema_migrations (id, sql_sha256, checksum_origin) values ($1, $2, 'applied')",
+        [migration.id, hashes.get(migration.id)],
+      );
       applied.push(migration.id);
       log.info("postgres.migrate", "Applied migration", { id: migration.id });
     });
