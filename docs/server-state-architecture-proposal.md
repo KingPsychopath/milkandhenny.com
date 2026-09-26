@@ -293,6 +293,13 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 - Album detail: the album and photo routes reuse a single hydrated album query. Their loaders retain
   only head metadata and photo existence checks. Admin content edits invalidate the entire public
   album query family.
+- Word detail: public and unlisted readers now reuse a hydrated detail query, with head metadata
+  retained in the loader. A share parameter still passes through the server before cache seeding so
+  private words redirect to the vault with their capability token. Content edits invalidate the
+  public word query family.
+- Session security: the token session HTTP endpoint and new server function call one feature read
+  workflow. The system route hydrates the private session query, and its hook keeps only local
+  filter/paging state. Single-session revocation refetches; global revocation reloads the auth gate.
 - Verification: `pnpm check`, `pnpm build`, the full Vitest suite (275 files, 2,107 tests) with
   four workers, QueryClient isolation and identity-reset unit tests, and focused public, event,
   account, poll, and admin Playwright journeys passed. The browser journeys proved SSR content,
@@ -308,22 +315,26 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   journey passed against that database and task-isolated Redis. The first browser attempt timed out
   while the shared container runtime was unavailable; isolated services resolved it. The full
   Vitest suite was last run before these two slices; final cross-feature verification remains due.
+- Word and session verification: `pnpm check`, production builds, the private-token integration
+  test, and focused word/share and session browser journeys passed. The Playwright server now uses
+  the Postgres word store by default so its seeded word detail journey also passes without a
+  special environment override. A full Vitest run against the isolated database is in progress.
 - Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
   and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
   per-feature invalidation relationships. M1 implementation is a foundation, not full M1
   acceptance closure.
 - Next action: migrate remaining public and admin resource families, then design the transfer
   capability scope and event reconciliation before moving its metadata into Query. Classify the
-  remaining route loaders against the target ownership table and
-  remaining resource families.
-  Revisit all M1 acceptance checks and integrated verification before declaring done.
+  remaining loaders against the target ownership table, revisit M1 acceptance checks, and run
+  integrated verification before declaring completion.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
   recorded that checkpoint; `0dc90b31` hydrated admin content and system snapshots; `60c85235`
   recorded that checkpoint; `ba41fc9c` hydrated the operations inbox; `ab255a88` recorded its
   checkpoint; `cb2815b7` migrated communications; `f1a7a634` shared album detail; `087a05d8`
-  added the album browser journey.
+  added the album browser journey; `94aa4cea` hydrated public word detail; `2174a3ce` hydrated
+  token sessions.
 
 ## References
 
