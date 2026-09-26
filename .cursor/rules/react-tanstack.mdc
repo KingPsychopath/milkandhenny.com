@@ -7,8 +7,10 @@ alwaysApply: false
 # React + TanStack Start
 
 ## Server/Client Boundary
-- Keep route loaders and server functions on the server. Keep client
-  components narrow and task-focused when interactivity needs the browser.
+- Route loaders are isomorphic: they run on the server during SSR and in the browser during
+  navigation, subject to the route's SSR configuration. Put privileged loader reads behind
+  TanStack server functions; their handlers execute on the server.
+- Keep browser interactions narrow and task-focused.
 - Keep `node:crypto`, secrets, and platform adapters behind `.server.ts`
   boundaries.
 - Use TanStack route definitions for routing, loaders, search validation, and
