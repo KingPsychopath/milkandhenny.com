@@ -6,6 +6,7 @@ import {
   finalizePostgresTransferReservation,
   getPostgresTransfer,
   getPostgresTransferForWorker,
+  listPostgresTransferSummaries,
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
 } from "@/features/transfers/catalogue-postgres.server";
@@ -235,5 +236,15 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       [transfer.id],
     );
     expect(rows[0].count).toBe("0");
+  });
+
+  it("lists active summaries in SQL and filters by owner", async () => {
+    await createPostgresTransfer(transfer);
+    expect(await listPostgresTransferSummaries()).toMatchObject([
+      { id: transfer.id, fileCount: 2, title: transfer.title },
+    ]);
+    expect(await listPostgresTransferSummaries("00000000-0000-0000-0000-000000000001")).toEqual([]);
+    await tombstonePostgresTransfer(transfer.id);
+    expect(await listPostgresTransferSummaries()).toEqual([]);
   });
 });

@@ -23,6 +23,8 @@ filenames, file count and stored-byte totals before inserting new files. Its reg
 locks the same row, rejects a changed file set, and preserves worker-owned processing fields.
 It does not yet coordinate outstanding append reservations or worker generations. A staged
 tombstone hides a deleted transfer and cancels pending/claimed jobs in the same transaction.
+Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
+in SQL, and deleted/expired rows are omitted.
 Object deletion, file removal and expiry workflows are still pending, so the application has
 not selected this repository.
 

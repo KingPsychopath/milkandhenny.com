@@ -1,11 +1,11 @@
 import type { PoolClient } from "pg";
 
-import { transaction } from "@/lib/platform/postgres.server";
+import { query, transaction } from "@/lib/platform/postgres.server";
 import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
 } from "./delete-token-postgres.server";
-import type { AssetGroup, TransferData, TransferFile } from "./types";
+import type { AssetGroup, TransferData, TransferFile, TransferSummary } from "./types";
 import {
   lockPostgresTransferUploadReservation,
   matchesPostgresTransferUploadReservation,
@@ -623,4 +623,36 @@ export async function getPostgresTransferForWorker(
   id: string,
 ): Promise<Omit<TransferData, "deleteToken"> | null> {
   return transaction((client) => readTransfer(client, id, false));
+}
+
+/** Admin and owner lists use one indexed query rather than reading each transfer body. */
+export async function listPostgresTransferSummaries(
+  ownerPersonId?: string,
+): Promise<TransferSummary[]> {
+  const rows = await query<{
+    id: string;
+    title: string;
+    file_count: number;
+    created_at: Date;
+    expires_at: Date;
+    remaining_seconds: number;
+  }>(
+    `select t.id,t.title,count(f.id)::integer as file_count,t.created_at,t.expires_at,
+            greatest(0,floor(extract(epoch from (t.expires_at-clock_timestamp()))))::integer
+              as remaining_seconds
+       from transfers t left join transfer_files f on f.transfer_id=t.id
+      where t.deleted_at is null and t.expires_at > clock_timestamp()
+        and ($1::uuid is null or t.owner_person_id=$1)
+      group by t.id
+      order by t.created_at desc,t.id desc`,
+    [ownerPersonId ?? null],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    fileCount: row.file_count,
+    createdAt: row.created_at.toISOString(),
+    expiresAt: row.expires_at.toISOString(),
+    remainingSeconds: row.remaining_seconds,
+  }));
 }
