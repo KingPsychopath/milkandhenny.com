@@ -6,8 +6,11 @@ reads and writes Redis transfers and jobs; no production switch or import has oc
 
 The transfer row preserves the public capability ID, owner, title and expiry. It has a deletion
 token hash for verification and ciphertext/nonce columns for the existing resume flow, which
-must return the token after finalization. The application repository must encrypt and decrypt
-that value with a separately managed key before this table is selected. Files keep stable IDs,
+must return the token after finalization. The staged
+[deletion-token codec](../features/transfers/delete-token-postgres.server.ts) derives a distinct
+AES-GCM key from the web role's `AUTH_SECRET`, binds ciphertext to the transfer ID, and appends
+the authentication tag. A future repository must omit token decryption on the worker role and
+keep the same secret available for the lifetime of surviving transfers. Files keep stable IDs,
 positions and media-processing fields. Composite foreign keys keep group members and jobs
 attached to files in their own transfer. Reservations intentionally have no transfer FK because
 presign creates them before finalization creates the transfer.

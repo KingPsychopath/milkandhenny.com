@@ -626,9 +626,11 @@ derived exports. No read path silently repairs/deletes product state.
 
 - [ ] Implement transfer/file/group/reservation tables and quota transactions.
   - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
-        Runtime repository, quota transactions, token encryption and source import remain open.
+        Runtime repository, quota transactions, token-codec wiring and source import remain open.
   - [x] Add a staged Postgres reservation repository with hashed matching fields, bounded
         count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
+  - [x] Add transfer-bound authenticated encryption and hash verification for deletion tokens;
+        wire into web-only transfer reads before selecting the Postgres catalogue.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -931,7 +933,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   The staged reservation repository admits one of two concurrent claims, verifies hashed
   deletion token/actor/file selection, stores 320 reserved bytes for a synthetic two-file
   upload, and hides/cleans expired rows. Its three focused real-Postgres tests and typecheck
-  passed. Runtime flows still use Redis until transfer metadata and cleanup change with them.
+  passed. That repository is committed as `7a379dae`. The staged transfer deletion-token codec
+  derives a domain-specific AES-GCM key from the web secret, binds ciphertext to the transfer ID,
+  appends the authentication tag and verifies a separate hash. Three focused unit cases covered
+  round-trip, tampering/wrong transfer and missing secret; `pnpm check` passed. Runtime flows
+  still use Redis until transfer metadata and cleanup change with them.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -950,7 +956,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: implement transfer token encryption, catalogue and quota transactions, then wire
+- Next action: wire transfer token encryption into the catalogue and quota transactions, then wire
   reservation flows and cleanup against the same authority. Add media-job enqueue/claims with
   fenced R2 publication and the export importer with an orphan
   quarantine. Wire recoverable word/album object operations before any release candidate. Do not
