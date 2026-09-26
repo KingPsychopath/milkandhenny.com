@@ -20,7 +20,8 @@ The user selected a **planned maintenance window**. Preserve product behavior, p
 URLs, valid access, invalidations, original expiry, pending work, and recoverable room state.
 Preserve offline/browser recovery contracts. Existing event-scoring quarantine remains in force.
 Import the historical guest list into a restricted Postgres archive table with source provenance;
-it is not an active guest or attendee record.
+it is not an active guest or attendee record. The local tool and operational gates are in
+[the archive runbook](./docs/legacy-guest-archive.md).
 
 This document records the agreed plan. Implementing it, obtaining production inventory,
 and executing its operational steps must follow the active task's authorization. Pushing,
@@ -619,6 +620,9 @@ as a guarantee for unprotected blobs. Record evidence against documented recover
 
 ### M10 — Complete migration tooling and rehearsal
 
+- [x] Build and locally exercise the restricted historical guest-list archive extractor,
+      encrypted importer and integrity verifier. Production role separation, restore and fresh
+      source import remain open.
 - [ ] Complete namespace discovery, archive integrity, exact TTL handling and unknown-key refusal.
 - [ ] Integrate all domain importers, stable mappings, dry-run validation and resume receipts.
 - [ ] Reconcile counts, hashes, references, visibility, revocations, job identities, room receipts
@@ -705,7 +709,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
-  audit `feffa644`. This checkpoint accompanies the migration-ledger safeguard commit.
+  audit `feffa644`; migration-ledger safeguards `44d5cfe6`. The archive tooling accompanies
+  the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -722,24 +727,29 @@ targets for publication/deletion tests, and never send real user email/payment e
   observed 2.1 committed Postgres transactions/s during the Redis incident, not peak capacity.
   The migration-ledger integration suite passed four cases against local Postgres 18 after
   clean installation: pre-checksum upgrade, checksum drift refusal, unknown-ID refusal, and
-  recognition of the verified production-only row. `pnpm check`, documentation link checks and
-  `git diff --check` passed. Broader feature tests and a production restore drill remain pending.
+  recognition of the verified production-only row. The pinned offline extractor wrote the
+  supplied guest list to a private file and reproduced the audit's 274/157 counts and payload
+  hash. A local Postgres role denied runtime schema access; an importer role encrypted and
+  verified a synthetic archive record, while the wrong key and conflicting duplicate failed.
+  The SQL installed twice without changing the row. `pnpm check`, documentation link checks,
+  `gofmt` and `git diff --check` passed for the archive tooling. Broader feature tests and a
+  production restore drill remain pending.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. PITR is disabled, no backup schedule is listed, and the only listed
   backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
   The export has 224 keys, including 192 attendee sessions and eight raw, unleased media jobs in
   `transfer:media:processing`. Seven jobs reference the one exported transfer; one references a
-- missing transfer; this is also the one job whose source object is absent from R2. The
+  missing transfer; this is also the one job whose source object is absent from R2. The
   original `guest:list` contains 274 top-level guests and 157 plus-ones; one legacy report and
   its index remain. The token-session index has 190 stale entries and the current report index
   has two.
 - Unresolved: exact Redis snapshot time/fresh cutover delta; archive retention duration and
-  privileged access design; backup coverage; measured load/resource
-  budgets; physical DDL; migration duration; operational command/credential setup; restore drill;
+  production role separation; backup coverage; measured load/resource budgets; physical DDL;
+  migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: specify physical DDL/source mapping, including the guest archive access boundary,
-  then implement remaining foundations. Do not start production migration from the table sketches
+- Next action: verify and commit the archive tooling, then specify physical DDL/source mapping
+  and implement remaining foundations. Do not start production migration from the table sketches
   in this document.
 
 ### Milestone checkpoint template

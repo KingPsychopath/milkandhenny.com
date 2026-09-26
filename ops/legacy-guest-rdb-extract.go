@@ -1,0 +1,110 @@
+// Run this file from the pinned github.com/upstash/rdb module checkout described
+// in docs/legacy-guest-archive.md. It is an offline migration tool, not app code.
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/upstash/rdb"
+)
+
+type guestExtractor struct {
+	value string
+	found bool
+}
+
+func (*guestExtractor) AllowPartialRead() bool { return false }
+func (g *guestExtractor) HandleString(key, value string) error {
+	if key != "guest:list" {
+		return nil
+	}
+	if g.found {
+		return errors.New("duplicate guest:list key")
+	}
+	g.value, g.found = value, true
+	return nil
+}
+func (*guestExtractor) HandleExpireTime(string, time.Time)                  {}
+func (*guestExtractor) HandleListEnding(string, uint64)                     {}
+func (*guestExtractor) HandleZsetEnding(string, uint64)                     {}
+func (*guestExtractor) HandleStreamEnding(string, uint64)                   {}
+func (*guestExtractor) HandleArrayEnding(string, uint64, uint64)            {}
+func (*guestExtractor) HandleLibrary(string) error                          { return nil }
+func (*guestExtractor) HandleModule(string, string, rdb.ModuleMarker) error { return nil }
+func (*guestExtractor) ListEntryHandler(string) func(string) error {
+	return func(string) error { return nil }
+}
+func (*guestExtractor) SetEntryHandler(string) func(string) error {
+	return func(string) error { return nil }
+}
+func (*guestExtractor) ZsetEntryHandler(string) func(string, float64) error {
+	return func(string, float64) error { return nil }
+}
+func (*guestExtractor) HashEntryHandler(string) func(string, string) error {
+	return func(string, string) error { return nil }
+}
+func (*guestExtractor) HashWithExpEntryHandler(string) func(string, string, time.Time) error {
+	return func(string, string, time.Time) error { return nil }
+}
+func (*guestExtractor) StreamEntryHandler(string) func(rdb.StreamEntry) error {
+	return func(rdb.StreamEntry) error { return nil }
+}
+func (*guestExtractor) StreamGroupHandler(string) func(rdb.StreamConsumerGroup) error {
+	return func(rdb.StreamConsumerGroup) error { return nil }
+}
+func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
+	return func(uint64, string) error { return nil }
+}
+
+func main() {
+	if len(os.Args) != 3 {
+		panic("usage: go run legacy-guest-rdb-extract.go <absolute-rdb-path> <absolute-new-json-path>")
+	}
+	source, destination := os.Args[1], os.Args[2]
+	if err := rdb.VerifyFile(source, rdb.VerifyFileOptions{
+		MaxDataSize: 64 << 20, MaxEntrySize: 16 << 20, MaxValueSize: 16 << 20,
+		MaxStreamPELSize: 10000,
+	}); err != nil {
+		panic(fmt.Errorf("RDB integrity verification failed: %w", err))
+	}
+	extractor := &guestExtractor{}
+	if err := rdb.ReadFile(source, extractor); err != nil {
+		panic(fmt.Errorf("RDB decode failed: %w", err))
+	}
+	if !extractor.found {
+		panic("guest:list is absent")
+	}
+	var guests []struct {
+		ID       string            `json:"id"`
+		Name     string            `json:"name"`
+		PlusOnes []json.RawMessage `json:"plusOnes"`
+	}
+	if err := json.Unmarshal([]byte(extractor.value), &guests); err != nil || guests == nil {
+		panic("guest:list is not a JSON guest array")
+	}
+	plusOnes := 0
+	for _, guest := range guests {
+		if guest.ID == "" || guest.Name == "" || guest.PlusOnes == nil {
+			panic("guest:list contains an invalid top-level guest")
+		}
+		plusOnes += len(guest.PlusOnes)
+	}
+	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		panic(err)
+	}
+	if _, err = file.Write([]byte(extractor.value)); err != nil {
+		file.Close()
+		panic(err)
+	}
+	if err = file.Close(); err != nil {
+		panic(err)
+	}
+	hash := sha256.Sum256([]byte(extractor.value))
+	fmt.Printf("guest_json_sha256=%x top_level=%d plus_ones=%d\n", hash, len(guests), plusOnes)
+}

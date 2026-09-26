@@ -126,7 +126,8 @@ ownership. Do not import the stale session/report index members as valid records
 identifies `guest:list` as the original whole-list guest store (initial commit `b8d61e2b`);
 current source has no reader. Commit `9f6dc320` identifies the two `user-report:*` keys as the
 prior report format. The user directed import of the historical guest list into a restricted
-Postgres archive table, with source provenance and no active guest-list behavior. Retain the
+Postgres archive table, with source provenance and no active guest-list behavior; see
+[the archive runbook](./legacy-guest-archive.md). Retain the
 protected source export for recovery until a retention period and archive access policy are
 agreed. Retain/import the unexpired legacy report with its original expiry if the target report
 schema can represent it.
