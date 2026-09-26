@@ -4301,6 +4301,19 @@ const MIGRATIONS: Migration[] = [
         where survey_invitation_id is not null;
     `,
   },
+  {
+    id: "0096_pitch_thumbnail_ownership",
+    sql: `
+      create unique index pitch_assets_deck_id_id_uq
+        on pitch_assets (deck_id, id);
+
+      alter table pitch_decks
+        add constraint pitch_decks_thumbnail_same_deck_fkey
+        foreign key (id, thumbnail_asset_id)
+        references pitch_assets (deck_id, id)
+        on delete set null (thumbnail_asset_id);
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

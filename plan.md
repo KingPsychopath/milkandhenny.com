@@ -456,15 +456,17 @@ recovery coverage explicitly; moving metadata to Postgres does not back up exclu
 ## 7. Milestones and dependency order
 
 The default sequence is M0 through M13. The verified source migration ledger permits scoped M2
-ledger-safety work while M1 backup, peak-load and final-snapshot evidence remains open. Other
-domain implementation follows listed dependencies. M12 and M13 remain operational gates.
+ledger-safety work while M1 backup, peak-load and final-snapshot evidence remains open. A
+restored production clone and exact contradiction counts permit scoped M3 constraints for those
+audited relationships. Other domain implementation follows listed dependencies. M12 and M13
+remain operational gates.
 
 | Milestone                                           | Dependencies                             | Status                                                        |
 | --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
 | M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
 | M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
 | M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
-| M3 — existing relational integrity improvements     | M1, M2                                   | Pending                                                       |
+| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch ownership                          |
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | Pending                                                       |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | Pending                                                       |
 | M6 — transfers and media execution                  | M4, M5                                   | Pending                                                       |
@@ -529,6 +531,9 @@ unimplemented compatibility assumption. Commit source, tests and updated contrac
 
 ### M3 — Existing relational integrity improvements
 
+- [x] Enforce that a pitch thumbnail asset belongs to its deck with a composite FK. The restored
+      production clone had no contradictory rows; focused creation, reassignment, asset deletion
+      and deck deletion tests pass.
 - [ ] Implement the approved identity, ownership, action-target and relationship changes.
 - [ ] Apply justified money/allocation, active-record uniqueness and state consistency changes.
 - [ ] Backfill/validate before tightening constraints; record contradictory-data resolution.
@@ -715,7 +720,8 @@ targets for publication/deletion tests, and never send real user email/payment e
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;
-  restricted runtime verification `379bb872`.
+  restricted runtime verification `379bb872`; isolated restore evidence `3971ac8a`. The
+  pitch-ownership constraint accompanies the next local implementation commit.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -744,7 +750,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   `legacy_archive`. A private full production dump restored transactionally to an isolated
   database with 117 tables and 97 ledger rows; the migration command applied zero SQL
   migrations and the runtime verification succeeded on the restored data. Full feature tests
-  are deferred until the wider persistence change.
+  are deferred until the wider persistence change. Migration `0096` applied to the restored
+  production clone; focused pitch tests passed for cross-deck refusal, asset unlink and deck
+  deletion.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive

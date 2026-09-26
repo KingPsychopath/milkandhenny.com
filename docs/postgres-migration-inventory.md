@@ -7,16 +7,16 @@ the migration or executable target DDL. [The implementation plan](../plan.md) ow
 
 Read-only Railway production inspection found:
 
-| Item                     | Observation                                                                                                                                                                                                                                                             |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Postgres                 | 18.6; `max_connections=500`; database size 28 MB                                                                                                                                                                                                                        |
-| Effective schema         | 117 public tables; schema-only `pg_dump` captured outside Git at `/tmp/milkandhenny-prod-schema-20260926.sql`, SHA-256 `3dfa0733650f3f600f5c4404caf5e513e84ed608ef58f0ccf49a018f59ff3b63`                                                                               |
-| Migration ledger         | 97 rows through `0095_intentional_survey_identity`; source list has 96 entries. Production alone records `0025_site_settings`, while source contains `0025_site_settings_v2`. This historical mismatch needs an explicit baseline policy before checksums are enforced. |
-| Installed extensions     | `plpgsql` only                                                                                                                                                                                                                                                          |
-| WAL and timeout settings | `wal_level=replica`; default `statement_timeout=0`; default `idle_in_transaction_session_timeout=0`                                                                                                                                                                     |
-| Railway backup coverage  | PITR disabled; no scheduled backup; one listed backup created 2026-08-23, named `Pre-Security-Patch Backup`. No restore evidence established.                                                                                                                           |
-| Runtime database role    | Production web uses `postgres` with `rolsuper=true`, `rolcreaterole=true` and `rolcreatedb=true`. A separate non-superuser runtime role is required before restricted archive installation.                                                                             |
-| Table statistics         | `pg_stat_user_tables` snapshot held outside Git at `/tmp/milkandhenny-prod-tablestats-20260926.csv`. These are estimates, not reconciliation counts.                                                                                                                    |
+| Item                     | Observation                                                                                                                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Postgres                 | 18.6; `max_connections=500`; database size 28 MB                                                                                                                                                                                                                                |
+| Effective schema         | 117 public tables; schema-only `pg_dump` captured outside Git at `/tmp/milkandhenny-prod-schema-20260926.sql`, SHA-256 `3dfa0733650f3f600f5c4404caf5e513e84ed608ef58f0ccf49a018f59ff3b63`                                                                                       |
+| Migration ledger         | Production snapshot: 97 rows through `0095_intentional_survey_identity`; source then had 96 entries. Production alone records `0025_site_settings`, while source contains `0025_site_settings_v2`. Local source migration `0096_pitch_thumbnail_ownership` was added afterward. |
+| Installed extensions     | `plpgsql` only                                                                                                                                                                                                                                                                  |
+| WAL and timeout settings | `wal_level=replica`; default `statement_timeout=0`; default `idle_in_transaction_session_timeout=0`                                                                                                                                                                             |
+| Railway backup coverage  | PITR disabled; no scheduled backup; one listed backup created 2026-08-23, named `Pre-Security-Patch Backup`. No restore evidence established.                                                                                                                                   |
+| Runtime database role    | Production web uses `postgres` with `rolsuper=true`, `rolcreaterole=true` and `rolcreatedb=true`. A separate non-superuser runtime role is required before restricted archive installation.                                                                                     |
+| Table statistics         | `pg_stat_user_tables` snapshot held outside Git at `/tmp/milkandhenny-prod-tablestats-20260926.csv`. These are estimates, not reconciliation counts.                                                                                                                            |
 
 Read-only R2 listing through the production web service credentials counted objects without
 printing keys or contents:
@@ -83,6 +83,12 @@ matching the source counts. The new `pnpm database:migrate` command then returne
 already-applied source migrations and zero new migrations, recognizing the production-only
 `0025_site_settings` row. After installing local runtime grants, `pnpm database:verify`
 succeeded as `mah_app_runtime`.
+
+Local migration `0096_pitch_thumbnail_ownership` then applied successfully to the restored
+clone. It adds a unique `(deck_id, id)` index on `pitch_assets` and a composite FK from
+`pitch_decks (id, thumbnail_asset_id)` to `pitch_assets (deck_id, id)`. Deleting the referenced
+asset clears only `thumbnail_asset_id`; deleting a deck still cascades its assets. The production
+snapshot had zero cross-deck or missing-thumbnail references. No production schema was changed.
 
 This validates logical restore and ledger upgrade for this snapshot. It does not establish
 Railway scheduled backup/PITR coverage, independent off-host retention, R2 restore, archive-key
