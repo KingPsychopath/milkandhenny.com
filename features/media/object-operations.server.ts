@@ -128,6 +128,7 @@ export async function claimMediaObjectOperations(
   claimOwner: string,
   limit = 10,
   leaseMs = 60_000,
+  ownerKind?: MediaObjectOperationInput["ownerKind"],
 ): Promise<ClaimedObjectOperation[]> {
   if (
     !/^[A-Za-z0-9._:-]{1,128}$/.test(claimOwner) ||
@@ -144,17 +145,20 @@ export async function claimMediaObjectOperations(
       `update media_object_operations
           set status='dead', claim_token=null, claim_owner=null, lease_until=null,
               updated_at=now(), last_error=coalesce(last_error, 'lease expired after final attempt')
-        where status='claimed' and lease_until <= now() and attempts >= max_attempts`,
+        where status='claimed' and lease_until <= now() and attempts >= max_attempts
+          and ($1::text is null or owner_kind=$1)`,
+      [ownerKind ?? null],
     );
     const picked = await client.query<OperationRow>(
       `select * from media_object_operations
         where ((status='pending' and available_at <= now()) or
                (status='claimed' and lease_until <= now()))
           and attempts < max_attempts
+          and ($2::text is null or owner_kind=$2)
         order by available_at, id
         for update skip locked
         limit $1`,
-      [limit],
+      [limit, ownerKind ?? null],
     );
     const claimed: ClaimedObjectOperation[] = [];
     for (const row of picked.rows) {

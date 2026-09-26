@@ -1002,7 +1002,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   all known private file/derivative keys before commit; an invalid key rolls back the deletion.
   The isolated production restore accepted `0113`; the focused migration, ledger and catalogue
   suites passed 17 cases. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on
-  isolated Postgres (270 files, 2,091 tests). No executor or live transfer deletion is selected.
+  isolated Postgres (270 files, 2,091 tests). No live transfer deletion is selected.
+  A bounded transfer-only object deletion runner now claims ledger work, deletes private R2
+  objects idempotently, and completes or retries each claim. Its two focused real-Postgres cases
+  verified owner filtering and failure/retry, alongside the existing three ledger cases;
+  `pnpm check` passed. The Media runtime does not invoke it yet.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1022,8 +1026,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
 - Next action: implement transfer file removal and full quota transactions, then wire
-  reservation flows and cleanup against the same authority. Build the object-operation executor
-  and reconcile orphan transfer prefixes. Wire media-job execution with
+  reservation flows and cleanup against the same authority. Schedule the transfer object
+  deletion runner and reconcile orphan transfer prefixes. Wire media-job execution with
   fenced R2 publication and reconcile a fresh source export against the rehearsed importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
