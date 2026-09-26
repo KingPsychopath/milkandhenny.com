@@ -637,8 +637,8 @@ derived exports. No read path silently repairs/deletes product state.
         accounting and final upload integration remain open.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
-  - [x] Enqueue known private object deletions with the transfer tombstone; executor, orphan
-        reconciliation, file removal and live cleanup remain open.
+  - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
+        worker loop; orphan reconciliation, file removal and live cleanup remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -1007,6 +1007,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   objects idempotently, and completes or retries each claim. Its two focused real-Postgres cases
   verified owner filtering and failure/retry, alongside the existing three ledger cases;
   `pnpm check` passed. The Media runtime does not invoke it yet.
+  The Media runtime now offers an opt-in 30-second transfer deletion loop under
+  `TRANSFER_OBJECT_DELETION_RUNNER=postgres`, reusing its one managed lifecycle and R2 provider.
+  The switch is unset in production. Focused worker-loop and deletion tests (four cases) and
+  `pnpm check` and `pnpm build` passed.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1026,8 +1030,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
 - Next action: implement transfer file removal and full quota transactions, then wire
-  reservation flows and cleanup against the same authority. Schedule the transfer object
-  deletion runner and reconcile orphan transfer prefixes. Wire media-job execution with
+  reservation flows and cleanup against the same authority. Reconcile orphan transfer prefixes
+  and qualify the opt-in deletion runner before cutover. Wire media-job execution with
   fenced R2 publication and reconcile a fresh source export against the rehearsed importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.

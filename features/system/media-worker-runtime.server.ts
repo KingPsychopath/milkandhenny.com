@@ -1,9 +1,11 @@
 import type Redis from "ioredis";
+import { randomUUID } from "node:crypto";
 import { Cause, Context, Data, Deferred, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 
 import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
+import { runTransferObjectDeletionBatch } from "@/features/transfers/object-deletions.server";
 import {
   markWorkerJobTimedOut,
   processWorkerJob,
@@ -60,6 +62,7 @@ type ConsumeResult = Pick<
 >;
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
+const transferDeletionOwner = `transfer-delete:${randomUUID()}`;
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
@@ -353,7 +356,31 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
           ),
           Effect.repeat(Schedule.spaced(reconcileIntervalMs)),
         );
-  return Effect.all([heartbeatLoop, reconcileLoop], { concurrency: 2, discard: true });
+  const transferDeletionLoop =
+    process.env.TRANSFER_OBJECT_DELETION_RUNNER === "postgres"
+      ? Effect.repeat(
+          workerAttempt("transfer_object_deletions", () =>
+            withObjectStorageProvider(storage, () =>
+              runTransferObjectDeletionBatch(transferDeletionOwner),
+            ),
+          ).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                if (result.claimed > 0)
+                  log.info("media.worker", "Transfer object deletion batch completed", result);
+              }),
+            ),
+            Effect.catch((error) =>
+              workerAttempt("record_transfer_deletion_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop], {
+    concurrency: 3,
+    discard: true,
+  });
 }
 
 export class MediaWorkerService extends Context.Service<

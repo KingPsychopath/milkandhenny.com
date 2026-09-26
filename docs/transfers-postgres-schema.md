@@ -26,8 +26,9 @@ tombstone hides a deleted transfer, cancels pending/claimed jobs, and enqueues d
 known private R2 object keys in the same transaction. Migration `0113` permits `transfer` as an
 object-operation owner. A failed enqueue rolls the tombstone back. The object-operation executor
 can claim only transfer-owned deletes, retry an uncertain R2 response, and leave album/word
-operations untouched. It is not started by the Media runtime yet. Orphan-prefix reconciliation
-is also required before selecting this delete path.
+operations untouched. The Media runtime starts a bounded 30-second deletion loop only with
+`TRANSFER_OBJECT_DELETION_RUNNER=postgres`; the production switch remains unset. Orphan-prefix
+reconciliation is also required before selecting this delete path.
 Admin and owner summary lists count files in one Postgres query; the owner predicate is applied
 in SQL, and deleted/expired rows are omitted.
 Object execution, file removal and expiry workflows are still pending, so the application has
