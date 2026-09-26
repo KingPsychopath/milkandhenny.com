@@ -1,6 +1,7 @@
 import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
 import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
+import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -119,6 +120,14 @@ export const Route = createFileRoute("/admin/")({
         (deps.view === "overview" || deps.view === "system")
           ? context.queryClient.prefetchQuery(adminSystemHealthQuery)
           : null;
+      if (
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        (deps.view === "overview" || deps.view === "operations")
+      ) {
+        // The notification summary is secondary. The SSR Query stream carries its pending result.
+        void context.queryClient.prefetchQuery(adminOperationsInboxQuery);
+      }
       const [communications] = await Promise.all([
         communicationsPromise,
         summaryPromise,

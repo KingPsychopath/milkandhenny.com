@@ -33,6 +33,7 @@ import { homePageQuery } from "@/features/site/home.queries";
 import { wordsPageQuery } from "@/features/words/reader.queries";
 import { albumsPageQuery } from "@/features/media/albums.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
+import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
 
 const TokenSessionsPanel = lazy(() =>
   import("./components/TokenSessionsPanel").then((module) => ({
@@ -145,6 +146,7 @@ export function AdminDashboard({
 }) {
   const queryClient = useQueryClient();
   const [systemRefreshHalted, setSystemRefreshHalted] = useState(false);
+  const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
   const contentQuery = useQuery({
     ...adminContentSummaryQuery,
     enabled: permissions.manageContent && (view === "overview" || view === "content"),
@@ -159,37 +161,33 @@ export function AdminDashboard({
   });
   const debugData = systemQuery.data ?? null;
   const refetchSystem = systemQuery.refetch;
+  const inboxQuery = useQuery({
+    ...adminOperationsInboxQuery,
+    enabled: permissions.viewOperations && !inboxRefreshHalted,
+  });
+  const refetchInbox = inboxQuery.refetch;
+  const operationsUnread = inboxQuery.data?.unread ?? 0;
+  const operationsUnresolvedByCategory = inboxQuery.data?.unresolvedByCategory ?? {};
+  const operationsRecent = inboxQuery.data?.items.slice(0, 3) ?? [];
   const loading = contentQuery.isFetching || systemQuery.isFetching;
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
-  const [operationsUnread, setOperationsUnread] = useState(0);
-  const [operationsUnresolvedByCategory, setOperationsUnresolvedByCategory] = useState<
-    Record<string, number>
-  >({});
-  const [operationsRecent, setOperationsRecent] = useState<
-    Array<{
-      id: string;
-      title: string;
-      body: string;
-      status: string;
-      severity: string;
-      category: string;
-      deepLink: string;
-      unread: boolean;
-    }>
-  >([]);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
   const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
   const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
-  const [inboxRefreshHalted, setInboxRefreshHalted] = useState(false);
 
   useEffect(() => {
     const status = (systemQuery.error as { status?: number } | null)?.status;
     if (status && status >= 400 && status < 500) setSystemRefreshHalted(true);
   }, [systemQuery.error]);
+
+  useEffect(() => {
+    const status = (inboxQuery.error as { status?: number } | null)?.status;
+    if (status && status >= 400 && status < 500) setInboxRefreshHalted(true);
+  }, [inboxQuery.error]);
 
   const {
     authFetch,
@@ -254,35 +252,14 @@ export function AdminDashboard({
   });
 
   const refreshOperationsInbox = useCallback(async () => {
-    const response = await authFetch("/api/admin/operations/inbox?active=1");
-    if (!response.ok) {
-      if (response.status >= 400 && response.status < 500) setInboxRefreshHalted(true);
-      throw new Error("Could not refresh operations inbox");
+    const result = await refetchInbox();
+    if (result.isError) {
+      const status = (result.error as { status?: number })?.status;
+      if (status && status >= 400 && status < 500) setInboxRefreshHalted(true);
+      throw result.error;
     }
-    const inbox = (await response.json()) as {
-      unread?: number;
-      unresolvedByCategory?: Record<string, number>;
-      items?: Array<{
-        id: string;
-        title: string;
-        body: string;
-        status: string;
-        severity: string;
-        category: string;
-        deepLink: string;
-        unread: boolean;
-      }>;
-    };
     setInboxRefreshHalted(false);
-    setOperationsUnread(inbox.unread ?? 0);
-    setOperationsUnresolvedByCategory(inbox.unresolvedByCategory ?? {});
-    setOperationsRecent(inbox.items?.slice(0, 3) ?? []);
-  }, [authFetch]);
-
-  useEffect(() => {
-    if (!permissions.viewOperations) return;
-    void refreshOperationsInbox().catch(() => undefined);
-  }, [permissions.viewOperations, refreshOperationsInbox]);
+  }, [refetchInbox]);
 
   useAdminAutoRefresh({
     enabled: permissions.viewOperations && !inboxRefreshHalted,
@@ -511,7 +488,11 @@ export function AdminDashboard({
         <AdminSectionNav active={view} onChange={handleViewChange} permissions={permissions} />
       </header>
 
-      {statusMessage || errorMessage || contentQuery.isError || systemQuery.isError ? (
+      {statusMessage ||
+      errorMessage ||
+      contentQuery.isError ||
+      systemQuery.isError ||
+      inboxQuery.isError ? (
         <div className="mb-4 font-mono text-xs" aria-live="polite">
           {statusMessage ? (
             <p role="status">
@@ -531,6 +512,11 @@ export function AdminDashboard({
           {systemQuery.isError ? (
             <p role="alert">
               <AdminStatus tone="danger">The system check could not be loaded.</AdminStatus>
+            </p>
+          ) : null}
+          {inboxQuery.isError ? (
+            <p role="alert">
+              <AdminStatus tone="danger">The operations inbox could not be loaded.</AdminStatus>
             </p>
           ) : null}
         </div>
