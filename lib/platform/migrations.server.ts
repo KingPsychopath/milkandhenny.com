@@ -4793,6 +4793,136 @@ const MIGRATIONS: Migration[] = [
         where stopped_at is null;
     `,
   },
+  {
+    id: "0111_transfer_catalogue_and_media_jobs",
+    sql: `
+      create table transfers (
+        id text primary key check (length(id) between 16 and 128),
+        title text not null check (length(title) between 1 and 160),
+        owner_person_id uuid references event_people (id) on delete set null,
+        delete_token_hash text not null check (delete_token_hash ~ '^[a-f0-9]{64}$'),
+        delete_token_ciphertext bytea not null,
+        delete_token_nonce bytea not null check (octet_length(delete_token_nonce) = 12),
+        created_at timestamptz not null,
+        expires_at timestamptz not null check (expires_at > created_at),
+        deleted_at timestamptz,
+        revision bigint not null default 1 check (revision > 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index transfers_active_expiry_idx on transfers (expires_at)
+        where deleted_at is null;
+      create index transfers_owner_idx on transfers (owner_person_id, created_at desc)
+        where deleted_at is null and owner_person_id is not null;
+
+      create table transfer_files (
+        transfer_id text not null references transfers (id) on delete cascade,
+        id text not null,
+        position integer not null check (position >= 0),
+        filename text not null,
+        kind text not null,
+        size_bytes bigint not null check (size_bytes >= 0),
+        stored_bytes bigint check (stored_bytes >= 0),
+        mime_type text not null,
+        storage_key text not null,
+        original_storage_key text,
+        original_filename text,
+        original_mime_type text,
+        converted_from text,
+        preview_source text,
+        width integer check (width > 0),
+        height integer check (height > 0),
+        taken_at timestamptz,
+        live_photo_content_id text,
+        preview_status text,
+        processing_status text,
+        processing_backend text,
+        processing_route text,
+        processing_generation integer not null default 1 check (processing_generation > 0),
+        enqueued_at timestamptz,
+        processing_started_at timestamptz,
+        processing_completed_at timestamptz,
+        processing_error_code text,
+        processing_error_detail text,
+        retry_count integer check (retry_count >= 0),
+        primary key (transfer_id, id),
+        unique (transfer_id, position),
+        unique (transfer_id, filename)
+      );
+      create index transfer_files_processing_idx
+        on transfer_files (processing_status, enqueued_at)
+        where processing_status in ('queued', 'processing');
+
+      create table transfer_groups (
+        transfer_id text not null references transfers (id) on delete cascade,
+        id text not null,
+        type text not null check (type in ('live_photo', 'raw_pair')),
+        captured_at timestamptz,
+        primary key (transfer_id, id)
+      );
+      create table transfer_group_members (
+        transfer_id text not null,
+        group_id text not null,
+        file_id text not null,
+        role text not null check (role in ('primary', 'raw', 'motion')),
+        mime_type text not null,
+        primary key (transfer_id, group_id, file_id),
+        unique (transfer_id, file_id),
+        foreign key (transfer_id, group_id) references transfer_groups (transfer_id, id)
+          on delete cascade,
+        foreign key (transfer_id, file_id) references transfer_files (transfer_id, id)
+          on delete cascade
+      );
+
+      -- Presign reservations precede transfer creation, so they cannot yet have a transfer FK.
+      create table transfer_upload_reservations (
+        transfer_id text primary key,
+        delete_token_hash text not null check (delete_token_hash ~ '^[a-f0-9]{64}$'),
+        actor_jti_hash text not null check (actor_jti_hash ~ '^[a-f0-9]{64}$'),
+        files_fingerprint_sha256 text not null check (files_fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        reserved_file_count integer not null check (reserved_file_count > 0),
+        reserved_bytes bigint not null check (reserved_bytes >= 0),
+        expires_seconds integer not null check (expires_seconds > 0),
+        created_at timestamptz not null,
+        expires_at timestamptz not null check (expires_at > created_at),
+        finalized_at timestamptz
+      );
+      create index transfer_upload_reservations_expiry_idx
+        on transfer_upload_reservations (expires_at) where finalized_at is null;
+
+      create table transfer_media_jobs (
+        id uuid primary key,
+        transfer_id text not null,
+        file_id text not null,
+        operation text not null check (length(operation) > 0),
+        generation integer not null check (generation > 0),
+        idempotency_key text not null unique,
+        payload jsonb not null check (jsonb_typeof(payload) = 'object'),
+        status text not null default 'pending'
+          check (status in ('pending', 'claimed', 'completed', 'dead', 'cancelled')),
+        available_at timestamptz not null default now(),
+        enqueued_at timestamptz not null,
+        attempts integer not null default 0 check (attempts >= 0),
+        max_attempts integer not null default 5 check (max_attempts > 0),
+        claim_token uuid,
+        claim_owner text,
+        lease_until timestamptz,
+        last_error text,
+        completed_at timestamptz,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        unique (transfer_id, file_id, operation, generation),
+        foreign key (transfer_id, file_id) references transfer_files (transfer_id, id)
+          on delete cascade,
+        check ((status = 'claimed') = (claim_token is not null and claim_owner is not null and lease_until is not null))
+      );
+      create index transfer_media_jobs_pending_idx
+        on transfer_media_jobs (available_at, enqueued_at, id)
+        where status = 'pending';
+      create index transfer_media_jobs_lease_idx
+        on transfer_media_jobs (lease_until) where status = 'claimed';
+      create index transfer_media_jobs_dead_idx
+        on transfer_media_jobs (enqueued_at) where status = 'dead';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

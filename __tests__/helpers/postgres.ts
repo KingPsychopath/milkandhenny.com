@@ -55,6 +55,12 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop table if exists transfer_media_jobs cascade;
+    drop table if exists transfer_group_members cascade;
+    drop table if exists transfer_groups cascade;
+    drop table if exists transfer_files cascade;
+    drop table if exists transfer_upload_reservations cascade;
+    drop table if exists transfers cascade;
     drop table if exists media_worker_instances cascade;
     drop table if exists media_object_operations cascade;
     drop table if exists word_share_links cascade;

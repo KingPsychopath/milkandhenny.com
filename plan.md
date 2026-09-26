@@ -625,8 +625,12 @@ derived exports. No read path silently repairs/deletes product state.
 ### M6 — Transfers and media execution
 
 - [ ] Implement transfer/file/group/reservation tables and quota transactions.
+  - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
+        Runtime repository, quota transactions, token encryption and source import remain open.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
+  - [x] Add specialized media-job table with source/generation identity and indexed claim states.
+        Worker execution and transactional enqueue remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
@@ -913,6 +917,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   on isolated Postgres (265 files, 2,070 tests) after updating the worker-loop mock for the new
   shutdown call. The switch remains unset;
   queue, reconciliation, events, worker credential setup and per-instance alerting remain open.
+  For the transfer schema, migration `0111` adds transfer/file/group/member, presign reservation
+  and specialized media-job tables with same-transfer FKs and indexed pending/lease states.
+  Reservations can precede transfer creation. Token hashes and encrypted-token columns leave the
+  existing resume flow implementable without a plaintext database token. The restored production
+  clone accepted `0111`, and `mah_app_runtime` has DML on all six tables. Focused real-Postgres
+  tests passed eight cases, including cross-transfer rejection, duplicate job identity, complete
+  claim fields and pre-transfer reservations. `pnpm check`, `pnpm build`, documentation links and
+  the full `pnpm test` suite passed (266 files, 2,073 tests). There is no runtime caller or import
+  yet; the one orphan exported job requires restricted quarantine rather than runnable import.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -931,9 +944,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: wire recoverable word/album object operations and design transfer records,
-  reservations and transactional media jobs with fenced R2 publication before any release
-  candidate. Do not start production migration from the table sketches in this document.
+- Next action: implement transfer token encryption, repositories, quota/reservation transactions,
+  and media-job enqueue/claims with fenced R2 publication; add the export importer with an orphan
+  quarantine. Wire recoverable word/album object operations before any release candidate. Do not
+  start production migration from the table sketches in this document.
 
 ### Milestone checkpoint template
 
