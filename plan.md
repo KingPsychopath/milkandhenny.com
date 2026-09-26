@@ -882,6 +882,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   staged mode; cross-process Postgres notification and all room producers are still open. The
   three focused Postgres suites passed 10 cases; after selector coverage was added, `pnpm check`,
   the complete one-worker suite (277 files, 2,134 tests), and `pnpm build` passed.
+- 2026-09-27 first engine mapping: Hot & Cold can opt into Postgres with
+  `HOT_AND_COLD_ROOM_STORE=postgres`, paired with the Postgres official-result outbox. Its room
+  actions use a row-locked transition and persistent action receipts; a finished transition
+  commits its official result in the same transaction. Other room modes still use Redis, so this
+  is an isolated stage rather than a production-wide multiplayer switch. The focused real
+  Postgres tests cover concurrent joins, duplicate acknowledgement, read recovery and finish
+  result atomicity. Remaining M7 modes, replay/credentials and realtime are open.
+  Verification: `pnpm check`, the complete one-worker suite (278 files, 2,136 tests), and
+  `pnpm build` passed after the mode-specific selector was added.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
