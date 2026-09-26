@@ -39,9 +39,9 @@ overwrite a current derivative.
 The staged [media-job repository](../features/transfers/media-jobs-postgres.server.ts) requires
 an existing file with the matching generation in the enqueue transaction. Workers claim due jobs
 with `SKIP LOCKED`, renew with a claim token, retry or dead-letter failed attempts, and cancel
-jobs whose source is deleted, expired or superseded. Completion locks the transfer and file
-before checking the claim and must run in the transaction that updates the file result. It does
-not execute R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration and
+jobs whose source is deleted, expired or superseded. Completion locks the transfer and file,
+checks the claim, and updates the file result in the caller's transaction. It does not execute
+R2 work yet. Manual dead-letter retry, queue snapshots, worker loop integration and
 generation-specific object keys remain open.
 
 The supplied RDB contains one active transfer and eight unleased entries in the processing

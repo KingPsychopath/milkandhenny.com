@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 
 import { query, transaction } from "@/lib/platform/postgres.server";
 import type { TransferMediaJob } from "./media-queue.server";
+import type { TransferFile } from "./types";
 
 type JobRow = {
   id: string;
@@ -196,6 +197,7 @@ export async function completePostgresTransferMediaJob(
   client: PoolClient,
   id: string,
   token: string,
+  file: TransferFile | null,
 ): Promise<boolean> {
   const job = await client.query<{ transfer_id: string; file_id: string; generation: number }>(
     "select transfer_id,file_id,generation from transfer_media_jobs where id=$1",
@@ -203,8 +205,8 @@ export async function completePostgresTransferMediaJob(
   );
   const target = job.rows[0];
   if (!target) return false;
-  const source = await client.query<{ id: string }>(
-    `select f.id from transfer_files f join transfers t on t.id=f.transfer_id
+  const source = await client.query<{ id: string; storage_key: string }>(
+    `select f.id,f.storage_key from transfer_files f join transfers t on t.id=f.transfer_id
       where f.transfer_id=$1 and f.id=$2 and f.processing_generation=$3
         and t.deleted_at is null and t.expires_at > clock_timestamp()
       for update of f,t`,
@@ -219,6 +221,13 @@ export async function completePostgresTransferMediaJob(
     [id, token],
   );
   if (!claim.rows[0]) return false;
+  if (
+    file &&
+    (file.id !== target.file_id ||
+      file.storageKey !== source.rows[0].storage_key ||
+      !file.processingStatus)
+  )
+    throw new Error("Transfer media result does not match claimed source");
   const rows = await client.query<{ id: string }>(
     `update transfer_media_jobs j
         set status='completed',claim_token=null,claim_owner=null,lease_until=null,
@@ -228,7 +237,38 @@ export async function completePostgresTransferMediaJob(
       returning j.id`,
     [id, token],
   );
-  return rows.rowCount === 1;
+  if (rows.rowCount !== 1) return false;
+  if (file) {
+    await client.query(
+      `update transfer_files
+          set stored_bytes=coalesce($3,stored_bytes),width=$4,height=$5,taken_at=$6,
+              live_photo_content_id=$7,preview_status=$8,processing_status=$9,
+              processing_backend=$10,processing_route=$11,enqueued_at=$12,
+              processing_started_at=$13,processing_completed_at=$14,
+              processing_error_code=$15,processing_error_detail=$16,retry_count=$17
+        where transfer_id=$1 and id=$2`,
+      [
+        target.transfer_id,
+        target.file_id,
+        file.storedBytes ?? null,
+        file.width ?? null,
+        file.height ?? null,
+        file.takenAt ?? null,
+        file.livePhotoContentId ?? null,
+        file.previewStatus ?? null,
+        file.processingStatus,
+        file.processingBackend ?? null,
+        file.processingRoute ?? null,
+        file.enqueuedAt ?? null,
+        file.processingStartedAt ?? null,
+        file.processingCompletedAt ?? null,
+        file.processingErrorCode ?? null,
+        file.processingErrorDetail ?? null,
+        file.retryCount ?? null,
+      ],
+    );
+  }
+  return true;
 }
 
 export async function failPostgresTransferMediaJob(

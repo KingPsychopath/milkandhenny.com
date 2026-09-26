@@ -118,14 +118,36 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     expect(await renewPostgresTransferMediaJob(old.id, old.claimToken)).toBe(false);
     expect(
       await transaction((client) =>
-        completePostgresTransferMediaJob(client, old.id, old.claimToken),
+        completePostgresTransferMediaJob(client, old.id, old.claimToken, null),
       ),
     ).toBe(false);
+    const sourceFile = transfer.files.find((file) => file.id === recovered?.job.mediaId);
+    if (!sourceFile) throw new Error("Expected source file");
+    await expect(
+      transaction((client) =>
+        completePostgresTransferMediaJob(client, recovered!.id, recovered!.claimToken, {
+          ...sourceFile,
+          id: "wrong-file",
+          processingStatus: "worker_done",
+        }),
+      ),
+    ).rejects.toThrow("Transfer media result does not match claimed source");
     expect(
       await transaction((client) =>
-        completePostgresTransferMediaJob(client, recovered!.id, recovered!.claimToken),
+        completePostgresTransferMediaJob(client, recovered!.id, recovered!.claimToken, {
+          ...sourceFile,
+          processingStatus: "worker_done",
+          previewStatus: "ready",
+          processingBackend: "worker",
+        }),
       ),
     ).toBe(true);
+    expect(
+      await query<{ processing_status: string }>(
+        "select processing_status from transfer_files where transfer_id=$1 and id=$2",
+        [transfer.id, sourceFile.id],
+      ),
+    ).toEqual([{ processing_status: "worker_done" }]);
   });
 
   it("dead-letters exhausted retries and cancels a superseded generation", async () => {
@@ -158,7 +180,7 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     );
     expect(
       await transaction((client) =>
-        completePostgresTransferMediaJob(client, obsolete.id, obsolete.claimToken),
+        completePostgresTransferMediaJob(client, obsolete.id, obsolete.claimToken, null),
       ),
     ).toBe(false);
     expect(await cancelObsoletePostgresTransferMediaJobs()).toBe(1);

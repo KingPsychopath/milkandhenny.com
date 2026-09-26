@@ -957,8 +957,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   source import remain unimplemented.
   The staged media-job repository requires the matching file generation on enqueue and supports
   disjoint indexed claims, lease recovery, token fencing, bounded retry/dead-letter and obsolete
-  source cancellation. Completion locks the transfer/file before checking the claim, in the
-  caller's transaction. Three focused real-Postgres cases passed, including rollback,
+  source cancellation. Completion locks the transfer/file before checking the claim and updates
+  the file result in the caller's transaction. Three focused real-Postgres cases passed, including rollback,
   idempotency conflict, disjoint claims, old-token refusal, exhausted retries and superseded
   generation refusal. No runtime caller, R2 executor or production switch exists yet.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
