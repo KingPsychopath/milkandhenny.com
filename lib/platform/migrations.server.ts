@@ -5004,6 +5004,51 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0117_multiplayer_rooms_and_results",
+    sql: `
+      create table multiplayer_rooms (
+        kind text not null,
+        room_id text not null,
+        schema_version integer not null check (schema_version > 0),
+        revision bigint not null default 0 check (revision >= 0),
+        state jsonb not null check (jsonb_typeof(state) = 'object'),
+        expires_at timestamptz not null,
+        created_at timestamptz not null default clock_timestamp(),
+        updated_at timestamptz not null default clock_timestamp(),
+        primary key (kind, room_id)
+      );
+      create index multiplayer_rooms_expiry_idx on multiplayer_rooms (expires_at);
+
+      create table multiplayer_room_action_receipts (
+        kind text not null,
+        room_id text not null,
+        action_id text not null,
+        fingerprint_sha256 text not null check (fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        outcome jsonb not null,
+        room_revision bigint not null check (room_revision >= 0),
+        created_at timestamptz not null default clock_timestamp(),
+        primary key (kind, room_id, action_id),
+        foreign key (kind, room_id) references multiplayer_rooms (kind, room_id) on delete cascade
+      );
+
+      create table multiplayer_game_result_outbox (
+        channel_id text not null,
+        result_id text not null,
+        revision integer not null check (revision > 0),
+        payload_hash text not null check (payload_hash ~ '^[a-f0-9]{64}$'),
+        envelope jsonb not null check (jsonb_typeof(envelope) = 'object'),
+        status text not null default 'pending' check (status in ('pending', 'delivered')),
+        created_at timestamptz not null default clock_timestamp(),
+        delivered_at timestamptz,
+        primary key (channel_id, result_id, revision),
+        check ((status = 'delivered') = (delivered_at is not null))
+      );
+      create index multiplayer_game_result_outbox_pending_idx
+        on multiplayer_game_result_outbox (created_at, channel_id, result_id, revision)
+        where status = 'pending';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

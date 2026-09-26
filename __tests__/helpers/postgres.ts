@@ -56,6 +56,9 @@ export async function applySchema(): Promise<void> {
 
   await query(`
     drop schema if exists legacy_archive cascade;
+    drop table if exists multiplayer_room_action_receipts cascade;
+    drop table if exists multiplayer_game_result_outbox cascade;
+    drop table if exists multiplayer_rooms cascade;
     drop table if exists transfer_media_job_attempt_outputs cascade;
     drop table if exists transfer_media_jobs cascade;
     drop table if exists transfer_append_reservations cascade;

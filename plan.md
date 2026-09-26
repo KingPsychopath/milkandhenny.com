@@ -826,7 +826,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26, M1–M6 in progress
+### Current checkpoint — 2026-09-27, M1–M7 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
@@ -853,7 +853,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
   queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`;
   atomic media job planning `30b161b2`; atomic file removal `a5f67945`.
-  Indexed transfer expiry cleanup `6bf88e21`.
+  Indexed transfer expiry cleanup `6bf88e21`; verified Postgres deletion token `1064caf8`;
+  initial transfer upload/read selection `196f1c0c`; atomic append planning `e66ae34d`;
+  Postgres deletion/event-drop selection `1a44f6a6`; conservative R2 orphan staging `213c542d`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -863,6 +865,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis-only data written after the first verified export. This supersedes earlier checkpoint
   references to a fresh source delta. The source command cap no longer blocks the migration;
   application completeness, rehearsal, backup/restore and production verification still do.
+- 2026-09-27 M7 foundation: migration `0117` adds typed JSONB room aggregates, action receipts
+  and an official-result outbox. The repository locks one room row, checks expiry and action
+  fingerprint, then commits state, receipt and result envelopes in one transaction. The outbox
+  deliberately has no cascading room foreign key, so room retention cannot erase an undelivered
+  result. This is a foundation only: no live room engine selects it yet. Engine transitions must
+  remain synchronous and free of network effects under the row lock; replay, credential and
+  paired-journal mappings remain to be implemented. The two-suite Postgres integration check
+  passed 8 cases; `pnpm check`, `pnpm build`, and the full suite with one worker passed (276 files,
+  2,131 tests). The default parallel full-suite attempt timed out in shared Postgres setup, so
+  one-worker execution is the applicable complete verification for this milestone.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
