@@ -32,6 +32,30 @@ printing keys or contents:
 
 Object counts are not proof of application references, backup coverage or content integrity.
 
+## Relational audit snapshot
+
+The effective schema dump contains 117 public tables, 163 explicit indexes and 204 foreign-key
+constraints. Selected exact production counts (read-only queries, 2026-09-26) are:
+
+| Table                   | Rows | Table                        | Rows |
+| ----------------------- | ---: | ---------------------------- | ---: |
+| `events`                |    3 | `tickets`                    |  119 |
+| `event_people`          |   26 | `event_participants`         |  119 |
+| `pitch_decks`           |   10 | `pitch_assets`               |   47 |
+| `game_pool_runs`        |   10 | `game_pool_rooms`            |   64 |
+| `official_game_results` |   12 | `application_scheduled_jobs` |    7 |
+| `email_outbox`          |  908 | `score_transactions`         |   59 |
+
+Seven targeted contradiction counts are all zero: parent ticket in another event, participant
+ticket in another event, score-media link activity/participant/transaction in another event,
+pitch deck thumbnail asset in another deck, and missing thumbnail asset. Current single-column
+foreign keys permit several of these mismatches despite the clean data. Composite constraints
+are M3 candidates after checking the affected write paths and all 117 tables' effective
+relationships. The production `site_settings` shape matches the source
+`0025_site_settings_v2` SQL, while the ledger contains both that ID and an extra historical
+`0025_site_settings` ID. Treat the latter as an explicit legacy baseline entry; do not rewrite
+the ledger or pretend to know the originally applied SQL checksum.
+
 A second read-only listing and selected manifest reads reconciled the supplied RDB to object
 storage without printing keys or private content:
 
@@ -44,12 +68,13 @@ storage without printing keys or private content:
 | Album photo originals, public variants and OG references | 14 originals, 84 variants, 14 OG |     All | All referenced objects present                                 |
 | Public word image manifests                              |                                3 |       3 | Three image entries; all originals and 18 variants present     |
 
-There is only one distinct transfer prefix among the 168 private transfer objects. The one
-unmatched job source and the job referencing a missing transfer may be the same item, but that
-identity has not yet been proven. A file may also be absent because its transfer expired; the
-import must use source expiry and ownership before deciding whether to replay or discard it.
-The public pitch thumbnail manifests and other pitch objects have only been counted, not
-cross-checked against relational asset rows. Object backup/restore coverage remains unverified.
+There is only one distinct transfer prefix among the 168 private transfer objects. The one job
+referencing a missing transfer is also the one whose source object is missing. A file may be
+absent because its transfer expired; the import must use source expiry and ownership before
+deciding whether to replay or discard it. All 47 `pitch_assets` rows match the 47 private pitch
+objects exactly (42 images and five thumbnails). Public pitch publication objects and their
+five thumbnail manifests have only been counted. Object backup/restore coverage remains
+unverified.
 
 ## Upstash export received
 
@@ -65,27 +90,31 @@ and a strict database-0 read. The one-off auditor and parser checkout are outsid
 credential-bearing keys. No Redis function libraries were present in the export; Upstash states
 that exports omit functions, so source code remains the authority for Lua behavior.
 
-| Export family                      | Keys | Data and reconciliation finding                                                                                                        |
-| ---------------------------------- | ---: | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC                                                                    |
-| `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                 |
-| `auth:token-version:*`             |    3 | Persistent strings                                                                                                                     |
-| `auth:upload-open`                 |    1 | Persistent list with four entries                                                                                                      |
-| `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                      |
-| `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                             |
-| `transfer:media:processing`        |    1 | Eight raw, unleased jobs; queue and dead-letter keys absent                                                                            |
-| `transfer:media:worker-status`     |    1 | Four-field hash                                                                                                                        |
-| `diagnostic-report:v1:*` and index |    4 | Three expiring records; five index members, two stale                                                                                  |
-| `best-dressed:session` and votes   |    2 | Persistent strings                                                                                                                     |
-| `guest:*` and `user-report:*`      |    3 | Legacy keys absent from current source references: one persistent guest string, one expiring report string and one expiring report set |
+| Export family                      | Keys | Data and reconciliation finding                                                                                                            |
+| ---------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `event-scoring:attendee-session:*` |  192 | 192 strings with absolute expiry, 2026-10-24 through 2026-11-24 UTC                                                                        |
+| `auth:sessions:index`              |    1 | Set of 190 IDs; all 190 referenced `auth:session:*` records are absent                                                                     |
+| `auth:token-version:*`             |    3 | Persistent strings                                                                                                                         |
+| `auth:upload-open`                 |    1 | Persistent list with four entries                                                                                                          |
+| `words:meta:*`, `words:index`      |   14 | 13 metadata strings and 13 matching index members                                                                                          |
+| `transfer:*`, `transfer:index`     |    2 | One expiring transfer record and one matching index member                                                                                 |
+| `transfer:media:processing`        |    1 | Eight raw, unleased jobs; queue and dead-letter keys absent                                                                                |
+| `transfer:media:worker-status`     |    1 | Four-field hash                                                                                                                            |
+| `diagnostic-report:v1:*` and index |    4 | Three expiring records; five index members, two stale                                                                                      |
+| `best-dressed:session` and votes   |    2 | Persistent strings                                                                                                                         |
+| `guest:list` and `user-report:*`   |    3 | Original guest list with 274 guests and 157 nested plus-ones; one expiring legacy report record and its matching one-member expiring index |
 
 All 224 keys were decoded; 199 have absolute expiry. None had expired by the file's download
 time. This snapshot is evidence, not the final cutover delta: source writes and TTL expiry must be
 reconciled again at the maintenance window. The eight processing items decode as valid raw jobs
 with distinct idempotency keys, spanning two transfers. Seven point at the one exported transfer;
 one points at a missing transfer. Do not replay the orphan without checking expiry and R2 object
-ownership. Do not import the stale session/report index members as valid records. The legacy
-`guest:*` and `user-report:*` records need explicit provenance and disposition before M1 exits.
+ownership. Do not import the stale session/report index members as valid records. Git history
+identifies `guest:list` as the original whole-list guest store (initial commit `b8d61e2b`);
+current source has no reader. Commit `9f6dc320` identifies the two `user-report:*` keys as the
+prior report format. Retain the guest list in the protected source archive while its privacy
+and retention disposition is decided; retain/import the unexpired legacy report with its
+original expiry if the target report schema can represent it.
 
 The [Upstash export contract](https://upstash.com/docs/redis/howto/importexport) says Redis
 Functions are excluded from RDB exports. The absence of a namespace in this snapshot also does
@@ -141,14 +170,17 @@ object reference or browser recovery path is accounted for.
 
 - [x] Obtain and checksum-validate a readable Redis export, decode all 224 keys, types and absolute
       TTLs without printing private values.
-- [ ] Establish exact source snapshot time and refresh the export at cutover; classify the legacy
-      `guest:*` and `user-report:*` keys and decide how to retain or retire them.
+- [x] Identify the three legacy keys and their original owning code in Git history; preserve the
+      guest list in the protected export pending a retention decision.
+- [ ] Establish exact source snapshot time, refresh the export at cutover, and decide whether
+      legacy guest data is imported to a restricted archive or retained only in the source export.
 - [ ] Establish exact production counts and contradictions from the source and target, including
       transfers, active work, content, credentials, rooms, receipts and revocations.
 - [x] Reconcile exported word/transfer references and editable album/word-image manifests to R2
       objects without printing private content.
-- [ ] Reconcile pitch asset references, classify the unmatched job source, and verify object
-      backup coverage and integrity policy.
+- [x] Reconcile all 47 private pitch asset references and prove the orphan job is the one with a
+      missing source object.
+- [ ] Verify public pitch publication references, object backup coverage and integrity policy.
 - [ ] Resolve the `0025_site_settings` migration-ledger mismatch without rewriting applied SQL.
 - [ ] Specify physical DDL and source mapping for every new table family; audit the full effective
       117-table schema before selecting existing-domain integrity changes.

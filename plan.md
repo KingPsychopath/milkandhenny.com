@@ -698,7 +698,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   inventory; full checksum/type decode of the supplied Upstash RDB export and a static
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
-  recovery inventory `dfb0cee1`. Source implementation commits have not started.
+  recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`. Source implementation
+  commits have not started.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback.
@@ -708,7 +709,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   decode; its audit printed aggregate counts only. A read-only R2 listing and selected manifest
   downloads matched all 13 word bodies, all 64 active-transfer storage references, and all 14
   album originals/84 public variants/14 OG objects; three word image manifests and 18 variants
-  also matched. Documentation formatting, links and whitespace will be checked before this
+  also matched. The 47 relational pitch asset keys match all 47 private pitch objects. Seven
+  candidate cross-event/deck relationship violations were counted and each returned zero.
+  Documentation formatting, links and whitespace will be checked before this
   checkpoint's commit. Source/release tests remain pending.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
@@ -716,17 +719,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   backup is from 2026-08-23. Private and public R2 prefixes were counted without reading objects.
   The export has 224 keys, including 192 attendee sessions and eight raw, unleased media jobs in
   `transfer:media:processing`. Seven jobs reference the one exported transfer; one references a
-  missing transfer. Seven of eight job storage keys exist in R2, and only one transfer prefix is
-  present there; matching the missing object to the missing transfer still needs proof. The
-  token-session index has 190 stale entries and the report index has two.
-- Unresolved: exact Redis snapshot time/fresh cutover delta; legacy `guest:*`/`user-report:*`
-  disposition and missing transfer job; full object/reference inventory and backup coverage;
-  measured load/resource
+- missing transfer; this is also the one job whose source object is absent from R2. The
+  original `guest:list` contains 274 top-level guests and 157 plus-ones; one legacy report and
+  its index remain. The token-session index has 190 stale entries and the current report index
+  has two.
+- Unresolved: exact Redis snapshot time/fresh cutover delta; legacy guest-list retention/import
+  decision; public pitch publication references and backup coverage; measured load/resource
   budgets; physical DDL; migration duration; operational command/credential setup; restore drill;
   quantified acceptance and observation/retention periods.
-- Next action: inspect pitch asset references and the effective relational schema, resolve the
-  migration-ledger baseline, then specify physical DDL/source mapping. Do not start production
-  migration from the table sketches in this document.
+- Next action: finish effective relational-schema audit and migration-ledger baseline, then
+  specify physical DDL/source mapping. Do not start production migration from the table sketches
+  in this document.
 
 ### Milestone checkpoint template
 
