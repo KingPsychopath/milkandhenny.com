@@ -61,6 +61,11 @@ test("ticket invitations load when the event ticket tool opens", async ({ page }
     }
     await page.goto(`/admin?view=events&eventWorkspace=events&event=${slug}`);
     await waitForAppHydration(page);
+    const direct = await page.request.get(`/admin?view=events&eventWorkspace=events&event=${slug}`);
+    expect(direct.ok()).toBe(true);
+    const html = await direct.text();
+    expect(html).toContain("Invitation query event");
+    expect(html).toContain("live tickets");
     const tools = page.getByRole("navigation", { name: "Invitation query event tools" });
     await expect(tools).toBeVisible();
     await tools.getByRole("button", { name: "tickets", exact: true }).click();

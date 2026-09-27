@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  EventOperations,
-  parseEventTicketSummary,
-  type EventTicketSummary,
-} from "./EventOperationsPanel";
+import { EventOperations } from "./EventOperationsPanel";
 export { TicketSalesBreakdown } from "./EventOperationsPanel";
 import { AdminTextField as Field } from "./AdminTextField";
 
@@ -35,6 +31,7 @@ import { FooterPartyLinkSettings } from "./FooterPartyLinkSettings";
 import { AdminStatus } from "./AdminStatus";
 import { pickDefaultAdminEvent } from "./event-admin-selection";
 import { adminEventsQuery } from "@/features/events/events.queries";
+import { adminEventOperationsQuery } from "@/features/event-operations/admin-event-read.queries";
 import { homePageQuery } from "@/features/site/home.queries";
 
 const HERO_HEIGHT_LABELS: Record<EventHeroHeight, string> = {
@@ -131,7 +128,14 @@ export function EventsPanel({
   const [editor, setEditor] = useAdminDraftState<{
     selection: EventsWorkspaceSelection;
     draft: Draft | null;
-  }>("event-editor", { selection: null, draft: null }, (value) => value.draft !== null);
+  }>(
+    "event-editor",
+    {
+      selection: initialEventSlug ? { kind: "operations", slug: initialEventSlug } : null,
+      draft: null,
+    },
+    (value) => value.draft !== null,
+  );
   const { selection, draft } = editor;
   const setSelection = useCallback(
     (selection: EventsWorkspaceSelection) => setEditor((current) => ({ ...current, selection })),
@@ -145,12 +149,8 @@ export function EventsPanel({
       })),
     [setEditor],
   );
-  const [operations, setOperations] = useState<EventTicketSummary | null>(null);
-  const [operationsLoading, setOperationsLoading] = useState(false);
-  const [operationsError, setOperationsError] = useState<string | null>(null);
   const openedTarget = useRef<string | undefined>(undefined);
   const appliedDefaultSelection = useRef(false);
-  const operationsRequest = useRef(0);
   const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
   const eventWorkspaceTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const returnFocusSlug = useRef<string | null>(null);
@@ -159,6 +159,13 @@ export function EventsPanel({
   const editing =
     selection?.kind === "create" ? "__new__" : selection?.kind === "edit" ? selection.slug : null;
   const operationsSlug = selection?.kind === "operations" ? selection.slug : null;
+  const operationsQuery = useQuery({
+    ...adminEventOperationsQuery(operationsSlug ?? ""),
+    enabled: Boolean(operationsSlug),
+  });
+  const operations = operationsQuery.data ?? null;
+  const operationsLoading = Boolean(operationsSlug) && operationsQuery.isPending;
+  const operationsError = operationsQuery.error?.message ?? null;
   const selectedEvent =
     selection?.kind === "edit" || selection?.kind === "operations"
       ? events.find((event) => event.slug === selection.slug)
@@ -220,16 +227,9 @@ export function EventsPanel({
 
   const loadOperations = useCallback(
     async (slug: string) => {
-      const response = await authFetch(`/api/admin/events/${slug}`);
-      const data: unknown = await response.json().catch(() => null);
-      const summary =
-        data && typeof data === "object" && !Array.isArray(data) && "tickets" in data
-          ? parseEventTicketSummary(data.tickets)
-          : null;
-      if (!response.ok || !summary) throw new Error("Failed to load event operations");
-      return summary;
+      await queryClient.fetchQuery({ ...adminEventOperationsQuery(slug), staleTime: 0 });
     },
-    [authFetch],
+    [queryClient],
   );
 
   const canReplaceDraft = async () =>
@@ -247,11 +247,7 @@ export function EventsPanel({
     if (!(await canReplaceDraft())) return;
     onSelectedEventChange?.(operationsSlug === slug ? undefined : slug);
     if (operationsSlug === slug) {
-      operationsRequest.current += 1;
       setSelection(null);
-      setOperations(null);
-      setOperationsError(null);
-      setOperationsLoading(false);
       return;
     }
 
@@ -261,40 +257,16 @@ export function EventsPanel({
       triggerTop === undefined ? 96 : Math.min(180, Math.max(96, triggerTop));
     setSelection({ kind: "operations", slug });
     setDraft(null);
-    setOperations(null);
-    setOperationsError(null);
-    setOperationsLoading(true);
     onError("");
-    const request = ++operationsRequest.current;
-    try {
-      const summary = await loadOperations(slug);
-      if (request === operationsRequest.current) setOperations(summary);
-    } catch (error) {
-      if (request !== operationsRequest.current) return;
-      const message = error instanceof Error ? error.message : "Failed to load event operations";
-      setOperationsError(message);
-      onError(message);
-    } finally {
-      if (request === operationsRequest.current) setOperationsLoading(false);
-    }
   };
 
   const retryOperations = async (slug: string) => {
-    setOperations(null);
-    setOperationsError(null);
-    setOperationsLoading(true);
     onError("");
-    const request = ++operationsRequest.current;
     try {
-      const summary = await loadOperations(slug);
-      if (request === operationsRequest.current) setOperations(summary);
+      await loadOperations(slug);
     } catch (error) {
-      if (request !== operationsRequest.current) return;
       const message = error instanceof Error ? error.message : "Failed to load event operations";
-      setOperationsError(message);
       onError(message);
-    } finally {
-      if (request === operationsRequest.current) setOperationsLoading(false);
     }
   };
 
@@ -310,24 +282,7 @@ export function EventsPanel({
     openedTarget.current = initialEventSlug;
     setSelection({ kind: "operations", slug: initialEventSlug });
     setDraft(null);
-    setOperations(null);
-    setOperationsError(null);
-    setOperationsLoading(true);
-    const request = ++operationsRequest.current;
-    void loadOperations(initialEventSlug)
-      .then((summary) => {
-        if (request === operationsRequest.current) setOperations(summary);
-      })
-      .catch((error) => {
-        if (request !== operationsRequest.current) return;
-        const message = error instanceof Error ? error.message : "Failed to load event operations";
-        setOperationsError(message);
-        onError(message);
-      })
-      .finally(() => {
-        if (request === operationsRequest.current) setOperationsLoading(false);
-      });
-  }, [draft, events, initialEventSlug, loadOperations, onError, setDraft, setSelection]);
+  }, [draft, events, initialEventSlug, setDraft, setSelection]);
 
   useEffect(() => {
     if (
@@ -345,34 +300,7 @@ export function EventsPanel({
     if (!preferred) return;
     setSelection({ kind: "operations", slug: preferred.slug });
     setDraft(null);
-    setOperations(null);
-    setOperationsError(null);
-    setOperationsLoading(true);
-    const request = ++operationsRequest.current;
-    void loadOperations(preferred.slug)
-      .then((summary) => {
-        if (request === operationsRequest.current) setOperations(summary);
-      })
-      .catch((error) => {
-        if (request !== operationsRequest.current) return;
-        const message = error instanceof Error ? error.message : "Failed to load event operations";
-        setOperationsError(message);
-        onError(message);
-      })
-      .finally(() => {
-        if (request === operationsRequest.current) setOperationsLoading(false);
-      });
-  }, [
-    draft,
-    events,
-    initialEventSlug,
-    loadError,
-    loadOperations,
-    loading,
-    onError,
-    setDraft,
-    setSelection,
-  ]);
+  }, [draft, events, initialEventSlug, loadError, loading, setDraft, setSelection]);
 
   const save = async () => {
     if (!draft) return;
@@ -513,7 +441,6 @@ export function EventsPanel({
       if (selectedEvent?.slug === event.slug) {
         setSelection(null);
         setDraft(null);
-        setOperations(null);
       }
       await refreshEventViews();
     } catch (error) {
@@ -531,12 +458,8 @@ export function EventsPanel({
               type="button"
               onClick={async () => {
                 if (!(await canReplaceDraft())) return;
-                operationsRequest.current += 1;
                 setSelection({ kind: "create" });
                 setDraft(EMPTY_DRAFT);
-                setOperations(null);
-                setOperationsError(null);
-                setOperationsLoading(false);
               }}
               className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
             >
@@ -659,12 +582,8 @@ export function EventsPanel({
                           onClick={async () => {
                             if (!(await canReplaceDraft())) return;
                             onSelectedEventChange?.(event.slug);
-                            operationsRequest.current += 1;
                             setSelection({ kind: "edit", slug: event.slug });
                             setDraft(toDraft(event));
-                            setOperations(null);
-                            setOperationsError(null);
-                            setOperationsLoading(false);
                           }}
                           aria-pressed={selection?.kind === "edit" && selection.slug === event.slug}
                           className="min-h-11 px-2 font-mono text-micro theme-muted underline hover:opacity-70"
@@ -728,12 +647,8 @@ export function EventsPanel({
                 onClick={async () => {
                   if (!(await canReplaceDraft())) return;
                   onSelectedEventChange?.(undefined);
-                  operationsRequest.current += 1;
                   setSelection(null);
                   setDraft(null);
-                  setOperations(null);
-                  setOperationsError(null);
-                  setOperationsLoading(false);
                 }}
                 className="inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted underline underline-offset-4 hover:text-foreground"
               >
@@ -777,9 +692,7 @@ export function EventsPanel({
                 onError={onError}
                 onStatus={onStatus}
                 reload={async () => {
-                  const request = ++operationsRequest.current;
-                  const summary = await loadOperations(selectedEvent.slug);
-                  if (request === operationsRequest.current) setOperations(summary);
+                  await loadOperations(selectedEvent.slug);
                 }}
                 confirmAction={confirm}
                 stepUp={{ ensureStepUpToken, withStepUpHeaders }}

@@ -7,9 +7,9 @@ import {
   requireAuthWithPayload,
 } from "@/features/auth/auth.server";
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
+import { readAdminEventOperations } from "@/features/event-operations/admin-event-read.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { EventsService } from "@/features/events/events-service.server";
-import { TicketsService } from "@/features/tickets/tickets-service.server";
 import { runEventsResult as runEventOperationsResult } from "@/features/events/events-runtime.server";
 import { log } from "@/lib/platform/logger.server";
 
@@ -25,16 +25,7 @@ async function handleGET(request: Request, slug: string) {
   if (authErr) return authErr;
 
   try {
-    const result = await runEventOperationsResult(
-      Effect.gen(function* () {
-        const events = yield* EventsService;
-        const tickets = yield* TicketsService;
-        const event = yield* events.read(slug);
-        if (!event) return { event: null, tickets: null };
-        const summary = yield* tickets.forEvent(slug);
-        return { event, tickets: summary };
-      }),
-    );
+    const result = await readAdminEventOperations(slug, request.signal);
 
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     if (!result.value.event) return Response.json({ error: "Event not found" }, { status: 404 });

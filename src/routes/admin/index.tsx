@@ -10,6 +10,7 @@ import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries"
 import { adminPollsQuery } from "@/features/polls/polls.queries";
 import { adminCreditsQuery } from "@/features/credits/credits.queries";
 import { adminEventsQuery } from "@/features/events/events.queries";
+import { adminEventOperationsQuery } from "@/features/event-operations/admin-event-read.queries";
 import { adminTransfersQuery } from "@/features/transfers/admin.queries";
 import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
@@ -190,6 +191,14 @@ export const Route = createFileRoute("/admin/")({
         (!deps.eventWorkspace || deps.eventWorkspace === "events")
           ? context.queryClient.prefetchQuery(adminEventsQuery)
           : null;
+      const eventOperationsPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "events" &&
+        (!deps.eventWorkspace || deps.eventWorkspace === "events") &&
+        deps.event
+          ? context.queryClient.prefetchQuery(adminEventOperationsQuery(deps.event))
+          : null;
       const pitchesPromise =
         access.isAuthed &&
         access.permissions?.manageContent &&
@@ -300,6 +309,7 @@ export const Route = createFileRoute("/admin/")({
         alertsPromise,
         emailPromise,
         eventsPromise,
+        eventOperationsPromise,
         pitchesPromise,
         remindersPromise,
         siteSettingsPromise,
