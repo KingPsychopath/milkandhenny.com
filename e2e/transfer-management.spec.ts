@@ -1,75 +1,72 @@
 import { expect, test } from "@playwright/test";
+import { randomBytes } from "node:crypto";
+import { Redis } from "@upstash/redis";
+import { waitForAppHydration } from "./support/multiplayer";
 
 test("admin can drill into a transfer and remove one file", async ({ context, page }) => {
-  let removed = false;
-  await page.route("**/api/admin/transfers**", async (route) => {
-    const request = route.request();
-    const pathname = new URL(request.url()).pathname;
-    if (pathname.endsWith("/files/file-1") && request.method() === "DELETE") {
-      removed = true;
-      await route.fulfill({ json: { success: true, deletedTransfer: false } });
-      return;
-    }
-    if (pathname.endsWith("/transfer-1")) {
-      await route.fulfill({
-        json: {
-          transfer: {
-            id: "transfer-1",
-            title: "Managed transfer",
-            files: removed
-              ? []
-              : [
-                  {
-                    id: "file-1",
-                    filename: "manage-me.txt",
-                    kind: "file",
-                    mimeType: "text/plain",
-                    processingStatus: "skipped",
-                  },
-                ],
-          },
-        },
-      });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        transfers: [
-          {
-            id: "transfer-1",
-            title: "Managed transfer",
-            fileCount: removed ? 0 : 1,
-            createdAt: "2026-09-03T00:00:00.000Z",
-            expiresAt: "2026-09-10T00:00:00.000Z",
-            remainingSeconds: 604_800,
-          },
-        ],
-        media: { queueLength: 0, worker: {} },
+  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const transferId = randomBytes(16).toString("base64url");
+  const key = `transfer:${transferId}`;
+  const transfer = {
+    id: transferId,
+    title: "Managed transfer",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    deleteToken: randomBytes(16).toString("base64url"),
+    files: [
+      {
+        id: "file-1",
+        filename: "manage-me.txt",
+        kind: "file",
+        size: 100,
+        mimeType: "text/plain",
+        storageKey: `${transferId}/file-1`,
+        processingStatus: "skipped",
       },
+    ],
+  };
+  let removed = false;
+  try {
+    await redis.set(key, JSON.stringify(transfer), { ex: 600 });
+    await redis.sadd("transfer:index", transferId);
+    await page.route(`**/api/admin/transfers/${transferId}/files/file-1`, async (route) => {
+      removed = true;
+      await redis.set(key, JSON.stringify({ ...transfer, files: [] }), { ex: 600 });
+      await route.fulfill({ json: { success: true, deletedTransfer: false } });
     });
-  });
 
-  await page.goto("/admin");
-  await page.getByPlaceholder("admin password").fill("playwright-admin-password");
-  await page.getByRole("button", { name: "unlock" }).click();
-  await page.goto("/admin?view=transfers");
+    await page.goto("/admin");
+    await page.getByPlaceholder("admin password").fill("playwright-admin-password");
+    await page.getByRole("button", { name: "unlock" }).click();
+    await page.goto("/admin?view=transfers");
+    await waitForAppHydration(page);
 
-  const transferRow = page.locator("article").filter({ hasText: "Managed transfer" });
-  await expect(transferRow).toBeVisible();
-  await transferRow.getByRole("button", { name: "details" }).click();
-  await expect(page.getByRole("link", { name: "open transfer" })).toBeVisible();
-  const addFilesLink = page.getByRole("link", { name: "add files" });
-  await expect(addFilesLink).toHaveAttribute("href", /\/upload\?transfer=transfer-1/);
-  const appendPage = await context.newPage();
-  await appendPage.goto((await addFilesLink.getAttribute("href"))!);
-  await expect(appendPage.getByLabel("transfer id")).toHaveValue("transfer-1");
-  await appendPage.close();
+    const response = await page.request.get("/admin?view=transfers");
+    expect(await response.text()).toContain("Managed transfer");
+    const transferRow = page.locator("article").filter({ hasText: "Managed transfer" });
+    await expect(transferRow).toBeVisible();
+    await expect(page.locator("#transfer-manager")).not.toHaveAttribute("inert", "");
+    await transferRow.getByRole("button", { name: "details" }).click();
+    await expect(page.getByRole("link", { name: "open transfer" })).toBeVisible();
+    const addFilesLink = page.getByRole("link", { name: "add files" });
+    await expect(addFilesLink).toHaveAttribute(
+      "href",
+      new RegExp(`/upload\\?transfer=${transferId}`),
+    );
+    const appendPage = await context.newPage();
+    await appendPage.goto((await addFilesLink.getAttribute("href"))!);
+    await expect(appendPage.getByLabel("transfer id")).toHaveValue(transferId);
+    await appendPage.close();
 
-  await page.getByRole("button", { name: "remove" }).click();
-  const dialog = page.getByRole("dialog", { name: "Remove “manage-me.txt”?" });
-  await dialog.getByRole("button", { name: "remove file" }).click();
-  await expect(page.getByText("No files match this state.")).toBeVisible();
-  expect(removed).toBe(true);
+    await page.getByRole("button", { name: "remove" }).click();
+    const dialog = page.getByRole("dialog", { name: "Remove “manage-me.txt”?" });
+    await dialog.getByRole("button", { name: "remove file" }).click();
+    await expect(page.getByText("No files match this state.")).toBeVisible();
+    expect(removed).toBe(true);
+  } finally {
+    await redis.del(key);
+    await redis.srem("transfer:index", transferId);
+  }
 });
 
 test("admin can grant transfer creation to a signed-in account", async ({ page }) => {
