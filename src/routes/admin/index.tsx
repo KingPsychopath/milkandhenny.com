@@ -9,6 +9,7 @@ import { adminEventsQuery } from "@/features/events/events.queries";
 import { adminTransfersQuery } from "@/features/transfers/admin.queries";
 import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
+import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
 import {
   adminOperationsSettingsQuery,
   namedAdminGrantsQuery,
@@ -134,6 +135,13 @@ export const Route = createFileRoute("/admin/")({
         deps.tab === "credits"
           ? context.queryClient.prefetchQuery(adminCreditsQuery)
           : null;
+      const alertsPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "delivery"
+          ? context.queryClient.prefetchQuery(adminAlertSettingsQuery)
+          : null;
       const eventsPromise =
         access.isAuthed &&
         access.permissions?.viewOperations &&
@@ -189,6 +197,7 @@ export const Route = createFileRoute("/admin/")({
         communicationsPromise,
         pollsPromise,
         creditsPromise,
+        alertsPromise,
         eventsPromise,
         transfersPromise,
         uploadAccessPromise,
