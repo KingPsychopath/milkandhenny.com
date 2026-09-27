@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  adminEditorWordsQuery,
+  EMPTY_ADMIN_EDITOR_FILTERS,
+} from "@/features/words/admin-editor.queries";
+import type { AdminEditorWordFilters } from "@/features/words/admin-editor.functions";
 import { MediaPreviewModal } from "./components/MediaPreviewModal";
 import { EditorFiltersPanel } from "./components/EditorFiltersPanel";
 import { EditorResultsList } from "./components/EditorResultsList";
@@ -41,6 +47,7 @@ function getShareState(link: ShareLink): Exclude<ShareStateFilter, "all"> {
 const SHARE_EXPIRY_OPTIONS = [1, 3, 7, 14, 30] as const;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 const EDITOR_DRAFT_KEY_PREFIX = "mah-admin-editor-draft:";
+const EMPTY_NOTES: NoteMeta[] = [];
 
 type WordSavePayload = {
   title: string;
@@ -159,6 +166,7 @@ function payloadFromNote(record: NoteRecord): WordSavePayload {
 }
 
 export function EditorAdminClient() {
+  const queryClient = useQueryClient();
   const {
     confirm: confirmAction,
     prompt: promptAction,
@@ -166,7 +174,6 @@ export function EditorAdminClient() {
     isOpen: actionDialogOpen,
   } = useActionDialog();
   const { ensureStepUpToken, authDialog, authDialogOpen } = useAdminAuth();
-  const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
   const [current, setCurrent] = useState<NoteRecord | null>(null);
   const [shares, setShares] = useState<ShareLink[]>([]);
@@ -201,6 +208,11 @@ export function EditorAdminClient() {
     setMediaSearchQuery,
     clearFilters,
   } = useEditorFilters();
+  const [committedFilters, setCommittedFilters] = useState<AdminEditorWordFilters>(
+    EMPTY_ADMIN_EDITOR_FILTERS,
+  );
+  const notesQuery = useQuery(adminEditorWordsQuery(committedFilters));
+  const notes: NoteMeta[] = notesQuery.data?.words ?? EMPTY_NOTES;
   const {
     createSlug,
     setCreateSlug,
@@ -259,23 +271,20 @@ export function EditorAdminClient() {
     setBusy(true);
     setError("");
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
-      if (filterType !== "all") params.set("type", filterType);
-      if (filterVisibility !== "all") params.set("visibility", filterVisibility);
-      if (filterTag.trim()) params.set("tag", filterTag.trim().toLowerCase());
-
-      const res = await fetch(`/api/words?${params.toString()}`);
-      const data = (await res.json().catch(() => ({}))) as { words?: NoteMeta[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to load words");
-      setNotes(data.words ?? []);
+      const filters = {
+        q: searchQuery.trim(),
+        type: filterType,
+        visibility: filterVisibility,
+        tag: filterTag.trim().toLowerCase(),
+      };
+      setCommittedFilters(filters);
+      await queryClient.fetchQuery({ ...adminEditorWordsQuery(filters), staleTime: 0 });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load words");
     } finally {
       setBusy(false);
     }
-  }, [filterTag, filterType, filterVisibility, searchQuery]);
+  }, [filterTag, filterType, filterVisibility, searchQuery, queryClient]);
 
   const loadSharedStatus = useCallback(async () => {
     try {
@@ -376,8 +385,8 @@ export function EditorAdminClient() {
   );
 
   useEffect(() => {
-    void loadNotes();
-  }, [loadNotes]);
+    if (notesQuery.error) setError(notesQuery.error.message);
+  }, [notesQuery.error]);
 
   useEffect(() => {
     void loadSharedStatus();
@@ -554,14 +563,12 @@ export function EditorAdminClient() {
   const applySavedWord = useCallback(
     (updated: NoteRecord, syncForm: boolean) => {
       setCurrent(updated);
-      setNotes((prev) =>
-        prev.map((note) => (note.slug === updated.meta.slug ? updated.meta : note)),
-      );
+      void queryClient.invalidateQueries({ queryKey: ["admin", "words", "editor-list"] });
       if (syncForm && selectedSlug === updated.meta.slug) {
         setEditFromRecord(updated);
       }
     },
-    [selectedSlug, setEditFromRecord],
+    [selectedSlug, setEditFromRecord, queryClient],
   );
 
   const saveWordToApi = useCallback(async () => {

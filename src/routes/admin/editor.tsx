@@ -3,12 +3,21 @@ import { SITE_NAME } from "@/lib/shared/config";
 import { getAdminEditorAccessFn } from "@/features/auth/auth.functions";
 import { EditorAdminClient } from "@/features/admin/ui/editor/EditorAdminClient";
 import { buildSeoHead } from "@/lib/shared/seo";
+import {
+  adminEditorWordsQuery,
+  EMPTY_ADMIN_EDITOR_FILTERS,
+} from "@/features/words/admin-editor.queries";
 
 export const Route = createFileRoute("/admin/editor")({
   validateSearch: (search: Record<string, unknown>): { slug?: string } =>
     typeof search.slug === "string" ? { slug: search.slug } : {},
   loader: {
-    handler: () => getAdminEditorAccessFn(),
+    handler: async ({ context }) => {
+      const access = await getAdminEditorAccessFn();
+      if (access.ok)
+        await context.queryClient.prefetchQuery(adminEditorWordsQuery(EMPTY_ADMIN_EDITOR_FILTERS));
+      return access;
+    },
     staleReloadMode: "blocking",
   },
   staleTime: 0,
