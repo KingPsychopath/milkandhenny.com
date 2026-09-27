@@ -690,6 +690,9 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Events and aggregate monitor cutover remain
         open.
+  - [x] Route the bounded stalled/failed media job sweep through Postgres under the catalogue
+        flag, with a failed-file index and row-locked requeue validation. R2 derivative/source
+        verification and complete status/event cutover remain open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
   - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
@@ -864,7 +867,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   `1eaf95c9`; staged Postgres realtime backplane `48e22435`; staged Family Feud rooms
   `ef788195`.
   Staged Postgres health `c92c9dbd`; Pitch presentation `f1926a5b`; operator queue clear
-  `4dd96e31`; targeted media retry and reprocess `b99863cd`.
+  `4dd96e31`; targeted media retry and reprocess `b99863cd`; stalled-job reconciliation
+  `18c24c17`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -983,6 +987,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   command parity remain open. No production flag is enabled. The focused Postgres and admin
   suites passed 15 tests; `pnpm check`, the full one-worker suite (284 files, 2,152 tests),
   and `pnpm build` passed. Code commit: `b99863cd`.
+- 2026-09-27 staged Postgres media reconciliation: migration `0119` indexes failed file work.
+  A bounded sweep selects failed or stale file generations without active pending/leased jobs;
+  each requeue rechecks source state under a row lock and commits replacement work with the
+  generation advance. The Media service and CLI select this sweep under the Postgres catalogue
+  flag and require no Redis connection. It does not yet compare R2 objects or cover all legacy
+  reconcile behavior; no production flag is enabled. Focused Postgres/ledger tests passed 18
+  cases; `pnpm check`, the complete one-worker suite (284 files, 2,153 tests), and `pnpm build`
+  passed. Code commit: `18c24c17`.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
