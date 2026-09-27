@@ -106,6 +106,8 @@ export interface PostgresRoomTransition<State, Outcome> {
   expiresAt: number;
   outcome: Outcome;
   results?: readonly OfficialGameResultEnvelope[];
+  persist?: boolean;
+  recordAction?: boolean;
 }
 
 export interface PostgresRoomAction {
@@ -180,14 +182,15 @@ export async function transitionPostgresRoom<State, Outcome>(input: {
     }
     const next = input.transition(room);
     if (next.expiresAt <= Date.now()) throw new Error("Room transition cannot persist expiry");
-    const revision = room.revision + 1;
-    await client.query(
-      `update multiplayer_rooms
-          set state=$3::jsonb,revision=$4,expires_at=$5,updated_at=clock_timestamp()
-        where kind=$1 and room_id=$2`,
-      [input.kind, input.roomId, JSON.stringify(next.state), revision, new Date(next.expiresAt)],
-    );
-    if (input.action)
+    const revision = room.revision + (next.persist === false ? 0 : 1);
+    if (next.persist !== false)
+      await client.query(
+        `update multiplayer_rooms
+            set state=$3::jsonb,revision=$4,expires_at=$5,updated_at=clock_timestamp()
+          where kind=$1 and room_id=$2`,
+        [input.kind, input.roomId, JSON.stringify(next.state), revision, new Date(next.expiresAt)],
+      );
+    if (input.action && next.recordAction !== false)
       await client.query(
         `insert into multiplayer_room_action_receipts
            (kind,room_id,action_id,fingerprint_sha256,outcome,room_revision)

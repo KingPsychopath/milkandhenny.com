@@ -951,6 +951,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   focused tests passed two cases; `pnpm check` and the full one-worker suite (283 files, 2,145
   tests) passed. A new build is deferred because this changes server-side health selection only;
   the immediately preceding Family Feud milestone built the same source boundary successfully.
+- 2026-09-27 staged Pitch presentation and room transition correction:
+  `PITCH_PRESENTATION_STORE=postgres` selects a Postgres room aggregate for host/controller
+  recovery and slide commands. Deck publication is fetched before the row lock and the selected
+  deck ID is rechecked during the transaction, so an external read cannot hold a room lock. A
+  rejected mutation leaves state unchanged. Shared room transitions now skip writes for
+  unchanged snapshot reads and do not consume an action receipt for a rejected command. Real
+  Postgres tests cover concurrent controller joins, approval, public redaction, slide replay,
+  unchanged-read revisions and rejected-action retry. The selector is not enabled in production;
+  other M7 modes and full M8 reconnect/revalidation remain open. Focused suites passed 12 cases;
+  `pnpm check`, the full one-worker suite (284 files, 2,147 tests), and `pnpm build` passed.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0

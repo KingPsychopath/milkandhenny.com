@@ -43,6 +43,7 @@ export async function withPostgresGameRoom<State extends { expiresAt: number }, 
   use: (room: State) => Outcome | Promise<Outcome>;
   applyExpiry: (room: State) => void;
   results: (before: State, after: State) => readonly OfficialGameResultEnvelope[];
+  recordAction?: (outcome: Outcome) => boolean;
   validate?: (room: State) => boolean;
 }): Promise<Outcome | null> {
   let queued: readonly OfficialGameResultEnvelope[] = [];
@@ -54,12 +55,20 @@ export async function withPostgresGameRoom<State extends { expiresAt: number }, 
       const room = stored.state;
       if (input.validate && !input.validate(room)) throw new Error("Unsupported room version");
       const before = structuredClone(room);
+      const original = JSON.stringify(room);
       const outcome = input.use(room);
       if (outcome instanceof Promise)
         throw new Error("Postgres room transitions must not perform async effects");
-      input.applyExpiry(room);
+      if (JSON.stringify(room) !== original) input.applyExpiry(room);
       queued = input.results(before, room);
-      return { state: room, expiresAt: room.expiresAt, outcome, results: queued };
+      return {
+        state: room,
+        expiresAt: room.expiresAt,
+        outcome,
+        results: queued,
+        persist: JSON.stringify(room) !== original,
+        recordAction: input.recordAction?.(outcome) ?? true,
+      };
     },
   });
   if (committed && !committed.replayed)

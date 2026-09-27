@@ -107,6 +107,37 @@ describeWithDatabase("Postgres multiplayer room transactions", () => {
     ]);
   });
 
+  it("does not write a snapshot read or consume the ID of a rejected action", async () => {
+    await create();
+    const action = { id: "retry-after-rejection", fingerprintSha256: "d".repeat(64) };
+    await transitionPostgresRoom<{ count: number }, { accepted: boolean }>({
+      kind,
+      roomId,
+      action,
+      transition: (room) => ({
+        state: room.state,
+        expiresAt: room.expiresAt,
+        outcome: { accepted: false },
+        persist: false,
+        recordAction: false,
+      }),
+    });
+    expect((await readPostgresRoom<{ count: number }>(kind, roomId))?.revision).toBe(0);
+    expect(await query("select action_id from multiplayer_room_action_receipts")).toEqual([]);
+    const accepted = await transitionPostgresRoom<{ count: number }, { accepted: boolean }>({
+      kind,
+      roomId,
+      action,
+      transition: (room) => ({
+        state: { count: room.state.count + 1 },
+        expiresAt: room.expiresAt,
+        outcome: { accepted: true },
+      }),
+    });
+    expect(accepted?.outcome.accepted).toBe(true);
+    expect((await readPostgresRoom<{ count: number }>(kind, roomId))?.revision).toBe(1);
+  });
+
   it("hides expired rooms and refuses a duplicate live identity", async () => {
     await create();
     expect(

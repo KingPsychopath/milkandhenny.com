@@ -44,6 +44,9 @@ describeWithDatabase("Postgres Family Feud rooms", () => {
       controllerToken: winner.controllerToken,
       action: { type: "game.start" as const, actionId: "start" },
     };
+    expect(
+      await applyFamilyFeudControllerAction({ ...action, controllerToken: "wrong-controller" }),
+    ).toMatchObject({ ok: false });
     const [accepted, replay] = await Promise.all([
       applyFamilyFeudControllerAction(action),
       applyFamilyFeudControllerAction(action),

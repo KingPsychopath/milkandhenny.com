@@ -742,6 +742,10 @@ async function withRoom<T>(
       roomId,
       action,
       use: (room) => use(room, keys),
+      recordAction: (outcome) =>
+        Boolean(
+          outcome && typeof outcome === "object" && "accepted" in outcome && outcome.accepted,
+        ),
       applyExpiry,
       results: (before, room) => {
         const envelope =
