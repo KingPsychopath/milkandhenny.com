@@ -356,6 +356,11 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   function and Query. Event form drafts remain outside the cache. Confirmed save/delete invalidates
   admin events, public events, and home views. The seeded event SSR journey and two editor draft
   regression journeys passed, along with `pnpm check` and `pnpm build`.
+- Transfer administration: the active workspace now hydrates the transfer list and worker summary;
+  each selected transfer detail has its own private Query key. Confirmed transfer/media actions
+  refetch the affected entries. The manager's controls stay inert until their lazy panel hydrates,
+  so a server-rendered row cannot accept a lost early click. The seeded admin detail and file
+  removal journey passed against the real read path; `pnpm check` and `pnpm build` passed.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -381,7 +386,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   specified the transfer cache boundary; `a21f3c91` migrated transfer metadata; `ddc22a13`
   recorded its checkpoint; `aae6db7c` hydrated admin polls; `3c77f34e` hydrated credits;
   `566260f4` recorded that checkpoint; `271d7a64` added SSR isolation and hydration-count tests;
-  `ba890800` hydrated the admin event catalogue.
+  `ba890800` hydrated the admin event catalogue; `4afac13b` recorded its checkpoint;
+  `4a6ae43a` hydrated transfer administration.
 
 ## References
 
