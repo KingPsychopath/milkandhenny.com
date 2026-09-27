@@ -361,6 +361,11 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   refetch the affected entries. The manager's controls stay inert until their lazy panel hydrates,
   so a server-rendered row cannot accept a lost early click. The seeded admin detail and file
   removal journey passed against the real read path; `pnpm check` and `pnpm build` passed.
+- Guest upload access: the same active transfer workspace now hydrates access-window status. Query
+  owns the snapshot while the existing visibility scheduler bounds refreshes and halts after a
+  refusing 4xx response. Open/close commands invalidate exactly that status entry. A seeded browser
+  journey passed for SSR open state and eventual closure after the backend window disappeared;
+  `pnpm check` and `pnpm build` passed.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -387,7 +392,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   recorded its checkpoint; `aae6db7c` hydrated admin polls; `3c77f34e` hydrated credits;
   `566260f4` recorded that checkpoint; `271d7a64` added SSR isolation and hydration-count tests;
   `ba890800` hydrated the admin event catalogue; `4afac13b` recorded its checkpoint;
-  `4a6ae43a` hydrated transfer administration.
+  `4a6ae43a` hydrated transfer administration; `fad28081` recorded that checkpoint;
+  `96e053c3` hydrated guest upload access.
 
 ## References
 
