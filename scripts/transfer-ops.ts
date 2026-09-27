@@ -20,6 +20,7 @@ import { resolveTransferFileForDelete } from "../features/transfers/delete";
 import {
   applyTransferAssetGroups,
   processTransferFile,
+  isSafeTransferFilename,
   sortTransferFiles,
 } from "../features/transfers/upload.server";
 import type { ProcessFileResult } from "../features/transfers/upload.server";
@@ -255,6 +256,8 @@ function writePostgresCheckpoint(file: string, checkpoint: PostgresTransferCheck
 }
 
 function selectedLocalFiles(dir: string, entries: string[], existingIds: string[] = []) {
+  if (entries.some((name) => !isSafeTransferFilename(name)))
+    throw new Error("Transfer source directory contains an unsafe filename.");
   return resolveTransferUploadIds(
     entries.map((name) => ({ name, size: fs.statSync(path.join(dir, name)).size })),
     existingIds,
@@ -268,6 +271,7 @@ function assertSameLocalFiles(
 ): void {
   if (
     checkpoint.dir !== dir ||
+    entries.some((name) => !isSafeTransferFilename(name)) ||
     !arraysEqual(
       checkpoint.files.map((entry) => entry.name),
       entries,
@@ -531,8 +535,13 @@ async function appendPostgresTransferFromDirectory(
     ),
   };
   if (!prior) writePostgresCheckpoint(checkpointFile, checkpoint);
-  const existingIds = new Set(transfer.files.map((file) => file.id));
-  if (checkpoint.files.every((file) => existingIds.has(file.mediaId))) {
+  const existingById = new Map(transfer.files.map((file) => [file.id, file]));
+  if (
+    checkpoint.files.every((file) => {
+      const existing = existingById.get(file.mediaId);
+      return existing?.filename === file.name && existing.size === file.size;
+    })
+  ) {
     fs.rmSync(checkpointFile, { force: true });
     return {
       transfer,

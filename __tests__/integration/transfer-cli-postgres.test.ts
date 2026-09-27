@@ -65,4 +65,31 @@ describeWithDatabase("Postgres transfer CLI", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("does not mistake an occupied media ID for a completed append checkpoint", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mah-transfer-cli-conflict-"));
+    try {
+      fs.writeFileSync(path.join(dir, "one.txt"), "one");
+      const { createTransfer, appendToTransfer } = await import("../../scripts/transfer-ops");
+      const created = await createTransfer({ dir, title: "CLI transfer", expires: "1h" });
+      fs.rmSync(path.join(dir, "one.txt"));
+      fs.writeFileSync(path.join(dir, "other.txt"), "two");
+      fs.writeFileSync(
+        path.join(dir, `.mah-transfer-postgres-append.${created.transfer.id}.checkpoint.json`),
+        JSON.stringify({
+          version: 2,
+          kind: "append",
+          dir,
+          transferId: created.transfer.id,
+          files: [{ name: "other.txt", mediaId: created.transfer.files[0].id, size: 3 }],
+        }),
+      );
+      await expect(appendToTransfer({ id: created.transfer.id, dir })).rejects.toThrow(
+        "Postgres append reservation failed: conflict",
+      );
+      expect((await getPostgresTransfer(created.transfer.id))?.files).toHaveLength(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
