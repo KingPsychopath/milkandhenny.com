@@ -3,12 +3,14 @@
 import { AdminTextField as Field } from "./AdminTextField";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
 
 import { useQrCode } from "@/hooks/useQrCode";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
+import { adminTicketInvitationsQuery } from "@/features/attendee-operations/admin-ticket-invitations.queries";
 import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import { formatMoney, type EventRecord } from "@/features/events/types";
 import {
@@ -194,6 +196,7 @@ type AdminTicketInvitation = {
   claimedAt?: string;
   cancelledAt?: string;
 };
+const EMPTY_INVITATIONS: AdminTicketInvitation[] = [];
 
 export function parseEventTicketSummary(value: unknown): EventTicketSummary | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -1798,8 +1801,13 @@ export function EventOperations({
     ticketId: string;
     url: string;
   } | null>(null);
-  const [invitations, setInvitations] = useState<AdminTicketInvitation[]>([]);
-  const [invitationsLoaded, setInvitationsLoaded] = useState(false);
+  const queryClient = useQueryClient();
+  const invitationsQuery = useQuery({
+    ...adminTicketInvitationsQuery(event.slug),
+    enabled: activeTool === "tickets",
+  });
+  const invitations: AdminTicketInvitation[] = invitationsQuery.data ?? EMPTY_INVITATIONS;
+  const invitationsLoaded = Boolean(invitationsQuery.data);
   const [showInvitations, setShowInvitations] = useState(false);
   const [busyInvitationId, setBusyInvitationId] = useState<string | null>(null);
 
@@ -1825,29 +1833,13 @@ export function EventOperations({
     setActiveTool(tool);
   };
 
-  const loadInvitations = useCallback(
-    async (isCurrent: () => boolean = () => true) => {
-      const response = await authFetch(`/api/admin/events/${event.slug}/tickets`);
-      const data = (await response.json().catch(() => null)) as {
-        invitations?: AdminTicketInvitation[];
-      } | null;
-      if (!response.ok || !Array.isArray(data?.invitations)) {
-        throw new Error("Failed to load ticket invitations");
-      }
-      if (isCurrent()) {
-        setInvitations(data.invitations);
-        setInvitationsLoaded(true);
-      }
-    },
-    [authFetch, event.slug],
-  );
+  const loadInvitations = useCallback(async () => {
+    await queryClient.fetchQuery({ ...adminTicketInvitationsQuery(event.slug), staleTime: 0 });
+  }, [queryClient, event.slug]);
 
   useEffect(() => {
-    if (activeTool !== "tickets") return;
-    void loadInvitations().catch((error: unknown) => {
-      onError(error instanceof Error ? error.message : "Failed to load ticket invitations");
-    });
-  }, [activeTool, loadInvitations, onError]);
+    if (invitationsQuery.error) onError(invitationsQuery.error.message);
+  }, [invitationsQuery.error, onError]);
 
   const pendingInvitationCount = invitations.filter(
     (invitation) => invitation.status === "pending",
