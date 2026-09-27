@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppImage } from "@/components/AppImage";
 import { AppSelect } from "@/components/AppSelect";
 import { useQrCode } from "@/hooks/useQrCode";
@@ -19,10 +20,12 @@ import type {
   GamePoolNameVisibility,
 } from "@/features/things/pool/types";
 import { GamePoolSettingsTransfer } from "./GamePoolSettingsTransfer";
+import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+const EMPTY_ENTRANCES: GamePoolEntrance[] = [];
 
 function editableEntrance(entrance: GamePoolEntrance): GamePoolEntrance {
   return entrance.run
@@ -307,9 +310,12 @@ export function GamePoolsPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [entrances, setEntrances] = useState<GamePoolEntrance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const poolsQuery = useQuery(adminGamePoolsQuery);
+  const entrances = poolsQuery.data ?? EMPTY_ENTRANCES;
+  const [busy, setBusy] = useState(false);
+  const loading = poolsQuery.isFetching || busy;
+  const loadError = poolsQuery.error?.message ?? null;
   const [game, setGame] = useState<GamePoolGame>("same-brain");
   const [label, setLabel] = useState("");
   const [duration, setDuration] = useState(240);
@@ -319,34 +325,12 @@ export function GamePoolsPanel({
   const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/game-pools");
-      const data = (await response.json().catch(() => ({}))) as {
-        entrances?: GamePoolEntrance[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Failed to load game entrances");
-      const next = data.entrances ?? [];
-      setEntrances(next);
-      setDrafts(
-        Object.fromEntries(next.map((entrance) => [entrance.id, editableEntrance(entrance)])),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load game entrances";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const result = await poolsQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [onError, poolsQuery]);
 
   const createEntrance = async (bundle: GamePoolSettingsBundle, actionScope: string) => {
-    setLoading(true);
+    setBusy(true);
     onError("");
     try {
       const actionStorageKey = `game-pool:create:${actionScope}:action-id`;
@@ -376,7 +360,7 @@ export function GamePoolsPanel({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to create game entrance");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
@@ -391,7 +375,8 @@ export function GamePoolsPanel({
 
   const applyBundle = (id: string, bundle: GamePoolSettingsBundle) => {
     setDrafts((current) => {
-      const draft = current[id];
+      const entrance = entrances.find((candidate) => candidate.id === id);
+      const draft = current[id] ?? (entrance ? editableEntrance(entrance) : null);
       if (!draft || draft.game !== bundle.game) return current;
       return {
         ...current,
@@ -414,7 +399,7 @@ export function GamePoolsPanel({
     action: "open" | "pause" | "resume" | "close" | "close-room",
     roomId?: string,
   ) => {
-    setLoading(true);
+    setBusy(true);
     onError("");
     try {
       const actionStorageKey = `game-pool:${id}:${action}:${roomId ?? "run"}:action-id`;
@@ -441,14 +426,15 @@ export function GamePoolsPanel({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to control game entrance");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   const save = async (id: string) => {
-    const draft = drafts[id];
+    const entrance = entrances.find((candidate) => candidate.id === id);
+    const draft = drafts[id] ?? (entrance ? editableEntrance(entrance) : null);
     if (!draft) return;
-    setLoading(true);
+    setBusy(true);
     onError("");
     try {
       const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
@@ -466,19 +452,33 @@ export function GamePoolsPanel({
           scheduledCloseAt: draft.scheduledCloseAt,
         }),
       });
-      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        entrance?: GamePoolEntrance;
+        error?: string;
+      };
       if (!response.ok) throw new Error(data.error || "Failed to save game entrance");
+      const savedEntrance = data.entrance;
+      if (savedEntrance) {
+        queryClient.setQueryData<GamePoolEntrance[]>(adminGamePoolsQuery.queryKey, (current) =>
+          current?.map((entrance) => (entrance.id === id ? savedEntrance : entrance)),
+        );
+      }
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       onStatus("Settings saved. Existing rooms keep their settings; the next room uses these.");
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to save game entrance");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   const makeDefault = async (id: string) => {
-    setLoading(true);
+    setBusy(true);
     onError("");
     try {
       const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
@@ -493,12 +493,12 @@ export function GamePoolsPanel({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to change the public default");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   const changeLink = async (id: string, change: { retire?: boolean; rotateToken?: boolean }) => {
-    setLoading(true);
+    setBusy(true);
     onError("");
     try {
       const response = await authFetch(`/api/admin/game-pools/${encodeURIComponent(id)}`, {
@@ -513,15 +513,25 @@ export function GamePoolsPanel({
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to change the player link");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   return (
     <div>
-      <p className="font-mono text-xs leading-relaxed theme-muted">
-        One permanent QR fills and creates game rooms for your guests.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="font-mono text-xs leading-relaxed theme-muted">
+          One permanent QR fills and creates game rooms for your guests.
+        </p>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void refresh()}
+          className="min-h-11 font-mono text-xs theme-muted underline underline-offset-4 disabled:opacity-50"
+        >
+          {loading ? "refreshing…" : "refresh entrances"}
+        </button>
+      </div>
       <div className="grid gap-4 border-b theme-border py-6 sm:grid-cols-[1fr_1fr_auto]">
         <label className="font-mono text-xs theme-muted">
           game
@@ -588,7 +598,7 @@ export function GamePoolsPanel({
       ) : (
         <ul className="mt-6 divide-y theme-border">
           {entrances.map((entrance) => {
-            const draft = drafts[entrance.id] ?? entrance;
+            const draft = drafts[entrance.id] ?? editableEntrance(entrance);
             const run = entrance.run;
             const isExpanded = expanded === entrance.id;
             return (
