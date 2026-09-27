@@ -473,7 +473,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger          |
 | M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs        |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                      |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: room foundation and two staged modes            |
 | M8 — application and realtime integration           | M3–M7                                    | Pending                                                      |
 | M9 — operations, recovery and documentation         | M8                                       | Pending                                                      |
 | M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                      |
@@ -866,6 +866,9 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis-only data written after the first verified export. This supersedes earlier checkpoint
   references to a fresh source delta. The source command cap no longer blocks the migration;
   application completeness, rehearsal, backup/restore and production verification still do.
+- 2026-09-27 architecture decision: the user explicitly declined a temporary Railway Valkey
+  bridge. Complete and verify the direct Postgres migration before retiring Upstash. The verified
+  first RDB export remains the accepted source cutoff.
 - 2026-09-27 M7 foundation: migration `0117` adds typed JSONB room aggregates, action receipts
   and an official-result outbox. The repository locks one room row, checks expiry and action
   fingerprint, then commits state, receipt and result envelopes in one transaction. The outbox
@@ -915,6 +918,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   focused event and executor suites passed five tests. Live-connection lost-notification recovery,
   resource limits and all-source cutover are still open; this flag is not enabled in production.
   `pnpm check`, the full one-worker suite (279 files, 2,138 tests), and `pnpm build` passed.
+- 2026-09-27 staged Draw Country room mapping: `DRAW_COUNTRY_ROOM_STORE=postgres` selects the
+  shared Postgres room transaction path and requires the Postgres official-result outbox. Durable
+  action receipts replay acknowledged commands; a finished room and its result commit together.
+  Real Postgres tests cover concurrent joins, action replay and finish result atomicity. The mode
+  is not enabled in production. Other room engines, realtime and process-restart recovery remain
+  open. Focused Draw Country and Hot & Cold suites passed 20 cases; `pnpm check`, the full
+  one-worker suite (280 files, 2,140 tests), and `pnpm build` passed.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0

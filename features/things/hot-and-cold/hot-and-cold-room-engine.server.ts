@@ -46,11 +46,12 @@ import {
 } from "../shared/room-primitives.server";
 import { hotAndColdRoomRedisKeys } from "./hot-and-cold-keys";
 import {
-  createPostgresRoom,
-  readPostgresRoom,
-  transitionPostgresRoom,
-  type PostgresRoomAction,
-} from "../shared/room-postgres.server";
+  createPostgresGameRoom,
+  loadPostgresGameRoom,
+  postgresGameRoomSelected,
+  withPostgresGameRoom,
+} from "../shared/room-postgres-engine.server";
+import type { PostgresRoomAction } from "../shared/room-postgres.server";
 import {
   HOT_AND_COLD_DEFAULT_GUESSES,
   HOT_AND_COLD_DEFAULT_ROUNDS,
@@ -152,10 +153,7 @@ registerMemoryRoomSweeper("hot-and-cold", (now) => {
 const activePlayers = (room: RoomState) => room.players.filter((player) => !player.withdrawn);
 
 function postgresRoomsSelected() {
-  if (process.env.HOT_AND_COLD_ROOM_STORE !== "postgres") return false;
-  if (process.env.OFFICIAL_GAME_RESULT_OUTBOX_STORE !== "postgres")
-    throw new Error("Postgres rooms require the Postgres official-result outbox");
-  return true;
+  return postgresGameRoomSelected("HOT_AND_COLD_ROOM_STORE");
 }
 
 function roomRedis() {
@@ -190,8 +188,7 @@ const changed = (room: RoomState) => {
 
 async function loadRoom(roomId: string) {
   if (postgresRoomsSelected()) {
-    const stored = await readPostgresRoom<RoomState>("hot-and-cold", roomId);
-    const room = stored?.state;
+    const room = await loadPostgresGameRoom<RoomState>("hot-and-cold", roomId);
     return room && isHotAndColdJudgingVersion(room.judgingVersion) ? room : null;
   }
   const redis = roomRedis();
@@ -207,18 +204,7 @@ async function loadRoom(roomId: string) {
 async function saveRoom(room: RoomState) {
   if (postgresRoomsSelected()) {
     applyRoomExpiry(room);
-    if (room.expiresAt <= Date.now()) throw new Error("Cannot create an expired room");
-    if (
-      !(await createPostgresRoom({
-        kind: "hot-and-cold",
-        roomId: room.roomId,
-        schemaVersion: 1,
-        revision: room.revision,
-        state: room,
-        expiresAt: room.expiresAt,
-      }))
-    )
-      throw new Error("Could not allocate room");
+    await createPostgresGameRoom("hot-and-cold", room);
     return;
   }
   const redis = roomRedis();
@@ -241,31 +227,21 @@ async function withRoom<T>(
   action?: PostgresRoomAction,
 ) {
   if (postgresRoomsSelected()) {
-    let queued: OfficialGameResultEnvelope[] = [];
-    const committed = await transitionPostgresRoom<RoomState, T>({
+    return withPostgresGameRoom<RoomState, T>({
       kind: "hot-and-cold",
       roomId,
       action,
-      transition: (stored) => {
-        const room = stored.state;
-        if (!isHotAndColdJudgingVersion(room.judgingVersion))
-          throw new Error("Unsupported Hot & Cold room version");
-        const wasFinished = room.phase === "finished";
-        const outcome = use(room);
-        if (outcome instanceof Promise)
-          throw new Error("Postgres room transitions must not perform async effects");
-        applyRoomExpiry(room);
+      use,
+      applyExpiry: applyRoomExpiry,
+      validate: (room) => isHotAndColdJudgingVersion(room.judgingVersion),
+      results: (before, room) => {
         const envelope =
-          !wasFinished && room.phase === "finished" ? hotAndColdOfficialResult(room) : null;
-        queued = envelope ? [envelope] : [];
-        return { state: room, expiresAt: room.expiresAt, outcome, results: queued };
+          before.phase !== "finished" && room.phase === "finished"
+            ? hotAndColdOfficialResult(room)
+            : null;
+        return envelope ? [envelope] : [];
       },
     });
-    if (committed && !committed.replayed)
-      publishOfficialResultsAfterCommit(
-        queued.map((envelope) => ({ key: `postgres:${envelope.payloadHash}`, envelope })),
-      );
-    return committed?.outcome ?? null;
   }
   const redis = roomRedis();
   if (!redis) {

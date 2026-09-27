@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
   applyGameCommand,
@@ -25,6 +26,13 @@ import {
   withMultiplayerRoomLock,
 } from "../shared/room-primitives.server";
 import { touchMultiplayerPresence } from "../shared/room-presence";
+import {
+  createPostgresGameRoom,
+  loadPostgresGameRoom,
+  postgresGameRoomSelected,
+  withPostgresGameRoom,
+} from "../shared/room-postgres-engine.server";
+import type { PostgresRoomAction } from "../shared/room-postgres.server";
 import {
   multiplayerFailure,
   multiplayerLobbyExpiresAt,
@@ -133,6 +141,17 @@ export type DrawCountryGameTransition = GameTransition<DrawCountryGameState, Dra
 type Keys = ReturnType<typeof drawCountryRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("draw-country");
 
+function postgresRoomsSelected() {
+  return postgresGameRoomSelected("DRAW_COUNTRY_ROOM_STORE");
+}
+
+function roomRedis() {
+  const redis = getRedis();
+  if (!redis && process.env.NODE_ENV === "production")
+    throw new Error("Draw Country rooms require Redis");
+  return redis;
+}
+
 registerMemoryRoomSweeper("draw-country", (now) => {
   for (const [roomId, room] of memoryRooms) if (room.expiresAt <= now) memoryRooms.delete(roomId);
 });
@@ -174,7 +193,8 @@ function transferHost(room: RoomState, leavingId: string, now: number) {
 }
 
 async function loadRoom(roomId: string) {
-  const redis = getRedis();
+  if (postgresRoomsSelected()) return loadPostgresGameRoom<RoomState>("draw-country", roomId);
+  const redis = roomRedis();
   const room = redis
     ? await redis.get<RoomState>(drawCountryRoomRedisKeys(roomId).state)
     : (memoryRooms.get(roomId) ?? null);
@@ -187,7 +207,12 @@ async function loadRoom(roomId: string) {
 }
 
 async function saveRoom(room: RoomState, envelopes: OfficialGameResultEnvelope[] = []) {
-  const redis = getRedis();
+  if (postgresRoomsSelected()) {
+    applyRoomExpiry(room);
+    await createPostgresGameRoom("draw-country", room);
+    return [];
+  }
+  const redis = roomRedis();
   // Presence touches reach here without a revision bump, so the lease renews on save.
   applyRoomExpiry(room);
   if (room.expiresAt <= Date.now()) {
@@ -208,8 +233,27 @@ async function saveRoom(room: RoomState, envelopes: OfficialGameResultEnvelope[]
   return envelopes.map((envelope) => ({ key: `memory:${envelope.payloadHash}`, envelope }));
 }
 
-async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise<T>) {
-  const redis = getRedis();
+async function withRoom<T>(
+  roomId: string,
+  use: (room: RoomState) => T | Promise<T>,
+  action?: PostgresRoomAction,
+) {
+  if (postgresRoomsSelected())
+    return withPostgresGameRoom<RoomState, T>({
+      kind: "draw-country",
+      roomId,
+      action,
+      use,
+      applyExpiry: applyRoomExpiry,
+      results: (before, room) => {
+        const envelope =
+          before.phase !== "finished" && room.phase === "finished"
+            ? drawCountryOfficialResult(room)
+            : null;
+        return envelope ? [envelope] : [];
+      },
+    });
+  const redis = roomRedis();
   if (!redis) {
     const room = await loadRoom(roomId);
     if (!room) return null;
@@ -612,207 +656,220 @@ export async function applyDrawCountryAction(
     actor: { playerId: input.playerId, playerToken: input.playerToken },
     action: input.action,
   });
-  const result = await withRoom(input.roomId, (room) => {
-    const transition = applyGameCommand(room, command, context, (room) => {
-      const now = context.now;
-      const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
-      if (!authenticated) return null;
-      const actionId = input.action.actionId ?? context.newId;
-      const accept = () => {
-        room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
-        return {
-          ok: true,
-          accepted: true,
-          snapshot: snapshot(room, authenticated.id, now),
-        } as const;
-      };
-      if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
-      if (input.action.type === "player.leave") {
-        if (authenticated.withdrawn) return accept();
-        transferHost(room, authenticated.id, now);
-        authenticated.withdrawn = true;
-        if (activePlayers(room).length === 0) room.phase = "closed";
-        changed(room, now);
-        return accept();
-      }
-      const player = validPlayer(room, input.playerId, input.playerToken);
-      if (!player) return null;
-      player.lastSeenAt = context.now;
-      advance(room, now, (index) => `${context.newId}:round:${index}`);
-      const current = () => snapshot(room, player.id, now);
-      if (input.action.type === "player.rename") {
-        const nextName = input.action.name;
-        if (room.phase !== "lobby")
+  const result = await withRoom(
+    input.roomId,
+    (room) => {
+      const transition = applyGameCommand(room, command, context, (room) => {
+        const now = context.now;
+        const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+        if (!authenticated) return null;
+        const actionId = input.action.actionId ?? context.newId;
+        const accept = () => {
+          room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
           return {
             ok: true,
-            accepted: false,
-            errorCode: "action_unavailable",
-            error: "Names only change in the lobby",
-            snapshot: current(),
+            accepted: true,
+            snapshot: snapshot(room, authenticated.id, now),
           } as const;
-        if (
-          activePlayers(room).some(
-            (candidate) =>
-              candidate.id !== player.id &&
-              candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+        };
+        if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
+        if (input.action.type === "player.leave") {
+          if (authenticated.withdrawn) return accept();
+          transferHost(room, authenticated.id, now);
+          authenticated.withdrawn = true;
+          if (activePlayers(room).length === 0) room.phase = "closed";
+          changed(room, now);
+          return accept();
+        }
+        const player = validPlayer(room, input.playerId, input.playerToken);
+        if (!player) return null;
+        player.lastSeenAt = context.now;
+        advance(room, now, (index) => `${context.newId}:round:${index}`);
+        const current = () => snapshot(room, player.id, now);
+        if (input.action.type === "player.rename") {
+          const nextName = input.action.name;
+          if (room.phase !== "lobby")
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "action_unavailable",
+              error: "Names only change in the lobby",
+              snapshot: current(),
+            } as const;
+          if (
+            activePlayers(room).some(
+              (candidate) =>
+                candidate.id !== player.id &&
+                candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+            )
           )
-        )
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "action_unavailable",
-            error: "That name is already here",
-            snapshot: current(),
-          } as const;
-        player.name = nextName;
-        setMultiplayerPlayerReady(player, false);
-        changed(room, now);
-        return accept();
-      }
-      if (input.action.type === "readiness.set") {
-        if (room.phase !== "lobby")
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "action_unavailable",
-            error: "Readiness can only change in the lobby",
-            snapshot: current(),
-          } as const;
-        if (multiplayerPlayerReady(player) !== input.action.ready) {
-          setMultiplayerPlayerReady(player, input.action.ready);
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "action_unavailable",
+              error: "That name is already here",
+              snapshot: current(),
+            } as const;
+          player.name = nextName;
+          setMultiplayerPlayerReady(player, false);
           changed(room, now);
+          return accept();
         }
-        return accept();
-      }
-      if (input.action.type === "drawing.submit") {
-        if (room.phase !== "drawing" || room.round?.id !== input.action.roundId)
+        if (input.action.type === "readiness.set") {
+          if (room.phase !== "lobby")
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "action_unavailable",
+              error: "Readiness can only change in the lobby",
+              snapshot: current(),
+            } as const;
+          if (multiplayerPlayerReady(player) !== input.action.ready) {
+            setMultiplayerPlayerReady(player, input.action.ready);
+            changed(room, now);
+          }
+          return accept();
+        }
+        if (input.action.type === "drawing.submit") {
+          if (room.phase !== "drawing" || room.round?.id !== input.action.roundId)
+            return {
+              ok: true,
+              accepted: false,
+              error: "That round has ended",
+              snapshot: current(),
+            } as const;
+          if (!player.submitted) {
+            player.drawing = input.action.drawing;
+            player.submitted = true;
+            changed(room, now);
+            advance(room, now, (index) => `${context.newId}:round:${index}`);
+          }
+          return accept();
+        }
+        const host = room.players.find(
+          ({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn,
+        );
+        const canControl =
+          player.id === room.hostPlayerId ||
+          !host ||
+          context.now - host.lastSeenAt > HOST_TAKEOVER_MS;
+        if (!canControl)
           return {
             ok: true,
             accepted: false,
-            error: "That round has ended",
+            error: "The host controls the rounds",
             snapshot: current(),
           } as const;
-        if (!player.submitted) {
-          player.drawing = input.action.drawing;
-          player.submitted = true;
+        if (input.action.type === "room.admission.set") {
+          if (room.phase !== "lobby")
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "action_unavailable",
+              error: "The room only locks in the lobby",
+              snapshot: current(),
+            } as const;
+          if (room.joinLocked !== input.action.locked) {
+            room.joinLocked = input.action.locked;
+            changed(room, now);
+          }
+          return accept();
+        }
+        if (input.action.type === "host.pass") {
+          const targetId = input.action.playerId;
+          const target = activePlayers(room).find(({ id }) => id === targetId);
+          if (!target)
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "action_unavailable",
+              error: "That player is not available",
+              snapshot: current(),
+            } as const;
+          room.hostPlayerId = target.id;
           changed(room, now);
+          return accept();
+        }
+        if (input.action.type === "game.start" && room.phase === "lobby") {
+          const confirmed = new Set(input.action.removePlayerIds ?? []);
+          const unready = multiplayerUnreadyPlayers(activePlayers(room));
+          const unconfirmed = unready.filter(
+            ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
+          );
+          if (unconfirmed.length > 0) {
+            if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`))
+              changed(room, now);
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "players_not_ready",
+              error: unconfirmed.some(({ id }) => id === player.id)
+                ? "Set yourself ready before starting"
+                : "Some players are not ready",
+              snapshot: current(),
+            } as const;
+          }
+          if (confirmed.size > 0) {
+            room.players = room.players.filter(
+              (candidate) =>
+                multiplayerPlayerReady(candidate) ||
+                candidate.id === player.id ||
+                !confirmed.has(candidate.id),
+            );
+            changed(room, now);
+          }
+          startRound(room, 0, now, `${context.newId}:round:0`);
+          return accept();
+        }
+        if (input.action.type === "round.next" && room.phase === "reveal" && room.round) {
+          room.round.nextRoundAt = context.now;
           advance(room, now, (index) => `${context.newId}:round:${index}`);
+          return accept();
         }
-        return accept();
-      }
-      const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
-      const canControl =
-        player.id === room.hostPlayerId ||
-        !host ||
-        context.now - host.lastSeenAt > HOST_TAKEOVER_MS;
-      if (!canControl)
+        if (
+          (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
+          room.phase === "finished"
+        ) {
+          const now = context.now;
+          if (!resetForRematch(room))
+            return {
+              ok: true,
+              accepted: false,
+              errorCode: "countries_exhausted",
+              error: "This room has drawn every country. Start a new room for more.",
+              snapshot: current(),
+            } as const;
+          if (input.action.type === "game.replay")
+            startRound(room, 0, now, `${context.newId}:round:0`);
+          else {
+            // Back to the lobby so people can join or drop; everyone re-readies from there.
+            for (const player of activePlayers(room))
+              setMultiplayerPlayerReady(player, player.id === room.hostPlayerId);
+            room.phase = "lobby";
+            changed(room, now);
+          }
+          return accept();
+        }
         return {
           ok: true,
           accepted: false,
-          error: "The host controls the rounds",
+          error: "That action is not available",
           snapshot: current(),
         } as const;
-      if (input.action.type === "room.admission.set") {
-        if (room.phase !== "lobby")
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "action_unavailable",
-            error: "The room only locks in the lobby",
-            snapshot: current(),
-          } as const;
-        if (room.joinLocked !== input.action.locked) {
-          room.joinLocked = input.action.locked;
-          changed(room, now);
+      });
+      if (!transition.ok) return null;
+      replaceGameState(room, transition.value.state);
+      return transition.value.output;
+    },
+    input.action.actionId
+      ? {
+          id: input.action.actionId,
+          fingerprintSha256: createHash("sha256")
+            .update(JSON.stringify([input.playerId, input.playerToken, input.action]))
+            .digest("hex"),
         }
-        return accept();
-      }
-      if (input.action.type === "host.pass") {
-        const targetId = input.action.playerId;
-        const target = activePlayers(room).find(({ id }) => id === targetId);
-        if (!target)
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "action_unavailable",
-            error: "That player is not available",
-            snapshot: current(),
-          } as const;
-        room.hostPlayerId = target.id;
-        changed(room, now);
-        return accept();
-      }
-      if (input.action.type === "game.start" && room.phase === "lobby") {
-        const confirmed = new Set(input.action.removePlayerIds ?? []);
-        const unready = multiplayerUnreadyPlayers(activePlayers(room));
-        const unconfirmed = unready.filter(
-          ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
-        );
-        if (unconfirmed.length > 0) {
-          if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`))
-            changed(room, now);
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "players_not_ready",
-            error: unconfirmed.some(({ id }) => id === player.id)
-              ? "Set yourself ready before starting"
-              : "Some players are not ready",
-            snapshot: current(),
-          } as const;
-        }
-        if (confirmed.size > 0) {
-          room.players = room.players.filter(
-            (candidate) =>
-              multiplayerPlayerReady(candidate) ||
-              candidate.id === player.id ||
-              !confirmed.has(candidate.id),
-          );
-          changed(room, now);
-        }
-        startRound(room, 0, now, `${context.newId}:round:0`);
-        return accept();
-      }
-      if (input.action.type === "round.next" && room.phase === "reveal" && room.round) {
-        room.round.nextRoundAt = context.now;
-        advance(room, now, (index) => `${context.newId}:round:${index}`);
-        return accept();
-      }
-      if (
-        (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
-        room.phase === "finished"
-      ) {
-        const now = context.now;
-        if (!resetForRematch(room))
-          return {
-            ok: true,
-            accepted: false,
-            errorCode: "countries_exhausted",
-            error: "This room has drawn every country. Start a new room for more.",
-            snapshot: current(),
-          } as const;
-        if (input.action.type === "game.replay")
-          startRound(room, 0, now, `${context.newId}:round:0`);
-        else {
-          // Back to the lobby so people can join or drop; everyone re-readies from there.
-          for (const player of activePlayers(room))
-            setMultiplayerPlayerReady(player, player.id === room.hostPlayerId);
-          room.phase = "lobby";
-          changed(room, now);
-        }
-        return accept();
-      }
-      return {
-        ok: true,
-        accepted: false,
-        error: "That action is not available",
-        snapshot: current(),
-      } as const;
-    });
-    if (!transition.ok) return null;
-    replaceGameState(room, transition.value.state);
-    return transition.value.output;
-  });
+      : undefined,
+  );
   return (
     result ?? {
       ...multiplayerFailure("room_unavailable", "That room is no longer available"),
