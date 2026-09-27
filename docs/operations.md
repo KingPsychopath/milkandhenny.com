@@ -57,6 +57,16 @@ Use `/health` for the safe human view. Use the admin-protected `/api/debug` only
 
 Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archive daily and a restore drill before launch and every quarter. Keep the archive outside the deployment account. Configure a separate copy of permanent object storage; private transfers and live rooms expire and are not restored.
 
+### Staged transfer source audit
+
+Before selecting the Postgres transfer catalogue in production, run
+`pnpm transfers:audit-sources` from a checkout with `DATABASE_URL` and private R2 read credentials.
+It reads up to 1,000 active transfer file rows and checks their retained source objects. The
+command exits nonzero on a missing object, a recorded size mismatch, an unverified size, an R2
+error, or an incomplete scan. It makes no database or object-storage changes. A larger active
+catalogue requires an explicitly raised bound in the audit code and a measured run; a partial
+scan is not cutover evidence.
+
 ## Email delivery events
 
 Follow [cloudflare-email-events.md](./cloudflare-email-events.md). Cloudflare Queue events are the authoritative path for bounce and complaint suppression. The initial REST response proves only that Cloudflare accepted the message.

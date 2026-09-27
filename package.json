@@ -31,6 +31,7 @@
     "cli": "tsx --tsconfig tsconfig.cli.json scripts/cli.ts",
     "database:migrate": "tsx --tsconfig tsconfig.cli.json scripts/migrate-database.ts",
     "database:verify": "tsx --tsconfig tsconfig.cli.json scripts/verify-database.ts",
+    "transfers:audit-sources": "tsx --tsconfig tsconfig.cli.json scripts/audit-transfer-sources.ts",
     "maintenance": "node ops/run-maintenance.mjs",
     "email:local": "docker compose -f docker-compose.local.yml up -d mailpit",
     "email:local:stop": "docker compose -f docker-compose.local.yml down",

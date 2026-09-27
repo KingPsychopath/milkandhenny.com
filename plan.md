@@ -670,6 +670,9 @@ derived exports. No read path silently repairs/deletes product state.
         are staged under the paired flags.
   - [x] Route CLI create/append through the same Postgres reservation, signed R2 upload and
         transactional finalization workflow as web uploads; preserve resumable CLI checkpoints.
+  - [x] Add a bounded read-only Postgres/R2 source-object audit for active transfer files; it
+        fails on missing retained sources, recorded size discrepancies, R2 errors and incomplete
+        scans. Run it on the imported production target before selecting the catalogue.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -1465,6 +1468,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   final explicit permanent-close option; focused checks, build and smoke were repeated after it.
   Production credentials and service wiring remain unset; worker recovery under real R2 and
   stale claims remains open.
+- A staged `pnpm transfers:audit-sources` command checks active Postgres transfer file source
+  keys against private R2 using bounded HEAD requests. It reports missing objects, known size
+  discrepancies and incomplete scans without changing either store. The three real-Postgres
+  cases passed with an injected object-store adapter; `pnpm check` passed. Run this against the
+  imported target during the maintenance freeze and reconcile any findings before cutover.
 
 ### Milestone checkpoint template
 
