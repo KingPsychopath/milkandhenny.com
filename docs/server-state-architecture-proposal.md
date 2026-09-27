@@ -366,6 +366,13 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   refusing 4xx response. Open/close commands invalidate exactly that status entry. A seeded browser
   journey passed for SSR open state and eventual closure after the backend window disappeared;
   `pnpm check` and `pnpm build` passed.
+- Games: the primary entrance catalogue now hydrates through a private Query and refreshes after
+  confirmed commands. Entrance settings are local draft overrides; a fresh catalogue updates
+  remote status without replacing unsaved edits. A seeded browser journey proved SSR content and
+  draft survival during manual refresh. The Hot and Cold quality report is secondary and loads
+  through Query only when its disclosure opens, avoiding an initial report read for a closed
+  section. Its browser journey passed. `pnpm check`, the event-draft regression journey, and
+  `pnpm build` passed for the integrated games change.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -393,7 +400,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   `566260f4` recorded that checkpoint; `271d7a64` added SSR isolation and hydration-count tests;
   `ba890800` hydrated the admin event catalogue; `4afac13b` recorded its checkpoint;
   `4a6ae43a` hydrated transfer administration; `fad28081` recorded that checkpoint;
-  `96e053c3` hydrated guest upload access.
+  `96e053c3` hydrated guest upload access; `3180e6f8` made quality evidence on demand;
+  `d33659ea` hydrated game entrances.
 
 ## References
 
