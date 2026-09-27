@@ -378,6 +378,12 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   Start function calls the same feature read; confirmed commands invalidate only their matching
   private Query. Local policy and recipient drafts remain outside the cache. Seeded settings and
   alert browser journeys proved initial HTML and hydration; `pnpm check` and `pnpm build` passed.
+- Email ledger: the active delivery tab now prefetches its URL-selected status and search scope;
+  the panel observes a Query key for page, sort, search, and filters. Confirmed commands refresh
+  that key; the auto-refresh scheduler remains bounded to recently unsettled deliveries. The
+  existing HTTP route remains available to CLI clients. A seeded filtered-ledger browser journey,
+  `pnpm check`, and `pnpm build` passed. The integrated Vitest suite passed 275 files and 2,107
+  tests after the events-panel unit harness was updated to supply QueryClientProvider.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -386,7 +392,7 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 - Open: broader identity-switch and permission-loss evidence; measured workload and freshness
   budgets; full endpoint-consumer inventory; capability-view cache scopes; and per-feature
   invalidation relationships. M1 implementation is a foundation, not full M1 acceptance closure.
-- Next action: migrate the email ledger and remaining admin workspace reads, classify remaining loaders against
+- Next action: migrate the remaining admin workspace reads, classify remaining loaders against
   the target ownership table, revisit M1 identity and request-count acceptance, and run integrated
   verification before declaring completion. Preserve capability-bearing loaders and live room
   controllers where Query would weaken their ownership or isolation.
@@ -406,7 +412,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   `4a6ae43a` hydrated transfer administration; `fad28081` recorded that checkpoint;
   `96e053c3` hydrated guest upload access; `3180e6f8` made quality evidence on demand;
   `d33659ea` hydrated game entrances; `3bc0898f` recorded its checkpoint; `b0fec265`
-  hydrated access settings; `97328ff0` hydrated alert settings.
+  hydrated access settings; `97328ff0` hydrated alert settings; `3939cef5` recorded their
+  checkpoint; `707b57a3` hydrated the filtered email ledger.
 
 ## References
 
