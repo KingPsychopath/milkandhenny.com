@@ -473,7 +473,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger          |
 | M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs        |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: room foundation and two staged modes            |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: room foundation and three staged modes          |
 | M8 — application and realtime integration           | M3–M7                                    | In progress: staged Postgres advisory backplane              |
 | M9 — operations, recovery and documentation         | M8                                       | Pending                                                      |
 | M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                      |
@@ -932,8 +932,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   validate envelopes and ignore their own origin. A dropped subscriber schedules reconnection.
   The real Postgres test verifies cross-connection delivery. Lost-wake snapshot recovery,
   termination authorization/revalidation, two-web-process behavior and measured load remain open;
-  the selector is not enabled in production. Focused tests passed 3 cases; full verification is
-  `pnpm check`, the complete one-worker suite (281 files, 2,141 tests), and `pnpm build` passed.
+  the selector is not enabled in production. Focused tests passed 3 cases; `pnpm check`, the
+  complete one-worker suite (281 files, 2,141 tests), and `pnpm build` passed.
+- 2026-09-27 staged Family Feud room mapping: `FAMILY_FEUD_ROOM_STORE=postgres` selects the
+  row-locked Postgres room engine and result outbox. A close checks the controller credential
+  while holding the same row lock as actions. Persistent receipts replay acknowledged controller
+  and buzzer commands; result confirmation queues the official envelope atomically. Real
+  Postgres tests cover competing controller pairings, duplicate action replay, close authority
+  and result confirmation. The selector is not enabled in production. Focused suites passed 11
+  cases; `pnpm check`, the full one-worker suite (282 files, 2,143 tests), and `pnpm build`
+  passed.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0

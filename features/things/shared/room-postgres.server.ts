@@ -78,6 +78,29 @@ export async function readPostgresRoom<State>(
   return row ? fromRow<State>(row) : null;
 }
 
+/** A close races room actions under the same row lock and never erases result delivery. */
+export async function deletePostgresRoom<State>(input: {
+  kind: string;
+  roomId: string;
+  authorize: (state: State) => boolean;
+}): Promise<boolean> {
+  return transaction(async (client) => {
+    const selected = await client.query<RoomRow>(
+      `select kind,room_id,schema_version,revision::text,state,expires_at
+         from multiplayer_rooms where kind=$1 and room_id=$2 for update`,
+      [input.kind, input.roomId],
+    );
+    const row = selected.rows[0];
+    if (!row || row.expires_at.getTime() <= Date.now()) return true;
+    if (!input.authorize(row.state as State)) return false;
+    await client.query("delete from multiplayer_rooms where kind=$1 and room_id=$2", [
+      input.kind,
+      input.roomId,
+    ]);
+    return true;
+  });
+}
+
 export interface PostgresRoomTransition<State, Outcome> {
   state: State;
   expiresAt: number;
