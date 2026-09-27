@@ -36,7 +36,7 @@ test("admin access policies and administrator grants hydrate on the first render
     await page.goto(url);
     await waitForAppHydration(page);
     await expect(page.getByRole("heading", { name: "Named administrators" })).toBeVisible();
-    await expect(page.getByText("Hydrated access policy")).toBeVisible();
+    await expect(page.getByText("Hydrated access policy", { exact: true })).toBeVisible();
   } finally {
     await database.query("delete from events where slug=$1", [slug]);
     await database.end();

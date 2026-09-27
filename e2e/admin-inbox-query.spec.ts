@@ -48,7 +48,7 @@ test("admin inbox notification hydrates into the workspace", async ({ page }) =>
       new RegExp(`^${inbox.unread} unread admin notification`),
     );
     await notifications.click();
-    await expect(page.getByText("Query inbox browser test")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Query inbox browser test" })).toBeVisible();
   } finally {
     await pool.query("delete from attendee_domain_events where id = $1", [sourceId]);
     await pool.end();

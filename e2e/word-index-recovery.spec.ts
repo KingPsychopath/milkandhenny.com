@@ -14,6 +14,17 @@ import {
 } from "@/features/words/store.server";
 import { exportWordArchive, restoreWordArchive } from "@/features/words/archive.server";
 
+// These tests invoke the Redis store directly in the Playwright worker. The web server may use
+// Postgres for its own word pages; that choice must not redirect these fault-injection calls.
+const originalWordStore = process.env.WORD_STORE;
+test.beforeEach(() => {
+  process.env.WORD_STORE = "redis";
+});
+test.afterEach(() => {
+  if (originalWordStore === undefined) delete process.env.WORD_STORE;
+  else process.env.WORD_STORE = originalWordStore;
+});
+
 test("real Redis index inspection repairs interrupted discovery and blocks incomplete backups", async () => {
   const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
   const slug = `index-recovery-${Date.now()}`;
