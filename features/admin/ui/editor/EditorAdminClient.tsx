@@ -10,6 +10,8 @@ import {
 } from "@/features/words/admin-editor.queries";
 import type { AdminEditorWordFilters } from "@/features/words/admin-editor.functions";
 import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
+import { homePageQuery } from "@/features/site/home.queries";
+import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
 import {
   adminWordPageMediaQuery,
   adminWordSharedAssetsQuery,
@@ -313,13 +315,39 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
     }
   }, [filterTag, filterType, filterVisibility, searchQuery, queryClient]);
 
-  const loadSharedStatus = useCallback(async () => {
-    try {
-      await queryClient.fetchQuery({ ...adminSharedWordsQuery, staleTime: 0 });
-    } catch {
-      // Non-fatal for editor UX.
-    }
-  }, [queryClient]);
+  const loadSharedStatus = useCallback(
+    async (changedSlug?: string) => {
+      try {
+        await Promise.all([
+          queryClient.fetchQuery({ ...adminSharedWordsQuery, staleTime: 0 }),
+          ...(changedSlug
+            ? [
+                queryClient.invalidateQueries({
+                  queryKey: ["words", "public", "detail", changedSlug],
+                }),
+              ]
+            : []),
+        ]);
+      } catch {
+        // Non-fatal for editor UX.
+      }
+    },
+    [queryClient],
+  );
+
+  const invalidatePublishedWord = useCallback(
+    async (slug: string, includeEditorDetail = true) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["words", "public"] }),
+        queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: adminContentSummaryQuery.queryKey }),
+        ...(includeEditorDetail
+          ? [queryClient.invalidateQueries({ queryKey: adminEditorWordQuery(slug).queryKey })]
+          : []),
+      ]);
+    },
+    [queryClient],
+  );
 
   const loadWordMedia = useCallback(
     async (slug: string, forceAssets = false) => {
@@ -529,7 +557,11 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       setStatus("word created");
       resetCreateForm();
 
-      await Promise.all([loadNotes(), loadSharedStatus()]);
+      await Promise.all([
+        loadNotes(),
+        loadSharedStatus(),
+        ...(data.meta?.slug ? [invalidatePublishedWord(data.meta.slug)] : []),
+      ]);
       if (data.meta?.slug) setSelectedSlug(data.meta.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create word");
@@ -604,6 +636,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       }
 
       applySavedWord(data, true);
+      await invalidatePublishedWord(slug);
       deleteEditorDraft(slug);
       restoredDraftKeyRef.current = "";
       setStatus("changes published");
@@ -617,7 +650,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
     } finally {
       setBusy(false);
     }
-  }, [applySavedWord, draftBase, editPayload, selectedSlug]);
+  }, [applySavedWord, draftBase, editPayload, invalidatePublishedWord, selectedSlug]);
 
   const requestAutosave = useCallback(
     (kind: "debounced" | "immediate" = "debounced") => {
@@ -787,7 +820,11 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       queryClient.removeQueries({ queryKey: adminEditorWordQuery(selectedSlug).queryKey });
       setDraftBase(null);
       setSelectedSlug("");
-      await Promise.all([loadNotes(), loadSharedStatus()]);
+      await Promise.all([
+        loadNotes(),
+        loadSharedStatus(),
+        invalidatePublishedWord(selectedSlug, false),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete word");
     } finally {
@@ -834,7 +871,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       storeShareToken(data.link.id, data.token);
       await copyText(buildShareUrl(selectedSlug, data.token));
       setStatus("share link created and copied");
-      await loadSharedStatus();
+      await loadSharedStatus(selectedSlug);
       await loadWord(selectedSlug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create share link");
@@ -879,7 +916,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       if (!res.ok) throw new Error(data.error ?? "Failed to update share link");
 
       setStatus(enable ? "PIN enabled" : "PIN removed");
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update share link");
@@ -919,7 +956,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
           reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied",
         );
       }
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
       return data.token;
     } catch (err) {
@@ -975,7 +1012,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to extend share link");
       setStatus(`share link extended by ${days} day(s)`);
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to extend share link");
@@ -1045,7 +1082,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
         delete next[link.id];
         return next;
       });
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke share link");
