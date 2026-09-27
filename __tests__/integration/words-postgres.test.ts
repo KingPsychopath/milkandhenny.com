@@ -11,6 +11,7 @@ import {
 } from "@/features/words/store.server";
 import { WordRevisionConflictError } from "@/features/words/word-postgres.server";
 import { runWordMediaReconcileBatch } from "@/features/words/media-reconcile.server";
+import { runWordMediaDeletionBatch } from "@/features/words/media-deletions.server";
 import {
   r2ObjectStorageProvider,
   withObjectStorageProvider,
@@ -125,5 +126,45 @@ describeWithDatabase("Postgres words", () => {
     expect(deleteObjects).toHaveBeenCalledWith([key], { scope: "private" });
     expect((await getWordMeta("moving-word"))?.mediaScopeDirty).toBe(false);
     expect((await listAllWords()).map((word) => word.slug)).toContain("moving-word");
+  });
+
+  it("records word media cleanup before deletion and blocks slug reuse until it completes", async () => {
+    const slug = "deleting-word";
+    const key = `words/media/${slug}/photo.webp`;
+    await createWord({ slug, title: "Deleting", markdown: "Body", visibility: "private" });
+    const listObjects = vi.fn(async (_prefix: string, options: { scope: string }) =>
+      options.scope === "private" ? [{ key, size: 1, lastModified: new Date() }] : [],
+    );
+    const deleteObject = vi.fn(async () => undefined);
+    const provider = {
+      ...r2ObjectStorageProvider,
+      isConfigured: () => true,
+      listObjects,
+      deleteObject,
+    };
+    expect(await withObjectStorageProvider(provider, () => deleteWord(slug))).toBe(true);
+    expect(await getWord(slug)).toBeNull();
+    await expect(
+      createWord({ slug, title: "New", markdown: "New", visibility: "private" }),
+    ).rejects.toThrow("Word media deletion is still in progress");
+    const pending = await query<{ target_key: string; status: string }>(
+      `select target_key,status from media_object_operations
+         where owner_kind='word' and owner_id=$1`,
+      [slug],
+    );
+    expect(pending).toEqual([{ target_key: key, status: "pending" }]);
+
+    const result = await withObjectStorageProvider(provider, () =>
+      runWordMediaDeletionBatch("word-delete-test"),
+    );
+    expect(result.completed).toBe(1);
+    expect(deleteObject).toHaveBeenCalledWith(key, { scope: "private" });
+    const recreated = await createWord({
+      slug,
+      title: "New",
+      markdown: "New",
+      visibility: "private",
+    });
+    expect(recreated.meta.revision).toBe(2);
   });
 });

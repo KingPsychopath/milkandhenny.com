@@ -717,7 +717,20 @@ async function deleteWord(slug: string): Promise<boolean> {
   if (!isValidWordSlug(slug)) return false;
   if (process.env.WORD_STORE === "postgres") {
     const existing = await getWordMeta(slug);
-    return existing?.revision ? deletePostgresWord(slug, existing.revision) : false;
+    if (!existing?.revision) return false;
+    return deletePostgresWord(slug, existing.revision, async () => {
+      if (!wordObjectStorageAvailable()) return [];
+      const prefix = `words/media/${slug}/`;
+      const scoped = await Promise.all(
+        (["public", "private"] as const).map(async (scope) => ({
+          scope,
+          objects: await listObjects(prefix, { scope }),
+        })),
+      );
+      return scoped.flatMap(({ scope, objects }) =>
+        objects.map((object) => ({ scope, key: object.key })),
+      );
+    });
   }
   return withWordMutationLock(slug, () => deleteWordLocked(slug));
 }

@@ -6,7 +6,8 @@ historical evidence. It must not populate active attendee, ticket or guest workf
 The 2026-09-26 Upstash export has RDB SHA-256
 `9dbb17f1c44765ca74892bc00ba2eca46f2f2904f09c47768f184db8c0fc17c4`.
 Its `guest:list` JSON contains 274 top-level guests and 157 nested plus-ones. The exact source
-capture time is unproved, so a fresh export and delta reconciliation are required at cutover.
+capture time is unproved. The user designated this verified export as the migration cutoff on
+2026-09-26 and accepted loss of Redis-only writes after it; no later Redis delta is required.
 The private extracted JSON has SHA-256
 `748b45c2730d8437f7f43db747b07c92157a5ae4b815a43a046d4a9b1c49c9eb`.
 These hashes establish file identity; they do not prove that the export is the final live state.
@@ -63,8 +64,8 @@ DATABASE_URL=… node ops/import-upload-audit.mjs RDB_SHA256 /private/path/uploa
 Use a database migration credential and an empty audit table. The importer verifies exact event
 identity, timestamps, duration and source list position inside one transaction. Repeating the same
 import is safe; an existing runtime event or a different source export causes a rollback. The
-supplied export has no active `auth:upload-open` window. Recheck that exact key in a fresh cutover
-export; if it is then active, preserve its existing token and expiry before switching the backend.
+supplied export has no active `auth:upload-open` window. A later window is outside the accepted
+cutoff, so the migration must not invent an active window from a newer source.
 An optional fourth output extracts the role token-version counters for
 [the JWT migration](./auth-token-postgres.md).
 An optional fifth output extracts attendee sessions and their absolute expiries for
@@ -91,5 +92,5 @@ The importer requires an absolute private regular file, validates the guest-arra
 encrypts the exact JSON bytes, inserts idempotently by RDB hash, and decrypts after insert to
 verify the authenticated ciphertext, payload hash and counts. It prints hashes and counts only.
 An existing RDB hash with different JSON fails. Wrong keys or tampering fail verification.
-Keep the RDB and JSON under restricted retention until the fresh cutover snapshot, archive
-restore drill and retention decision are recorded. No application route reads this table.
+Keep the RDB and JSON under restricted retention until the archive restore drill and retention
+decision are recorded. No application route reads this table.

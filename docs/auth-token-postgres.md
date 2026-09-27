@@ -1,10 +1,10 @@
 # JWT token-state migration
 
 Status: opt-in Postgres backend verified locally. Production remains on Redis. Do not set
-`AUTH_TOKEN_STORE=postgres` until a fresh Redis snapshot has been reconciled and all active JWT
-sessions, revocations and 15-second dedupe records are imported or safely expired during the
-planned writer freeze. The supplied 2026-09-26 RDB has no `auth:session:*`,
-`auth:revoked-jti:*` or `auth:recent-login:*` records, but this may change before cutover.
+`AUTH_TOKEN_STORE=postgres` until the accepted 2026-09-26 Redis export has been reconciled and
+the planned writer freeze is in place. That export has no `auth:session:*`,
+`auth:revoked-jti:*` or `auth:recent-login:*` records. The user accepted loss of Redis-only
+writes after the export rather than a later source delta.
 
 `AUTH_TOKEN_STORE=postgres` switches JWT version reads and increments, verification, session
 registration, login deduplication, logout revocation, and admin session listing/revocation as one
@@ -32,8 +32,7 @@ Run the importer with the separate migration credential before the application s
 Postgres token state. It requires a private JSON file and reconciles every role/version and RDB
 source hash in a transaction. Replaying the same import is safe. A changed source hash, version,
 or runtime-created counter causes rollback. The import does not claim to preserve active sessions
-or revocations; inspect those exact key families in the fresh export and complete their mapping
-before the switch. Keep the private RDB and extracted files out of Git.
+or revocations beyond the accepted export. Keep the private RDB and extracted files out of Git.
 
 Recent-login bearer tokens are stored with AES-256-GCM under a key derived from `AUTH_SECRET`.
 Changing that secret invalidates both JWT signatures and recent-login decryption. Runtime errors

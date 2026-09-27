@@ -1,4 +1,8 @@
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
+import {
+  enqueueMediaObjectOperation,
+  type ObjectScope,
+} from "@/features/media/object-operations.server";
 import type { NoteMeta, NoteRecord } from "./content-types";
 
 type WordRow = {
@@ -102,7 +106,26 @@ export async function savePostgresWord(record: NoteRecord): Promise<NoteRecord> 
       throw new WordRevisionConflictError();
     if (existing?.media_scope_dirty && existing.visibility !== meta.visibility)
       throw new Error("Word media is still moving. Please try again shortly.");
-    const revision = existing ? existing.revision + 1 : 1;
+    if (!existing) {
+      const unfinished = await client.query(
+        `select 1 from media_object_operations where owner_kind='word' and owner_id=$1
+           and operation='delete' and status <> 'completed' limit 1`,
+        [meta.slug],
+      );
+      if (unfinished.rows[0]) throw new Error("Word media deletion is still in progress.");
+    }
+    const previous = existing
+      ? 0
+      : Number(
+          (
+            await client.query<{ revision: number }>(
+              `select coalesce(max(owner_revision), 0) as revision from media_object_operations
+                 where owner_kind='word' and owner_id=$1`,
+              [meta.slug],
+            )
+          ).rows[0]?.revision ?? 0,
+        );
+    const revision = existing ? existing.revision + 1 : previous + 1;
     const values = [
       meta.slug,
       meta.title,
@@ -165,14 +188,32 @@ export async function savePostgresWord(record: NoteRecord): Promise<NoteRecord> 
   });
 }
 
-export async function deletePostgresWord(slug: string, revision: number): Promise<boolean> {
-  const rows = await query<{ slug: string }>(
-    "delete from words where slug = $1 and revision = $2 returning slug",
-    [slug, revision],
-  );
-  if (rows.length) return true;
-  if (await readPostgresWord(slug)) throw new WordRevisionConflictError();
-  return false;
+export async function deletePostgresWord(
+  slug: string,
+  revision: number,
+  discoverMedia: () => Promise<Array<{ scope: ObjectScope; key: string }>> = async () => [],
+): Promise<boolean> {
+  return transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`word:${slug}`]);
+    const current = await client.query<{ revision: number }>(
+      "select revision from words where slug=$1 for update",
+      [slug],
+    );
+    if (!current.rows[0]) return false;
+    if (current.rows[0].revision !== revision) throw new WordRevisionConflictError();
+    const media = await discoverMedia();
+    for (const object of media)
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "word",
+        ownerId: slug,
+        ownerRevision: revision,
+        operation: "delete",
+        targetScope: object.scope,
+        targetKey: object.key,
+      });
+    await client.query("delete from words where slug=$1 and revision=$2", [slug, revision]);
+    return true;
+  });
 }
 
 export async function inspectPostgresWords(repairRequested: boolean) {

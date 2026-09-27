@@ -1555,8 +1555,16 @@ targets for publication/deletion tests, and never send real user email/payment e
   the move immediately and the media worker retries dirty rows after failures or a process crash;
   both serialize with word edits using a per-word Postgres advisory lock. The scoped worker role
   receives only the word columns needed for this work. A real-Postgres test covers failed R2 copy,
-  retry, and public listing after completion. Existing word deletion and shared-reference cleanup
-  remain M5 work. Production selectors are unchanged and Upstash remains active.
+  retry, and public listing after completion. Shared-reference cleanup and an orphan sweep remain
+  M5 work. Production selectors are unchanged and Upstash remains active.
+- Postgres word deletion now discovers both R2 scopes under the word advisory lock and records
+  deletion intents atomically with the row deletion. The worker retries those intents and new
+  words cannot reuse a slug until cleanup finishes; a recreated slug gets a new revision. A
+  real-Postgres integration case covers cleanup and slug reuse. A stale upload that finishes
+  after the deletion inventory can still leave an orphan; the M5 object reconciliation sweep
+  remains required before release. `pnpm check`, `pnpm build`, and the full one-worker suite
+  passed (297 files, 2,200 tests). The accepted-export cutoff wording was corrected in the
+  guest-archive, token, attendee-session and CLI-auth migration notes.
 
 ### Milestone checkpoint template
 

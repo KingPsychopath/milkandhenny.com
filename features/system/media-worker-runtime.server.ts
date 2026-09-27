@@ -34,6 +34,7 @@ import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
 import { runWordMediaReconcileBatch } from "@/features/words/media-reconcile.server";
+import { runWordMediaDeletionBatch } from "@/features/words/media-deletions.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
 import { createBlockingRedisClient } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
@@ -71,6 +72,7 @@ type ConsumeResult = Pick<
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
 const transferDeletionOwner = `transfer-delete:${randomUUID()}`;
 const albumDeletionOwner = `album-delete:${randomUUID()}`;
+const wordDeletionOwner = `word-delete:${randomUUID()}`;
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
@@ -529,10 +531,30 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
           Schedule.spaced(30_000),
         )
       : Effect.never;
+  const wordDeletionLoop =
+    process.env.WORD_STORE === "postgres"
+      ? Effect.repeat(
+          workerAttempt("word_media_deletions", () =>
+            withObjectStorageProvider(storage, () => runWordMediaDeletionBatch(wordDeletionOwner)),
+          ).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_word_deletion_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
   return Effect.all(
-    [heartbeatLoop, reconcileLoop, transferDeletionLoop, albumDeletionLoop, wordMediaLoop],
+    [
+      heartbeatLoop,
+      reconcileLoop,
+      transferDeletionLoop,
+      albumDeletionLoop,
+      wordMediaLoop,
+      wordDeletionLoop,
+    ],
     {
-      concurrency: 5,
+      concurrency: 6,
       discard: true,
     },
   );
