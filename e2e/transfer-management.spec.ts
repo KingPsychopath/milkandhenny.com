@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Redis } from "@upstash/redis";
+import { Pool } from "pg";
 import { waitForAppHydration } from "./support/multiplayer";
 
 test("admin can drill into a transfer and remove one file", async ({ context, page }) => {
@@ -70,53 +71,42 @@ test("admin can drill into a transfer and remove one file", async ({ context, pa
 });
 
 test("admin can grant transfer creation to a signed-in account", async ({ page }) => {
-  let granted = false;
-  await page.route("**/api/admin/operations/people**", async (route) => {
-    if (route.request().method() === "PATCH") {
-      const body = route.request().postDataJSON() as { action?: string };
-      granted = body.action === "grant-transfer-creator";
-      await route.fulfill({ json: { action: body.action, enabled: granted } });
-      return;
-    }
-    await route.fulfill({
-      json: {
-        people: [
-          {
-            personId: "01990a1f-3b7c-7000-8000-000000000101",
-            canonicalName: "Transfer Person",
-            verifiedEmails: ["t•••@example.com"],
-            identities: [],
-            access: { acquisitionStatus: "active", activeSessions: 1 },
-            tickets: [],
-            globalRoles: [],
-            eventRoles: [],
-            accountPermissions: granted ? ["create_transfers"] : [],
-            pendingInvitations: 0,
-            staffDevices: 0,
-            auditTimeline: [],
-          },
-        ],
-        purchaserContacts: [],
-      },
+  const database = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+  const personId = randomUUID();
+  try {
+    await database.query("insert into event_people(id,canonical_name) values ($1,$2)", [
+      personId,
+      "Transfer Person",
+    ]);
+    await page.goto("/admin");
+    await page.getByPlaceholder("admin password").fill("playwright-admin-password");
+    await page.getByRole("button", { name: "unlock" }).click();
+    await page.goto(`/admin?view=operations&operationsTab=people&person=${personId}`);
+    await waitForAppHydration(page);
+
+    await expect(page.getByRole("heading", { name: "Transfer Person" })).toBeVisible();
+    await page.getByRole("button", { name: "grant access" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: /Allow this account to create file transfers/,
     });
-  });
-  await page.route("**/api/admin/operations/inbox**", (route) =>
-    route.fulfill({ json: { items: [], unresolved: 0, unread: 0 } }),
-  );
+    await dialog.getByLabel("reason for the audit log").fill("Approved event media uploader");
+    await dialog.getByRole("button", { name: "grant transfer access" }).click();
+    const stepUp = page.getByRole("dialog", { name: "Confirm it’s you" });
+    await stepUp.getByLabel("Admin password").fill("playwright-admin-password");
+    await stepUp.getByRole("button", { name: "verify" }).click();
 
-  await page.goto("/admin");
-  await page.getByPlaceholder("admin password").fill("playwright-admin-password");
-  await page.getByRole("button", { name: "unlock" }).click();
-  await page.goto(
-    "/admin?view=operations&operationsTab=people&person=01990a1f-3b7c-7000-8000-000000000101",
-  );
-
-  await expect(page.getByRole("heading", { name: "Transfer Person" })).toBeVisible();
-  await page.getByRole("button", { name: "grant access" }).click();
-  const dialog = page.getByRole("dialog", { name: /Allow this account to create file transfers/ });
-  await dialog.getByLabel("reason for the audit log").fill("Approved event media uploader");
-  await dialog.getByRole("button", { name: "grant transfer access" }).click();
-
-  await expect(page.getByText("can create transfers")).toBeVisible();
-  expect(granted).toBe(true);
+    await expect(page.getByText("can create transfers")).toBeVisible();
+    const grant = await database.query(
+      "select permission from account_permission_grants where person_id=$1",
+      [personId],
+    );
+    expect(grant.rows).toEqual([{ permission: "create_transfers" }]);
+  } finally {
+    await database.query("delete from attendee_operations_audit_events where entity_id=$1", [
+      personId,
+    ]);
+    await database.query("delete from account_permission_grants where person_id=$1", [personId]);
+    await database.query("delete from event_people where id=$1", [personId]);
+    await database.end();
+  }
 });

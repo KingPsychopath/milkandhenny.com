@@ -41,10 +41,6 @@ export function useAdminAuth() {
       return { ok: true, token: stepUpTokenRef.current };
     }
 
-    if (import.meta.env.DEV) {
-      return { ok: true, token: "local-dev-step-up" };
-    }
-
     const requestStepUp = async (password?: string) => {
       const res = await authFetch("/api/admin/step-up", {
         method: "POST",
