@@ -28,6 +28,7 @@ import { getTransferMediaWorkerStatus } from "../features/transfers/media-worker
 import { isSafeTransferId } from "../features/transfers/admin.server";
 import { MediaWorkerService, runMediaEffect } from "../features/system/media-worker-runtime.server";
 import { TransferOperationsService } from "../features/transfers/transfer-operations-service.server";
+import { uploadPresignedFiles } from "./transfer-presigned-upload";
 import { TransferMediaOperationsService } from "../features/transfers/transfer-media-operations-service.server";
 import { BASE_URL } from "../lib/shared/config";
 import { buildTransferUrl } from "../features/transfers/routes";
@@ -45,6 +46,9 @@ import {
   DEFAULT_EXPIRY_SECONDS,
 } from "../features/transfers/store.server";
 import type { TransferData, TransferSummary } from "../features/transfers/types";
+import type { TransferUploadFileInput } from "../features/transfers/upload-types";
+import { getUploadUrlTtlSeconds } from "../features/transfers/upload-window.server";
+import { postgresTransferCatalogueSelected } from "../features/transfers/store-selection.server";
 
 function runTransferOperation<A, E>(
   use: (transfers: typeof TransferOperationsService.Service) => Effect.Effect<A, E>,
@@ -201,6 +205,78 @@ type TransferAppendCheckpoint = {
   completed: Record<string, ProcessFileResult>;
 };
 
+type PostgresTransferCheckpoint = {
+  version: 2;
+  kind: "create" | "append";
+  dir: string;
+  transferId: string;
+  deleteToken?: string;
+  title?: string;
+  ttlSeconds?: number;
+  files: Array<TransferUploadFileInput & { mediaId: string }>;
+};
+
+const POSTGRES_TRANSFER_CHECKPOINT_FILE = ".mah-transfer-postgres-upload.checkpoint.json";
+
+function postgresCheckpointPath(dir: string, transferId?: string): string {
+  return path.join(
+    dir,
+    transferId
+      ? `.mah-transfer-postgres-append.${transferId}.checkpoint.json`
+      : POSTGRES_TRANSFER_CHECKPOINT_FILE,
+  );
+}
+
+function readPostgresCheckpoint(file: string): PostgresTransferCheckpoint | null {
+  if (!fs.existsSync(file)) return null;
+  const checkpoint = JSON.parse(fs.readFileSync(file, "utf-8")) as PostgresTransferCheckpoint;
+  if (
+    checkpoint.version !== 2 ||
+    (checkpoint.kind !== "create" && checkpoint.kind !== "append") ||
+    typeof checkpoint.dir !== "string" ||
+    typeof checkpoint.transferId !== "string" ||
+    !Array.isArray(checkpoint.files) ||
+    checkpoint.files.some(
+      (entry) =>
+        typeof entry.name !== "string" ||
+        typeof entry.mediaId !== "string" ||
+        !Number.isSafeInteger(entry.size) ||
+        entry.size < 0,
+    )
+  )
+    throw new Error(`Invalid Postgres transfer checkpoint: ${file}`);
+  return checkpoint;
+}
+
+function writePostgresCheckpoint(file: string, checkpoint: PostgresTransferCheckpoint): void {
+  const temporary = `${file}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(checkpoint, null, 2), { mode: 0o600 });
+  fs.renameSync(temporary, file);
+}
+
+function selectedLocalFiles(dir: string, entries: string[], existingIds: string[] = []) {
+  return resolveTransferUploadIds(
+    entries.map((name) => ({ name, size: fs.statSync(path.join(dir, name)).size })),
+    existingIds,
+  );
+}
+
+function assertSameLocalFiles(
+  checkpoint: PostgresTransferCheckpoint,
+  dir: string,
+  entries: string[],
+): void {
+  if (
+    checkpoint.dir !== dir ||
+    !arraysEqual(
+      checkpoint.files.map((entry) => entry.name),
+      entries,
+    ) ||
+    checkpoint.files.some((entry) => fs.statSync(path.join(dir, entry.name)).size !== entry.size)
+  )
+    throw new Error("Transfer source files differ from the Postgres upload checkpoint.");
+}
+
 function getTransferCheckpointPath(absDir: string): string {
   return path.join(absDir, TRANSFER_CHECKPOINT_FILE);
 }
@@ -346,11 +422,162 @@ function transferFileCounts(files: TransferData["files"]) {
   };
 }
 
+async function createPostgresTransferFromDirectory(
+  opts: CreateTransferOpts,
+  onProgress?: (msg: string) => void,
+): Promise<CreateTransferResult> {
+  requireR2();
+  const dir = resolveTransferDir(opts.dir);
+  const entries = listTransferEntries(dir);
+  if (fs.existsSync(getTransferCheckpointPath(dir)))
+    throw new Error(
+      "A legacy Redis transfer checkpoint exists in this directory. Resolve it before Postgres upload.",
+    );
+  const checkpointFile = postgresCheckpointPath(dir);
+  const prior = readPostgresCheckpoint(checkpointFile);
+  if (prior && prior.kind !== "create")
+    throw new Error("Unexpected Postgres transfer checkpoint kind.");
+  if (prior) assertSameLocalFiles(prior, dir, entries);
+  const checkpoint: PostgresTransferCheckpoint = prior ?? {
+    version: 2,
+    kind: "create",
+    dir,
+    transferId: generateTransferId(),
+    deleteToken: generateDeleteToken(),
+    title: opts.title,
+    ttlSeconds: opts.expires ? parseExpiry(opts.expires) : DEFAULT_EXPIRY_SECONDS,
+    files: selectedLocalFiles(dir, entries),
+  };
+  if (!checkpoint.deleteToken || !checkpoint.ttlSeconds)
+    throw new Error("Postgres transfer checkpoint is missing its creation credentials.");
+  if (!prior) writePostgresCheckpoint(checkpointFile, checkpoint);
+  const actorJti = `cli:${checkpoint.transferId}`;
+  const input = {
+    transferId: checkpoint.transferId,
+    deleteToken: checkpoint.deleteToken,
+    actorJti,
+    expiresSeconds: checkpoint.ttlSeconds,
+    files: checkpoint.files,
+  };
+  const existing = await getTransfer(checkpoint.transferId);
+  let result = existing
+    ? await runTransferOperation((transfers) =>
+        transfers.finalizeUpload({ ...input, title: checkpoint.title }),
+      )
+    : null;
+  if (!result || result.status !== "completed") {
+    const presigned = await runTransferOperation((transfers) =>
+      transfers.presignUpload({ ...input, uploadUrlTtlSeconds: getUploadUrlTtlSeconds() }),
+    );
+    const resumed =
+      presigned.status === "reservation-conflict"
+        ? await runTransferOperation((transfers) =>
+            transfers.resumeUpload({ ...input, uploadUrlTtlSeconds: getUploadUrlTtlSeconds() }),
+          )
+        : null;
+    if (resumed && resumed.status !== "ready")
+      throw new Error(`Could not resume Postgres transfer: ${resumed.status}`);
+    const files = await uploadPresignedFiles(
+      dir,
+      checkpoint.files,
+      resumed?.urls ?? (presigned.status === "ready" ? presigned.urls : []),
+      resumed?.uploadedNames ?? [],
+      onProgress,
+    );
+    result = await runTransferOperation((transfers) =>
+      transfers.finalizeUpload({ ...input, files, title: checkpoint.title }),
+    );
+  }
+  if (result.status !== "completed")
+    throw new Error(`Postgres transfer finalization failed: ${result.status}`);
+  fs.rmSync(checkpointFile, { force: true });
+  return {
+    transfer: result.transfer,
+    shareUrl: buildTransferUrl(BASE_URL, result.transfer.id),
+    adminUrl: buildTransferUrl(BASE_URL, result.transfer.id, checkpoint.deleteToken),
+    totalSize: result.totalSize,
+    fileCounts: result.fileCounts,
+    processingCounts: result.processingCounts,
+  };
+}
+
+async function appendPostgresTransferFromDirectory(
+  opts: AppendTransferOpts,
+  onProgress?: (msg: string) => void,
+): Promise<AppendTransferResult> {
+  requireR2();
+  const transfer = await getTransfer(opts.id);
+  if (!transfer) throw new Error(`Transfer "${opts.id}" not found or already expired.`);
+  const dir = resolveTransferDir(opts.dir);
+  const entries = listTransferEntries(dir);
+  if (fs.existsSync(getTransferAppendCheckpointPath(dir, opts.id)))
+    throw new Error(
+      "A legacy Redis append checkpoint exists in this directory. Resolve it before Postgres upload.",
+    );
+  const checkpointFile = postgresCheckpointPath(dir, opts.id);
+  const prior = readPostgresCheckpoint(checkpointFile);
+  if (prior && (prior.kind !== "append" || prior.transferId !== opts.id))
+    throw new Error("Postgres append checkpoint targets another transfer.");
+  if (prior) assertSameLocalFiles(prior, dir, entries);
+  const checkpoint: PostgresTransferCheckpoint = prior ?? {
+    version: 2,
+    kind: "append",
+    dir,
+    transferId: transfer.id,
+    files: selectedLocalFiles(
+      dir,
+      entries,
+      transfer.files.map((file) => file.id),
+    ),
+  };
+  if (!prior) writePostgresCheckpoint(checkpointFile, checkpoint);
+  const existingIds = new Set(transfer.files.map((file) => file.id));
+  if (checkpoint.files.every((file) => existingIds.has(file.mediaId))) {
+    fs.rmSync(checkpointFile, { force: true });
+    return {
+      transfer,
+      shareUrl: buildTransferUrl(BASE_URL, transfer.id),
+      adminUrl: buildTransferUrl(BASE_URL, transfer.id, transfer.deleteToken),
+      addedCount: 0,
+      addedSize: 0,
+      fileCounts: transferFileCounts([]),
+      processingCounts: buildTransferProcessingCounts([]),
+    };
+  }
+  const presigned = await runTransferOperation((transfers) =>
+    transfers.presignAppend({
+      transferId: transfer.id,
+      files: checkpoint.files,
+      uploadUrlTtlSeconds: getUploadUrlTtlSeconds(),
+    }),
+  );
+  if (presigned.status !== "ready")
+    throw new Error(`Postgres append reservation failed: ${presigned.status}`);
+  const files = await uploadPresignedFiles(dir, checkpoint.files, presigned.urls, [], onProgress);
+  const result = await runTransferOperation((transfers) =>
+    transfers.finalizeAppend({ transferId: transfer.id, files }),
+  );
+  if (result.status !== "completed")
+    throw new Error(`Postgres append finalization failed: ${result.status}`);
+  fs.rmSync(checkpointFile, { force: true });
+  return {
+    transfer: result.transfer,
+    shareUrl: buildTransferUrl(BASE_URL, transfer.id),
+    adminUrl: buildTransferUrl(BASE_URL, transfer.id, transfer.deleteToken),
+    addedCount: result.addedCount,
+    addedSize: result.totalSize,
+    fileCounts: result.fileCounts,
+    processingCounts: result.processingCounts,
+  };
+}
+
 /** Create a new transfer: process files, upload to R2, save metadata to Redis */
 async function createTransfer(
   opts: CreateTransferOpts,
   onProgress?: (msg: string) => void,
 ): Promise<CreateTransferResult> {
+  if (postgresTransferCatalogueSelected())
+    return createPostgresTransferFromDirectory(opts, onProgress);
   requireRedis();
   requireR2();
 
@@ -511,6 +738,8 @@ async function appendToTransfer(
   opts: AppendTransferOpts,
   onProgress?: (msg: string) => void,
 ): Promise<AppendTransferResult> {
+  if (postgresTransferCatalogueSelected())
+    return appendPostgresTransferFromDirectory(opts, onProgress);
   requireRedis();
   requireR2();
 
