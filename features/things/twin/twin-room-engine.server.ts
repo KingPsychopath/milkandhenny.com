@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import {
   applyGameCommand,
@@ -45,6 +46,16 @@ import {
   sealOfficialGameResult,
 } from "@/features/game-results/outbox.server";
 import type { OfficialGameResultEnvelope } from "@/features/game-results/types";
+import {
+  createPostgresGameRoom,
+  loadPostgresGameRoom,
+  postgresGameRoomSelected,
+  withPostgresGameRoom,
+} from "../shared/room-postgres-engine.server";
+import {
+  PostgresRoomActionConflictError,
+  type PostgresRoomAction,
+} from "../shared/room-postgres.server";
 import {
   dealTwin,
   planTwinDeck,
@@ -167,6 +178,8 @@ export interface TwinGameState {
   dealingUntil: number | null;
   /** Layout seeds come from here, so a rematch lays the same cards out differently. */
   seedCounter: number;
+  /** Current game's heat log commits with the room in Postgres mode. */
+  loggedHeats?: TwinLoggedHeat[];
 }
 
 type RoomState = TwinGameState;
@@ -184,6 +197,28 @@ export type TwinGameEvent =
 type Keys = ReturnType<typeof twinRoomRedisKeys>;
 const memoryRooms = createMemoryRoomStore<RoomState>("twin");
 const memoryLogs = createMemoryRoomStore<TwinLoggedHeat[]>("twin-log");
+
+function postgresRoomsSelected() {
+  return postgresGameRoomSelected("TWIN_ROOM_STORE");
+}
+
+function postgresAction(
+  input: {
+    playerId: string;
+    playerToken: string;
+    action: TwinAction;
+  },
+  actionId: string,
+): PostgresRoomAction {
+  return {
+    id: actionId,
+    fingerprintSha256: createHash("sha256").update(JSON.stringify(input)).digest("hex"),
+  };
+}
+
+function appendEmbeddedLog(room: RoomState, entries: TwinLoggedHeat[]) {
+  if (entries.length > 0) room.loggedHeats = [...(room.loggedHeats ?? []), ...entries];
+}
 
 registerMemoryRoomSweeper("twin", (now) => {
   for (const [roomId, room] of memoryRooms) {
@@ -230,6 +265,7 @@ function transferHost(room: RoomState, leavingId: string, now: number) {
 }
 
 async function loadRoom(roomId: string) {
+  if (postgresRoomsSelected()) return loadPostgresGameRoom<RoomState>("twin", roomId);
   const redis = getRedis();
   const room = redis
     ? await redis.get<RoomState>(twinRoomRedisKeys(roomId).state)
@@ -284,7 +320,34 @@ async function clearLog(room: RoomState) {
   else memoryLogs.delete(room.roomId);
 }
 
-async function withRoom<T>(roomId: string, use: (room: RoomState) => T | Promise<T>) {
+async function withRoom<T>(
+  roomId: string,
+  use: (room: RoomState) => T | Promise<T>,
+  action?: PostgresRoomAction,
+  recordAction?: (outcome: T) => boolean,
+) {
+  if (postgresRoomsSelected()) {
+    try {
+      return await withPostgresGameRoom<RoomState, T>({
+        kind: "twin",
+        roomId,
+        action,
+        use,
+        applyExpiry: applyRoomExpiry,
+        results: (before, after) => {
+          const envelope =
+            before.phase !== "finished" && after.phase === "finished"
+              ? twinOfficialResult(after)
+              : null;
+          return envelope ? [envelope] : [];
+        },
+        recordAction,
+      });
+    } catch (error) {
+      if (error instanceof PostgresRoomActionConflictError) return null;
+      throw error;
+    }
+  }
   const redis = getRedis();
   if (!redis) {
     const room = await loadRoom(roomId);
@@ -819,9 +882,12 @@ export async function createTwinRoom(input: {
     seedCounter: Math.floor(Math.random() * 1_000_000),
   };
 
-  if (!getRedis() && process.env.NODE_ENV === "production")
-    throw new Error("Twin rooms require Redis");
-  await saveRoom(room);
+  if (postgresRoomsSelected()) await createPostgresGameRoom("twin", room);
+  else {
+    if (!getRedis() && process.env.NODE_ENV === "production")
+      throw new Error("Twin rooms require Redis");
+    await saveRoom(room);
+  }
   log.info("things.twin", "Room created", { handSize: room.handSize });
   return {
     roomId,
@@ -841,57 +907,65 @@ export async function joinTwinRoom(input: {
   joinId?: string;
   playerToken?: string;
 }): Promise<TwinJoinResult> {
-  const result = await withRoom(input.roomId, async (room) => {
-    await appendLog(room, advance(room));
-    if (
-      (room.managed && !input.joinToken) ||
-      (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
-    )
-      return multiplayerFailure("invite_expired", "This invite is no longer valid");
-    const attempt: MultiplayerJoinAttempt | undefined =
-      input.joinId && input.playerToken
-        ? { joinId: input.joinId, playerToken: input.playerToken }
-        : undefined;
-    const joining = resolveMultiplayerJoinAttempt(room.players, attempt);
-    if (joining.kind === "conflict")
-      return multiplayerFailure("invite_expired", "This join attempt is no longer valid");
-    if (joining.kind === "retry")
+  const result = await withRoom(input.roomId, (room) => {
+    const entries = advance(room);
+    const join = () => {
+      if (
+        (room.managed && !input.joinToken) ||
+        (input.joinToken && !multiplayerCredentialsMatch(input.joinToken, room.joinHash))
+      )
+        return multiplayerFailure("invite_expired", "This invite is no longer valid");
+      const attempt: MultiplayerJoinAttempt | undefined =
+        input.joinId && input.playerToken
+          ? { joinId: input.joinId, playerToken: input.playerToken }
+          : undefined;
+      const joining = resolveMultiplayerJoinAttempt(room.players, attempt);
+      if (joining.kind === "conflict")
+        return multiplayerFailure("invite_expired", "This join attempt is no longer valid");
+      if (joining.kind === "retry")
+        return {
+          ok: true,
+          roomId: room.roomId,
+          expiresAt: room.expiresAt,
+          playerId: joining.player.id,
+          playerToken: joining.playerToken,
+          snapshot: snapshot(room, joining.player.id),
+        } satisfies TwinPlayerCredentials & { ok: true };
+      if (room.phase !== "lobby")
+        return multiplayerFailure("game_started", "This game has started");
+      if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
+      if (activePlayers(room).length >= twinMaxPlayers())
+        return multiplayerFailure("room_full", "This room is full");
+      const name = input.name.trim();
+      if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
+      if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
+        return multiplayerFailure("name_taken", "That name is already playing");
+
+      const playerToken = joining.playerToken;
+      const player = newPlayer(name, hashMultiplayerCredential(playerToken), Date.now());
+      player.joinId = joining.joinId;
+      room.players.push(player);
+      // One more player can mean a bigger deck or a shorter hand; the lobby shows it live.
+      const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
+      if (plan) {
+        room.order = plan.order;
+        room.handSize = plan.handSize;
+      }
+      changed(room);
       return {
         ok: true,
         roomId: room.roomId,
         expiresAt: room.expiresAt,
-        playerId: joining.player.id,
-        playerToken: joining.playerToken,
-        snapshot: snapshot(room, joining.player.id),
+        playerId: player.id,
+        playerToken,
+        snapshot: snapshot(room, player.id),
       } satisfies TwinPlayerCredentials & { ok: true };
-    if (room.phase !== "lobby") return multiplayerFailure("game_started", "This game has started");
-    if (room.joinLocked) return multiplayerFailure("room_locked", "This room is locked");
-    if (activePlayers(room).length >= twinMaxPlayers())
-      return multiplayerFailure("room_full", "This room is full");
-    const name = input.name.trim();
-    if (name.length < 1) return multiplayerFailure("invalid_name", "Add your name");
-    if (activePlayers(room).some((player) => player.name.toLowerCase() === name.toLowerCase()))
-      return multiplayerFailure("name_taken", "That name is already playing");
-
-    const playerToken = joining.playerToken;
-    const player = newPlayer(name, hashMultiplayerCredential(playerToken), Date.now());
-    player.joinId = joining.joinId;
-    room.players.push(player);
-    // One more player can mean a bigger deck or a shorter hand; the lobby shows it live.
-    const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
-    if (plan) {
-      room.order = plan.order;
-      room.handSize = plan.handSize;
+    };
+    if (postgresRoomsSelected()) {
+      appendEmbeddedLog(room, entries);
+      return join();
     }
-    changed(room);
-    return {
-      ok: true,
-      roomId: room.roomId,
-      expiresAt: room.expiresAt,
-      playerId: player.id,
-      playerToken,
-      snapshot: snapshot(room, player.id),
-    } satisfies TwinPlayerCredentials & { ok: true };
+    return appendLog(room, entries).then(join);
   });
   return result ?? multiplayerFailure("room_unavailable", "That room is no longer available");
 }
@@ -903,21 +977,28 @@ export async function readTwinSnapshot(input: {
   lastSequence: number;
   lastDigest?: string | null;
 }): Promise<TwinSnapshotResult> {
-  const result = await withRoom(input.roomId, async (room) => {
+  const result = await withRoom(input.roomId, (room) => {
     const player = validPlayer(room, input.playerId, input.playerToken);
     if (!player) return null;
     touchMultiplayerPresence(player);
-    await appendLog(room, advance(room));
-    const view = snapshot(room, player.id);
-    view.digest = multiplayerSnapshotDigest(view);
-    if (input.lastDigest && input.lastDigest === view.digest)
-      return {
-        ok: true as const,
-        unchanged: true as const,
-        serverNow: view.serverNow,
-        snapshot: null,
-      };
-    return { ok: true as const, snapshot: view };
+    const entries = advance(room);
+    const read = () => {
+      const view = snapshot(room, player.id);
+      view.digest = multiplayerSnapshotDigest(view);
+      if (input.lastDigest && input.lastDigest === view.digest)
+        return {
+          ok: true as const,
+          unchanged: true as const,
+          serverNow: view.serverNow,
+          snapshot: null,
+        };
+      return { ok: true as const, snapshot: view };
+    };
+    if (postgresRoomsSelected()) {
+      appendEmbeddedLog(room, entries);
+      return read();
+    }
+    return appendLog(room, entries).then(read);
   });
   return (
     result ?? {
@@ -936,10 +1017,12 @@ export async function readTwinLog(input: {
   const room = await loadRoom(input.roomId);
   if (!room || !validPlayer(room, input.playerId, input.playerToken))
     return multiplayerFailure("room_unavailable", "That room is no longer available");
-  const redis = getRedis();
-  const heats = redis
-    ? ((await redis.get<TwinLoggedHeat[]>(twinRoomRedisKeys(input.roomId).log)) ?? [])
-    : (memoryLogs.get(input.roomId) ?? []);
+  const redis = postgresRoomsSelected() ? null : getRedis();
+  const heats = postgresRoomsSelected()
+    ? (room.loggedHeats ?? [])
+    : redis
+      ? ((await redis.get<TwinLoggedHeat[]>(twinRoomRedisKeys(input.roomId).log)) ?? [])
+      : (memoryLogs.get(input.roomId) ?? []);
   return { ok: true, heats };
 }
 
@@ -960,256 +1043,273 @@ export async function applyTwinAction(
     action: input.action,
   });
   const pendingEvents: TwinGameEvent[] = [];
-  const result = await withRoom(input.roomId, (room) => {
-    const transition = applyGameCommand<
-      RoomState,
-      "twin",
-      TwinAction,
-      { playerId: string; playerToken: string },
-      TwinActionResult | null,
-      TwinGameEvent
-    >(room, command, context, (room, _command, _context, emit) => {
-      const now = context.now;
-      const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
-      if (!authenticated) return null;
-      const actionId = input.action.actionId ?? context.newId;
-      const emitLog = (entries: TwinLoggedHeat[]) => {
-        if (entries.length > 0)
+  const result = await withRoom(
+    input.roomId,
+    (room) => {
+      const transition = applyGameCommand<
+        RoomState,
+        "twin",
+        TwinAction,
+        { playerId: string; playerToken: string },
+        TwinActionResult | null,
+        TwinGameEvent
+      >(room, command, context, (room, _command, _context, emit) => {
+        const now = context.now;
+        const authenticated = authenticatedPlayer(room, input.playerId, input.playerToken);
+        if (!authenticated) return null;
+        const actionId = input.action.actionId ?? context.newId;
+        const emitLog = (entries: TwinLoggedHeat[]) => {
+          if (entries.length > 0)
+            emit({
+              schemaVersion: 1,
+              game: "twin",
+              type: "log.append",
+              actionId,
+              occurredAt: now,
+              entries,
+            });
+        };
+        const emitLogClear = () =>
           emit({
             schemaVersion: 1,
             game: "twin",
-            type: "log.append",
+            type: "log.clear",
             actionId,
             occurredAt: now,
-            entries,
           });
-      };
-      const emitLogClear = () =>
-        emit({
-          schemaVersion: 1,
-          game: "twin",
-          type: "log.clear",
-          actionId,
-          occurredAt: now,
-        });
-      const accept = () => {
-        room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
-        return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
-      };
-      if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
-      if (input.action.type === "player.leave") {
-        if (authenticated.withdrawn) return accept();
-        transferHost(room, authenticated.id, now);
-        authenticated.withdrawn = true;
-        if (activePlayers(room).length === 0) room.phase = "closed";
-        changed(room);
-        return accept();
-      }
-      const player = validPlayer(room, input.playerId, input.playerToken);
-      if (!player) return null;
-      player.lastSeenAt = now;
-      emitLog(advance(room, now));
+        const accept = () => {
+          room.processedActions = rememberMultiplayerAction(room.processedActions, actionId);
+          return { ok: true, accepted: true, snapshot: snapshot(room, authenticated.id) } as const;
+        };
+        if (multiplayerActionSeen(room.processedActions, actionId)) return accept();
+        if (input.action.type === "player.leave") {
+          if (authenticated.withdrawn) return accept();
+          transferHost(room, authenticated.id, now);
+          authenticated.withdrawn = true;
+          if (activePlayers(room).length === 0) room.phase = "closed";
+          changed(room);
+          return accept();
+        }
+        const player = validPlayer(room, input.playerId, input.playerToken);
+        if (!player) return null;
+        player.lastSeenAt = now;
+        emitLog(advance(room, now));
 
-      const current = () => snapshot(room, player.id);
-      const reject = (
-        errorCode: Parameters<typeof rejection>[0],
-        error: string,
-        retryable = false,
-      ) => rejection(errorCode, error, current(), retryable);
+        const current = () => snapshot(room, player.id);
+        const reject = (
+          errorCode: Parameters<typeof rejection>[0],
+          error: string,
+          retryable = false,
+        ) => rejection(errorCode, error, current(), retryable);
 
-      if (input.action.type === "player.rename") {
-        const nextName = input.action.name;
-        if (room.phase !== "lobby")
-          return reject("action_unavailable", "Names only change in the lobby");
-        if (
-          activePlayers(room).some(
-            (candidate) =>
-              candidate.id !== player.id &&
-              candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+        if (input.action.type === "player.rename") {
+          const nextName = input.action.name;
+          if (room.phase !== "lobby")
+            return reject("action_unavailable", "Names only change in the lobby");
+          if (
+            activePlayers(room).some(
+              (candidate) =>
+                candidate.id !== player.id &&
+                candidate.name.toLocaleLowerCase() === nextName.toLocaleLowerCase(),
+            )
           )
-        )
-          return reject("action_unavailable", "That name is already here");
-        player.name = nextName;
-        setMultiplayerPlayerReady(player, false);
-        changed(room);
-        return accept();
-      }
-
-      if (input.action.type === "readiness.set") {
-        if (room.phase !== "lobby")
-          return reject("action_unavailable", "Readiness can only change in the lobby");
-        if (multiplayerPlayerReady(player) !== input.action.ready) {
-          setMultiplayerPlayerReady(player, input.action.ready);
+            return reject("action_unavailable", "That name is already here");
+          player.name = nextName;
+          setMultiplayerPlayerReady(player, false);
           changed(room);
-        }
-        return accept();
-      }
-
-      if (input.action.type === "answer.tap") {
-        const heat = room.heat;
-        if (!heat || room.phase !== "heat" || heat.id !== input.action.heatId)
-          return reject("heat_ended", "That heat has ended");
-        // A tap made in time but delivered late still counts, right up to the payout.
-        if (heat.settleAt !== null && now >= heat.settleAt)
-          return reject("heat_ended", "That heat has ended");
-        if (now < heat.revealAt) return reject("heat_ended", "That heat has not started");
-        if (player.heatId !== heat.id) return reject("heat_ended", "That heat has ended");
-        if (player.landedMs !== null) return reject("already_landed", "You already found it");
-        if (player.cooldownUntil !== null && now < player.cooldownUntil)
-          return reject("cooling_down", "Still cooling down");
-        if (player.hand.length === 0) return reject("action_unavailable", "Your hand is empty");
-
-        const wanted = expectedSymbol(room, player);
-        if (wanted === null) return reject("action_unavailable", "There is nothing to match");
-
-        if (input.action.symbolId !== wanted) {
-          player.heatMisses += 1;
-          player.misses += 1;
-          player.cooldownUntil = now + twinCooldownMs(player.heatMisses);
-          changed(room);
-          return reject("wrong_symbol", "Not that one");
+          return accept();
         }
 
-        player.landedMs = recordTwinElapsed({
-          claimedMs: input.action.elapsedMs,
-          arrivalElapsedMs: now - heat.revealAt,
-          windowMs: room.windowMs,
-        });
-        // First blood starts everyone else's clock.
-        if (heat.graceEndsAt === null)
-          heat.graceEndsAt = twinGraceEnd(now, heat.deadlineAt, room.graceMs);
-        changed(room);
-        emitLog(advance(room, now));
-        return accept();
-      }
-
-      const host = room.players.find(({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn);
-      const canControl =
-        player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
-      if (!canControl) return reject("not_host", "The host controls the game");
-
-      if (input.action.type === "room.admission.set") {
-        if (room.phase !== "lobby")
-          return reject("action_unavailable", "The room only locks in the lobby");
-        if (room.joinLocked !== input.action.locked) {
-          room.joinLocked = input.action.locked;
-          changed(room);
-        }
-        return accept();
-      }
-
-      if (input.action.type === "host.pass") {
-        const targetId = input.action.playerId;
-        const target = activePlayers(room).find(({ id }) => id === targetId);
-        if (!target) return reject("action_unavailable", "That player is not available");
-        room.hostPlayerId = target.id;
-        changed(room);
-        return accept();
-      }
-
-      if (input.action.type === "game.configure") {
-        if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
-        if (room.phase !== "lobby")
-          return reject("action_unavailable", "Settings only change in the lobby");
-        if (input.action.handSize !== undefined) room.requestedHandSize = input.action.handSize;
-        if (input.action.windowMs !== undefined) room.windowMs = input.action.windowMs;
-        if (input.action.graceMs !== undefined) room.graceMs = input.action.graceMs;
-        const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
-        if (!plan) return reject("deck_too_small", "That is too many cards for this many players");
-        room.order = plan.order;
-        room.handSize = plan.handSize;
-        changed(room);
-        return accept();
-      }
-
-      if (input.action.type === "timing.configure") {
-        if (room.managed) return reject("action_unavailable", "The game-night settings are fixed");
-        room.settleHoldMs = input.action.settleHoldMs;
-        changed(room);
-        return accept();
-      }
-
-      if (input.action.type === "game.start" && room.phase === "lobby") {
-        const confirmed = new Set(input.action.removePlayerIds ?? []);
-        const unready = multiplayerUnreadyPlayers(activePlayers(room));
-        const unconfirmed = unready.filter(
-          ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
-        );
-        if (unconfirmed.length > 0) {
-          if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`)) changed(room);
-          return reject(
-            "players_not_ready",
-            unconfirmed.some(({ id }) => id === player.id)
-              ? "Set yourself ready before starting"
-              : "Some players are not ready",
-          );
-        }
-        if (confirmed.size > 0) {
-          room.players = room.players.filter(
-            (candidate) =>
-              multiplayerPlayerReady(candidate) ||
-              candidate.id === player.id ||
-              !confirmed.has(candidate.id),
-          );
-          changed(room);
-        }
-        const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
-        if (!plan) return reject("deck_too_small", "There are too many players for the deck");
-        emitLogClear();
-        applyDeal(room, plan, now, pick(2 ** 31));
-        return accept();
-      }
-
-      if (input.action.type === "heat.next" && room.phase === "settle" && room.heat) {
-        room.heat.nextHeatAt = now;
-        emitLog(advance(room, now));
-        return accept();
-      }
-
-      if (
-        (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
-        room.phase === "finished"
-      ) {
-        emitLogClear();
-        if (input.action.type === "game.replay") {
-          if (!resetForRematch(room, now, pick(2 ** 31)))
-            return reject("deck_too_small", "There are too many players for the deck");
-        } else {
-          // Back to the lobby so people can join or drop; everyone re-readies from there.
-          for (const roomPlayer of room.players) {
-            setMultiplayerPlayerReady(roomPlayer, roomPlayer.id === room.hostPlayerId);
-            roomPlayer.hand = [];
-            roomPlayer.chain = 0;
-            roomPlayer.longestChain = 0;
-            roomPlayer.connections = 0;
-            roomPlayer.misses = 0;
-            roomPlayer.totalElapsedMs = 0;
-            roomPlayer.bestElapsedMs = null;
-            roomPlayer.place = null;
+        if (input.action.type === "readiness.set") {
+          if (room.phase !== "lobby")
+            return reject("action_unavailable", "Readiness can only change in the lobby");
+          if (multiplayerPlayerReady(player) !== input.action.ready) {
+            setMultiplayerPlayerReady(player, input.action.ready);
+            changed(room);
           }
-          room.phase = "lobby";
-          room.heat = null;
-          room.middle = null;
-          room.heatCount = 0;
-          room.nextPlace = 1;
-          room.gameNumber += 1;
-          changed(room);
+          return accept();
         }
-        return accept();
-      }
 
-      return reject("action_unavailable", "That action is not available");
-    });
-    if (!transition.ok) return null;
-    replaceGameState(room, transition.value.state);
-    pendingEvents.push(
-      ...transition.value.events.filter(
-        (event): event is TwinGameEvent =>
-          event.type === "log.append" || event.type === "log.clear",
-      ),
-    );
-    return transition.value.output;
-  });
+        if (input.action.type === "answer.tap") {
+          const heat = room.heat;
+          if (!heat || room.phase !== "heat" || heat.id !== input.action.heatId)
+            return reject("heat_ended", "That heat has ended");
+          // A tap made in time but delivered late still counts, right up to the payout.
+          if (heat.settleAt !== null && now >= heat.settleAt)
+            return reject("heat_ended", "That heat has ended");
+          if (now < heat.revealAt) return reject("heat_ended", "That heat has not started");
+          if (player.heatId !== heat.id) return reject("heat_ended", "That heat has ended");
+          if (player.landedMs !== null) return reject("already_landed", "You already found it");
+          if (player.cooldownUntil !== null && now < player.cooldownUntil)
+            return reject("cooling_down", "Still cooling down");
+          if (player.hand.length === 0) return reject("action_unavailable", "Your hand is empty");
+
+          const wanted = expectedSymbol(room, player);
+          if (wanted === null) return reject("action_unavailable", "There is nothing to match");
+
+          if (input.action.symbolId !== wanted) {
+            player.heatMisses += 1;
+            player.misses += 1;
+            player.cooldownUntil = now + twinCooldownMs(player.heatMisses);
+            changed(room);
+            return reject("wrong_symbol", "Not that one");
+          }
+
+          player.landedMs = recordTwinElapsed({
+            claimedMs: input.action.elapsedMs,
+            arrivalElapsedMs: now - heat.revealAt,
+            windowMs: room.windowMs,
+          });
+          // First blood starts everyone else's clock.
+          if (heat.graceEndsAt === null)
+            heat.graceEndsAt = twinGraceEnd(now, heat.deadlineAt, room.graceMs);
+          changed(room);
+          emitLog(advance(room, now));
+          return accept();
+        }
+
+        const host = room.players.find(
+          ({ id, withdrawn }) => id === room.hostPlayerId && !withdrawn,
+        );
+        const canControl =
+          player.id === room.hostPlayerId || !host || now - host.lastSeenAt > HOST_TAKEOVER_MS;
+        if (!canControl) return reject("not_host", "The host controls the game");
+
+        if (input.action.type === "room.admission.set") {
+          if (room.phase !== "lobby")
+            return reject("action_unavailable", "The room only locks in the lobby");
+          if (room.joinLocked !== input.action.locked) {
+            room.joinLocked = input.action.locked;
+            changed(room);
+          }
+          return accept();
+        }
+
+        if (input.action.type === "host.pass") {
+          const targetId = input.action.playerId;
+          const target = activePlayers(room).find(({ id }) => id === targetId);
+          if (!target) return reject("action_unavailable", "That player is not available");
+          room.hostPlayerId = target.id;
+          changed(room);
+          return accept();
+        }
+
+        if (input.action.type === "game.configure") {
+          if (room.managed)
+            return reject("action_unavailable", "The game-night settings are fixed");
+          if (room.phase !== "lobby")
+            return reject("action_unavailable", "Settings only change in the lobby");
+          if (input.action.handSize !== undefined) room.requestedHandSize = input.action.handSize;
+          if (input.action.windowMs !== undefined) room.windowMs = input.action.windowMs;
+          if (input.action.graceMs !== undefined) room.graceMs = input.action.graceMs;
+          const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
+          if (!plan)
+            return reject("deck_too_small", "That is too many cards for this many players");
+          room.order = plan.order;
+          room.handSize = plan.handSize;
+          changed(room);
+          return accept();
+        }
+
+        if (input.action.type === "timing.configure") {
+          if (room.managed)
+            return reject("action_unavailable", "The game-night settings are fixed");
+          room.settleHoldMs = input.action.settleHoldMs;
+          changed(room);
+          return accept();
+        }
+
+        if (input.action.type === "game.start" && room.phase === "lobby") {
+          const confirmed = new Set(input.action.removePlayerIds ?? []);
+          const unready = multiplayerUnreadyPlayers(activePlayers(room));
+          const unconfirmed = unready.filter(
+            ({ id, startRequestId }) => id === player.id || !confirmed.has(id) || !startRequestId,
+          );
+          if (unconfirmed.length > 0) {
+            if (requestMultiplayerReadiness(unconfirmed, `${context.newId}:readiness`))
+              changed(room);
+            return reject(
+              "players_not_ready",
+              unconfirmed.some(({ id }) => id === player.id)
+                ? "Set yourself ready before starting"
+                : "Some players are not ready",
+            );
+          }
+          if (confirmed.size > 0) {
+            room.players = room.players.filter(
+              (candidate) =>
+                multiplayerPlayerReady(candidate) ||
+                candidate.id === player.id ||
+                !confirmed.has(candidate.id),
+            );
+            changed(room);
+          }
+          const plan = planTwinDeck(activePlayers(room).length, room.requestedHandSize);
+          if (!plan) return reject("deck_too_small", "There are too many players for the deck");
+          emitLogClear();
+          applyDeal(room, plan, now, pick(2 ** 31));
+          return accept();
+        }
+
+        if (input.action.type === "heat.next" && room.phase === "settle" && room.heat) {
+          room.heat.nextHeatAt = now;
+          emitLog(advance(room, now));
+          return accept();
+        }
+
+        if (
+          (input.action.type === "game.replay" || input.action.type === "game.lobby") &&
+          room.phase === "finished"
+        ) {
+          emitLogClear();
+          if (input.action.type === "game.replay") {
+            if (!resetForRematch(room, now, pick(2 ** 31)))
+              return reject("deck_too_small", "There are too many players for the deck");
+          } else {
+            // Back to the lobby so people can join or drop; everyone re-readies from there.
+            for (const roomPlayer of room.players) {
+              setMultiplayerPlayerReady(roomPlayer, roomPlayer.id === room.hostPlayerId);
+              roomPlayer.hand = [];
+              roomPlayer.chain = 0;
+              roomPlayer.longestChain = 0;
+              roomPlayer.connections = 0;
+              roomPlayer.misses = 0;
+              roomPlayer.totalElapsedMs = 0;
+              roomPlayer.bestElapsedMs = null;
+              roomPlayer.place = null;
+            }
+            room.phase = "lobby";
+            room.heat = null;
+            room.middle = null;
+            room.heatCount = 0;
+            room.nextPlace = 1;
+            room.gameNumber += 1;
+            changed(room);
+          }
+          return accept();
+        }
+
+        return reject("action_unavailable", "That action is not available");
+      });
+      if (!transition.ok) return null;
+      replaceGameState(room, transition.value.state);
+      if (postgresRoomsSelected()) {
+        for (const event of transition.value.events) {
+          if (event.type === "log.clear") room.loggedHeats = [];
+          else if (event.type === "log.append") appendEmbeddedLog(room, event.entries);
+        }
+      } else
+        pendingEvents.push(
+          ...transition.value.events.filter(
+            (event): event is TwinGameEvent =>
+              event.type === "log.append" || event.type === "log.clear",
+          ),
+        );
+      return transition.value.output;
+    },
+    postgresRoomsSelected() ? postgresAction(input, command.actionId) : undefined,
+    (outcome) => Boolean(outcome?.ok && outcome.accepted),
+  );
   const room = pendingEvents.length > 0 ? await loadRoom(input.roomId) : null;
   if (room) {
     for (const event of pendingEvents) {
