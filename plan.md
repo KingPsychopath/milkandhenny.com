@@ -617,8 +617,9 @@ double-consume a credential, vote, report submission or protected quota.
       failures before selecting the Postgres repository in production.
   - [x] Stage Postgres album unpublication as one draft revision plus public delete intents;
         the media worker retries fenced deletions, and republishing waits for pending cleanup.
-        Upload finalization uses the same transition. Album deletion, photo removal and
-        publication copy still need the same durable treatment.
+        Upload finalization uses the same transition. Photo removal queues private/public
+        deletions and blocks key reuse until cleanup. Album deletion and publication copy still
+        need the same durable treatment.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -1519,6 +1520,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   A scoped-role SQL check exercised the advisory lock, album read and ledger update privileges.
   The deletion keeps one database transaction open across the bounded R2 call, so production load
   and timeout behavior still need the M8 workload check.
+- Postgres photo removal now commits the album revision and both private/public deletion intents
+  together. The worker checks current photo references under the album lock before deleting;
+  writes reject reuse of a private key while deletion remains pending. The scoped worker role
+  can read photo references. The related real-Postgres album and role suites passed (4 files,
+  13 cases), including a published album that remains published after removing one photo;
+  `pnpm check` passed. Album-wide deletion and publication copy remain open.
 
 ### Milestone checkpoint template
 

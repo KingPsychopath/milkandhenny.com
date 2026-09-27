@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import sharp from "sharp";
 
-import { finalizeAlbumUploads, updateAlbumMetadata } from "@/features/media/admin-albums";
+import {
+  deleteAlbumPhotos,
+  finalizeAlbumUploads,
+  updateAlbumMetadata,
+} from "@/features/media/admin-albums";
 import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
 import { readPostgresAlbum, writePostgresAlbum } from "@/features/media/album-postgres.server";
 import type { Album } from "@/features/media/albums";
@@ -143,6 +147,48 @@ describeWithDatabase("Postgres album public deletion", () => {
     await expect(worker).resolves.toMatchObject({ completed: 1 });
     await republish;
     expect(published).toBe(true);
+  });
+
+  it("queues both scopes after removing the last photo and blocks key reuse", async () => {
+    const removeMany = vi.fn(async () => 0);
+    const removed = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObjects: removeMany },
+      () => deleteAlbumPhotos(album.slug, ["photo-1"]),
+    );
+    expect(removed.album.status).toBe("draft");
+    expect(removed.deletedKeys).toBe(0);
+    expect(removed.queuedKeys).toBe(7);
+    expect(removeMany).not.toHaveBeenCalled();
+    await expect(
+      writePostgresAlbum({ ...album, status: "draft", revision: removed.album.revision }),
+    ).rejects.toThrow();
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-photo-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 7, completed: 7 });
+    expect(remove).toHaveBeenCalledTimes(7);
+    expect(
+      (await writePostgresAlbum({ ...album, status: "draft", revision: removed.album.revision }))
+        .photos,
+    ).toHaveLength(1);
+  });
+
+  it("deletes a removed photo while the rest of the album stays published", async () => {
+    const added = await writePostgresAlbum({
+      ...album,
+      revision: 1,
+      photos: [...album.photos, { ...album.photos[0]!, id: "photo-2" }],
+    });
+    expect(added.status).toBe("published");
+    const removed = await deleteAlbumPhotos(album.slug, ["photo-1"]);
+    expect(removed.album.status).toBe("published");
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: vi.fn(async () => {}) },
+      () => runAlbumObjectDeletionBatch("album-photo-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 7, completed: 7 });
   });
 
   it("commits upload finalization and unpublication before public object cleanup", async () => {

@@ -137,13 +137,14 @@ async function listAlbumManifests(): Promise<Album[]> {
 
 async function writeAlbumManifest(
   album: Album,
-  options: { publicDeleteKeys?: readonly string[] } = {},
+  options: { publicDeleteKeys?: readonly string[]; privateDeleteKeys?: readonly string[] } = {},
 ): Promise<Album> {
   if (process.env.ALBUM_STORE === "postgres") {
     if (!parseAlbumManifest(JSON.stringify(album), album.slug)) throw new Error("Invalid album");
     return writePostgresAlbum(album, options);
   }
-  if (options.publicDeleteKeys?.length) throw new Error("Album object intents require Postgres");
+  if (options.publicDeleteKeys?.length || options.privateDeleteKeys?.length)
+    throw new Error("Album object intents require Postgres");
   if (!isConfigured()) {
     throw new Error("Object storage is not configured");
   }

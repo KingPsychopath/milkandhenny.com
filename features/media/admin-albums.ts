@@ -320,7 +320,7 @@ async function updateAlbumPhoto(
 async function deleteAlbumPhotos(
   slug: string,
   photoIds: string[],
-): Promise<{ album: AdminAlbum; deletedKeys: number }> {
+): Promise<{ album: AdminAlbum; deletedKeys: number; queuedKeys?: number }> {
   const album = await readAlbumManifest(slug);
   if (!album) throw new Error("Album not found");
   const publishedSnapshot =
@@ -333,6 +333,17 @@ async function deleteAlbumPhotos(
   album.photos = album.photos.filter((photo) => !ids.has(photo.id));
   if (ids.has(album.cover)) album.cover = album.photos[0]?.id ?? "";
   if (!album.photos.length) album.status = "draft";
+  if (process.env.ALBUM_STORE === "postgres") {
+    const updated = await writeAlbumManifest(album, {
+      publicDeleteKeys: publicKeys,
+      privateDeleteKeys: privateKeys,
+    });
+    return {
+      album: toAdminAlbum(updated),
+      deletedKeys: 0,
+      queuedKeys: publicKeys.length + privateKeys.length,
+    };
+  }
   const deletedPublic = await deleteObjects(publicKeys, { scope: "public" });
   let updated: Album;
   try {
@@ -349,14 +360,16 @@ async function deleteAlbumPhotos(
 async function deleteAlbumPhoto(
   slug: string,
   photoId: string,
-): Promise<{ album: AdminAlbum; deletedKeys: string[] }> {
+): Promise<{ album: AdminAlbum; deletedKeys: string[]; queuedKeys?: string[] }> {
   const album = await readAlbumManifest(slug);
   if (!album) throw new Error("Album not found");
   const photo = album.photos.find((item) => item.id === photoId);
   if (!photo) throw new Error("Photo not found in album");
   const keys = [...privatePhotoKeys(slug, photo), ...publicPhotoKeys(slug, photo)];
   const result = await deleteAlbumPhotos(slug, [photoId]);
-  return { album: result.album, deletedKeys: keys };
+  return process.env.ALBUM_STORE === "postgres"
+    ? { album: result.album, deletedKeys: [], queuedKeys: keys }
+    : { album: result.album, deletedKeys: keys };
 }
 
 async function deleteAlbum(

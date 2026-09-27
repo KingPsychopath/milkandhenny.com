@@ -34,15 +34,15 @@ live updates still require Redis.
 After the Postgres transfer migrations are applied, run
 [`ops/postgres-media-worker-role.sql`](../ops/postgres-media-worker-role.sql) as the schema owner.
 It grants the `mah_media_worker` role access to the migration ledger and transfer/media execution
-tables plus read-only album publication state. Create a separate login with a password, grant it this role, and give its connection
+tables plus read-only album and photo references. Create a separate login with a password, grant it this role, and give its connection
 URL only to the media-worker service. The role has no credential, ticket, or checkout-table access.
 The script grants no default privileges, so rerun it after later migrations add worker tables.
 
 The Postgres worker must use `DATABASE_SCHEMA_MODE=verify`, `TRANSFER_CATALOGUE_STORE=postgres`,
 `TRANSFER_MEDIA_JOB_STORE=postgres`, `MEDIA_WORKER_STATUS_STORE=postgres`,
 `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres`, and `TRANSFER_OBJECT_DELETION_RUNNER=postgres`.
-When `ALBUM_STORE=postgres`, set `ALBUM_OBJECT_DELETION_RUNNER=postgres` as well so public
-unpublication deletes are retried by this worker.
+When `ALBUM_STORE=postgres`, set `ALBUM_OBJECT_DELETION_RUNNER=postgres` as well so album public
+and private object deletes are retried by this worker.
 The worker verifies the migration ledger without
 reading Pitch documents. Its web counterpart still performs the full Pitch document check.
 This mode remains staged until the accepted Redis export is imported, source objects reconcile,
@@ -59,7 +59,7 @@ authentication (`ADMIN_PASSWORD` and `UPLOAD_PIN`) and payment,
 email, and database credentials. The media worker does not receive those
 secrets. In the current Redis mode it needs Redis REST and direct Redis queue access plus private
 R2 credentials. The staged Postgres mode needs its scoped database credential and private R2
-credentials. When album public deletion is enabled, it also needs a credential scoped to the
+credentials. When album deletion is enabled, it also needs a credential scoped to the
 public R2 bucket for deletion.
 
 `/api/health` is role-aware. Web readiness checks the site and its required
