@@ -79,7 +79,7 @@ export function CommunicationsPanel({
   const [planRefreshHalted, setPlanRefreshHalted] = useState(false);
   const [planRefreshFailed, setPlanRefreshFailed] = useState(false);
   const [localSelectedEvent, setLocalSelectedEvent] = useState(communicationEvent || "");
-  const [stageEditor, setStageEditor] = useAdminDraftState<{
+  const [stageEditor, setStageEditor, , stageHydrated] = useAdminDraftState<{
     id: string | null;
     draft: StageDraft;
   }>(
@@ -121,7 +121,7 @@ export function CommunicationsPanel({
   } | null>(null);
   const [stagePreview, setStagePreview] = useState<{ stageId: string; html: string } | null>(null);
   const [testEmail, setTestEmail] = useState("try@owenabel.com");
-  const [composition, setComposition] = useAdminDraftState<{
+  const [composition, setComposition, , compositionHydrated] = useAdminDraftState<{
     kind: Kind;
     audience: Audience;
     composeEvent: string;
@@ -187,7 +187,7 @@ export function CommunicationsPanel({
       ],
     }));
   const [contactQuery, setContactQuery] = useState("");
-  const [templateDraft, setTemplateDraft] = useAdminDraftState<TemplateDraft>(
+  const [templateDraft, setTemplateDraft, , templateHydrated] = useAdminDraftState<TemplateDraft>(
     "communications:templateDraft",
     {
       id: "",
@@ -202,9 +202,8 @@ export function CommunicationsPanel({
       isDefault: false,
     },
   );
-  const [surveyDraft, setSurveyDraft, markSurveySaved] = useAdminDraftState<SurveyDraft>(
-    "communications:surveyDraft",
-    {
+  const [surveyDraft, setSurveyDraft, markSurveySaved, surveyHydrated] =
+    useAdminDraftState<SurveyDraft>("communications:surveyDraft", {
       id: "",
       slug: "",
       eventSlug: "",
@@ -213,8 +212,7 @@ export function CommunicationsPanel({
       identityMode: "identified",
       status: "draft",
       questions: [],
-    },
-  );
+    });
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
   const surveyResponses = useQuery({
     ...adminSurveyResponsesQuery(selectedSurvey ?? ""),
@@ -810,7 +808,10 @@ export function CommunicationsPanel({
           ];
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      inert={!(stageHydrated && compositionHydrated && templateHydrated && surveyHydrated)}
+    >
       <section aria-label="Communications status" className="border-y theme-border py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
