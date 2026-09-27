@@ -645,7 +645,7 @@ async function cmdTransfersDelete(id: string) {
   log(`${dim("Remaining:")} ${yellow(formatDuration(info.remainingSeconds))}`);
   console.log();
 
-  const ok = await confirm(`${red("Permanently")} delete transfer "${id}" and all its R2 files?`);
+  const ok = await confirm(`${red("Permanently")} remove transfer "${id}" and its files?`);
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
@@ -655,7 +655,9 @@ async function cmdTransfersDelete(id: string) {
   const result = await deleteTransfer(id, (msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(green("✓ Transfer tombstoned; private object deletion queued"));
+  else log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
   log(green(`✓ Transfer metadata ${result.dataDeleted ? "removed" : "already expired"}`));
   console.log();
 }
@@ -694,7 +696,9 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
   const result = await deleteTransferFile(id, target.id, (msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedObjects} objects from R2`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(green("✓ Private object deletion queued"));
+  else log(green(`✓ Deleted ${result.deletedObjects} objects from R2`));
   if (result.deletedTransfer) {
     log(green("✓ That was the last file; the transfer was removed"));
   } else {
@@ -706,7 +710,9 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
 
 async function cmdTransfersCleanup() {
   heading("Cleanup expired transfers");
-  log(dim("This removes expired/orphaned transfer storage while keeping active transfers."));
+  log(
+    dim("This processes expired transfers and old orphan storage while keeping active transfers."),
+  );
   console.log();
 
   const ok = await confirm("Run transfer cleanup now?");
@@ -718,8 +724,13 @@ async function cmdTransfersCleanup() {
 
   const result = await cleanupExpiredTransfers((msg) => progress(msg));
   console.log();
-  log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
-  log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres") {
+    log(green(`✓ Tombstoned ${result.expiredIndexEntries} expired transfers`));
+    log(green(`✓ Staged ${result.stagedObjects ?? 0} old orphan objects for deletion`));
+  } else {
+    log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
+    log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
+  }
   log(dim(`Scanned ${result.scannedPrefixes} transfer prefixes.`));
   console.log();
 }

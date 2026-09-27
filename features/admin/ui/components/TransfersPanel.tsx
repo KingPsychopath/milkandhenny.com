@@ -85,6 +85,7 @@ type TransferDetailResponse = {
 type TransferCleanupResponse = {
   error?: string;
   deletedObjects?: number;
+  stagedObjects?: number;
   scannedPrefixes?: number;
   expiredIndexEntries?: number;
   deletedTransfers?: number;
@@ -419,7 +420,7 @@ export function TransfersPanel({
         description:
           mode === "deep"
             ? "This scans transfer storage for orphaned prefixes and may take longer."
-            : "This removes expired Redis index entries while keeping active transfers.",
+            : "This expires old transfers while keeping active transfers.",
         confirmLabel: mode === "deep" ? "run deep cleanup" : "run cleanup",
         intent: "danger",
       }))
@@ -445,8 +446,10 @@ export function TransfersPanel({
       }
       const msg =
         mode === "deep"
-          ? `Deep cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files across ${data.scannedPrefixes ?? 0} prefixes.`
-          : `Quick cleanup complete: removed ${data.expiredIndexEntries ?? 0} expired index entries.`;
+          ? data.stagedObjects !== undefined
+            ? `Deep cleanup complete: staged ${data.stagedObjects} old orphan objects for deletion across ${data.scannedPrefixes ?? 0} prefixes.`
+            : `Deep cleanup complete: removed ${data.deletedObjects ?? 0} orphaned files across ${data.scannedPrefixes ?? 0} prefixes.`
+          : `Quick cleanup complete: processed ${data.expiredIndexEntries ?? 0} expired transfer entries.`;
       onStatus(msg);
       setTransferStatus(msg);
       await loadTransfers();

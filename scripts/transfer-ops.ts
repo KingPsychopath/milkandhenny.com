@@ -972,7 +972,7 @@ async function deleteTransfer(
 ): Promise<{ deletedFiles: number; dataDeleted: boolean }> {
   if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   requireR2();
-  onProgress?.(`Deleting transfer ${id}...`);
+  onProgress?.(`Removing transfer ${id}...`);
   const result = await runTransferOperation((transfers) => transfers.adminDelete(id));
   onProgress?.("Done.");
   return result;
@@ -1001,7 +1001,7 @@ async function deleteTransferFile(
     throw new Error(`No file matched "${selector}" in transfer "${id}".`);
   }
 
-  onProgress?.(`Deleting objects for ${file.filename}...`);
+  onProgress?.(`Removing ${file.filename}...`);
   const result = await runTransferOperation((transfers) =>
     transfers.removeFile({ id, fileId: file.id, token: transfer.deleteToken }),
   );
@@ -1148,9 +1148,12 @@ async function retryTransferMedia(
 /**
  * Cleanup expired/orphaned transfers without touching active ones.
  */
-async function cleanupExpiredTransfers(
-  onProgress?: (msg: string) => void,
-): Promise<{ expiredIndexEntries: number; scannedPrefixes: number; deletedObjects: number }> {
+async function cleanupExpiredTransfers(onProgress?: (msg: string) => void): Promise<{
+  expiredIndexEntries: number;
+  scannedPrefixes: number;
+  deletedObjects: number;
+  stagedObjects?: number;
+}> {
   if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   requireR2();
   onProgress?.("Scanning transfer metadata and object storage...");
