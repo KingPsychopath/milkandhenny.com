@@ -699,6 +699,10 @@ derived exports. No read path silently repairs/deletes product state.
         flag, with a failed-file index and row-locked requeue validation. R2 derivative/source
         verification and complete status/event cutover remain open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
+  - [x] Stage a transfer/media-only Postgres worker role and make worker boot verify the migration
+        ledger without reading unrelated Pitch documents. The built worker also passes a
+        Redis-free scoped-login boot/health/SIGTERM smoke with no surviving Postgres connection;
+        production login/wiring and job recovery remain open.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
   - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
         seven terminal jobs retained without replay, one orphan quarantined, no runnable work.
@@ -1450,6 +1454,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   transport cases and `pnpm check` passed. This covers a subsequent notification after reconnect;
   browser snapshot recovery during a lost notification and the two-web-process plus worker
   workload remain release gates.
+- A scoped `mah_media_worker` role now grants only the migration ledger and transfer/media
+  execution tables. Worker boot requires `DATABASE_SCHEMA_MODE=verify` and skips the unrelated
+  Pitch document probe. Nitro close hooks register before async startup, Node signals invoke
+  them, and a process-wide Postgres pool is closed last. A Redis-free built worker with a
+  restricted local login returned HTTP 200 from `/api/health`; SIGTERM exited with status 0,
+  marked its instance stopped, and left zero worker database connections. The temporary local
+  login was removed. `pnpm check`, `pnpm build`, the two focused role/ledger suites (6 tests),
+  and the full one-worker suite (294 files, 2,177 tests) passed. The full suite ran before the
+  final explicit permanent-close option; focused checks, build and smoke were repeated after it.
+  Production credentials and service wiring remain unset; worker recovery under real R2 and
+  stale claims remains open.
 
 ### Milestone checkpoint template
 

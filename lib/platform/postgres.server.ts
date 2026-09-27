@@ -22,7 +22,11 @@ const DATABASE_LOCK_TIMEOUT_MS =
  * can drift from the rows it claims to describe.
  */
 
-let pool: Pool | null = null;
+// Nitro emits separate server and SSR bundles. Module-local state would create
+// two pools in one process and the shutdown hook would close only its copy.
+type PoolState = { pool: Pool | null; closed: boolean };
+const poolGlobal = globalThis as typeof globalThis & { __mahPostgresPool?: PoolState };
+const poolState = (poolGlobal.__mahPostgresPool ??= { pool: null, closed: false });
 
 export function getDatabaseUrl(): string | null {
   const url = process.env.DATABASE_URL?.trim();
@@ -47,10 +51,12 @@ export class DatabaseUnavailableError extends Error {
  * ceiling and this app runs several services against it.
  */
 export function getPool(): Pool | null {
+  // A late callback must not recreate the pool after process shutdown.
+  if (poolState.closed) throw new Error("Postgres pool is closed");
   const connectionString = getDatabaseUrl();
   if (!connectionString) return null;
 
-  pool ??= (() => {
+  poolState.pool ??= (() => {
     const created = new Pool({
       connectionString,
       max: Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10) || 8,
@@ -70,7 +76,7 @@ export function getPool(): Pool | null {
     return created;
   })();
 
-  return pool;
+  return poolState.pool;
 }
 
 function requirePool(): Pool {
@@ -154,9 +160,12 @@ export async function checkDatabase(): Promise<{ ok: boolean; latencyMs: number 
   }
 }
 
-export async function closePool(): Promise<void> {
-  if (!pool) return;
-  const closing = pool;
-  pool = null;
+export async function closePool(options: { permanent?: boolean } = {}): Promise<void> {
+  // Tests and one-shot commands may close and later reopen their pool. Process
+  // shutdown forbids late callbacks from creating a new one.
+  poolState.closed = options.permanent === true;
+  if (!poolState.pool) return;
+  const closing = poolState.pool;
+  poolState.pool = null;
   await closing.end();
 }

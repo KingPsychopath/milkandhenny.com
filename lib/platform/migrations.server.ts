@@ -5269,7 +5269,9 @@ export async function runMigrations(): Promise<MigrationResult> {
 }
 
 /** Read-only startup gate for runtimes using a role without schema privileges. */
-export async function verifyMigrations(): Promise<MigrationResult> {
+export async function verifyMigrations(
+  options: { includePitchDocuments?: boolean } = {},
+): Promise<MigrationResult> {
   if (!getPool()) throw new Error("DATABASE_URL is not configured");
   const hashes = migrationHashes();
   const rows = await query<MigrationLedgerRow>(
@@ -5298,6 +5300,10 @@ export async function verifyMigrations(): Promise<MigrationResult> {
   if (observed.size !== hashes.size) {
     throw new Error(`Database schema is behind source migrations: ${observed.size}/${hashes.size}`);
   }
+  // The media worker only needs the migration ledger and transfer tables. Pitch documents are
+  // verified by the web role; querying them here would expand the worker's database privileges.
+  if (options.includePitchDocuments === false)
+    return { applied: [], alreadyApplied: observed.size };
   const pitchDocuments = await readPitchDocumentSchemaInventory();
   if (pitchDocuments.unsupported > 0) {
     throw new Error(

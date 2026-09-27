@@ -27,6 +27,10 @@ describeWithDatabase("migration ledger integrity", () => {
     const result = await verifyMigrations();
     expect(result.applied).toEqual([]);
     expect(result.alreadyApplied).toBe(121);
+    expect(result.pitchDocuments).toBeDefined();
+    const workerResult = await verifyMigrations({ includePitchDocuments: false });
+    expect(workerResult).toMatchObject({ applied: [], alreadyApplied: 121 });
+    expect(workerResult.pitchDocuments).toBeUndefined();
   });
 
   it("rejects a changed applied checksum", async () => {

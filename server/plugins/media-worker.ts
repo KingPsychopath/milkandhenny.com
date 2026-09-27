@@ -16,8 +16,18 @@ import { definePlugin } from "nitro";
  */
 export default definePlugin(async (nitroApp) => {
   const workerRole = isMediaWorkerRole();
-
   const mode = getMediaProcessorMode();
+  // Nitro invokes async plugins without waiting for startup. Register shutdown
+  // synchronously so the final pool close always follows the worker status write.
+  nitroApp.hooks.hook("close", async () => {
+    if (workerRole && mode !== "local") await stopMediaWorkerLoop();
+    await disposeMediaWorkerRuntime();
+    if (workerRole) {
+      await closeDirectRedisConnections();
+      log.info("media.worker", "Media worker role stopped");
+    }
+  });
+
   if (workerRole && mode === "local") {
     log.warn(
       "media.worker",
@@ -27,13 +37,4 @@ export default definePlugin(async (nitroApp) => {
     await startMediaWorkerLoop();
     log.info("media.worker", "Media worker role started", { mode });
   }
-
-  nitroApp.hooks.hook("close", async () => {
-    if (workerRole && mode !== "local") await stopMediaWorkerLoop();
-    await disposeMediaWorkerRuntime();
-    if (workerRole) {
-      await closeDirectRedisConnections();
-      log.info("media.worker", "Media worker role stopped");
-    }
-  });
 });

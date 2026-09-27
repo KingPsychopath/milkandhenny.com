@@ -1,9 +1,10 @@
 import { definePlugin } from "nitro";
 
 import { log } from "@/lib/platform/logger.server";
-import { closePool, isDatabaseConfigured } from "@/lib/platform/postgres.server";
+import { isDatabaseConfigured } from "@/lib/platform/postgres.server";
 import { runMigrations, verifyMigrations } from "@/lib/platform/migrations.server";
 import { disposeEventsRuntime } from "@/features/events/events-runtime.server";
+import { isMediaWorkerRole } from "@/features/system/media-role.server";
 import {
   startApplicationScheduler,
   stopApplicationScheduler,
@@ -15,7 +16,8 @@ import {
 } from "@/lib/platform/database-readiness.server";
 
 /**
- * Apply or verify migrations on boot, close the pool on shutdown.
+ * Apply or verify migrations on boot. The process shutdown bridge closes the
+ * shared pool after all subsystem runtimes have stopped.
  *
  * A privileged local environment may apply migrations on boot. Production can
  * set DATABASE_SCHEMA_MODE=verify after running the separate migration command
@@ -27,6 +29,13 @@ import {
  * over a ticketing table.
  */
 export default definePlugin(async (nitroApp) => {
+  // Register before migration I/O: Nitro invokes plugins without awaiting async startup.
+  // The shutdown bridge must see this hook before it closes the shared pool.
+  nitroApp.hooks.hook("close", async () => {
+    await stopApplicationScheduler();
+    await disposeEventsRuntime();
+  });
+
   if (isDatabaseConfigured()) {
     markDatabaseMigrationsStarted();
     try {
@@ -34,7 +43,13 @@ export default definePlugin(async (nitroApp) => {
       if (schemaMode !== "migrate" && schemaMode !== "verify") {
         throw new Error("DATABASE_SCHEMA_MODE must be migrate or verify");
       }
-      const result = schemaMode === "verify" ? await verifyMigrations() : await runMigrations();
+      if (isMediaWorkerRole() && schemaMode !== "verify") {
+        throw new Error("Media worker requires DATABASE_SCHEMA_MODE=verify");
+      }
+      const result =
+        schemaMode === "verify"
+          ? await verifyMigrations({ includePitchDocuments: !isMediaWorkerRole() })
+          : await runMigrations();
       if (result.applied.length > 0) {
         log.info("postgres.migrate", "Migrations applied", {
           applied: result.applied,
@@ -50,11 +65,4 @@ export default definePlugin(async (nitroApp) => {
   } else {
     log.warn("postgres", "DATABASE_URL is not set; events and ticketing are unavailable");
   }
-
-  nitroApp.hooks.hook("close", async () => {
-    await stopApplicationScheduler();
-    await disposeEventsRuntime();
-    await closePool();
-    log.info("postgres", "Connection pool closed");
-  });
 });

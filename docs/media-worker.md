@@ -29,6 +29,25 @@ An [opt-in Postgres worker-status store](./media-worker-status-postgres.md) is s
 Redis-to-Postgres migration. It is not enabled in production; queue claims, reconciliation and
 live updates still require Redis.
 
+### Staged Postgres worker credentials
+
+After the Postgres transfer migrations are applied, run
+[`ops/postgres-media-worker-role.sql`](../ops/postgres-media-worker-role.sql) as the schema owner.
+It grants the `mah_media_worker` role access to the migration ledger and transfer/media execution
+tables only. Create a separate login with a password, grant it this role, and give its connection
+URL only to the media-worker service. The role has no credential, ticket, or checkout-table access.
+The script grants no default privileges, so rerun it after later migrations add worker tables.
+
+The Postgres worker must use `DATABASE_SCHEMA_MODE=verify`, `TRANSFER_CATALOGUE_STORE=postgres`,
+`TRANSFER_MEDIA_JOB_STORE=postgres`, `MEDIA_WORKER_STATUS_STORE=postgres`,
+`TRANSFER_MEDIA_EVENT_BACKPLANE=postgres`, and `TRANSFER_OBJECT_DELETION_RUNNER=postgres`.
+The worker verifies the migration ledger without
+reading Pitch documents. Its web counterpart still performs the full Pitch document check.
+This mode remains staged until the accepted Redis export is imported, source objects reconcile,
+and the separate worker release passes its recovery checks.
+The worker registers its close hook before async startup; Node signals drain that hook and close
+the process-wide Postgres pool after the worker records its stopped state.
+
 There is no second build, no separate worker bundle, and no way for the
 worker's copy of the processing code to drift from the app's — it _is_ the
 app's.
