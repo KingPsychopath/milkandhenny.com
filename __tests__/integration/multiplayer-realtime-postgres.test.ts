@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 import { PostgresMultiplayerRealtimeTransport } from "@/features/things/shared/multiplayer-realtime-postgres.server";
+import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
 describeWithDatabase("Postgres multiplayer realtime transport", () => {
@@ -37,6 +38,44 @@ describeWithDatabase("Postgres multiplayer realtime transport", () => {
     } finally {
       if (timeout) clearTimeout(timeout);
       await Promise.all([first.close(), second.close()]);
+    }
+  });
+
+  it("reconnects its listener after Postgres closes the connection", async () => {
+    const received: string[] = [];
+    const transport = new PostgresMultiplayerRealtimeTransport((payload) => received.push(payload));
+    try {
+      await transport.start();
+      const listener = await query<{ pid: number }>(
+        `select pid from pg_stat_activity
+          where datname=current_database() and query='listen multiplayer_realtime_v1'
+          order by backend_start desc limit 1`,
+      );
+      const originalPid = listener[0]?.pid;
+      expect(originalPid).toBeDefined();
+      await query("select pg_terminate_backend($1)", [originalPid]);
+
+      let reconnected = false;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const current = await query<{ pid: number }>(
+          `select pid from pg_stat_activity
+            where datname=current_database() and query='listen multiplayer_realtime_v1'
+              and pid<>$1 limit 1`,
+          [originalPid],
+        );
+        if (current[0]) {
+          reconnected = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(reconnected).toBe(true);
+      await transport.publish("after-reconnect");
+      for (let attempt = 0; attempt < 20 && received.length === 0; attempt += 1)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(received).toEqual(["after-reconnect"]);
+    } finally {
+      await transport.close();
     }
   });
 });
