@@ -852,7 +852,7 @@ async function retryTransferMedia(
   id: string,
   selector?: string,
 ): Promise<RetryTransferMediaResult> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
 
   if (!isSafeTransferId(id)) {
     throw new Error("Invalid transfer id");

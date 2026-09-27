@@ -17,6 +17,14 @@ const WORKER_ROUTE: Partial<Record<ProcessingRoute, ProcessingRoute>> = {
   raw_try_local: "worker_raw",
 };
 
+export function postgresWorkerRouteForFilename(filename: string): ProcessingRoute | null {
+  const route = classifyTransferProcessingRoute(filename);
+  if (!route) return null;
+  const workerRoute = WORKER_ROUTE[route];
+  if (!workerRoute) throw new Error("Unsupported Postgres transfer media route");
+  return workerRoute;
+}
+
 /** Plan metadata without publishing queue work before the catalogue transaction commits. */
 export function planPostgresTransferMedia(
   transferId: string,
@@ -30,9 +38,7 @@ export function planPostgresTransferMedia(
     const storageKey = buildTransferPrimaryStorageKey(transferId, selected);
     const originalStorageKey = buildTransferArchivedOriginalStorageKey(transferId, selected);
     const mimeType = getMimeType(selected.name);
-    const route = classifyTransferProcessingRoute(selected.name);
-    const workerRoute = route ? WORKER_ROUTE[route] : undefined;
-    if (route && !workerRoute) throw new Error("Unsupported Postgres transfer media route");
+    const workerRoute = postgresWorkerRouteForFilename(selected.name);
     const file: TransferFile = {
       id: mediaId,
       filename: selected.name,
