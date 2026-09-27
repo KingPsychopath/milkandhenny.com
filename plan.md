@@ -1438,6 +1438,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   variables empty started the app and its Postgres realtime backplane; `/api/health` returned 503
   because this deliberately isolated run lacked required R2 and other production credentials.
   This establishes boot without Redis, not release readiness or a passing production probe.
+- Commit `bc9f6a43` makes the offline RDB extractor account for every source key and type before
+  it writes output. The accepted export decoded to 224 keys with 199 expiries. A private local
+  fixture containing an extra key was refused before any output was created. `go vet`, the pinned
+  parser run and `pnpm check` passed. `redis-check-rdb` confirmed that the export has its internal
+  checksum disabled; the recorded SHA-256 pins source bytes, and the docs now state the structural
+  verification limit accurately. No live Upstash command was used.
 
 ### Milestone checkpoint template
 
