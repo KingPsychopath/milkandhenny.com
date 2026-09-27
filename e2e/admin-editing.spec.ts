@@ -151,6 +151,7 @@ test("saving a new survey keeps its identity and clears only the saved draft", a
     await page.getByLabel("prompt", { exact: true }).fill("How was your night?");
     await page.getByRole("button", { name: "save survey", exact: true }).click();
     await expect(page.getByText("edit survey", { exact: true })).toBeVisible();
+    await expect(page.getByText("No responses yet.")).toBeVisible();
     const original = (await database.query("select id from surveys where slug=$1", [slug])).rows[0]
       .id;
     await page.getByLabel("title", { exact: true }).fill("Updated survey QA");

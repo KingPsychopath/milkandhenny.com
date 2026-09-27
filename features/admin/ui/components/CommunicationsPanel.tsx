@@ -5,6 +5,7 @@ import { useAdminDraftState } from "../hooks/useAdminDraftState";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
+import { adminSurveyResponsesQuery } from "@/features/surveys/admin-survey-responses.queries";
 import {
   communicationsWorkspaceQuery,
   type CommunicationsWorkspaceScope,
@@ -31,8 +32,6 @@ import {
   Stage,
   StageDelivery,
   Survey,
-  SurveyResponse,
-  SurveyInvitation,
   StageDraft,
   TemplateDraft,
   SurveyDraft,
@@ -217,8 +216,10 @@ export function CommunicationsPanel({
     },
   );
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
-  const [responses, setResponses] = useState<SurveyResponse[]>([]);
-  const [surveyInvitations, setSurveyInvitations] = useState<SurveyInvitation[]>([]);
+  const surveyResponses = useQuery({
+    ...adminSurveyResponsesQuery(selectedSurvey ?? ""),
+    enabled: Boolean(selectedSurvey),
+  });
   const { confirm, dialog } = useActionDialog();
   const tab = communicationTab || localTab;
   const selectedEvent = communicationEvent || localSelectedEvent;
@@ -755,6 +756,10 @@ export function CommunicationsPanel({
       setSurveyDraft((current) => ({ ...current, id: savedDraft.id }));
       onStatus("Survey saved.");
       if (data.survey) setSelectedSurvey(data.survey.id);
+      if (data.survey)
+        await queryClient.invalidateQueries({
+          queryKey: adminSurveyResponsesQuery(data.survey.id).queryKey,
+        });
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not save survey");
@@ -762,7 +767,7 @@ export function CommunicationsPanel({
       setBusy(false);
     }
   };
-  const loadResponses = async (survey: Survey) => {
+  const loadResponses = (survey: Survey) => {
     setSelectedSurvey(survey.id);
     setSurveyDraft({
       id: survey.id,
@@ -774,19 +779,6 @@ export function CommunicationsPanel({
       status: survey.status,
       questions: survey.questions,
     });
-    try {
-      const response = await authFetch(`/api/admin/surveys/${survey.id}`);
-      const data = (await response.json().catch(() => ({}))) as {
-        responses?: SurveyResponse[];
-        invitations?: SurveyInvitation[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Could not load feedback");
-      setResponses(data.responses || []);
-      setSurveyInvitations(data.invitations || []);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load feedback");
-    }
   };
   const newSurvey = () => {
     setSurveyDraft({
@@ -800,8 +792,6 @@ export function CommunicationsPanel({
       questions: [{ id: "question-1", type: "long_text", label: "", required: true }],
     });
     setSelectedSurvey(null);
-    setResponses([]);
-    setSurveyInvitations([]);
   };
   const audienceOptions: Array<[Audience, string]> =
     kind === "newsletter"
@@ -1088,8 +1078,10 @@ export function CommunicationsPanel({
               newSurvey={newSurvey}
               loadResponses={loadResponses}
               selectedSurvey={selectedSurvey}
-              responses={responses}
-              invitations={surveyInvitations}
+              responses={surveyResponses.data?.responses ?? []}
+              invitations={surveyResponses.data?.invitations ?? []}
+              responseLoading={surveyResponses.isPending && Boolean(selectedSurvey)}
+              responseError={surveyResponses.error?.message ?? null}
               busy={busy}
             />
           ) : null}
