@@ -420,6 +420,13 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   Organizer guest requests hydrate with the selected event and refresh after a decision. The
   seeded event and guest-request browser journeys, `pnpm check`, and `pnpm build` passed. Commits
   `1c7b7499`, `9187fe5d`, and `8c8f168c` contain those slices.
+- Secondary workspaces: event waitlists now use an event-keyed Query only while their tool is open.
+  Shared-page summaries use an on-demand private Query shared with their existing HTTP workflow.
+  The content maintenance tab uses a separate Query for orphan-media diagnostics. The local S3
+  browser stub cannot complete the object-list scan, so its browser journey verifies a visible
+  error rather than claiming a successful scan; the focused media integration test passes.
+  Focused browser journeys, `pnpm check`, and `pnpm build` passed for commits `86c01b55`,
+  `c8dd882b`, and `af146fa1`.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -428,8 +435,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 - Open: broader identity-switch and permission-loss evidence; measured workload and freshness
   budgets; full endpoint-consumer inventory; capability-view cache scopes; and per-feature
   invalidation relationships. M1 implementation is a foundation, not full M1 acceptance closure.
-- Next action: migrate the remaining event tools (guest uploads, door setup, staff, waitlist) and
-  content maintenance reads, classify remaining loaders against
+- Next action: migrate the editorial editor’s ordinary remote reads, classify remaining loaders
+  and the token-bearing event tools against
   the target ownership table, revisit M1 identity and request-count acceptance, and run integrated
   verification before declaring completion. Preserve capability-bearing loaders and live room
   controllers where Query would weaken their ownership or isolation.
@@ -456,7 +463,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   hydrated the admin album catalogue; `01d241ea` hydrated pitch administration lists and
   reminders; `f25dd703` migrated selected pitch detail; `149aff0c` migrated people search and
   support inbox; `1c7b7499` migrated ticket invitations; `9187fe5d` migrated selected event
-  operations; `8c8f168c` migrated organizer guest requests.
+  operations; `8c8f168c` migrated organizer guest requests; `86c01b55` migrated the event
+  waitlist; `c8dd882b` migrated shared-page summaries; `af146fa1` migrated orphan diagnostics.
 
 ## References
 
