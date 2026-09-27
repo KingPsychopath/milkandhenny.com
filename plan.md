@@ -1497,9 +1497,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   were copy only; Playwright remains a release gate. Production remains on Upstash. Next:
   finish recoverable album/word publication and source reconciliation, rehearse the integrated
   accepted-export import, then qualify the complete Redis-free artifact before cutover.
-- The staged Postgres album unpublish path now commits a draft revision with public-object
-  deletion intents. A worker using the scoped media role retries each fenced deletion; republish
-  waits for cleanup. Real-Postgres integration covers atomicity, blocked republish, and an
+- Commits `2d6247de` and `d0e1ae69` stage the Postgres album unpublish path: a draft revision
+  commits with public-object deletion intents. A worker using the scoped media role retries each
+  fenced deletion; republish waits for cleanup. Real-Postgres integration covers atomicity,
+  blocked republish, and an
   uncertain R2 deletion retry. `pnpm check`, `pnpm build`, and the full one-worker suite passed
   (297 files, 2,188 tests). A built Redis-free worker with a restricted local login and both
   Postgres album selectors returned HTTP 200, exited cleanly on SIGTERM, marked its instance
