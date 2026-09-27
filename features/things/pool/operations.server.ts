@@ -143,6 +143,21 @@ export async function cleanupGamePools() {
        where status in ('open', 'paused') and closes_at is not null and closes_at <= now()`,
     );
     const poolMemberships = await expireStaleGamePoolAssignments(client);
+    if (process.env.GAME_POOL_CREDENTIAL_STORE === "postgres") {
+      await client.query(
+        `delete from game_pool_room_credentials credential
+         using game_pool_rooms room, game_pool_runs run
+         where credential.run_id=room.run_id and credential.room_id=room.room_id
+           and room.run_id=run.id
+           and (room.status<>'open' or run.status='closed')`,
+      );
+      await client.query(
+        `delete from game_pool_assignment_receipts receipt
+         using game_pool_assignments assignment, game_pool_runs run
+         where receipt.assignment_id=assignment.id and assignment.run_id=run.id
+           and (assignment.status<>'active' or run.status='closed')`,
+      );
+    }
     const redactedAssignments = await client.query(
       `update game_pool_assignments
        set display_name = status

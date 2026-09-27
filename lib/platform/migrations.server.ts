@@ -5073,6 +5073,29 @@ const MIGRATIONS: Migration[] = [
         where processing_status='failed';
     `,
   },
+  {
+    id: "0120_game_pool_recovery_credentials",
+    sql: `
+      create table game_pool_room_credentials (
+        run_id text not null,
+        room_id text not null,
+        join_token text not null,
+        issued_expires_at timestamptz not null,
+        primary key (run_id, room_id),
+        foreign key (run_id, room_id)
+          references game_pool_rooms (run_id, room_id) on delete cascade
+      );
+
+      create table game_pool_assignment_receipts (
+        run_id text not null,
+        client_id text not null,
+        assignment_id text not null references game_pool_assignments (id) on delete cascade,
+        receipt jsonb not null,
+        issued_expires_at timestamptz not null,
+        primary key (run_id, client_id)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

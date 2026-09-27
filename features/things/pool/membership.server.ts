@@ -11,6 +11,22 @@ function moderationId() {
 export async function clearAssignmentReceipts(
   receipts: Array<{ runId: string; clientId: string }>,
 ) {
+  if (receipts.length === 0) return;
+  if (process.env.GAME_POOL_CREDENTIAL_STORE === "postgres") {
+    await query(
+      `delete from game_pool_assignment_receipts receipt
+       where exists (
+         select 1 from unnest($1::text[],$2::text[]) requested(run_id,client_id)
+          where requested.run_id=receipt.run_id and requested.client_id=receipt.client_id
+       )
+         and not exists (
+           select 1 from game_pool_assignments assignment
+            where assignment.id=receipt.assignment_id and assignment.status='active'
+         )`,
+      [receipts.map(({ runId }) => runId), receipts.map(({ clientId }) => clientId)],
+    );
+    return;
+  }
   await deletePoolValues(
     ...receipts.map(({ runId, clientId }) => gamePoolAssignmentReceiptKey(runId, clientId)),
   );

@@ -15,18 +15,18 @@ describeWithDatabase("migration ledger integrity", () => {
 
     const result = await runMigrations();
     expect(result.applied).toEqual([]);
-    expect(result.alreadyApplied).toBe(120);
+    expect(result.alreadyApplied).toBe(121);
     const rows = await query<{ count: string }>(
       "select count(*)::text as count from schema_migrations where sql_sha256 is not null and checksum_origin = 'source-baseline'",
     );
-    expect(rows[0]?.count).toBe("120");
+    expect(rows[0]?.count).toBe("121");
   });
 
   it("verifies the complete ledger without applying migrations", async () => {
     const { verifyMigrations } = await import("@/lib/platform/migrations.server");
     const result = await verifyMigrations();
     expect(result.applied).toEqual([]);
-    expect(result.alreadyApplied).toBe(120);
+    expect(result.alreadyApplied).toBe(121);
   });
 
   it("rejects a changed applied checksum", async () => {
@@ -71,7 +71,7 @@ describeWithDatabase("migration ledger integrity", () => {
       await query("insert into schema_migrations (id) values ('0025_site_settings')");
       const result = await runMigrations();
       expect(result.applied).toEqual([]);
-      expect(result.alreadyApplied).toBe(120);
+      expect(result.alreadyApplied).toBe(121);
     } finally {
       await query("delete from schema_migrations where id = '0025_site_settings'");
     }

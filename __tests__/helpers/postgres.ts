@@ -163,6 +163,8 @@ export async function applySchema(): Promise<void> {
     drop table if exists person_webauthn_profiles cascade;
     drop table if exists event_person_identifiers cascade;
     drop table if exists event_people cascade;
+    drop table if exists game_pool_assignment_receipts cascade;
+    drop table if exists game_pool_room_credentials cascade;
     drop table if exists game_pool_moderation_events cascade;
     drop table if exists game_pool_assignments cascade;
     drop table if exists game_pool_rooms cascade;
