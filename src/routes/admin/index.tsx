@@ -9,6 +9,10 @@ import { adminEventsQuery } from "@/features/events/events.queries";
 import { adminTransfersQuery } from "@/features/transfers/admin.queries";
 import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
+import {
+  adminOperationsSettingsQuery,
+  namedAdminGrantsQuery,
+} from "@/features/attendee-operations/admin-settings.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -149,6 +153,14 @@ export const Route = createFileRoute("/admin/")({
         access.isAuthed && access.permissions?.manageScoring && deps.view === "games"
           ? context.queryClient.prefetchQuery(adminGamePoolsQuery)
           : null;
+      const settingsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "settings"
+          ? context.queryClient.prefetchQuery(adminOperationsSettingsQuery)
+          : null;
+      const adminGrantsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "settings"
+          ? context.queryClient.prefetchQuery(namedAdminGrantsQuery)
+          : null;
       const summaryPromise =
         access.isAuthed &&
         access.permissions?.manageContent &&
@@ -181,6 +193,8 @@ export const Route = createFileRoute("/admin/")({
         transfersPromise,
         uploadAccessPromise,
         gamePoolsPromise,
+        settingsPromise,
+        adminGrantsPromise,
         summaryPromise,
         healthPromise,
         sessionsPromise,
