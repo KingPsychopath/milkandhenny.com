@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminPitchWorkspaceQuery } from "@/features/things/pitches/admin-workspace.queries";
 
 import type {
   PitchAsset,
@@ -26,6 +27,7 @@ import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+const EMPTY_PITCHES: PitchDeckAdminSummary[] = [];
 
 type PitchDetail = {
   pitch: {
@@ -131,55 +133,34 @@ export function PitchesPanel({
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
   const queryClient = useQueryClient();
+  const workspaceQuery = useQuery(adminPitchWorkspaceQuery);
+  const pitches = workspaceQuery.data?.pitches ?? EMPTY_PITCHES;
+  const operationalStatus = workspaceQuery.data?.operationalStatus;
+  const loading = workspaceQuery.isFetching;
+  const loadError = workspaceQuery.error?.message ?? null;
   const invalidatePitchViews = (deckId?: string) => {
     void queryClient.invalidateQueries({ queryKey: pitchWallQueryRoot });
     void queryClient.invalidateQueries({
       queryKey: deckId ? [...publishedPitchQueryRoot, deckId] : publishedPitchQueryRoot,
     });
   };
-  const [pitches, setPitches] = useState<PitchDeckAdminSummary[]>([]);
   const [detail, setDetail] = useState<PitchDetail>();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived" | "trash">("all");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
   const [form, setForm] = useState({ title: "", ownerName: "", ownerEmail: "" });
   const [lifecycleDraft, setLifecycleDraft] = useState<"active" | "archived" | "trashed">("active");
   const [publicationDraft, setPublicationDraft] = useState<"draft" | "published">("draft");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [operationalStatus, setOperationalStatus] = useState<PitchOperationalStatus>();
-  const [modeDraft, setModeDraft] = useState<PitchOperationalMode>("enabled");
+  const [modeDraftOverride, setModeDraft] = useState<PitchOperationalMode>();
+  const modeDraft = modeDraftOverride ?? operationalStatus?.adminMode ?? "enabled";
   const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/pitches");
-      if (!response.ok) throw new Error("Could not load pitches");
-      const body = (await response.json()) as {
-        pitches?: PitchDeckAdminSummary[];
-        operationalStatus?: PitchOperationalStatus;
-      };
-      setPitches(body.pitches ?? []);
-      if (body.operationalStatus) {
-        setOperationalStatus(body.operationalStatus);
-        setModeDraft(body.operationalStatus.adminMode);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load pitches";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const result = await workspaceQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [workspaceQuery, onError]);
 
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -390,9 +371,12 @@ export function PitchesPanel({
       if (!response.ok || !body.operationalStatus) {
         throw new Error(body.error ?? "Could not change the studio mode");
       }
+      const nextStatus = body.operationalStatus;
       invalidatePitchViews();
-      setOperationalStatus(body.operationalStatus);
-      setModeDraft(body.operationalStatus.adminMode);
+      queryClient.setQueryData(adminPitchWorkspaceQuery.queryKey, (current) =>
+        current ? { ...current, operationalStatus: nextStatus } : current,
+      );
+      setModeDraft(undefined);
       onStatus(
         body.operationalStatus.effectiveMode === "enabled"
           ? "Pitch Night Studio is fully enabled."

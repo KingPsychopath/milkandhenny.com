@@ -13,6 +13,10 @@ import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
 import { adminSiteSettingsQuery } from "@/features/site/site-settings.queries";
 import { adminReportsQuery } from "@/features/reports/admin-reports.queries";
 import { adminAlbumsQuery } from "@/features/media/admin-albums.queries";
+import {
+  adminPitchRemindersQuery,
+  adminPitchWorkspaceQuery,
+} from "@/features/things/pitches/admin-workspace.queries";
 import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
 import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
 import { isEmailOutboxStatus } from "@/lib/shared/email-operations";
@@ -178,6 +182,20 @@ export const Route = createFileRoute("/admin/")({
         (!deps.eventWorkspace || deps.eventWorkspace === "events")
           ? context.queryClient.prefetchQuery(adminEventsQuery)
           : null;
+      const pitchesPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        deps.view === "events" &&
+        deps.eventWorkspace === "pitches"
+          ? context.queryClient.prefetchQuery(adminPitchWorkspaceQuery)
+          : null;
+      const remindersPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        deps.view === "events" &&
+        deps.eventWorkspace === "pitches"
+          ? context.queryClient.prefetchQuery(adminPitchRemindersQuery)
+          : null;
       const siteSettingsPromise =
         access.isAuthed &&
         access.permissions?.manageGlobalSettings &&
@@ -248,6 +266,8 @@ export const Route = createFileRoute("/admin/")({
         alertsPromise,
         emailPromise,
         eventsPromise,
+        pitchesPromise,
+        remindersPromise,
         siteSettingsPromise,
         transfersPromise,
         uploadAccessPromise,
