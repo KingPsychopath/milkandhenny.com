@@ -19,14 +19,15 @@ type WordRow = {
   featured: boolean;
   author_role: "admin";
   revision: number;
+  media_scope_dirty: boolean;
 };
 
 const WORD_COLUMNS = `slug, title, subtitle, image, type, body_key, visibility,
   markdown, created_at, updated_at, published_at, reading_time,
-  reading_time_version, tags, featured, author_role, revision`;
+  reading_time_version, tags, featured, author_role, revision, media_scope_dirty`;
 const WORD_META_COLUMNS = `slug, title, subtitle, image, type, body_key, visibility,
   created_at, updated_at, published_at, reading_time,
-  reading_time_version, tags, featured, author_role, revision`;
+  reading_time_version, tags, featured, author_role, revision, media_scope_dirty`;
 
 function metaFromRow(row: Omit<WordRow, "markdown">): NoteMeta {
   return {
@@ -46,6 +47,7 @@ function metaFromRow(row: Omit<WordRow, "markdown">): NoteMeta {
     featured: row.featured,
     authorRole: row.author_role,
     revision: row.revision,
+    mediaScopeDirty: row.media_scope_dirty,
   };
 }
 
@@ -83,13 +85,23 @@ export async function listPostgresWordMetas(): Promise<NoteMeta[]> {
 export async function savePostgresWord(record: NoteRecord): Promise<NoteRecord> {
   const meta = record.meta;
   return transaction(async (client) => {
-    const current = await client.query<{ revision: number }>(
-      "select revision from words where slug = $1 for update",
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `word:${meta.slug}`,
+    ]);
+    const current = await client.query<{
+      revision: number;
+      visibility: NoteMeta["visibility"];
+      media_scope_dirty: boolean;
+      media_source_scope: "private" | "public" | null;
+    }>(
+      "select revision, visibility, media_scope_dirty, media_source_scope from words where slug = $1 for update",
       [meta.slug],
     );
     const existing = current.rows[0];
     if (existing ? meta.revision !== existing.revision : meta.revision !== undefined)
       throw new WordRevisionConflictError();
+    if (existing?.media_scope_dirty && existing.visibility !== meta.visibility)
+      throw new Error("Word media is still moving. Please try again shortly.");
     const revision = existing ? existing.revision + 1 : 1;
     const values = [
       meta.slug,
@@ -117,18 +129,33 @@ export async function savePostgresWord(record: NoteRecord): Promise<NoteRecord> 
              visibility=$7, markdown=$8, created_at=$9, updated_at=$10,
              published_at=$11, reading_time=$12, reading_time_version=$13,
              tags=$14, featured=$15, author_role=$16, revision=$17,
+             media_scope_dirty=media_scope_dirty or visibility<>$7,
+             media_source_scope=case when visibility<>$7 then
+               case when visibility='private' then 'private' else 'public' end
+               else media_source_scope end,
              source_rdb_sha256=null, source_meta_sha256=null, source_body_sha256=null
            where slug=$1 and revision=$18`,
           [...values, existing.revision],
         )
       : await client.query(
-          `insert into words (${WORD_COLUMNS})
+          `insert into words (slug, title, subtitle, image, type, body_key, visibility,
+             markdown, created_at, updated_at, published_at, reading_time,
+             reading_time_version, tags, featured, author_role, revision)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
            on conflict (slug) do nothing`,
           values,
         );
     if (result.rowCount !== 1) throw new WordRevisionConflictError();
-    const saved: NoteRecord = { ...record, meta: { ...meta, revision } };
+    const saved: NoteRecord = {
+      ...record,
+      meta: {
+        ...meta,
+        revision,
+        mediaScopeDirty:
+          (existing?.media_scope_dirty ?? false) ||
+          (existing !== undefined && existing.visibility !== meta.visibility),
+      },
+    };
     await client.query(
       `insert into word_revisions (slug, revision, meta, markdown, saved_at)
        values ($1,$2,$3::jsonb,$4,$5)`,

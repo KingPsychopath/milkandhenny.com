@@ -10,6 +10,11 @@ import {
   updateWord,
 } from "@/features/words/store.server";
 import { WordRevisionConflictError } from "@/features/words/word-postgres.server";
+import { runWordMediaReconcileBatch } from "@/features/words/media-reconcile.server";
+import {
+  r2ObjectStorageProvider,
+  withObjectStorageProvider,
+} from "@/lib/platform/object-storage-provider-context.server";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
@@ -81,5 +86,44 @@ describeWithDatabase("Postgres words", () => {
       ),
     ).toHaveLength(1);
     expect((await getWord(input.slug))?.meta.revision).toBe(2);
+  });
+
+  it("keeps a newly public word hidden until its media move is durable and retryable", async () => {
+    const key = "words/media/moving-word/photo.webp";
+    await createWord({
+      slug: "moving-word",
+      title: "Moving",
+      markdown: "Body",
+      visibility: "private",
+    });
+    const changed = await updateWord("moving-word", { visibility: "public" });
+    expect(changed?.meta.mediaScopeDirty).toBe(true);
+    expect((await listAllWords()).map((word) => word.slug)).not.toContain("moving-word");
+
+    const source = [{ key, size: 1, lastModified: new Date() }];
+    const listObjects = vi.fn(async (_prefix: string, options: { scope: string }) =>
+      options.scope === "private" ? source : [],
+    );
+    const copyObject = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("R2 unavailable"))
+      .mockResolvedValue(undefined);
+    const deleteObjects = vi.fn(async () => 1);
+    const provider = { ...r2ObjectStorageProvider, listObjects, copyObject, deleteObjects };
+    await expect(
+      withObjectStorageProvider(provider, () => runWordMediaReconcileBatch(1, "moving-word")),
+    ).rejects.toThrow("R2 unavailable");
+    expect((await getWordMeta("moving-word"))?.mediaScopeDirty).toBe(true);
+
+    expect(
+      await withObjectStorageProvider(provider, () => runWordMediaReconcileBatch(1, "moving-word")),
+    ).toBe(1);
+    expect(copyObject).toHaveBeenCalledWith(key, key, {
+      sourceScope: "private",
+      destinationScope: "public",
+    });
+    expect(deleteObjects).toHaveBeenCalledWith([key], { scope: "private" });
+    expect((await getWordMeta("moving-word"))?.mediaScopeDirty).toBe(false);
+    expect((await listAllWords()).map((word) => word.slug)).toContain("moving-word");
   });
 });

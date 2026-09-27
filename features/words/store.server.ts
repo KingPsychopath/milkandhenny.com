@@ -29,6 +29,7 @@ import {
 import type { WordType } from "@/features/words/types";
 import { isWordType, normaliseWordType } from "@/features/words/types";
 import { estimateReadingTime } from "@/features/words/reading-time";
+import { runWordMediaReconcileBatch } from "./media-reconcile.server";
 
 const SAFE_NOTE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const READING_TIME_VERSION = 2;
@@ -635,7 +636,17 @@ async function updateWordLocked(
 
   if (process.env.WORD_STORE === "postgres") {
     const body = markdown ?? (await readPostgresWord(slug))?.markdown;
-    return body === undefined ? null : savePostgresWord({ meta, markdown: body });
+    if (body === undefined) return null;
+    const saved = await savePostgresWord({ meta, markdown: body });
+    if (saved.meta.mediaScopeDirty && wordObjectStorageAvailable()) {
+      try {
+        await runWordMediaReconcileBatch(1, slug);
+      } catch {
+        // The durable dirty flag leaves this for the worker; public reads stay hidden.
+      }
+      return readPostgresWord(slug);
+    }
+    return saved;
   }
 
   if (markdown !== null) {
@@ -738,7 +749,7 @@ function filterWordMetas(all: NoteMeta[], options: ListWordOptions): NoteMeta[] 
   const includeNonPublic = options.includeNonPublic ?? false;
 
   return all.filter((note) => {
-    if (!includeNonPublic && note.visibility !== "public") return false;
+    if (!includeNonPublic && (note.visibility !== "public" || note.mediaScopeDirty)) return false;
     if (visibility && note.visibility !== visibility) return false;
     if (type && note.type !== type) return false;
     if (tag && !note.tags.includes(tag)) return false;

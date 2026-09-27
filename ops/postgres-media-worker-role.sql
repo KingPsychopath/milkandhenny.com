@@ -19,6 +19,8 @@ grant select on schema_migrations to mah_media_worker;
 grant select on gallery_albums to mah_media_worker;
 grant update(status) on gallery_albums to mah_media_worker;
 grant select on gallery_album_photos to mah_media_worker;
+grant select(slug, visibility, media_scope_dirty, media_source_scope) on words to mah_media_worker;
+grant update(media_scope_dirty, media_source_scope) on words to mah_media_worker;
 
 grant select, update on transfers, transfer_files to mah_media_worker;
 grant select on transfer_groups, transfer_group_members,

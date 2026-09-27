@@ -25,6 +25,8 @@ export interface WordMeta {
   featured?: boolean;
   authorRole: "admin";
   revision?: number;
+  /** A public word is hidden until its R2 media reaches the public scope. */
+  mediaScopeDirty?: boolean;
 }
 
 export interface ShareLink {

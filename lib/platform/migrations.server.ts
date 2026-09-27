@@ -5106,6 +5106,16 @@ const MIGRATIONS: Migration[] = [
         check (status in ('draft', 'publishing', 'published'));
     `,
   },
+  {
+    id: "0122_word_media_scope_reconciliation",
+    sql: `
+      alter table words
+        add column media_scope_dirty boolean not null default false,
+        add column media_source_scope text check (media_source_scope in ('private', 'public'));
+      create index words_media_scope_dirty_idx on words (slug)
+        where media_scope_dirty;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

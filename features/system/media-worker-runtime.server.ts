@@ -33,6 +33,7 @@ import { TransferMediaOperationsService } from "@/features/transfers/transfer-me
 import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
+import { runWordMediaReconcileBatch } from "@/features/words/media-reconcile.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
 import { createBlockingRedisClient } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
@@ -515,10 +516,26 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
           Schedule.spaced(30_000),
         )
       : Effect.never;
-  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop, albumDeletionLoop], {
-    concurrency: 4,
-    discard: true,
-  });
+  const wordMediaLoop =
+    process.env.WORD_STORE === "postgres"
+      ? Effect.repeat(
+          workerAttempt("word_media_reconcile", () =>
+            withObjectStorageProvider(storage, () => runWordMediaReconcileBatch()),
+          ).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_word_media_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  return Effect.all(
+    [heartbeatLoop, reconcileLoop, transferDeletionLoop, albumDeletionLoop, wordMediaLoop],
+    {
+      concurrency: 5,
+      discard: true,
+    },
+  );
 }
 
 export class MediaWorkerService extends Context.Service<

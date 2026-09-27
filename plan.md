@@ -1550,6 +1550,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   migration-ledger suite had three stale hardcoded migration-count expectations. Those now derive
   from the migration list, and the five-case migration suite passed. Rerun the full suite after
   the next code milestone; browser and load checks remain release gates.
+- Migration `0122_word_media_scope_reconciliation` records visibility-driven R2 scope work in
+  Postgres. A public or unlisted word is hidden while the move is pending. The web process tries
+  the move immediately and the media worker retries dirty rows after failures or a process crash;
+  both serialize with word edits using a per-word Postgres advisory lock. The scoped worker role
+  receives only the word columns needed for this work. A real-Postgres test covers failed R2 copy,
+  retry, and public listing after completion. Existing word deletion and shared-reference cleanup
+  remain M5 work. Production selectors are unchanged and Upstash remains active.
 
 ### Milestone checkpoint template
 
