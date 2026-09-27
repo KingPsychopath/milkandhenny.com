@@ -1,5 +1,5 @@
 import { query, transaction } from "@/lib/platform/postgres.server";
-import { privatePhotoKeys, publicPhotoKeys } from "./album-object-keys";
+import { privatePhotoKeys, publicObjectMetadata, publicPhotoKeys } from "./album-object-keys";
 import { enqueueMediaObjectOperation } from "./object-operations.server";
 import type { Album, Photo } from "./albums";
 
@@ -9,7 +9,7 @@ type AlbumRow = {
   album_date: string;
   description: string | null;
   cover_photo_id: string | null;
-  status: "draft" | "published";
+  status: "draft" | "publishing" | "published";
   updated_at: Date;
   revision: number;
   photo_id: string | null;
@@ -116,10 +116,15 @@ export async function listPostgresAlbums(): Promise<Album[]> {
 
 export async function writePostgresAlbum(
   album: Album,
-  options: { publicDeleteKeys?: readonly string[]; privateDeleteKeys?: readonly string[] } = {},
+  options: {
+    publicDeleteKeys?: readonly string[];
+    privateDeleteKeys?: readonly string[];
+    publicCopyKeys?: readonly string[];
+  } = {},
 ): Promise<Album> {
   const publicDeleteKeys = options.publicDeleteKeys ?? [];
   const privateDeleteKeys = options.privateDeleteKeys ?? [];
+  const publicCopyKeys = options.publicCopyKeys ?? [];
   const referencedPublicKeys = new Set(
     album.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo)),
   );
@@ -134,7 +139,12 @@ export async function writePostgresAlbum(
     ) ||
     privateDeleteKeys.some(
       (key) => !key.startsWith(`albums/${album.slug}/`) || referencedPrivateKeys.has(key),
-    )
+    ) ||
+    (album.status === "publishing"
+      ? new Set(publicCopyKeys).size !== referencedPublicKeys.size ||
+        publicCopyKeys.some((key) => !referencedPublicKeys.has(key)) ||
+        publicDeleteKeys.length > 0
+      : publicCopyKeys.length > 0)
   )
     throw new Error("Invalid album deletion intent");
   const updatedAt = new Date().toISOString();
@@ -144,13 +154,15 @@ export async function writePostgresAlbum(
     await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
       `album:${album.slug}`,
     ]);
-    const current = await client.query<{ revision: number }>(
-      "select revision from gallery_albums where slug = $1 for update",
+    const current = await client.query<{ revision: number; status: Album["status"] }>(
+      "select revision,status from gallery_albums where slug = $1 for update",
       [album.slug],
     );
     const existing = current.rows[0];
     if (existing && album.revision !== existing.revision) throw new AlbumWriteConflictError();
     if (!existing && album.revision !== undefined) throw new AlbumWriteConflictError();
+    if (existing?.status === "publishing" && album.status === "publishing")
+      throw new AlbumWriteConflictError();
     if (referencedPrivateKeys.size > 0) {
       const pendingPrivate = await client.query(
         `select 1 from media_object_operations
@@ -161,7 +173,7 @@ export async function writePostgresAlbum(
       );
       if (pendingPrivate.rows[0]) throw new AlbumWriteConflictError();
     }
-    if (album.status === "published" || !existing) {
+    if (album.status === "published" || album.status === "publishing" || !existing) {
       const pending = await client.query(
         `select 1 from media_object_operations
           where owner_kind='album' and owner_id=$1 and operation='delete'
@@ -251,6 +263,21 @@ export async function writePostgresAlbum(
         targetScope: "private",
         targetKey: key,
       });
+    for (const key of new Set(publicCopyKeys)) {
+      const metadata = publicObjectMetadata(key);
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: album.slug,
+        ownerRevision: revision,
+        operation: "copy",
+        sourceScope: "private",
+        sourceKey: key,
+        targetScope: "public",
+        targetKey: key,
+        contentType: metadata.contentType,
+        cacheControl: metadata.cacheControl,
+      });
+    }
     return revision;
   });
   return { ...album, updatedAt, revision: nextRevision };

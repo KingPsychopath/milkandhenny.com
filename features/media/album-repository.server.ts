@@ -89,8 +89,11 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
       !value.photos.every(isPhotoManifest) ||
       new Set(value.photos.map((photo) => photo.id)).size !== value.photos.length ||
       (value.cover !== "" && !value.photos.some((photo) => photo.id === value.cover)) ||
-      (value.status !== undefined && value.status !== "draft" && value.status !== "published") ||
-      (value.status === "published" && (!value.cover || value.photos.length === 0)) ||
+      (value.status !== undefined &&
+        value.status !== "draft" &&
+        value.status !== "publishing" &&
+        value.status !== "published") ||
+      (value.status !== "draft" && (!value.cover || value.photos.length === 0)) ||
       !isOptionalString(value.updatedAt) ||
       (value.revision !== undefined && (!Number.isInteger(value.revision) || value.revision < 1))
     ) {
@@ -138,13 +141,21 @@ async function listAlbumManifests(): Promise<Album[]> {
 
 async function writeAlbumManifest(
   album: Album,
-  options: { publicDeleteKeys?: readonly string[]; privateDeleteKeys?: readonly string[] } = {},
+  options: {
+    publicDeleteKeys?: readonly string[];
+    privateDeleteKeys?: readonly string[];
+    publicCopyKeys?: readonly string[];
+  } = {},
 ): Promise<Album> {
   if (process.env.ALBUM_STORE === "postgres") {
     if (!parseAlbumManifest(JSON.stringify(album), album.slug)) throw new Error("Invalid album");
     return writePostgresAlbum(album, options);
   }
-  if (options.publicDeleteKeys?.length || options.privateDeleteKeys?.length)
+  if (
+    options.publicDeleteKeys?.length ||
+    options.privateDeleteKeys?.length ||
+    options.publicCopyKeys?.length
+  )
     throw new Error("Album object intents require Postgres");
   if (!isConfigured()) {
     throw new Error("Object storage is not configured");

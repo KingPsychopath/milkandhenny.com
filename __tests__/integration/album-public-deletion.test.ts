@@ -8,8 +8,10 @@ import {
   updateAlbumMetadata,
 } from "@/features/media/admin-albums";
 import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
+import { publicPhotoKeys } from "@/features/media/album-object-keys";
 import { readPostgresAlbum, writePostgresAlbum } from "@/features/media/album-postgres.server";
 import type { Album } from "@/features/media/albums";
+import { getAlbumBySlug } from "@/features/media/albums.server";
 import {
   r2ObjectStorageProvider,
   withObjectStorageProvider,
@@ -75,13 +77,102 @@ describeWithDatabase("Postgres album public deletion", () => {
     const republished = await withObjectStorageProvider(
       {
         ...r2ObjectStorageProvider,
-        downloadBuffer: vi.fn(async () => Buffer.from("image")),
-        uploadBuffer: vi.fn(async () => {}),
+        copyObject: vi.fn(async () => {}),
       },
       () => updateAlbumMetadata(album.slug, { status: "published" }),
     );
     expect(republished.status).toBe("published");
     expect((await readPostgresAlbum(album.slug))?.status).toBe("published");
+  });
+
+  it("publishes only after every queued public copy succeeds", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: publicPhotoKeys(album.slug, album.photos[0]!) },
+    );
+    expect(publishing.status).toBe("publishing");
+    expect(await getAlbumBySlug(album.slug)).toBeNull();
+    const copy = vi.fn(async () => {});
+    const batch = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy },
+      () => runAlbumObjectDeletionBatch("album-copy-test"),
+    );
+    expect(batch).toMatchObject({ claimed: 3, completed: 3 });
+    expect(copy).toHaveBeenCalledTimes(3);
+    expect((await getAlbumBySlug(album.slug))?.status).toBe("published");
+  });
+
+  it("keeps publication hidden and retries a failed copy", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: publicPhotoKeys(album.slug, album.photos[0]!) },
+    );
+    const copy = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("R2 unavailable"))
+      .mockResolvedValue(undefined);
+    await withObjectStorageProvider({ ...r2ObjectStorageProvider, copyObject: copy }, async () => {
+      expect(await runAlbumObjectDeletionBatch("album-copy-retry-test")).toMatchObject({
+        claimed: 3,
+        completed: 2,
+        retried: 1,
+      });
+      expect(await getAlbumBySlug(album.slug)).toBeNull();
+      await query("update media_object_operations set available_at=now() where status='pending'");
+      expect(await runAlbumObjectDeletionBatch("album-copy-retry-test")).toMatchObject({
+        claimed: 1,
+        completed: 1,
+      });
+    });
+    expect((await getAlbumBySlug(album.slug))?.status).toBe("published");
+  });
+
+  it("cancels obsolete copies after a publishing album returns to drafts", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    const keys = publicPhotoKeys(album.slug, album.photos[0]!);
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: keys },
+    );
+    await writePostgresAlbum({ ...publishing, status: "draft" }, { publicDeleteKeys: keys });
+    const copy = vi.fn(async () => {});
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-copy-cancel-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 6, completed: 6 });
+    expect(copy).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(3);
+    expect(await getAlbumBySlug(album.slug)).toBeNull();
+  });
+
+  it("removing a photo during publication cleans every possibly copied public key", async () => {
+    const twoPhotos = await writePostgresAlbum({
+      ...album,
+      revision: 1,
+      photos: [...album.photos, { ...album.photos[0]!, id: "photo-2" }],
+    });
+    const draft = await writePostgresAlbum({ ...twoPhotos, status: "draft" });
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: draft.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo)) },
+    );
+    expect(publishing.status).toBe("publishing");
+    const removed = await deleteAlbumPhotos(album.slug, ["photo-1"]);
+    expect(removed.album.status).toBe("draft");
+    expect(removed.queuedKeys).toBe(10);
+    const copy = vi.fn(async () => {});
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-cancel-photo-test", 30),
+    );
+    expect(settled).toMatchObject({ claimed: 16, completed: 16 });
+    expect(copy).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(10);
   });
 
   it("retains failed deletes for retry after an uncertain R2 result", async () => {

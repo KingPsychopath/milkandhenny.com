@@ -12,7 +12,6 @@ import {
 import {
   MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
   PRIVATE_MEDIA_CACHE_CONTROL,
-  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
 } from "@/lib/shared/media-cache";
 import {
   albumManifestKey,
@@ -23,8 +22,9 @@ import {
   writeAlbumManifest,
 } from "./album-repository.server";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
-import { privatePhotoKeys, publicPhotoKeys } from "./album-object-keys";
+import { privatePhotoKeys, publicObjectMetadata, publicPhotoKeys } from "./album-object-keys";
 import { hasPendingPostgresAlbumPublicDeletes } from "./album-postgres.server";
+import { runAlbumObjectOperationBatch } from "./album-object-deletions.server";
 import { focalPresetToPercent, isValidFocalPreset } from "./focal";
 import {
   isProcessableImage,
@@ -112,16 +112,6 @@ function toAdminAlbum(album: Album): AdminAlbum {
   return { ...album, photoCount: album.photos.length };
 }
 
-function publicObjectMetadata(key: string): { contentType: string; cacheControl: string } {
-  if (key.endsWith(".avif")) {
-    return { contentType: "image/avif", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
-  }
-  if (key.endsWith(".webp")) {
-    return { contentType: "image/webp", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
-  }
-  return { contentType: "image/jpeg", cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL };
-}
-
 async function publishAlbumAssets(album: Album): Promise<void> {
   const keys = album.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo));
   await mapConcurrent(keys, 4, async (key) => {
@@ -197,13 +187,20 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
   const date = input.date === undefined ? album.date : cleanAlbumDate(input.date);
   if (!title) throw new Error("Album title is required");
   if (!date) throw new Error("Enter a valid album date");
-  const status = input.status === undefined ? album.status : input.status;
-  if (status !== undefined && status !== "draft" && status !== "published") {
+  const requestedStatus = input.status;
+  if (
+    requestedStatus !== undefined &&
+    requestedStatus !== "draft" &&
+    requestedStatus !== "published"
+  ) {
     throw new Error("Invalid album status");
   }
-  if (status === "published" && (!album.photos.length || !album.cover)) {
+  const status = requestedStatus === undefined ? album.status : requestedStatus;
+  if (status !== "draft" && (!album.photos.length || !album.cover)) {
     throw new Error("Add a photo and choose a cover before publishing");
   }
+  if (process.env.ALBUM_STORE === "postgres" && album.status === "publishing" && status !== "draft")
+    throw new Error("Album publication is still in progress. Try again shortly.");
 
   const next: Album = {
     ...album,
@@ -240,6 +237,19 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
       await publishAlbumAssets(album).catch(() => undefined);
       throw error;
     }
+  }
+
+  if (process.env.ALBUM_STORE === "postgres" && willPublish && (titleChanged || !wasPublished)) {
+    const keys = next.photos.flatMap((photo) => publicPhotoKeys(slug, photo));
+    const publishing = await writeAlbumManifest(
+      { ...next, status: "publishing" },
+      { publicCopyKeys: keys },
+    );
+    for (let batch = 0; batch < Math.ceil(keys.length / 10); batch += 1) {
+      const result = await runAlbumObjectOperationBatch(`album-publish:${randomUUID()}`, 10, slug);
+      if (result.claimed === 0 || result.retried > 0) break;
+    }
+    return toAdminAlbum((await readAlbumManifest(slug)) ?? publishing);
   }
 
   if (willPublish && (titleChanged || !wasPublished)) await publishAlbumAssets(next);
@@ -330,18 +340,22 @@ async function deleteAlbumPhotos(
   if (!deleting.length) throw new Error("No matching photos found");
   const privateKeys = deleting.flatMap((photo) => privatePhotoKeys(slug, photo));
   const publicKeys = deleting.flatMap((photo) => publicPhotoKeys(slug, photo));
+  const wasPublishing = album.status === "publishing";
   album.photos = album.photos.filter((photo) => !ids.has(photo.id));
   if (ids.has(album.cover)) album.cover = album.photos[0]?.id ?? "";
-  if (!album.photos.length) album.status = "draft";
+  if (!album.photos.length || wasPublishing) album.status = "draft";
   if (process.env.ALBUM_STORE === "postgres") {
+    const publicDeleteKeys = wasPublishing
+      ? (publishedSnapshot?.photos ?? []).flatMap((photo) => publicPhotoKeys(slug, photo))
+      : publicKeys;
     const updated = await writeAlbumManifest(album, {
-      publicDeleteKeys: publicKeys,
+      publicDeleteKeys,
       privateDeleteKeys: privateKeys,
     });
     return {
       album: toAdminAlbum(updated),
       deletedKeys: 0,
-      queuedKeys: publicKeys.length + privateKeys.length,
+      queuedKeys: publicDeleteKeys.length + privateKeys.length,
     };
   }
   const deletedPublic = await deleteObjects(publicKeys, { scope: "public" });

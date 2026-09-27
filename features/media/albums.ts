@@ -37,7 +37,7 @@ export interface Album {
   description?: string;
   cover: string;
   photos: Photo[];
-  status?: "draft" | "published";
+  status?: "draft" | "publishing" | "published";
   updatedAt?: string;
   revision?: number;
 }

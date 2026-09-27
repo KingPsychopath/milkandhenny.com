@@ -619,8 +619,9 @@ double-consume a credential, vote, report submission or protected quota.
         the media worker retries fenced deletions, and republishing waits for pending cleanup.
         Upload finalization uses the same transition. Photo removal queues private/public
         deletions and blocks key reuse until cleanup. Whole-album deletion atomically queues
-        discovered objects and reserves the slug until cleanup. Publication copy and orphan
-        upload reconciliation still need durable treatment.
+        discovered objects and reserves the slug until cleanup. Publication now uses a hidden
+        `publishing` revision with copy intents; the worker publishes only after all copies
+        finish. Orphan upload reconciliation and release qualification remain.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -1537,6 +1538,18 @@ targets for publication/deletion tests, and never send real user email/payment e
   `pnpm check` passed. R2 objects uploaded concurrently by a stale in-flight finalization can
   still be orphaned; M5 reconciliation must sweep those objects before this store is enabled.
   Publication copy remains open.
+- A staged `publishing` album revision now records one private-to-public copy intent per
+  derivative. Public loaders hide that revision; the worker copies under the album lock and
+  advances status only after every intent completes. A normal admin publish drains its scoped
+  intents immediately and returns `published`; failed copies remain hidden for retry, and the
+  admin shows `publishing` with a refresh/cancel path. Cancellation records public delete intents
+  and makes old copies inert. Migration `0121_album_publication_pending` expands the status check;
+  the scoped worker role can update only `gallery_albums.status`. The seven related suites passed
+  56 cases before the final cancellation adjustment; the focused album/status run passed 40
+  cases after it. `pnpm check` and `pnpm build` passed. The full suite passed 296 files but its
+  migration-ledger suite had three stale hardcoded migration-count expectations. Those now derive
+  from the migration list, and the five-case migration suite passed. Rerun the full suite after
+  the next code milestone; browser and load checks remain release gates.
 
 ### Milestone checkpoint template
 

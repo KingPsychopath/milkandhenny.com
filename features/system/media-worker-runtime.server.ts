@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Cause, Context, Data, Deferred, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 
 import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
-import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
+import { runAlbumObjectOperationBatch } from "@/features/media/album-object-deletions.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
 import { runPostgresTransferMediaBatch } from "@/features/transfers/media-job-executor-postgres.server";
@@ -497,19 +497,19 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
   const albumDeletionLoop =
     process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres"
       ? Effect.repeat(
-          workerAttempt("album_object_deletions", () =>
+          workerAttempt("album_object_operations", () =>
             withObjectStorageProvider(storage, () =>
-              runAlbumObjectDeletionBatch(albumDeletionOwner),
+              runAlbumObjectOperationBatch(albumDeletionOwner),
             ),
           ).pipe(
             Effect.tap((result) =>
               Effect.sync(() => {
                 if (result.claimed > 0)
-                  log.info("media.worker", "Album object deletion batch completed", result);
+                  log.info("media.worker", "Album object operation batch completed", result);
               }),
             ),
             Effect.catch((error) =>
-              workerAttempt("record_album_deletion_error", () => recordWorkerError(error)),
+              workerAttempt("record_album_operation_error", () => recordWorkerError(error)),
             ),
           ),
           Schedule.spaced(30_000),

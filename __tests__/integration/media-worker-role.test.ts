@@ -22,6 +22,8 @@ describeWithDatabase("media worker database role", () => {
           media_jobs: boolean;
           albums: boolean;
           album_photos: boolean;
+          album_status_update: boolean;
+          album_title_update: boolean;
           token_sessions: boolean;
           checkout_sessions: boolean;
           tickets: boolean;
@@ -31,6 +33,8 @@ describeWithDatabase("media worker database role", () => {
                  has_table_privilege('mah_media_worker','transfer_media_jobs','UPDATE') as media_jobs,
                  has_table_privilege('mah_media_worker','gallery_albums','SELECT') as albums,
                  has_table_privilege('mah_media_worker','gallery_album_photos','SELECT') as album_photos,
+                 has_column_privilege('mah_media_worker','gallery_albums','status','UPDATE') as album_status_update,
+                 has_column_privilege('mah_media_worker','gallery_albums','title','UPDATE') as album_title_update,
                  has_table_privilege('mah_media_worker','auth_token_sessions','SELECT') as token_sessions,
                  has_table_privilege('mah_media_worker','checkout_sessions','SELECT') as checkout_sessions,
                  has_table_privilege('mah_media_worker','tickets','SELECT') as tickets,
@@ -41,6 +45,8 @@ describeWithDatabase("media worker database role", () => {
           media_jobs: true,
           albums: true,
           album_photos: true,
+          album_status_update: true,
+          album_title_update: false,
           token_sessions: false,
           checkout_sessions: false,
           tickets: false,

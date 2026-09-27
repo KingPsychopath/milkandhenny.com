@@ -1,4 +1,16 @@
 import type { Photo } from "./albums";
+import {
+  MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL,
+  VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL,
+} from "@/lib/shared/media-cache";
+
+export function publicObjectMetadata(key: string): { contentType: string; cacheControl: string } {
+  if (key.endsWith(".avif"))
+    return { contentType: "image/avif", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
+  if (key.endsWith(".webp"))
+    return { contentType: "image/webp", cacheControl: VERSIONED_PUBLIC_MEDIA_CACHE_CONTROL };
+  return { contentType: "image/jpeg", cacheControl: MUTABLE_PUBLIC_MEDIA_CACHE_CONTROL };
+}
 
 export function publicPhotoKeys(slug: string, photo: Pick<Photo, "id" | "widths">): string[] {
   return [

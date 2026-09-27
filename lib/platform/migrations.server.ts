@@ -5096,6 +5096,16 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0121_album_publication_pending",
+    sql: `
+      alter table gallery_albums
+        drop constraint gallery_albums_status_check;
+      alter table gallery_albums
+        add constraint gallery_albums_status_check
+        check (status in ('draft', 'publishing', 'published'));
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

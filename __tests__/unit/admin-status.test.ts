@@ -18,6 +18,7 @@ describe("adminToneForStatus", () => {
   it.each([
     "pending",
     "processing",
+    "publishing",
     "draft",
     "investigating",
     "rate limited",
