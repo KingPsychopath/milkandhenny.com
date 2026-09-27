@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
+import { bestDressedLeaderboardQuery } from "@/features/best-dressed/best-dressed.queries";
 
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -69,6 +70,7 @@ export function BestDressedPanel({
       const data = (await response.json().catch(() => null)) as { isOpen?: boolean } | null;
       if (!response.ok || !data) throw new Error("Failed to update the voting window");
       await queryClient.invalidateQueries({ queryKey: adminBestDressedQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: bestDressedLeaderboardQuery.queryKey });
       onStatus(minutes > 0 ? `Voting is open for ${minutes} minutes.` : "Voting is closed.");
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to update the voting window");
@@ -145,6 +147,7 @@ export function BestDressedPanel({
       });
       if (!response.ok) throw new Error("Failed to clear votes");
       await queryClient.invalidateQueries({ queryKey: adminBestDressedQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: bestDressedLeaderboardQuery.queryKey });
       onStatus("Votes cleared. A new round is ready.");
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to clear votes");
