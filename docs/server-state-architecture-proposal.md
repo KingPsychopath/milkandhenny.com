@@ -373,16 +373,20 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   through Query only when its disclosure opens, avoiding an initial report read for a closed
   section. Its browser journey passed. `pnpm check`, the event-draft regression journey, and
   `pnpm build` passed for the integrated games change.
+- Access and alerts: the settings view now hydrates global and event policies plus named-admin
+  grants. The delivery tab hydrates alert recipients and recent deliveries. Each HTTP endpoint and
+  Start function calls the same feature read; confirmed commands invalidate only their matching
+  private Query. Local policy and recipient drafts remain outside the cache. Seeded settings and
+  alert browser journeys proved initial HTML and hydration; `pnpm check` and `pnpm build` passed.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
   passed. The remaining M1 work is broader identity switching and mutation freshness across all
   private resource families, not the basic SSR boundary.
-- Open: explicit concurrent-identity SSR and hydration request-count evidence; measured workload
-  and freshness budgets; full endpoint-consumer inventory; capability-view cache scopes; and
-  per-feature invalidation relationships. M1 implementation is a foundation, not full M1
-  acceptance closure.
-- Next action: migrate remaining admin workspace reads, classify the remaining loaders against
+- Open: broader identity-switch and permission-loss evidence; measured workload and freshness
+  budgets; full endpoint-consumer inventory; capability-view cache scopes; and per-feature
+  invalidation relationships. M1 implementation is a foundation, not full M1 acceptance closure.
+- Next action: migrate the email ledger and remaining admin workspace reads, classify remaining loaders against
   the target ownership table, revisit M1 identity and request-count acceptance, and run integrated
   verification before declaring completion. Preserve capability-bearing loaders and live room
   controllers where Query would weaken their ownership or isolation.
@@ -401,7 +405,8 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   `ba890800` hydrated the admin event catalogue; `4afac13b` recorded its checkpoint;
   `4a6ae43a` hydrated transfer administration; `fad28081` recorded that checkpoint;
   `96e053c3` hydrated guest upload access; `3180e6f8` made quality evidence on demand;
-  `d33659ea` hydrated game entrances.
+  `d33659ea` hydrated game entrances; `3bc0898f` recorded its checkpoint; `b0fec265`
+  hydrated access settings; `97328ff0` hydrated alert settings.
 
 ## References
 
