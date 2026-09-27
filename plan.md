@@ -937,6 +937,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   web process; no durable or shared state depends on the retired Redis cache key. Forced refresh
   still bypasses it. `pnpm check`, the focused admin permission suite (4 tests), and
   `pnpm build` passed. Code commit: `6978d6a4`.
+- 2026-09-27 transfer CLI read/cleanup parity: info, list, transfer/file removal and deep
+  cleanup no longer require Redis before reaching their existing Postgres catalogue paths.
+  CLI create and append still use the legacy upload pipeline and need a Postgres implementation;
+  `nuke` remains explicitly legacy-only. `pnpm check` and the focused Postgres transfer
+  catalogue suite (14 tests) passed. Code commit: `a0d84dad`.
 - 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
   Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
   Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
