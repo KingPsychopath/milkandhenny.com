@@ -26,3 +26,12 @@ export function getAdminPitchReminders(signal?: AbortSignal) {
     signal,
   );
 }
+
+export function getAdminPitchDetail(deckId: string, signal?: AbortSignal) {
+  return runPitchesResult(
+    Effect.gen(function* () {
+      return yield* (yield* PitchesService).adminDetail(deckId);
+    }),
+    signal,
+  );
+}

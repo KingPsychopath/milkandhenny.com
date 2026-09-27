@@ -4,7 +4,10 @@ import { useCallback, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { adminPitchWorkspaceQuery } from "@/features/things/pitches/admin-workspace.queries";
+import {
+  adminPitchDetailQuery,
+  adminPitchWorkspaceQuery,
+} from "@/features/things/pitches/admin-workspace.queries";
 
 import type {
   PitchAsset,
@@ -21,6 +24,7 @@ import {
 } from "@/features/things/pitches/pitches.queries";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useHasMounted } from "@/hooks/useHasMounted";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
 import { AdminStatus, adminToneBorderClass, adminToneForStatus } from "./AdminStatus";
 import { AppSelect } from "@/components/AppSelect";
@@ -133,6 +137,7 @@ export function PitchesPanel({
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
   const queryClient = useQueryClient();
+  const hydrated = useHasMounted();
   const workspaceQuery = useQuery(adminPitchWorkspaceQuery);
   const pitches = workspaceQuery.data?.pitches ?? EMPTY_PITCHES;
   const operationalStatus = workspaceQuery.data?.operationalStatus;
@@ -144,7 +149,12 @@ export function PitchesPanel({
       queryKey: deckId ? [...publishedPitchQueryRoot, deckId] : publishedPitchQueryRoot,
     });
   };
-  const [detail, setDetail] = useState<PitchDetail>();
+  const [selectedPitchId, setSelectedPitchId] = useState<string>();
+  const detailQuery = useQuery({
+    ...adminPitchDetailQuery(selectedPitchId ?? ""),
+    enabled: Boolean(selectedPitchId),
+  });
+  const detail: PitchDetail | undefined = detailQuery.data;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived" | "trash">("all");
   const [busy, setBusy] = useState("");
@@ -183,10 +193,11 @@ export function PitchesPanel({
   async function open(pitch: PitchDeckAdminSummary) {
     setBusy(pitch.id);
     try {
-      const response = await authFetch(`/api/admin/pitches?deckId=${encodeURIComponent(pitch.id)}`);
-      if (!response.ok) throw new Error("Could not open pitch");
-      const next = (await response.json()) as PitchDetail;
-      setDetail(next);
+      const next = await queryClient.fetchQuery({
+        ...adminPitchDetailQuery(pitch.id),
+        staleTime: 0,
+      });
+      setSelectedPitchId(pitch.id);
       setForm({
         title: next.pitch.title,
         ownerName: next.pitch.ownerName,
@@ -223,7 +234,7 @@ export function PitchesPanel({
       if (!response.ok) throw new Error("Could not update pitch");
       invalidatePitchViews(pitch.id);
       onStatus(archived ? "Pitch hidden from the wall." : "Pitch restored.");
-      setDetail(undefined);
+      setSelectedPitchId(undefined);
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not update pitch");
@@ -243,7 +254,7 @@ export function PitchesPanel({
       if (!response.ok) throw new Error("Could not restore pitch from Trash");
       invalidatePitchViews(deckId);
       onStatus("Pitch restored from Trash.");
-      setDetail(undefined);
+      setSelectedPitchId(undefined);
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not restore pitch from Trash");
@@ -334,7 +345,7 @@ export function PitchesPanel({
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not delete pitch");
       invalidatePitchViews(detail.pitch.id);
-      setDetail(undefined);
+      setSelectedPitchId(undefined);
       setDeleteConfirmation("");
       onStatus("Pitch moved to Trash. It can be restored for 30 days.");
       await refresh();
@@ -405,7 +416,7 @@ export function PitchesPanel({
   const trashStatus = detail && isTrashed ? describeTrash(detail.pitch, detail.audit) : undefined;
 
   return (
-    <section id="pitch-manager" className="scroll-mt-6">
+    <section id="pitch-manager" className="scroll-mt-6" inert={!hydrated}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs theme-muted">pitch night studio</p>
@@ -650,7 +661,7 @@ export function PitchesPanel({
             </div>
             <button
               type="button"
-              onClick={() => setDetail(undefined)}
+              onClick={() => setSelectedPitchId(undefined)}
               className="min-h-11 font-mono text-xs theme-muted hover:text-foreground"
             >
               back to pitches

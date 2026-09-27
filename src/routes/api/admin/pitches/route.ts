@@ -16,15 +16,13 @@ import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
 import {
+  getAdminPitchDetail,
   getAdminPitchReminders,
   getAdminPitchWorkspace,
 } from "@/features/things/pitches/admin-workspace.server";
 import { isValidEmail } from "@/lib/shared/email-address";
 
 async function handleGET(request: Request) {
-  const runPitchesResult = <A, E>(
-    effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
-  ) => runPitchesResultWithoutSignal(effect, request.signal);
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
@@ -43,12 +41,7 @@ async function handleGET(request: Request) {
         : Response.json({ error: result.error }, { status: result.status });
     }
     if (!isPitchDeckId(deckId)) return Response.json({ error: "Pitch not found" }, { status: 404 });
-    const result = await runPitchesResult(
-      Effect.gen(function* () {
-        const pitches = yield* PitchesService;
-        return yield* pitches.adminDetail(deckId);
-      }),
-    );
+    const result = await getAdminPitchDetail(deckId, request.signal);
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: result.status });
     }
