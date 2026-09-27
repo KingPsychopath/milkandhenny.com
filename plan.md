@@ -1521,15 +1521,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   A scoped-role SQL check exercised the advisory lock, album read and ledger update privileges.
   The deletion keeps one database transaction open across the bounded R2 call, so production load
   and timeout behavior still need the M8 workload check.
-- Postgres photo removal now commits the album revision and both private/public deletion intents
-  together. The worker checks current photo references under the album lock before deleting;
-  writes reject reuse of a private key while deletion remains pending. The scoped worker role
+- Commit `5dcac35a` makes Postgres photo removal commit the album revision and both
+  private/public deletion intents together. The worker checks current photo references under the
+  album lock before deleting; writes reject reuse of a private key while deletion remains
+  pending. The scoped worker role
   can read photo references. The related real-Postgres album and role suites passed (4 files,
   13 cases), including a published album that remains published after removing one photo;
   `pnpm check` passed. Album-wide deletion and publication copy remain open.
-- Whole-album deletion now commits the catalogue delete and discovered private/public R2 deletion
-  intents together, including the legacy private manifest key. A new album with the same slug
-  cannot be created until cleanup finishes and then receives a revision above prior operation
+- Commit `fee6dd1e` makes whole-album deletion commit the catalogue delete and discovered
+  private/public R2 deletion intents together, including the legacy private manifest key. A new
+  album with the same slug cannot be created until cleanup finishes and then receives a revision
+  above prior operation
   identities. Direct repository deletion derives intents from recorded photo references when an
   admin object listing is unavailable. Four related real-Postgres suites passed (14 cases), and
   `pnpm check` passed. R2 objects uploaded concurrently by a stale in-flight finalization can
