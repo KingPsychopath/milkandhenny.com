@@ -384,6 +384,17 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   existing HTTP route remains available to CLI clients. A seeded filtered-ledger browser journey,
   `pnpm check`, and `pnpm build` passed. The integrated Vitest suite passed 275 files and 2,107
   tests after the events-panel unit harness was updated to supply QueryClientProvider.
+- Best dressed and site settings: the private voting workspace now hydrates leaderboard-only data
+  and voting-window state; it does not cache the public visitor snapshot or vote token. The event
+  workspace hydrates the footer destination setting, while its draft remains local. The site
+  settings functions enforce the global-settings permission. Voting-window and footer SSR browser
+  journeys passed, along with `pnpm check` and `pnpm build`. The voting journey uses the isolated
+  Postgres voting store because the local Redis stub does not implement the full voting snapshot.
+- Reports: the overview now prefetches active report groups into a private Query; the history
+  toggle selects a separate key. Local notes remain drafts, confirmed status changes refresh the
+  active key, and the bounded monitor stops on refusing 4xx responses. The existing HTTP route
+  continues serving external/admin consumers. A seeded Postgres report browser journey proved SSR
+  and hydration; `pnpm check` and `pnpm build` passed.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -413,7 +424,9 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   `96e053c3` hydrated guest upload access; `3180e6f8` made quality evidence on demand;
   `d33659ea` hydrated game entrances; `3bc0898f` recorded its checkpoint; `b0fec265`
   hydrated access settings; `97328ff0` hydrated alert settings; `3939cef5` recorded their
-  checkpoint; `707b57a3` hydrated the filtered email ledger.
+  checkpoint; `707b57a3` hydrated the filtered email ledger; `6e0d778f` corrected its integrated
+  test harness; `5f4c0693` hydrated private voting controls; `f4beef6c` hydrated site settings;
+  `157a8029` hydrated report groups.
 
 ## References
 
