@@ -667,6 +667,8 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add a bounded, indexed expiry sweep that tombstones expired transfers and stages their
         known object deletions once. Live cleanup selection and orphan-prefix reconciliation
         are staged under the paired flags.
+  - [x] Route CLI create/append through the same Postgres reservation, signed R2 upload and
+        transactional finalization workflow as web uploads; preserve resumable CLI checkpoints.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
@@ -1415,8 +1417,13 @@ targets for publication/deletion tests, and never send real user email/payment e
   The last clean full suite remains the 291-file, 2,170-test pool-credential run at `8974e169`.
 - Production still uses Upstash. The verified first Redis export and local Postgres dump remain
   the authorized cutoff/recovery evidence; the user waived a fresh managed Postgres backup.
-- Next action: complete transfer CLI create/append parity and the remaining R2 publication,
-  source reconciliation, reconnect, deployment-role, and release gates before any production swap.
+- Next action: complete R2 publication, source reconciliation, reconnect, deployment-role, and
+  release gates before any production swap.
+- Commit `441b1ff8` completed the transfer CLI create/append path. A real-Postgres CLI flow test
+  passed with Redis disabled, and two signed-upload transport tests covered single and multipart
+  byte streams. `pnpm check` and the full one-worker suite passed (293 files, 2,174 tests).
+  Remaining M6 work includes source/R2 reconciliation, deletion-runner qualification, worker
+  production credentials, and the non-create/append operational CLI paths.
 
 ### Milestone checkpoint template
 
