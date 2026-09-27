@@ -1,7 +1,6 @@
-import { randomBytes } from "node:crypto";
-
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
+
+import { ensureServerDeviceId } from "@/lib/platform/device-cookie.server";
 
 import {
   admitStaffTicket,
@@ -16,20 +15,9 @@ import { emailStaffTeams, getStaffOperationsPage } from "./staff-operations.serv
 export type { StaffOperationsPageData } from "./staff-operations.server";
 
 const DEVICE_COOKIE = "mah-score-staff-device";
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
 function ensureDeviceId(): string {
-  const current = getCookie(DEVICE_COOKIE);
-  if (current && DEVICE_ID_PATTERN.test(current)) return current;
-  const deviceId = randomBytes(12).toString("base64url");
-  setCookie(DEVICE_COOKIE, deviceId, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 60,
-  });
-  return deviceId;
+  return ensureServerDeviceId(DEVICE_COOKIE);
 }
 
 export const getStaffOperationsPageFn = createServerFn({ method: "GET" })

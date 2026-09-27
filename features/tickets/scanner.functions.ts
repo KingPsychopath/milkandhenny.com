@@ -1,8 +1,8 @@
-import { randomBytes } from "node:crypto";
-
 import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, getRequest, setCookie } from "@tanstack/react-start/server";
+import { getRequest } from "@tanstack/react-start/server";
+
+import { ensureServerDeviceId } from "@/lib/platform/device-cookie.server";
 
 import { EventOperationsService } from "@/features/event-operations/event-operations-service.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
@@ -88,7 +88,6 @@ async function resolveLiveLink(token: string): Promise<ScannerLinkRecord | null>
 }
 
 const DEVICE_COOKIE = "mah-scanner-device";
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 
 /**
  * A stable anonymous id per browser, so the admin can see how many phones
@@ -96,17 +95,7 @@ const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
  * carries no personal data and grants nothing by itself.
  */
 function ensureDeviceId(): string {
-  const existing = getCookie(DEVICE_COOKIE);
-  if (existing && DEVICE_ID_PATTERN.test(existing)) return existing;
-  const id = randomBytes(12).toString("base64url");
-  setCookie(DEVICE_COOKIE, id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 60,
-  });
-  return id;
+  return ensureServerDeviceId(DEVICE_COOKIE);
 }
 
 export const getScannerPageFn = createServerFn({ method: "GET" })
