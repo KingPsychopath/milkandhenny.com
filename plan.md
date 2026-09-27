@@ -672,6 +672,9 @@ derived exports. No read path silently repairs/deletes product state.
         are staged under the paired flags.
   - [x] Route CLI create/append through the same Postgres reservation, signed R2 upload and
         transactional finalization workflow as web uploads; preserve resumable CLI checkpoints.
+  - [x] Route the explicit admin/CLI hard reset through bounded Postgres tombstones and durable
+        deletion intents when the catalogue is selected; operational messages distinguish queued
+        cleanup from immediate R2 deletion. Deep orphan cleanup remains a later pass.
   - [x] Add a bounded read-only Postgres/R2 source-object audit for active transfer files; it
         fails on missing retained sources, recorded size discrepancies, R2 errors and incomplete
         scans. Run it on the imported production target before selecting the catalogue.
@@ -1481,6 +1484,15 @@ targets for publication/deletion tests, and never send real user email/payment e
   14 cases, including real Postgres catalogue rows and injected R2 absence/failure; `pnpm check`
   and `pnpm build` passed. This is read-only release evidence, not publication repair. The
   publication/deletion ledger and reference-safe recovery remain open.
+- Commits `153ad4ec`, `02d1b14f`, `2be5ac92`, and `639cd89f` contain the scoped worker,
+  source and album object audits, and accurate Postgres cleanup messaging. The explicit transfer
+  hard reset now selects Postgres tombstones and deletion intents, processing up to 1,000 current
+  transfers in batches of 20; admin and CLI report queued file cleanup rather than claiming
+  immediate R2 deletion. A real-Postgres service test passed with Redis unset. `pnpm check`,
+  `pnpm build`, and the full one-worker suite passed (296 files, 2,185 tests). Browser changes
+  were copy only; Playwright remains a release gate. Production remains on Upstash. Next:
+  finish recoverable album/word publication and source reconciliation, rehearse the integrated
+  accepted-export import, then qualify the complete Redis-free artifact before cutover.
 
 ### Milestone checkpoint template
 

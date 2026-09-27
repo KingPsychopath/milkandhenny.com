@@ -90,6 +90,7 @@ type TransferCleanupResponse = {
   expiredIndexEntries?: number;
   deletedTransfers?: number;
   deletedFiles?: number;
+  stagedFiles?: number;
 };
 
 function transferFileMatchesHealthFilter(
@@ -468,7 +469,7 @@ export function TransfersPanel({
         eyebrow: "transfer manager",
         title: "Delete every transfer?",
         description:
-          "This permanently deletes all active transfers, their metadata, and every stored transfer file.",
+          "This removes access to all active transfers and schedules their stored files for deletion.",
         confirmLabel: "delete all transfers",
         intent: "danger",
       }))
@@ -490,7 +491,10 @@ export function TransfersPanel({
       if (!res.ok) {
         throw new Error((data.error as string) || "Failed to nuke transfers");
       }
-      const msg = `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`;
+      const msg =
+        data.stagedFiles !== undefined
+          ? `Hard reset complete: removed ${data.deletedTransfers ?? 0} transfers and queued cleanup for ${data.stagedFiles} known files.`
+          : `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`;
       onStatus(msg);
       setTransferStatus(msg);
       await loadTransfers();

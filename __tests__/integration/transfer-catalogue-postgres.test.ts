@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 
 import {
   appendPostgresTransferFiles,
@@ -9,6 +10,7 @@ import {
   getPostgresTransferForWorker,
   listPostgresTransferSummaries,
   removePostgresTransferFile,
+  tombstoneAllPostgresTransfers,
   tombstonePostgresTransfer,
   updatePostgresTransferGrouping,
   validatePostgresTransferDeleteToken,
@@ -238,6 +240,56 @@ describeWithDatabase("Postgres transfer catalogue", () => {
       `transfers/${transfer.id}/thumb/raw/g1/00000000-0000-0000-0000-000000000112.webp`,
     );
     expect(operations.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("hard-resets current transfers through the durable object ledger", async () => {
+    await createPostgresTransfer(transfer);
+    const second = {
+      ...transfer,
+      id: "catalogue-capability-two",
+      files: transfer.files.map((file) => ({
+        ...file,
+        storageKey: file.storageKey.replace(transfer.id, "catalogue-capability-two"),
+      })),
+    };
+    await createPostgresTransfer(second);
+    expect(await tombstoneAllPostgresTransfers()).toEqual({
+      deletedTransfers: 2,
+      stagedFiles: 4,
+    });
+    expect(await getPostgresTransfer(transfer.id)).toBeNull();
+    expect(await getPostgresTransfer(second.id)).toBeNull();
+    expect(await tombstoneAllPostgresTransfers()).toEqual({
+      deletedTransfers: 0,
+      stagedFiles: 0,
+    });
+    const operations = await query<{ count: string }>(
+      `select count(*)::text as count from media_object_operations
+        where owner_kind='transfer' and status='pending'`,
+    );
+    expect(Number(operations[0]?.count)).toBeGreaterThanOrEqual(4);
+  });
+
+  it("runs the hard reset through the media service without Redis", async () => {
+    vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await createPostgresTransfer(transfer);
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferOperationsService } =
+      await import("@/features/transfers/transfer-operations-service.server");
+    const result = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferOperationsService).nuke;
+      }),
+    );
+    expect(result).toMatchObject({
+      configured: true,
+      deletedTransfers: 1,
+      stagedFiles: 2,
+      deletedFiles: 0,
+    });
   });
 
   it("rolls back a tombstone when durable cleanup cannot be recorded", async () => {

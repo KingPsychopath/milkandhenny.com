@@ -806,8 +806,12 @@ async function cmdTransfersNuke(skipConfirm = false) {
 
   heading("Nuke all transfers");
   log(`${dim("Active transfers:")} ${transfers.length}`);
-  log(red("This will permanently delete ALL transfer files from R2"));
-  log(red("and wipe ALL transfer metadata from Redis."));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(red("This tombstones every active transfer and queues all known files for deletion."));
+  else {
+    log(red("This will permanently delete ALL transfer files from R2"));
+    log(red("and wipe ALL transfer metadata from Redis."));
+  }
   console.log();
 
   if (!skipConfirm) {
@@ -822,9 +826,15 @@ async function cmdTransfersNuke(skipConfirm = false) {
   const result = await nukeAllTransfers((msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
-  log(green(`✓ Cleared ${result.deletedKeys} transfer keys from Redis`));
-  log(dim("Clean slate."));
+  if (result.stagedFiles !== undefined) {
+    log(green(`✓ Tombstoned ${result.deletedKeys} transfers`));
+    log(green(`✓ Queued cleanup for ${result.stagedFiles} known files`));
+    log(dim("Run deep cleanup after the grace period for unreferenced objects."));
+  } else {
+    log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+    log(green(`✓ Cleared ${result.deletedKeys} transfer keys from Redis`));
+    log(dim("Clean slate."));
+  }
   console.log();
 }
 
@@ -3147,7 +3157,7 @@ function showHelp() {
     transfers media-reconcile               Reconcile stale queued/processing transfer states
       ${dim("A blocking media worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
     transfers cleanup                        Cleanup expired/orphaned transfer storage
-    transfers nuke ${dim("[--yes]")}                    Wipe ALL transfers (R2 + Redis) — nuclear option
+    transfers nuke ${dim("[--yes]")}                    Remove every transfer and clean up stored files
 
   ${bold("Words Media")} ${dim("(media for words + shared reusable assets)")}
     media upload --slug ${dim("<word-slug>")} --dir ${dim("<path>")}   Upload to words/media/<slug>/

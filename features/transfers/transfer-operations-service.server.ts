@@ -45,6 +45,7 @@ import {
   finalizePostgresTransferReservation,
   getPostgresTransfer,
   removePostgresTransferFile,
+  tombstoneAllPostgresTransfers,
   tombstonePostgresTransfer,
   validatePostgresTransferDeleteToken,
 } from "./catalogue-postgres.server";
@@ -264,6 +265,7 @@ export class TransferOperationsService extends Context.Service<
           configured: true;
           deletedFiles: number;
           deletedTransfers: number;
+          stagedFiles?: number;
           timestamp: string;
         },
       unknown
@@ -1048,6 +1050,18 @@ export class TransferOperationsService extends Context.Service<
         }).pipe(Effect.withSpan("transfers.remove_file"));
 
       const nuke = Effect.gen(function* () {
+        if (postgresTransferCatalogueSelected()) {
+          const result = yield* attempt("tombstone_all_transfers", () =>
+            tombstoneAllPostgresTransfers(),
+          );
+          return {
+            configured: true,
+            deletedFiles: 0,
+            deletedTransfers: result.deletedTransfers,
+            stagedFiles: result.stagedFiles,
+            timestamp: new Date().toISOString(),
+          } as const;
+        }
         requireLegacyTransferCatalogue("Transfer nuke");
         const client = yield* redis.client;
         if (!client || !storage.port.isTransferStorageConfigured()) {

@@ -1164,19 +1164,25 @@ async function cleanupExpiredTransfers(onProgress?: (msg: string) => void): Prom
 }
 
 /**
- * Nuke all transfers: wipe every R2 object under transfers/ and
- * clear the Redis index + all transfer:* keys. Full reset.
+ * Hard-reset all current transfers through the selected catalogue. Postgres mode
+ * tombstones and queues durable object cleanup; legacy mode deletes immediately.
  */
 async function nukeAllTransfers(
   onProgress?: (msg: string) => void,
-): Promise<{ deletedFiles: number; deletedKeys: number }> {
-  requireRedis();
-  requireR2();
-  onProgress?.("Deleting transfer objects and metadata...");
+): Promise<{ deletedFiles: number; deletedKeys: number; stagedFiles?: number }> {
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") {
+    requireRedis();
+    requireR2();
+  }
+  onProgress?.("Removing transfer metadata and scheduling object cleanup...");
   const result = await runTransferOperation((transfers) => transfers.nuke);
   if (!result.configured) throw new Error("Transfer storage is not configured.");
   onProgress?.("Done.");
-  return { deletedFiles: result.deletedFiles, deletedKeys: result.deletedTransfers };
+  return {
+    deletedFiles: result.deletedFiles,
+    deletedKeys: result.deletedTransfers,
+    ...(result.stagedFiles !== undefined ? { stagedFiles: result.stagedFiles } : {}),
+  };
 }
 
 export {

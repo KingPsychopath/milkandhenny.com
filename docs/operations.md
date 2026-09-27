@@ -73,6 +73,12 @@ photos: private originals and derivatives for every photo, plus public derivativ
 albums. It exits nonzero on missing objects, original-size discrepancies, R2 errors or a partial
 scan. It makes no changes. The same maintenance freeze and complete-scan requirement apply.
 
+In staged Postgres transfer mode, admin and CLI hard reset tombstone up to 1,000 current transfers
+in bounded batches and queue deletion of their known private objects. The media worker finishes
+those deletions; the command does not prove R2 is empty. Run deep cleanup after its late-upload
+grace period to stage old unreferenced objects. Stop transfer writers before a full reset so a
+new transfer cannot appear between batches.
+
 ## Email delivery events
 
 Follow [cloudflare-email-events.md](./cloudflare-email-events.md). Cloudflare Queue events are the authoritative path for bounce and complaint suppression. The initial REST response proves only that Cloudflare accepted the message.

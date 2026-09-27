@@ -748,6 +748,41 @@ export async function tombstonePostgresTransfer(transferId: string): Promise<boo
   return transaction((client) => tombstonePostgresTransferInTransaction(client, transferId));
 }
 
+/** Hard-reset the current catalogue in bounded transactions; R2 work stays durable in the ledger. */
+export async function tombstoneAllPostgresTransfers(): Promise<{
+  deletedTransfers: number;
+  stagedFiles: number;
+}> {
+  const maximum = 1_000;
+  const total = await query<{ count: string }>(
+    "select count(*)::text as count from transfers where deleted_at is null",
+  );
+  if (Number(total[0]?.count ?? 0) > maximum)
+    throw new Error("Transfer hard reset exceeds the 1,000-transfer safety bound");
+  let deletedTransfers = 0;
+  let stagedFiles = 0;
+  while (true) {
+    const batch = await transaction(async (client) => {
+      const selected = await client.query<{ id: string; file_count: number }>(
+        `select t.id,
+                (select count(*)::integer from transfer_files f where f.transfer_id=t.id) as file_count
+           from transfers t where t.deleted_at is null
+          order by t.id limit 20 for update of t`,
+      );
+      for (const row of selected.rows) await tombstonePostgresTransferInTransaction(client, row.id);
+      return {
+        transfers: selected.rows.length,
+        files: selected.rows.reduce((sum, row) => sum + row.file_count, 0),
+      };
+    });
+    deletedTransfers += batch.transfers;
+    stagedFiles += batch.files;
+    if (batch.transfers === 0) return { deletedTransfers, stagedFiles };
+    if (deletedTransfers > maximum)
+      throw new Error("Transfer hard reset reached its safety bound; rerun after inspection");
+  }
+}
+
 /** Expiry is a tombstone plus durable object work, never an implicit row disappearance. */
 export async function cleanupExpiredPostgresTransfers(limit = 10): Promise<number> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 50)

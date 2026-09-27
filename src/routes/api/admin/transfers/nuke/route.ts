@@ -6,7 +6,7 @@ import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 /**
- * Hard reset for transfers: deletes all transfer files + transfer metadata.
+ * Hard reset for transfers. Postgres mode tombstones records and queues object deletion.
  * Admin-only and intentionally destructive.
  */
 async function handlePOST(request: Request) {
@@ -24,13 +24,14 @@ async function handlePOST(request: Request) {
       request.signal,
     );
     if (!result.configured) {
-      return Response.json({ error: "Redis or R2 not configured" }, { status: 503 });
+      return Response.json({ error: "Transfer storage is not configured" }, { status: 503 });
     }
 
     return Response.json({
       success: true,
       deletedFiles: result.deletedFiles,
       deletedTransfers: result.deletedTransfers,
+      ...(result.stagedFiles !== undefined ? { stagedFiles: result.stagedFiles } : {}),
       timestamp: result.timestamp,
     });
   } catch (error) {
