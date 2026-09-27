@@ -475,7 +475,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 | M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies |
 | M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger          |
 | M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs        |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: room foundation and four staged modes           |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: room foundation and five staged modes           |
 | M8 — application and realtime integration           | M3–M7                                    | In progress: staged Postgres advisory backplane              |
 | M9 — operations, recovery and documentation         | M8                                       | Pending                                                      |
 | M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                      |
@@ -867,7 +867,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   M7 room transaction foundation `1da75b22`; opt-in Postgres result delivery `111f152d`;
   opt-in Hot & Cold room mapping `b7f3f784`; staged Draw Country mapping and shared engine
   `1eaf95c9`; staged Postgres realtime backplane `48e22435`; staged Family Feud rooms
-  `ef788195`; staged Spelling Party rooms `b087b687`.
+  `ef788195`; staged Spelling Party rooms `b087b687`; staged Centre rooms `225195ed`.
   Staged Postgres health `c92c9dbd`; Pitch presentation `f1926a5b`; operator queue clear
   `4dd96e31`; targeted media retry and reprocess `b99863cd`; stalled-job reconciliation
   `18c24c17`.
@@ -950,6 +950,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   `pnpm check`, the full one-worker suite (285 files, 2,155 tests), `pnpm build`, and
   `git diff --check` passed. Code commit: `b087b687`. Other room modes remain open; the selector
   is not enabled in production.
+- 2026-09-27 word archive CLI parity: backup, inspection and isolated restore now accept
+  `WORD_STORE=postgres` with configured Postgres and object storage, without a Redis preflight.
+  The focused archive/storage recovery suites passed six tests and `pnpm check` passed.
+  Code commit: `ecdbfa86`.
+- 2026-09-27 staged Centre rooms: `CENTRE_ROOM_STORE=postgres` selects the shared row-locked
+  Postgres room transaction and requires the Postgres official-result outbox. Current-game
+  replay records now commit inside the room aggregate; the finishing transition and result
+  outbox commit together. The real-Postgres tests cover concurrent join recovery, action replay
+  with the wrong credential, durable replay and result creation. `pnpm check`, the full
+  one-worker suite (286 files, 2,157 tests), `pnpm build`, and `git diff --check` passed.
+  Code commit: `225195ed`. Other modes remain open; the selector is not enabled in production.
 - 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
   Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
   Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
