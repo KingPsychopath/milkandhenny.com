@@ -1,72 +1,24 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { AdminReportGroup } from "@/features/reports/types";
+import { adminReportsQuery } from "@/features/reports/admin-reports.queries";
 import { copyText } from "@/lib/client/share";
 import { AdminStatus, type AdminStatusTone } from "./AdminStatus";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
-import {
-  REPORT_POLICIES,
-  REPORT_STATUSES,
-  type ReportStatus,
-  type ReportType,
-} from "@/features/reports/report-policy";
+import { REPORT_STATUSES, type ReportStatus } from "@/features/reports/report-policy";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
-
-function isReportType(value: unknown): value is ReportType {
-  return typeof value === "string" && value in REPORT_POLICIES;
-}
 
 function reportTone(status: ReportStatus, severity: AdminReportGroup["severity"]): AdminStatusTone {
   if (status === "resolved") return "positive";
   if (status === "ignored" || status === "duplicate") return "neutral";
   if (severity === "high") return "danger";
   return "attention";
-}
-
-function isAdminReportGroup(value: unknown): value is AdminReportGroup {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const report = Object.fromEntries(Object.entries(value));
-  return (
-    typeof report.id === "string" &&
-    isReportType(report.type) &&
-    typeof report.label === "string" &&
-    typeof report.subjectKey === "string" &&
-    typeof report.status === "string" &&
-    REPORT_STATUSES.includes(report.status as ReportStatus) &&
-    (report.severity === "low" || report.severity === "medium" || report.severity === "high") &&
-    Array.isArray(report.reportIds) &&
-    report.reportIds.every((id) => typeof id === "string") &&
-    typeof report.count === "number" &&
-    typeof report.activeCount === "number" &&
-    typeof report.priority === "number" &&
-    typeof report.halfLifeDays === "number" &&
-    typeof report.firstReportedAt === "string" &&
-    typeof report.latestReportedAt === "string" &&
-    Array.isArray(report.userDetails) &&
-    report.userDetails.every(
-      (detail) =>
-        !!detail &&
-        typeof detail === "object" &&
-        typeof detail.reportId === "string" &&
-        typeof detail.addedAt === "string" &&
-        typeof detail.text === "string",
-    ) &&
-    Array.isArray(report.recentReports) &&
-    !!report.latestContext &&
-    typeof report.latestContext === "object" &&
-    !Array.isArray(report.latestContext)
-  );
-}
-
-function parseReports(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  const data = Object.fromEntries(Object.entries(value));
-  return Array.isArray(data.reports) ? data.reports.filter(isAdminReportGroup) : [];
 }
 
 function formatReportedAt(value: string) {
@@ -140,40 +92,39 @@ export function ReportsPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [reports, setReports] = useState<AdminReportGroup[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [includeResolved, setIncludeResolved] = useState(false);
+  const queryClient = useQueryClient();
+  const reportsQuery = useQuery(adminReportsQuery(includeResolved));
+  const reports = reportsQuery.data ?? [];
+  const loading = reportsQuery.isFetching;
+  const loadError = reportsQuery.error?.message ?? null;
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [updating, setUpdating] = useState<string | null>(null);
   const [copiedReportId, setCopiedReportId] = useState<string | null>(null);
 
   const [pollingHalted, setPollingHalted] = useState(false);
 
-  const loadReports = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch(
-        `/api/admin/reports${includeResolved ? "?includeResolved=1" : ""}`,
-      );
-      const data: unknown = await response.json().catch(() => null);
-      if (!response.ok) {
-        // A 4xx stays wrong until something changes; only manual refresh or a
-        // filter change re-arms the timer.
-        if (response.status >= 400 && response.status < 500) setPollingHalted(true);
-        throw new Error("Failed to load reports");
-      }
-      setPollingHalted(false);
-      setReports(parseReports(data));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load reports";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const error = reportsQuery.error;
+    if (error && "status" in error) {
+      const status = Number(error.status);
+      if (status >= 400 && status < 500) setPollingHalted(true);
     }
-  }, [authFetch, includeResolved, onError]);
+  }, [reportsQuery.error]);
+
+  const loadReports = useCallback(async () => {
+    try {
+      await queryClient.fetchQuery({ ...adminReportsQuery(includeResolved), staleTime: 0 });
+      setPollingHalted(false);
+    } catch (error) {
+      // A refusing scope stays wrong until a manual retry or filter change.
+      if (typeof error === "object" && error && "status" in error) {
+        const status = Number(error.status);
+        if (status >= 400 && status < 500) setPollingHalted(true);
+      }
+      onError(error instanceof Error ? error.message : "Failed to load reports");
+    }
+  }, [queryClient, includeResolved, onError]);
 
   // The shared error banner is deliberately not cleared per poll — a bare
   // interval here used to wipe other panels' errors every 30 seconds.
@@ -181,6 +132,7 @@ export function ReportsPanel({
     enabled: !pollingHalted,
     cadence: "monitoring",
     identity: includeResolved ? "admin-reports:history" : "admin-reports:open",
+    refreshOnEnable: false,
     refresh: () => loadReports(),
   });
 
@@ -234,7 +186,10 @@ export function ReportsPanel({
             <input
               type="checkbox"
               checked={includeResolved}
-              onChange={(event) => setIncludeResolved(event.target.checked)}
+              onChange={(event) => {
+                setPollingHalted(false);
+                setIncludeResolved(event.target.checked);
+              }}
             />
             show history
           </label>

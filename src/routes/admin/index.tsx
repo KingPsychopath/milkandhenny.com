@@ -11,6 +11,7 @@ import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
 import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
 import { adminSiteSettingsQuery } from "@/features/site/site-settings.queries";
+import { adminReportsQuery } from "@/features/reports/admin-reports.queries";
 import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
 import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
 import { isEmailOutboxStatus } from "@/lib/shared/email-operations";
@@ -219,6 +220,10 @@ export const Route = createFileRoute("/admin/")({
         (deps.view === "overview" || deps.view === "system")
           ? context.queryClient.prefetchQuery(adminSystemHealthQuery)
           : null;
+      const reportsPromise =
+        access.isAuthed && access.permissions?.viewAudit && deps.view === "overview"
+          ? context.queryClient.prefetchQuery(adminReportsQuery(false))
+          : null;
       const sessionsPromise =
         access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "system"
           ? context.queryClient.prefetchQuery(adminTokenSessionsQuery)
@@ -247,6 +252,7 @@ export const Route = createFileRoute("/admin/")({
         adminGrantsPromise,
         summaryPromise,
         healthPromise,
+        reportsPromise,
         sessionsPromise,
       ]);
       return access;
