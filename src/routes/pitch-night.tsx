@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getEventsIndexFn } from "@/features/events/events.functions";
+import { eventsIndexQuery } from "@/features/events/events.queries";
 import { PitchNightExperience } from "@/features/pitch-night/PitchNightExperience";
 import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
@@ -9,9 +9,9 @@ const PREPARE_SCROLL_RESTORATION =
   'if("scrollRestoration" in history){history.scrollRestoration="manual";const n=performance.getEntriesByType("navigation")[0];if(n?.type==="reload"&&!location.hash)scrollTo(0,0)}';
 
 export const Route = createFileRoute("/pitch-night")({
-  loader: async () => {
+  loader: async ({ context }) => {
     try {
-      const events = await getEventsIndexFn();
+      const events = await context.queryClient.fetchQuery(eventsIndexQuery);
       const event = events.upcoming.find((candidate) => candidate.marketingPath === "/pitch-night");
       return { ticketHref: event ? `/events/${encodeURIComponent(event.slug)}` : "/events" };
     } catch (error) {
