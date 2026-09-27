@@ -933,6 +933,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   verified local production dump and its successful isolated restore as the recovery checkpoint;
   continue direct Postgres implementation and rehearsal. Do not delay application work for the
   Railway backup grant.
+- 2026-09-27 admin content audit cache: the 15-minute diagnostic cache is now local to each
+  web process; no durable or shared state depends on the retired Redis cache key. Forced refresh
+  still bypasses it. `pnpm check`, the focused admin permission suite (4 tests), and
+  `pnpm build` passed. Code commit: `6978d6a4`.
 - 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
   Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
   Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
