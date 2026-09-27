@@ -1512,6 +1512,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   is the authorized source cutoff, and no fresh backup is required by the user. Next: finish
   those album paths and word-media visibility before the integrated import rehearsal and release
   qualification.
+- A delayed public-object delete and a new album revision now serialize on the same Postgres
+  advisory transaction lock. The worker rechecks its lease and draft state under that lock before
+  deleting, then completes the ledger operation before releasing it. The four-case real-Postgres
+  album suite includes a concurrent republish test; `pnpm check` passed. The deletion keeps one
+  database transaction open across the bounded R2 call, so production load and timeout behavior
+  still need the M8 workload check.
 
 ### Milestone checkpoint template
 

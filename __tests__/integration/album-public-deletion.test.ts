@@ -105,6 +105,46 @@ describeWithDatabase("Postgres album public deletion", () => {
     );
   });
 
+  it("serializes a public delete with republishing the same object key", async () => {
+    const key = `albums/${album.slug}/og/photo-1.jpg`;
+    await writePostgresAlbum(
+      { ...album, status: "draft", revision: 1 },
+      {
+        publicDeleteKeys: [key],
+      },
+    );
+    let beginDelete!: () => void;
+    const deleting = new Promise<void>((resolve) => {
+      beginDelete = resolve;
+    });
+    let finishDelete!: () => void;
+    const deleteGate = new Promise<void>((resolve) => {
+      finishDelete = resolve;
+    });
+    const worker = withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        deleteObject: vi.fn(async () => {
+          beginDelete();
+          await deleteGate;
+        }),
+      },
+      () => runAlbumObjectDeletionBatch("album-delete-lock-test"),
+    );
+    await deleting;
+    const draft = await readPostgresAlbum(album.slug);
+    let published = false;
+    const republish = writePostgresAlbum({ ...draft!, status: "published" }).then(() => {
+      published = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(published).toBe(false);
+    finishDelete();
+    await expect(worker).resolves.toMatchObject({ completed: 1 });
+    await republish;
+    expect(published).toBe(true);
+  });
+
   it("commits upload finalization and unpublication before public object cleanup", async () => {
     const image = await sharp({
       create: { width: 80, height: 80, channels: 3, background: "#67422b" },

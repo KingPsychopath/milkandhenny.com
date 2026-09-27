@@ -125,6 +125,11 @@ export async function writePostgresAlbum(
     throw new Error("Invalid album public deletion intent");
   const updatedAt = new Date().toISOString();
   const nextRevision = await transaction(async (client) => {
+    // An object deletion holds this lock through its R2 call, so a delayed worker cannot
+    // delete a newly republished public key after this revision commits.
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `album:${album.slug}`,
+    ]);
     const current = await client.query<{ revision: number }>(
       "select revision from gallery_albums where slug = $1 for update",
       [album.slug],
@@ -210,5 +215,8 @@ export async function writePostgresAlbum(
 }
 
 export async function deletePostgresAlbum(slug: string): Promise<void> {
-  await query("delete from gallery_albums where slug = $1", [slug]);
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`album:${slug}`]);
+    await client.query("delete from gallery_albums where slug = $1", [slug]);
+  });
 }
