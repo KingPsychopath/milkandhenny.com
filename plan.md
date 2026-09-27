@@ -739,6 +739,8 @@ processes without lost accepted actions, secret leakage or changed game rules.
 - [ ] Verify browser drafts, offline scanner/pitch/game command replay and old-client retries.
 - [ ] Run two-web-process plus separate-worker tests, notification disconnect/failure tests,
       and the numerical workload/idle-load envelope from M1.
+  - [x] Force-close a live Postgres `LISTEN` connection and verify the transport reconnects and
+        delivers a subsequent wake.
 - [ ] Audit SQL round trips, pools, lock waits, notifications and cleanup churn; fix measured
       regressions and record the production capacity configuration.
 
@@ -1444,6 +1446,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   parser run and `pnpm check` passed. `redis-check-rdb` confirmed that the export has its internal
   checksum disabled; the recorded SHA-256 pins source bytes, and the docs now state the structural
   verification limit accurately. No live Upstash command was used.
+- Commit `a78d4e4c` added a real-Postgres listener disconnect/reconnect check. The two focused
+  transport cases and `pnpm check` passed. This covers a subsequent notification after reconnect;
+  browser snapshot recovery during a lost notification and the two-web-process plus worker
+  workload remain release gates.
 
 ### Milestone checkpoint template
 
