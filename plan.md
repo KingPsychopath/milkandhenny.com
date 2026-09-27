@@ -389,7 +389,7 @@ Before scheduling cutover, record:
 - Authorized deployment/release identifiers, operators, maintenance duration and abort criteria.
 - Verified first-export integrity, import manifest and expected counts; document the accepted
   exclusion of later Redis writes.
-- Database backup, object coverage, restore evidence and independent archive location.
+- Verified local Postgres dump, object coverage, restore evidence and independent archive location.
 - Exact writer-stop procedure for web, rooms, workers, scheduler, cron and operational CLI.
 - Existing presigned uploads and their reservation/finalization policy.
 - Payment/provider webhook intake and durable acknowledgment/retry policy.
@@ -401,7 +401,9 @@ runbook. Do not substitute guessed provider commands or undocumented environment
 
 ### 6.4 Cutover sequence
 
-1. Verify backup/readability, current deployment state and source inventory; record cutover ID.
+1. Verify the accepted local dump/readability, current deployment state and source inventory;
+   record cutover ID. A fresh managed backup is not a cutover gate under the user's 2026-09-27
+   decision.
 2. Put affected traffic in maintenance. Freeze every legacy writer, including read endpoints
    with mutation side effects; prevent old scheduled processes from restarting writes.
 3. Drain workers within the window or terminate safely and record recoverable interrupted jobs.
@@ -927,6 +929,10 @@ targets for publication/deletion tests, and never send real user email/payment e
   The only listed managed backup is dated 2026-08-23 and has an expired 2026-09-22 retention
   timestamp. The verified local production `pg_dump` remains the available recovery checkpoint;
   managed backup and schedule configuration are unresolved.
+- 2026-09-27 backup decision: the user waived a fresh managed backup as a cutover gate. Use the
+  verified local production dump and its successful isolated restore as the recovery checkpoint;
+  continue direct Postgres implementation and rehearsal. Do not delay application work for the
+  Railway backup grant.
 - 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
   Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
   Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
