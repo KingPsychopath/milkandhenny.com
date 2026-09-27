@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
+import { adminWordMediaOrphansQuery } from "@/features/words/admin-media-orphans.queries";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { formatBytes, formatDate } from "../format";
@@ -130,9 +131,13 @@ export function ContentPanel({
   const sharedWordsError = sharedWordsQuery.error?.message ?? null;
   const [sharedWordQuery, setSharedWordQuery] = useState("");
   const [showAllSharedWords, setShowAllSharedWords] = useState(false);
-  const [wordMediaOrphans, setWordMediaOrphans] = useState<WordMediaOrphanSummary | null>(null);
-  const [wordMediaOrphansLoading, setWordMediaOrphansLoading] = useState(false);
-  const [wordMediaOrphansError, setWordMediaOrphansError] = useState<string | null>(null);
+  const wordMediaOrphansQuery = useQuery({
+    ...adminWordMediaOrphansQuery,
+    enabled: workspace === "maintenance",
+  });
+  const wordMediaOrphans: WordMediaOrphanSummary | null = wordMediaOrphansQuery.data ?? null;
+  const wordMediaOrphansLoading = wordMediaOrphansQuery.isFetching;
+  const wordMediaOrphansError = wordMediaOrphansQuery.error?.message ?? null;
   const [wordMediaCleanupLoading, setWordMediaCleanupLoading] = useState(false);
   const [showAllMediaOrphans, setShowAllMediaOrphans] = useState(false);
   const [sharedWordActionLoading, setSharedWordActionLoading] = useState<string | null>(null);
@@ -161,34 +166,22 @@ export function ContentPanel({
   }, [queryClient, onError]);
 
   const loadWordMediaOrphans = useCallback(async () => {
-    setWordMediaOrphansLoading(true);
-    setWordMediaOrphansError(null);
     onError("");
     try {
-      const res = await authFetch("/api/admin/word-media/orphans?limit=100");
-      const data = (await res.json().catch(() => ({}))) as WordMediaOrphanSummary & {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to load orphan media stats");
-      }
-      setWordMediaOrphans(data as WordMediaOrphanSummary);
+      await queryClient.fetchQuery({ ...adminWordMediaOrphansQuery, staleTime: 0 });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load orphan media stats";
-      setWordMediaOrphansError(msg);
       onError(msg);
-    } finally {
-      setWordMediaOrphansLoading(false);
     }
-  }, [authFetch, onError]);
+  }, [queryClient, onError]);
 
   useEffect(() => {
     if (sharedWordsQuery.error) onError(sharedWordsQuery.error.message);
   }, [sharedWordsQuery.error, onError]);
 
   useEffect(() => {
-    if (workspace === "maintenance") void loadWordMediaOrphans();
-  }, [loadWordMediaOrphans, workspace]);
+    if (wordMediaOrphansQuery.error) onError(wordMediaOrphansQuery.error.message);
+  }, [wordMediaOrphansQuery.error, onError]);
 
   const runContentAudit = async (refresh = false) => {
     setAuditLoading(true);
