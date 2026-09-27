@@ -3,6 +3,8 @@ import { getRequest } from "@tanstack/react-start/server";
 import { getAdminWorkspaceAccess } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "./reader.server";
 import { listWords } from "./store.server";
+import { getWord } from "./store.server";
+import { listShareLinks, toShareLinkView } from "./share.server";
 import type { WordVisibility } from "./content-types";
 import type { WordType } from "./types";
 
@@ -33,4 +35,16 @@ export const getAdminEditorWordsFn = createServerFn({ method: "GET" })
       ...(data.tag ? { tag: data.tag } : {}),
       includeNonPublic: true,
     });
+  });
+
+export const getAdminEditorWordFn = createServerFn({ method: "GET" })
+  .validator((data: { slug: string }) => ({ slug: data.slug.trim().toLowerCase().slice(0, 160) }))
+  .handler(async ({ data }) => {
+    const access = await getAdminWorkspaceAccess(getRequest());
+    if (!access.ok || !access.permissions.manageContent)
+      throw new Error("Content management access required");
+    if (!isWordsEnabled()) throw new Error("Words feature is disabled");
+    const [word, links] = await Promise.all([getWord(data.slug), listShareLinks(data.slug)]);
+    if (!word) throw new Error("Word not found");
+    return { word, shares: links.map(toShareLinkView) };
   });

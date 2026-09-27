@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  adminEditorWordQuery,
   adminEditorWordsQuery,
   EMPTY_ADMIN_EDITOR_FILTERS,
 } from "@/features/words/admin-editor.queries";
@@ -48,6 +49,7 @@ const SHARE_EXPIRY_OPTIONS = [1, 3, 7, 14, 30] as const;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 const EDITOR_DRAFT_KEY_PREFIX = "mah-admin-editor-draft:";
 const EMPTY_NOTES: NoteMeta[] = [];
+const EMPTY_SHARES: ShareLink[] = [];
 
 type WordSavePayload = {
   title: string;
@@ -165,7 +167,7 @@ function payloadFromNote(record: NoteRecord): WordSavePayload {
   };
 }
 
-export function EditorAdminClient() {
+export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
   const queryClient = useQueryClient();
   const {
     confirm: confirmAction,
@@ -174,9 +176,18 @@ export function EditorAdminClient() {
     isOpen: actionDialogOpen,
   } = useActionDialog();
   const { ensureStepUpToken, authDialog, authDialogOpen } = useAdminAuth();
-  const [selectedSlug, setSelectedSlug] = useState("");
-  const [current, setCurrent] = useState<NoteRecord | null>(null);
-  const [shares, setShares] = useState<ShareLink[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState(
+    initialSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(initialSlug) ? initialSlug : "",
+  );
+  const detailQuery = useQuery({
+    ...adminEditorWordQuery(selectedSlug),
+    enabled: Boolean(selectedSlug),
+  });
+  const current: NoteRecord | null = detailQuery.data?.word ?? null;
+  const shares: ShareLink[] = detailQuery.data?.shares ?? EMPTY_SHARES;
+  const [draftBase, setDraftBase] = useState<{ slug: string; record: NoteRecord } | null>(() =>
+    current ? { slug: selectedSlug, record: current } : null,
+  );
   const [shareTokensById, setShareTokensById] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -257,7 +268,7 @@ export function EditorAdminClient() {
     resetCreateForm,
     setEditFromRecord,
     appendSnippet,
-  } = useWordFormState();
+  } = useWordFormState(current);
   const { previewItems, previewIndex, setPreviewIndex, closePreview, openPreview, hasPreview } =
     useMediaPreviewState();
   const [autosavePhase, setAutosavePhase] = useState<
@@ -355,31 +366,14 @@ export function EditorAdminClient() {
       setBusy(true);
       setError("");
       try {
-        const [noteRes, sharesRes] = await Promise.all([
-          fetch(`/api/words/${encodeURIComponent(slug)}`),
-          fetch(`/api/words/${encodeURIComponent(slug)}/shares`),
-        ]);
-        const noteData = (await noteRes.json().catch(() => ({}))) as NoteRecord & {
-          error?: string;
-        };
-        const shareData = (await sharesRes.json().catch(() => ({}))) as {
-          links?: ShareLink[];
-          error?: string;
-        };
-
-        if (!noteRes.ok) throw new Error(noteData.error ?? "Failed to load word");
-        if (!sharesRes.ok) throw new Error(shareData.error ?? "Failed to load share links");
-
-        setCurrent(noteData);
-        setEditFromRecord(noteData);
-        setShares(shareData.links ?? []);
+        await queryClient.fetchQuery({ ...adminEditorWordQuery(slug), staleTime: 0 });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load word");
       } finally {
         setBusy(false);
       }
     },
-    [setEditFromRecord],
+    [queryClient],
   );
 
   useEffect(() => {
@@ -387,19 +381,24 @@ export function EditorAdminClient() {
   }, [notesQuery.error]);
 
   useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get("slug");
-    if (fromQuery && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fromQuery)) {
-      setSelectedSlug(fromQuery);
+    if (initialSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(initialSlug)) {
+      setSelectedSlug(initialSlug);
     }
-  }, []);
+  }, [initialSlug]);
 
   useEffect(() => {
     if (!selectedSlug && notes[0]) setSelectedSlug(notes[0].slug);
   }, [notes, selectedSlug]);
 
   useEffect(() => {
-    if (selectedSlug) void loadWord(selectedSlug);
-  }, [selectedSlug, loadWord]);
+    if (detailQuery.error) setError(detailQuery.error.message);
+  }, [detailQuery.error]);
+
+  useEffect(() => {
+    if (!current || current.meta.slug !== selectedSlug || draftBase?.slug === selectedSlug) return;
+    setEditFromRecord(current);
+    setDraftBase({ slug: selectedSlug, record: current });
+  }, [current, selectedSlug, draftBase?.slug, setEditFromRecord]);
 
   useEffect(() => {
     if (selectedSlug) void loadWordMedia(selectedSlug);
@@ -416,7 +415,7 @@ export function EditorAdminClient() {
     () => notes.find((n) => n.slug === selectedSlug) ?? null,
     [notes, selectedSlug],
   );
-  const hasLoadedSelected = !!current && current.meta.slug === selectedSlug;
+  const hasLoadedSelected = !!current && draftBase?.slug === selectedSlug;
 
   const editPayload = useMemo<WordSavePayload | null>(() => {
     if (!selectedSlug || !hasLoadedSelected) return null;
@@ -445,8 +444,8 @@ export function EditorAdminClient() {
   ]);
 
   const currentPayload = useMemo(
-    () => (current && current.meta.slug === selectedSlug ? payloadFromNote(current) : null),
-    [current, selectedSlug],
+    () => (draftBase?.slug === selectedSlug ? payloadFromNote(draftBase.record) : null),
+    [draftBase, selectedSlug],
   );
 
   const isEditDirty = useMemo(() => {
@@ -556,9 +555,20 @@ export function EditorAdminClient() {
 
   const applySavedWord = useCallback(
     (updated: NoteRecord, syncForm: boolean) => {
-      setCurrent(updated);
+      queryClient.setQueryData(adminEditorWordQuery(updated.meta.slug).queryKey, (previous) =>
+        previous
+          ? {
+              ...previous,
+              word: {
+                meta: { ...previous.word.meta, ...updated.meta },
+                markdown: updated.markdown,
+              },
+            }
+          : previous,
+      );
       void queryClient.invalidateQueries({ queryKey: ["admin", "words", "editor-list"] });
       if (syncForm && selectedSlug === updated.meta.slug) {
+        setDraftBase({ slug: selectedSlug, record: updated });
         setEditFromRecord(updated);
       }
     },
@@ -575,7 +585,7 @@ export function EditorAdminClient() {
 
     try {
       const expectedUpdatedAt =
-        current && current.meta.slug === slug ? current.meta.updatedAt : undefined;
+        draftBase?.slug === slug ? draftBase.record.meta.updatedAt : undefined;
       const res = await fetch(`/api/words/${encodeURIComponent(slug)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -615,7 +625,7 @@ export function EditorAdminClient() {
     } finally {
       setBusy(false);
     }
-  }, [applySavedWord, current, editPayload, selectedSlug]);
+  }, [applySavedWord, draftBase, editPayload, selectedSlug]);
 
   const requestAutosave = useCallback(
     (kind: "debounced" | "immediate" = "debounced") => {
@@ -782,8 +792,8 @@ export function EditorAdminClient() {
       if (!res.ok) throw new Error(data.error ?? "Failed to delete word");
 
       setStatus("word deleted");
-      setCurrent(null);
-      setShares([]);
+      queryClient.removeQueries({ queryKey: adminEditorWordQuery(selectedSlug).queryKey });
+      setDraftBase(null);
       setSelectedSlug("");
       await Promise.all([loadNotes(), loadSharedStatus()]);
     } catch (err) {
@@ -1119,6 +1129,11 @@ export function EditorAdminClient() {
         />
 
         <section className="space-y-6">
+          {selected && !hasLoadedSelected && !detailQuery.error ? (
+            <p role="status" className="font-mono text-xs theme-muted">
+              loading selected word…
+            </p>
+          ) : null}
           <div className="sm:hidden">
             <div className="rounded-md border theme-border p-1 flex gap-1">
               <button
@@ -1187,7 +1202,7 @@ export function EditorAdminClient() {
             />
           </div>
 
-          {selected ? (
+          {selected && hasLoadedSelected ? (
             <div className={mobileEditorPanel === "edit" ? "block" : "hidden sm:block"}>
               <WordEditSection
                 selected={selected}
@@ -1231,7 +1246,7 @@ export function EditorAdminClient() {
             </div>
           ) : null}
 
-          {selected ? (
+          {selected && hasLoadedSelected ? (
             <div className={mobileEditorPanel === "share" ? "block" : "hidden sm:block"}>
               <WordShareSection
                 shares={shares}

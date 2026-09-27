@@ -30,6 +30,17 @@ test("editor word catalogue is server-rendered and reused after hydration", asyn
     await page.goto("/admin/editor");
     await waitForAppHydration(page);
     await expect(page.getByText("Hydrated Editor Word").first()).toBeVisible();
+    const detail = await page.request.get(`/admin/editor?slug=${slug}`);
+    expect(detail.ok()).toBe(true);
+    expect(await detail.text()).toContain("Editor word body.");
+    await page.goto(`/admin/editor?slug=${slug}`);
+    await waitForAppHydration(page);
+    await expect(page.getByRole("textbox", { name: "Title", exact: true })).toHaveValue(
+      "Hydrated Editor Word",
+    );
+    await expect(page.getByRole("textbox", { name: "Post content" })).toHaveValue(
+      "Editor word body.",
+    );
   } finally {
     await pool.query("delete from words where slug=$1", [slug]);
     await pool.end();
