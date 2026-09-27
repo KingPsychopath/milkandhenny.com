@@ -1,6 +1,7 @@
 # Server state and data loading proposal
 
-Status: implementation in progress on `codex/tanstack-query-architecture`.
+Status: source refactor implemented on `codex/tanstack-query-architecture`; production performance
+and release acceptance remain open.
 Prepared: 2026-09-26.
 Implementation base: `f2bfadb810ba354bc39713c355e49335bab87c36` from `main`, in a separate
 managed worktree. The active `main` checkout has unrelated uncommitted storage work.
@@ -32,11 +33,11 @@ use stable feature contracts independently of the storage migration.
 - Preserve accessible pending/error states, deep links, browser history, CLI parity, and offline use.
 - Prefer one domain owner over duplicate snapshots in loaders, component state, and a query cache.
 
-This is a design proposal, not a claim that every existing component has been audited or that a
-specific performance gain has been measured. Repository searches and representative source traces
-support the inventory below. Production latency and request budgets remain to be measured.
+This document began as the design proposal and now records the implementation checkpoint. The
+baseline table describes the worktree base, not the current source. Production latency and request
+budgets remain to be measured.
 
-## Current implementation
+## Baseline before this refactor
 
 | Area                 | Evidence                                                                                                                                                                                         | Current behavior and consequence                                                                                                                                                                                           |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,9 +52,8 @@ support the inventory below. Production latency and request budgets remain to be
 | Offline work         | [offline storage](../features/offline/storage.ts), [upload recovery](../features/transfers/ui/upload/recovery.ts), [pitch controller](../features/things/pitches/ui/usePitchEditorController.ts) | Browser recovery and working copies have their own persistence and lifecycle.                                                                                                                                              |
 | Browser-only routes  | [pitch demo](../src/routes/things.pitches_.demo.tsx), [pitch editor route](../src/routes/things.pitches_.$deckId_.edit.tsx)                                                                      | `ssr: false` skips their loaders during the server request even though these particular loaders call server functions. Evaluate `ssr: "data-only"` for this case.                                                          |
 
-There is no application use of Query prefetch/hydration or deferred loader data rendering in the
-inspected route tree. Existing React lazy/Suspense boundaries and live SSE/WebSocket connections
-serve different purposes from streaming initial query results.
+This table records the starting implementation at the worktree base. The current Query ownership
+and exceptions are recorded in the checkpoint and in [architecture.md](./architecture.md).
 
 ## Target ownership
 
@@ -62,7 +62,7 @@ serve different purposes from streaming initial query results.
 | Durable truth                             | Feature workflows and Postgres transactions; object storage for bytes | Tickets, content, transfer metadata, rooms, permissions, outboxes                                         |
 | Route identity and navigation             | TanStack Router                                                       | Resource IDs, validated search filters, pagination, redirects, status and head metadata                   |
 | Ordinary remote snapshots                 | TanStack Query                                                        | Event views, account/tickets, admin lists, communications, album/transfer metadata, processing-job status |
-| Ordinary request mutation status          | Query mutation plus a feature command                                 | Pending/error/result, exact cache updates and invalidation                                                |
+| Ordinary request mutation status          | Feature command with local or Query mutation state                    | Pending/error/result, exact cache updates and invalidation                                                |
 | Form working copy                         | Local form state with a base revision                                 | Unsaved event edits, recipients, captions; new server snapshots must not erase dirty fields               |
 | Live room projection and command protocol | Room controller/reconciler                                            | Sequence ordering, viewer redaction, clock offsets, commands, acknowledgements, reconnect                 |
 | Offline working copy and recovery         | Domain controller plus versioned browser storage                      | Pitch editing, local games, recoverable uploads                                                           |
@@ -146,7 +146,7 @@ Cancellation of a request is not proof that an external write was rolled back.
 
 ### Mutation and refresh policy
 
-Feature mutation hooks own an explicit list of affected query families. A confirmed response can
+Feature commands own an explicit list of affected query families. A confirmed response can
 replace an exact complete cache entry; lists, counts, or related read models are invalidated.
 Await the refresh when the next user action depends on seeing the committed result. Keep existing
 data visible during background refresh where it remains useful, and surface refresh failure.
@@ -232,10 +232,11 @@ Keep the web process and independently scalable media-worker role. Query adoptio
 reason to split the modular monolith into services or add another backend RPC framework. The
 storage migration remains governed by its own data integrity, cutover, and operational checks.
 
-## Proposed implementation milestones
+## Implementation milestones
 
-These are implementation milestones. The foundation and poll slice are implemented; broader M1
-acceptance evidence and later slices remain open.
+The foundation and feature slices are implemented. Integrated browser and source verification is
+recorded below. Production-proxy streaming, performance measurements, and exhaustive private-scope
+acceptance remain open.
 
 | Milestone                             | Outcome                                                                                                                      | Dependencies and acceptance                                                                                                                                            |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -437,18 +438,46 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   The seeded editor SSR/hydration journey, `pnpm check`, and production builds passed for commits
   `f97de8ba`, `2d47c131`, `0cc4a0b1`, `757b487e`, and `eb003fc2`. The local S3 stub rejects
   media listing; the browser journey verifies the visible error state.
+- Final read audit: survey responses/invitations use an on-demand survey-keyed Query. The public
+  best-dressed leaderboard is seeded during SSR, refreshed through Query, and reconciles a new
+  voting session. The vote credential and guest autocomplete stay local because the credential is
+  a one-use capability. Admin window and reset commands invalidate the public leaderboard.
+  The Pitch Night landing route reuses the public event index query for its ticket link. Staff
+  team tools no longer repeat their blocking capability-loader read after hydration.
+- Integrated browser review: the full 72-journey run found a communications draft race, an admin
+  transfer test still mocking the replaced HTTP read, two ambiguous selectors, and three Redis
+  fault tests inheriting a Postgres fixture setting. The draft hook now persists in a layout
+  effect and exposes recovery completion so the communications panel stays inert until safe to
+  edit. Admin step-up now uses the server endpoint for password-authenticated development
+  sessions; a loopback development cookie keeps its server-side shortcut. The transfer journey
+  now seeds and checks a real person/permission grant. All seven focused failures passed after
+  their fixes. A full 72-journey browser run passed 69 journeys; the remaining three failed while
+  a manually started app server lacked Playwright's R2 fixture variables. The content maintenance,
+  editor media, and Pitch Night journeys all passed when Playwright started the app with its
+  configured server environment. This is a fixture mismatch, not a source change.
+- Deliberate non-Query owners: scanner/staff/guest upload links, ticket and survey invitation
+  views, and owner-token transfers use capability-scoped route or component lifecycles; room/game controllers own ordered realtime
+  projections; pitch credentials and upload recovery use device storage; checkout/exchange outcome
+  polling owns a bounded transaction protocol; achievement notifications are consumed and marked
+  delivered; content audits are explicit diagnostics commands. The selected ticket management
+  action carries a manager-ticket capability and remains local to its transaction flow.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
   passed. The remaining M1 work is broader identity switching and mutation freshness across all
   private resource families, not the basic SSR boundary.
 - Open: broader identity-switch and permission-loss evidence; measured workload and freshness
-  budgets; full endpoint-consumer inventory; capability-view cache scopes; and per-feature
-  invalidation relationships. M1 implementation is a foundation, not full M1 acceptance closure.
-- Next action: classify remaining loaders and token-bearing event tools against
-  the target ownership table, revisit M1 identity and request-count acceptance, and run integrated
-  verification before declaring completion. Preserve capability-bearing loaders and live room
-  controllers where Query would weaken their ownership or isolation.
+  budgets; end-to-end production-proxy streaming evidence; and remaining per-feature mutation
+  relationships. The local SSR boundary and feature browser journeys pass, but these claims are
+  not yet proven across every private view.
+- Final source verification: `pnpm check` and the full Vitest suite passed (275 files, 2,107
+  tests). The production build passed after the final source changes. The full browser result above
+  and the three focused reruns cover the integrated user journeys without repeating the 69 already
+  passing journeys. `pnpm format:check`, `git diff --check`, local Markdown link resolution,
+  and package-script checks passed for the documentation and rules update.
+- Next action: review the local worktree. Production-proxy measurements and a release-candidate
+  gate remain separate follow-up acceptance work; pushing, merging, and deploying need user
+  authorization.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
@@ -475,7 +504,11 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   operations; `8c8f168c` migrated organizer guest requests; `86c01b55` migrated the event
   waitlist; `c8dd882b` migrated shared-page summaries; `af146fa1` migrated orphan diagnostics;
   `f97de8ba` hydrated editor lists; `2d47c131` reused shared-page counts; `0cc4a0b1` hydrated
-  editor detail; `757b487e` separated media caches; `eb003fc2` completed editor invalidation.
+  editor detail; `757b487e` separated media caches; `eb003fc2` completed editor invalidation;
+  `1d9eaa20` migrated survey feedback; `0c5301ee` hydrated public voting; `f0da96e2`
+  removed the duplicate staff read; `7be189f9` shared the Pitch Night event query; `1a1cc2d9`
+  made admin drafts navigation-safe; `f7600b0d` fixed development step-up; `0b33bbb4`
+  aligned browser fixtures with the new read paths.
 
 ## References
 
