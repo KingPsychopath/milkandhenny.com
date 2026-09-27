@@ -1407,6 +1407,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
 
+### 2026-09-27 checkpoint — Postgres application health
+
+- Commit `cf4d4fa0` makes the mandatory application persistence capability probe Postgres when
+  every staged application store selector is `postgres`; Redis is not contacted in that mode.
+- Verified the real-Postgres capability integration test (3 cases), `pnpm check`, and `pnpm build`.
+  The last clean full suite remains the 291-file, 2,170-test pool-credential run at `8974e169`.
+- Production still uses Upstash. The verified first Redis export and local Postgres dump remain
+  the authorized cutoff/recovery evidence; the user waived a fresh managed Postgres backup.
+- Next action: complete transfer CLI create/append parity and the remaining R2 publication,
+  source reconciliation, reconnect, deployment-role, and release gates before any production swap.
+
 ### Milestone checkpoint template
 
 For each completed milestone append: date, milestone, commit(s), decisions/DDL changes, affected
