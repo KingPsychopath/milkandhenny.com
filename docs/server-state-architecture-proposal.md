@@ -395,6 +395,18 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   active key, and the bounded monitor stops on refusing 4xx responses. The existing HTTP route
   continues serving external/admin consumers. A seeded Postgres report browser journey proved SSR
   and hydration; `pnpm check` and `pnpm build` passed.
+- Album manager: the content workspace now hydrates its private album catalogue. Remote manifests
+  live in Query; search, selection, metadata drafts, photo selection, and browser upload execution
+  remain local. Confirmed and optimistic album changes update that catalogue. The manager remains
+  inert until its lazy panel hydrates. A seeded Postgres album journey proved initial HTML and
+  unsaved-title survival during refresh; `pnpm check` and `pnpm build` passed.
+- Pitch administration: the active event/pitch workspace now hydrates its private pitch list,
+  operational mode, and reminder status through shared Effect read workflows. Settings and
+  selection drafts remain local, while confirmed mode/reminder commands update or refresh the
+  matching Query. Selected pitch details now use an on-demand private Query keyed by deck ID;
+  editor fields and loaded browser files remain local. The admin read excludes arbitrary audit
+  metadata unused by the panel. The admin pitch list and detail browser journeys, `pnpm check`,
+  and `pnpm build` passed.
 - M1 evidence: a direct poll page made zero fetch/XHR requests during fresh hydration. Concurrent
   admin and anonymous server requests for the same transfer rendered their distinct authorized
   views, exercising request-scoped Query clients in the actual Start server. Both browser journeys
@@ -426,7 +438,9 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   hydrated access settings; `97328ff0` hydrated alert settings; `3939cef5` recorded their
   checkpoint; `707b57a3` hydrated the filtered email ledger; `6e0d778f` corrected its integrated
   test harness; `5f4c0693` hydrated private voting controls; `f4beef6c` hydrated site settings;
-  `157a8029` hydrated report groups.
+  `157a8029` hydrated report groups; `15ee39ca` recorded their checkpoint; `585ecc91`
+  hydrated the admin album catalogue; `01d241ea` hydrated pitch administration lists and
+  reminders; `f25dd703` migrated selected pitch detail.
 
 ## References
 
