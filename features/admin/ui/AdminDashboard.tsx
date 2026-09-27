@@ -171,6 +171,7 @@ export function AdminDashboard({
   const [errorMessage, setErrorMessage] = useState("");
   const [revokeLoading, setRevokeLoading] = useState<"admin" | "all" | null>(null);
   const [attentionOpen, setAttentionOpen] = useState(false);
+  const [qualityReviewOpen, setQualityReviewOpen] = useState(false);
   const eventWorkspaceNavRef = useRef<HTMLDivElement>(null);
   const eventWorkspaceScrollPositions = useRef(new Map<EventWorkspace, number>());
   const pendingEventWorkspaceScrollTop = useRef<number | null>(null);
@@ -615,11 +616,15 @@ export function AdminDashboard({
               onError={setErrorMessage}
               onStatus={setStatusMessage}
             />
-            <details className="border-t theme-border pt-4">
+            <details
+              className="border-t theme-border pt-4"
+              open={qualityReviewOpen}
+              onToggle={(event) => setQualityReviewOpen(event.currentTarget.open)}
+            >
               <summary className="min-h-11 cursor-pointer font-mono text-xs">
                 puzzle quality · review upcoming approvals
               </summary>
-              <HotAndColdReviewPanel authFetch={authFetch} onError={setErrorMessage} />
+              {qualityReviewOpen ? <HotAndColdReviewPanel onError={setErrorMessage} /> : null}
             </details>
           </PanelBoundary>
         </section>
