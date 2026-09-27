@@ -1424,6 +1424,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   byte streams. `pnpm check` and the full one-worker suite passed (293 files, 2,174 tests).
   Remaining M6 work includes source/R2 reconciliation, deletion-runner qualification, worker
   production credentials, and the non-create/append operational CLI paths.
+- Commit `e7cdda57` rejects unsafe local filenames and refuses to treat a reused media ID with
+  different file metadata as an already completed append. `pnpm check` and the two focused suites
+  passed (3 cases). A local production-mode web smoke with all 29 Postgres selectors and Redis
+  variables empty started the app and its Postgres realtime backplane; `/api/health` returned 503
+  because this deliberately isolated run lacked required R2 and other production credentials.
+  This establishes boot without Redis, not release readiness or a passing production probe.
 
 ### Milestone checkpoint template
 
