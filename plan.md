@@ -611,6 +611,8 @@ double-consume a credential, vote, report submission or protected quota.
       selecting the Postgres word and share stores in production.
 - [x] Add an opt-in Postgres album/photo catalogue with revision checks and same-album cover
       ownership; rehearse the two-manifest, 14-photo private R2 import in an isolated restore.
+- [x] Add a bounded read-only Postgres/R2 album object audit covering private originals and
+      derivatives plus published public derivatives. Run it on the imported production target.
 - [ ] Make album publication, deletion and derivative changes recoverable across Postgres/R2
       failures before selecting the Postgres repository in production.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
@@ -1473,6 +1475,12 @@ targets for publication/deletion tests, and never send real user email/payment e
   discrepancies and incomplete scans without changing either store. The three real-Postgres
   cases passed with an injected object-store adapter; `pnpm check` passed. Run this against the
   imported target during the maintenance freeze and reconcile any findings before cutover.
+- A staged `pnpm albums:audit-objects` command checks imported album photo references against
+  private originals/derivatives and, for published albums, public derivatives. The existing
+  album workflows now share the same key builder as the audit. Three focused suites passed
+  14 cases, including real Postgres catalogue rows and injected R2 absence/failure; `pnpm check`
+  and `pnpm build` passed. This is read-only release evidence, not publication repair. The
+  publication/deletion ledger and reference-safe recovery remain open.
 
 ### Milestone checkpoint template
 

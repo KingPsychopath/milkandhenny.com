@@ -23,6 +23,7 @@ import {
   writeAlbumManifest,
 } from "./album-repository.server";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
+import { privatePhotoKeys, publicPhotoKeys } from "./album-object-keys";
 import { focalPresetToPercent, isValidFocalPreset } from "./focal";
 import {
   isProcessableImage,
@@ -108,21 +109,6 @@ function normalisePhotoId(filename: string): string {
 
 function toAdminAlbum(album: Album): AdminAlbum {
   return { ...album, photoCount: album.photos.length };
-}
-
-function privatePhotoKeys(slug: string, photo: Photo): string[] {
-  return [...publicPhotoKeys(slug, photo), `albums/${slug}/original/${photo.id}.jpg`];
-}
-
-function publicPhotoKeys(slug: string, photo: Photo): string[] {
-  return [
-    ...photo.widths.flatMap((width) =>
-      (["avif", "webp"] as const).map(
-        (format) => `albums/${slug}/images/${photo.id}/${width}.${format}`,
-      ),
-    ),
-    `albums/${slug}/og/${photo.id}.jpg`,
-  ];
 }
 
 function publicObjectMetadata(key: string): { contentType: string; cacheControl: string } {
