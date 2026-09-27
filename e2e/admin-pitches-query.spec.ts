@@ -28,7 +28,7 @@ test("pitch workspace and reminder status hydrate on the first admin render", as
 
   await page.goto(url);
   await waitForAppHydration(page);
-  await expect(page.getByRole("heading", { name: /working pitches?/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /working pitch(?:es)?/ })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Gentle reminders for unfinished pitches" }),
   ).toBeVisible();

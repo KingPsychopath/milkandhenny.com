@@ -99,6 +99,11 @@ test("recovers a communication draft across tabs and refresh", async ({ page }) 
   await unlock(page);
   await page.goto("/admin?view=communications&communicationTab=compose");
   await waitForAppHydration(page);
+  await expect(page.getByLabel("subject", { exact: true })).toBeVisible();
+  await expect(page.locator('section[aria-label="Communications"] > div')).not.toHaveAttribute(
+    "inert",
+    "",
+  );
   await page.getByLabel("subject", { exact: true }).fill("Unfinished message");
   await page
     .getByRole("textbox", { name: "message body", exact: true })
