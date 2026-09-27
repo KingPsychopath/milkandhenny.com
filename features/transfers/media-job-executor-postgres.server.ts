@@ -15,6 +15,7 @@ import {
 } from "@/lib/platform/object-storage-provider-context.server";
 import { transaction } from "@/lib/platform/postgres.server";
 import { getPostgresTransferForWorker } from "./catalogue-postgres.server";
+import { publishTransferMediaEvent } from "./media-events.server";
 import {
   cancelClaimedPostgresTransferMediaJob,
   claimPostgresTransferMediaJobs,
@@ -158,6 +159,7 @@ export async function runPostgresTransferMediaBatch(
         )
       ) {
         result.completed += 1;
+        await publishTransferMediaEvent(claim.job.transferId, file);
       } else {
         result.lostClaim += 1;
         await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
@@ -182,6 +184,12 @@ export async function runPostgresTransferMediaBatch(
           ))
         ) {
           result.completed += 1;
+          await publishTransferMediaEvent(claim.job.transferId, {
+            ...file,
+            previewStatus: "original_only",
+            processingStatus: "failed",
+            processingErrorCode: "raw_preview_unavailable",
+          });
           continue;
         }
       }

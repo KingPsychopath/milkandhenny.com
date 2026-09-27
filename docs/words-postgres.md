@@ -50,12 +50,11 @@ DATABASE_URL=… pnpm exec tsx --tsconfig tsconfig.cli.json ops/import-word-shar
 ```
 
 The supplied RDB has zero share records and zero tracked share slugs. Its empty import succeeded
-twice on the isolated restore; a count mismatch failed. A later source snapshot may contain
-active, revoked or retained expired links and must be imported with its original link identities,
-hashes and expiry values. A synthetic one-link import also repeated cleanly and rejected a
+twice on the isolated restore; a count mismatch failed. The user designated this first verified
+export as the source cutoff and accepted later Redis-only loss. A synthetic one-link import also repeated cleanly and rejected a
 different source hash. Keep `AUTH_SECRET` unchanged for signed access cookies.
 
 Do not select `WORD_STORE=postgres`, `WORD_SHARE_STORE=postgres` or their PIN rate limiter in
 production yet. Visibility changes, image promotion and deletion still need durable R2 operation
-intents and reference-safe cleanup. Add those paths, import a fresh source delta, and reconcile
+intents and reference-safe cleanup. Add those paths, import the verified cutoff export, and reconcile
 identities, exact Markdown hashes, share state and access expiry before the planned cutover.

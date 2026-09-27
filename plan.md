@@ -907,6 +907,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   checkpoint, not provider PITR or an off-site retention policy. Production media-worker still
   lacks `DATABASE_URL`; web, worker and maintenance have no Postgres cutover flags. Do not remove
   production Redis configuration before those runtime paths and the remaining M6–M13 gates pass.
+- 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
+  Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
+  Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
+  fenced result transaction, and a connecting SSE stream reconciles from the transfer after
+  subscription. The selector requires the paired Postgres catalogue/job flags. The real Postgres
+  focused event and executor suites passed five tests. Live-connection lost-notification recovery,
+  resource limits and all-source cutover are still open; this flag is not enabled in production.
+  `pnpm check`, the full one-worker suite (279 files, 2,138 tests), and `pnpm build` passed.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
