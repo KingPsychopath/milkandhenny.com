@@ -7,6 +7,7 @@ import {
   adminEditorWordsQuery,
   EMPTY_ADMIN_EDITOR_FILTERS,
 } from "@/features/words/admin-editor.queries";
+import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
 
 export const Route = createFileRoute("/admin/editor")({
   validateSearch: (search: Record<string, unknown>): { slug?: string } =>
@@ -15,7 +16,10 @@ export const Route = createFileRoute("/admin/editor")({
     handler: async ({ context }) => {
       const access = await getAdminEditorAccessFn();
       if (access.ok)
-        await context.queryClient.prefetchQuery(adminEditorWordsQuery(EMPTY_ADMIN_EDITOR_FILTERS));
+        await Promise.all([
+          context.queryClient.prefetchQuery(adminEditorWordsQuery(EMPTY_ADMIN_EDITOR_FILTERS)),
+          context.queryClient.prefetchQuery(adminSharedWordsQuery),
+        ]);
       return access;
     },
     staleReloadMode: "blocking",

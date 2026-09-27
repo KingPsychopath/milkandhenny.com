@@ -8,6 +8,7 @@ import {
   EMPTY_ADMIN_EDITOR_FILTERS,
 } from "@/features/words/admin-editor.queries";
 import type { AdminEditorWordFilters } from "@/features/words/admin-editor.functions";
+import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
 import { MediaPreviewModal } from "./components/MediaPreviewModal";
 import { EditorFiltersPanel } from "./components/EditorFiltersPanel";
 import { EditorResultsList } from "./components/EditorResultsList";
@@ -29,7 +30,6 @@ import type {
   ShareLink,
   SharePatchResponse,
   ShareStateFilter,
-  SharedWordSummary,
   WordMediaItem,
   WordMediaResponse,
 } from "./types";
@@ -182,7 +182,12 @@ export function EditorAdminClient() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [mobileEditorPanel, setMobileEditorPanel] = useState<MobileEditorPanel>("create");
-  const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
+  const sharedStatusQuery = useQuery(adminSharedWordsQuery);
+  const activeShareCountBySlug = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of sharedStatusQuery.data ?? []) counts[item.slug] = item.activeShareCount;
+    return counts;
+  }, [sharedStatusQuery.data]);
   const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
   const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
   const [mediaLoading, setMediaLoading] = useState(false);
@@ -288,18 +293,11 @@ export function EditorAdminClient() {
 
   const loadSharedStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/word-shares");
-      const data = (await res.json().catch(() => ({}))) as { items?: SharedWordSummary[] };
-      if (!res.ok) return;
-      const next: Record<string, number> = {};
-      for (const item of data.items ?? []) {
-        next[item.slug] = item.activeShareCount;
-      }
-      setActiveShareCountBySlug(next);
+      await queryClient.fetchQuery({ ...adminSharedWordsQuery, staleTime: 0 });
     } catch {
       // Non-fatal for editor UX.
     }
-  }, []);
+  }, [queryClient]);
 
   const loadWordMedia = useCallback(
     async (slug: string, forceAssets = false) => {
@@ -387,10 +385,6 @@ export function EditorAdminClient() {
   useEffect(() => {
     if (notesQuery.error) setError(notesQuery.error.message);
   }, [notesQuery.error]);
-
-  useEffect(() => {
-    void loadSharedStatus();
-  }, [loadSharedStatus]);
 
   useEffect(() => {
     const fromQuery = new URLSearchParams(window.location.search).get("slug");
@@ -1109,7 +1103,10 @@ export function EditorAdminClient() {
         onFilterVisibilityChange={setFilterVisibility}
         onFilterTagChange={setFilterTag}
         onApply={() => void loadNotes()}
-        onClear={clearFilters}
+        onClear={() => {
+          clearFilters();
+          setCommittedFilters(EMPTY_ADMIN_EDITOR_FILTERS);
+        }}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
