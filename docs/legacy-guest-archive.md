@@ -33,8 +33,10 @@ These hashes establish file identity; they do not prove that the export is the f
 
 Use the pinned Upstash RDB parser from commit
 `acce847ecb5c86b38602fec8ac2a2d11e3256f9f`. The extractor
-`ops/legacy-guest-rdb-extract.go` verifies the entire RDB CRC/type structure, reads all entries
-strictly and writes `guest:list` to a new mode-0600 file. Its output is a raw copy of the
+`ops/legacy-guest-rdb-extract.go` verifies the RDB structure, decodes every entry and refuses
+unrecognized key families or types before writing a mode-0600 `guest:list` file. This Upstash
+export has its RDB checksum disabled, so the recorded SHA-256 identifies the exact source bytes;
+the parser cannot verify a CRC that is absent. Its output is a raw copy of the
 stored JSON string, not a serialization of parsed records. Run it in a private workspace:
 
 ```sh

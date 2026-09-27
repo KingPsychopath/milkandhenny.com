@@ -491,8 +491,9 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
       top-level object-storage counts without reading private content.
 - [x] Identify the production migration-ledger mismatch and missing scheduled database backup
       coverage as explicit blockers.
-- [x] Checksum-validate and fully decode the user's RDB export, including all 224 keys, value types
-      and absolute expiry. Exact source capture time remains unproven; its download time is known.
+- [x] Pin the user's RDB export by SHA-256 and fully decode its structure, including all 224 keys,
+      value types and absolute expiry. Its internal RDB checksum is disabled; exact source capture
+      time remains unproven, while its download time is known.
 - [x] Record the first verified export as the authorized Redis cutoff. The user explicitly accepts
       losing later Redis-only writes. The historical guest list is assigned to a restricted
       Postgres archive; no fresh Upstash read is required.
@@ -763,6 +764,8 @@ as a guarantee for unprotected blobs. Record evidence against documented recover
       encrypted importer and integrity verifier. Production role separation, restore and fresh
       source import remain open.
 - [ ] Complete namespace discovery, archive integrity, exact TTL handling and unknown-key refusal.
+  - [x] Audit all 224 accepted RDB keys and 199 expiry records; fail the offline extractor before
+        any output if a new key family or type appears.
 - [ ] Integrate all domain importers, stable mappings, dry-run validation and resume receipts.
 - [ ] Reconcile counts, hashes, references, visibility, revocations, job identities, room receipts
       and voting baselines. Explain every excluded expired/corrupt item.
@@ -844,7 +847,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 ### Current checkpoint — 2026-09-27, M1–M7 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
-  inventory; full checksum/type decode of the supplied Upstash RDB export and a static
+  inventory; SHA-256 identity and full structural/type decode of the supplied Upstash RDB export and a static
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
@@ -1088,7 +1091,7 @@ targets for publication/deletion tests, and never send real user email/payment e
   passed. Code commit: `18c24c17`.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
-  The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
+  The new RDB evidence passed the Upstash parser's structural/type verification and strict database-0
   decode; its audit printed aggregate counts only. A read-only R2 listing and selected manifest
   downloads matched all 13 word bodies, all 64 active-transfer storage references, and all 14
   album originals/84 public variants/14 OG objects; three word image manifests and 18 variants

@@ -17,6 +17,9 @@ import (
 )
 
 type guestExtractor struct {
+	observed        map[string]string
+	unsupported     map[string]string
+	allExpiry       map[string]time.Time
 	value           string
 	found           bool
 	audit           []json.RawMessage
@@ -43,8 +46,51 @@ type guestExtractor struct {
 	mediaLists      map[string][]json.RawMessage
 }
 
+func isRecordKey(key, prefix string, colonCount int) bool {
+	return strings.HasPrefix(key, prefix) && strings.Count(key, ":") == colonCount && len(key) > len(prefix)
+}
+
+func allowedSourceKey(key, kind string) bool {
+	switch kind {
+	case "string":
+		return key == "guest:list" || key == "best-dressed:session" || key == "best-dressed:votes" ||
+			key == "auth:token-version:admin" || key == "auth:token-version:upload" ||
+			key == "auth:token-version:staff" ||
+			isRecordKey(key, "event-scoring:attendee-session:", 2) ||
+			isRecordKey(key, "diagnostic-report:v1:", 2) ||
+			isRecordKey(key, "user-report:v1:", 2) ||
+			isRecordKey(key, "words:meta:", 2) ||
+			(isRecordKey(key, "transfer:", 1) && key != "transfer:index")
+	case "list":
+		return key == "auth:upload-open:audit" || key == "transfer:media:queue" ||
+			key == "transfer:media:processing" || key == "transfer:media:dead"
+	case "set":
+		return key == "transfer:index" || key == "words:index" || key == "words:share-slugs" ||
+			key == "auth:sessions:index" || key == "user-report:index:v1" ||
+			isRecordKey(key, "words:share-index:", 2)
+	case "zset":
+		return key == "diagnostic-report:index:v1"
+	case "hash":
+		return key == "transfer:media:worker-status" || key == "best-dressed:votes:v2" ||
+			isRecordKey(key, "best-dressed:voted:", 2)
+	}
+	return false
+}
+
+func (g *guestExtractor) observe(key, kind string) {
+	if previous, exists := g.observed[key]; exists && previous != kind {
+		g.unsupported[key] = "conflicting-type"
+		return
+	}
+	g.observed[key] = kind
+	if !allowedSourceKey(key, kind) {
+		g.unsupported[key] = kind
+	}
+}
+
 func (*guestExtractor) AllowPartialRead() bool { return false }
 func (g *guestExtractor) HandleString(key, value string) error {
+	g.observe(key, "string")
 	if strings.HasPrefix(key, "transfer:") && strings.Count(key, ":") == 1 && key != "transfer:index" {
 		if !json.Valid([]byte(value)) {
 			return errors.New("invalid transfer JSON")
@@ -120,6 +166,7 @@ func (g *guestExtractor) HandleString(key, value string) error {
 	return nil
 }
 func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
+	g.allExpiry[key] = expires
 	if strings.HasPrefix(key, "transfer:") && strings.Count(key, ":") == 1 && key != "transfer:index" {
 		g.transferExpiry[strings.TrimPrefix(key, "transfer:")] = expires
 	}
@@ -136,13 +183,18 @@ func (g *guestExtractor) HandleExpireTime(key string, expires time.Time) {
 		g.votingExpiry[key] = expires
 	}
 }
-func (*guestExtractor) HandleListEnding(string, uint64)                     {}
-func (*guestExtractor) HandleZsetEnding(string, uint64)                     {}
-func (*guestExtractor) HandleStreamEnding(string, uint64)                   {}
-func (*guestExtractor) HandleArrayEnding(string, uint64, uint64)            {}
-func (*guestExtractor) HandleLibrary(string) error                          { return nil }
-func (*guestExtractor) HandleModule(string, string, rdb.ModuleMarker) error { return nil }
+func (g *guestExtractor) HandleListEnding(key string, _ uint64)     { g.observe(key, "list") }
+func (g *guestExtractor) HandleZsetEnding(key string, _ uint64)     { g.observe(key, "zset") }
+func (g *guestExtractor) HandleStreamEnding(key string, _ uint64)   { g.observe(key, "stream") }
+func (g *guestExtractor) HandleArrayEnding(key string, _, _ uint64) { g.observe(key, "array") }
+func (*guestExtractor) HandleLibrary(string) error {
+	return errors.New("RDB libraries are not an accepted migration source")
+}
+func (*guestExtractor) HandleModule(string, string, rdb.ModuleMarker) error {
+	return errors.New("RDB modules are not an accepted migration source")
+}
 func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
+	g.observe(key, "list")
 	return func(value string) error {
 		if key == "transfer:media:queue" || key == "transfer:media:processing" || key == "transfer:media:dead" {
 			if !json.Valid([]byte(value)) {
@@ -157,6 +209,7 @@ func (g *guestExtractor) ListEntryHandler(key string) func(string) error {
 	}
 }
 func (g *guestExtractor) SetEntryHandler(key string) func(string) error {
+	g.observe(key, "set")
 	return func(value string) error {
 		if key == "transfer:index" {
 			g.transferIndex[value] = true
@@ -177,10 +230,12 @@ func (g *guestExtractor) SetEntryHandler(key string) func(string) error {
 		return nil
 	}
 }
-func (*guestExtractor) ZsetEntryHandler(string) func(string, float64) error {
+func (g *guestExtractor) ZsetEntryHandler(key string) func(string, float64) error {
+	g.observe(key, "zset")
 	return func(string, float64) error { return nil }
 }
 func (g *guestExtractor) HashEntryHandler(key string) func(string, string) error {
+	g.observe(key, "hash")
 	return func(field, value string) error {
 		if key == "transfer:media:worker-status" {
 			g.workerStatus[field] = value
@@ -194,16 +249,20 @@ func (g *guestExtractor) HashEntryHandler(key string) func(string, string) error
 		return nil
 	}
 }
-func (*guestExtractor) HashWithExpEntryHandler(string) func(string, string, time.Time) error {
+func (g *guestExtractor) HashWithExpEntryHandler(key string) func(string, string, time.Time) error {
+	g.observe(key, "hash-with-expiry")
 	return func(string, string, time.Time) error { return nil }
 }
-func (*guestExtractor) StreamEntryHandler(string) func(rdb.StreamEntry) error {
+func (g *guestExtractor) StreamEntryHandler(key string) func(rdb.StreamEntry) error {
+	g.observe(key, "stream")
 	return func(rdb.StreamEntry) error { return nil }
 }
-func (*guestExtractor) StreamGroupHandler(string) func(rdb.StreamConsumerGroup) error {
+func (g *guestExtractor) StreamGroupHandler(key string) func(rdb.StreamConsumerGroup) error {
+	g.observe(key, "stream")
 	return func(rdb.StreamConsumerGroup) error { return nil }
 }
-func (*guestExtractor) ArrayEntryHandler(string) func(uint64, string) error {
+func (g *guestExtractor) ArrayEntryHandler(key string) func(uint64, string) error {
+	g.observe(key, "array")
 	return func(uint64, string) error { return nil }
 }
 
@@ -219,6 +278,9 @@ func main() {
 		panic(fmt.Errorf("RDB integrity verification failed: %w", err))
 	}
 	extractor := &guestExtractor{
+		observed:        make(map[string]string),
+		unsupported:     make(map[string]string),
+		allExpiry:       make(map[string]time.Time),
 		versions:        make(map[string]int),
 		sessions:        make(map[string]json.RawMessage),
 		sessionExpiry:   make(map[string]time.Time),
@@ -244,6 +306,15 @@ func main() {
 	if err := rdb.ReadFile(source, extractor); err != nil {
 		panic(fmt.Errorf("RDB decode failed: %w", err))
 	}
+	if len(extractor.unsupported) > 0 {
+		fingerprints := make([]string, 0, len(extractor.unsupported))
+		for key, kind := range extractor.unsupported {
+			fingerprints = append(fingerprints, fmt.Sprintf("%s:%x", kind, sha256.Sum256([]byte(key))))
+		}
+		sort.Strings(fingerprints)
+		panic(fmt.Errorf("unsupported RDB source key/types (%d): %s", len(fingerprints), strings.Join(fingerprints, ",")))
+	}
+	fmt.Printf("source_keys=%d expiring_keys=%d\n", len(extractor.observed), len(extractor.allExpiry))
 	if !extractor.found {
 		if len(os.Args) == 3 {
 			panic("guest:list is absent")
