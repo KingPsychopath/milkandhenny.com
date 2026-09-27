@@ -712,7 +712,7 @@ async function appendToTransfer(
 async function getTransferInfo(
   id: string,
 ): Promise<(TransferData & { remainingSeconds: number }) | null> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   const transfer = await getTransfer(id);
   if (!transfer) return null;
 
@@ -723,7 +723,7 @@ async function getTransferInfo(
 
 /** List all active transfers with time remaining */
 async function listActiveTransfers(): Promise<TransferSummary[]> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   return listTransfers();
 }
 
@@ -732,7 +732,7 @@ async function deleteTransfer(
   id: string,
   onProgress?: (msg: string) => void,
 ): Promise<{ deletedFiles: number; dataDeleted: boolean }> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   requireR2();
   onProgress?.(`Deleting transfer ${id}...`);
   const result = await runTransferOperation((transfers) => transfers.adminDelete(id));
@@ -750,7 +750,7 @@ async function deleteTransferFile(
   file: TransferData["files"][number];
   transfer?: TransferData;
 }> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   requireR2();
 
   const transfer = await getTransfer(id);
@@ -913,7 +913,7 @@ async function retryTransferMedia(
 async function cleanupExpiredTransfers(
   onProgress?: (msg: string) => void,
 ): Promise<{ expiredIndexEntries: number; scannedPrefixes: number; deletedObjects: number }> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   requireR2();
   onProgress?.("Scanning transfer metadata and object storage...");
   const { mode: _mode, ...result } = await runTransferOperation((transfers) =>
