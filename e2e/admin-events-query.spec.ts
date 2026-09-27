@@ -79,6 +79,8 @@ test("ticket invitations load when the event ticket tool opens", async ({ page }
       "page",
     );
     await expect(page.getByText("Failed to load ticket invitations")).toHaveCount(0);
+    await tools.getByRole("button", { name: "waitlist", exact: true }).click();
+    await expect(page.getByText("nobody has joined this waitlist yet")).toBeVisible();
   } finally {
     await database.query("delete from guest_requests where event_slug=$1", [slug]);
     await database.query("delete from events where slug=$1", [slug]);

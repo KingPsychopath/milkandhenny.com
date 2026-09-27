@@ -2748,7 +2748,7 @@ export function EventOperations({
       ) : null}
 
       {activeTool === "waitlist" && permissions.manageEvents ? (
-        <EventWaitlistPanel eventSlug={event.slug} authFetch={authFetch} onError={onError} />
+        <EventWaitlistPanel eventSlug={event.slug} onError={onError} />
       ) : null}
 
       {activeTool === "door" && permissions.manageEvents ? (
