@@ -961,6 +961,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   unchanged-read revisions and rejected-action retry. The selector is not enabled in production;
   other M7 modes and full M8 reconnect/revalidation remain open. Focused suites passed 12 cases;
   `pnpm check`, the full one-worker suite (284 files, 2,147 tests), and `pnpm build` passed.
+- 2026-09-27 staged media operator queue parity: with Postgres jobs selected, the existing
+  `clear-media-queue` CLI operation cancels pending and claimed Postgres jobs while retaining their
+  history and invalidating claim tokens. It does not touch Redis. A claimed worker's late
+  completion is rejected. This command remains destructive by operator intent; it does not
+  replace the still-open Postgres backfill, retry, reprocess and reconciliation workflows.
+  Focused real Postgres tests passed nine cases, including the Media runtime selection path.
+  `pnpm check`, the full one-worker suite (284 files, 2,149 tests), and `pnpm build` passed;
+  the focused suite was rerun after the final deterministic row-lock ordering change.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0

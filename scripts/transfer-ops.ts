@@ -154,6 +154,7 @@ type ClearTransferMediaQueueResult = {
   deletedKeys: number;
   queueLengthBefore: number;
   processingLengthBefore: number;
+  cancelledJobs?: number;
 };
 
 type RetryTransferMediaResult = {
@@ -839,7 +840,7 @@ async function reconcileTransferMedia(
 }
 
 async function clearTransferMediaQueue(): Promise<ClearTransferMediaQueueResult> {
-  requireRedis();
+  if (process.env.TRANSFER_MEDIA_JOB_STORE !== "postgres") requireRedis();
   return runMediaEffect(
     Effect.gen(function* () {
       return yield* (yield* TransferMediaOperationsService).clearQueue;

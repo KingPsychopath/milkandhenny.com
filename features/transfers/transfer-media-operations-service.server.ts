@@ -9,6 +9,7 @@ import {
   getTransferMediaQueueLength,
 } from "./media-backends/worker.server";
 import { retryDeadTransferMediaJobs } from "./media-queue.server";
+import { clearPostgresTransferMediaQueue } from "./media-jobs-postgres.server";
 import { reconcileTransferMedia } from "./media-reconcile.server";
 import { getTransfer } from "./store.server";
 import { backfillTransferMedia } from "./upload.server";
@@ -74,7 +75,12 @@ export class TransferMediaOperationsService extends Context.Service<
       transferId: string,
     ) => Effect.Effect<TransferMediaBackfillResult, TransferMediaOperationError>;
     readonly clearQueue: Effect.Effect<
-      { deletedKeys: number; queueLengthBefore: number; processingLengthBefore: number },
+      {
+        deletedKeys: number;
+        queueLengthBefore: number;
+        processingLengthBefore: number;
+        cancelledJobs?: number;
+      },
       TransferMediaOperationError
     >;
     readonly queueLength: Effect.Effect<number, TransferMediaOperationError>;
@@ -159,32 +165,39 @@ export class TransferMediaOperationsService extends Context.Service<
       const queueLength = attempt("queue_length", getTransferMediaQueueLength);
       return {
         backfill,
-        clearQueue: Effect.gen(function* () {
-          const client = yield* redis.client.pipe(
-            Effect.mapError(
-              (cause) => new TransferMediaOperationError({ cause, operation: "redis_client" }),
-            ),
-          );
-          if (!client) {
-            return yield* Effect.fail(
-              new TransferMediaOperationError({
-                cause: new Error("Redis is not configured"),
-                operation: "clear_queue",
-              }),
-            );
-          }
-          const [queueLengthBefore, processingLengthBefore] = yield* Effect.all(
-            [
-              attempt("queued_length", () => client.llen("transfer:media:queue")),
-              attempt("processing_length", () => client.llen("transfer:media:processing")),
-            ],
-            { concurrency: 2 },
-          );
-          const deletedKeys = yield* attempt("clear_queue", () =>
-            client.del("transfer:media:queue", "transfer:media:processing"),
-          );
-          return { deletedKeys, queueLengthBefore, processingLengthBefore };
-        }).pipe(Effect.withSpan("transfers.media.clear_queue")),
+        clearQueue:
+          process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
+            ? attempt("clear_postgres_queue", async () => ({
+                deletedKeys: 0,
+                ...(await clearPostgresTransferMediaQueue()),
+              }))
+            : Effect.gen(function* () {
+                const client = yield* redis.client.pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new TransferMediaOperationError({ cause, operation: "redis_client" }),
+                  ),
+                );
+                if (!client) {
+                  return yield* Effect.fail(
+                    new TransferMediaOperationError({
+                      cause: new Error("Redis is not configured"),
+                      operation: "clear_queue",
+                    }),
+                  );
+                }
+                const [queueLengthBefore, processingLengthBefore] = yield* Effect.all(
+                  [
+                    attempt("queued_length", () => client.llen("transfer:media:queue")),
+                    attempt("processing_length", () => client.llen("transfer:media:processing")),
+                  ],
+                  { concurrency: 2 },
+                );
+                const deletedKeys = yield* attempt("clear_queue", () =>
+                  client.del("transfer:media:queue", "transfer:media:processing"),
+                );
+                return { deletedKeys, queueLengthBefore, processingLengthBefore };
+              }).pipe(Effect.withSpan("transfers.media.clear_queue")),
         queueLength,
         reconcile: usingStorage("reconcile", reconcileTransferMedia),
         reprocess,

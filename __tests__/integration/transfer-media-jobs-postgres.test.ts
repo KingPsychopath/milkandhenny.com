@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 
 import { createPostgresTransfer } from "@/features/transfers/catalogue-postgres.server";
 import {
+  clearPostgresTransferMediaQueue,
   cancelObsoletePostgresTransferMediaJobs,
   claimPostgresTransferMediaJobs,
   completePostgresTransferMediaJob,
@@ -70,10 +72,8 @@ function job(id: string): TransferMediaJob {
 
 describeWithDatabase("Postgres transfer media jobs", () => {
   beforeAll(applySchema);
-  afterAll(async () => {
-    vi.unstubAllEnvs();
-    await closeDatabase();
-  });
+  afterAll(closeDatabase);
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(async () => {
     vi.stubEnv("AUTH_SECRET", "integration-test-transfer-secret-at-least-32-bytes");
     await query("truncate transfers cascade");
@@ -111,6 +111,52 @@ describeWithDatabase("Postgres transfer media jobs", () => {
         enqueuePostgresTransferMediaJob(client, { ...job("raw-one"), mimeType: "changed-type" }, 1),
       ),
     ).rejects.toThrow("Conflicting transfer media job identity");
+  });
+
+  it("cancels pending and claimed work while fencing a late completion", async () => {
+    await transaction(async (client) => {
+      await enqueuePostgresTransferMediaJob(client, job("raw-one"), 1);
+      await enqueuePostgresTransferMediaJob(client, job("raw-two"), 1);
+    });
+    const claimed = await claimPostgresTransferMediaJobs("operator-clear-test", 1);
+    expect(claimed).toHaveLength(1);
+    expect(await clearPostgresTransferMediaQueue()).toEqual({
+      cancelledJobs: 2,
+      queueLengthBefore: 1,
+      processingLengthBefore: 1,
+    });
+    expect(await clearPostgresTransferMediaQueue()).toEqual({
+      cancelledJobs: 0,
+      queueLengthBefore: 0,
+      processingLengthBefore: 0,
+    });
+    expect(
+      await transaction((client) =>
+        completePostgresTransferMediaJob(client, claimed[0]!.id, claimed[0]!.claimToken, null),
+      ),
+    ).toBe(false);
+    expect((await getPostgresTransferMediaQueueSnapshot()).cancelled).toBe(2);
+  });
+
+  it("routes operator queue clearing to Postgres without Redis configuration", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-one"), 1));
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferMediaOperationsService } =
+      await import("@/features/transfers/transfer-media-operations-service.server");
+    const cleared = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).clearQueue;
+      }),
+    );
+    expect(cleared).toEqual({
+      deletedKeys: 0,
+      cancelledJobs: 1,
+      queueLengthBefore: 1,
+      processingLengthBefore: 0,
+    });
   });
 
   it("claims disjoint jobs and fences an expired worker", async () => {

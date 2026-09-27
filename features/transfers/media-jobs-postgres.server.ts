@@ -79,6 +79,31 @@ export async function getPostgresTransferMediaQueueSnapshot(): Promise<PostgresT
   };
 }
 
+/** Operator queue clear: cancel active work while retaining its audit and fencing late workers. */
+export async function clearPostgresTransferMediaQueue(): Promise<{
+  cancelledJobs: number;
+  queueLengthBefore: number;
+  processingLengthBefore: number;
+}> {
+  const rows = await query<{ previous_status: "pending" | "claimed" }>(
+    `with current_jobs as (
+       select id,status from transfer_media_jobs
+        where status in ('pending','claimed') order by id for update
+     ), cancelled as (
+       update transfer_media_jobs j
+          set status='cancelled',claim_token=null,claim_owner=null,lease_until=null
+         from current_jobs c where j.id=c.id
+        returning c.status as previous_status
+     )
+     select previous_status from cancelled`,
+  );
+  return {
+    cancelledJobs: rows.length,
+    queueLengthBefore: rows.filter((row) => row.previous_status === "pending").length,
+    processingLengthBefore: rows.filter((row) => row.previous_status === "claimed").length,
+  };
+}
+
 /** Grant one more attempt while preserving the existing claim and failure history. */
 export async function retryDeadPostgresTransferMediaJobs(limit = 25): Promise<number> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100)
