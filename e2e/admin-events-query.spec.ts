@@ -51,6 +51,10 @@ test("ticket invitations load when the event ticket tool opens", async ({ page }
        values ($1,'Invitation query event','draft',now() + interval '7 days','Europe/London')`,
       [slug],
     );
+    await database.query(
+      "insert into guest_requests(event_slug,requested_by,name,status) values ($1,'QA scanner','Query guest request','pending')",
+      [slug],
+    );
     await page.goto("/admin?view=events&eventWorkspace=events");
     await waitForAppHydration(page);
     const password = page.getByLabel("admin password", { exact: true });
@@ -66,6 +70,7 @@ test("ticket invitations load when the event ticket tool opens", async ({ page }
     const html = await direct.text();
     expect(html).toContain("Invitation query event");
     expect(html).toContain("live tickets");
+    expect(html).toContain("Query guest request");
     const tools = page.getByRole("navigation", { name: "Invitation query event tools" });
     await expect(tools).toBeVisible();
     await tools.getByRole("button", { name: "tickets", exact: true }).click();
@@ -75,6 +80,7 @@ test("ticket invitations load when the event ticket tool opens", async ({ page }
     );
     await expect(page.getByText("Failed to load ticket invitations")).toHaveCount(0);
   } finally {
+    await database.query("delete from guest_requests where event_slug=$1", [slug]);
     await database.query("delete from events where slug=$1", [slug]);
     await database.end();
   }

@@ -11,6 +11,7 @@ import { AppImage } from "@/components/AppImage";
 import { useQrCode } from "@/hooks/useQrCode";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import { adminTicketInvitationsQuery } from "@/features/attendee-operations/admin-ticket-invitations.queries";
+import { adminGuestRequestsQuery } from "@/features/tickets/admin-guest-requests.queries";
 import type { GlobalAdminPermissionSet } from "@/features/attendee-operations/types";
 import { formatMoney, type EventRecord } from "@/features/events/types";
 import {
@@ -653,27 +654,22 @@ function GuestRequestsAdmin({
     intent: "danger" | "default";
   }) => Promise<boolean>;
 }) {
-  const [requests, setRequests] = useState<GuestRequestRecord[] | null>(null);
+  const queryClient = useQueryClient();
+  const requestsQuery = useQuery(adminGuestRequestsQuery(event.slug));
+  const requests: GuestRequestRecord[] | null = requestsQuery.data ?? null;
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const response = await authFetch(`/api/admin/events/${event.slug}/guest-requests`);
-      const data: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error("Failed to load guest requests");
-      setRequests(
-        data && typeof data === "object" && "requests" in data && Array.isArray(data.requests)
-          ? (data.requests as GuestRequestRecord[])
-          : [],
-      );
+      await queryClient.fetchQuery({ ...adminGuestRequestsQuery(event.slug), staleTime: 0 });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to load guest requests");
     }
-  }, [authFetch, event.slug, onError]);
+  }, [queryClient, event.slug, onError]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (requestsQuery.error) onError(requestsQuery.error.message);
+  }, [requestsQuery.error, onError]);
 
   const decide = async (request: GuestRequestRecord, approve: boolean) => {
     if (approve) {
