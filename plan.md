@@ -712,6 +712,9 @@ publish or overwrite current output. Reconciliation uses indexed queries.
 ### M7 — Rooms, presentations and game results
 
 - [ ] Implement repositories and domain mappings for every room engine listed in section 4.6.
+  - [x] Stage opt-in Postgres room aggregates for Hot & Cold, Draw Country, Family Feud,
+        Spelling Party, Centre, Twin, Same Brain, Liars and paired remote games.
+  - [x] Stage transactional game-pool room credentials and assignment receipts.
 - [ ] Preserve deterministic reducers, clocks, deduplication and command acknowledgments.
 - [ ] Implement paired journals/epochs and pool recovery credentials with explicit relationships.
 - [ ] Move presentation state and host/controller recovery.
@@ -730,6 +733,8 @@ processes without lost accepted actions, secret leakage or changed game rules.
       and stream authorization expiry/revalidation.
 - [ ] Remove remaining runtime Redis usage from routes, capability checks, admin, CLI, scheduler,
       maintenance, startup/shutdown and monitoring.
+  - [x] Make the mandatory application persistence health probe select Postgres when every
+        application store selector is `postgres`.
 - [ ] Verify browser drafts, offline scanner/pitch/game command replay and old-client retries.
 - [ ] Run two-web-process plus separate-worker tests, notification disconnect/failure tests,
       and the numerical workload/idle-load envelope from M1.
