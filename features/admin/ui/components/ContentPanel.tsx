@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { formatBytes, formatDate } from "../format";
@@ -18,16 +20,6 @@ type StepUpHeaders = (token: string, extra?: Record<string, string>) => Record<s
 type ContentRecents = {
   blog: { recent: Array<{ slug: string; title: string; readingTime: number }> };
   gallery: { recent: Array<{ slug: string; title: string; photoCount: number }> };
-};
-
-type SharedWordSummary = {
-  slug: string;
-  title: string;
-  type: "blog" | "note" | "recipe" | "review";
-  visibility: "public" | "unlisted" | "private";
-  activeShareCount: number;
-  pinProtectedCount: number;
-  nextExpiryAt: string;
 };
 
 type WordMediaOrphanFolder = {
@@ -81,11 +73,6 @@ type ContentAuditResponse = {
   auditedAt: string;
 };
 
-type SharedWordsResponse = {
-  error?: string;
-  items?: SharedWordSummary[];
-};
-
 type SharedWordsActionResponse = {
   error?: string;
   revoked?: number;
@@ -107,6 +94,7 @@ type WordMediaCleanupResponse = {
 
 type AuditView = "all" | "broken-refs" | "invalid-albums";
 type ContentWorkspace = "albums" | "sharing" | "recent" | "maintenance";
+const EMPTY_SHARED_WORDS: [] = [];
 
 export function ContentPanel({
   authFetch,
@@ -126,15 +114,20 @@ export function ContentPanel({
   onContentChanged: () => void;
 }) {
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
+  const queryClient = useQueryClient();
   const [workspace, setWorkspace] = useState<ContentWorkspace>("albums");
   const [audit, setAudit] = useState<ContentAuditResponse | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditView, setAuditView] = useState<AuditView>("all");
   const [showAllBrokenRefs, setShowAllBrokenRefs] = useState(false);
-  const [sharedWords, setSharedWords] = useState<SharedWordSummary[]>([]);
-  const [sharedWordsLoading, setSharedWordsLoading] = useState(false);
-  const [sharedWordsLoaded, setSharedWordsLoaded] = useState(false);
-  const [sharedWordsError, setSharedWordsError] = useState<string | null>(null);
+  const sharedWordsQuery = useQuery({
+    ...adminSharedWordsQuery,
+    enabled: workspace === "sharing" || workspace === "maintenance",
+  });
+  const sharedWords = sharedWordsQuery.data ?? EMPTY_SHARED_WORDS;
+  const sharedWordsLoading = sharedWordsQuery.isFetching;
+  const sharedWordsLoaded = Boolean(sharedWordsQuery.data);
+  const sharedWordsError = sharedWordsQuery.error?.message ?? null;
   const [sharedWordQuery, setSharedWordQuery] = useState("");
   const [showAllSharedWords, setShowAllSharedWords] = useState(false);
   const [wordMediaOrphans, setWordMediaOrphans] = useState<WordMediaOrphanSummary | null>(null);
@@ -158,25 +151,14 @@ export function ContentPanel({
   };
 
   const loadSharedWords = useCallback(async () => {
-    setSharedWordsLoading(true);
-    setSharedWordsError(null);
     onError("");
     try {
-      const res = await authFetch("/api/admin/word-shares");
-      const data = (await res.json().catch(() => ({}))) as SharedWordsResponse;
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to load shared pages");
-      }
-      setSharedWords((data.items as SharedWordSummary[]) ?? []);
-      setSharedWordsLoaded(true);
+      await queryClient.fetchQuery({ ...adminSharedWordsQuery, staleTime: 0 });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load shared pages";
-      setSharedWordsError(msg);
       onError(msg);
-    } finally {
-      setSharedWordsLoading(false);
     }
-  }, [authFetch, onError]);
+  }, [queryClient, onError]);
 
   const loadWordMediaOrphans = useCallback(async () => {
     setWordMediaOrphansLoading(true);
@@ -201,8 +183,8 @@ export function ContentPanel({
   }, [authFetch, onError]);
 
   useEffect(() => {
-    if (workspace === "sharing" || workspace === "maintenance") void loadSharedWords();
-  }, [loadSharedWords, workspace]);
+    if (sharedWordsQuery.error) onError(sharedWordsQuery.error.message);
+  }, [sharedWordsQuery.error, onError]);
 
   useEffect(() => {
     if (workspace === "maintenance") void loadWordMediaOrphans();
