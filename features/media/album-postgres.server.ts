@@ -1,4 +1,5 @@
 import { query, transaction } from "@/lib/platform/postgres.server";
+import { enqueueMediaObjectOperation } from "./object-operations.server";
 import type { Album, Photo } from "./albums";
 
 type AlbumRow = {
@@ -90,6 +91,16 @@ export class AlbumWriteConflictError extends Error {
   }
 }
 
+export async function hasPendingPostgresAlbumPublicDeletes(slug: string): Promise<boolean> {
+  const rows = await query(
+    `select 1 from media_object_operations
+      where owner_kind='album' and owner_id=$1 and operation='delete'
+        and status <> 'completed' limit 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
+
 export async function readPostgresAlbum(slug: string): Promise<Album | null> {
   const rows = await query<AlbumRow>(`${SELECT_ALBUMS} where a.slug = $1 order by p.position`, [
     slug,
@@ -102,7 +113,16 @@ export async function listPostgresAlbums(): Promise<Album[]> {
   return albumsFromRows(rows);
 }
 
-export async function writePostgresAlbum(album: Album): Promise<Album> {
+export async function writePostgresAlbum(
+  album: Album,
+  options: { publicDeleteKeys?: readonly string[] } = {},
+): Promise<Album> {
+  const publicDeleteKeys = options.publicDeleteKeys ?? [];
+  if (
+    (publicDeleteKeys.length > 0 && album.status !== "draft") ||
+    publicDeleteKeys.some((key) => !key.startsWith(`albums/${album.slug}/`))
+  )
+    throw new Error("Invalid album public deletion intent");
   const updatedAt = new Date().toISOString();
   const nextRevision = await transaction(async (client) => {
     const current = await client.query<{ revision: number }>(
@@ -112,6 +132,15 @@ export async function writePostgresAlbum(album: Album): Promise<Album> {
     const existing = current.rows[0];
     if (existing && album.revision !== existing.revision) throw new AlbumWriteConflictError();
     if (!existing && album.revision !== undefined) throw new AlbumWriteConflictError();
+    if (album.status === "published" || !existing) {
+      const pending = await client.query(
+        `select 1 from media_object_operations
+          where owner_kind='album' and owner_id=$1 and operation='delete'
+            and status <> 'completed' limit 1`,
+        [album.slug],
+      );
+      if (pending.rows[0]) throw new AlbumWriteConflictError();
+    }
     const revision = existing ? existing.revision + 1 : 1;
     const values = [
       album.slug,
@@ -166,6 +195,15 @@ export async function writePostgresAlbum(album: Album): Promise<Album> {
         ],
       );
     }
+    for (const key of new Set(publicDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: album.slug,
+        ownerRevision: revision,
+        operation: "delete",
+        targetScope: "public",
+        targetKey: key,
+      });
     return revision;
   });
   return { ...album, updatedAt, revision: nextRevision };

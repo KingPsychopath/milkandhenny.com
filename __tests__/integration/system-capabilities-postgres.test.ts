@@ -47,10 +47,36 @@ describeWithDatabase("Postgres operational capabilities", () => {
     expect(
       getMediaWorkerCapabilities().capabilities.find(({ id }) => id === "worker-queue")?.status,
     ).toBe("unavailable");
+    vi.stubEnv("MEDIA_WORKER_STATUS_STORE", "postgres");
+    vi.stubEnv("ALBUM_STORE", "postgres");
+    expect(
+      getMediaWorkerCapabilities().capabilities.find(({ id }) => id === "worker-queue")?.status,
+    ).toBe("unavailable");
+  });
+
+  it("requires public bucket credentials when the worker deletes album copies", () => {
+    vi.stubEnv("ALBUM_OBJECT_DELETION_RUNNER", "postgres");
+    vi.stubEnv("R2_ACCOUNT_ID", "local-account");
+    vi.stubEnv("R2_PRIVATE_ACCESS_KEY", "local-private-key");
+    vi.stubEnv("R2_PRIVATE_SECRET_KEY", "local-private-secret");
+    vi.stubEnv("R2_PRIVATE_BUCKET", "local-private-bucket");
+    vi.stubEnv("R2_PUBLIC_ACCESS_KEY", "");
+    vi.stubEnv("R2_PUBLIC_SECRET_KEY", "");
+    vi.stubEnv("R2_PUBLIC_BUCKET", "");
+    expect(
+      getMediaWorkerCapabilities().capabilities.find(({ id }) => id === "media-storage")?.status,
+    ).toBe("unavailable");
+    vi.stubEnv("R2_PUBLIC_ACCESS_KEY", "local-public-key");
+    vi.stubEnv("R2_PUBLIC_SECRET_KEY", "local-public-secret");
+    vi.stubEnv("R2_PUBLIC_BUCKET", "local-public-bucket");
+    expect(
+      getMediaWorkerCapabilities().capabilities.find(({ id }) => id === "media-storage")?.status,
+    ).toBe("available");
   });
 
   it("probes application persistence through Postgres only when all stores have moved", async () => {
     for (const name of [
+      "ALBUM_OBJECT_DELETION_RUNNER",
       "ALBUM_STORE",
       "ATTENDEE_SESSION_STORE",
       "AUTH_CLI_STORE",

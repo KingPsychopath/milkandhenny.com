@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Cause, Context, Data, Deferred, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 
 import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
 import { runPostgresTransferMediaBatch } from "@/features/transfers/media-job-executor-postgres.server";
@@ -68,6 +69,7 @@ type ConsumeResult = Pick<
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
 const transferDeletionOwner = `transfer-delete:${randomUUID()}`;
+const albumDeletionOwner = `album-delete:${randomUUID()}`;
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
@@ -492,8 +494,29 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
           Schedule.spaced(30_000),
         )
       : Effect.never;
-  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop], {
-    concurrency: 3,
+  const albumDeletionLoop =
+    process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres"
+      ? Effect.repeat(
+          workerAttempt("album_object_deletions", () =>
+            withObjectStorageProvider(storage, () =>
+              runAlbumObjectDeletionBatch(albumDeletionOwner),
+            ),
+          ).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                if (result.claimed > 0)
+                  log.info("media.worker", "Album object deletion batch completed", result);
+              }),
+            ),
+            Effect.catch((error) =>
+              workerAttempt("record_album_deletion_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop, albumDeletionLoop], {
+    concurrency: 4,
     discard: true,
   });
 }
@@ -607,6 +630,16 @@ export function runMediaEffect<A, E>(
 
 async function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): Promise<void> {
   if (getMediaProcessorMode() === "local") return;
+  if (
+    process.env.ALBUM_STORE === "postgres" &&
+    process.env.ALBUM_OBJECT_DELETION_RUNNER !== "postgres"
+  )
+    throw new Error("Postgres albums require ALBUM_OBJECT_DELETION_RUNNER=postgres");
+  if (
+    process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres" &&
+    process.env.ALBUM_STORE !== "postgres"
+  )
+    throw new Error("Postgres album deletion runner requires ALBUM_STORE=postgres");
   if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") requirePostgresWorkerStatus();
   if (options.concurrency !== undefined || options.errorBackoffMs !== undefined) {
     // Custom startup settings are used by isolated worker hosts and tests. Release the existing

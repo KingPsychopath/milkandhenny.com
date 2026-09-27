@@ -615,6 +615,9 @@ double-consume a credential, vote, report submission or protected quota.
       derivatives plus published public derivatives. Run it on the imported production target.
 - [ ] Make album publication, deletion and derivative changes recoverable across Postgres/R2
       failures before selecting the Postgres repository in production.
+  - [x] Stage Postgres album unpublication as one draft revision plus public delete intents;
+        the media worker retries fenced deletions, and republishing waits for pending cleanup.
+        Album deletion, photo removal and publication copy still need the same durable treatment.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -1493,6 +1496,17 @@ targets for publication/deletion tests, and never send real user email/payment e
   were copy only; Playwright remains a release gate. Production remains on Upstash. Next:
   finish recoverable album/word publication and source reconciliation, rehearse the integrated
   accepted-export import, then qualify the complete Redis-free artifact before cutover.
+- The staged Postgres album unpublish path now commits a draft revision with public-object
+  deletion intents. A worker using the scoped media role retries each fenced deletion; republish
+  waits for cleanup. Real-Postgres integration covers atomicity, blocked republish, and an
+  uncertain R2 deletion retry. `pnpm check`, `pnpm build`, and the full one-worker suite passed
+  (297 files, 2,188 tests). A built Redis-free worker with a restricted local login and both
+  Postgres album selectors returned HTTP 200, exited cleanly on SIGTERM, marked its instance
+  stopped, and left zero database connections; the temporary login was removed. Publication
+  copy, album/photo deletion and upload-finalization unpublish remain unfinished. Production
+  remains on Upstash; the first export is the authorized source cutoff, and no fresh backup is
+  required by the user. Next: finish those album paths and word-media visibility before the
+  integrated import rehearsal and release qualification.
 
 ### Milestone checkpoint template
 

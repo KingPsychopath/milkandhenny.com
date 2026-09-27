@@ -24,6 +24,7 @@ import {
 } from "./album-repository.server";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { privatePhotoKeys, publicPhotoKeys } from "./album-object-keys";
+import { hasPendingPostgresAlbumPublicDeletes } from "./album-postgres.server";
 import { focalPresetToPercent, isValidFocalPreset } from "./focal";
 import {
   isProcessableImage,
@@ -216,8 +217,22 @@ async function updateAlbumMetadata(slug: string, input: AlbumMetadataInput): Pro
   const willPublish = status !== "draft";
   const titleChanged = title !== album.title;
 
+  if (
+    willPublish &&
+    !wasPublished &&
+    process.env.ALBUM_STORE === "postgres" &&
+    (await hasPendingPostgresAlbumPublicDeletes(slug))
+  )
+    throw new Error("Album public cleanup is still pending. Try publishing again shortly.");
+
   if (titleChanged) await regenerateAlbumOg(next);
   if (wasPublished && !willPublish) {
+    if (process.env.ALBUM_STORE === "postgres")
+      return toAdminAlbum(
+        await writeAlbumManifest(next, {
+          publicDeleteKeys: album.photos.flatMap((photo) => publicPhotoKeys(slug, photo)),
+        }),
+      );
     await unpublishAlbumAssets(album);
     try {
       return toAdminAlbum(await writeAlbumManifest(next));

@@ -25,6 +25,7 @@ function isConfigured(name: string): boolean {
 }
 
 const POSTGRES_APPLICATION_STORES = [
+  "ALBUM_OBJECT_DELETION_RUNNER",
   "ALBUM_STORE",
   "ATTENDEE_SESSION_STORE",
   "AUTH_CLI_STORE",
@@ -86,7 +87,9 @@ function getConfiguredCapabilities(): Capability[] {
     (postgresWorker
       ? databaseConfigured &&
         process.env.MEDIA_WORKER_STATUS_STORE === "postgres" &&
-        process.env.TRANSFER_CATALOGUE_STORE === "postgres"
+        process.env.TRANSFER_CATALOGUE_STORE === "postgres" &&
+        (process.env.ALBUM_STORE !== "postgres" ||
+          process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres")
       : directRedisConfigured);
 
   return [
@@ -300,8 +303,12 @@ function getMediaWorkerCapabilities(): SystemCapabilities {
   const postgresWorkerConfigured =
     isDatabaseConfigured() &&
     process.env.MEDIA_WORKER_STATUS_STORE === "postgres" &&
-    process.env.TRANSFER_CATALOGUE_STORE === "postgres";
+    process.env.TRANSFER_CATALOGUE_STORE === "postgres" &&
+    (process.env.ALBUM_STORE !== "postgres" ||
+      process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres");
   const privateStorageConfigured = isPrivateStorageConfigured();
+  const albumDeletionConfigured =
+    process.env.ALBUM_OBJECT_DELETION_RUNNER !== "postgres" || isObjectStorageConfigured();
   const mediaMode = getMediaProcessorMode();
 
   const capabilities: Capability[] = [
@@ -334,12 +341,14 @@ function getMediaWorkerCapabilities(): SystemCapabilities {
     },
     {
       id: "media-storage",
-      label: "private media storage",
-      status: privateStorageConfigured ? "available" : "unavailable",
+      label: "media storage",
+      status: privateStorageConfigured && albumDeletionConfigured ? "available" : "unavailable",
       required: true,
-      detail: privateStorageConfigured
-        ? "Private transfer storage is configured."
-        : "Private transfer storage is not configured.",
+      detail: !privateStorageConfigured
+        ? "Private transfer storage is not configured."
+        : !albumDeletionConfigured
+          ? "Album deletion requires public object-storage credentials."
+          : "Worker object storage is configured.",
     },
   ];
 
