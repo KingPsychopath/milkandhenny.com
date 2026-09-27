@@ -10,6 +10,10 @@ import {
 } from "@/features/words/admin-editor.queries";
 import type { AdminEditorWordFilters } from "@/features/words/admin-editor.functions";
 import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
+import {
+  adminWordPageMediaQuery,
+  adminWordSharedAssetsQuery,
+} from "@/features/words/admin-media-library.queries";
 import { MediaPreviewModal } from "./components/MediaPreviewModal";
 import { EditorFiltersPanel } from "./components/EditorFiltersPanel";
 import { EditorResultsList } from "./components/EditorResultsList";
@@ -32,7 +36,6 @@ import type {
   SharePatchResponse,
   ShareStateFilter,
   WordMediaItem,
-  WordMediaResponse,
 } from "./types";
 
 function isExpiredShare(link: ShareLink): boolean {
@@ -50,6 +53,7 @@ const AUTOSAVE_DEBOUNCE_MS = 1200;
 const EDITOR_DRAFT_KEY_PREFIX = "mah-admin-editor-draft:";
 const EMPTY_NOTES: NoteMeta[] = [];
 const EMPTY_SHARES: ShareLink[] = [];
+const EMPTY_MEDIA: WordMediaItem[] = [];
 
 type WordSavePayload = {
   title: string;
@@ -199,12 +203,19 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
     for (const item of sharedStatusQuery.data ?? []) counts[item.slug] = item.activeShareCount;
     return counts;
   }, [sharedStatusQuery.data]);
-  const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
-  const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [mediaError, setMediaError] = useState("");
+  const pageMediaQuery = useQuery({
+    ...adminWordPageMediaQuery(selectedSlug),
+    enabled: Boolean(selectedSlug),
+  });
+  const assetsQuery = useQuery({
+    ...adminWordSharedAssetsQuery,
+    enabled: Boolean(selectedSlug),
+  });
+  const pageMedia: WordMediaItem[] = pageMediaQuery.data?.pageMedia ?? EMPTY_MEDIA;
+  const sharedAssets: WordMediaItem[] = assetsQuery.data?.assets ?? EMPTY_MEDIA;
+  const mediaLoading = pageMediaQuery.isFetching || assetsQuery.isFetching;
+  const mediaError = pageMediaQuery.error?.message ?? assetsQuery.error?.message ?? "";
   const [mediaCopied, setMediaCopied] = useState<string | null>(null);
-  const [assetsHydrated, setAssetsHydrated] = useState(false);
   const {
     showPreview,
     setShowPreview,
@@ -313,32 +324,18 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
   const loadWordMedia = useCallback(
     async (slug: string, forceAssets = false) => {
       if (!slug) return;
-
-      setMediaLoading(true);
-      setMediaError("");
       try {
-        const params = new URLSearchParams();
-        params.set("slug", slug);
-        if (!forceAssets && assetsHydrated) {
-          params.set("includeAssets", "false");
-        }
-
-        const res = await fetch(`/api/admin/word-media?${params.toString()}`);
-        const data = (await res.json().catch(() => ({}))) as WordMediaResponse;
-        if (!res.ok) throw new Error(data.error ?? "Failed to load media library");
-
-        setPageMedia(data.pageMedia ?? []);
-        if (data.assetsIncluded) {
-          setSharedAssets(data.assets ?? []);
-          setAssetsHydrated(true);
-        }
+        await Promise.all([
+          queryClient.fetchQuery({ ...adminWordPageMediaQuery(slug), staleTime: 0 }),
+          forceAssets
+            ? queryClient.fetchQuery({ ...adminWordSharedAssetsQuery, staleTime: 0 })
+            : queryClient.ensureQueryData(adminWordSharedAssetsQuery),
+        ]);
       } catch (err) {
-        setMediaError(err instanceof Error ? err.message : "Failed to load media library");
-      } finally {
-        setMediaLoading(false);
+        setError(err instanceof Error ? err.message : "Failed to load media library");
       }
     },
-    [assetsHydrated],
+    [queryClient],
   );
 
   const copySnippet = useCallback(async (snippet: string, copyId: string) => {
@@ -401,12 +398,7 @@ export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
   }, [current, selectedSlug, draftBase?.slug, setEditFromRecord]);
 
   useEffect(() => {
-    if (selectedSlug) void loadWordMedia(selectedSlug);
-  }, [selectedSlug, loadWordMedia]);
-
-  useEffect(() => {
     if (!selectedSlug) {
-      setPageMedia([]);
       setMediaSearchQuery("");
     }
   }, [selectedSlug, setMediaSearchQuery]);

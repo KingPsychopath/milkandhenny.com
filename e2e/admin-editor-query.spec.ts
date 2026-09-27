@@ -41,6 +41,7 @@ test("editor word catalogue is server-rendered and reused after hydration", asyn
     await expect(page.getByRole("textbox", { name: "Post content" })).toHaveValue(
       "Editor word body.",
     );
+    await expect(page.getByText("Failed to load word media library")).toBeVisible();
   } finally {
     await pool.query("delete from words where slug=$1", [slug]);
     await pool.end();
