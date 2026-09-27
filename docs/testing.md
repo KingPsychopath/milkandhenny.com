@@ -115,13 +115,16 @@ SDK.
 
 ## Release checks
 
-During implementation, run the affected Vitest file or tier. Before handing off a normal source
-change, run:
+During implementation, run the affected Vitest file or tier. Before handing off a source change,
+run `pnpm check` and tests covering the changed behavior. For example, a unit-only change may use:
 
 ```bash
 pnpm check
-pnpm test
+pnpm test:unit
 ```
+
+Use a focused test file when a whole tier is unnecessary. Run the full `pnpm test` suite for
+cross-feature changes or release candidates.
 
 For a release candidate or deployment, run:
 
