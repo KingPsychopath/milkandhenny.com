@@ -10,6 +10,8 @@ import { adminTransfersQuery } from "@/features/transfers/admin.queries";
 import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
 import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
+import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
+import { isEmailOutboxStatus } from "@/lib/shared/email-operations";
 import {
   adminOperationsSettingsQuery,
   namedAdminGrantsQuery,
@@ -105,6 +107,8 @@ export const Route = createFileRoute("/admin/")({
     tab: search.communicationTab,
     eventSlug: search.communicationEvent,
     eventWorkspace: search.eventWorkspace,
+    emailStatus: search.emailStatus,
+    emailQuery: search.emailQuery,
   }),
   loader: {
     handler: async ({ deps, context }) => {
@@ -141,6 +145,27 @@ export const Route = createFileRoute("/admin/")({
         deps.view === "communications" &&
         deps.tab === "delivery"
           ? context.queryClient.prefetchQuery(adminAlertSettingsQuery)
+          : null;
+      const emailPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "delivery"
+          ? context.queryClient.prefetchQuery(
+              adminEmailLedgerQuery({
+                page: 1,
+                limit: 40,
+                sort: "newest",
+                ...(isEmailOutboxStatus(deps.emailStatus ?? null)
+                  ? {
+                      status: deps.emailStatus as NonNullable<
+                        Parameters<typeof adminEmailLedgerQuery>[0]["status"]
+                      >,
+                    }
+                  : {}),
+                ...(deps.emailQuery ? { query: deps.emailQuery } : {}),
+              }),
+            )
           : null;
       const eventsPromise =
         access.isAuthed &&
@@ -198,6 +223,7 @@ export const Route = createFileRoute("/admin/")({
         pollsPromise,
         creditsPromise,
         alertsPromise,
+        emailPromise,
         eventsPromise,
         transfersPromise,
         uploadAccessPromise,

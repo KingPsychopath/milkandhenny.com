@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
@@ -9,7 +10,8 @@ import {
   groupDeliveryThreads,
   groupEmailDeliveryIncidents,
 } from "@/features/email-operations/delivery-incidents";
-import type { EmailLedgerPage } from "@/features/email-operations/types";
+import type { EmailLedgerPage, EmailLedgerQuery } from "@/features/email-operations/types";
+import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import {
   ADMIN_ACTIVE_REFRESH_WINDOW_MS,
@@ -21,6 +23,11 @@ import {
   EMAIL_KINDS,
   EMAIL_OUTBOX_STATUSES,
   EMAIL_SOURCES,
+  isEmailChannel,
+  isEmailDeliveryStatus,
+  isEmailKind,
+  isEmailOutboxStatus,
+  isEmailSource,
 } from "@/lib/shared/email-operations";
 import {
   AdminStatus,
@@ -119,8 +126,7 @@ export function EmailOperationsPanel({
   initialStatus?: string;
   initialQuery?: string;
 }) {
-  const [data, setData] = useState<EmailLedgerPage | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [draftQuery, setDraftQuery] = useState(initialQuery ?? "");
   const [query, setQuery] = useState(initialQuery ?? "");
@@ -138,6 +144,24 @@ export function EmailOperationsPanel({
   const [revealedRecipients, setRevealedRecipients] = useState<Record<string, string>>({});
   const { confirm, dialog } = useActionDialog();
 
+  const filters: EmailLedgerQuery = useMemo(
+    () => ({
+      page,
+      limit: 40,
+      sort: sort === "oldest" || sort === "next-attempt" ? sort : "newest",
+      ...(query ? { query } : {}),
+      ...(isEmailChannel(channel) ? { channel } : {}),
+      ...(isEmailOutboxStatus(status) ? { status } : {}),
+      ...(isEmailDeliveryStatus(deliveryStatus) ? { deliveryStatus } : {}),
+      ...(isEmailKind(kind) ? { kind } : {}),
+      ...(isEmailSource(source) ? { source } : {}),
+    }),
+    [page, sort, query, channel, status, deliveryStatus, kind, source],
+  );
+  const ledger = useQuery(adminEmailLedgerQuery(filters));
+  const data = ledger.data;
+  const loading = ledger.isPending;
+
   useEffect(() => {
     setStatus(
       initialStatus && EMAIL_OUTBOX_STATUSES.includes(initialStatus as never) ? initialStatus : "",
@@ -153,36 +177,20 @@ export function EmailOperationsPanel({
 
   const load = useCallback(
     async (background = false) => {
-      if (!background) setLoading(true);
       try {
-        const params = new URLSearchParams({ page: String(page), limit: "40", sort });
-        if (query) params.set("q", query);
-        if (channel) params.set("channel", channel);
-        if (status) params.set("status", status);
-        if (deliveryStatus) params.set("deliveryStatus", deliveryStatus);
-        if (kind) params.set("kind", kind);
-        if (source) params.set("source", source);
-        const response = await authFetch(`/api/admin/email?${params}`);
-        if (!response.ok) {
-          if (response.status >= 400 && response.status < 500) setPollingHalted(true);
-          throw new Error(await responseError(response, "Could not load email history"));
-        }
+        await queryClient.fetchQuery({ ...adminEmailLedgerQuery(filters), staleTime: 0 });
         setPollingHalted(false);
-        setData((await response.json()) as EmailLedgerPage);
       } catch (error) {
-        if (!background) {
-          onError(error instanceof Error ? error.message : "Could not load email history");
+        if (typeof error === "object" && error && "status" in error) {
+          const code = Number(error.status);
+          if (code >= 400 && code < 500) setPollingHalted(true);
         }
-      } finally {
-        if (!background) setLoading(false);
+        if (!background)
+          onError(error instanceof Error ? error.message : "Could not load email history");
       }
     },
-    [authFetch, channel, deliveryStatus, kind, onError, page, query, sort, source, status],
+    [queryClient, filters, onError],
   );
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const deliveryIsActive = Boolean(
     data?.entries.some((entry) =>
@@ -434,11 +442,11 @@ export function EmailOperationsPanel({
         <div className="flex gap-3">
           <button
             type="button"
-            disabled={loading || busy !== null}
+            disabled={ledger.isFetching || busy !== null}
             onClick={() => void load()}
             className="min-h-11 px-2 font-mono text-xs underline underline-offset-4 transition-opacity hover:opacity-70 disabled:opacity-50"
           >
-            {loading ? "refreshing…" : "refresh delivery"}
+            {ledger.isFetching ? "refreshing…" : "refresh delivery"}
           </button>
           <button
             type="button"
@@ -950,6 +958,11 @@ export function EmailOperationsPanel({
         ) : null}
         {loading ? (
           <p className="py-8 font-mono text-xs theme-muted">loading email history…</p>
+        ) : null}
+        {ledger.error ? (
+          <p className="py-8 font-mono text-xs" role="alert">
+            {ledger.error.message}
+          </p>
         ) : null}
       </div>
 
