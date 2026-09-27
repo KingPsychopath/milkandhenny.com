@@ -857,7 +857,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   Postgres deletion/event-drop selection `1a44f6a6`; conservative R2 orphan staging `213c542d`.
   M7 room transaction foundation `1da75b22`; opt-in Postgres result delivery `111f152d`;
   opt-in Hot & Cold room mapping `b7f3f784`; staged Draw Country mapping and shared engine
-  `1eaf95c9`.
+  `1eaf95c9`; staged Postgres realtime backplane `48e22435`; staged Family Feud rooms
+  `ef788195`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -942,6 +943,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   and result confirmation. The selector is not enabled in production. Focused suites passed 11
   cases; `pnpm check`, the full one-worker suite (282 files, 2,143 tests), and `pnpm build`
   passed.
+- 2026-09-27 staged health parity: capability configuration and the media-worker probe now
+  recognise the Postgres job/catalogue/status selection and Postgres multiplayer backplane
+  without asking for Redis credentials. Incomplete worker flag sets fail closed. The overall web
+  persistence capability still reports Redis because many feature paths remain dependent on it;
+  do not mark the whole application Redis-free from these local capability checks. Real Postgres
+  focused tests passed two cases; `pnpm check` and the full one-worker suite (283 files, 2,145
+  tests) passed. A new build is deferred because this changes server-side health selection only;
+  the immediately preceding Family Feud milestone built the same source boundary successfully.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
