@@ -67,6 +67,15 @@ export async function requeuePostgresTransferMediaFile(input: {
         })
       )
         return "skipped";
+      const activeJob = await client.query<{ exists: boolean }>(
+        `select exists(
+           select 1 from transfer_media_jobs
+            where transfer_id=$1 and file_id=$2 and generation=$3
+              and (status='pending' or (status='claimed' and lease_until > clock_timestamp()))
+         ) as exists`,
+        [input.transferId, file.id, file.processing_generation],
+      );
+      if (activeJob.rows[0]?.exists) return "skipped";
     }
     const generation = file.processing_generation + 1;
     if (!Number.isSafeInteger(generation)) throw new Error("Transfer media generation exhausted");

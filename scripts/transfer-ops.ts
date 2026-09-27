@@ -822,7 +822,7 @@ async function drainTransferMediaQueue(limit = 8): Promise<{
 async function reconcileTransferMedia(
   onProgress?: (msg: string) => void,
 ): Promise<ReconcileTransferMediaResult> {
-  requireRedis();
+  if (process.env.TRANSFER_CATALOGUE_STORE !== "postgres") requireRedis();
   onProgress?.("Reconciling active transfers...");
   const result = await runMediaEffect(
     Effect.gen(function* () {

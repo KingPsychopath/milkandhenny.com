@@ -5065,6 +5065,14 @@ const MIGRATIONS: Migration[] = [
         where status = 'pending';
     `,
   },
+  {
+    id: "0119_transfer_media_reconcile_index",
+    sql: `
+      create index transfer_files_failed_retry_idx
+        on transfer_files (enqueued_at, transfer_id, id)
+        where processing_status='failed';
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

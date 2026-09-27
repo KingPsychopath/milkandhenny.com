@@ -12,6 +12,7 @@ import { retryDeadTransferMediaJobs } from "./media-queue.server";
 import { clearPostgresTransferMediaQueue } from "./media-jobs-postgres.server";
 import { requeuePostgresTransferMediaFile } from "./media-reprocess-postgres.server";
 import { reconcileTransferMedia } from "./media-reconcile.server";
+import { reconcilePostgresTransferMedia } from "./media-reconcile-postgres.server";
 import { getTransfer } from "./store.server";
 import { backfillTransferMedia } from "./upload.server";
 import type { TransferFile } from "./types";
@@ -246,7 +247,11 @@ export class TransferMediaOperationsService extends Context.Service<
                 return { deletedKeys, queueLengthBefore, processingLengthBefore };
               }).pipe(Effect.withSpan("transfers.media.clear_queue")),
         queueLength,
-        reconcile: usingStorage("reconcile", reconcileTransferMedia),
+        reconcile: attempt("reconcile", () =>
+          process.env.TRANSFER_CATALOGUE_STORE === "postgres"
+            ? reconcilePostgresTransferMedia()
+            : withObjectStorageProvider(storage.port, reconcileTransferMedia),
+        ),
         reprocess,
         retry,
         retryDead: (limit = 25) => attempt("retry_dead", () => retryDeadTransferMediaJobs(limit)),

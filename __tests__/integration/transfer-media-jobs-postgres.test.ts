@@ -248,6 +248,43 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     expect((await getPostgresTransferMediaQueueSnapshot()).cancelled).toBe(1);
   });
 
+  it("reconciles stalled work without replacing a live queued job", async () => {
+    vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await query(
+      `update transfer_files set enqueued_at=clock_timestamp()-interval '20 minutes',
+                                 retry_count=0
+        where transfer_id=$1`,
+      [transfer.id],
+    );
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-two"), 1));
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferMediaOperationsService } =
+      await import("@/features/transfers/transfer-media-operations-service.server");
+    const reconciled = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).reconcile;
+      }),
+    );
+    expect(reconciled).toMatchObject({
+      ran: true,
+      transfersScanned: 1,
+      transfersRepaired: 1,
+      filesRepaired: 1,
+    });
+    const rows = await query<{ id: string; processing_generation: number }>(
+      "select id,processing_generation from transfer_files where transfer_id=$1 order by id",
+      [transfer.id],
+    );
+    expect(rows).toEqual([
+      { id: "raw-one", processing_generation: 2 },
+      { id: "raw-two", processing_generation: 1 },
+    ]);
+    expect((await getPostgresTransferMediaQueueSnapshot()).pending).toBe(2);
+  });
+
   it("claims disjoint jobs and fences an expired worker", async () => {
     await transaction(async (client) => {
       await enqueuePostgresTransferMediaJob(client, job("raw-one"), 1);
