@@ -12,6 +12,7 @@ import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
 import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
 import { adminSiteSettingsQuery } from "@/features/site/site-settings.queries";
 import { adminReportsQuery } from "@/features/reports/admin-reports.queries";
+import { adminAlbumsQuery } from "@/features/media/admin-albums.queries";
 import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
 import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
 import { isEmailOutboxStatus } from "@/lib/shared/email-operations";
@@ -214,6 +215,10 @@ export const Route = createFileRoute("/admin/")({
         (deps.view === "overview" || deps.view === "content")
           ? context.queryClient.prefetchQuery(adminContentSummaryQuery)
           : null;
+      const albumsPromise =
+        access.isAuthed && access.permissions?.manageContent && deps.view === "content"
+          ? context.queryClient.prefetchQuery(adminAlbumsQuery)
+          : null;
       const healthPromise =
         access.isAuthed &&
         access.permissions?.viewOperations &&
@@ -251,6 +256,7 @@ export const Route = createFileRoute("/admin/")({
         settingsPromise,
         adminGrantsPromise,
         summaryPromise,
+        albumsPromise,
         healthPromise,
         reportsPromise,
         sessionsPromise,
