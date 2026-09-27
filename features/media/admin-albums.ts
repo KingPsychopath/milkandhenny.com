@@ -548,6 +548,14 @@ async function finalizeAlbumUploads(
     latest.photos.push(...added);
     if (!latest.cover && added[0]) latest.cover = added[0].id;
     latest.status = "draft";
+    if (previousPublishedAlbum && process.env.ALBUM_STORE === "postgres") {
+      const updated = await writeAlbumManifest(latest, {
+        publicDeleteKeys: previousPublishedAlbum.photos.flatMap((photo) =>
+          publicPhotoKeys(slug, photo),
+        ),
+      });
+      return { album: toAdminAlbum(updated), added };
+    }
     if (previousPublishedAlbum) await unpublishAlbumAssets(previousPublishedAlbum);
     try {
       const updated = await writeAlbumManifest(latest);

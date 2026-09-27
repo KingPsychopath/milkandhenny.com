@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import sharp from "sharp";
 
-import { updateAlbumMetadata } from "@/features/media/admin-albums";
+import { finalizeAlbumUploads, updateAlbumMetadata } from "@/features/media/admin-albums";
 import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
 import { readPostgresAlbum, writePostgresAlbum } from "@/features/media/album-postgres.server";
 import type { Album } from "@/features/media/albums";
@@ -102,5 +103,42 @@ describeWithDatabase("Postgres album public deletion", () => {
         });
       },
     );
+  });
+
+  it("commits upload finalization and unpublication before public object cleanup", async () => {
+    const image = await sharp({
+      create: { width: 80, height: 80, channels: 3, background: "#67422b" },
+    })
+      .jpeg()
+      .toBuffer();
+    const removeMany = vi.fn(async () => 0);
+    const result = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        headObject: vi.fn(async () => ({ exists: true, size: image.byteLength })),
+        downloadBuffer: vi.fn(async () => image),
+        uploadBuffer: vi.fn(async () => {}),
+        deleteObjects: removeMany,
+      },
+      () =>
+        finalizeAlbumUploads(album.slug, [
+          {
+            original: "new.jpg",
+            photoId: "new",
+            uploadKey: `incoming/albums/${album.slug}/new.jpg`,
+          },
+        ]),
+    );
+    expect(result.album.status).toBe("draft");
+    expect(result.album.photos).toHaveLength(2);
+    expect(removeMany).toHaveBeenCalledOnce();
+    expect(removeMany).toHaveBeenCalledWith([`incoming/albums/${album.slug}/new.jpg`], {
+      scope: "private",
+    });
+    const operations = await query<{ target_key: string }>(
+      `select target_key from media_object_operations where owner_kind='album' and owner_id=$1`,
+      [album.slug],
+    );
+    expect(operations).toHaveLength(3);
   });
 });
