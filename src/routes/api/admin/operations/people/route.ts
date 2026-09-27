@@ -1,10 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
-import {
-  searchPeople,
-  searchPurchaserContacts,
-} from "@/features/attendee-operations/directory.server";
+import { searchAdminPeople } from "@/features/attendee-operations/admin-people.server";
 import {
   forceSignOutPerson,
   removePersonEmail,
@@ -19,11 +16,7 @@ async function handleGET(request: Request) {
   if (auth.error) return auth.error;
   try {
     const search = new URL(request.url).searchParams.get("q") ?? "";
-    const [people, purchaserContacts] = await Promise.all([
-      searchPeople(search),
-      searchPurchaserContacts(search),
-    ]);
-    return Response.json({ people, purchaserContacts });
+    return Response.json(await searchAdminPeople(search));
   } catch (error) {
     return apiErrorFromRequest(
       request,

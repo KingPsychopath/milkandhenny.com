@@ -1,7 +1,11 @@
 import { communicationsWorkspaceQuery } from "@/features/communications/admin-workspace.queries";
 import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
 import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
-import { adminOperationsInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
+import {
+  adminCaseInboxQuery,
+  adminOperationsInboxQuery,
+} from "@/features/attendee-operations/admin-inbox.queries";
+import { adminPeopleQuery } from "@/features/attendee-operations/admin-people.queries";
 import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries";
 import { adminPollsQuery } from "@/features/polls/polls.queries";
 import { adminCreditsQuery } from "@/features/credits/credits.queries";
@@ -117,6 +121,10 @@ export const Route = createFileRoute("/admin/")({
     eventWorkspace: search.eventWorkspace,
     emailStatus: search.emailStatus,
     emailQuery: search.emailQuery,
+    operationsTab: search.operationsTab,
+    person: search.person,
+    ticket: search.ticket,
+    event: search.event,
   }),
   loader: {
     handler: async ({ deps, context }) => {
@@ -258,7 +266,33 @@ export const Route = createFileRoute("/admin/")({
       ) {
         // The notification summary is secondary. The SSR Query stream carries its pending result.
         void context.queryClient.prefetchQuery(adminOperationsInboxQuery);
+        if (deps.view === "overview") {
+          // The overview renders the full support inbox below its primary cards.
+          void context.queryClient.prefetchQuery(
+            adminCaseInboxQuery({ status: "", severity: "", category: "", eventSlug: "" }),
+          );
+        }
       }
+      const requestedOperationsTab =
+        deps.operationsTab ?? (deps.person || deps.ticket || deps.event ? "people" : "inbox");
+      const caseInboxPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "operations" &&
+        requestedOperationsTab === "inbox"
+          ? context.queryClient.prefetchQuery(
+              adminCaseInboxQuery({ status: "", severity: "", category: "", eventSlug: "" }),
+            )
+          : null;
+      const peoplePromise =
+        access.isAuthed &&
+        access.permissions?.managePeople &&
+        deps.view === "operations" &&
+        requestedOperationsTab === "people"
+          ? context.queryClient.prefetchQuery(
+              adminPeopleQuery(deps.person ?? deps.ticket ?? deps.event ?? ""),
+            )
+          : null;
       await Promise.all([
         communicationsPromise,
         pollsPromise,
@@ -280,6 +314,8 @@ export const Route = createFileRoute("/admin/")({
         healthPromise,
         reportsPromise,
         sessionsPromise,
+        caseInboxPromise,
+        peoplePromise,
       ]);
       return access;
     },

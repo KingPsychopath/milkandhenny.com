@@ -54,3 +54,33 @@ test("admin inbox notification hydrates into the workspace", async ({ page }) =>
     await pool.end();
   }
 });
+
+test("a people deep link renders the searched identity from the route query", async ({ page }) => {
+  test.setTimeout(120_000);
+  const pool = new Pool({
+    connectionString:
+      process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test",
+  });
+  const personId = randomUUID();
+  try {
+    await pool.query("insert into event_people(id,canonical_name) values ($1,$2)", [
+      personId,
+      "Query People Browser Test",
+    ]);
+    await page.goto("/admin?view=operations&operationsTab=people");
+    await waitForAppHydration(page);
+    const password = page.getByLabel("admin password", { exact: true });
+    if (await password.isVisible()) {
+      await password.fill("playwright-admin-password");
+      await page.getByRole("button", { name: "unlock", exact: true }).click();
+      await waitForAppHydration(page);
+    }
+    await page.goto(`/admin?view=operations&operationsTab=people&person=${personId}`);
+    await waitForAppHydration(page);
+    await expect(page.getByRole("textbox", { name: "Search people" })).toHaveValue(personId);
+    await expect(page.getByText("Query People Browser Test").first()).toBeVisible();
+  } finally {
+    await pool.query("delete from event_people where id=$1", [personId]);
+    await pool.end();
+  }
+});
