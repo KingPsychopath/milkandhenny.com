@@ -9,6 +9,7 @@ import { isMultiplayerServerMessage } from "./multiplayer-realtime";
 import { MULTIPLAYER_ROOM_ID_PATTERN } from "./multiplayer";
 import { MultiplayerTelemetry } from "./multiplayer-telemetry.server";
 import { MULTIPLAYER_GAME_REGISTRY } from "./multiplayer-telemetry";
+import { PostgresMultiplayerRealtimeTransport } from "./multiplayer-realtime-postgres.server";
 
 const BUS_CHANNEL = "things:multiplayer:v1:realtime";
 const MAX_CHANNEL_LENGTH = 180;
@@ -103,7 +104,7 @@ function envelope(value: string): BackplaneEnvelope | null {
 export class MultiplayerRealtimeBackplane extends Context.Service<
   MultiplayerRealtimeBackplane,
   {
-    readonly mode: "local" | "redis";
+    readonly mode: "local" | "redis" | "postgres";
     readonly publish: (channel: string, message: string) => Effect.Effect<void>;
     readonly subscribe: (listener: BackplaneListener) => Effect.Effect<() => void>;
   }
@@ -134,6 +135,63 @@ export class MultiplayerRealtimeBackplane extends Context.Service<
             return () => listeners.delete(listener);
           }),
       });
+      if (process.env.MULTIPLAYER_REALTIME_BACKPLANE === "postgres") {
+        const origin = getRuntimeInstanceId();
+        const transport = yield* Effect.acquireRelease(
+          Effect.promise(async () => {
+            const transport = new PostgresMultiplayerRealtimeTransport((raw) => {
+              const event = envelope(raw);
+              if (!event || event.origin === origin) {
+                if (!event) Effect.runSync(telemetry.recordBackplane("receive", "failure"));
+                return;
+              }
+              Effect.runSync(telemetry.recordBackplane("receive", "success"));
+              notifyLocal(event.channel, event.message);
+            });
+            await transport.start();
+            return transport;
+          }),
+          (transport) => Effect.promise(() => transport.close()),
+        );
+        yield* telemetry.setBackplaneMode("postgres");
+        log.info("things.multiplayer", "Realtime Postgres backplane enabled");
+        const retryPolicy = Schedule.jittered(
+          Schedule.max([Schedule.exponential("25 millis"), Schedule.recurs(2)]),
+        );
+        return {
+          mode: "postgres" as const,
+          publish: (channel: string, message: string) =>
+            Effect.sync(() => notifyLocal(channel, message)).pipe(
+              Effect.andThen(
+                Effect.tryPromise({
+                  try: () =>
+                    transport.publish(
+                      JSON.stringify({ channel, message, origin } satisfies BackplaneEnvelope),
+                    ),
+                  catch: (cause) => cause,
+                }).pipe(
+                  Effect.timeout(1_000),
+                  Effect.retry(retryPolicy),
+                  Effect.tap(() => telemetry.recordBackplane("publish", "success")),
+                  Effect.catch((error) =>
+                    Effect.gen(function* () {
+                      yield* telemetry.recordBackplane("publish", "failure");
+                      log.warn("things.multiplayer", "Realtime Postgres wake publication failed", {
+                        error: error instanceof Error ? error.message : String(error),
+                      });
+                    }),
+                  ),
+                ),
+              ),
+              Effect.asVoid,
+            ),
+          subscribe: (listener: BackplaneListener) =>
+            Effect.sync(() => {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            }),
+        };
+      }
       const config = getDirectRedisConfig();
       if (!config) {
         yield* telemetry.setBackplaneMode("local");
