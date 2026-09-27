@@ -170,7 +170,16 @@ export async function writePostgresAlbum(
       );
       if (pending.rows[0]) throw new AlbumWriteConflictError();
     }
-    const revision = existing ? existing.revision + 1 : 1;
+    let previousOperationRevision = 0;
+    if (!existing) {
+      const previous = await client.query<{ revision: number }>(
+        `select coalesce(max(owner_revision), 0)::integer as revision
+           from media_object_operations where owner_kind='album' and owner_id=$1`,
+        [album.slug],
+      );
+      previousOperationRevision = previous.rows[0]?.revision ?? 0;
+    }
+    const revision = existing ? existing.revision + 1 : previousOperationRevision + 1;
     const values = [
       album.slug,
       album.title,
@@ -247,9 +256,49 @@ export async function writePostgresAlbum(
   return { ...album, updatedAt, revision: nextRevision };
 }
 
-export async function deletePostgresAlbum(slug: string): Promise<void> {
+export async function deletePostgresAlbum(
+  slug: string,
+  options: {
+    expectedRevision: number;
+    publicDeleteKeys: readonly string[];
+    privateDeleteKeys: readonly string[];
+  },
+): Promise<void> {
+  if (
+    !Number.isInteger(options.expectedRevision) ||
+    options.expectedRevision < 1 ||
+    options.publicDeleteKeys.some((key) => !key.startsWith(`albums/${slug}/`)) ||
+    options.privateDeleteKeys.some(
+      (key) => !key.startsWith(`albums/${slug}/`) && key !== `albums/_manifests/${slug}.json`,
+    )
+  )
+    throw new Error("Invalid album deletion intent");
   await transaction(async (client) => {
     await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`album:${slug}`]);
+    const current = await client.query<{ revision: number }>(
+      "select revision from gallery_albums where slug=$1 for update",
+      [slug],
+    );
+    if (current.rows[0]?.revision !== options.expectedRevision) throw new AlbumWriteConflictError();
     await client.query("delete from gallery_albums where slug = $1", [slug]);
+    const ownerRevision = options.expectedRevision + 1;
+    for (const key of new Set(options.publicDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: slug,
+        ownerRevision,
+        operation: "delete",
+        targetScope: "public",
+        targetKey: key,
+      });
+    for (const key of new Set(options.privateDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: slug,
+        ownerRevision,
+        operation: "delete",
+        targetScope: "private",
+        targetKey: key,
+      });
   });
 }

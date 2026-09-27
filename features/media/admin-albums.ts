@@ -374,7 +374,7 @@ async function deleteAlbumPhoto(
 
 async function deleteAlbum(
   slug: string,
-): Promise<{ deletedFiles: number; deletedManifest: boolean }> {
+): Promise<{ deletedFiles: number; deletedManifest: boolean; queuedFiles?: number }> {
   if (!isSafeAlbumSlug(slug)) throw new Error("Invalid album slug");
   const album = await readAlbumManifest(slug);
   const [privateObjects, publicObjects] = await Promise.all([
@@ -382,6 +382,22 @@ async function deleteAlbum(
     listObjects(`albums/${slug}/`, { scope: "public" }),
   ]);
   const manifestKey = albumManifestKey(slug);
+  if (process.env.ALBUM_STORE === "postgres") {
+    if (!album) return { deletedFiles: 0, deletedManifest: false };
+    if (album.revision === undefined) throw new Error("Postgres album revision is missing");
+    const privateDeleteKeys = [...privateObjects.map((object) => object.key), manifestKey];
+    const publicDeleteKeys = publicObjects.map((object) => object.key);
+    await deleteAlbumManifest(slug, {
+      expectedRevision: album.revision,
+      publicDeleteKeys,
+      privateDeleteKeys,
+    });
+    return {
+      deletedFiles: 0,
+      deletedManifest: true,
+      queuedFiles: new Set(privateDeleteKeys).size + new Set(publicDeleteKeys).size,
+    };
+  }
   const deletedPublic = await deleteObjects(
     publicObjects.map((object) => object.key),
     { scope: "public" },

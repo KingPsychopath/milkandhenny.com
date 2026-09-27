@@ -7,6 +7,7 @@ import {
   uploadBuffer,
 } from "@/lib/platform/object-storage-provider-context.server";
 import { PRIVATE_MEDIA_CACHE_CONTROL } from "@/lib/shared/media-cache";
+import { privatePhotoKeys, publicPhotoKeys } from "./album-object-keys";
 import { isSafeAlbumPhotoId, isValidAlbumDate, type Album, type Photo } from "./albums";
 import { isValidFocalPreset } from "./focal";
 import {
@@ -158,8 +159,28 @@ async function writeAlbumManifest(
   return updated;
 }
 
-async function deleteAlbumManifest(slug: string): Promise<void> {
-  if (process.env.ALBUM_STORE === "postgres") return deletePostgresAlbum(slug);
+async function deleteAlbumManifest(
+  slug: string,
+  options?: {
+    expectedRevision: number;
+    publicDeleteKeys: readonly string[];
+    privateDeleteKeys: readonly string[];
+  },
+): Promise<void> {
+  if (process.env.ALBUM_STORE === "postgres") {
+    if (options) return deletePostgresAlbum(slug, options);
+    const album = await readPostgresAlbum(slug);
+    if (!album || album.revision === undefined) return;
+    return deletePostgresAlbum(slug, {
+      expectedRevision: album.revision,
+      publicDeleteKeys: album.photos.flatMap((photo) => publicPhotoKeys(slug, photo)),
+      privateDeleteKeys: [
+        albumManifestKey(slug),
+        ...album.photos.flatMap((photo) => privatePhotoKeys(slug, photo)),
+      ],
+    });
+  }
+  if (options) throw new Error("Album object intents require Postgres");
   await deleteObject(albumManifestKey(slug), { scope: "private" });
 }
 

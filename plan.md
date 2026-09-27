@@ -618,8 +618,9 @@ double-consume a credential, vote, report submission or protected quota.
   - [x] Stage Postgres album unpublication as one draft revision plus public delete intents;
         the media worker retries fenced deletions, and republishing waits for pending cleanup.
         Upload finalization uses the same transition. Photo removal queues private/public
-        deletions and blocks key reuse until cleanup. Album deletion and publication copy still
-        need the same durable treatment.
+        deletions and blocks key reuse until cleanup. Whole-album deletion atomically queues
+        discovered objects and reserves the slug until cleanup. Publication copy and orphan
+        upload reconciliation still need durable treatment.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -1526,6 +1527,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   can read photo references. The related real-Postgres album and role suites passed (4 files,
   13 cases), including a published album that remains published after removing one photo;
   `pnpm check` passed. Album-wide deletion and publication copy remain open.
+- Whole-album deletion now commits the catalogue delete and discovered private/public R2 deletion
+  intents together, including the legacy private manifest key. A new album with the same slug
+  cannot be created until cleanup finishes and then receives a revision above prior operation
+  identities. Direct repository deletion derives intents from recorded photo references when an
+  admin object listing is unavailable. Four related real-Postgres suites passed (14 cases), and
+  `pnpm check` passed. R2 objects uploaded concurrently by a stale in-flight finalization can
+  still be orphaned; M5 reconciliation must sweep those objects before this store is enabled.
+  Publication copy remains open.
 
 ### Milestone checkpoint template
 

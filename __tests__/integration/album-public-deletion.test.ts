@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import sharp from "sharp";
 
 import {
+  deleteAlbum,
   deleteAlbumPhotos,
   finalizeAlbumUploads,
   updateAlbumMetadata,
@@ -189,6 +190,43 @@ describeWithDatabase("Postgres album public deletion", () => {
       () => runAlbumObjectDeletionBatch("album-photo-delete-test"),
     );
     expect(settled).toMatchObject({ claimed: 7, completed: 7 });
+  });
+
+  it("tombstones a whole album with object intents and preserves the next slug generation", async () => {
+    const privateKeys = [
+      `albums/${album.slug}/original/photo-1.jpg`,
+      `albums/${album.slug}/og/photo-1.jpg`,
+      `albums/${album.slug}/images/photo-1/480.avif`,
+      `albums/${album.slug}/images/photo-1/480.webp`,
+    ];
+    const publicKeys = privateKeys.slice(1);
+    const immediateDelete = vi.fn(async () => 0);
+    const removed = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        listObjects: vi.fn(async (_prefix, options) =>
+          (options.scope === "private" ? privateKeys : publicKeys).map((key) => ({
+            key,
+            size: 1,
+            lastModified: undefined,
+          })),
+        ),
+        deleteObjects: immediateDelete,
+      },
+      () => deleteAlbum(album.slug),
+    );
+    expect(removed).toEqual({ deletedFiles: 0, deletedManifest: true, queuedFiles: 8 });
+    expect(immediateDelete).not.toHaveBeenCalled();
+    expect(await readPostgresAlbum(album.slug)).toBeNull();
+    await expect(writePostgresAlbum({ ...album, revision: undefined })).rejects.toThrow();
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-whole-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 8, completed: 8 });
+    const recreated = await writePostgresAlbum({ ...album, revision: undefined });
+    expect(recreated.revision).toBeGreaterThan(2);
   });
 
   it("commits upload finalization and unpublication before public object cleanup", async () => {
