@@ -24,6 +24,42 @@ function isConfigured(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
 
+const POSTGRES_APPLICATION_STORES = [
+  "ALBUM_STORE",
+  "ATTENDEE_SESSION_STORE",
+  "AUTH_CLI_STORE",
+  "AUTH_TOKEN_STORE",
+  "BEST_DRESSED_STORE",
+  "CENTRE_ROOM_STORE",
+  "DRAW_COUNTRY_ROOM_STORE",
+  "FAMILY_FEUD_ROOM_STORE",
+  "GAME_POOL_CREDENTIAL_STORE",
+  "HOT_AND_COLD_ROOM_STORE",
+  "LIARS_ROOM_STORE",
+  "MEDIA_WORKER_STATUS_STORE",
+  "MULTIPLAYER_REALTIME_BACKPLANE",
+  "OFFICIAL_GAME_RESULT_OUTBOX_STORE",
+  "PAIRED_GAME_ROOM_STORE",
+  "PASSKEY_CEREMONY_STORE",
+  "PITCH_PRESENTATION_STORE",
+  "RATE_LIMIT_STORE",
+  "REPORT_STORE",
+  "SAME_BRAIN_ROOM_STORE",
+  "SPELLING_PARTY_ROOM_STORE",
+  "TRANSFER_CATALOGUE_STORE",
+  "TRANSFER_MEDIA_EVENT_BACKPLANE",
+  "TRANSFER_MEDIA_JOB_STORE",
+  "TRANSFER_OBJECT_DELETION_RUNNER",
+  "TWIN_ROOM_STORE",
+  "UPLOAD_ACCESS_STORE",
+  "WORD_SHARE_STORE",
+  "WORD_STORE",
+] as const;
+
+function postgresApplicationPersistenceSelected() {
+  return POSTGRES_APPLICATION_STORES.every((name) => process.env[name] === "postgres");
+}
+
 function getConfiguredCapabilities(): Capability[] {
   const redisConfigured = getRedisRestConfig() !== null;
   const objectStorageConfigured = isObjectStorageConfigured();
@@ -39,6 +75,7 @@ function getConfiguredCapabilities(): Capability[] {
   const paymentsCapability = describePaymentsCapability();
   const databaseConfigured = isDatabaseConfigured();
   const databaseBoot = getDatabaseBootState();
+  const postgresPersistence = postgresApplicationPersistenceSelected() && databaseConfigured;
   const pitchDocuments = databaseBoot.status === "ready" ? databaseBoot.pitchDocuments : undefined;
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
@@ -63,11 +100,13 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "persistence",
       label: "application data",
-      status: redisConfigured ? "available" : "unavailable",
+      status: postgresPersistence || redisConfigured ? "available" : "unavailable",
       required: true,
-      detail: redisConfigured
-        ? "Persistent application state is configured."
-        : "Persistent application state is not configured.",
+      detail: postgresPersistence
+        ? "Postgres application stores are configured."
+        : redisConfigured
+          ? "Persistent application state is configured."
+          : "Persistent application state is not configured.",
     },
     {
       id: "media-delivery",
@@ -367,24 +406,37 @@ async function probeSystemCapabilities(): Promise<
 > {
   const snapshot = getSystemCapabilities();
   const capabilities = [...snapshot.capabilities];
+  let databaseProbe: Awaited<ReturnType<typeof checkDatabase>> | null = null;
 
   const persistenceIndex = capabilities.findIndex(({ id }) => id === "persistence");
   if (persistenceIndex >= 0 && capabilities[persistenceIndex]?.status === "available") {
     const startedAt = Date.now();
-    try {
-      await getRedis()?.get("mah:health:probe");
+    if (postgresApplicationPersistenceSelected()) {
+      databaseProbe = await checkDatabase();
       capabilities[persistenceIndex] = {
         ...capabilities[persistenceIndex],
-        latencyMs: Date.now() - startedAt,
-        detail: "Persistent application state is reachable.",
+        status: databaseProbe.ok ? "available" : "unavailable",
+        latencyMs: databaseProbe.latencyMs,
+        detail: databaseProbe.ok
+          ? "Postgres application stores are reachable."
+          : "Postgres application stores are configured but unreachable.",
       };
-    } catch {
-      capabilities[persistenceIndex] = {
-        ...capabilities[persistenceIndex],
-        status: "unavailable",
-        latencyMs: Date.now() - startedAt,
-        detail: "Persistent application state is configured but unreachable.",
-      };
+    } else {
+      try {
+        await getRedis()?.get("mah:health:probe");
+        capabilities[persistenceIndex] = {
+          ...capabilities[persistenceIndex],
+          latencyMs: Date.now() - startedAt,
+          detail: "Persistent application state is reachable.",
+        };
+      } catch {
+        capabilities[persistenceIndex] = {
+          ...capabilities[persistenceIndex],
+          status: "unavailable",
+          latencyMs: Date.now() - startedAt,
+          detail: "Persistent application state is configured but unreachable.",
+        };
+      }
     }
   }
 
@@ -427,7 +479,7 @@ async function probeSystemCapabilities(): Promise<
 
   const databaseIndex = capabilities.findIndex(({ id }) => id === "application-database");
   if (databaseIndex >= 0 && capabilities[databaseIndex]?.status === "available") {
-    const probe = await checkDatabase();
+    const probe = databaseProbe ?? (await checkDatabase());
     capabilities[databaseIndex] = {
       ...capabilities[databaseIndex],
       status: probe.ok ? "available" : "unavailable",
