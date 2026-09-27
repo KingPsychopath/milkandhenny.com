@@ -682,6 +682,10 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Stage deletion of old claim-specific derivative objects after publication is impossible,
         preserving the winning output; bound worker processing and stop lease renewal when
         interrupted. R2 prefix reconciliation and complete admin/CLI mutation parity remain open.
+  - [x] Route targeted retry, transfer backfill and explicit reprocessing through Postgres when
+        the catalogue is selected. A row-locked generation advance, old-job cancellation and
+        replacement enqueue commit together. Source-object reconciliation and broad admin/CLI
+        parity remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
         worker-status snapshot as stopped provenance. Events and aggregate monitor cutover remain
@@ -859,6 +863,8 @@ targets for publication/deletion tests, and never send real user email/payment e
   opt-in Hot & Cold room mapping `b7f3f784`; staged Draw Country mapping and shared engine
   `1eaf95c9`; staged Postgres realtime backplane `48e22435`; staged Family Feud rooms
   `ef788195`.
+  Staged Postgres health `c92c9dbd`; Pitch presentation `f1926a5b`; operator queue clear
+  `4dd96e31`; targeted media retry and reprocess `b99863cd`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
@@ -897,11 +903,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   result atomicity. Remaining M7 modes, replay/credentials and realtime are open.
   Verification: `pnpm check`, the complete one-worker suite (278 files, 2,136 tests), and
   `pnpm build` passed after the mode-specific selector was added.
-- Next action: map the remaining multiplayer engines and their specialized replay/journal and
-  credential records, then wire Postgres notifications and process-restart recovery. Continue
-  M6 worker/admin parity, source import rehearsal, operational backup gates and full Redis-free
-  release verification before any production cutover. The first verified RDB remains the agreed
-  Redis cutoff; Upstash is still serving live production traffic.
+- Next action: finish M6 source/R2 reconciliation and admin/CLI parity, then map remaining M7
+  multiplayer replay/credential records and M8 reconnect recovery. Rehearse the accepted RDB
+  import, qualify backup/restore and worker credentials, and run the full Redis-free release
+  gate before production cutover. The first verified RDB remains the agreed Redis cutoff;
+  Upstash is still serving live production traffic.
 - 2026-09-27 production recovery checkpoint: the user authorized the Upstash swap and confirmed
   the first verified RDB as the cutoff. Railway's managed on-demand Postgres backup returned
   `OAUTH_INSUFFICIENT_GRANT`; its PITR status is disabled and there is no backup schedule. A
@@ -969,6 +975,14 @@ targets for publication/deletion tests, and never send real user email/payment e
   Focused real Postgres tests passed nine cases, including the Media runtime selection path.
   `pnpm check`, the full one-worker suite (284 files, 2,149 tests), and `pnpm build` passed;
   the focused suite was rerun after the final deterministic row-lock ordering change.
+- 2026-09-27 staged media retry/reprocess: under the Postgres catalogue flag, operator retry,
+  transfer backfill and explicit reprocess use a row-locked source generation advance and
+  transactional replacement job enqueue. Pending or claimed older jobs are cancelled; a late
+  completion cannot publish. The CLI targeted retry no longer requires Redis in this mode.
+  Backfill handles failed and stale processable files; full R2/source reconciliation and broad
+  command parity remain open. No production flag is enabled. The focused Postgres and admin
+  suites passed 15 tests; `pnpm check`, the full one-worker suite (284 files, 2,152 tests),
+  and `pnpm build` passed. Code commit: `b99863cd`.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
   The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
