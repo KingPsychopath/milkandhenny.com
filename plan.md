@@ -922,6 +922,11 @@ targets for publication/deletion tests, and never send real user email/payment e
   checkpoint, not provider PITR or an off-site retention policy. Production media-worker still
   lacks `DATABASE_URL`; web, worker and maintenance have no Postgres cutover flags. Do not remove
   production Redis configuration before those runtime paths and the remaining M6–M13 gates pass.
+- 2026-09-27 backup access recheck: Railway can list production Postgres backups, but creating
+  a new managed pre-cutover backup still returns "You do not have access to this resource".
+  The only listed managed backup is dated 2026-08-23 and has an expired 2026-09-22 retention
+  timestamp. The verified local production `pg_dump` remains the available recovery checkpoint;
+  managed backup and schedule configuration are unresolved.
 - 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
   Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
   Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
