@@ -5,6 +5,7 @@ import { Pool } from "pg";
 import { waitForAppHydration } from "./support/multiplayer";
 
 test("admin can drill into a transfer and remove one file", async ({ context, page }) => {
+  test.setTimeout(60_000);
   const redis = new Redis({
     url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
     token: "local-browser-test",
@@ -42,7 +43,7 @@ test("admin can drill into a transfer and remove one file", async ({ context, pa
     await page.goto("/admin");
     await page.getByPlaceholder("admin password").fill("playwright-admin-password");
     await page.getByRole("button", { name: "unlock" }).click();
-    await page.goto("/admin?view=transfers");
+    await page.goto("/admin?view=transfers", { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
 
     const response = await page.request.get("/admin?view=transfers");

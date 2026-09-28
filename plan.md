@@ -1622,8 +1622,10 @@ that the release is complete.
 - [x] Remove the old Upstash and KV credentials from the ignored local `.env.local`, migrate the
       local development database through migration `0122`, and select the same 30 Postgres stores
       for local development. The local media processor remains in its existing local mode.
-- [ ] Delete the external Upstash database and revoke its credentials. The application no longer
-      connects to it, but account-level retirement requires Upstash management access.
+- [x] The user confirmed deleting the external Upstash database on 2026-09-28. All three production
+      services were reread afterward and had no Redis or Upstash environment variables. The
+      account-side deletion is recorded from the user's report; this workspace has no independent
+      Upstash management readback.
 - [x] Escrow the guest archive encryption key in the macOS Keychain as
       `mah-production-legacy-guest-archive-20260928`; verify readback against the private file and
       use the Keychain copy to decrypt the production archive with the restricted importer role.
@@ -1641,7 +1643,20 @@ that the release is complete.
       heartbeat, and both services still had no Redis or Upstash environment variables. GitHub CI
       remains red at the unrelated Hot & Cold human editorial approval gate for dailies #36–65;
       the user explicitly authorized merging the code despite that gate.
-- [ ] Complete final acceptance after the external Upstash resource is deleted. A separate-account
-      Postgres backup schedule and restore drill remain operational follow-up work; the user waived
-      a fresh dump for this cutover and the earlier readable pre-cutover dump remains available
-      locally.
+- [x] Take a current logical Postgres dump on 2026-09-28 and restore it into an empty isolated
+      local database. The checksum-verified 1,860,962-byte dump restored in one transaction.
+      Representative restored counts were three events, 119 tickets, 13 words, two albums,
+      14 photos, one transfer with 52 files, seven media jobs, zero rooms, 908 email-outbox rows,
+      and one encrypted guest archive row. The Keychain-escrowed guest key decrypted that restored
+      row and verified 274 guests and 157 plus-ones. The dump was encrypted with age, its key was
+      escrowed separately in Keychain as `mah-production-postgres-backup-20260928`, and the
+      plaintext dump and temporary key file were removed. The encrypted file and checksum
+      sidecar remain in the private local backup directory; Keychain decryption was verified.
+- [ ] Enable Railway-managed daily and weekly Postgres volume backups and read the schedule back.
+      Railway reported no schedules and only an expired 2026-08-23 backup. Repeated scoped CLI schedule
+      attempts returned `You do not have access to this resource`; the user said they would grant
+      access. The user chose Railway-managed backups and declined an external backup destination.
+      The local encrypted dump is a tested recovery copy, not an automatic backup schedule.
+- [ ] Complete final cutover acceptance after the green release check and Railway backup schedule
+      are recorded. The broader M13 code-retirement and section 8 acceptance criteria remain
+      separately unchecked until their own evidence exists.
