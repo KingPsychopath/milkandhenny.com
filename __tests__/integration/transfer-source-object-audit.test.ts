@@ -60,7 +60,7 @@ describeWithDatabase("Postgres transfer source audit", () => {
           fileId: "photo",
           key: transfer.files[0].storageKey,
           kind: "size_mismatch",
-          expectedBytes: 12,
+          expectedBytes: 10,
           actualBytes: 11,
         },
         {
@@ -92,6 +92,20 @@ describeWithDatabase("Postgres transfer source audit", () => {
     ).rejects.toThrow("R2 down");
   });
 
+  it("compares the primary and archived original against their separate byte counts", async () => {
+    const result = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        headObject: vi.fn(async (key: string) => ({
+          exists: true,
+          size: key.endsWith("photo.jpg") ? 10 : 2,
+        })),
+      },
+      () => auditPostgresTransferSources(),
+    );
+    expect(result.issues).toEqual([]);
+  });
+
   it("treats a missing size on a recorded source as unverified", async () => {
     const result = await withObjectStorageProvider(
       { ...r2ObjectStorageProvider, headObject: vi.fn(async () => ({ exists: true })) },
@@ -103,7 +117,14 @@ describeWithDatabase("Postgres transfer source audit", () => {
         fileId: "photo",
         key: transfer.files[0].storageKey,
         kind: "size_unverified",
-        expectedBytes: 12,
+        expectedBytes: 10,
+      },
+      {
+        transferId: transfer.id,
+        fileId: "photo",
+        key: transfer.files[0].originalStorageKey,
+        kind: "size_unverified",
+        expectedBytes: 2,
       },
     ]);
   });
