@@ -5,7 +5,10 @@ import { Pool } from "pg";
 import { waitForAppHydration } from "./support/multiplayer";
 
 test("admin can drill into a transfer and remove one file", async ({ context, page }) => {
-  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const redis = new Redis({
+    url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+    token: "local-browser-test",
+  });
   const transferId = randomBytes(16).toString("base64url");
   const key = `transfer:${transferId}`;
   const transfer = {

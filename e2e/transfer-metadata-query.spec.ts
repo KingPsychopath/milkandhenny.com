@@ -8,7 +8,10 @@ test("transfer metadata reconciles processing and keeps owner capability scoped"
   request,
 }) => {
   test.setTimeout(75_000);
-  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const redis = new Redis({
+    url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+    token: "local-browser-test",
+  });
   const id = randomBytes(16).toString("base64url");
   const token = randomBytes(16).toString("base64url");
   const key = `transfer:${id}`;
@@ -67,7 +70,10 @@ test("concurrent admin and anonymous SSR transfer views keep private Query data 
   page,
   request,
 }) => {
-  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const redis = new Redis({
+    url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+    token: "local-browser-test",
+  });
   const id = randomBytes(16).toString("base64url");
   const key = `transfer:${id}`;
   try {

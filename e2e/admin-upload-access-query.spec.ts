@@ -5,7 +5,10 @@ import { waitForAppHydration } from "./support/multiplayer";
 
 test("guest upload access hydrates its active state and reconciles closure", async ({ page }) => {
   test.setTimeout(75_000);
-  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const redis = new Redis({
+    url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+    token: "local-browser-test",
+  });
   const key = "auth:upload-open";
   try {
     await page.goto("/admin?view=transfers");

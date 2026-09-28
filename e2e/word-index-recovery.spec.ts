@@ -26,7 +26,10 @@ test.afterEach(() => {
 });
 
 test("real Redis index inspection repairs interrupted discovery and blocks incomplete backups", async () => {
-  const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+  const redis = new Redis({
+    url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+    token: "local-browser-test",
+  });
   const slug = `index-recovery-${Date.now()}`;
   const dangling = `${slug}-dangling`;
   await withRedisProvider(redis, () =>
@@ -72,7 +75,10 @@ test("real Redis index inspection repairs interrupted discovery and blocks incom
 
 for (const failurePoint of ["before", "after"] as const) {
   test(`word create/delete recover when the Redis commit response fails ${failurePoint} execution`, async () => {
-    const redis = new Redis({ url: "http://127.0.0.1:56380", token: "local-browser-test" });
+    const redis = new Redis({
+      url: process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380",
+      token: "local-browser-test",
+    });
     const uncertain = new Proxy(redis, {
       get(target, key, receiver) {
         if (key !== "multi") return Reflect.get(target, key, receiver);
