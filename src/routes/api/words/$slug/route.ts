@@ -34,7 +34,7 @@ async function handleGET(request: Request, { params }: Params) {
     const note = await getWord(slug);
     if (!note) return Response.json({ error: "Not found" }, { status: 404 });
 
-    if (isPublicVisibility(note.meta.visibility)) {
+    if (isPublicVisibility(note.meta.visibility) && !note.meta.mediaScopeDirty) {
       return Response.json(note);
     }
 

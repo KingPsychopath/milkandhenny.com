@@ -645,7 +645,7 @@ async function cmdTransfersDelete(id: string) {
   log(`${dim("Remaining:")} ${yellow(formatDuration(info.remainingSeconds))}`);
   console.log();
 
-  const ok = await confirm(`${red("Permanently")} delete transfer "${id}" and all its R2 files?`);
+  const ok = await confirm(`${red("Permanently")} remove transfer "${id}" and its files?`);
   if (!ok) {
     log(dim("Cancelled."));
     console.log();
@@ -655,7 +655,9 @@ async function cmdTransfersDelete(id: string) {
   const result = await deleteTransfer(id, (msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(green("✓ Transfer tombstoned; private object deletion queued"));
+  else log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
   log(green(`✓ Transfer metadata ${result.dataDeleted ? "removed" : "already expired"}`));
   console.log();
 }
@@ -694,7 +696,9 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
   const result = await deleteTransferFile(id, target.id, (msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedObjects} objects from R2`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(green("✓ Private object deletion queued"));
+  else log(green(`✓ Deleted ${result.deletedObjects} objects from R2`));
   if (result.deletedTransfer) {
     log(green("✓ That was the last file; the transfer was removed"));
   } else {
@@ -706,7 +710,9 @@ async function cmdTransfersDeleteFile(id: string, selector: string) {
 
 async function cmdTransfersCleanup() {
   heading("Cleanup expired transfers");
-  log(dim("This removes expired/orphaned transfer storage while keeping active transfers."));
+  log(
+    dim("This processes expired transfers and old orphan storage while keeping active transfers."),
+  );
   console.log();
 
   const ok = await confirm("Run transfer cleanup now?");
@@ -718,8 +724,13 @@ async function cmdTransfersCleanup() {
 
   const result = await cleanupExpiredTransfers((msg) => progress(msg));
   console.log();
-  log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
-  log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres") {
+    log(green(`✓ Tombstoned ${result.expiredIndexEntries} expired transfers`));
+    log(green(`✓ Staged ${result.stagedObjects ?? 0} old orphan objects for deletion`));
+  } else {
+    log(green(`✓ Removed ${result.expiredIndexEntries} expired index entries`));
+    log(green(`✓ Deleted ${result.deletedObjects} orphaned files`));
+  }
   log(dim(`Scanned ${result.scannedPrefixes} transfer prefixes.`));
   console.log();
 }
@@ -795,8 +806,12 @@ async function cmdTransfersNuke(skipConfirm = false) {
 
   heading("Nuke all transfers");
   log(`${dim("Active transfers:")} ${transfers.length}`);
-  log(red("This will permanently delete ALL transfer files from R2"));
-  log(red("and wipe ALL transfer metadata from Redis."));
+  if (process.env.TRANSFER_CATALOGUE_STORE === "postgres")
+    log(red("This tombstones every active transfer and queues all known files for deletion."));
+  else {
+    log(red("This will permanently delete ALL transfer files from R2"));
+    log(red("and wipe ALL transfer metadata from Redis."));
+  }
   console.log();
 
   if (!skipConfirm) {
@@ -811,9 +826,15 @@ async function cmdTransfersNuke(skipConfirm = false) {
   const result = await nukeAllTransfers((msg) => progress(msg));
 
   console.log();
-  log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
-  log(green(`✓ Cleared ${result.deletedKeys} transfer keys from Redis`));
-  log(dim("Clean slate."));
+  if (result.stagedFiles !== undefined) {
+    log(green(`✓ Tombstoned ${result.deletedKeys} transfers`));
+    log(green(`✓ Queued cleanup for ${result.stagedFiles} known files`));
+    log(dim("Run deep cleanup after the grace period for unreferenced objects."));
+  } else {
+    log(green(`✓ Deleted ${result.deletedFiles} files from R2`));
+    log(green(`✓ Cleared ${result.deletedKeys} transfer keys from Redis`));
+    log(dim("Clean slate."));
+  }
   console.log();
 }
 
@@ -3136,7 +3157,7 @@ function showHelp() {
     transfers media-reconcile               Reconcile stale queued/processing transfer states
       ${dim("A blocking media worker requires direct Redis env (REDIS_URL or UPSTASH_REDIS_HOST/PORT/PASSWORD).")}
     transfers cleanup                        Cleanup expired/orphaned transfer storage
-    transfers nuke ${dim("[--yes]")}                    Wipe ALL transfers (R2 + Redis) — nuclear option
+    transfers nuke ${dim("[--yes]")}                    Remove every transfer and clean up stored files
 
   ${bold("Words Media")} ${dim("(media for words + shared reusable assets)")}
     media upload --slug ${dim("<word-slug>")} --dir ${dim("<path>")}   Upload to words/media/<slug>/

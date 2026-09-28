@@ -129,6 +129,7 @@ export async function claimMediaObjectOperations(
   limit = 10,
   leaseMs = 60_000,
   ownerKind?: MediaObjectOperationInput["ownerKind"],
+  ownerId?: string,
 ): Promise<ClaimedObjectOperation[]> {
   if (
     !/^[A-Za-z0-9._:-]{1,128}$/.test(claimOwner) ||
@@ -137,7 +138,8 @@ export async function claimMediaObjectOperations(
     limit > 50 ||
     !Number.isInteger(leaseMs) ||
     leaseMs < 1_000 ||
-    leaseMs > 15 * 60_000
+    leaseMs > 15 * 60_000 ||
+    (ownerId !== undefined && (ownerId.length < 1 || ownerId.length > 128))
   )
     throw new Error("Invalid media operation claim parameters");
   return transaction(async (client) => {
@@ -146,8 +148,9 @@ export async function claimMediaObjectOperations(
           set status='dead', claim_token=null, claim_owner=null, lease_until=null,
               updated_at=now(), last_error=coalesce(last_error, 'lease expired after final attempt')
         where status='claimed' and lease_until <= now() and attempts >= max_attempts
-          and ($1::text is null or owner_kind=$1)`,
-      [ownerKind ?? null],
+          and ($1::text is null or owner_kind=$1)
+          and ($2::text is null or owner_id=$2)`,
+      [ownerKind ?? null, ownerId ?? null],
     );
     const picked = await client.query<OperationRow>(
       `select * from media_object_operations
@@ -155,10 +158,11 @@ export async function claimMediaObjectOperations(
                (status='claimed' and lease_until <= now()))
           and attempts < max_attempts
           and ($2::text is null or owner_kind=$2)
+          and ($3::text is null or owner_id=$3)
         order by available_at, id
         for update skip locked
         limit $1`,
-      [limit, ownerKind ?? null],
+      [limit, ownerKind ?? null, ownerId ?? null],
     );
     const claimed: ClaimedObjectOperation[] = [];
     for (const row of picked.rows) {

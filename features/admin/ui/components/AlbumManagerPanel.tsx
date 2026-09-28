@@ -244,7 +244,7 @@ export function AlbumManagerPanel({
     setBusy("status");
     setError("");
     try {
-      await mutate(
+      const updated = await mutate(
         `/api/admin/albums/${encodeURIComponent(selectedAlbum.slug)}`,
         {
           method: "PATCH",
@@ -253,7 +253,13 @@ export function AlbumManagerPanel({
         },
         "Failed to change album status",
       );
-      setStatus(nextStatus === "published" ? "Album published." : "Album moved to drafts.");
+      setStatus(
+        updated.status === "publishing"
+          ? "Album publication is processing. Refresh to see when it is live."
+          : nextStatus === "published"
+            ? "Album published."
+            : "Album moved to drafts.",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to change album status");
     } finally {
@@ -773,15 +779,17 @@ export function AlbumManagerPanel({
                   type="button"
                   onClick={() =>
                     void handleStatus(
-                      (selectedAlbum.status ?? "published") === "published" ? "draft" : "published",
+                      (selectedAlbum.status ?? "published") === "draft" ? "published" : "draft",
                     )
                   }
                   disabled={busy === "status"}
                   className="min-h-11 rounded border theme-border px-4 font-mono text-xs disabled:opacity-50"
                 >
-                  {(selectedAlbum.status ?? "published") === "published"
-                    ? "move to drafts"
-                    : "publish album"}
+                  {(selectedAlbum.status ?? "published") === "publishing"
+                    ? "cancel publication"
+                    : (selectedAlbum.status ?? "published") === "published"
+                      ? "move to drafts"
+                      : "publish album"}
                 </button>
                 <button
                   type="button"

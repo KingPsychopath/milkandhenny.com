@@ -6,13 +6,13 @@ import { isSafeAlbumSlug, listAlbumManifests, readAlbumManifest } from "./album-
 async function getAlbumBySlug(slug: string): Promise<Album | null> {
   if (!isSafeAlbumSlug(slug)) return null;
   const album = await readAlbumManifest(slug);
-  return album && album.status !== "draft" && album.photos.length > 0 ? album : null;
+  return album && album.status === "published" && album.photos.length > 0 ? album : null;
 }
 
 /** Get all albums sorted by date (newest first) */
 async function getAllAlbums(): Promise<Album[]> {
   const albums = (await listAlbumManifests()).filter(
-    (album) => album.status !== "draft" && album.photos.length > 0,
+    (album) => album.status === "published" && album.photos.length > 0,
   );
   return albums.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }

@@ -1,4 +1,5 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import { isDatabaseConfigured } from "@/lib/platform/postgres.server";
 import { isConfigured } from "@/lib/platform/r2.server";
 import { inspectWordPersistence } from "@/features/words/store.server";
 import { readFile, writeFile } from "node:fs/promises";
@@ -9,10 +10,10 @@ import {
   restoreWordArchive,
 } from "@/features/words/archive.server";
 
-if (!getRedis() || !isConfigured())
-  throw new Error(
-    "Word archive operations require explicitly configured durable Redis and object storage",
-  );
+const metadataConfigured =
+  process.env.WORD_STORE === "postgres" ? isDatabaseConfigured() : Boolean(getRedis());
+if (!metadataConfigured || !isConfigured())
+  throw new Error("Word archive operations require configured durable metadata and object storage");
 
 const [action, file, confirmation] = process.argv.slice(2);
 if (action !== "inspect" && (!file || !isAbsolute(file)))
@@ -26,7 +27,7 @@ if (action === "inspect") {
 } else if (action === "restore") {
   if (confirmation !== "--confirm-empty-target")
     throw new Error(
-      "Restore requires --confirm-empty-target and isolated empty Redis/object storage",
+      "Restore requires --confirm-empty-target and isolated empty metadata/object storage",
     );
   console.log(`Words restored: ${await restoreWordArchive(await readFile(file, "utf8"))}`);
 } else

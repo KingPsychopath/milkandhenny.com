@@ -1,16 +1,28 @@
-import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 
 import { createPostgresTransfer } from "@/features/transfers/catalogue-postgres.server";
 import {
+  clearPostgresTransferMediaQueue,
   cancelObsoletePostgresTransferMediaJobs,
   claimPostgresTransferMediaJobs,
   completePostgresTransferMediaJob,
+  enqueueAbandonedPostgresTransferMediaOutputs,
   enqueuePostgresTransferMediaJob,
   failPostgresTransferMediaJob,
+  getPostgresTransferMediaQueueSnapshot,
   renewPostgresTransferMediaJob,
+  retryDeadPostgresTransferMediaJobs,
 } from "@/features/transfers/media-jobs-postgres.server";
 import type { TransferMediaJob } from "@/features/transfers/media-queue.server";
+import {
+  describeTransferMediaQueue,
+  enqueueTransferMediaJob,
+  getTransferMediaQueueLength,
+  retryDeadTransferMediaJobs,
+} from "@/features/transfers/media-queue.server";
 import { getGenerationTransferAssetKeys } from "@/features/transfers/media-state";
+import { requeuePostgresTransferMediaFile } from "@/features/transfers/media-reprocess-postgres.server";
 import type { TransferData } from "@/features/transfers/types";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
@@ -61,13 +73,12 @@ function job(id: string): TransferMediaJob {
 
 describeWithDatabase("Postgres transfer media jobs", () => {
   beforeAll(applySchema);
-  afterAll(async () => {
-    vi.unstubAllEnvs();
-    await closeDatabase();
-  });
+  afterAll(closeDatabase);
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(async () => {
     vi.stubEnv("AUTH_SECRET", "integration-test-transfer-secret-at-least-32-bytes");
     await query("truncate transfers cascade");
+    await query("truncate media_object_operations");
     await createPostgresTransfer(transfer);
   });
 
@@ -101,6 +112,177 @@ describeWithDatabase("Postgres transfer media jobs", () => {
         enqueuePostgresTransferMediaJob(client, { ...job("raw-one"), mimeType: "changed-type" }, 1),
       ),
     ).rejects.toThrow("Conflicting transfer media job identity");
+  });
+
+  it("cancels pending and claimed work while fencing a late completion", async () => {
+    await transaction(async (client) => {
+      await enqueuePostgresTransferMediaJob(client, job("raw-one"), 1);
+      await enqueuePostgresTransferMediaJob(client, job("raw-two"), 1);
+    });
+    const claimed = await claimPostgresTransferMediaJobs("operator-clear-test", 1);
+    expect(claimed).toHaveLength(1);
+    expect(await clearPostgresTransferMediaQueue()).toEqual({
+      cancelledJobs: 2,
+      queueLengthBefore: 1,
+      processingLengthBefore: 1,
+    });
+    expect(await clearPostgresTransferMediaQueue()).toEqual({
+      cancelledJobs: 0,
+      queueLengthBefore: 0,
+      processingLengthBefore: 0,
+    });
+    expect(
+      await transaction((client) =>
+        completePostgresTransferMediaJob(client, claimed[0]!.id, claimed[0]!.claimToken, null),
+      ),
+    ).toBe(false);
+    expect((await getPostgresTransferMediaQueueSnapshot()).cancelled).toBe(2);
+  });
+
+  it("routes operator queue clearing to Postgres without Redis configuration", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-one"), 1));
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferMediaOperationsService } =
+      await import("@/features/transfers/transfer-media-operations-service.server");
+    const cleared = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).clearQueue;
+      }),
+    );
+    expect(cleared).toEqual({
+      deletedKeys: 0,
+      cancelledJobs: 1,
+      queueLengthBefore: 1,
+      processingLengthBefore: 0,
+    });
+  });
+
+  it("reprocesses a file atomically and fences a previous claimed generation", async () => {
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-one"), 1));
+    const previous = (await claimPostgresTransferMediaJobs("old-worker", 1))[0];
+    if (!previous) throw new Error("Expected a claimed job");
+    expect(
+      await requeuePostgresTransferMediaFile({
+        transferId: transfer.id,
+        fileId: "raw-one",
+        force: true,
+      }),
+    ).toBe("requeued");
+    const rows = await query<{
+      processing_generation: number;
+      retry_count: number;
+      processing_status: string;
+    }>(
+      "select processing_generation,retry_count,processing_status from transfer_files where transfer_id=$1 and id='raw-one'",
+      [transfer.id],
+    );
+    expect(rows).toEqual([
+      { processing_generation: 2, retry_count: 1, processing_status: "queued" },
+    ]);
+    expect(
+      await transaction((client) =>
+        completePostgresTransferMediaJob(client, previous.id, previous.claimToken, null),
+      ),
+    ).toBe(false);
+    const next = (await claimPostgresTransferMediaJobs("new-worker", 1))[0];
+    expect(next?.generation).toBe(2);
+    expect(next?.job.expectedThumbKey).toContain("/g2/");
+    expect((await getPostgresTransferMediaQueueSnapshot()).cancelled).toBe(1);
+  });
+
+  it("retries failed media but leaves fresh or exhausted work alone", async () => {
+    await query(
+      "update transfer_files set processing_status='failed',retry_count=2 where transfer_id=$1 and id='raw-one'",
+      [transfer.id],
+    );
+    expect(
+      await requeuePostgresTransferMediaFile({ transferId: transfer.id, fileId: "raw-one" }),
+    ).toBe("requeued");
+    expect(
+      await requeuePostgresTransferMediaFile({ transferId: transfer.id, fileId: "raw-one" }),
+    ).toBe("skipped");
+    await query(
+      "update transfer_files set processing_status='failed' where transfer_id=$1 and id='raw-one'",
+      [transfer.id],
+    );
+    expect(
+      await requeuePostgresTransferMediaFile({ transferId: transfer.id, fileId: "raw-one" }),
+    ).toBe("skipped");
+    expect((await getPostgresTransferMediaQueueSnapshot()).pending).toBe(1);
+  });
+
+  it("runs admin retry and reprocess through Postgres without Redis", async () => {
+    vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await query(
+      "update transfer_files set processing_status='failed' where transfer_id=$1 and id='raw-one'",
+      [transfer.id],
+    );
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferMediaOperationsService } =
+      await import("@/features/transfers/transfer-media-operations-service.server");
+    const retry = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).retry({
+          transferId: transfer.id,
+          mediaId: "raw-one",
+        });
+      }),
+    );
+    expect(retry).toMatchObject({ status: "completed", requeued: true, retryCount: 1 });
+    const reprocess = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).reprocess({
+          transferId: transfer.id,
+          mediaId: "raw-one",
+        });
+      }),
+    );
+    expect(reprocess).toEqual({ status: "completed", requeued: ["raw-one"], skipped: [] });
+    expect((await getPostgresTransferMediaQueueSnapshot()).pending).toBe(1);
+    expect((await getPostgresTransferMediaQueueSnapshot()).cancelled).toBe(1);
+  });
+
+  it("reconciles stalled work without replacing a live queued job", async () => {
+    vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("REDIS_REST_URL", "");
+    vi.stubEnv("REDIS_REST_TOKEN", "");
+    await query(
+      `update transfer_files set enqueued_at=clock_timestamp()-interval '20 minutes',
+                                 retry_count=0
+        where transfer_id=$1`,
+      [transfer.id],
+    );
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-two"), 1));
+    const { runMediaEffect } = await import("@/features/system/media-worker-runtime.server");
+    const { TransferMediaOperationsService } =
+      await import("@/features/transfers/transfer-media-operations-service.server");
+    const reconciled = await runMediaEffect(
+      Effect.gen(function* () {
+        return yield* (yield* TransferMediaOperationsService).reconcile;
+      }),
+    );
+    expect(reconciled).toMatchObject({
+      ran: true,
+      transfersScanned: 1,
+      transfersRepaired: 1,
+      filesRepaired: 1,
+    });
+    const rows = await query<{ id: string; processing_generation: number }>(
+      "select id,processing_generation from transfer_files where transfer_id=$1 order by id",
+      [transfer.id],
+    );
+    expect(rows).toEqual([
+      { id: "raw-one", processing_generation: 2 },
+      { id: "raw-two", processing_generation: 1 },
+    ]);
+    expect((await getPostgresTransferMediaQueueSnapshot()).pending).toBe(2);
   });
 
   it("claims disjoint jobs and fences an expired worker", async () => {
@@ -212,5 +394,105 @@ describeWithDatabase("Postgres transfer media jobs", () => {
     ).toBe(false);
     expect(await cancelObsoletePostgresTransferMediaJobs()).toBe(1);
     expect(await claimPostgresTransferMediaJobs("worker-five")).toEqual([]);
+  });
+
+  it("reports queue states and grants one explicit retry to a live dead job", async () => {
+    vi.stubEnv("MEDIA_PROCESSOR_MODE", "hybrid");
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    const id = await transaction((client) =>
+      enqueuePostgresTransferMediaJob(client, job("raw-one"), 1),
+    );
+    expect(await getPostgresTransferMediaQueueSnapshot()).toMatchObject({
+      pending: 1,
+      claimed: 0,
+      dead: 0,
+      due: 1,
+    });
+    expect(await getTransferMediaQueueLength()).toBe(1);
+    expect(await describeTransferMediaQueue()).toMatchObject({
+      queued: 1,
+      leased: 0,
+      permanentFailures: 0,
+      durableWork: { available: true, pending: 1, processing: 0, failed: 0 },
+    });
+    await query("update transfer_media_jobs set max_attempts=1 where id=$1", [id]);
+    const first = (await claimPostgresTransferMediaJobs("worker-one"))[0];
+    if (!first) throw new Error("Expected claim");
+    expect(await failPostgresTransferMediaJob(id, first.claimToken, "processing_failed", 0)).toBe(
+      true,
+    );
+    expect(await getPostgresTransferMediaQueueSnapshot()).toMatchObject({
+      pending: 0,
+      claimed: 0,
+      dead: 1,
+      due: 0,
+    });
+    expect(await retryDeadTransferMediaJobs()).toBe(1);
+    const retried = (await claimPostgresTransferMediaJobs("worker-two"))[0];
+    expect(retried?.job.deliveryAttempt).toBe(1);
+    expect(retried?.claimToken).not.toBe(first.claimToken);
+    expect(await retryDeadPostgresTransferMediaJobs()).toBe(0);
+    expect(
+      await query<{ attempts: number; max_attempts: number }>(
+        "select attempts,max_attempts from transfer_media_jobs where id=$1",
+        [id],
+      ),
+    ).toEqual([{ attempts: 2, max_attempts: 2 }]);
+  });
+
+  it("refuses Redis-era enqueue when the Postgres worker store is selected", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    await expect(enqueueTransferMediaJob(job("raw-one"))).rejects.toThrow(
+      "must enqueue with their file transaction",
+    );
+  });
+
+  it("does not retry a dead job after its source generation changes", async () => {
+    const id = await transaction((client) =>
+      enqueuePostgresTransferMediaJob(client, job("raw-one"), 1),
+    );
+    await query("update transfer_media_jobs set status='dead' where id=$1", [id]);
+    await query(
+      "update transfer_files set processing_generation=2 where transfer_id=$1 and id='raw-one'",
+      [transfer.id],
+    );
+    expect(await retryDeadPostgresTransferMediaJobs()).toBe(0);
+    expect(await getPostgresTransferMediaQueueSnapshot()).toMatchObject({ dead: 1, due: 0 });
+  });
+
+  it("stages deletion of abandoned attempt keys but preserves the published winner", async () => {
+    await transaction((client) => enqueuePostgresTransferMediaJob(client, job("raw-one"), 1));
+    const old = (await claimPostgresTransferMediaJobs("worker-one"))[0];
+    if (!old) throw new Error("Expected first claim");
+    await query("update transfer_media_jobs set lease_until=now()-interval '1 second'");
+    const winner = (await claimPostgresTransferMediaJobs("worker-two"))[0];
+    if (!winner) throw new Error("Expected replacement claim");
+    await query("update transfer_media_job_attempt_outputs set created_at=now()-interval '1 hour'");
+    expect(await enqueueAbandonedPostgresTransferMediaOutputs()).toBe(1);
+    expect(
+      await query<{ target_key: string }>(
+        "select target_key from media_object_operations order by target_key",
+      ),
+    ).toEqual(
+      [old.job.expectedThumbKey, old.job.expectedFullKey]
+        .filter((key): key is string => Boolean(key))
+        .sort()
+        .map((target_key) => ({ target_key })),
+    );
+    const file = transfer.files.find((entry) => entry.id === winner.job.mediaId);
+    if (!file) throw new Error("Expected winner source file");
+    expect(
+      await transaction((client) =>
+        completePostgresTransferMediaJob(client, winner.id, winner.claimToken, {
+          ...file,
+          previewStatus: "ready",
+          processingStatus: "worker_done",
+        }),
+      ),
+    ).toBe(true);
+    expect(await enqueueAbandonedPostgresTransferMediaOutputs()).toBe(0);
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from media_object_operations"),
+    ).toEqual([{ count: "2" }]);
   });
 });

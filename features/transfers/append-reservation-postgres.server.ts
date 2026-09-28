@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getUploadReservationTtlSeconds } from "./upload-window.server";
+import { buildTransferArchivedOriginalStorageKey, buildTransferPrimaryStorageKey } from "./storage";
 import { transferUploadFilesFingerprint } from "./upload-reservation.server";
 import type { TransferUploadFileInput } from "./upload-types";
 
@@ -69,6 +70,22 @@ export async function reservePostgresTransferAppend(
       [transferId, fingerprint],
     );
     if (same.rows[0]) return "reserved";
+    // A prior file removal may still be deleting these stable source keys in R2.
+    // Do not issue a new upload URL until its durable deletion has finished.
+    const candidateKeys = files.flatMap((file) =>
+      [
+        buildTransferPrimaryStorageKey(transferId, file),
+        buildTransferArchivedOriginalStorageKey(transferId, file),
+      ].filter((key): key is string => typeof key === "string"),
+    );
+    const pendingDelete = await client.query(
+      `select 1 from media_object_operations
+        where owner_kind='transfer' and owner_id=$1 and operation='delete'
+          and status <> 'completed' and target_key=any($2::text[])
+        limit 1`,
+      [transferId, candidateKeys],
+    );
+    if (pendingDelete.rows[0]) return "conflict";
     const occupied = await client.query<{
       id: string;
       filename: string;

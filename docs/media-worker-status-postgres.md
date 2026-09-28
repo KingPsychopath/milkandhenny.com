@@ -25,4 +25,4 @@ DATABASE_URL="$RESTORE_DATABASE_URL" pnpm exec tsx --tsconfig tsconfig.cli.json 
 The import stores the source as a stopped `legacy-rdb` instance and records the source hash.
 Re-running the same input is idempotent; conflicting input is refused. It never represents the
 historical heartbeat as a currently running worker. Run this only against an isolated restore
-until the fresh source delta is available and the planned maintenance cutover is authorized.
+until the planned maintenance cutover; the verified first RDB is the authorized source cutoff.

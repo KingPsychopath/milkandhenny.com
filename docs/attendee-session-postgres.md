@@ -1,9 +1,9 @@
 # Attendee session migration
 
 Status: opt-in Postgres backend and offline importer verified locally. Production remains on
-Redis. Use `ATTENDEE_SESSION_STORE=postgres` only after a fresh source export and planned writer
-freeze reconcile the active session and person-version keys. The final export must determine the
-cutover import; the supplied 2026-09-26 file is a rehearsal source.
+Redis. Use `ATTENDEE_SESSION_STORE=postgres` only after importing and reconciling the accepted
+2026-09-26 export under the planned writer freeze. The user accepted that Redis-only writes after
+that export are outside the preservation requirement.
 
 The backend stores one row per session, keyed by an HMAC of its opaque cookie ID under
 `AUTH_SECRET`. It keeps the original JSON payload, person and pending-MFA indexes, and an absolute
@@ -30,9 +30,6 @@ AUTH_SECRET=… DATABASE_URL=… node ops/import-attendee-sessions.mjs \
   RDB_SHA256 /private/path/attendee-sessions.json
 ```
 
-If the fresh export no longer contains `guest:list`, the extractor reports that absence and
-leaves the guest output path unused while still writing the requested auth/session outputs.
-
 Run the importer with a migration credential and the exact application `AUTH_SECRET` that will
 serve the imported cookies. It validates identities, structure and expiry, then writes all
 session and person-version rows in one transaction with the source RDB hash. Repeating the same
@@ -43,5 +40,5 @@ new cookies, extend a lifetime or repair malformed source data silently.
 
 Before switching, compare source and target counts and sample identities using HMAC lookups,
 verify an existing valid cookie, a rotated cookie, and person-wide revocation against the new
-backend. Reconcile keys created after the rehearsal export. Keep the old source available for the
-planned rollback window; do not run both backends as independent writers.
+backend. Retain the accepted export for the recovery window; do not run both backends as
+independent writers.

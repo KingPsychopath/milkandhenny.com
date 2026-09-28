@@ -5,6 +5,8 @@ import {
 } from "./media-worker-status.server";
 import { deleteObjects, listObjects } from "@/lib/platform/object-storage-provider-context.server";
 import { deleteTransferData, getTransfer, listTransfers } from "./store.server";
+import { tombstonePostgresTransfer } from "./catalogue-postgres.server";
+import { postgresTransferCatalogueSelected } from "./store-selection.server";
 import type { TransferData } from "./types";
 
 const SAFE_TRANSFER_ID = /^[A-Za-z0-9_-]+$/;
@@ -18,6 +20,15 @@ async function listAdminTransfers() {
 }
 
 async function getAdminTransferMediaStats() {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") {
+    if (process.env.MEDIA_WORKER_STATUS_STORE !== "postgres")
+      throw new Error("Postgres media queue requires Postgres worker status");
+    const [worker, queue] = await Promise.all([
+      getTransferMediaWorkerStatus(),
+      describeTransferMediaQueue(),
+    ]);
+    return { queueLength: queue.queued, worker, queue };
+  }
   const [queueLength, worker, queue] = await Promise.all([
     getTransferMediaQueueLength().catch(() => 0),
     getTransferMediaWorkerStatus().catch((): TransferMediaWorkerStatus => ({})),
@@ -55,6 +66,10 @@ async function adminDeleteTransfer(id: string): Promise<{
 }> {
   if (!isSafeTransferId(id)) {
     throw new Error("Invalid transfer id");
+  }
+
+  if (postgresTransferCatalogueSelected()) {
+    return { deletedFiles: 0, dataDeleted: await tombstonePostgresTransfer(id) };
   }
 
   const prefix = `transfers/${id}/`;

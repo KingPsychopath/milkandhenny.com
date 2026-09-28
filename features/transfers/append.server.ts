@@ -182,10 +182,30 @@ export async function appendPresign(
     const result = await runMediaEffect(
       Effect.gen(function* () {
         const transfers = yield* TransferOperationsService;
-        return yield* transfers.presignAppend({ transferId, files, uploadUrlTtlSeconds });
+        return yield* transfers.presignAppend({
+          transferId,
+          files,
+          uploadUrlTtlSeconds,
+          maxFiles: MAX_TRANSFER_FILES,
+          maxTotalBytes: limits.maxTotalBytes,
+        });
       }),
       request.signal,
     );
+
+    if (result.status !== "ready") {
+      if (result.status === "missing")
+        return Response.json({ error: "Transfer not found or expired" }, { status: 404 });
+      return Response.json(
+        {
+          error:
+            result.status === "limit"
+              ? "That upload would exceed this transfer's limits"
+              : "One of those filenames is already reserved by another upload",
+        },
+        { status: 409 },
+      );
+    }
 
     return Response.json({
       transfer: {
@@ -249,6 +269,12 @@ export async function appendFinalize(
       if (result.status === "limit") {
         return Response.json(
           { error: "That upload would exceed this transfer's limits" },
+          { status: 409 },
+        );
+      }
+      if (result.status === "missing-reservation" || result.status === "reservation-mismatch") {
+        return Response.json(
+          { error: "Upload reservation expired or changed. Start this batch again." },
           { status: 409 },
         );
       }

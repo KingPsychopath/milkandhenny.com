@@ -15,6 +15,7 @@ import {
 } from "@/lib/platform/object-storage-provider-context.server";
 import { transaction } from "@/lib/platform/postgres.server";
 import { getPostgresTransferForWorker } from "./catalogue-postgres.server";
+import { publishTransferMediaEvent } from "./media-events.server";
 import {
   cancelClaimedPostgresTransferMediaJob,
   claimPostgresTransferMediaJobs,
@@ -138,9 +139,12 @@ export async function runPostgresTransferMediaBatch(
   };
   for (const claim of claimed) {
     const renew = setInterval(() => {
+      if (signal?.aborted) return;
       void renewPostgresTransferMediaJob(claim.id, claim.claimToken).catch(() => undefined);
     }, 5 * 60_000);
     renew.unref?.();
+    const stopRenewing = () => clearInterval(renew);
+    signal?.addEventListener("abort", stopRenewing, { once: true });
     try {
       const file = await processClaim(claim, signal);
       if (!file) {
@@ -155,12 +159,16 @@ export async function runPostgresTransferMediaBatch(
         )
       ) {
         result.completed += 1;
+        await publishTransferMediaEvent(claim.job.transferId, file);
       } else {
         result.lostClaim += 1;
         await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
       }
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) {
+        await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
+        throw error;
+      }
       if (error instanceof RawPreviewUnavailableError) {
         const transfer = await getPostgresTransferForWorker(claim.job.transferId);
         const file = transfer?.files.find((entry) => entry.id === claim.job.mediaId);
@@ -176,6 +184,12 @@ export async function runPostgresTransferMediaBatch(
           ))
         ) {
           result.completed += 1;
+          await publishTransferMediaEvent(claim.job.transferId, {
+            ...file,
+            previewStatus: "original_only",
+            processingStatus: "failed",
+            processingErrorCode: "raw_preview_unavailable",
+          });
           continue;
         }
       }
@@ -192,6 +206,7 @@ export async function runPostgresTransferMediaBatch(
       else result.lostClaim += 1;
       await deleteObjects(outputKeys(claim), { scope: "private" }).catch(() => undefined);
     } finally {
+      signal?.removeEventListener("abort", stopRenewing);
       clearInterval(renew);
     }
   }

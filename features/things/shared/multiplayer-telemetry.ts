@@ -40,7 +40,7 @@ export interface MultiplayerGameTelemetry {
 export interface MultiplayerTelemetrySnapshot {
   backplane: {
     failures: number;
-    mode: "local" | "redis";
+    mode: "local" | "redis" | "postgres";
     published: number;
     received: number;
   };

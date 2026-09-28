@@ -33,7 +33,40 @@ import {
 } from "./upload-reservation.server";
 import { applyTransferAssetGroups, processUploadedFile, sortTransferFiles } from "./upload.server";
 import { getInlineProcessingTimeoutMs } from "./media-processing-config.server";
-import { getMultipartPartSize, MULTIPART_UPLOAD_THRESHOLD_BYTES } from "./upload-window.server";
+import {
+  getMultipartPartSize,
+  getUploadReservationTtlSeconds,
+  MULTIPART_UPLOAD_THRESHOLD_BYTES,
+} from "./upload-window.server";
+import { stagePostgresTransferOrphanObjects } from "./orphan-cleanup-postgres.server";
+import {
+  cleanupExpiredPostgresTransfers,
+  finalizePostgresTransferAppend,
+  finalizePostgresTransferReservation,
+  getPostgresTransfer,
+  removePostgresTransferFile,
+  tombstoneAllPostgresTransfers,
+  tombstonePostgresTransfer,
+  validatePostgresTransferDeleteToken,
+} from "./catalogue-postgres.server";
+import {
+  cleanupPostgresTransferAppendReservations,
+  reservePostgresTransferAppend,
+} from "./append-reservation-postgres.server";
+import { planPostgresTransferMedia } from "./media-plan-postgres.server";
+import {
+  cleanupPostgresTransferUploadReservations,
+  createPostgresTransferUploadReservation,
+  deletePostgresTransferUploadReservation,
+  getPostgresTransferUploadReservation,
+  matchesPostgresTransferUploadReservation,
+} from "./upload-reservation-postgres.server";
+import { postgresTransferCatalogueSelected } from "./store-selection.server";
+
+function requireLegacyTransferCatalogue(operation: string): void {
+  if (postgresTransferCatalogueSelected())
+    throw new Error(`${operation} requires the Postgres transfer implementation`);
+}
 
 export class TransferOperationError extends Data.TaggedError("TransferOperationError")<{
   readonly cause: unknown;
@@ -68,6 +101,7 @@ export type TransferCleanupResult = {
   expiredIndexEntries: number;
   scannedPrefixes: number;
   deletedObjects: number;
+  stagedObjects?: number;
 };
 
 type TransferFileCounts = {
@@ -146,7 +180,7 @@ export type TransferAppendResult =
       fileCounts: TransferFileCounts;
       processingCounts: TransferProcessingCounts;
     }
-  | { status: "missing" | "conflict" | "limit" }
+  | { status: "missing" | "conflict" | "limit" | "missing-reservation" | "reservation-mismatch" }
   | { status: "size-mismatch"; filename: string; archivedOriginal: boolean };
 
 export type TransferFileRemovalResult =
@@ -206,7 +240,13 @@ export class TransferOperationsService extends Context.Service<
       transferId: string;
       files: TransferUploadFileInput[];
       uploadUrlTtlSeconds: number;
-    }) => Effect.Effect<Extract<TransferPresignResult, { status: "ready" }>, unknown>;
+      maxFiles?: number;
+      maxTotalBytes?: number;
+    }) => Effect.Effect<
+      | Extract<TransferPresignResult, { status: "ready" }>
+      | { status: "missing" | "conflict" | "limit" },
+      unknown
+    >;
     readonly resumeUpload: (input: {
       transferId: string;
       deleteToken: string;
@@ -225,6 +265,7 @@ export class TransferOperationsService extends Context.Service<
           configured: true;
           deletedFiles: number;
           deletedTransfers: number;
+          stagedFiles?: number;
           timestamp: string;
         },
       unknown
@@ -259,6 +300,12 @@ export class TransferOperationsService extends Context.Service<
             validateDeleteToken(input.id, input.token),
           );
           if (!authorised) return { authorised: false, deletedFiles: 0, dataDeleted: false };
+          if (postgresTransferCatalogueSelected()) {
+            const dataDeleted = yield* attempt("tombstone_transfer", () =>
+              tombstonePostgresTransfer(input.id),
+            );
+            return { authorised: true, deletedFiles: 0, dataDeleted };
+          }
           const deletedFiles = yield* removeObjects(input.id);
           const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(input.id));
           return { authorised: true, deletedFiles, dataDeleted };
@@ -266,6 +313,75 @@ export class TransferOperationsService extends Context.Service<
 
       const cleanup = (mode: "deep" | "index") =>
         Effect.gen(function* () {
+          if (postgresTransferCatalogueSelected()) {
+            const expired = yield* attempt("expire_transfers", () =>
+              cleanupExpiredPostgresTransfers(),
+            );
+            let scannedPrefixes = 0;
+            let stagedObjects = 0;
+            if (mode === "deep") {
+              yield* attempt("expire_upload_reservations", () =>
+                cleanupPostgresTransferUploadReservations(),
+              );
+              yield* attempt("expire_append_reservations", () =>
+                cleanupPostgresTransferAppendReservations(),
+              );
+              const prefixes = yield* storage.listPrefixes("transfers/", { scope: "private" });
+              if (
+                prefixes.length > 100 ||
+                prefixes.some((prefix) => !/^transfers\/[A-Za-z0-9_-]{1,128}\/$/.test(prefix))
+              )
+                return yield* Effect.fail(
+                  new TransferOperationError({
+                    cause: new Error("Transfer orphan scan exceeds supported prefix inventory"),
+                    operation: "cleanup_orphans",
+                  }),
+                );
+              const graceMs = Math.max(
+                24 * 60 * 60_000,
+                getUploadReservationTtlSeconds() * 1_000 + 60 * 60_000,
+              );
+              if (!Number.isFinite(graceMs) || graceMs >= Date.now())
+                return yield* Effect.fail(
+                  new TransferOperationError({
+                    cause: new Error("Invalid transfer orphan cleanup grace period"),
+                    operation: "cleanup_orphans",
+                  }),
+                );
+              const olderThan = new Date(Date.now() - graceMs);
+              const staged = yield* Effect.forEach(
+                prefixes,
+                (prefix) =>
+                  Effect.gen(function* () {
+                    const objects = yield* storage.listObjects(prefix, { scope: "private" });
+                    if (objects.length > 2_000)
+                      return yield* Effect.fail(
+                        new TransferOperationError({
+                          cause: new Error("Transfer orphan scan exceeds per-prefix object limit"),
+                          operation: "cleanup_orphans",
+                        }),
+                      );
+                    return yield* attempt("stage_orphan_objects", () =>
+                      stagePostgresTransferOrphanObjects(
+                        prefix.slice("transfers/".length, -1),
+                        objects,
+                        olderThan,
+                      ),
+                    );
+                  }),
+                { concurrency: 2 },
+              );
+              scannedPrefixes = prefixes.length;
+              stagedObjects = staged.reduce((sum, count) => sum + count, 0);
+            }
+            return {
+              mode,
+              expiredIndexEntries: expired,
+              scannedPrefixes,
+              deletedObjects: 0,
+              ...(mode === "deep" ? { stagedObjects } : {}),
+            };
+          }
           const client = yield* redis.client;
           if (!client) {
             return yield* Effect.fail(
@@ -357,10 +473,15 @@ export class TransferOperationsService extends Context.Service<
 
       const findCompleted = (transferId: string, deleteToken: string) =>
         Effect.gen(function* () {
-          const existing = yield* attempt("read_existing", () => getTransfer(transferId));
+          const postgres = postgresTransferCatalogueSelected();
+          const existing = yield* attempt("read_existing", () =>
+            postgres ? getPostgresTransfer(transferId) : getTransfer(transferId),
+          );
           if (!existing) return null;
           const authorised = yield* attempt("authorise_existing", () =>
-            validateDeleteToken(transferId, deleteToken),
+            postgres
+              ? validatePostgresTransferDeleteToken(transferId, deleteToken)
+              : validateDeleteToken(transferId, deleteToken),
           );
           return authorised ? completed(existing, true) : null;
         });
@@ -531,15 +652,28 @@ export class TransferOperationsService extends Context.Service<
         uploadUrlTtlSeconds: number;
       }) =>
         Effect.gen(function* () {
+          const postgres = postgresTransferCatalogueSelected();
           const reserved = yield* attempt("reserve_upload", () =>
-            createTransferUploadReservation({
-              transferId: input.transferId,
-              deleteToken: input.deleteToken,
-              actorJti: input.actorJti,
-              expiresSeconds: input.expiresSeconds,
-              filesFingerprint: transferUploadFilesFingerprint(input.files),
-              createdAt: new Date().toISOString(),
-            }),
+            postgres
+              ? createPostgresTransferUploadReservation(
+                  {
+                    transferId: input.transferId,
+                    deleteToken: input.deleteToken,
+                    actorJti: input.actorJti,
+                    expiresSeconds: input.expiresSeconds,
+                    filesFingerprint: transferUploadFilesFingerprint(input.files),
+                    createdAt: new Date().toISOString(),
+                  },
+                  input.files,
+                )
+              : createTransferUploadReservation({
+                  transferId: input.transferId,
+                  deleteToken: input.deleteToken,
+                  actorJti: input.actorJti,
+                  expiresSeconds: input.expiresSeconds,
+                  filesFingerprint: transferUploadFilesFingerprint(input.files),
+                  createdAt: new Date().toISOString(),
+                }),
           );
           if (!reserved) return { status: "reservation-conflict" } as const;
 
@@ -547,7 +681,9 @@ export class TransferOperationsService extends Context.Service<
             Effect.map((urls) => ({ status: "ready", urls }) as const),
             Effect.tapError(() =>
               attempt("release_failed_reservation", () =>
-                deleteTransferUploadReservation(input.transferId),
+                postgres
+                  ? deletePostgresTransferUploadReservation(input.transferId)
+                  : deleteTransferUploadReservation(input.transferId),
               ).pipe(Effect.catch(() => Effect.void)),
             ),
             Effect.withSpan("transfers.presign_upload", {
@@ -567,9 +703,14 @@ export class TransferOperationsService extends Context.Service<
         ownerPersonId?: string;
       }) =>
         Effect.gen(function* () {
-          const reservation = yield* attempt("read_reservation", () =>
-            getTransferUploadReservation(input.transferId),
-          );
+          const postgres = postgresTransferCatalogueSelected();
+          const reservation = postgres
+            ? yield* attempt("read_reservation", () =>
+                getPostgresTransferUploadReservation(input.transferId),
+              )
+            : yield* attempt("read_reservation", () =>
+                getTransferUploadReservation(input.transferId),
+              );
           if (!reservation) {
             return (
               (yield* findCompleted(input.transferId, input.deleteToken)) ??
@@ -578,12 +719,19 @@ export class TransferOperationsService extends Context.Service<
               } as const)
             );
           }
-          if (
-            reservation.actorJti !== input.actorJti ||
-            reservation.deleteToken !== input.deleteToken ||
-            reservation.expiresSeconds !== input.expiresSeconds ||
-            reservation.filesFingerprint !== transferUploadFilesFingerprint(input.files)
-          ) {
+          const matches =
+            "deleteTokenHash" in reservation
+              ? matchesPostgresTransferUploadReservation(reservation, {
+                  actorJti: input.actorJti,
+                  deleteToken: input.deleteToken,
+                  expiresSeconds: input.expiresSeconds,
+                  filesFingerprint: transferUploadFilesFingerprint(input.files),
+                })
+              : reservation.actorJti === input.actorJti &&
+                reservation.deleteToken === input.deleteToken &&
+                reservation.expiresSeconds === input.expiresSeconds &&
+                reservation.filesFingerprint === transferUploadFilesFingerprint(input.files);
+          if (!matches) {
             return { status: "reservation-mismatch" } as const;
           }
 
@@ -596,9 +744,10 @@ export class TransferOperationsService extends Context.Service<
             return { status: "too-large", actualUploadedBytes } as const;
           }
 
-          const results = yield* processFiles(input.transferId, input.files);
+          const results = postgres ? [] : yield* processFiles(input.transferId, input.files);
+          const plan = postgres ? planPostgresTransferMedia(input.transferId, input.files) : null;
           const grouped = applyTransferAssetGroups(
-            sortTransferFiles(results.map(({ file }) => file)),
+            sortTransferFiles(plan?.files ?? results.map(({ file }) => file)),
           );
           const now = new Date();
           const transfer: TransferData = {
@@ -611,10 +760,20 @@ export class TransferOperationsService extends Context.Service<
             deleteToken: input.deleteToken,
             ownerPersonId: input.ownerPersonId,
           };
-          const created = yield* attempt("create_transfer", () =>
-            createTransfer(transfer, input.expiresSeconds),
-          );
-          if (!created) {
+          const created = postgres
+            ? yield* attempt("create_transfer", () =>
+                finalizePostgresTransferReservation(
+                  transfer,
+                  input.actorJti,
+                  input.expiresSeconds,
+                  input.files,
+                  plan?.jobs ?? [],
+                ),
+              )
+            : yield* attempt("create_transfer", () =>
+                createTransfer(transfer, input.expiresSeconds),
+              );
+          if (created === false || created === "transfer-conflict") {
             return (
               (yield* findCompleted(input.transferId, input.deleteToken)) ??
               ({
@@ -622,14 +781,20 @@ export class TransferOperationsService extends Context.Service<
               } as const)
             );
           }
-          yield* attempt("release_reservation", () =>
-            deleteTransferUploadReservation(input.transferId),
-          ).pipe(Effect.catch(() => Effect.void));
+          if (created === "missing-reservation" || created === "reservation-mismatch")
+            return { status: created } as const;
+          if (created === "too-large") return { status: "too-large", actualUploadedBytes } as const;
+          if (!postgres)
+            yield* attempt("release_reservation", () =>
+              deleteTransferUploadReservation(input.transferId),
+            ).pipe(Effect.catch(() => Effect.void));
           const result = completed(transfer, false);
           if (result.status !== "completed") return result;
           return {
             ...result,
-            totalSize: results.reduce((sum, entry) => sum + entry.uploadedBytes, 0),
+            totalSize: postgres
+              ? actualUploadedBytes
+              : results.reduce((sum, entry) => sum + entry.uploadedBytes, 0),
           };
         }).pipe(
           Effect.timeout(5 * 60_000),
@@ -646,15 +811,26 @@ export class TransferOperationsService extends Context.Service<
         uploadUrlTtlSeconds: number;
       }) =>
         Effect.gen(function* () {
-          const reservation = yield* attempt("read_resume_reservation", () =>
-            getTransferUploadReservation(input.transferId),
-          );
+          const postgres = postgresTransferCatalogueSelected();
+          const reservation = postgres
+            ? yield* attempt("read_resume_reservation", () =>
+                getPostgresTransferUploadReservation(input.transferId),
+              )
+            : yield* attempt("read_resume_reservation", () =>
+                getTransferUploadReservation(input.transferId),
+              );
           if (!reservation) return { status: "missing-reservation" } as const;
-          if (
-            reservation.actorJti !== input.actorJti ||
-            reservation.deleteToken !== input.deleteToken ||
-            reservation.filesFingerprint !== transferUploadFilesFingerprint(input.files)
-          ) {
+          const matches =
+            "deleteTokenHash" in reservation
+              ? matchesPostgresTransferUploadReservation(reservation, {
+                  actorJti: input.actorJti,
+                  deleteToken: input.deleteToken,
+                  filesFingerprint: transferUploadFilesFingerprint(input.files),
+                })
+              : reservation.actorJti === input.actorJti &&
+                reservation.deleteToken === input.deleteToken &&
+                reservation.filesFingerprint === transferUploadFilesFingerprint(input.files);
+          if (!matches) {
             return { status: "reservation-mismatch" } as const;
           }
 
@@ -685,14 +861,24 @@ export class TransferOperationsService extends Context.Service<
         actorJti: string;
       }) =>
         Effect.gen(function* () {
-          const reservation = yield* attempt("read_abandon_reservation", () =>
-            getTransferUploadReservation(input.transferId),
-          );
+          const postgres = postgresTransferCatalogueSelected();
+          const reservation = postgres
+            ? yield* attempt("read_abandon_reservation", () =>
+                getPostgresTransferUploadReservation(input.transferId),
+              )
+            : yield* attempt("read_abandon_reservation", () =>
+                getTransferUploadReservation(input.transferId),
+              );
           if (!reservation) return { status: "missing-reservation" } as const;
-          if (
-            reservation.actorJti !== input.actorJti ||
-            reservation.deleteToken !== input.deleteToken
-          ) {
+          const matches =
+            "deleteTokenHash" in reservation
+              ? matchesPostgresTransferUploadReservation(reservation, {
+                  actorJti: input.actorJti,
+                  deleteToken: input.deleteToken,
+                })
+              : reservation.actorJti === input.actorJti &&
+                reservation.deleteToken === input.deleteToken;
+          if (!matches) {
             return { status: "reservation-mismatch" } as const;
           }
 
@@ -700,7 +886,9 @@ export class TransferOperationsService extends Context.Service<
           // deep cleanup from racing an explicit discard and makes retries safe.
           const deletedObjects = yield* removeObjects(input.transferId);
           yield* attempt("release_abandoned_reservation", () =>
-            deleteTransferUploadReservation(input.transferId),
+            postgres
+              ? deletePostgresTransferUploadReservation(input.transferId)
+              : deleteTransferUploadReservation(input.transferId),
           );
           return { status: "abandoned", deletedObjects } as const;
         }).pipe(Effect.withSpan("transfers.abandon_upload"));
@@ -709,9 +897,26 @@ export class TransferOperationsService extends Context.Service<
         transferId: string;
         files: TransferUploadFileInput[];
         uploadUrlTtlSeconds: number;
+        maxFiles?: number;
+        maxTotalBytes?: number;
       }) =>
-        presignFiles(input.transferId, input.files, input.uploadUrlTtlSeconds).pipe(
-          Effect.map((urls) => ({ status: "ready", urls }) as const),
+        Effect.gen(function* () {
+          if (postgresTransferCatalogueSelected()) {
+            const reserved = yield* attempt("reserve_append", () =>
+              reservePostgresTransferAppend(input.transferId, input.files, {
+                maxFiles: input.maxFiles,
+                maxTotalBytes: input.maxTotalBytes,
+              }),
+            );
+            if (reserved !== "reserved") return { status: reserved } as const;
+          }
+          const urls = yield* presignFiles(
+            input.transferId,
+            input.files,
+            input.uploadUrlTtlSeconds,
+          );
+          return { status: "ready", urls } as const;
+        }).pipe(
           Effect.withSpan("transfers.presign_append", {
             attributes: { fileCount: input.files.length },
           }),
@@ -724,10 +929,33 @@ export class TransferOperationsService extends Context.Service<
         maxTotalBytes?: number;
       }) =>
         Effect.gen(function* () {
+          const postgres = postgresTransferCatalogueSelected();
           yield* completeMultipartFiles(input.transferId, input.files);
           const inspected = yield* inspectUploadedFiles(input.transferId, input.files);
           const mismatch = inspected.find((entry) => entry.mismatch)?.mismatch;
           if (mismatch) return { status: "size-mismatch", ...mismatch } as const;
+
+          if (postgres) {
+            const planned = planPostgresTransferMedia(input.transferId, input.files);
+            const appended = yield* attempt("append_files", () =>
+              finalizePostgresTransferAppend(
+                input.transferId,
+                input.files,
+                planned.files,
+                { maxFiles: input.maxFiles, maxTotalBytes: input.maxTotalBytes },
+                planned.jobs,
+              ),
+            );
+            if (appended.status !== "updated") return appended;
+            return {
+              status: "completed",
+              transfer: appended.transfer,
+              addedCount: planned.files.length,
+              totalSize: inspected.reduce((sum, entry) => sum + entry.bytes, 0),
+              fileCounts: countTransferFiles(planned.files),
+              processingCounts: buildTransferProcessingCounts(planned.files),
+            } as const;
+          }
 
           const results = yield* processFiles(input.transferId, input.files);
           const appended = yield* attempt("append_files", () =>
@@ -773,6 +1001,19 @@ export class TransferOperationsService extends Context.Service<
 
       const removeAuthorisedFile = (id: string, fileId: string) =>
         Effect.gen(function* () {
+          if (postgresTransferCatalogueSelected()) {
+            const removal = yield* attempt("remove_file_metadata", () =>
+              removePostgresTransferFile(id, fileId),
+            );
+            if (removal === "deleted") return { status: "deleted", deletedObjects: 0 } as const;
+            if (removal === "missing" || removal === "file-missing")
+              return { status: removal } as const;
+            const transfer = yield* attempt("read_after_file_removal", () =>
+              getPostgresTransfer(id),
+            );
+            if (!transfer) return { status: "missing" } as const;
+            return { status: "updated", deletedObjects: 0, transfer } as const;
+          }
           const transfer = yield* attempt("read_file_removal", () => getTransfer(id));
           if (!transfer) return { status: "missing" } as const;
           const file = transfer.files.find((candidate) => candidate.id === fileId);
@@ -809,6 +1050,19 @@ export class TransferOperationsService extends Context.Service<
         }).pipe(Effect.withSpan("transfers.remove_file"));
 
       const nuke = Effect.gen(function* () {
+        if (postgresTransferCatalogueSelected()) {
+          const result = yield* attempt("tombstone_all_transfers", () =>
+            tombstoneAllPostgresTransfers(),
+          );
+          return {
+            configured: true,
+            deletedFiles: 0,
+            deletedTransfers: result.deletedTransfers,
+            stagedFiles: result.stagedFiles,
+            timestamp: new Date().toISOString(),
+          } as const;
+        }
+        requireLegacyTransferCatalogue("Transfer nuke");
         const client = yield* redis.client;
         if (!client || !storage.port.isTransferStorageConfigured()) {
           return { configured: false } as const;
@@ -847,6 +1101,12 @@ export class TransferOperationsService extends Context.Service<
                   operation: "admin_delete",
                 }),
               );
+            }
+            if (postgresTransferCatalogueSelected()) {
+              const dataDeleted = yield* attempt("tombstone_transfer", () =>
+                tombstonePostgresTransfer(id),
+              );
+              return { deletedFiles: 0, dataDeleted };
             }
             const deletedFiles = yield* removeObjects(id);
             const dataDeleted = yield* attempt("delete_metadata", () => deleteTransferData(id));

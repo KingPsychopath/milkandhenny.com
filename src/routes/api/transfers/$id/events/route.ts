@@ -84,6 +84,27 @@ async function handleGET(request: Request, context: RouteContext) {
         return;
       }
 
+      // A notification may have landed before this subscriber was ready, or while EventSource
+      // was reconnecting. Reconcile from the authoritative transfer after subscription.
+      try {
+        const current = await getTransfer(id);
+        if (!current || new Date(current.expiresAt).getTime() <= Date.now()) {
+          cleanup();
+          return;
+        }
+        for (const file of current.files) {
+          send(
+            `event: file\ndata: ${JSON.stringify({
+              file: toPublicTransferFile(file),
+              at: new Date().toISOString(),
+            })}\n\n`,
+          );
+        }
+      } catch {
+        cleanup();
+        return;
+      }
+
       keepalive = setInterval(() => send(": keepalive\n\n"), KEEPALIVE_INTERVAL_MS);
       keepalive.unref?.();
 

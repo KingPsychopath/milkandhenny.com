@@ -44,6 +44,13 @@ import {
   persistRoomWithOfficialResults,
   sealOfficialGameResult,
 } from "@/features/game-results/outbox.server";
+import {
+  createPostgresGameRoom,
+  loadPostgresGameRoom,
+  postgresGameRoomSelected,
+  withPostgresGameRoom,
+} from "../shared/room-postgres-engine.server";
+import { deletePostgresRoom } from "../shared/room-postgres.server";
 
 const JUDGE_LEASE_TTL_SECONDS = 30;
 const COMMAND_MAX_AGE_MS = 12_000;
@@ -69,6 +76,36 @@ interface MemoryRoom {
   activeJudgeEpoch: string | null;
   playerSeenAt: number;
   judgeSeenAt: number;
+}
+
+interface PostgresPairedRoomState {
+  roomId: string;
+  revision: number;
+  expiresAt: number;
+  meta: RoomMeta;
+  setup: RemoteGameSetup;
+  snapshot: RemoteSyncedSnapshot | null;
+  commands: RemoteCommand[];
+  /** Commands older than the request age limit cannot be retried. */
+  commandSequences: Array<{ id: string; sequence: number; createdAt: number }>;
+  decidedItems: string[];
+  nextSequence: number;
+  activePlayerEpoch: string | null;
+  activeJudgeEpoch: string | null;
+  playerSeenAt: number;
+  judgeSeenAt: number;
+  commandRateWindowAt: number;
+  commandRateCount: number;
+}
+
+function postgresRoomsSelected() {
+  return postgresGameRoomSelected("PAIRED_GAME_ROOM_STORE");
+}
+
+function applyPostgresRoomExpiry(room: PostgresPairedRoomState) {
+  if (room.expiresAt - Date.now() > REMOTE_ROOM_RENEWAL_WINDOW_MS) return;
+  room.expiresAt = multiplayerPresenceLeaseExpiresAt(Date.now());
+  room.meta.expiresAt = room.expiresAt;
 }
 
 export interface PairedGameState {
@@ -200,6 +237,35 @@ export function pairedGameOfficialResult(input: {
   });
 }
 
+function withPostgresPairedRoom<Outcome>(
+  roomId: string,
+  use: (room: PostgresPairedRoomState) => Outcome,
+) {
+  return withPostgresGameRoom<PostgresPairedRoomState, Outcome>({
+    kind: "paired-remote",
+    roomId,
+    use,
+    applyExpiry: applyPostgresRoomExpiry,
+    results: (before, after) => {
+      const previous = before.snapshot;
+      const next = after.snapshot;
+      const channelId = after.meta.officialResultChannelId;
+      if (
+        !channelId ||
+        !next ||
+        next.phase !== "results" ||
+        (previous?.connectionEpoch === next.connectionEpoch &&
+          previous.revision === next.revision &&
+          previous.roundId === next.roundId &&
+          previous.score === next.score)
+      )
+        return [];
+      const envelope = pairedGameOfficialResult({ roomId, channelId, snapshot: next });
+      return envelope ? [envelope] : [];
+    },
+  });
+}
+
 function rejectJudgeCommand(
   meta: RoomMeta,
   command: RemoteCommandRequest,
@@ -294,6 +360,10 @@ function allPairedGameKeys(roomId: string) {
 }
 
 async function readRoom(roomId: string): Promise<RoomContext | null> {
+  if (postgresRoomsSelected()) {
+    const room = await loadPostgresGameRoom<PostgresPairedRoomState>("paired-remote", roomId);
+    return room ? { roomId, meta: room.meta, keys: pairedGameRoomRedisKeys(roomId) } : null;
+  }
   const redis = getRedis();
   if (!redis) {
     const room = memoryRooms.get(roomId);
@@ -349,6 +419,27 @@ export async function createPairedGameRoom(input: {
     expiresAt,
     officialResultChannelId: input.officialResultChannelId,
   };
+  if (postgresRoomsSelected()) {
+    await createPostgresGameRoom<PostgresPairedRoomState>("paired-remote", {
+      roomId,
+      revision: 1,
+      expiresAt,
+      meta,
+      setup: input.setup,
+      snapshot: null,
+      commands: [],
+      commandSequences: [],
+      decidedItems: [],
+      nextSequence: 1,
+      activePlayerEpoch: null,
+      activeJudgeEpoch: null,
+      playerSeenAt: input.creatorRole === "player" ? now : 0,
+      judgeSeenAt: input.creatorRole === "judge" ? now : 0,
+      commandRateWindowAt: 0,
+      commandRateCount: 0,
+    });
+    return { roomId, playerToken, judgeToken, creatorRole: input.creatorRole, expiresAt };
+  }
   const redis = getRedis();
   if (!redis && process.env.NODE_ENV === "production") {
     log.error("things.paired-game-room", "Room creation unavailable", {
@@ -391,6 +482,7 @@ export async function readPairedGamePlayerSetup(input: {
   roomId: string;
   playerToken: string;
 }): Promise<RemotePlayerSetupResult> {
+  if (postgresRoomsSelected()) return readPostgresPlayerSetup(input);
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
@@ -431,6 +523,7 @@ export async function syncPairedGamePlayer(
   },
   workflowContext: GameContext = liveGameContext(),
 ): Promise<RemotePlayerSyncResult> {
+  if (postgresRoomsSelected()) return syncPostgresPlayer(input, workflowContext);
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.playerToken, meta.playerHash)) {
@@ -594,6 +687,7 @@ export async function readPairedGameJudge(input: {
   judgeEpoch: string;
   takeover: boolean;
 }): Promise<RemoteJudgeSnapshotResult> {
+  if (postgresRoomsSelected()) return readPostgresJudge(input);
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash)) {
@@ -671,6 +765,7 @@ export async function sendPairedGameJudgeCommand(
   },
   workflowContext: GameContext = liveGameContext(),
 ): Promise<RemoteCommandResult> {
+  if (postgresRoomsSelected()) return sendPostgresJudgeCommand(input, workflowContext);
   const context = await readRoom(input.roomId);
   const meta = context?.meta;
   if (!context || !meta || !multiplayerCredentialsMatch(input.judgeToken, meta.judgeHash))
@@ -773,6 +868,7 @@ export async function disconnectPairedGameJudge(input: {
   roomId: string;
   playerToken: string;
 }): Promise<{ ok: true; judgeToken: string } | { ok: false }> {
+  if (postgresRoomsSelected()) return disconnectPostgresJudge(input);
   const context = await readRoom(input.roomId);
   if (!context) return { ok: false };
   // Only the device running the game may evict a judge, and never in a judge-created room where
@@ -802,6 +898,7 @@ export async function disconnectPairedGameJudge(input: {
 }
 
 export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRole, token: string) {
+  if (postgresRoomsSelected()) return closePostgresPairedRoom(roomId, role, token);
   const context = await readRoom(roomId);
   if (!context) return { ok: true, closed: true };
   const valid = multiplayerCredentialsMatch(
@@ -839,4 +936,216 @@ export async function closePairedGameRoom(roomId: string, role: PairedGameRoomRo
   }
   log.info("things.paired-game-room", "Room closed", { game: context.meta.game, closedBy: role });
   return { ok: true, closed: true };
+}
+
+async function readPostgresPlayerSetup(input: {
+  roomId: string;
+  playerToken: string;
+}): Promise<RemotePlayerSetupResult> {
+  const now = Date.now();
+  const result = await withPostgresPairedRoom(input.roomId, (room) => {
+    if (!multiplayerCredentialsMatch(input.playerToken, room.meta.playerHash))
+      return remoteSetupFailure("invite_expired", "Invite expired");
+    room.playerSeenAt = now;
+    applyPostgresRoomExpiry(room);
+    return {
+      ok: true as const,
+      setup: room.setup,
+      judgeConnected: now - room.judgeSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1_000,
+      expiresAt: room.expiresAt,
+    };
+  });
+  return result ?? remoteSetupFailure("room_unavailable", "Room unavailable");
+}
+
+async function syncPostgresPlayer(
+  input: {
+    roomId: string;
+    playerToken: string;
+    snapshot: RemoteSyncedSnapshot;
+    lastCommandSequence: number;
+  },
+  workflowContext: GameContext,
+): Promise<RemotePlayerSyncResult> {
+  const now = workflowContext.now;
+  const command: PairedGameCommand = versionGameCommand({
+    game: "paired-remote",
+    actionId: `${input.snapshot.connectionEpoch}:${input.snapshot.revision}`,
+    actor: { connectionEpoch: input.snapshot.connectionEpoch },
+    action: {
+      snapshot: input.snapshot,
+      lastCommandSequence: input.lastCommandSequence,
+    },
+  });
+  const result = await withPostgresPairedRoom(input.roomId, (room) => {
+    if (!multiplayerCredentialsMatch(input.playerToken, room.meta.playerHash))
+      return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+    if (room.meta.game !== input.snapshot.game)
+      return remotePlayerSyncFailure("game_mismatch", "Game mismatch");
+    if (
+      room.activePlayerEpoch &&
+      room.activePlayerEpoch !== input.snapshot.connectionEpoch &&
+      now - room.playerSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1_000
+    )
+      return remotePlayerSyncFailure("player_conflict", "Game is active on another phone");
+    room.activePlayerEpoch = input.snapshot.connectionEpoch;
+    const transition = applyPairedGameCommand(
+      {
+        processedActions: room.snapshot
+          ? [`${room.snapshot.connectionEpoch}:${room.snapshot.revision}`]
+          : [],
+        snapshot: room.snapshot,
+        commands: room.commands,
+        playerSeenAt: room.playerSeenAt,
+        judgeSeenAt: room.judgeSeenAt,
+      },
+      command,
+      workflowContext,
+    );
+    if (!transition.ok) return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+    const outcome = transition.value.output;
+    if (!outcome) return remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+    room.snapshot = transition.value.state.snapshot;
+    room.commands = transition.value.state.commands;
+    room.playerSeenAt = transition.value.state.playerSeenAt;
+    return {
+      ok: true as const,
+      commands: outcome.commands,
+      judgeConnected: outcome.judgeConnected,
+    };
+  });
+  return result ?? remotePlayerSyncFailure("room_unavailable", "Room unavailable");
+}
+
+async function readPostgresJudge(input: {
+  roomId: string;
+  judgeToken: string;
+  judgeEpoch: string;
+  takeover: boolean;
+}): Promise<RemoteJudgeSnapshotResult> {
+  const now = Date.now();
+  const result = await withPostgresPairedRoom(input.roomId, (room) => {
+    if (!multiplayerCredentialsMatch(input.judgeToken, room.meta.judgeHash))
+      return remoteJudgeFailure("invite_expired", "Invite expired");
+    const leaseExpired = now - room.judgeSeenAt > JUDGE_LEASE_TTL_SECONDS * 1_000;
+    const judgeActive =
+      input.takeover ||
+      leaseExpired ||
+      !room.activeJudgeEpoch ||
+      room.activeJudgeEpoch === input.judgeEpoch;
+    if (judgeActive) {
+      room.activeJudgeEpoch = input.judgeEpoch;
+      room.judgeSeenAt = now;
+      applyPostgresRoomExpiry(room);
+    }
+    return {
+      ok: true as const,
+      snapshot: room.snapshot,
+      playerConnected: now - room.playerSeenAt <= PAIRED_GAME_PRESENCE_TTL_SECONDS * 1_000,
+      judgeActive,
+      expiresAt: room.expiresAt,
+    };
+  });
+  return result ?? remoteJudgeFailure("room_unavailable", "Room unavailable");
+}
+
+async function sendPostgresJudgeCommand(
+  input: {
+    roomId: string;
+    judgeToken: string;
+    judgeEpoch: string;
+    command: RemoteCommandRequest;
+  },
+  workflowContext: GameContext,
+): Promise<RemoteCommandResult> {
+  const receivedAt = workflowContext.now;
+  const commandAge = receivedAt - input.command.createdAt;
+  if (commandAge > COMMAND_MAX_AGE_MS || commandAge < -5_000)
+    return multiplayerFailure("command_expired", "Command expired");
+  const result = await withPostgresPairedRoom(input.roomId, (room) => {
+    if (!multiplayerCredentialsMatch(input.judgeToken, room.meta.judgeHash))
+      return multiplayerFailure("invite_expired", "Invite expired");
+    if (
+      room.activeJudgeEpoch !== input.judgeEpoch ||
+      receivedAt - room.judgeSeenAt > JUDGE_LEASE_TTL_SECONDS * 1_000
+    )
+      return multiplayerFailure("inactive_judge", "Controls are active on another screen");
+    room.commandSequences = room.commandSequences.filter(
+      ({ createdAt }) => receivedAt - createdAt <= COMMAND_MAX_AGE_MS,
+    );
+    const existing = room.commandSequences.find(({ id }) => id === input.command.id);
+    if (existing) return { ok: true as const, sequence: existing.sequence };
+    if (receivedAt - room.commandRateWindowAt >= 60_000) {
+      room.commandRateWindowAt = receivedAt;
+      room.commandRateCount = 0;
+    }
+    room.commandRateCount += 1;
+    if (room.commandRateCount > 120) return multiplayerFailure("rate_limited", "Too many controls");
+    const policyRejection = judgeCommandPolicy(room.snapshot, input.command, receivedAt);
+    if (policyRejection)
+      return multiplayerFailure(policyRejection.errorCode, policyRejection.error);
+    if (isRemoteDecisionCommand(input.command) && room.decidedItems.includes(input.command.itemId))
+      return multiplayerFailure("already_decided", "Word already decided");
+    const sequence = room.nextSequence++;
+    room.commandSequences.push({
+      id: input.command.id,
+      sequence,
+      createdAt: input.command.createdAt,
+    });
+    if (isRemoteDecisionCommand(input.command)) room.decidedItems.push(input.command.itemId);
+    room.commands.push({ ...input.command, sequence, receivedAt });
+    if (room.commands.length > 50) room.commands.splice(0, room.commands.length - 50);
+    return { ok: true as const, sequence };
+  });
+  return result ?? multiplayerFailure("room_unavailable", "Room unavailable");
+}
+
+async function disconnectPostgresJudge(input: {
+  roomId: string;
+  playerToken: string;
+}): Promise<{ ok: true; judgeToken: string } | { ok: false }> {
+  const result = await withPostgresPairedRoom(input.roomId, (room) => {
+    if (
+      room.meta.creatorRole !== "player" ||
+      !multiplayerCredentialsMatch(input.playerToken, room.meta.playerHash, 200)
+    )
+      return { ok: false as const };
+    const judgeToken = createMultiplayerCredential();
+    room.meta.judgeHash = hashMultiplayerCredential(judgeToken);
+    room.activeJudgeEpoch = null;
+    room.judgeSeenAt = 0;
+    return { ok: true as const, judgeToken };
+  });
+  return result ?? { ok: false };
+}
+
+async function closePostgresPairedRoom(
+  roomId: string,
+  role: PairedGameRoomRole,
+  token: string,
+): Promise<{ ok: boolean; closed: boolean }> {
+  const room = await loadPostgresGameRoom<PostgresPairedRoomState>("paired-remote", roomId);
+  if (!room) return { ok: true, closed: true };
+  if (role === "judge" && room.meta.creatorRole === "player") {
+    const result = await withPostgresPairedRoom(roomId, (current) => {
+      if (!multiplayerCredentialsMatch(token, current.meta.judgeHash, 200))
+        return { ok: false, closed: false };
+      current.meta.judgeHash = hashMultiplayerCredential(createMultiplayerCredential());
+      current.activeJudgeEpoch = null;
+      current.judgeSeenAt = 0;
+      return { ok: true, closed: false };
+    });
+    return result ?? { ok: true, closed: true };
+  }
+  const ok = await deletePostgresRoom<PostgresPairedRoomState>({
+    kind: "paired-remote",
+    roomId,
+    authorize: (current) =>
+      multiplayerCredentialsMatch(
+        token,
+        role === "player" ? current.meta.playerHash : current.meta.judgeHash,
+        200,
+      ),
+  });
+  return { ok, closed: ok };
 }

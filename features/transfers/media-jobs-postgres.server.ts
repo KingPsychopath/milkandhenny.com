@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 
+import { enqueueMediaObjectOperation } from "@/features/media/object-operations.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getGenerationTransferAssetKeys } from "./media-state";
 import type { TransferMediaJob } from "./media-queue.server";
@@ -24,6 +25,158 @@ export type ClaimedPostgresTransferMediaJob = {
   generation: number;
   job: TransferMediaJob;
 };
+
+export type PostgresTransferMediaQueueSnapshot = {
+  pending: number;
+  claimed: number;
+  dead: number;
+  completed: number;
+  cancelled: number;
+  due: number;
+  expiredClaims: number;
+  oldestPendingAt: string | null;
+  oldestDeadAt: string | null;
+};
+
+/** One aggregate state read for admin health and CLI diagnostics; never expose job payloads. */
+export async function getPostgresTransferMediaQueueSnapshot(): Promise<PostgresTransferMediaQueueSnapshot> {
+  const rows = await query<{
+    pending: string;
+    claimed: string;
+    dead: string;
+    completed: string;
+    cancelled: string;
+    due: string;
+    expired_claims: string;
+    oldest_pending_at: Date | null;
+    oldest_dead_at: Date | null;
+  }>(
+    `select
+       count(*) filter (where status='pending')::text as pending,
+       count(*) filter (where status='claimed')::text as claimed,
+       count(*) filter (where status='dead')::text as dead,
+       count(*) filter (where status='completed')::text as completed,
+       count(*) filter (where status='cancelled')::text as cancelled,
+       count(*) filter (where status='pending' and available_at <= clock_timestamp())::text as due,
+       count(*) filter (where status='claimed' and lease_until <= clock_timestamp())::text
+         as expired_claims,
+       min(enqueued_at) filter (where status='pending') as oldest_pending_at,
+       min(enqueued_at) filter (where status='dead') as oldest_dead_at
+       from transfer_media_jobs`,
+  );
+  const row = rows[0];
+  if (!row) throw new Error("Transfer media queue snapshot unavailable");
+  return {
+    pending: Number(row.pending),
+    claimed: Number(row.claimed),
+    dead: Number(row.dead),
+    completed: Number(row.completed),
+    cancelled: Number(row.cancelled),
+    due: Number(row.due),
+    expiredClaims: Number(row.expired_claims),
+    oldestPendingAt: row.oldest_pending_at?.toISOString() ?? null,
+    oldestDeadAt: row.oldest_dead_at?.toISOString() ?? null,
+  };
+}
+
+/** Operator queue clear: cancel active work while retaining its audit and fencing late workers. */
+export async function clearPostgresTransferMediaQueue(): Promise<{
+  cancelledJobs: number;
+  queueLengthBefore: number;
+  processingLengthBefore: number;
+}> {
+  const rows = await query<{ previous_status: "pending" | "claimed" }>(
+    `with current_jobs as (
+       select id,status from transfer_media_jobs
+        where status in ('pending','claimed') order by id for update
+     ), cancelled as (
+       update transfer_media_jobs j
+          set status='cancelled',claim_token=null,claim_owner=null,lease_until=null
+         from current_jobs c where j.id=c.id
+        returning c.status as previous_status
+     )
+     select previous_status from cancelled`,
+  );
+  return {
+    cancelledJobs: rows.length,
+    queueLengthBefore: rows.filter((row) => row.previous_status === "pending").length,
+    processingLengthBefore: rows.filter((row) => row.previous_status === "claimed").length,
+  };
+}
+
+/** Grant one more attempt while preserving the existing claim and failure history. */
+export async function retryDeadPostgresTransferMediaJobs(limit = 25): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("Invalid transfer media retry limit");
+  const rows = await query<{ id: string }>(
+    `with retryable as (
+       select j.id from transfer_media_jobs j
+       join transfers t on t.id=j.transfer_id
+       join transfer_files f on f.transfer_id=j.transfer_id and f.id=j.file_id
+        where j.status='dead'
+          and t.deleted_at is null and t.expires_at > clock_timestamp()
+          and f.processing_generation=j.generation
+          and f.storage_key=j.payload->>'storageKey'
+        order by j.enqueued_at,j.id
+        limit $1 for update of j skip locked
+     )
+     update transfer_media_jobs j
+        set status='pending',available_at=clock_timestamp(),
+            max_attempts=greatest(j.max_attempts,j.attempts+1),last_error=null
+       from retryable where j.id=retryable.id
+     returning j.id`,
+    [limit],
+  );
+  return rows.length;
+}
+
+/** Stage private-object deletion only after an attempt can no longer publish. */
+export async function enqueueAbandonedPostgresTransferMediaOutputs(limit = 50): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw new Error("Invalid transfer media cleanup limit");
+  return transaction(async (client) => {
+    const rows = await client.query<{
+      transfer_id: string;
+      generation: number;
+      thumb_key: string;
+      full_key: string | null;
+    }>(
+      `select j.transfer_id,j.generation,o.thumb_key,o.full_key
+         from transfer_media_job_attempt_outputs o
+         join transfer_media_jobs j on j.id=o.job_id
+         left join transfer_files f on f.transfer_id=j.transfer_id and f.id=j.file_id
+        where o.created_at < clock_timestamp()-interval '35 minutes'
+          and o.claim_token is distinct from f.derivative_claim_token
+          and not (j.status='claimed' and j.claim_token=o.claim_token
+                   and j.lease_until > clock_timestamp())
+          and not exists (
+            select 1 from media_object_operations m
+             where m.owner_kind='transfer' and m.owner_id=j.transfer_id
+               and m.owner_revision=j.generation and m.operation='delete'
+               and m.target_scope='private' and m.target_key=o.thumb_key
+          )
+        order by o.created_at,o.job_id,o.claim_token
+        limit $1 for update of o,j skip locked`,
+      [limit],
+    );
+    for (const row of rows.rows) {
+      for (const key of [row.thumb_key, row.full_key]) {
+        if (!key) continue;
+        if (!key.startsWith(`transfers/${row.transfer_id}/`))
+          throw new Error("Transfer media attempt output escaped its owner prefix");
+        await enqueueMediaObjectOperation(client, {
+          ownerKind: "transfer",
+          ownerId: row.transfer_id,
+          ownerRevision: row.generation,
+          operation: "delete",
+          targetScope: "private",
+          targetKey: key,
+        });
+      }
+    }
+    return rows.rowCount ?? 0;
+  });
+}
 
 function validateLease(leaseMs: number): void {
   if (!Number.isInteger(leaseMs) || leaseMs < 1_000 || leaseMs > 30 * 60_000)

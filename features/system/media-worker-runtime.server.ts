@@ -3,10 +3,14 @@ import { randomUUID } from "node:crypto";
 import { Cause, Context, Data, Deferred, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 
 import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
+import { runAlbumObjectOperationBatch } from "@/features/media/album-object-deletions.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
 import { runPostgresTransferMediaBatch } from "@/features/transfers/media-job-executor-postgres.server";
-import { cancelObsoletePostgresTransferMediaJobs } from "@/features/transfers/media-jobs-postgres.server";
+import {
+  cancelObsoletePostgresTransferMediaJobs,
+  enqueueAbandonedPostgresTransferMediaOutputs,
+} from "@/features/transfers/media-jobs-postgres.server";
 import { runTransferObjectDeletionBatch } from "@/features/transfers/object-deletions.server";
 import {
   markWorkerJobTimedOut,
@@ -29,6 +33,8 @@ import { TransferMediaOperationsService } from "@/features/transfers/transfer-me
 import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
+import { runWordMediaReconcileBatch } from "@/features/words/media-reconcile.server";
+import { runWordMediaDeletionBatch } from "@/features/words/media-deletions.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
 import { createBlockingRedisClient } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
@@ -65,6 +71,8 @@ type ConsumeResult = Pick<
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
 const transferDeletionOwner = `transfer-delete:${randomUUID()}`;
+const albumDeletionOwner = `album-delete:${randomUUID()}`;
+const wordDeletionOwner = `word-delete:${randomUUID()}`;
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
@@ -239,10 +247,12 @@ function workerSlot(client: Redis, errorBackoffMs: number, storage: ObjectStorag
 
 function postgresWorkerSlot(errorBackoffMs: number, storage: ObjectStorageProvider) {
   const owner = `transfer-media:${randomUUID()}`;
+  const timeoutMs = getWorkerProcessingTimeoutMs();
+  const claim = workerAttempt("postgres_claim", (signal) =>
+    withObjectStorageProvider(storage, () => runPostgresTransferMediaBatch(owner, 1, signal)),
+  );
   return Effect.forever(
-    workerAttempt("postgres_claim", (signal) =>
-      withObjectStorageProvider(storage, () => runPostgresTransferMediaBatch(owner, 1, signal)),
-    ).pipe(
+    (timeoutMs > 0 ? claim.pipe(Effect.timeout(timeoutMs)) : claim).pipe(
       Effect.flatMap((result) =>
         result.claimed > 0
           ? workerAttempt("status", () => markMediaJobProcessed())
@@ -294,7 +304,19 @@ function drainPostgresMediaQueues(
               withObjectStorageProvider(storage, () =>
                 runPostgresTransferMediaBatch(owner, 1, signal),
               ),
-            );
+            ).pipe((effect) => {
+              const timeoutMs = getWorkerProcessingTimeoutMs();
+              return timeoutMs > 0
+                ? effect.pipe(
+                    Effect.timeout(timeoutMs),
+                    Effect.mapError((cause) =>
+                      cause instanceof MediaWorkerError
+                        ? cause
+                        : new MediaWorkerError({ cause, operation: "postgres_drain_timeout" }),
+                    ),
+                  )
+                : effect;
+            });
             if (result.claimed === 0) return summary;
             summary.processedJobs += result.claimed;
             summary.succeeded += result.completed;
@@ -418,7 +440,15 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
     reconcileIntervalMs <= 0
       ? Effect.never
       : process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
-        ? workerAttempt("postgres_reconcile", () => cancelObsoletePostgresTransferMediaJobs()).pipe(
+        ? workerAttempt("postgres_reconcile", async () => {
+            const cancelled = await cancelObsoletePostgresTransferMediaJobs();
+            const abandonedOutputs = await enqueueAbandonedPostgresTransferMediaOutputs();
+            if (cancelled > 0 || abandonedOutputs > 0)
+              log.info("media.worker", "Postgres media reconciliation completed", {
+                cancelled,
+                abandonedOutputs,
+              });
+          }).pipe(
             Effect.catch((error) =>
               workerAttempt("record_postgres_reconcile_error", () => recordWorkerError(error)),
             ),
@@ -467,10 +497,67 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
           Schedule.spaced(30_000),
         )
       : Effect.never;
-  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop], {
-    concurrency: 3,
-    discard: true,
-  });
+  const albumDeletionLoop =
+    process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres"
+      ? Effect.repeat(
+          workerAttempt("album_object_operations", () =>
+            withObjectStorageProvider(storage, () =>
+              runAlbumObjectOperationBatch(albumDeletionOwner),
+            ),
+          ).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                if (result.claimed > 0)
+                  log.info("media.worker", "Album object operation batch completed", result);
+              }),
+            ),
+            Effect.catch((error) =>
+              workerAttempt("record_album_operation_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  const wordMediaLoop =
+    process.env.WORD_STORE === "postgres"
+      ? Effect.repeat(
+          workerAttempt("word_media_reconcile", () =>
+            withObjectStorageProvider(storage, () => runWordMediaReconcileBatch()),
+          ).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_word_media_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  const wordDeletionLoop =
+    process.env.WORD_STORE === "postgres"
+      ? Effect.repeat(
+          workerAttempt("word_media_deletions", () =>
+            withObjectStorageProvider(storage, () => runWordMediaDeletionBatch(wordDeletionOwner)),
+          ).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_word_deletion_error", () => recordWorkerError(error)),
+            ),
+          ),
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  return Effect.all(
+    [
+      heartbeatLoop,
+      reconcileLoop,
+      transferDeletionLoop,
+      albumDeletionLoop,
+      wordMediaLoop,
+      wordDeletionLoop,
+    ],
+    {
+      concurrency: 6,
+      discard: true,
+    },
+  );
 }
 
 export class MediaWorkerService extends Context.Service<
@@ -582,6 +669,16 @@ export function runMediaEffect<A, E>(
 
 async function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): Promise<void> {
   if (getMediaProcessorMode() === "local") return;
+  if (
+    process.env.ALBUM_STORE === "postgres" &&
+    process.env.ALBUM_OBJECT_DELETION_RUNNER !== "postgres"
+  )
+    throw new Error("Postgres albums require ALBUM_OBJECT_DELETION_RUNNER=postgres");
+  if (
+    process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres" &&
+    process.env.ALBUM_STORE !== "postgres"
+  )
+    throw new Error("Postgres album deletion runner requires ALBUM_STORE=postgres");
   if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") requirePostgresWorkerStatus();
   if (options.concurrency !== undefined || options.errorBackoffMs !== undefined) {
     // Custom startup settings are used by isolated worker hosts and tests. Release the existing

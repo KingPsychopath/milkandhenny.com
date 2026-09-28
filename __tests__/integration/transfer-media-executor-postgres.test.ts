@@ -145,4 +145,42 @@ describeWithDatabase("Postgres transfer media executor", () => {
     expect(uploaded[2]).toContain(rows[0].derivative_claim_token);
     expect(uploaded[0]).not.toContain(rows[0].derivative_claim_token);
   });
+
+  it("cleans attempt outputs and leaves the claim recoverable after interruption", async () => {
+    const controller = new AbortController();
+    const uploaded: string[] = [];
+    const deleted: string[] = [];
+    await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        downloadBuffer: async () => Buffer.from("source"),
+        uploadBuffer: async (key: string) => {
+          uploaded.push(key);
+          if (uploaded.length === 2) controller.abort(new Error("worker stopped"));
+        },
+        deleteObjects: async (keys: string[]) => {
+          deleted.push(...keys);
+          return keys.length;
+        },
+      },
+      async () => {
+        await expect(
+          runPostgresTransferMediaBatch("worker-one", 1, controller.signal),
+        ).rejects.toThrow("worker stopped");
+      },
+    );
+    expect(deleted).toEqual(uploaded);
+    expect(
+      await query<{ processing_status: string }>(
+        "select processing_status from transfer_files where transfer_id=$1 and id='photo'",
+        [transfer.id],
+      ),
+    ).toEqual([{ processing_status: "queued" }]);
+    expect(
+      await query<{ status: string }>(
+        "select status from transfer_media_jobs where transfer_id=$1",
+        [transfer.id],
+      ),
+    ).toEqual([{ status: "claimed" }]);
+  });
 });

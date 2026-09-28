@@ -1,4 +1,6 @@
 import { query, transaction } from "@/lib/platform/postgres.server";
+import { privatePhotoKeys, publicObjectMetadata, publicPhotoKeys } from "./album-object-keys";
+import { enqueueMediaObjectOperation } from "./object-operations.server";
 import type { Album, Photo } from "./albums";
 
 type AlbumRow = {
@@ -7,7 +9,7 @@ type AlbumRow = {
   album_date: string;
   description: string | null;
   cover_photo_id: string | null;
-  status: "draft" | "published";
+  status: "draft" | "publishing" | "published";
   updated_at: Date;
   revision: number;
   photo_id: string | null;
@@ -90,6 +92,16 @@ export class AlbumWriteConflictError extends Error {
   }
 }
 
+export async function hasPendingPostgresAlbumPublicDeletes(slug: string): Promise<boolean> {
+  const rows = await query(
+    `select 1 from media_object_operations
+      where owner_kind='album' and owner_id=$1 and operation='delete'
+        and status <> 'completed' limit 1`,
+    [slug],
+  );
+  return rows.length > 0;
+}
+
 export async function readPostgresAlbum(slug: string): Promise<Album | null> {
   const rows = await query<AlbumRow>(`${SELECT_ALBUMS} where a.slug = $1 order by p.position`, [
     slug,
@@ -102,17 +114,84 @@ export async function listPostgresAlbums(): Promise<Album[]> {
   return albumsFromRows(rows);
 }
 
-export async function writePostgresAlbum(album: Album): Promise<Album> {
+export async function writePostgresAlbum(
+  album: Album,
+  options: {
+    publicDeleteKeys?: readonly string[];
+    privateDeleteKeys?: readonly string[];
+    publicCopyKeys?: readonly string[];
+  } = {},
+): Promise<Album> {
+  const publicDeleteKeys = options.publicDeleteKeys ?? [];
+  const privateDeleteKeys = options.privateDeleteKeys ?? [];
+  const publicCopyKeys = options.publicCopyKeys ?? [];
+  const referencedPublicKeys = new Set(
+    album.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo)),
+  );
+  const referencedPrivateKeys = new Set(
+    album.photos.flatMap((photo) => privatePhotoKeys(album.slug, photo)),
+  );
+  if (
+    publicDeleteKeys.some(
+      (key) =>
+        !key.startsWith(`albums/${album.slug}/`) ||
+        (album.status === "published" && referencedPublicKeys.has(key)),
+    ) ||
+    privateDeleteKeys.some(
+      (key) => !key.startsWith(`albums/${album.slug}/`) || referencedPrivateKeys.has(key),
+    ) ||
+    (album.status === "publishing"
+      ? new Set(publicCopyKeys).size !== referencedPublicKeys.size ||
+        publicCopyKeys.some((key) => !referencedPublicKeys.has(key)) ||
+        publicDeleteKeys.length > 0
+      : publicCopyKeys.length > 0)
+  )
+    throw new Error("Invalid album deletion intent");
   const updatedAt = new Date().toISOString();
   const nextRevision = await transaction(async (client) => {
-    const current = await client.query<{ revision: number }>(
-      "select revision from gallery_albums where slug = $1 for update",
+    // An object deletion holds this lock through its R2 call, so a delayed worker cannot
+    // delete a newly republished public key after this revision commits.
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+      `album:${album.slug}`,
+    ]);
+    const current = await client.query<{ revision: number; status: Album["status"] }>(
+      "select revision,status from gallery_albums where slug = $1 for update",
       [album.slug],
     );
     const existing = current.rows[0];
     if (existing && album.revision !== existing.revision) throw new AlbumWriteConflictError();
     if (!existing && album.revision !== undefined) throw new AlbumWriteConflictError();
-    const revision = existing ? existing.revision + 1 : 1;
+    if (existing?.status === "publishing" && album.status === "publishing")
+      throw new AlbumWriteConflictError();
+    if (referencedPrivateKeys.size > 0) {
+      const pendingPrivate = await client.query(
+        `select 1 from media_object_operations
+          where owner_kind='album' and owner_id=$1 and operation='delete'
+            and target_scope='private' and status <> 'completed'
+            and target_key = any($2::text[]) limit 1`,
+        [album.slug, [...referencedPrivateKeys]],
+      );
+      if (pendingPrivate.rows[0]) throw new AlbumWriteConflictError();
+    }
+    if (album.status === "published" || album.status === "publishing" || !existing) {
+      const pending = await client.query(
+        `select 1 from media_object_operations
+          where owner_kind='album' and owner_id=$1 and operation='delete'
+            and status <> 'completed' limit 1`,
+        [album.slug],
+      );
+      if (pending.rows[0]) throw new AlbumWriteConflictError();
+    }
+    let previousOperationRevision = 0;
+    if (!existing) {
+      const previous = await client.query<{ revision: number }>(
+        `select coalesce(max(owner_revision), 0)::integer as revision
+           from media_object_operations where owner_kind='album' and owner_id=$1`,
+        [album.slug],
+      );
+      previousOperationRevision = previous.rows[0]?.revision ?? 0;
+    }
+    const revision = existing ? existing.revision + 1 : previousOperationRevision + 1;
     const values = [
       album.slug,
       album.title,
@@ -166,11 +245,87 @@ export async function writePostgresAlbum(album: Album): Promise<Album> {
         ],
       );
     }
+    for (const key of new Set(publicDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: album.slug,
+        ownerRevision: revision,
+        operation: "delete",
+        targetScope: "public",
+        targetKey: key,
+      });
+    for (const key of new Set(privateDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: album.slug,
+        ownerRevision: revision,
+        operation: "delete",
+        targetScope: "private",
+        targetKey: key,
+      });
+    for (const key of new Set(publicCopyKeys)) {
+      const metadata = publicObjectMetadata(key);
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: album.slug,
+        ownerRevision: revision,
+        operation: "copy",
+        sourceScope: "private",
+        sourceKey: key,
+        targetScope: "public",
+        targetKey: key,
+        contentType: metadata.contentType,
+        cacheControl: metadata.cacheControl,
+      });
+    }
     return revision;
   });
   return { ...album, updatedAt, revision: nextRevision };
 }
 
-export async function deletePostgresAlbum(slug: string): Promise<void> {
-  await query("delete from gallery_albums where slug = $1", [slug]);
+export async function deletePostgresAlbum(
+  slug: string,
+  options: {
+    expectedRevision: number;
+    publicDeleteKeys: readonly string[];
+    privateDeleteKeys: readonly string[];
+  },
+): Promise<void> {
+  if (
+    !Number.isInteger(options.expectedRevision) ||
+    options.expectedRevision < 1 ||
+    options.publicDeleteKeys.some((key) => !key.startsWith(`albums/${slug}/`)) ||
+    options.privateDeleteKeys.some(
+      (key) => !key.startsWith(`albums/${slug}/`) && key !== `albums/_manifests/${slug}.json`,
+    )
+  )
+    throw new Error("Invalid album deletion intent");
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`album:${slug}`]);
+    const current = await client.query<{ revision: number }>(
+      "select revision from gallery_albums where slug=$1 for update",
+      [slug],
+    );
+    if (current.rows[0]?.revision !== options.expectedRevision) throw new AlbumWriteConflictError();
+    await client.query("delete from gallery_albums where slug = $1", [slug]);
+    const ownerRevision = options.expectedRevision + 1;
+    for (const key of new Set(options.publicDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: slug,
+        ownerRevision,
+        operation: "delete",
+        targetScope: "public",
+        targetKey: key,
+      });
+    for (const key of new Set(options.privateDeleteKeys))
+      await enqueueMediaObjectOperation(client, {
+        ownerKind: "album",
+        ownerId: slug,
+        ownerRevision,
+        operation: "delete",
+        targetScope: "private",
+        targetKey: key,
+      });
+  });
 }

@@ -22,9 +22,8 @@ const jobs = [
   { path: "/api/cron/cleanup-auth-state" },
   { path: "/api/cron/cleanup-word-shares" },
   { path: "/api/cron/cleanup-word-media-orphans" },
-  // Reconcile media the worker never finished. The worker sweeps for this
-  // itself on a reconciliation timer; this is the backstop for the worker
-  // being down. Both share a Redis lock, so overlap is harmless.
+  // Backstop the worker's own reconciliation timer. The selected repository
+  // rechecks each candidate under its durable lock before enqueueing work.
   { path: "/api/cron/process-transfer-media", method: "POST" },
 ];
 

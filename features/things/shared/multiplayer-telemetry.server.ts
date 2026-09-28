@@ -131,12 +131,12 @@ export class MultiplayerTelemetry extends Context.Service<
       reconnect: boolean,
     ) => Effect.Effect<void>;
     readonly socketPending: (game: MultiplayerGame) => Effect.Effect<void>;
-    readonly setBackplaneMode: (mode: "local" | "redis") => Effect.Effect<void>;
+    readonly setBackplaneMode: (mode: "local" | "redis" | "postgres") => Effect.Effect<void>;
     readonly snapshot: Effect.Effect<MultiplayerTelemetrySnapshot>;
   }
 >()("MultiplayerTelemetry") {
   static readonly layer = Layer.sync(this, () => {
-    let backplaneMode: "local" | "redis" = "local";
+    let backplaneMode: "local" | "redis" | "postgres" = "local";
     const runtimeStartedAt = new Date().toISOString();
     const replica = getRuntimeInstanceId();
 

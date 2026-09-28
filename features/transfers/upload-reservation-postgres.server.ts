@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { PoolClient } from "pg";
 
-import { query, queryOne } from "@/lib/platform/postgres.server";
+import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getUploadReservationTtlSeconds } from "./upload-window.server";
 import { transferUploadFilesFingerprint } from "./upload-reservation.server";
 import type { TransferUploadReservation } from "./upload-reservation.server";
@@ -92,27 +92,37 @@ export async function createPostgresTransferUploadReservation(
   const createdAt = new Date(reservation.createdAt);
   if (!Number.isFinite(createdAt.getTime())) throw new Error("Invalid transfer reservation time");
   const ttlSeconds = getUploadReservationTtlSeconds();
-  const inserted = await query<{ transfer_id: string }>(
-    `insert into transfer_upload_reservations
+  return transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1,104729))", [
+      reservation.transferId,
+    ]);
+    const inserted = await client.query<{ transfer_id: string }>(
+      `insert into transfer_upload_reservations
        (transfer_id,delete_token_hash,actor_jti_hash,files_fingerprint_sha256,
         reserved_file_count,reserved_bytes,expires_seconds,created_at,expires_at)
      select $1,$2,$3,$4,$5,$6,$7,$8,clock_timestamp()+$9*interval '1 second'
       where not exists (select 1 from transfers where id=$1)
+        and not exists (
+          select 1 from media_object_operations
+           where owner_kind='transfer' and owner_id=$1 and operation='delete'
+             and status <> 'completed'
+        )
      on conflict (transfer_id) do nothing
      returning transfer_id`,
-    [
-      reservation.transferId,
-      fingerprint("delete", reservation.deleteToken),
-      fingerprint("actor", reservation.actorJti),
-      fingerprint("files", reservation.filesFingerprint),
-      files.length,
-      bytes,
-      reservation.expiresSeconds,
-      createdAt,
-      ttlSeconds,
-    ],
-  );
-  return inserted.length === 1;
+      [
+        reservation.transferId,
+        fingerprint("delete", reservation.deleteToken),
+        fingerprint("actor", reservation.actorJti),
+        fingerprint("files", reservation.filesFingerprint),
+        files.length,
+        bytes,
+        reservation.expiresSeconds,
+        createdAt,
+        ttlSeconds,
+      ],
+    );
+    return inserted.rowCount === 1;
+  });
 }
 
 export async function getPostgresTransferUploadReservation(

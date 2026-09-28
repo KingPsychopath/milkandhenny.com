@@ -4,6 +4,10 @@ import { getMediaProcessorMode } from "@/features/media/config.server";
 import { durableWorkSnapshot } from "@/features/system/durable-work";
 import { getCommandRedis } from "@/lib/platform/redis-direct.server";
 import { getRedis } from "@/lib/platform/redis.server";
+import {
+  getPostgresTransferMediaQueueSnapshot,
+  retryDeadPostgresTransferMediaJobs,
+} from "./media-jobs-postgres.server";
 import type { ProcessingRoute } from "./media-state";
 import type { TransferUploadFileInput } from "./upload-types";
 
@@ -58,6 +62,8 @@ function requireTransferMediaQueueRedis() {
 }
 
 async function enqueueTransferMediaJob(job: TransferMediaJob): Promise<void> {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres")
+    throw new Error("Postgres transfer media jobs must enqueue with their file transaction");
   const redis = requireTransferMediaQueueRedis();
   const normalized = normalizedJob(job);
   const key = `transfer:media:idempotency:${normalized.idempotencyKey}`;
@@ -69,6 +75,8 @@ async function enqueueTransferMediaJob(job: TransferMediaJob): Promise<void> {
 }
 
 async function getTransferMediaQueueLength(): Promise<number> {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres")
+    return (await getPostgresTransferMediaQueueSnapshot()).pending;
   const redis = requireTransferMediaQueueRedis();
   const length = await redis.llen(TRANSFER_MEDIA_QUEUE_KEY);
   return typeof length === "number" ? length : 0;
@@ -236,6 +244,26 @@ async function describeTransferMediaQueue() {
         oldestPendingAt: null,
       }),
     };
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") {
+    const snapshot = await getPostgresTransferMediaQueueSnapshot();
+    return {
+      enabled: true,
+      queued: snapshot.pending,
+      leased: snapshot.claimed,
+      permanentFailures: snapshot.dead,
+      oldestPermanentFailureAt: snapshot.oldestDeadAt,
+      backlogAgeMs: snapshot.oldestPendingAt
+        ? Math.max(0, Date.now() - Date.parse(snapshot.oldestPendingAt))
+        : null,
+      durableWork: durableWorkSnapshot({
+        available: true,
+        pending: snapshot.pending,
+        processing: snapshot.claimed,
+        failed: snapshot.dead,
+        oldestPendingAt: snapshot.oldestPendingAt,
+      }),
+    };
+  }
   const redis = getCommandRedis();
   const [queuedJobs, leasedJobs, deadJobs] = await Promise.all([
     redis.lrange(TRANSFER_MEDIA_QUEUE_KEY, 0, -1),
@@ -265,6 +293,8 @@ async function describeTransferMediaQueue() {
 }
 
 async function retryDeadTransferMediaJobs(limit = 25) {
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres")
+    return retryDeadPostgresTransferMediaJobs(limit);
   const redis = getCommandRedis();
   let retried = 0;
   while (retried < Math.max(1, Math.min(100, limit))) {

@@ -17,9 +17,22 @@ import {
   getDirectRedisConfig,
 } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
+import {
+  closePostgresTransferMediaEventSubscriber,
+  publishPostgresTransferMediaEvent,
+  subscribeToPostgresTransferMediaEvents,
+} from "./media-events-postgres.server";
+import { postgresTransferCatalogueSelected } from "./store-selection.server";
 import type { TransferFile } from "./types";
 
 const TRANSFER_MEDIA_EVENT_CHANNEL = "transfer:media:events";
+
+function postgresTransferEventsSelected() {
+  if (process.env.TRANSFER_MEDIA_EVENT_BACKPLANE !== "postgres") return false;
+  if (!postgresTransferCatalogueSelected())
+    throw new Error("Postgres transfer events require the Postgres transfer catalogue and jobs");
+  return true;
+}
 
 type TransferMediaEvent = {
   transferId: string;
@@ -48,6 +61,18 @@ function isTransferMediaEvent(value: unknown): value is TransferMediaEvent {
  * must never fail the job that produced it.
  */
 async function publishTransferMediaEvent(transferId: string, file: TransferFile): Promise<void> {
+  if (postgresTransferEventsSelected()) {
+    try {
+      await publishPostgresTransferMediaEvent(transferId, file.id);
+    } catch (error) {
+      log.warn("transfer.media.events", "Failed to publish Postgres processing event", {
+        transferId,
+        fileId: file.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
   if (!getDirectRedisConfig()) return;
 
   const event: TransferMediaEvent = {
@@ -120,6 +145,8 @@ async function subscribeToTransferMediaEvents(
   transferId: string,
   listener: TransferMediaEventListener,
 ): Promise<() => void> {
+  if (postgresTransferEventsSelected())
+    return subscribeToPostgresTransferMediaEvents(transferId, listener);
   await ensureSubscribed();
 
   const existing = listeners.get(transferId) ?? new Set<TransferMediaEventListener>();
@@ -135,6 +162,7 @@ async function subscribeToTransferMediaEvents(
 }
 
 async function closeTransferMediaEventSubscriber(): Promise<void> {
+  await closePostgresTransferMediaEventSubscriber();
   const client = subscriber;
   subscriber = null;
   listeners.clear();

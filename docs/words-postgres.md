@@ -7,7 +7,11 @@ Migration `0107_words` stores Markdown, typed metadata and immutable revision sn
 same database transaction. The `WORD_STORE=postgres` repository path preserves the existing
 word shape, listing filters, original timestamps, slugs and Markdown bytes. Revision checks
 refuse concurrent writes; reads do not repair or delete R2 objects. Images and other binary
-media remain in R2. Revision snapshots are retained until the word is deleted, when its
+media remain in R2. Migration `0122_word_media_scope_reconciliation` records visibility-driven
+R2 work in Postgres. Public and unlisted reads hide a word until its media move finishes. The
+web process attempts the move after saving, and the media worker retries interrupted work. Word
+deletion queues R2 object deletions in the same transaction as the row removal and blocks slug
+reuse until cleanup completes. Revision snapshots are retained until the word is deleted, when its
 snapshots cascade; a separate retention policy is required if historical revisions must survive
 deletion.
 
@@ -50,12 +54,12 @@ DATABASE_URL=… pnpm exec tsx --tsconfig tsconfig.cli.json ops/import-word-shar
 ```
 
 The supplied RDB has zero share records and zero tracked share slugs. Its empty import succeeded
-twice on the isolated restore; a count mismatch failed. A later source snapshot may contain
-active, revoked or retained expired links and must be imported with its original link identities,
-hashes and expiry values. A synthetic one-link import also repeated cleanly and rejected a
+twice on the isolated restore; a count mismatch failed. The user designated this first verified
+export as the source cutoff and accepted later Redis-only loss. A synthetic one-link import also repeated cleanly and rejected a
 different source hash. Keep `AUTH_SECRET` unchanged for signed access cookies.
 
 Do not select `WORD_STORE=postgres`, `WORD_SHARE_STORE=postgres` or their PIN rate limiter in
-production yet. Visibility changes, image promotion and deletion still need durable R2 operation
-intents and reference-safe cleanup. Add those paths, import a fresh source delta, and reconcile
-identities, exact Markdown hashes, share state and access expiry before the planned cutover.
+production yet. A stale upload can still finish after word deletion and leave an orphan R2
+object; the object reconciliation sweep remains a release gate. Import the verified cutoff
+export, then reconcile identities, exact Markdown hashes, share state and access expiry before
+the planned cutover.

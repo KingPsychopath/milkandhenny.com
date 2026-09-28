@@ -9,7 +9,10 @@ import {
   getTransferMediaQueueLength,
 } from "./media-backends/worker.server";
 import { retryDeadTransferMediaJobs } from "./media-queue.server";
+import { clearPostgresTransferMediaQueue } from "./media-jobs-postgres.server";
+import { requeuePostgresTransferMediaFile } from "./media-reprocess-postgres.server";
 import { reconcileTransferMedia } from "./media-reconcile.server";
+import { reconcilePostgresTransferMedia } from "./media-reconcile-postgres.server";
 import { getTransfer } from "./store.server";
 import { backfillTransferMedia } from "./upload.server";
 import type { TransferFile } from "./types";
@@ -74,7 +77,12 @@ export class TransferMediaOperationsService extends Context.Service<
       transferId: string,
     ) => Effect.Effect<TransferMediaBackfillResult, TransferMediaOperationError>;
     readonly clearQueue: Effect.Effect<
-      { deletedKeys: number; queueLengthBefore: number; processingLengthBefore: number },
+      {
+        deletedKeys: number;
+        queueLengthBefore: number;
+        processingLengthBefore: number;
+        cancelledJobs?: number;
+      },
       TransferMediaOperationError
     >;
     readonly queueLength: Effect.Effect<number, TransferMediaOperationError>;
@@ -109,6 +117,16 @@ export class TransferMediaOperationsService extends Context.Service<
           const transfer = yield* readTransfer(transferId);
           if (!transfer) return { status: "missing" } as const;
           if (isExpired(transfer.expiresAt)) return { status: "expired" } as const;
+          if (process.env.TRANSFER_CATALOGUE_STORE === "postgres") {
+            let changed = false;
+            for (const file of transfer.files) {
+              const outcome = yield* attempt("backfill_postgres_file", () =>
+                requeuePostgresTransferMediaFile({ transferId, fileId: file.id }),
+              );
+              if (outcome === "requeued") changed = true;
+            }
+            return { status: "completed", changed, fileCount: transfer.files.length } as const;
+          }
           const updated = yield* usingStorage("backfill", () => backfillTransferMedia(transfer));
           return {
             status: "completed",
@@ -125,6 +143,21 @@ export class TransferMediaOperationsService extends Context.Service<
             input.mediaId ? file.id === input.mediaId : file.filename === input.filename,
           );
           if (!target) return { status: "file-missing" } as const;
+          if (process.env.TRANSFER_CATALOGUE_STORE === "postgres") {
+            const outcome = yield* attempt("retry_postgres_file", () =>
+              requeuePostgresTransferMediaFile({ transferId: input.transferId, fileId: target.id }),
+            );
+            if (outcome === "missing") return { status: "refreshed-file-missing" } as const;
+            return {
+              status: "completed",
+              requeued: outcome === "requeued",
+              mediaId: target.id,
+              filename: target.filename,
+              processingStatus:
+                outcome === "requeued" ? ("queued" as const) : target.processingStatus,
+              retryCount: (target.retryCount ?? 0) + (outcome === "requeued" ? 1 : 0),
+            } as const;
+          }
           const updated = yield* usingStorage("retry", () => backfillTransferMedia(transfer));
           const updatedFile = updated.files.find((file) => file.id === target.id);
           if (!updatedFile) return { status: "refreshed-file-missing" } as const;
@@ -147,6 +180,27 @@ export class TransferMediaOperationsService extends Context.Service<
           const transfer = yield* readTransfer(input.transferId);
           if (!transfer) return { status: "missing" } as const;
           if (isExpired(transfer.expiresAt)) return { status: "expired" } as const;
+          if (process.env.TRANSFER_CATALOGUE_STORE === "postgres") {
+            const requeued: string[] = [];
+            const skipped: string[] = [];
+            for (const file of transfer.files) {
+              const matches = input.mediaId
+                ? file.id === input.mediaId
+                : input.filename
+                  ? file.filename === input.filename
+                  : file.kind === input.kind;
+              if (!matches) continue;
+              const outcome = yield* attempt("reprocess_postgres_file", () =>
+                requeuePostgresTransferMediaFile({
+                  transferId: input.transferId,
+                  fileId: file.id,
+                  force: true,
+                }),
+              );
+              (outcome === "requeued" ? requeued : skipped).push(file.id);
+            }
+            return { status: "completed", requeued, skipped } as const;
+          }
           const result = yield* usingStorage("reprocess", () =>
             forceReprocessTransferFiles(transfer, (file) => {
               if (input.mediaId) return file.id === input.mediaId;
@@ -159,34 +213,45 @@ export class TransferMediaOperationsService extends Context.Service<
       const queueLength = attempt("queue_length", getTransferMediaQueueLength);
       return {
         backfill,
-        clearQueue: Effect.gen(function* () {
-          const client = yield* redis.client.pipe(
-            Effect.mapError(
-              (cause) => new TransferMediaOperationError({ cause, operation: "redis_client" }),
-            ),
-          );
-          if (!client) {
-            return yield* Effect.fail(
-              new TransferMediaOperationError({
-                cause: new Error("Redis is not configured"),
-                operation: "clear_queue",
-              }),
-            );
-          }
-          const [queueLengthBefore, processingLengthBefore] = yield* Effect.all(
-            [
-              attempt("queued_length", () => client.llen("transfer:media:queue")),
-              attempt("processing_length", () => client.llen("transfer:media:processing")),
-            ],
-            { concurrency: 2 },
-          );
-          const deletedKeys = yield* attempt("clear_queue", () =>
-            client.del("transfer:media:queue", "transfer:media:processing"),
-          );
-          return { deletedKeys, queueLengthBefore, processingLengthBefore };
-        }).pipe(Effect.withSpan("transfers.media.clear_queue")),
+        clearQueue:
+          process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
+            ? attempt("clear_postgres_queue", async () => ({
+                deletedKeys: 0,
+                ...(await clearPostgresTransferMediaQueue()),
+              }))
+            : Effect.gen(function* () {
+                const client = yield* redis.client.pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new TransferMediaOperationError({ cause, operation: "redis_client" }),
+                  ),
+                );
+                if (!client) {
+                  return yield* Effect.fail(
+                    new TransferMediaOperationError({
+                      cause: new Error("Redis is not configured"),
+                      operation: "clear_queue",
+                    }),
+                  );
+                }
+                const [queueLengthBefore, processingLengthBefore] = yield* Effect.all(
+                  [
+                    attempt("queued_length", () => client.llen("transfer:media:queue")),
+                    attempt("processing_length", () => client.llen("transfer:media:processing")),
+                  ],
+                  { concurrency: 2 },
+                );
+                const deletedKeys = yield* attempt("clear_queue", () =>
+                  client.del("transfer:media:queue", "transfer:media:processing"),
+                );
+                return { deletedKeys, queueLengthBefore, processingLengthBefore };
+              }).pipe(Effect.withSpan("transfers.media.clear_queue")),
         queueLength,
-        reconcile: usingStorage("reconcile", reconcileTransferMedia),
+        reconcile: attempt("reconcile", () =>
+          process.env.TRANSFER_CATALOGUE_STORE === "postgres"
+            ? reconcilePostgresTransferMedia()
+            : withObjectStorageProvider(storage.port, reconcileTransferMedia),
+        ),
         reprocess,
         retry,
         retryDead: (limit = 25) => attempt("retry_dead", () => retryDeadTransferMediaJobs(limit)),

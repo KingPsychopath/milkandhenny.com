@@ -81,6 +81,7 @@ export const getWordPageFn = createServerFn({ method: "GET" })
     if (!isWordsEnabled()) throw notFound();
     const meta = await getWordMeta(slug);
     if (!meta) throw notFound();
+    if (meta.mediaScopeDirty && meta.visibility !== "private") throw notFound();
     if (meta.visibility === "private") {
       throw redirect({
         to: "/vault/$slug",

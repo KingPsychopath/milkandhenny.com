@@ -24,24 +24,73 @@ function isConfigured(name: string): boolean {
   return Boolean(process.env[name]?.trim());
 }
 
+const POSTGRES_APPLICATION_STORES = [
+  "ALBUM_OBJECT_DELETION_RUNNER",
+  "ALBUM_STORE",
+  "ATTENDEE_SESSION_STORE",
+  "AUTH_CLI_STORE",
+  "AUTH_TOKEN_STORE",
+  "BEST_DRESSED_STORE",
+  "CENTRE_ROOM_STORE",
+  "DRAW_COUNTRY_ROOM_STORE",
+  "FAMILY_FEUD_ROOM_STORE",
+  "GAME_POOL_CREDENTIAL_STORE",
+  "HOT_AND_COLD_ROOM_STORE",
+  "LIARS_ROOM_STORE",
+  "MEDIA_WORKER_STATUS_STORE",
+  "MULTIPLAYER_REALTIME_BACKPLANE",
+  "OFFICIAL_GAME_RESULT_OUTBOX_STORE",
+  "PAIRED_GAME_ROOM_STORE",
+  "PASSKEY_CEREMONY_STORE",
+  "PITCH_PRESENTATION_STORE",
+  "RATE_LIMIT_STORE",
+  "REPORT_STORE",
+  "SAME_BRAIN_ROOM_STORE",
+  "SPELLING_PARTY_ROOM_STORE",
+  "TRANSFER_CATALOGUE_STORE",
+  "TRANSFER_MEDIA_EVENT_BACKPLANE",
+  "TRANSFER_MEDIA_JOB_STORE",
+  "TRANSFER_OBJECT_DELETION_RUNNER",
+  "TWIN_ROOM_STORE",
+  "UPLOAD_ACCESS_STORE",
+  "WORD_SHARE_STORE",
+  "WORD_STORE",
+] as const;
+
+function postgresApplicationPersistenceSelected() {
+  return POSTGRES_APPLICATION_STORES.every((name) => process.env[name] === "postgres");
+}
+
 function getConfiguredCapabilities(): Capability[] {
   const redisConfigured = getRedisRestConfig() !== null;
   const objectStorageConfigured = isObjectStorageConfigured();
   const privateTransferStorageConfigured = isTransferStorageConfigured();
   const authConfigured = getSecurityWarnings().length === 0;
   const maintenanceConfigured = isConfigured("CRON_SECRET");
-  const realtimeBackplaneConfigured = getDirectRedisConfig() !== null;
+  const directRedisConfigured = getDirectRedisConfig() !== null;
+  const postgresRealtime = process.env.MULTIPLAYER_REALTIME_BACKPLANE === "postgres";
+  const realtimeBackplaneConfigured = postgresRealtime
+    ? isDatabaseConfigured()
+    : directRedisConfigured;
   const emailCapability = describeEmailCapability();
   const paymentsCapability = describePaymentsCapability();
   const databaseConfigured = isDatabaseConfigured();
   const databaseBoot = getDatabaseBootState();
+  const postgresPersistence = postgresApplicationPersistenceSelected() && databaseConfigured;
   const pitchDocuments = databaseBoot.status === "ready" ? databaseBoot.pitchDocuments : undefined;
   const mediaMode = getMediaProcessorMode();
   const mediaRole = getMediaRole();
   const pitchEnvironment = getPitchEnvironmentMode();
-  // The worker claims jobs over the direct Redis connection, so that is the
-  // only thing it needs configured beyond a non-local mode.
-  const workerConfigured = mediaMode !== "local" && realtimeBackplaneConfigured;
+  const postgresWorker = process.env.TRANSFER_MEDIA_JOB_STORE === "postgres";
+  const workerConfigured =
+    mediaMode !== "local" &&
+    (postgresWorker
+      ? databaseConfigured &&
+        process.env.MEDIA_WORKER_STATUS_STORE === "postgres" &&
+        process.env.TRANSFER_CATALOGUE_STORE === "postgres" &&
+        (process.env.ALBUM_STORE !== "postgres" ||
+          process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres")
+      : directRedisConfigured);
 
   return [
     {
@@ -54,11 +103,13 @@ function getConfiguredCapabilities(): Capability[] {
     {
       id: "persistence",
       label: "application data",
-      status: redisConfigured ? "available" : "unavailable",
+      status: postgresPersistence || redisConfigured ? "available" : "unavailable",
       required: true,
-      detail: redisConfigured
-        ? "Persistent application state is configured."
-        : "Persistent application state is not configured.",
+      detail: postgresPersistence
+        ? "Postgres application stores are configured."
+        : redisConfigured
+          ? "Persistent application state is configured."
+          : "Persistent application state is not configured.",
     },
     {
       id: "media-delivery",
@@ -184,7 +235,9 @@ function getConfiguredCapabilities(): Capability[] {
       required: false,
       detail: realtimeBackplaneConfigured
         ? "Cross-replica multiplayer wake delivery is configured."
-        : "Multiplayer wake delivery is local to one replica; set REDIS_URL before scaling replicas.",
+        : postgresRealtime
+          ? "Postgres multiplayer wake delivery needs DATABASE_URL."
+          : "Multiplayer wake delivery is local to one replica; set REDIS_URL before scaling replicas.",
     },
     {
       id: "pitch-studio",
@@ -214,7 +267,9 @@ function getConfiguredCapabilities(): Capability[] {
           ? "RAW and video derivatives are processed inline; no worker queue is in use."
           : workerConfigured
             ? `RAW and video derivatives are queued for the media worker (this instance runs the ${mediaRole} role).`
-            : "Worker processing is selected but REDIS_URL is missing, so the queue cannot be claimed.",
+            : postgresWorker
+              ? "Postgres worker processing needs DATABASE_URL and matching catalogue/status stores."
+              : "Worker processing is selected but REDIS_URL is missing, so the queue cannot be claimed.",
     },
   ];
 }
@@ -244,7 +299,16 @@ function getSystemCapabilities(): SystemCapabilities {
 function getMediaWorkerCapabilities(): SystemCapabilities {
   const redisRestConfigured = getRedisRestConfig() !== null;
   const directRedisConfigured = getDirectRedisConfig() !== null;
+  const postgresWorker = process.env.TRANSFER_MEDIA_JOB_STORE === "postgres";
+  const postgresWorkerConfigured =
+    isDatabaseConfigured() &&
+    process.env.MEDIA_WORKER_STATUS_STORE === "postgres" &&
+    process.env.TRANSFER_CATALOGUE_STORE === "postgres" &&
+    (process.env.ALBUM_STORE !== "postgres" ||
+      process.env.ALBUM_OBJECT_DELETION_RUNNER === "postgres");
   const privateStorageConfigured = isPrivateStorageConfigured();
+  const albumDeletionConfigured =
+    process.env.ALBUM_OBJECT_DELETION_RUNNER !== "postgres" || isObjectStorageConfigured();
   const mediaMode = getMediaProcessorMode();
 
   const capabilities: Capability[] = [
@@ -259,25 +323,32 @@ function getMediaWorkerCapabilities(): SystemCapabilities {
       id: "worker-queue",
       label: "media queue",
       status:
-        mediaMode === "hybrid" && directRedisConfigured && redisRestConfigured
+        mediaMode === "hybrid" &&
+        (postgresWorker ? postgresWorkerConfigured : directRedisConfigured && redisRestConfigured)
           ? "available"
           : "unavailable",
       required: true,
       detail:
         mediaMode !== "hybrid"
           ? "MEDIA_PROCESSOR_MODE must be hybrid for a worker service."
-          : directRedisConfigured && redisRestConfigured
-            ? "The worker has both blocking-queue and transfer-state Redis connections."
-            : "The worker needs REDIS_URL and REDIS_REST_URL/REDIS_REST_TOKEN.",
+          : postgresWorker
+            ? postgresWorkerConfigured
+              ? "Postgres media jobs, catalogue and worker status are configured."
+              : "Postgres media jobs need DATABASE_URL and matching catalogue/status stores."
+            : directRedisConfigured && redisRestConfigured
+              ? "The worker has both blocking-queue and transfer-state Redis connections."
+              : "The worker needs REDIS_URL and REDIS_REST_URL/REDIS_REST_TOKEN.",
     },
     {
       id: "media-storage",
-      label: "private media storage",
-      status: privateStorageConfigured ? "available" : "unavailable",
+      label: "media storage",
+      status: privateStorageConfigured && albumDeletionConfigured ? "available" : "unavailable",
       required: true,
-      detail: privateStorageConfigured
-        ? "Private transfer storage is configured."
-        : "Private transfer storage is not configured.",
+      detail: !privateStorageConfigured
+        ? "Private transfer storage is not configured."
+        : !albumDeletionConfigured
+          ? "Album deletion requires public object-storage credentials."
+          : "Worker object storage is configured.",
     },
   ];
 
@@ -295,21 +366,36 @@ async function probeMediaWorkerCapabilities(): Promise<SystemCapabilities> {
 
   const queueIndex = capabilities.findIndex(({ id }) => id === "worker-queue");
   if (queueIndex >= 0 && capabilities[queueIndex]?.status === "available") {
-    try {
-      const directRedis = getCommandRedis() as unknown as {
-        get: (key: string) => Promise<unknown>;
-      };
-      await Promise.all([getRedis()?.get("mah:health:probe"), directRedis.get("mah:health:probe")]);
+    if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") {
+      const probe = await checkDatabase();
       capabilities[queueIndex] = {
         ...capabilities[queueIndex],
-        detail: "Blocking queue and transfer-state Redis connections are reachable.",
+        status: probe.ok ? "available" : "unavailable",
+        latencyMs: probe.latencyMs,
+        detail: probe.ok
+          ? "Postgres media queue is reachable."
+          : "Postgres media queue is configured but unreachable.",
       };
-    } catch {
-      capabilities[queueIndex] = {
-        ...capabilities[queueIndex],
-        status: "unavailable",
-        detail: "The worker Redis connections are configured but unreachable.",
-      };
+    } else {
+      try {
+        const directRedis = getCommandRedis() as unknown as {
+          get: (key: string) => Promise<unknown>;
+        };
+        await Promise.all([
+          getRedis()?.get("mah:health:probe"),
+          directRedis.get("mah:health:probe"),
+        ]);
+        capabilities[queueIndex] = {
+          ...capabilities[queueIndex],
+          detail: "Blocking queue and transfer-state Redis connections are reachable.",
+        };
+      } catch {
+        capabilities[queueIndex] = {
+          ...capabilities[queueIndex],
+          status: "unavailable",
+          detail: "The worker Redis connections are configured but unreachable.",
+        };
+      }
     }
   }
 
@@ -329,24 +415,37 @@ async function probeSystemCapabilities(): Promise<
 > {
   const snapshot = getSystemCapabilities();
   const capabilities = [...snapshot.capabilities];
+  let databaseProbe: Awaited<ReturnType<typeof checkDatabase>> | null = null;
 
   const persistenceIndex = capabilities.findIndex(({ id }) => id === "persistence");
   if (persistenceIndex >= 0 && capabilities[persistenceIndex]?.status === "available") {
     const startedAt = Date.now();
-    try {
-      await getRedis()?.get("mah:health:probe");
+    if (postgresApplicationPersistenceSelected()) {
+      databaseProbe = await checkDatabase();
       capabilities[persistenceIndex] = {
         ...capabilities[persistenceIndex],
-        latencyMs: Date.now() - startedAt,
-        detail: "Persistent application state is reachable.",
+        status: databaseProbe.ok ? "available" : "unavailable",
+        latencyMs: databaseProbe.latencyMs,
+        detail: databaseProbe.ok
+          ? "Postgres application stores are reachable."
+          : "Postgres application stores are configured but unreachable.",
       };
-    } catch {
-      capabilities[persistenceIndex] = {
-        ...capabilities[persistenceIndex],
-        status: "unavailable",
-        latencyMs: Date.now() - startedAt,
-        detail: "Persistent application state is configured but unreachable.",
-      };
+    } else {
+      try {
+        await getRedis()?.get("mah:health:probe");
+        capabilities[persistenceIndex] = {
+          ...capabilities[persistenceIndex],
+          latencyMs: Date.now() - startedAt,
+          detail: "Persistent application state is reachable.",
+        };
+      } catch {
+        capabilities[persistenceIndex] = {
+          ...capabilities[persistenceIndex],
+          status: "unavailable",
+          latencyMs: Date.now() - startedAt,
+          detail: "Persistent application state is configured but unreachable.",
+        };
+      }
     }
   }
 
@@ -389,7 +488,7 @@ async function probeSystemCapabilities(): Promise<
 
   const databaseIndex = capabilities.findIndex(({ id }) => id === "application-database");
   if (databaseIndex >= 0 && capabilities[databaseIndex]?.status === "available") {
-    const probe = await checkDatabase();
+    const probe = databaseProbe ?? (await checkDatabase());
     capabilities[databaseIndex] = {
       ...capabilities[databaseIndex],
       status: probe.ok ? "available" : "unavailable",
@@ -398,6 +497,17 @@ async function probeSystemCapabilities(): Promise<
         ? "Events and ticketing storage is reachable."
         : "Events and ticketing storage is configured but unreachable.",
     };
+  }
+
+  if (process.env.MULTIPLAYER_REALTIME_BACKPLANE === "postgres") {
+    const realtimeIndex = capabilities.findIndex(({ id }) => id === "multiplayer-realtime");
+    const database = capabilities[databaseIndex];
+    if (realtimeIndex >= 0 && database?.status === "unavailable")
+      capabilities[realtimeIndex] = {
+        ...capabilities[realtimeIndex],
+        status: "degraded",
+        detail: "Postgres multiplayer wake delivery is configured but the database is unavailable.",
+      };
   }
 
   const storageIndex = capabilities.findIndex(({ id }) => id === "media-storage");

@@ -27,10 +27,12 @@ On 2026-09-26, an isolated restore of the production Postgres dump accepted two 
 14 photos from private R2. Repeating the import succeeded; an expected count of three failed.
 Earlier read-only R2 reconciliation found all 14 originals, 84 public variants and 14 social
 cards referenced by those manifests. Recheck these counts, identities, source digests and object
-references against a fresh source snapshot at cutover.
+references during the accepted-export cutover.
 
-The admin album workflows still combine catalogue changes with R2 publish, unpublish, regenerate
-and delete operations without durable object-operation intents. A failure or concurrent edit may
-leave the catalogue and R2 objects out of sync. Implement and verify tracked intents, reference-
-safe deletion and interrupted-operation repair before selecting `ALBUM_STORE=postgres` in
-production. Preserve the source manifests and object history through the observation period.
+Postgres album publication now records private-to-public copy intents and hides the album until
+the worker completes them. Unpublication, photo removal and whole-album deletion record public
+or private object deletion intents with the catalogue revision. The worker holds the same
+per-album lock as writes while applying them. A stale upload that completes after deletion can
+still leave an orphan, so an object reconciliation sweep and integrated release checks remain
+required before selecting `ALBUM_STORE=postgres` in production. Preserve source manifests and
+object history through the observation period.

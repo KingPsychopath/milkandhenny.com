@@ -9,7 +9,9 @@ import {
   createPostgresTransfer,
   finalizePostgresTransferAppend,
   getPostgresTransfer,
+  removePostgresTransferFile,
 } from "@/features/transfers/catalogue-postgres.server";
+import { planPostgresTransferMedia } from "@/features/transfers/media-plan-postgres.server";
 import type { TransferData } from "@/features/transfers/types";
 import { query } from "@/lib/platform/postgres.server";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
@@ -75,6 +77,49 @@ describeWithDatabase("Postgres transfer append reservation", () => {
       "select reserved_file_count,reserved_bytes::text from transfer_append_reservations",
     );
     expect(rows).toEqual([{ reserved_file_count: 1, reserved_bytes: "50" }]);
+  });
+
+  it("commits a new file and its worker job in the append transaction", async () => {
+    const selected = [file("new")];
+    const planned = planPostgresTransferMedia(transfer.id, selected);
+    expect(await reservePostgresTransferAppend(transfer.id, selected)).toBe("reserved");
+    await expect(
+      finalizePostgresTransferAppend(transfer.id, selected, planned.files, {}, []),
+    ).rejects.toThrow("Incomplete transfer media job plan");
+    expect(
+      await query<{ count: string }>(
+        "select count(*)::text as count from transfer_files where transfer_id=$1",
+        [transfer.id],
+      ),
+    ).toEqual([{ count: "1" }]);
+    expect(
+      await finalizePostgresTransferAppend(transfer.id, selected, planned.files, {}, planned.jobs),
+    ).toMatchObject({ status: "updated" });
+    expect(
+      await query<{ count: string }>("select count(*)::text as count from transfer_media_jobs"),
+    ).toEqual([{ count: "1" }]);
+  });
+
+  it("holds a removed filename until its durable object deletions finish", async () => {
+    expect(
+      await appendPostgresTransferFiles(transfer.id, [
+        {
+          id: "keeper",
+          filename: "keeper.txt",
+          kind: "file",
+          size: 1,
+          mimeType: "text/plain",
+          storageKey: `transfers/${transfer.id}/originals/keeper.txt`,
+        },
+      ]),
+    ).toMatchObject({ status: "updated" });
+    expect(await removePostgresTransferFile(transfer.id, "existing")).toBe("updated");
+    expect(await reservePostgresTransferAppend(transfer.id, [file("existing")])).toBe("conflict");
+    await query(
+      "update media_object_operations set status='completed' where owner_kind='transfer' and owner_id=$1",
+      [transfer.id],
+    );
+    expect(await reservePostgresTransferAppend(transfer.id, [file("existing")])).toBe("reserved");
   });
 
   it("is idempotent for the same selection and rejects overlapping IDs or names", async () => {

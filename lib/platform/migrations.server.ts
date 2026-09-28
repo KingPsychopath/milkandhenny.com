@@ -5004,6 +5004,118 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    id: "0117_multiplayer_rooms_and_results",
+    sql: `
+      create table multiplayer_rooms (
+        kind text not null,
+        room_id text not null,
+        schema_version integer not null check (schema_version > 0),
+        revision bigint not null default 0 check (revision >= 0),
+        state jsonb not null check (jsonb_typeof(state) = 'object'),
+        expires_at timestamptz not null,
+        created_at timestamptz not null default clock_timestamp(),
+        updated_at timestamptz not null default clock_timestamp(),
+        primary key (kind, room_id)
+      );
+      create index multiplayer_rooms_expiry_idx on multiplayer_rooms (expires_at);
+
+      create table multiplayer_room_action_receipts (
+        kind text not null,
+        room_id text not null,
+        action_id text not null,
+        fingerprint_sha256 text not null check (fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        outcome jsonb not null,
+        room_revision bigint not null check (room_revision >= 0),
+        created_at timestamptz not null default clock_timestamp(),
+        primary key (kind, room_id, action_id),
+        foreign key (kind, room_id) references multiplayer_rooms (kind, room_id) on delete cascade
+      );
+
+      create table multiplayer_game_result_outbox (
+        channel_id text not null,
+        result_id text not null,
+        revision integer not null check (revision > 0),
+        payload_hash text not null check (payload_hash ~ '^[a-f0-9]{64}$'),
+        envelope jsonb not null check (jsonb_typeof(envelope) = 'object'),
+        status text not null default 'pending' check (status in ('pending', 'delivered')),
+        created_at timestamptz not null default clock_timestamp(),
+        delivered_at timestamptz,
+        primary key (channel_id, result_id, revision),
+        check ((status = 'delivered') = (delivered_at is not null))
+      );
+      create index multiplayer_game_result_outbox_pending_idx
+        on multiplayer_game_result_outbox (created_at, channel_id, result_id, revision)
+        where status = 'pending';
+    `,
+  },
+  {
+    id: "0118_multiplayer_result_claims",
+    sql: `
+      alter table multiplayer_game_result_outbox
+        add column claim_token uuid,
+        add column claim_until timestamptz,
+        add column next_attempt_at timestamptz not null default clock_timestamp(),
+        add column attempt_count integer not null default 0 check (attempt_count >= 0),
+        add constraint multiplayer_result_claim_pair
+          check ((claim_token is null) = (claim_until is null));
+      drop index multiplayer_game_result_outbox_pending_idx;
+      create index multiplayer_game_result_outbox_pending_idx
+        on multiplayer_game_result_outbox (next_attempt_at, created_at, channel_id, result_id, revision)
+        where status = 'pending';
+    `,
+  },
+  {
+    id: "0119_transfer_media_reconcile_index",
+    sql: `
+      create index transfer_files_failed_retry_idx
+        on transfer_files (enqueued_at, transfer_id, id)
+        where processing_status='failed';
+    `,
+  },
+  {
+    id: "0120_game_pool_recovery_credentials",
+    sql: `
+      create table game_pool_room_credentials (
+        run_id text not null,
+        room_id text not null,
+        join_token text not null,
+        issued_expires_at timestamptz not null,
+        primary key (run_id, room_id),
+        foreign key (run_id, room_id)
+          references game_pool_rooms (run_id, room_id) on delete cascade
+      );
+
+      create table game_pool_assignment_receipts (
+        run_id text not null,
+        client_id text not null,
+        assignment_id text not null references game_pool_assignments (id) on delete cascade,
+        receipt jsonb not null,
+        issued_expires_at timestamptz not null,
+        primary key (run_id, client_id)
+      );
+    `,
+  },
+  {
+    id: "0121_album_publication_pending",
+    sql: `
+      alter table gallery_albums
+        drop constraint gallery_albums_status_check;
+      alter table gallery_albums
+        add constraint gallery_albums_status_check
+        check (status in ('draft', 'publishing', 'published'));
+    `,
+  },
+  {
+    id: "0122_word_media_scope_reconciliation",
+    sql: `
+      alter table words
+        add column media_scope_dirty boolean not null default false,
+        add column media_source_scope text check (media_source_scope in ('private', 'public'));
+      create index words_media_scope_dirty_idx on words (slug)
+        where media_scope_dirty;
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
@@ -5177,7 +5289,9 @@ export async function runMigrations(): Promise<MigrationResult> {
 }
 
 /** Read-only startup gate for runtimes using a role without schema privileges. */
-export async function verifyMigrations(): Promise<MigrationResult> {
+export async function verifyMigrations(
+  options: { includePitchDocuments?: boolean } = {},
+): Promise<MigrationResult> {
   if (!getPool()) throw new Error("DATABASE_URL is not configured");
   const hashes = migrationHashes();
   const rows = await query<MigrationLedgerRow>(
@@ -5206,6 +5320,10 @@ export async function verifyMigrations(): Promise<MigrationResult> {
   if (observed.size !== hashes.size) {
     throw new Error(`Database schema is behind source migrations: ${observed.size}/${hashes.size}`);
   }
+  // The media worker only needs the migration ledger and transfer tables. Pitch documents are
+  // verified by the web role; querying them here would expand the worker's database privileges.
+  if (options.includePitchDocuments === false)
+    return { applied: [], alreadyApplied: observed.size };
   const pitchDocuments = await readPitchDocumentSchemaInventory();
   if (pitchDocuments.unsupported > 0) {
     throw new Error(

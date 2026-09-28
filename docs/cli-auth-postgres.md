@@ -3,9 +3,9 @@
 Status: opt-in Postgres backend verified locally. Production remains on Redis. Set
 `AUTH_CLI_STORE=postgres` only after the planned writer freeze and source reconciliation. The
 supplied 2026-09-26 RDB contains no active `auth:cli-*` request, approval, code or claim keys.
-Recheck all four families in the fresh cutover export. If any remain, let the five-minute request
-and one-minute code lifetimes expire under the maintenance window before switching, or import
-them with their original expiry and one-time state. No active handshake may be silently dropped.
+The user accepted the 2026-09-26 export as the cutoff, so later handshakes are outside the
+preservation requirement. Freeze the old writer before switching; no handshake in the accepted
+export may be silently dropped.
 
 The browser request ID and authorization code are HMAC lookup keys under `AUTH_SECRET`; the
 one-minute code's bearer token and the recoverable callback redirect are encrypted with

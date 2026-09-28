@@ -11,7 +11,7 @@ Browser
   -> TanStack Start / Nitro Node server
        -> feature workflows
             -> Postgres adapter (relational state, polls, outboxes, leases)
-            -> Redis adapters (sessions, rooms, transfers, queues, realtime)
+            -> Postgres adapters (sessions, rooms, transfers, queues, realtime)
             -> S3-compatible storage adapter (private sources and public media)
             -> email and payments adapters
             -> optional media-worker wake adapter
@@ -47,7 +47,7 @@ scoring ──────┘
 games ─> game-results durable outbox ─> explicit scoring consumer
 ```
 
-`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. Redis persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and the retired scoring consumer can remain sealed without changing game rules.
+`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. The selected room repository persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and the retired scoring consumer can remain sealed without changing game rules.
 
 Event scoring is quarantined rather than deleted: historical ledgers, projections, and audit data
 remain durable, but public score routes and score-only staff roles expose no live tools. Operational
@@ -158,15 +158,15 @@ Multiplayer is the largest Effect subsystem:
 TanStack / Nitro boundary
   -> one process-wide ManagedRuntime
        -> game-owned Effect workflow
-            -> Redis or development-memory room store
+            -> Postgres room store in production
             -> game-owned pure command transition
             -> atomic room + durable outbox commit
             -> advisory wake publication
        -> bounded telemetry
-       -> optional Redis realtime backplane
+       -> Postgres realtime backplane in production
 ```
 
-The paired-game and party-room profiles own their state transitions, authorization rules, Redis keys, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
+The paired-game and party-room profiles own their state transitions, authorization rules, persistence records, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
 
 ```text
 PairedGameRoom                 PartyRoom
@@ -199,9 +199,9 @@ without forcing every person to scan in and prevents event policy from becoming 
 
 Shared-room games with simultaneous starts compose the multiplayer readiness policy. Players join ready, may opt out while the lobby is open, and receive a persisted, rate-limited start request when a host tries to begin. Starting with unready players requires a second explicit action naming those players; the game engine rechecks the same players atomically before removing them. Solo games and paired-device authority flows do not use lobby readiness.
 
-The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, Redis pub/sub connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Redis remains the distributed source of truth, so another replica can serve the next request.
+The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, realtime connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Postgres is the distributed source of truth in production, so another replica can serve the next request.
 
-Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded Redis lease, while Paired Game commands use action IDs and atomic Redis claims.
+Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded lease, while Paired Game commands use action IDs and atomic claims.
 
 ### Multiplayer development harnesses
 
@@ -238,55 +238,37 @@ for a restricted runtime role after a separate `pnpm database:migrate` step. A m
 verification failure is logged and surfaced on `/health` rather than killing the process.
 See [runtime role separation](./postgres-runtime-roles.md).
 
-**Redis** (`REDIS_REST_*`) holds expiring or coordination-heavy state: authentication sessions,
+**Production persistence** uses Postgres for expiring and coordination-heavy state: authentication sessions,
 rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
-records, distributed locks, and the leased media queue. Mutable independently read records use one
-key each. Specialized queues, indexes, and aggregate-adjacent outboxes document why they require an
-atomic structure. The fixed-window limiter also has an opt-in Postgres backend selected with
-`RATE_LIMIT_STORE=postgres`; Redis remains its default until active windows are reconciled.
-Upload access windows and their bounded audit history also have an opt-in Postgres backend selected
-with `UPLOAD_ACCESS_STORE=postgres`. The recoverable bearer token is encrypted with a key derived
-from `AUTH_SECRET`; switching this backend requires reconciling the active window and audit list at
-cutover. Redis remains the default until then.
-Admin/upload JWT versions, session records, revocations and 15-second login deduplication have an
-opt-in Postgres backend selected with `AUTH_TOKEN_STORE=postgres`. Recent bearer tokens are
-encrypted with a key derived from `AUTH_SECRET`; version and active-state import is required before
-switching. Attendee sessions have a separate opt-in Postgres backend selected with
-`ATTENDEE_SESSION_STORE=postgres`; it stores hashed cookie lookups and indexed person revocation.
-The source session and person-version keys must be imported with original expiry before switching.
-CLI authorization handshakes have their own opt-in Postgres backend selected with
-`AUTH_CLI_STORE=postgres`; request decisions, encrypted codes and one-time exchange are
-transactional. Redis remains the default until the short-lived source keys are reconciled.
-Passkey challenges have a separate opt-in Postgres store selected with
-`PASSKEY_CEREMONY_STORE=postgres`. Attendee login, passkey and TOTP throttles use the shared
-Postgres limiter when `RATE_LIMIT_STORE=postgres` is selected. Their source expiry windows remain
-a cutover gate.
-Action-link redemption and Pitch recovery also select the shared Postgres limiter through
-`RATE_LIMIT_STORE=postgres`; their source windows must be reconciled before that switch.
-Diagnostic reports have an opt-in Postgres backend selected with `REPORT_STORE=postgres`;
-submission receipts, rate admission, report creation, follow-up and admin updates use
-transactions. Best Dressed has a separate opt-in backend selected with
-`BEST_DRESSED_STORE=postgres`; its vote transaction binds the voter receipt, tally,
-token and code. Select `RATE_LIMIT_STORE=postgres` with it so voting no longer needs
-Redis for network throttling. Both require a final source import before switching;
-see [reports](./diagnostic-report-postgres.md) and
+records, distributed locks, and the leased media queue. Production selects all 30 application
+store variables to `postgres` and has no Redis connection variables. Redis adapters remain in the
+codebase for explicit non-production configurations. The fixed-window limiter uses
+`RATE_LIMIT_STORE=postgres` in production.
+Upload access, auth versions and sessions, attendee sessions, CLI handshakes, passkey ceremonies,
+diagnostic reports, Best Dressed voting, room state, word shares and transfer media jobs use
+their Postgres repositories. Recoverable bearer tokens are encrypted with keys derived from
+`AUTH_SECRET`; session lookups use hashes and indexed expiry. The 2026-09-28 production cutover
+accepted the first verified Redis export as its source cutoff, so later Redis-only writes were
+intentionally excluded. Migration details and limitations are recorded in
+[the migration plan](../plan.md), [reports](./diagnostic-report-postgres.md) and
 [Best Dressed](./best-dressed-postgres.md).
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
 album manifests during migration, and transfer files. The public bucket contains only intentionally
-published derivatives and editorial media. The album repository also has an opt-in Postgres
-catalogue selected with `ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety
-gate are described in [gallery albums](./gallery-albums-postgres.md).
-The word repository also has an opt-in Postgres body and metadata store selected with
-`WORD_STORE=postgres`, and an opt-in Postgres share-link store selected with
-`WORD_SHARE_STORE=postgres`; their imports and remaining media gates are in
-[words](./words-postgres.md).
-The [media object operation ledger](./media-object-operations.md) is an opt-in foundation for
-tracked R2 copy/delete work; it is not yet wired to album or word mutations.
+published derivatives and editorial media. The production album catalogue uses
+`ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety are described in
+[gallery albums](./gallery-albums-postgres.md).
+The production word repository uses a Postgres body and metadata store selected with
+`WORD_STORE=postgres`, and a Postgres share-link store selected with
+`WORD_SHARE_STORE=postgres`; migration details are in [words](./words-postgres.md).
+The [media object operation ledger](./media-object-operations.md) records tracked R2 copy/delete
+work for album and word mutations.
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
 
-**One key per record** remains the rule for anything still in Redis. A single-key collection plus a re-rendering poll loop is what caused [the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
+**One independently addressable record per entity** remains the rule for mutable state. A
+single-key collection plus a re-rendering poll loop caused
+[the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
 
 Hot & Cold stores one immutable, word-free completion summary per browser run
 in Postgres. Numbered daily routes can therefore show privacy-thresholded
@@ -370,7 +352,7 @@ rule is a 31-day infrastructure backstop; it also remains one day beyond the lon
 Images and GIFs are processed on the request that finalises the upload. RAW and video are queued, because they cost seconds of CPU and can pull gigabytes off object storage:
 
 ```text
-web request -> Redis queue -> media worker drain -> R2 derivatives -> Redis pub/sub -> SSE to the viewer
+web request -> Postgres job -> media worker drain -> R2 derivatives -> Postgres event backplane -> SSE to the viewer
 ```
 
 Before transfer uploads, a browser worker capability-checks still images. HEIF and other
@@ -403,7 +385,7 @@ product behavior.
 - `/api/health` performs bounded live checks for required capabilities, exposes only safe runtime
   metadata, and returns 503 when the process should not receive traffic.
 - `/health` renders the safe capability model for humans.
-- `/api/debug` is admin-protected and performs deeper Redis, object-storage, database, email-outbox,
+- `/api/debug` is admin-protected and performs deeper object-storage, database, email-outbox,
   and runtime probes.
 - `/api/debug` also exposes per-replica multiplayer operations, failures, reconciliation latency, socket termination, rate-limit, lock-contention, and realtime-backplane metrics.
 
@@ -414,7 +396,7 @@ Required capability failures produce an unhealthy readiness response. Missing op
 - The server listens on `$HOST` and `$PORT`.
 - Public `VITE_*` values are present at build time.
 - Secrets are supplied at runtime and never enter the client bundle.
-- The container filesystem is ephemeral; durable product mutations belong in Postgres, Redis, or
+- The container filesystem is ephemeral; durable product mutations belong in Postgres or
   object storage. Git contains source and build inputs, not runtime product writes.
 - `/api/health` must pass before traffic cutover.
 - The previous deployment remains available until post-cutover verification completes.

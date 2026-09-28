@@ -1,7 +1,6 @@
 # Postgres and object-storage implementation plan
 
-Status: implementation in progress; M1 inventory and scoped M2 migration-safety work are underway.
-Production migration has not started.
+Status: implementation in progress; production cutover is authorized but has not started.
 
 Created: 2026-09-26.
 
@@ -360,7 +359,9 @@ Record integrity hashes; do not treat multipart ETags as universal content check
 
 Export archives must be encrypted, checksummed and stored outside Git. Reports contain counts,
 identifiers as safely appropriate, hashes and errors, not raw credentials or personal content.
-Restore source access or obtain a verified backup if Redis is unreadable. Missing metadata/body
+The verified first RDB export is the authorized Redis cutoff. Redis writes made after that export
+are outside the preservation requirement; do not query the exhausted source for a final delta.
+Missing metadata/body
 records require evidence and resolution; never infer publication or permission from orphan blobs.
 
 ### 6.2 Import and rehearsal
@@ -386,8 +387,9 @@ the same product state to Redis and Postgres.
 Before scheduling cutover, record:
 
 - Authorized deployment/release identifiers, operators, maintenance duration and abort criteria.
-- Verified source accessibility; final export command/version and expected counts.
-- Database backup, object coverage, restore evidence and independent archive location.
+- Verified first-export integrity, import manifest and expected counts; document the accepted
+  exclusion of later Redis writes.
+- Verified local Postgres dump, object coverage, restore evidence and independent archive location.
 - Exact writer-stop procedure for web, rooms, workers, scheduler, cron and operational CLI.
 - Existing presigned uploads and their reservation/finalization policy.
 - Payment/provider webhook intake and durable acknowledgment/retry policy.
@@ -399,7 +401,9 @@ runbook. Do not substitute guessed provider commands or undocumented environment
 
 ### 6.4 Cutover sequence
 
-1. Verify backup/readability, current deployment state and source inventory; record cutover ID.
+1. Verify the accepted local dump/readability, current deployment state and source inventory;
+   record cutover ID. A fresh managed backup is not a cutover gate under the user's 2026-09-27
+   decision.
 2. Put affected traffic in maintenance. Freeze every legacy writer, including read endpoints
    with mutation side effects; prevent old scheduled processes from restarting writes.
 3. Drain workers within the window or terminate safely and record recoverable interrupted jobs.
@@ -408,8 +412,8 @@ runbook. Do not substitute guessed provider commands or undocumented environment
    use verified provider retries. Never acknowledge an event that was not durably recorded.
 5. Allow already issued upload URLs to land only under existing scope; prevent conflicting
    finalization. Preserve original reservations/expiry and inventory late-arriving objects.
-6. Capture the final consistent source export and object manifest after the writer barrier.
-7. Import additively into the new tables and reconcile source/target totals and references.
+6. Revalidate the supplied first export and capture the object manifest after the writer barrier.
+7. Import additively into the new tables and reconcile against that export and object references.
 8. Start the new app/worker with public access restricted. Test via purpose-created canary data
    and isolated side effects; track any mutations that affect the rollback boundary.
 9. Confirm content, access/revocation, transfer/reservation recovery, room recovery, durable
@@ -444,8 +448,8 @@ Use a known compatible application revision that understands the Postgres schema
 forward. Prepare and test that compatible fallback before release. Returning to Redis would need
 a separately implemented and rehearsed reverse migration, which this plan does not assume.
 
-Retain the final source export through the recorded acceptance/retention interval. Delete the
-old service only under M13 authorization. Redact/expire sensitive archives under the agreed
+Retain the verified first export through the recorded acceptance/retention interval. The user
+authorized retirement of Upstash on 2026-09-26 once the replacement is working. Redact/expire sensitive archives under the agreed
 retention policy; leaving them indefinitely is not a recovery strategy.
 
 Disaster restore is different from planned migration: restoring an older database can resurrect
@@ -462,22 +466,22 @@ audited relationships. Scoped M4 rate-limit work uses the verified transaction a
 foundation and remains opt-in until source windows and load are reconciled. Other domain
 implementation follows listed dependencies. M12 and M13 remain operational gates.
 
-| Milestone                                           | Dependencies                             | Status                                                        |
-| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
-| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                       |
-| M1 — inventory and physical schema specification    | M0                                       | In progress; final source delta and operational gates pending |
-| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                       |
-| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership               |
-| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies  |
-| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger           |
-| M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs         |
-| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | Pending                                                       |
-| M8 — application and realtime integration           | M3–M7                                    | Pending                                                       |
-| M9 — operations, recovery and documentation         | M8                                       | Pending                                                       |
-| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                       |
-| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                       |
-| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                       |
-| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                       |
+| Milestone                                           | Dependencies                             | Status                                                       |
+| --------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| M0 — durable plan                                   | User architecture decisions              | Complete: this document                                      |
+| M1 — inventory and physical schema specification    | M0                                       | In progress; operational gates pending                       |
+| M2 — database foundation and migration safety       | M1                                       | In progress: ledger and role separation                      |
+| M3 — existing relational integrity improvements     | M1, M2                                   | In progress: audited pitch and ticket ownership              |
+| M4 — identity, rates, reports and voting            | M2, relevant M3 changes                  | In progress: rate limits, auth stores and passkey ceremonies |
+| M5 — words, albums and media catalogue              | M2, relevant M3 changes                  | In progress: opt-in catalogues and operation ledger          |
+| M6 — transfers and media execution                  | M4, M5                                   | In progress: staged catalogue, import and fenced jobs        |
+| M7 — rooms, presentations and game results          | M2, M4, relevant M3 changes              | In progress: nine staged modes and pool credentials          |
+| M8 — application and realtime integration           | M3–M7                                    | In progress: staged Postgres advisory backplane              |
+| M9 — operations, recovery and documentation         | M8                                       | Pending                                                      |
+| M10 — complete migration tooling and rehearsal      | M3–M9                                    | Pending                                                      |
+| M11 — release qualification and cutover readiness   | M10                                      | Pending                                                      |
+| M12 — authorized production cutover and observation | M11, deployment authorization            | Pending                                                      |
+| M13 — retirement and final acceptance               | M12, retention and removal authorization | Pending                                                      |
 
 ### M1 — Inventory and physical schema specification
 
@@ -487,11 +491,12 @@ Evidence ledger: [production and source inventory](./docs/postgres-migration-inv
       top-level object-storage counts without reading private content.
 - [x] Identify the production migration-ledger mismatch and missing scheduled database backup
       coverage as explicit blockers.
-- [x] Checksum-validate and fully decode the user's RDB export, including all 224 keys, value types
-      and absolute expiry. Exact source capture time remains unproven; its download time is known.
-- [ ] Reconcile the export against a fresh source snapshot at cutover and classify the legacy
-      `guest:*` and `user-report:*` keys. The guest list is assigned to a restricted Postgres archive;
-      Upstash command-limit errors still prevent a live read.
+- [x] Pin the user's RDB export by SHA-256 and fully decode its structure, including all 224 keys,
+      value types and absolute expiry. Its internal RDB checksum is disabled; exact source capture
+      time remains unproven, while its download time is known.
+- [x] Record the first verified export as the authorized Redis cutoff. The user explicitly accepts
+      losing later Redis-only writes. The historical guest list is assigned to a restricted
+      Postgres archive; no fresh Upstash read is required.
 
 - [ ] Enumerate direct/indirect storage users, all key families, object prefixes, tables,
       mutations, read models, scheduled work and browser recovery contracts.
@@ -556,37 +561,35 @@ decision. A deferral affecting an agreed integrity requirement blocks release.
       the default until active source windows are reconciled at cutover.
 - [x] Add opt-in encrypted Postgres upload windows and bounded audit history. The supplied RDB
       holds four audit entries and no active window. A provenance-checked importer rehearsed
-      those four entries on isolated Postgres; production import and fresh cutover reconciliation
-      remain open.
+      those four entries on isolated Postgres; production import remains open.
 - [x] Add an opt-in Postgres JWT session/version/revocation and encrypted login-dedupe backend,
       with admin session listing/revocation and bounded retention. The supplied RDB's admin,
       upload and historical staff versions are extracted and rehearsed on isolated Postgres;
       active-session/revocation delta import and production switch remain open.
 - [x] Add opt-in Postgres attendee sessions with hashed lookup, transactional rotation and
       person-wide revocation. A strict offline import rehearsed all 192 supplied sessions with
-      original absolute expiries on isolated Postgres; final source reconciliation and the
-      production switch remain open.
+      original absolute expiries on isolated Postgres; the production switch remains open.
 - [x] Add opt-in Postgres CLI authorization with hashed opaque lookups, encrypted callback/code
       payloads, atomic approval plus JWT registration, and one-time PKCE exchange. The supplied
-      RDB has no active CLI keys; a final source check and expiry drain remain open.
+      RDB has no active CLI keys; expiry drain remains open.
 - [x] Add opt-in one-time Postgres passkey ceremonies and connect attendee login, passkey and
-      TOTP throttles to the shared Postgres limiter when selected. Their final source expiry
-      windows still require reconciliation.
+      TOTP throttles to the shared Postgres limiter when selected. Import only the authorized
+      first-export windows that remain valid at cutover.
 - [x] Connect action-link redemption and Pitch recovery throttles to the shared Postgres limiter
-      when selected. Concurrent Pitch recovery admits four of five attempts; final source-window
-      reconciliation remains open.
+      when selected. Concurrent Pitch recovery admits four of five attempts.
 - [ ] Move attendee/JWT session authority, versions, revocations, ceremonies and CLI handshakes
-      after a fresh source import, including any newly active JWT sessions or revocations.
+      after importing the authorized first export. Later Redis-only sessions and revocations are
+      intentionally excluded; verify the resulting access policy before release.
 - [ ] Move upload windows, login deduplication and all feature rate-limit users.
 - [x] Implement opt-in Postgres report storage/receipts, report rate admission, follow-up and
       admin updates with a bounded cleanup path; rehearse the supplied RDB import.
 - [x] Audit report notification work: the current report workflow has no notification side
       effect to preserve. Any later report alert must use a transactional outbox.
-- [ ] Reconcile the final report source delta before switching the backend.
+- [ ] Reconcile the report backend against the authorized first export before switching.
 - [x] Implement opt-in Best Dressed totals, receipts, codes, voting window and reset
       behavior as a transactional Postgres path; archive the retired tally without
       activating it. Rehearse the supplied RDB import.
-- [ ] Reconcile the final Best Dressed source delta before switching the backend.
+- [ ] Reconcile the Best Dressed backend against the authorized first export before switching.
 - [ ] Add domain importers with legacy-version, expiry, one-time race and baseline-vote fixtures.
 - [ ] Verify cookies, step-up/MFA, parent-session binding, PKCE, admin session management,
       revocation and disabled/expired access, plus admin/CLI parity.
@@ -608,8 +611,17 @@ double-consume a credential, vote, report submission or protected quota.
       selecting the Postgres word and share stores in production.
 - [x] Add an opt-in Postgres album/photo catalogue with revision checks and same-album cover
       ownership; rehearse the two-manifest, 14-photo private R2 import in an isolated restore.
+- [x] Add a bounded read-only Postgres/R2 album object audit covering private originals and
+      derivatives plus published public derivatives. Run it on the imported production target.
 - [ ] Make album publication, deletion and derivative changes recoverable across Postgres/R2
       failures before selecting the Postgres repository in production.
+  - [x] Stage Postgres album unpublication as one draft revision plus public delete intents;
+        the media worker retries fenced deletions, and republishing waits for pending cleanup.
+        Upload finalization uses the same transition. Photo removal queues private/public
+        deletions and blocks key reuse until cleanup. Whole-album deletion atomically queues
+        discovered objects and reserves the slug until cleanup. Publication now uses a hidden
+        `publishing` revision with copy intents; the worker publishes only after all copies
+        finish. Orphan upload reconciliation and release qualification remain.
 - [ ] Implement content, revisions, shares, albums/photos and media relationships.
 - [ ] Import R2 Markdown and editable manifests, including responsive image metadata.
 - [ ] Implement publication/object-operation intents, reference-safe deletion and reconciliation.
@@ -628,42 +640,89 @@ derived exports. No read path silently repairs/deletes product state.
   - [x] Add relational transfer/file/group/reservation tables and same-transfer constraints.
         Runtime selection and full quota transactions remain open.
   - [x] Add a staged Postgres reservation repository with hashed matching fields, bounded
-        count/bytes and expiry cleanup. Upload flows and object cleanup still read Redis.
+        count/bytes and expiry cleanup. Initial upload flows select it under paired opt-in flags.
   - [x] Add transfer-bound authenticated encryption and hash verification for deletion tokens;
         web-only catalogue reads use it without exposing ciphertext to the worker.
   - [x] Add staged atomic transfer/file/group creation and consistent web/worker reads. Update,
-        file removal, object cleanup, full quota and expiry flows remain open.
+        file removal, object cleanup, quotas and expiry are covered by later staged steps.
   - [x] Add row-locked file append with ID/name/count/byte checks; outstanding reservation
-        accounting and final upload integration are staged but not wired to requests.
+        accounting and final upload integration are selected under the paired flags.
   - [x] Add multi-batch append reservations and atomic finalization that counts outstanding
-        capacity and consumes only the matching selection. Live request wiring remains open.
+        capacity and consumes only the matching selection. Live request wiring is staged.
+  - [x] Build an all-visual Postgres media plan and let create/append finalizers commit matching
+        first-generation jobs with file rows and reservation consumption. Reject queued files
+        without a job plan and reject legacy enqueue in Postgres mode. Live selection is staged.
+  - [x] Stage paired Postgres catalogue/queue selection for initial presign, finalization,
+        resume and abandon, plus shared transfer reads and delete-capability verification.
+        Finalization commits file rows and jobs with its reservation. Legacy mutations fail
+        closed in this mode. Subsequent steps connect deletion and cleanup before enabling it.
+  - [x] Stage Postgres append presign with serialized multi-batch quota reservations and
+        finalization with file rows, media jobs, inferred groups and reservation consumption in
+        one transaction. Subsequent steps connect deletion and cleanup.
+  - [x] Route Postgres takedown, admin deletion, file removal and expiry cleanup through the
+        catalogue tombstone/object ledger; make event guest-drop transfer and token creation
+        one Postgres transaction. The UI describes queued file cleanup accurately.
+  - [x] Stage old R2 orphan objects after rechecking active transfer/file/job/reservation ownership
+        under Postgres locks. A 24-hour/upload-TTL grace protects late writes; a completed
+        deletion can be restaged with a new revision. New append and initial reservations reject
+        source keys/IDs with unfinished deletes. The production deletion runner and resource limits still need
+        qualification.
   - [x] Add transactional regrouping, a job-fencing tombstone, atomic initial reservation
         finalization and indexed admin/owner summary reads. Runtime selection remains open.
   - [x] Enqueue known private object deletions with the transfer tombstone and stage an opt-in
-        worker loop; orphan reconciliation, file removal and live cleanup remain open.
+        worker loop; later steps stage orphan reconciliation and live cleanup selection.
+  - [x] Remove one Postgres file with its jobs and group membership in one transaction, staging
+        all known private keys for deletion; tombstone when it was the last file. Request callers
+        select this path under the paired flags.
+  - [x] Add a bounded, indexed expiry sweep that tombstones expired transfers and stages their
+        known object deletions once. Live cleanup selection and orphan-prefix reconciliation
+        are staged under the paired flags.
+  - [x] Route CLI create/append through the same Postgres reservation, signed R2 upload and
+        transactional finalization workflow as web uploads; preserve resumable CLI checkpoints.
+  - [x] Route the explicit admin/CLI hard reset through bounded Postgres tombstones and durable
+        deletion intents when the catalogue is selected; operational messages distinguish queued
+        cleanup from immediate R2 deletion. Deep orphan cleanup remains a later pass.
+  - [x] Add a bounded read-only Postgres/R2 source-object audit for active transfer files; it
+        fails on missing retained sources, recorded size discrepancies, R2 errors and incomplete
+        scans. Run it on the imported production target before selecting the catalogue.
 - [ ] Implement atomic enqueue, indexed claims, renewals, fenced completion, retry/dead-letter,
       cancellation and explicit reprocessing under the Media runtime.
   - [x] Add specialized media-job table with source/generation identity and indexed claim states.
         Worker execution and transactional enqueue remain open.
   - [x] Add staged transactional enqueue, indexed disjoint claims, renewals, fenced completion,
-        bounded retry/dead-letter and obsolete-source cancellation. Worker/R2 integration,
-        explicit dead-letter retry and queue snapshots remain open.
+        bounded retry/dead-letter and obsolete-source cancellation.
   - [x] Require generation-specific Postgres job output keys and publish the winning generation
-        on fenced completion; worker execution and obsolete-object collection remain open.
+        on fenced completion.
   - [x] Give each claim distinct R2 keys and persist attempt outputs so an expired claim cannot
         overwrite its replacement; a staged executor handles supported media routes.
   - [x] Select the staged Postgres executor in the Media runtime and one-shot drain without
-        Redis blocking clients; require Postgres heartbeat storage in this opt-in mode. Queue
-        snapshots, manual dead-letter retry and attempt-object reconciliation remain open.
+        Redis blocking clients; require Postgres heartbeat storage in this opt-in mode.
+  - [x] Add a Postgres queue snapshot for health and one-attempt manual dead-letter retry,
+        preserving attempt counts and refusing stale source generations.
+  - [x] Stage deletion of old claim-specific derivative objects after publication is impossible,
+        preserving the winning output; bound worker processing and stop lease renewal when
+        interrupted. R2 prefix reconciliation and complete admin/CLI mutation parity remain open.
+  - [x] Route targeted retry, transfer backfill and explicit reprocessing through Postgres when
+        the catalogue is selected. A row-locked generation advance, old-job cancellation and
+        replacement enqueue commit together. Source-object reconciliation and broad admin/CLI
+        parity remain open.
 - [ ] Replace Redis reconcile/status/events dependencies and add per-instance health reporting.
   - [x] Add opt-in Postgres per-instance heartbeat and stopped-state records; import the legacy
-        worker-status snapshot as stopped provenance. Queue, reconciliation, events and aggregate
-        monitor cutover remain open.
+        worker-status snapshot as stopped provenance. Events and aggregate monitor cutover remain
+        open.
+  - [x] Route the bounded stalled/failed media job sweep through Postgres under the catalogue
+        flag, with a failed-file index and row-locked requeue validation. R2 derivative/source
+        verification and complete status/event cutover remain open.
 - [ ] Give the worker scoped Postgres credentials, shutdown recovery and bounded processing.
+  - [x] Stage a transfer/media-only Postgres worker role and make worker boot verify the migration
+        ledger without reading unrelated Pitch documents. The built worker also passes a
+        Redis-free scoped-login boot/health/SIGTERM smoke with no surviving Postgres connection;
+        production login/wiring and job recovery remain open.
 - [ ] Import active transfers and queued/leased/failed work without losing attempt history.
   - [x] Strictly extract and rehearse the supplied RDB transfer snapshot: one transfer/52 files,
         seven terminal jobs retained without replay, one orphan quarantined, no runnable work.
-        Fresh source delta, nonterminal-job rehearsal and production import remain open.
+        Nonterminal-job rehearsal and production import remain open; later Redis-only jobs are
+        outside the authorized cutoff.
 - [ ] Test worker death before/after upload, stale completion, duplicate claims, reservation
       races, late uploads, RAW/live-photo groups and transfer expiry/deletion during processing.
 
@@ -673,6 +732,9 @@ publish or overwrite current output. Reconciliation uses indexed queries.
 ### M7 — Rooms, presentations and game results
 
 - [ ] Implement repositories and domain mappings for every room engine listed in section 4.6.
+  - [x] Stage opt-in Postgres room aggregates for Hot & Cold, Draw Country, Family Feud,
+        Spelling Party, Centre, Twin, Same Brain, Liars and paired remote games.
+  - [x] Stage transactional game-pool room credentials and assignment receipts.
 - [ ] Preserve deterministic reducers, clocks, deduplication and command acknowledgments.
 - [ ] Implement paired journals/epochs and pool recovery credentials with explicit relationships.
 - [ ] Move presentation state and host/controller recovery.
@@ -691,9 +753,13 @@ processes without lost accepted actions, secret leakage or changed game rules.
       and stream authorization expiry/revalidation.
 - [ ] Remove remaining runtime Redis usage from routes, capability checks, admin, CLI, scheduler,
       maintenance, startup/shutdown and monitoring.
+  - [x] Make the mandatory application persistence health probe select Postgres when every
+        application store selector is `postgres`.
 - [ ] Verify browser drafts, offline scanner/pitch/game command replay and old-client retries.
 - [ ] Run two-web-process plus separate-worker tests, notification disconnect/failure tests,
       and the numerical workload/idle-load envelope from M1.
+  - [x] Force-close a live Postgres `LISTEN` connection and verify the transport reconnects and
+        delivers a subsequent wake.
 - [ ] Audit SQL round trips, pools, lock waits, notifications and cleanup churn; fix measured
       regressions and record the production capacity configuration.
 
@@ -719,6 +785,8 @@ as a guarantee for unprotected blobs. Record evidence against documented recover
       encrypted importer and integrity verifier. Production role separation, restore and fresh
       source import remain open.
 - [ ] Complete namespace discovery, archive integrity, exact TTL handling and unknown-key refusal.
+  - [x] Audit all 224 accepted RDB keys and 199 expiry records; fail the offline extractor before
+        any output if a new key family or type appears.
 - [ ] Integrate all domain importers, stable mappings, dry-run validation and resume receipts.
 - [ ] Reconcile counts, hashes, references, visibility, revocations, job identities, room receipts
       and voting baselines. Explain every excluded expired/corrupt item.
@@ -758,8 +826,8 @@ no unexplained data loss or violated access invariant.
 - [ ] Remove obsolete runtime Redis code/dependencies/configuration and update lockfile/fixtures.
       Keep any needed import reader isolated from the runtime until archive obligations end.
 - [ ] Verify no old writer, cron, dashboard or deployment still requires Redis.
-- [ ] Confirm archive retention and restore readiness, then obtain required removal authorization
-      and retire old service/credentials. Record completion without exposing secrets.
+- [ ] Confirm archive retention and restore readiness, then retire old service/credentials under
+      the user's 2026-09-26 authorization. Record completion without exposing secrets.
 - [ ] Run affected checks after cleanup and finish documentation/checkpoint.
 - [ ] Verify every requirement below; record final commits/releases and operational evidence.
 
@@ -797,10 +865,10 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 ## 9. Checkpoint and decision log
 
-### Current checkpoint — 2026-09-26, M1–M6 in progress
+### Current checkpoint — 2026-09-27, M1–M7 in progress
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
-  inventory; full checksum/type decode of the supplied Upstash RDB export and a static
+  inventory; SHA-256 identity and full structural/type decode of the supplied Upstash RDB export and a static
   Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
@@ -821,14 +889,230 @@ targets for publication/deletion tests, and never send real user email/payment e
   `fa57f8bb`; durable object cleanup `d5814528`; deletion runner `ef1270ec`; opt-in worker
   schedule `07b83ea2`.
   Append quota reservations `716422f7`; generation-fenced derivatives `35ed7f66`;
-  Postgres media executor and attempt fencing `26dfdcd4`.
+  Postgres media executor and attempt fencing `26dfdcd4`; Media runtime selection `f2bfadb8`;
+  queue health and dead-job retry `a61ff521`; abandoned attempt cleanup `51ed45bb`;
+  atomic media job planning `30b161b2`; atomic file removal `a5f67945`.
+  Indexed transfer expiry cleanup `6bf88e21`; verified Postgres deletion token `1064caf8`;
+  initial transfer upload/read selection `196f1c0c`; atomic append planning `e66ae34d`;
+  Postgres deletion/event-drop selection `1a44f6a6`; conservative R2 orphan staging `213c542d`.
+  M7 room transaction foundation `1da75b22`; opt-in Postgres result delivery `111f152d`;
+  opt-in Hot & Cold room mapping `b7f3f784`; staged Draw Country mapping and shared engine
+  `1eaf95c9`; staged Postgres realtime backplane `48e22435`; staged Family Feud rooms
+  `ef788195`; staged Spelling Party rooms `b087b687`; staged Centre rooms `225195ed`;
+  staged Twin rooms `1498b616`; staged Same Brain rooms `3df4d3ad`; staged Liars rooms
+  `e93c0adb`; staged paired remote rooms `bc0ba9ae`; staged game-pool credentials
+  `8974e169`.
+  Staged Postgres health `c92c9dbd`; Pitch presentation `f1926a5b`; operator queue clear
+  `4dd96e31`; targeted media retry and reprocess `b99863cd`; stalled-job reconciliation
+  `18c24c17`.
 - Key decisions: Postgres application authority; object storage for media; no required Redis;
   planned maintenance window; preserve behavior/identities/expiry; additive schema evolution;
   atomic specialized jobs; fenced outputs; advisory notifications; forward-compatible rollback;
-  import the unused historical guest list into a restricted Postgres archive table with provenance.
+  import the unused historical guest list into a restricted Postgres archive table with provenance;
+  use the verified first RDB export as the Redis cutoff, accepting loss of later Redis-only writes.
+- 2026-09-26 cutoff update: the user authorized retiring Upstash and explicitly waived any
+  Redis-only data written after the first verified export. This supersedes earlier checkpoint
+  references to a fresh source delta. The source command cap no longer blocks the migration;
+  application completeness, rehearsal, backup/restore and production verification still do.
+- 2026-09-27 architecture decision: the user explicitly declined a temporary Railway Valkey
+  bridge. Complete and verify the direct Postgres migration before retiring Upstash. The verified
+  first RDB export remains the accepted source cutoff.
+- 2026-09-27 M7 foundation: migration `0117` adds typed JSONB room aggregates, action receipts
+  and an official-result outbox. The repository locks one room row, checks expiry and action
+  fingerprint, then commits state, receipt and result envelopes in one transaction. The outbox
+  deliberately has no cascading room foreign key, so room retention cannot erase an undelivered
+  result. This is a foundation only: no live room engine selects it yet. Engine transitions must
+  remain synchronous and free of network effects under the row lock; replay, credential and
+  paired-journal mappings remain to be implemented. The two-suite Postgres integration check
+  passed 8 cases; `pnpm check`, `pnpm build`, and the full suite with one worker passed (276 files,
+  2,131 tests). The default parallel full-suite attempt timed out in shared Postgres setup, so
+  one-worker execution is the applicable complete verification for this milestone.
+- 2026-09-27 M7 result delivery: migration `0118` adds fenced, expiring outbox claims and retry
+  scheduling. The opt-in `OFFICIAL_GAME_RESULT_OUTBOX_STORE=postgres` drain calls the existing
+  consumer outside its claim transaction, keeps delivered rows, and retries interrupted or
+  rejected delivery with the consumer's idempotency contract. Redis pub/sub is bypassed in this
+  staged mode; cross-process Postgres notification and all room producers are still open. The
+  three focused Postgres suites passed 10 cases; after selector coverage was added, `pnpm check`,
+  the complete one-worker suite (277 files, 2,134 tests), and `pnpm build` passed.
+- 2026-09-27 first engine mapping: Hot & Cold can opt into Postgres with
+  `HOT_AND_COLD_ROOM_STORE=postgres`, paired with the Postgres official-result outbox. Its room
+  actions use a row-locked transition and persistent action receipts; a finished transition
+  commits its official result in the same transaction. Other room modes still use Redis, so this
+  is an isolated stage rather than a production-wide multiplayer switch. The focused real
+  Postgres tests cover concurrent joins, duplicate acknowledgement, read recovery and finish
+  result atomicity. Remaining M7 modes, replay/credentials and realtime are open.
+  Verification: `pnpm check`, the complete one-worker suite (278 files, 2,136 tests), and
+  `pnpm build` passed after the mode-specific selector was added.
+- Next action: finish M6 source/R2 reconciliation and admin/CLI parity, then map remaining M7
+  multiplayer replay/credential records and M8 reconnect recovery. Rehearse the accepted RDB
+  import, qualify backup/restore and worker credentials, and run the full Redis-free release
+  gate before production cutover. The first verified RDB remains the agreed Redis cutoff;
+  Upstash is still serving live production traffic.
+- 2026-09-27 production recovery checkpoint: the user authorized the Upstash swap and confirmed
+  the first verified RDB as the cutoff. Railway's managed on-demand Postgres backup returned
+  `OAUTH_INSUFFICIENT_GRANT`; its PITR status is disabled and there is no backup schedule. A
+  separate production `pg_dump` over Railway SSH was written with mode 0600 to the ignored
+  private migration directory, SHA-256 `b966e21973a630f70fa84025464aef2a6853895d47b224817974ed8f8ce5b846`.
+  `pg_restore --list` passed, and a single-transaction restore into isolated local Postgres 18
+  produced 117 public tables and 97 migration-ledger rows. This is a verified local recovery
+  checkpoint, not provider PITR or an off-site retention policy. Production media-worker still
+  lacks `DATABASE_URL`; web, worker and maintenance have no Postgres cutover flags. Do not remove
+  production Redis configuration before those runtime paths and the remaining M6–M13 gates pass.
+- 2026-09-27 backup access recheck: Railway can list production Postgres backups, but creating
+  a new managed pre-cutover backup still returns "You do not have access to this resource".
+  The only listed managed backup is dated 2026-08-23 and has an expired 2026-09-22 retention
+  timestamp. The verified local production `pg_dump` remains the available recovery checkpoint;
+  managed backup and schedule configuration are unresolved.
+- 2026-09-27 backup decision: the user waived a fresh managed backup as a cutover gate. Use the
+  verified local production dump and its successful isolated restore as the recovery checkpoint;
+  continue direct Postgres implementation and rehearsal. Do not delay application work for the
+  Railway backup grant.
+- 2026-09-27 admin content audit cache: the 15-minute diagnostic cache is now local to each
+  web process; no durable or shared state depends on the retired Redis cache key. Forced refresh
+  still bypasses it. `pnpm check`, the focused admin permission suite (4 tests), and
+  `pnpm build` passed. Code commit: `6978d6a4`.
+- 2026-09-27 transfer CLI read/cleanup parity: info, list, transfer/file removal and deep
+  cleanup no longer require Redis before reaching their existing Postgres catalogue paths.
+  CLI create and append still use the legacy upload pipeline and need a Postgres implementation;
+  `nuke` remains explicitly legacy-only. `pnpm check` and the focused Postgres transfer
+  catalogue suite (14 tests) passed. Code commit: `a0d84dad`.
+- 2026-09-27 staged Spelling Party rooms: `SPELLING_PARTY_ROOM_STORE=postgres` selects the
+  shared row-locked Postgres room transaction and requires the Postgres official-result outbox.
+  Join receipts and recovery credentials commit with room state; accepted command receipts and
+  the finishing result commit atomically. Two real-Postgres integration tests cover concurrent
+  join replay, wrong-credential action replay, close authorization, and duplicate finish.
+  `pnpm check`, the full one-worker suite (285 files, 2,155 tests), `pnpm build`, and
+  `git diff --check` passed. Code commit: `b087b687`. Other room modes remain open; the selector
+  is not enabled in production.
+- 2026-09-27 word archive CLI parity: backup, inspection and isolated restore now accept
+  `WORD_STORE=postgres` with configured Postgres and object storage, without a Redis preflight.
+  The focused archive/storage recovery suites passed six tests and `pnpm check` passed.
+  Code commit: `ecdbfa86`.
+- 2026-09-27 staged Centre rooms: `CENTRE_ROOM_STORE=postgres` selects the shared row-locked
+  Postgres room transaction and requires the Postgres official-result outbox. Current-game
+  replay records now commit inside the room aggregate; the finishing transition and result
+  outbox commit together. The real-Postgres tests cover concurrent join recovery, action replay
+  with the wrong credential, durable replay and result creation. `pnpm check`, the full
+  one-worker suite (286 files, 2,157 tests), `pnpm build`, and `git diff --check` passed.
+  Code commit: `225195ed`. Other modes remain open; the selector is not enabled in production.
+- 2026-09-27 staged Twin rooms: `TWIN_ROOM_STORE=postgres` selects the shared row-locked
+  Postgres room transaction and requires the Postgres official-result outbox. Heat logs now
+  commit inside the room aggregate, including read-driven settlements and action events;
+  a finishing transition and its result commit together. Focused real-Postgres and legacy
+  suites passed 14 tests; `pnpm check`, the clean full one-worker rerun (287 files, 2,159 tests),
+  `pnpm build`, and `git diff --check` passed. The initial full run stalled in event/calendar
+  database tests; both cases passed individually before the clean rerun. Code commit:
+  `1498b616`. Remaining modes and cutover gates are open; no production selector is enabled.
+- 2026-09-27 staged Same Brain rooms: `SAME_BRAIN_ROOM_STORE=postgres` selects the shared
+  row-locked room transaction and requires the Postgres official-result outbox. Join recovery
+  receipts, accepted command receipts and the ending result commit with room state; development
+  export/import and host-token reissue also use the selected store. The focused Postgres and
+  legacy suites passed 60 tests; `pnpm check`, `pnpm build`, and `git diff --check` passed.
+  Two full one-worker attempts had unrelated timeouts: one Draw Country scoring case on the
+  first run, then a Hot & Cold migration hook and another scoring case on the retry. Each case
+  passed individually. The last clean full suite before this mode was 287 files/2,159 tests;
+  integrated full-suite verification must be rerun once the test host is stable. Code commit:
+  `3df4d3ad`. Remaining modes and cutover gates are open; the selector is not in production.
+- 2026-09-27 staged Liars rooms: `LIARS_ROOM_STORE=postgres` selects the shared row-locked
+  room transaction and requires the Postgres official-result outbox. Join recovery receipts,
+  accepted command receipts and the ending result commit with room state; development
+  export/import and host-token reissue follow the selected store. Focused Postgres and legacy
+  suites passed 72 tests; `pnpm check`, `pnpm build`, and `git diff --check` passed. The full
+  suite remains deferred after the two prior host timeout runs; it is required again at release
+  qualification. Code commit: `e93c0adb`. Paired remote, pool, and cutover gates remain open.
+- 2026-09-27 staged paired remote rooms: `PAIRED_GAME_ROOM_STORE=postgres` selects one
+  row-locked Postgres aggregate for setup, snapshots, paired device epochs, judge commands,
+  acknowledgments, decisions and bounded recent command receipts. Authoritative result
+  revisions commit with their player snapshot; conflicting equal-revision results roll back.
+  Focused real-Postgres and legacy suites passed 17 tests, including concurrent duplicate
+  judge commands, player fencing, judge-token rotation, expiry renewal and result revisions.
+  `pnpm check`, `pnpm build`, and `git diff --check` passed. Code commit: `bc0ba9ae`.
+  The game pool and full Redis-free release gates remain open; no production selector is enabled.
+- 2026-09-27 staged game-pool credentials: migration `0120` adds relational room join tokens
+  and assignment recovery receipts. `GAME_POOL_CREDENTIAL_STORE=postgres` writes them in the
+  same allocation transaction as room and assignment rows, reads them without Redis, removes
+  stale receipts after membership changes, and clears credentials when a run closes. The
+  integrated real-Postgres test covers allocation, retry, a second join, release and cleanup.
+  The full one-worker suite passed 291 files/2,170 tests. After removing two unused migration
+  indexes, the migration-ledger and pool suites, `pnpm check`, `pnpm build`, and
+  `git diff --check` passed. Code commit: `8974e169`. The selectors remain disabled in
+  production; full Redis-free application, import and release gates are still open.
+- 2026-09-27 transfer event stage: `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres` now selects one
+  Postgres LISTEN/NOTIFY subscriber per web process, reading the committed file from the
+  Postgres transfer catalogue before fan-out. The Postgres media executor publishes after its
+  fenced result transaction, and a connecting SSE stream reconciles from the transfer after
+  subscription. The selector requires the paired Postgres catalogue/job flags. The real Postgres
+  focused event and executor suites passed five tests. Live-connection lost-notification recovery,
+  resource limits and all-source cutover are still open; this flag is not enabled in production.
+  `pnpm check`, the full one-worker suite (279 files, 2,138 tests), and `pnpm build` passed.
+- 2026-09-27 staged Draw Country room mapping: `DRAW_COUNTRY_ROOM_STORE=postgres` selects the
+  shared Postgres room transaction path and requires the Postgres official-result outbox. Durable
+  action receipts replay acknowledged commands; a finished room and its result commit together.
+  Real Postgres tests cover concurrent joins, action replay and finish result atomicity. The mode
+  is not enabled in production. Other room engines, realtime and process-restart recovery remain
+  open. Focused Draw Country and Hot & Cold suites passed 20 cases; `pnpm check`, the full
+  one-worker suite (280 files, 2,140 tests), and `pnpm build` passed.
+- 2026-09-27 staged multiplayer realtime backplane: `MULTIPLAYER_REALTIME_BACKPLANE=postgres`
+  selects one dedicated Postgres LISTEN connection per multiplayer runtime and publishes bounded
+  advisory envelopes through NOTIFY. The process still delivers its own wake once; receivers
+  validate envelopes and ignore their own origin. A dropped subscriber schedules reconnection.
+  The real Postgres test verifies cross-connection delivery. Lost-wake snapshot recovery,
+  termination authorization/revalidation, two-web-process behavior and measured load remain open;
+  the selector is not enabled in production. Focused tests passed 3 cases; `pnpm check`, the
+  complete one-worker suite (281 files, 2,141 tests), and `pnpm build` passed.
+- 2026-09-27 staged Family Feud room mapping: `FAMILY_FEUD_ROOM_STORE=postgres` selects the
+  row-locked Postgres room engine and result outbox. A close checks the controller credential
+  while holding the same row lock as actions. Persistent receipts replay acknowledged controller
+  and buzzer commands; result confirmation queues the official envelope atomically. Real
+  Postgres tests cover competing controller pairings, duplicate action replay, close authority
+  and result confirmation. The selector is not enabled in production. Focused suites passed 11
+  cases; `pnpm check`, the full one-worker suite (282 files, 2,143 tests), and `pnpm build`
+  passed.
+- 2026-09-27 staged health parity: capability configuration and the media-worker probe now
+  recognise the Postgres job/catalogue/status selection and Postgres multiplayer backplane
+  without asking for Redis credentials. Incomplete worker flag sets fail closed. The overall web
+  persistence capability still reports Redis because many feature paths remain dependent on it;
+  do not mark the whole application Redis-free from these local capability checks. Real Postgres
+  focused tests passed two cases; `pnpm check` and the full one-worker suite (283 files, 2,145
+  tests) passed. A new build is deferred because this changes server-side health selection only;
+  the immediately preceding Family Feud milestone built the same source boundary successfully.
+- 2026-09-27 staged Pitch presentation and room transition correction:
+  `PITCH_PRESENTATION_STORE=postgres` selects a Postgres room aggregate for host/controller
+  recovery and slide commands. Deck publication is fetched before the row lock and the selected
+  deck ID is rechecked during the transaction, so an external read cannot hold a room lock. A
+  rejected mutation leaves state unchanged. Shared room transitions now skip writes for
+  unchanged snapshot reads and do not consume an action receipt for a rejected command. Real
+  Postgres tests cover concurrent controller joins, approval, public redaction, slide replay,
+  unchanged-read revisions and rejected-action retry. The selector is not enabled in production;
+  other M7 modes and full M8 reconnect/revalidation remain open. Focused suites passed 12 cases;
+  `pnpm check`, the full one-worker suite (284 files, 2,147 tests), and `pnpm build` passed.
+- 2026-09-27 staged media operator queue parity: with Postgres jobs selected, the existing
+  `clear-media-queue` CLI operation cancels pending and claimed Postgres jobs while retaining their
+  history and invalidating claim tokens. It does not touch Redis. A claimed worker's late
+  completion is rejected. This command remains destructive by operator intent; it does not
+  replace the still-open Postgres backfill, retry, reprocess and reconciliation workflows.
+  Focused real Postgres tests passed nine cases, including the Media runtime selection path.
+  `pnpm check`, the full one-worker suite (284 files, 2,149 tests), and `pnpm build` passed;
+  the focused suite was rerun after the final deterministic row-lock ordering change.
+- 2026-09-27 staged media retry/reprocess: under the Postgres catalogue flag, operator retry,
+  transfer backfill and explicit reprocess use a row-locked source generation advance and
+  transactional replacement job enqueue. Pending or claimed older jobs are cancelled; a late
+  completion cannot publish. The CLI targeted retry no longer requires Redis in this mode.
+  Backfill handles failed and stale processable files; full R2/source reconciliation and broad
+  command parity remain open. No production flag is enabled. The focused Postgres and admin
+  suites passed 15 tests; `pnpm check`, the full one-worker suite (284 files, 2,152 tests),
+  and `pnpm build` passed. Code commit: `b99863cd`.
+- 2026-09-27 staged Postgres media reconciliation: migration `0119` indexes failed file work.
+  A bounded sweep selects failed or stale file generations without active pending/leased jobs;
+  each requeue rechecks source state under a row lock and commits replacement work with the
+  generation advance. The Media service and CLI select this sweep under the Postgres catalogue
+  flag and require no Redis connection. It does not yet compare R2 objects or cover all legacy
+  reconcile behavior; no production flag is enabled. Focused Postgres/ledger tests passed 18
+  cases; `pnpm check`, the complete one-worker suite (284 files, 2,153 tests), and `pnpm build`
+  passed. Code commit: `18c24c17`.
 - Relevant files: evidence map in section 2; this file is the implementation ledger.
 - Verification: the first inventory commit passed `pnpm exec oxfmt --check` and local-link checks.
-  The new RDB evidence passed the Upstash parser's CRC/type verification and strict database-0
+  The new RDB evidence passed the Upstash parser's structural/type verification and strict database-0
   decode; its audit printed aggregate counts only. A read-only R2 listing and selected manifest
   downloads matched all 13 word bodies, all 64 active-transfer storage references, and all 14
   album originals/84 public variants/14 OG objects; three word image manifests and 18 variants
@@ -1052,8 +1336,81 @@ targets for publication/deletion tests, and never send real user email/payment e
   Redis queue recovery, and drains Postgres claims without Redis blocking clients. The focused
   worker-loop suite covers opt-in startup, required status configuration and one-shot drain.
   `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (273 files, 2,105 tests).
-  The switch remains unset in production; queue snapshots, dead-letter retry, attempt-object
-  reconciliation and live transfer request wiring remain open.
+  The switch remains unset in production; attempt-object reconciliation and live transfer
+  request wiring remain open.
+  The queue snapshot now drives opt-in admin/CLI health without Redis reads. Postgres mode
+  propagates queue/status read failures instead of showing zero work; dead-job retry preserves
+  prior attempts and refuses stale generations. Five focused real-Postgres cases pass, including
+  queue state and source-change retry cases. `pnpm check`, `pnpm build` and the full `pnpm test`
+  suite passed (273 files, 2,107 tests). Remaining operations still need Postgres parity.
+  Known abandoned claim outputs are now selected only after the attempt loses publication rights,
+  then private deletion is staged in the durable object-operation ledger. The current published
+  claim is excluded, including while a replacement is still running. A bounded worker timeout
+  stops lease renewal and interruption attempts best-effort output deletion. Three focused suites
+  passed 15 cases against real Postgres or the worker runtime. `pnpm check`, `pnpm build` and the
+  full `pnpm test` suite passed (273 files, 2,110 tests). R2 prefix sweeps for unrecorded or late
+  objects remain open.
+  A staged Postgres media plan now creates queued file metadata and generation-specific job
+  payloads for visual uploads without an early Redis or R2 mutation. Initial transfer and append
+  finalization can enqueue those jobs in their catalogue transaction, and reject an incomplete or
+  mismatched plan. The Redis-era enqueue path now fails closed if Postgres job mode is selected.
+  Three focused real-Postgres suites passed 23 cases, including rollback when a job plan is
+  invalid. `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (273 files, 2,113
+  tests). Live upload requests still select Redis and need a coordinated switch.
+  A staged file-removal transaction now gathers source, published derivative and attempt keys,
+  queues private deletion, removes jobs and collapses the affected group. The last-file path
+  tombstones the transfer. Twelve focused real-Postgres cases passed, including idempotent
+  missing-file results and rollback when deletion staging rejects a malformed key. `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (273 files, 2,115 tests). Live request
+  selection and R2 prefix reconciliation remain open.
+  The staged Postgres expiry sweep now locks a bounded expired set, tombstones it, and enqueues
+  known object deletions through the same transaction as explicit removal. Thirteen focused
+  real-Postgres catalogue cases passed, including active-transfer exclusion and idempotent
+  repeat cleanup; `pnpm check` passed. The full suite and production build are deferred until
+  live cleanup selection changes bundling or crosses feature boundaries. The production cron
+  still selects Redis.
+  The staged `TRANSFER_CATALOGUE_STORE=postgres` path now reads transfers from Postgres and
+  sends initial presign, finalize, resume and abandon through one Postgres reservation authority.
+  Finalization uses the all-visual media plan and commits its jobs beside file rows. Other
+  legacy transfer mutations fail closed if the catalogue flag is selected. A real-Postgres
+  service test passed completion, idempotency and missing-object retry; the five neighboring
+  upload route suites and the catalogue suite passed (six files, 28 tests). `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (274 files, 2,119 tests). This staged flag
+  must stay unset until deep orphan handling and the deletion runner are qualified.
+  Postgres append presign now reserves each selected batch against existing files and other
+  reservations. Its finalization infers groups and commits ordering, files, media jobs and
+  reservation consumption together. The original insertion order remains stable; an initial
+  sorting change was reverted after a focused regression test. Four focused suites passed
+  25 cases, including a RAW pair and concurrent reservation capacity. `pnpm check`,
+  `pnpm build` and the full `pnpm test` suite passed (274 files, 2,120 tests).
+  Owner/admin takedown and file removal now select Postgres tombstones and queue private-object
+  deletion instead of deleting R2 first. Postgres cleanup tombstones expired transfers and
+  expires reservations without consulting the Redis index. Event guest-drop creation couples
+  its empty transfer and token row in one Postgres transaction. Five focused suites passed
+  31 cases, including a real-Postgres deletion and event-drop path. Deep R2 orphan scans and
+  late upload cleanup remain open; the catalogue flag remains unset in production.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed (274 files, 2,123 tests)
+  after these route and UI changes. Focused Playwright and release verification remain for
+  the integrated release candidate.
+  The deep Postgres cleanup path now lists transfer prefixes, waits until objects are older
+  than the longer of 24 hours or the upload reservation lifetime plus one hour, then stages
+  unreferenced private keys after locked DB rechecks. It fails visibly if the current scan
+  exceeds 100 prefixes or 2,000 objects in one prefix. A shared advisory lock serializes
+  no-owner scans with new initial reservations; initial and append reservations block key reuse
+  while a prior delete is unfinished. Four focused real-Postgres suites passed 18 cases,
+  including a late object recreated after a completed deletion.
+  `pnpm check`, `pnpm build` and the full `pnpm test` suite passed on the final code
+  (275 files, 2,128 tests). The production deletion runner remains unset.
+  The last read-only production inventory found one transfer prefix and 168 objects, but measured peak
+  load and deletion-runner soak remain release gates.
+  A read-only production check on 2026-09-26 found the media-worker deployment marked SUCCESS,
+  while the latest maintenance deployment remains CRASHED. Its 03:19 UTC run received HTTP 500
+  from transfer cleanup/media reconciliation and word-share/media cleanup. Upstash `PING`
+  returned PONG, but a follow-up queue read returned `ERR max requests limit exceeded` at
+  500,000/500,000; no queue values or fresh source delta were obtained. These failures align
+  with the exhausted Redis allowance; the maintenance runner deliberately exits nonzero when
+  any job fails. The later cutoff decision supersedes the fresh-export requirement: stop live
+  source reads and use the verified first export. No production data or configuration was changed.
 - Findings: production runs Postgres 18.6 with 117 public tables and a 28 MB database. Its
   migration ledger has `0025_site_settings`, absent from the source list, while source has
   `0025_site_settings_v2`. The live web DB credential is the `postgres` superuser, so archive
@@ -1067,17 +1424,147 @@ targets for publication/deletion tests, and never send real user email/payment e
   has two. The export's admin/upload token versions are 3/2; the retired staff version is 2.
   Its 192 attendee sessions include 189 current and three legacy shapes; 27 are person-bound,
   none has pending MFA, and no person-version key survives.
-- Unresolved: exact Redis snapshot time/fresh cutover delta; archive retention duration and
+- Unresolved: exact Redis snapshot time; exhausted Upstash command cap and
+  failed production maintenance tasks; archive retention duration and
   production role separation; backup coverage; measured load/resource budgets; remaining
   domain DDL and import durations; operational command/credential setup; quantified acceptance
   and observation/retention periods. The local Postgres restore drill does not establish
   production backup or R2 restore coverage.
-- Next action: wire transfer request flows and cleanup against the same Postgres authority, then
-  implement safe file removal with generation-specific derivatives. Reconcile orphan transfer prefixes
-  and qualify the opt-in deletion runner before cutover. Add media queue operations and
-  old-attempt object reconciliation, then reconcile a fresh source export against the rehearsed importer.
+- Next action: qualify the orphan scan's resource limits and the opt-in deletion runner with
+  old/late uploads, interrupted deletion and retry. Then enable the catalogue flag only after
+  the authorized first export is imported and reconciled.
+  Complete media queue operations and
+  old-attempt object reconciliation, then reconcile the authorized first export against the importer.
   Wire recoverable word/album object operations before any release candidate. Do not
   start production migration from the table sketches in this document.
+
+### 2026-09-27 checkpoint — Postgres application health
+
+- Commit `cf4d4fa0` makes the mandatory application persistence capability probe Postgres when
+  every staged application store selector is `postgres`; Redis is not contacted in that mode.
+- Verified the real-Postgres capability integration test (3 cases), `pnpm check`, and `pnpm build`.
+  The last clean full suite remains the 291-file, 2,170-test pool-credential run at `8974e169`.
+- Production still uses Upstash. The verified first Redis export and local Postgres dump remain
+  the authorized cutoff/recovery evidence; the user waived a fresh managed Postgres backup.
+- Next action: complete R2 publication, source reconciliation, reconnect, deployment-role, and
+  release gates before any production swap.
+- Commit `441b1ff8` completed the transfer CLI create/append path. A real-Postgres CLI flow test
+  passed with Redis disabled, and two signed-upload transport tests covered single and multipart
+  byte streams. `pnpm check` and the full one-worker suite passed (293 files, 2,174 tests).
+  Remaining M6 work includes source/R2 reconciliation, deletion-runner qualification, worker
+  production credentials, and the non-create/append operational CLI paths.
+- Commit `e7cdda57` rejects unsafe local filenames and refuses to treat a reused media ID with
+  different file metadata as an already completed append. `pnpm check` and the two focused suites
+  passed (3 cases). A local production-mode web smoke with all 29 Postgres selectors and Redis
+  variables empty started the app and its Postgres realtime backplane; `/api/health` returned 503
+  because this deliberately isolated run lacked required R2 and other production credentials.
+  This establishes boot without Redis, not release readiness or a passing production probe.
+- Commit `bc9f6a43` makes the offline RDB extractor account for every source key and type before
+  it writes output. The accepted export decoded to 224 keys with 199 expiries. A private local
+  fixture containing an extra key was refused before any output was created. `go vet`, the pinned
+  parser run and `pnpm check` passed. `redis-check-rdb` confirmed that the export has its internal
+  checksum disabled; the recorded SHA-256 pins source bytes, and the docs now state the structural
+  verification limit accurately. No live Upstash command was used.
+- Commit `a78d4e4c` added a real-Postgres listener disconnect/reconnect check. The two focused
+  transport cases and `pnpm check` passed. This covers a subsequent notification after reconnect;
+  browser snapshot recovery during a lost notification and the two-web-process plus worker
+  workload remain release gates.
+- A scoped `mah_media_worker` role now grants only the migration ledger and transfer/media
+  execution tables. Worker boot requires `DATABASE_SCHEMA_MODE=verify` and skips the unrelated
+  Pitch document probe. Nitro close hooks register before async startup, Node signals invoke
+  them, and a process-wide Postgres pool is closed last. A Redis-free built worker with a
+  restricted local login returned HTTP 200 from `/api/health`; SIGTERM exited with status 0,
+  marked its instance stopped, and left zero worker database connections. The temporary local
+  login was removed. `pnpm check`, `pnpm build`, the two focused role/ledger suites (6 tests),
+  and the full one-worker suite (294 files, 2,177 tests) passed. The full suite ran before the
+  final explicit permanent-close option; focused checks, build and smoke were repeated after it.
+  Production credentials and service wiring remain unset; worker recovery under real R2 and
+  stale claims remains open.
+- A staged `pnpm transfers:audit-sources` command checks active Postgres transfer file source
+  keys against private R2 using bounded HEAD requests. It reports missing objects, known size
+  discrepancies and incomplete scans without changing either store. The three real-Postgres
+  cases passed with an injected object-store adapter; `pnpm check` passed. Run this against the
+  imported target during the maintenance freeze and reconcile any findings before cutover.
+- A staged `pnpm albums:audit-objects` command checks imported album photo references against
+  private originals/derivatives and, for published albums, public derivatives. The existing
+  album workflows now share the same key builder as the audit. Three focused suites passed
+  14 cases, including real Postgres catalogue rows and injected R2 absence/failure; `pnpm check`
+  and `pnpm build` passed. This is read-only release evidence, not publication repair. The
+  publication/deletion ledger and reference-safe recovery remain open.
+- Commits `153ad4ec`, `02d1b14f`, `2be5ac92`, and `639cd89f` contain the scoped worker,
+  source and album object audits, and accurate Postgres cleanup messaging. The explicit transfer
+  hard reset now selects Postgres tombstones and deletion intents, processing up to 1,000 current
+  transfers in batches of 20; admin and CLI report queued file cleanup rather than claiming
+  immediate R2 deletion. A real-Postgres service test passed with Redis unset. `pnpm check`,
+  `pnpm build`, and the full one-worker suite passed (296 files, 2,185 tests). Browser changes
+  were copy only; Playwright remains a release gate. Production remains on Upstash. Next:
+  finish recoverable album/word publication and source reconciliation, rehearse the integrated
+  accepted-export import, then qualify the complete Redis-free artifact before cutover.
+- Commits `2d6247de` and `d0e1ae69` stage the Postgres album unpublish path: a draft revision
+  commits with public-object deletion intents. A worker using the scoped media role retries each
+  fenced deletion; republish waits for cleanup. Real-Postgres integration covers atomicity,
+  blocked republish, and an
+  uncertain R2 deletion retry. `pnpm check`, `pnpm build`, and the full one-worker suite passed
+  (297 files, 2,188 tests). A built Redis-free worker with a restricted local login and both
+  Postgres album selectors returned HTTP 200, exited cleanly on SIGTERM, marked its instance
+  stopped, and left zero database connections; the temporary login was removed. Publication
+  copy and album/photo deletion remain unfinished. Upload finalization now uses the same draft
+  revision plus public deletion intents when adding photos to a published Postgres album. The
+  real-Postgres upload-finalization case passed with image processing and injected object storage
+  (3 focused cases total); `pnpm check` passed. Production remains on Upstash; the first export
+  is the authorized source cutoff, and no fresh backup is required by the user. Next: finish
+  those album paths and word-media visibility before the integrated import rehearsal and release
+  qualification.
+- Commit `f4584982` makes a delayed public-object delete and a new album revision serialize on
+  the same Postgres advisory transaction lock. The worker rechecks its lease and draft state
+  under that lock before deleting, then completes the ledger operation before releasing it. The
+  four-case real-Postgres album suite includes a concurrent republish test; `pnpm check` passed.
+  A scoped-role SQL check exercised the advisory lock, album read and ledger update privileges.
+  The deletion keeps one database transaction open across the bounded R2 call, so production load
+  and timeout behavior still need the M8 workload check.
+- Commit `5dcac35a` makes Postgres photo removal commit the album revision and both
+  private/public deletion intents together. The worker checks current photo references under the
+  album lock before deleting; writes reject reuse of a private key while deletion remains
+  pending. The scoped worker role
+  can read photo references. The related real-Postgres album and role suites passed (4 files,
+  13 cases), including a published album that remains published after removing one photo;
+  `pnpm check` passed. Album-wide deletion and publication copy remain open.
+- Commit `fee6dd1e` makes whole-album deletion commit the catalogue delete and discovered
+  private/public R2 deletion intents together, including the legacy private manifest key. A new
+  album with the same slug cannot be created until cleanup finishes and then receives a revision
+  above prior operation
+  identities. Direct repository deletion derives intents from recorded photo references when an
+  admin object listing is unavailable. Four related real-Postgres suites passed (14 cases), and
+  `pnpm check` passed. R2 objects uploaded concurrently by a stale in-flight finalization can
+  still be orphaned; M5 reconciliation must sweep those objects before this store is enabled.
+  Publication copy remains open.
+- A staged `publishing` album revision now records one private-to-public copy intent per
+  derivative. Public loaders hide that revision; the worker copies under the album lock and
+  advances status only after every intent completes. A normal admin publish drains its scoped
+  intents immediately and returns `published`; failed copies remain hidden for retry, and the
+  admin shows `publishing` with a refresh/cancel path. Cancellation records public delete intents
+  and makes old copies inert. Migration `0121_album_publication_pending` expands the status check;
+  the scoped worker role can update only `gallery_albums.status`. The seven related suites passed
+  56 cases before the final cancellation adjustment; the focused album/status run passed 40
+  cases after it. `pnpm check` and `pnpm build` passed. The full suite passed 296 files but its
+  migration-ledger suite had three stale hardcoded migration-count expectations. Those now derive
+  from the migration list, and the five-case migration suite passed. Rerun the full suite after
+  the next code milestone; browser and load checks remain release gates.
+- Migration `0122_word_media_scope_reconciliation` records visibility-driven R2 scope work in
+  Postgres. A public or unlisted word is hidden while the move is pending. The web process tries
+  the move immediately and the media worker retries dirty rows after failures or a process crash;
+  both serialize with word edits using a per-word Postgres advisory lock. The scoped worker role
+  receives only the word columns needed for this work. A real-Postgres test covers failed R2 copy,
+  retry, and public listing after completion. Shared-reference cleanup and an orphan sweep remain
+  M5 work. Production selectors are unchanged and Upstash remains active.
+- Postgres word deletion now discovers both R2 scopes under the word advisory lock and records
+  deletion intents atomically with the row deletion. The worker retries those intents and new
+  words cannot reuse a slug until cleanup finishes; a recreated slug gets a new revision. A
+  real-Postgres integration case covers cleanup and slug reuse. A stale upload that finishes
+  after the deletion inventory can still leave an orphan; the M5 object reconciliation sweep
+  remains required before release. `pnpm check`, `pnpm build`, and the full one-worker suite
+  passed (297 files, 2,200 tests). The accepted-export cutoff wording was corrected in the
+  guest-archive, token, attendee-session and CLI-auth migration notes.
 
 ### Milestone checkpoint template
 
@@ -1085,3 +1572,61 @@ For each completed milestone append: date, milestone, commit(s), decisions/DDL c
 files, source/target mapping changes, checks and evidence, remaining risks/blockers, and next
 action. When a new finding changes a dependency or acceptance criterion, update the main plan
 and ledger as well as the checkpoint.
+
+### Production cutover execution — 2026-09-28
+
+The user authorized switching now despite possible interruption of sessions, queued work, and
+multiplayer recovery, while retaining the first verified Redis export as the source cutoff. No
+fresh backup or Redis delta is required. This checklist records observed execution, not a claim
+that the release is complete.
+
+- [x] Verify the accepted RDB SHA-256
+      `9dbb17f1c44765ca74892bc00ba2eca46f2f2904f09c47768f184db8c0fc17c4` and readability
+      of the existing pre-cutover Postgres dump.
+- [x] Apply migrations through `0122_word_media_scope_reconciliation` on production Postgres;
+      verify the restricted web login sees 123 source migrations and cannot create in `public` or use
+      `legacy_archive`.
+- [x] Import and reconcile the accepted source: 13 words, zero shares, two albums with 14 photos,
+      192 attendee sessions, three role versions, three current and one legacy report, voting state,
+      four upload-audit events, one worker-status record, one transfer with 52 files, seven preserved
+      media jobs, and one quarantined orphan job.
+- [x] Import the historical guest list into the restricted encrypted archive and verify 274 guests
+      with 157 plus-ones using the archive login. The archive encryption key is retained in a
+      mode-0600 local private migration file; independent escrow and restore verification remain.
+- [x] Audit imported album objects (14 photos, 210 objects, zero issues) and transfer sources
+      (52 files, 64 objects, zero issues after correcting quota-versus-object size comparison).
+- [x] Stage all 30 Postgres selectors and `DATABASE_SCHEMA_MODE=verify` for web and media-worker,
+      with separate non-superuser database URLs and the worker's required public R2 credentials.
+- [ ] Pass `pnpm verify:release` on the release source. The first run passed checks and 2,200
+      coverage tests but had three browser fixture failures because `TEST_DATABASE_URL` was unset
+      in the Playwright process, plus one multiplayer timing failure. The fixture is corrected;
+      all nine affected browser cases passed on rerun. A complete release rerun is in progress.
+- [x] Deploy release `acef2431` to web and media-worker. Both Redis-free restarts succeeded
+      (`9697eeb2-032f-4c34-ba03-32c33163acec` and
+      `0d3bd400-9639-499d-a36a-074b46e5542d`). Public health, words, pictures, and party
+      pages return 200; the admin content endpoint denies anonymous access with 401.
+      A root-admin login against the live Postgres session store succeeded; authenticated
+      content summary returned three public posts, two albums and 14 photos, transfer admin
+      returned one transfer, and `/api/debug` reported healthy with every required capability
+      available.
+- [x] Remove `REDIS_URL`, `REDIS_REST_URL`, and `REDIS_REST_TOKEN` from both services and verify
+      neither environment retains a Redis key. The media queue has zero waiting jobs and all
+      seven imported jobs are completed. The worker heartbeat advanced after the Redis-free
+      restart; the production transfer reconciliation scanned one transfer and found no repairs.
+      Four non-mailing maintenance cleanup endpoints returned 200.
+- [x] Remove the old Upstash and KV credentials from the ignored local `.env.local`, migrate the
+      local development database through migration `0122`, and select the same 30 Postgres stores
+      for local development. The local media processor remains in its existing local mode.
+- [ ] Delete the external Upstash database and revoke its credentials. The application no longer
+      connects to it, but account-level retirement requires Upstash management access.
+- [x] Escrow the guest archive encryption key in the macOS Keychain as
+      `mah-production-legacy-guest-archive-20260928`; verify readback against the private file and
+      use the Keychain copy to decrypt the production archive with the restricted importer role.
+      The verified payload has 274 guests and 157 plus-ones at the accepted source hash.
+- [x] Observe successive worker heartbeats after the Redis-free restart, a stable zero-length
+      queue, and healthy web and worker deployments. The last 250 deployment log lines for each
+      service contain no error messages.
+- [ ] Complete final acceptance after the external Upstash resource is deleted. A separate-account
+      Postgres backup schedule and restore drill remain operational follow-up work; the user waived
+      a fresh dump for this cutover and the earlier readable pre-cutover dump remains available
+      locally.

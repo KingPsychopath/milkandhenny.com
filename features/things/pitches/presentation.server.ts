@@ -1,5 +1,10 @@
 import { getRedis } from "@/lib/platform/redis.server";
 import {
+  createPostgresGameRoom,
+  loadPostgresGameRoom,
+  withPostgresGameRoom,
+} from "@/features/things/shared/room-postgres-engine.server";
+import {
   createAvailableMultiplayerRoomId,
   createMemoryRoomStore,
   createMultiplayerCredential,
@@ -61,6 +66,12 @@ function lockKey(roomId: string) {
 
 const PRESENTATION_RENEWAL_WINDOW_MS = 5 * 60 * 1_000;
 
+function postgresPresentationsSelected() {
+  return process.env.PITCH_PRESENTATION_STORE === "postgres";
+}
+
+const notFound = () => ({ ok: false as const, status: 404, error: "Presentation not found" });
+
 function refreshPresentationLease(state: PresentationState, now = Date.now()) {
   const remaining = state.expiresAt - now;
   if (
@@ -89,6 +100,8 @@ function memoryAllowed(): boolean {
 }
 
 async function readState(roomId: string): Promise<PresentationState | null> {
+  if (postgresPresentationsSelected())
+    return loadPostgresGameRoom<PresentationState>("pitch-presentation", roomId);
   const redis = getRedis();
   if (redis) {
     const state = (await redis.get<PresentationState>(key(roomId))) ?? null;
@@ -108,6 +121,10 @@ async function readState(roomId: string): Promise<PresentationState | null> {
 }
 
 async function saveState(state: PresentationState): Promise<void> {
+  if (postgresPresentationsSelected()) {
+    await createPostgresGameRoom("pitch-presentation", state);
+    return;
+  }
   const redis = getRedis();
   if (redis) {
     await redis.set(key(state.roomId), state, {
@@ -121,8 +138,25 @@ async function saveState(state: PresentationState): Promise<void> {
 
 async function mutate<T>(
   roomId: string,
-  operation: (state: PresentationState) => Promise<PresentationResult<T>>,
+  operation: (state: PresentationState) => PresentationResult<T> | Promise<PresentationResult<T>>,
 ): Promise<PresentationResult<T>> {
+  if (postgresPresentationsSelected()) {
+    const result = await withPostgresGameRoom<PresentationState, PresentationResult<T>>({
+      kind: "pitch-presentation",
+      roomId,
+      use: (state) => {
+        const draft = structuredClone(state);
+        const result = operation(draft);
+        if (result instanceof Promise)
+          throw new Error("Postgres presentation mutations must be synchronous");
+        if (result.ok) Object.assign(state, draft);
+        return result;
+      },
+      applyExpiry: () => {},
+      results: () => [],
+    });
+    return result ?? notFound();
+  }
   const redis = getRedis();
   const run = async () => {
     const state = await readState(roomId);
@@ -166,7 +200,7 @@ export async function joinPresentation(
   roomId: string,
   name: string,
 ): Promise<PresentationResult<PitchControllerCredentials>> {
-  const result = await mutate(roomId, async (state) => {
+  const result = await mutate(roomId, (state) => {
     if (state.controllers.length >= 12) {
       return { ok: false, status: 409, error: "This presentation already has enough remotes" };
     }
@@ -202,6 +236,33 @@ export async function readPresentation(
   roomId: string,
   input?: { hostToken: string } | { controllerId: string; controllerToken: string },
 ): Promise<PresentationResult<PitchPresentationSnapshot>> {
+  if (postgresPresentationsSelected()) {
+    const result = await withPostgresGameRoom<
+      PresentationState,
+      PresentationResult<PitchPresentationSnapshot>
+    >({
+      kind: "pitch-presentation",
+      roomId,
+      use: (state) => {
+        if (input && "hostToken" in input) {
+          if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) return notFound();
+        } else if (input) {
+          const controller = state.controllers.find((item) => item.id === input.controllerId);
+          if (
+            !controller ||
+            !multiplayerCredentialsMatch(input.controllerToken, controller.tokenHash)
+          )
+            return notFound();
+        }
+        if (input) refreshPresentationLease(state);
+        const value = snapshot(state);
+        return { ok: true as const, value: input ? value : { ...value, controllers: [] } };
+      },
+      applyExpiry: () => {},
+      results: () => [],
+    });
+    return result ?? notFound();
+  }
   const redis = getRedis();
   const run = async (): Promise<PresentationResult<PitchPresentationSnapshot>> => {
     const state = await readState(roomId);
@@ -261,7 +322,7 @@ export async function approvePresentationController(input: {
   controllerId: string;
   approved: boolean;
 }): Promise<PresentationResult<PitchPresentationSnapshot>> {
-  const result = await mutate(input.roomId, async (state) => {
+  const result = await mutate(input.roomId, (state) => {
     if (!multiplayerCredentialsMatch(input.hostToken, state.hostHash)) {
       return { ok: false, status: 404, error: "Presentation not found" };
     }
@@ -287,6 +348,69 @@ export async function controlPresentation(input: {
     | { type: "go"; direction: -1 | 1 }
     | { type: "slide"; index: number };
 }): Promise<PresentationResult<PitchPresentationSnapshot>> {
+  if (postgresPresentationsSelected()) {
+    const initial = await readState(input.roomId);
+    if (!initial) return notFound();
+    const initialHost = multiplayerCredentialsMatch(input.credential, initial.hostHash);
+    const initialController = input.controllerId
+      ? initial.controllers.find((item) => item.id === input.controllerId)
+      : undefined;
+    if (
+      !initialHost &&
+      !(
+        initialController?.status === "approved" &&
+        multiplayerCredentialsMatch(input.credential, initialController.tokenHash)
+      )
+    )
+      return { ok: false, status: 403, error: "This remote has not been approved" };
+    const selectedDeckId =
+      input.action.type === "select" ? input.action.deckId : initial.selectedDeckId;
+    const deck =
+      !initial.processedActionIds.includes(input.actionId) && selectedDeckId
+        ? await readPublicPitchDeck(selectedDeckId)
+        : null;
+    const result = await mutate(input.roomId, (state) => {
+      const isHost = multiplayerCredentialsMatch(input.credential, state.hostHash);
+      const controller = input.controllerId
+        ? state.controllers.find((item) => item.id === input.controllerId)
+        : undefined;
+      const isController =
+        controller?.status === "approved" &&
+        multiplayerCredentialsMatch(input.credential, controller.tokenHash);
+      if (!isHost && !isController)
+        return { ok: false, status: 403, error: "This remote has not been approved" };
+      refreshPresentationLease(state);
+      if (multiplayerActionSeen(state.processedActionIds, input.actionId))
+        return { ok: true, value: snapshot(state) };
+      if (input.action.type === "select") {
+        if (!deck?.publishedDocument)
+          return { ok: false, status: 404, error: "Published pitch not found" };
+        state.selectedDeckId = deck.id;
+        state.slideIndex = 0;
+      } else {
+        if (!state.selectedDeckId) return { ok: false, status: 409, error: "Choose a pitch first" };
+        if (state.selectedDeckId !== selectedDeckId)
+          return { ok: false, status: 409, error: "Presentation changed; retry this action" };
+        const count =
+          deck?.publishedDocument?.slides.filter((slide) => !slide.deletedAt).length ?? 0;
+        if (count === 0) return { ok: false, status: 409, error: "This pitch has no slides" };
+        state.slideIndex =
+          input.action.type === "go"
+            ? Math.max(0, Math.min(count - 1, state.slideIndex + input.action.direction))
+            : Math.max(0, Math.min(count - 1, input.action.index));
+      }
+      if (controller) controller.lastSeenAt = Date.now();
+      state.processedActionIds = rememberMultiplayerAction(
+        state.processedActionIds,
+        input.actionId,
+      );
+      state.revision += 1;
+      return { ok: true, value: snapshot(state) };
+    });
+    if (result.ok)
+      await publishMultiplayerRoomWake("pitch-presentation", input.roomId).catch(() => undefined);
+    return result;
+  }
   const result = await mutate(input.roomId, async (state) => {
     const isHost = multiplayerCredentialsMatch(input.credential, state.hostHash);
     const controller = input.controllerId

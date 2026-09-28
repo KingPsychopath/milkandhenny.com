@@ -22,6 +22,7 @@ const state = vi.hoisted(() => {
       obsolete: 0,
       lostClaim: 0,
     }),
+    enqueueAbandonedOutputs: vi.fn().mockResolvedValue(0),
   };
 });
 
@@ -31,6 +32,7 @@ vi.mock("@/features/transfers/media-job-executor-postgres.server", () => ({
 
 vi.mock("@/features/transfers/media-jobs-postgres.server", () => ({
   cancelObsoletePostgresTransferMediaJobs: vi.fn().mockResolvedValue(0),
+  enqueueAbandonedPostgresTransferMediaOutputs: state.enqueueAbandonedOutputs,
 }));
 
 vi.mock("@/features/media/config.server", () => ({
@@ -81,6 +83,7 @@ beforeEach(() => {
   state.process.mockReset();
   state.requeue.mockClear();
   state.postgresBatch.mockClear();
+  state.enqueueAbandonedOutputs.mockClear();
 });
 
 afterEach(async () => {
@@ -136,6 +139,19 @@ describe("long-running media worker", () => {
       skipped: 0,
     });
     expect(state.claim).not.toHaveBeenCalled();
+  });
+
+  it("schedules abandoned output cleanup during Postgres reconciliation", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("MEDIA_WORKER_STATUS_STORE", "postgres");
+    vi.stubEnv("MEDIA_RECONCILE_INTERVAL_MS", "1000");
+    const { startMediaWorkerLoop, stopMediaWorkerLoop } =
+      await import("@/features/system/media-worker-runtime.server");
+
+    await startMediaWorkerLoop({ concurrency: 1 });
+    await vi.waitFor(() => expect(state.enqueueAbandonedOutputs).toHaveBeenCalled());
+    expect(state.claim).not.toHaveBeenCalled();
+    await stopMediaWorkerLoop();
   });
 
   it("holds one indefinite blocking claim per concurrency slot while idle", async () => {

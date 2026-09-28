@@ -57,6 +57,28 @@ Use `/health` for the safe human view. Use the admin-protected `/api/debug` only
 
 Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archive daily and a restore drill before launch and every quarter. Keep the archive outside the deployment account. Configure a separate copy of permanent object storage; private transfers and live rooms expire and are not restored.
 
+### Staged object audits
+
+Before selecting the Postgres transfer catalogue in production, run
+`pnpm transfers:audit-sources` from a checkout with `DATABASE_URL` and private R2 read credentials.
+It reads up to 1,000 active transfer file rows and checks their retained source objects. The
+command exits nonzero on a missing object, a recorded size mismatch, an unverified size, an R2
+error, or an incomplete scan. It makes no database or object-storage changes. A larger active
+catalogue requires an explicitly raised bound in the audit code and a measured run; a partial
+scan is not cutover evidence.
+
+Before selecting the Postgres album repository, run `pnpm albums:audit-objects` from a checkout
+with `DATABASE_URL` and private and public R2 read credentials. It checks up to 250 imported
+photos: private originals and derivatives for every photo, plus public derivatives for published
+albums. It exits nonzero on missing objects, original-size discrepancies, R2 errors or a partial
+scan. It makes no changes. The same maintenance freeze and complete-scan requirement apply.
+
+In staged Postgres transfer mode, admin and CLI hard reset tombstone up to 1,000 current transfers
+in bounded batches and queue deletion of their known private objects. The media worker finishes
+those deletions; the command does not prove R2 is empty. Run deep cleanup after its late-upload
+grace period to stage old unreferenced objects. Stop transfer writers before a full reset so a
+new transfer cannot appear between batches.
+
 ## Email delivery events
 
 Follow [cloudflare-email-events.md](./cloudflare-email-events.md). Cloudflare Queue events are the authoritative path for bounce and complaint suppression. The initial REST response proves only that Cloudflare accepted the message.

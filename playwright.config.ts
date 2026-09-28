@@ -4,6 +4,8 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:4173";
 const webPort = new URL(baseURL).port || "4173";
 const testDatabase =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
+// Specs that set up database fixtures run in the Playwright process, not the web server.
+process.env.TEST_DATABASE_URL ??= testDatabase;
 const redisRestURL = process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380";
 process.env.PLAYWRIGHT_REDIS_REST_URL = redisRestURL;
 // Browser workers and the app server must select the same persistence fixtures.
@@ -53,6 +55,9 @@ export default defineConfig({
         ...fixtureStores,
         REDIS_REST_URL: redisRestURL,
         REDIS_REST_TOKEN: "local-browser-test",
+        REDIS_URL: "redis://127.0.0.1:56379",
+        // The content-admin browser fixture seeds an expiring attendee session in local Redis.
+        ATTENDEE_SESSION_STORE: "redis",
         VITE_BASE_URL: baseURL,
         VITE_MEDIA_PUBLIC_URL: "http://127.0.0.1:4568/public",
         AUTH_SECRET: "playwright-auth-secret-at-least-thirty-two-characters",

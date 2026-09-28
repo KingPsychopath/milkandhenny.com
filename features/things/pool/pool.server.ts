@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PoolClient } from "pg";
 
 import { log } from "@/lib/platform/logger.server";
 import { query } from "@/lib/platform/postgres-provider-context.server";
@@ -32,7 +33,7 @@ import {
 } from "./membership.server";
 import { recordGamePoolAllocation } from "./operations.server";
 import { poolGameSettings } from "./presets";
-import { deletePoolValues, getPoolValue, setPoolValue } from "./pool-redis.server";
+import { getPoolValue, setPoolValue } from "./pool-redis.server";
 
 interface ActiveAssignmentRow {
   id: string;
@@ -42,6 +43,10 @@ interface ActiveAssignmentRow {
 
 interface AssignmentReceipt {
   assignment: GamePoolAssignment;
+}
+
+function postgresPoolCredentialsSelected() {
+  return process.env.GAME_POOL_CREDENTIAL_STORE === "postgres";
 }
 
 function liveRun(run: { status: string; closesAt: string | null } | null | undefined) {
@@ -158,6 +163,14 @@ async function leaveExistingAssignment(
 }
 
 async function readStoredReceipt(runId: string, clientId: string) {
+  if (postgresPoolCredentialsSelected()) {
+    const rows = await query<{ receipt: AssignmentReceipt }>(
+      `select receipt from game_pool_assignment_receipts
+       where run_id=$1 and client_id=$2`,
+      [runId, clientId],
+    );
+    return rows[0]?.receipt ?? null;
+  }
   return getPoolValue<AssignmentReceipt>(gamePoolAssignmentReceiptKey(runId, clientId));
 }
 
@@ -172,17 +185,46 @@ async function readReceipt(runId: string, clientId: string) {
     [runId, clientId, receipt.assignment.roomId, receipt.assignment.playerId],
   );
   if (rows[0]?.active) return receipt;
-  await deletePoolValues(gamePoolAssignmentReceiptKey(runId, clientId));
+  await clearAssignmentReceipts([{ runId, clientId }]);
   return null;
 }
 
 async function saveRoomSecrets(input: {
+  client: PoolClient;
   runId: string;
   roomId: string;
   clientId: string;
+  assignmentId: string;
   joinToken: string;
   assignment: GamePoolAssignment;
 }) {
+  if (postgresPoolCredentialsSelected()) {
+    const expiresAt = new Date(input.assignment.expiresAt);
+    await input.client.query(
+      `insert into game_pool_room_credentials (run_id,room_id,join_token,issued_expires_at)
+       values ($1,$2,$3,$4)
+       on conflict (run_id,room_id) do update
+         set join_token=excluded.join_token,
+             issued_expires_at=excluded.issued_expires_at`,
+      [input.runId, input.roomId, input.joinToken, expiresAt],
+    );
+    await input.client.query(
+      `insert into game_pool_assignment_receipts
+         (run_id,client_id,assignment_id,receipt,issued_expires_at)
+       values ($1,$2,$3,$4::jsonb,$5)
+       on conflict (run_id,client_id) do update
+         set assignment_id=excluded.assignment_id,
+             receipt=excluded.receipt,issued_expires_at=excluded.issued_expires_at`,
+      [
+        input.runId,
+        input.clientId,
+        input.assignmentId,
+        JSON.stringify({ assignment: input.assignment } satisfies AssignmentReceipt),
+        expiresAt,
+      ],
+    );
+    return;
+  }
   const ttl = remainingMultiplayerRoomTtlSeconds(input.assignment.expiresAt);
   await Promise.all([
     setPoolValue(gamePoolRoomSecretKey(input.runId, input.roomId), input.joinToken, ttl),
@@ -201,9 +243,15 @@ async function joinRegisteredRoom(input: {
   clientId: string;
   name: string;
 }) {
-  const joinToken = await getPoolValue<string>(
-    gamePoolRoomSecretKey(input.runId, input.room.room_id),
-  );
+  const joinToken = postgresPoolCredentialsSelected()
+    ? (
+        await query<{ join_token: string }>(
+          `select join_token from game_pool_room_credentials
+           where run_id=$1 and room_id=$2`,
+          [input.runId, input.room.room_id],
+        )
+      )[0]?.join_token
+    : await getPoolValue<string>(gamePoolRoomSecretKey(input.runId, input.room.room_id));
   if (!joinToken) throw new GamePoolJoinError("room_unavailable", "That room has closed.");
   return {
     assignment: await joinPoolRoom({
@@ -331,23 +379,19 @@ export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
             "update game_pool_rooms set player_count = player_count + 1, updated_at = now() where run_id = $1 and room_id = $2",
             [run.id, room.room_id],
           );
+          const assignmentId = createGamePoolAssignmentId();
           await client.query(
             `insert into game_pool_assignments
            (id, run_id, room_id, client_id, player_id, display_name)
            values ($1, $2, $3, $4, $5, $6)`,
-            [
-              createGamePoolAssignmentId(),
-              run.id,
-              room.room_id,
-              clientId,
-              joined.assignment.playerId,
-              name,
-            ],
+            [assignmentId, run.id, room.room_id, clientId, joined.assignment.playerId, name],
           );
           await saveRoomSecrets({
+            client,
             runId: run.id,
             roomId: room.room_id,
             clientId,
+            assignmentId,
             joinToken: joined.joinToken,
             assignment: joined.assignment,
           });
@@ -382,12 +426,13 @@ export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
          values ($1, $2, 1, $3)`,
           [run.id, created.assignment.roomId, capacity],
         );
+        const assignmentId = createGamePoolAssignmentId();
         await client.query(
           `insert into game_pool_assignments
          (id, run_id, room_id, client_id, player_id, display_name)
          values ($1, $2, $3, $4, $5, $6)`,
           [
-            createGamePoolAssignmentId(),
+            assignmentId,
             run.id,
             created.assignment.roomId,
             clientId,
@@ -396,9 +441,11 @@ export async function assignGamePoolRoomState(input: AssignGamePoolRoomInput) {
           ],
         );
         await saveRoomSecrets({
+          client,
           runId: run.id,
           roomId: created.assignment.roomId,
           clientId,
+          assignmentId,
           joinToken: created.joinToken,
           assignment: created.assignment,
         });
@@ -440,7 +487,7 @@ export async function releaseGamePoolAssignmentState(input: { token: string; cli
   await withGamePoolAllocation(runId, async (client) => {
     await leaveExistingAssignment(client, runId, clientId);
   });
-  await deletePoolValues(gamePoolAssignmentReceiptKey(runId, clientId));
+  await clearAssignmentReceipts([{ runId, clientId }]);
   return { ok: true as const, runId };
 }
 

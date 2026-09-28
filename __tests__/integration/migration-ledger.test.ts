@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 
+import { __migrationsForTesting } from "@/lib/platform/migrations.server";
 import { closeDatabase, applySchema, describeWithDatabase } from "../helpers/postgres";
+
+const migrationCount = __migrationsForTesting().length;
 
 describeWithDatabase("migration ledger integrity", () => {
   beforeAll(applySchema);
@@ -15,18 +18,22 @@ describeWithDatabase("migration ledger integrity", () => {
 
     const result = await runMigrations();
     expect(result.applied).toEqual([]);
-    expect(result.alreadyApplied).toBe(117);
+    expect(result.alreadyApplied).toBe(migrationCount);
     const rows = await query<{ count: string }>(
       "select count(*)::text as count from schema_migrations where sql_sha256 is not null and checksum_origin = 'source-baseline'",
     );
-    expect(rows[0]?.count).toBe("117");
+    expect(rows[0]?.count).toBe(String(migrationCount));
   });
 
   it("verifies the complete ledger without applying migrations", async () => {
     const { verifyMigrations } = await import("@/lib/platform/migrations.server");
     const result = await verifyMigrations();
     expect(result.applied).toEqual([]);
-    expect(result.alreadyApplied).toBe(117);
+    expect(result.alreadyApplied).toBe(migrationCount);
+    expect(result.pitchDocuments).toBeDefined();
+    const workerResult = await verifyMigrations({ includePitchDocuments: false });
+    expect(workerResult).toMatchObject({ applied: [], alreadyApplied: migrationCount });
+    expect(workerResult.pitchDocuments).toBeUndefined();
   });
 
   it("rejects a changed applied checksum", async () => {
@@ -71,7 +78,7 @@ describeWithDatabase("migration ledger integrity", () => {
       await query("insert into schema_migrations (id) values ('0025_site_settings')");
       const result = await runMigrations();
       expect(result.applied).toEqual([]);
-      expect(result.alreadyApplied).toBe(117);
+      expect(result.alreadyApplied).toBe(migrationCount);
     } finally {
       await query("delete from schema_migrations where id = '0025_site_settings'");
     }

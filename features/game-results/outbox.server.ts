@@ -9,6 +9,7 @@ import {
 import { log } from "@/lib/platform/logger.server";
 import { getRedis } from "@/lib/platform/redis.server";
 import { getRuntimeInstanceId } from "@/lib/platform/runtime-metadata.server";
+import { drainPostgresOfficialResults } from "./outbox-postgres.server";
 import type { OfficialGameResultDraft, OfficialGameResultEnvelope } from "./types";
 import {
   durableWorkSnapshot,
@@ -23,6 +24,10 @@ export type OfficialResultConsumer = (envelope: OfficialGameResultEnvelope) => P
 type WakeListener = (envelopes: readonly OfficialGameResultEnvelope[]) => void | Promise<void>;
 
 const localListeners = new Set<WakeListener>();
+
+function postgresResultOutboxSelected() {
+  return process.env.OFFICIAL_GAME_RESULT_OUTBOX_STORE === "postgres";
+}
 
 function payloadWithoutHash(input: Omit<OfficialGameResultEnvelope, "payloadHash">) {
   return JSON.stringify({
@@ -114,7 +119,7 @@ export function publishOfficialResultsAfterCommit(
       });
     }
   });
-  if (!getDirectRedisConfig()) return;
+  if (postgresResultOutboxSelected() || !getDirectRedisConfig()) return;
   void getCommandRedis()
     .publish(WAKE_CHANNEL, JSON.stringify({ origin: getRuntimeInstanceId() }))
     .catch((error: unknown) => {
@@ -127,6 +132,11 @@ export function publishOfficialResultsAfterCommit(
 /** Subscribe at the application composition edge, never from a game module. */
 export function subscribeOfficialResultWake(listener: WakeListener): () => Promise<void> {
   localListeners.add(listener);
+  if (postgresResultOutboxSelected()) {
+    return async () => {
+      localListeners.delete(listener);
+    };
+  }
   const config = getDirectRedisConfig();
   if (!config) {
     return async () => {
@@ -193,6 +203,7 @@ export async function drainOfficialGameResultOutbox(
   consumer: OfficialResultConsumer,
   limit = 50,
 ): Promise<{ selected: number; delivered: number }> {
+  if (postgresResultOutboxSelected()) return drainPostgresOfficialResults(consumer, limit);
   const redis = getRedis();
   if (!redis) {
     if (process.env.NODE_ENV === "production") throw new Error("Official results require Redis");
@@ -232,6 +243,7 @@ export async function consumeOfficialResultWake(
   envelopes: readonly OfficialGameResultEnvelope[],
   consumer: OfficialResultConsumer,
 ): Promise<{ selected: number; delivered: number }> {
+  if (postgresResultOutboxSelected()) return drainPostgresOfficialResults(consumer);
   if (getRedis()) return drainOfficialGameResultOutbox(consumer);
   let delivered = 0;
   for (const envelope of envelopes) if (await consumer(envelope)) delivered += 1;

@@ -102,7 +102,7 @@ Local migration `0098_rate_limit_windows` adds a row per policy, identity/global
 HMAC-SHA-256 subject hash. Attempts and absolute expiry are columns under a composite primary
 key, with an expiry index for bounded cleanup. `RATE_LIMIT_STORE=postgres` is opt-in; source
 Redis remains the default during transition. The supplied RDB has no `ratelimit:*` records, but
-a fresh cutover export must still reconcile active windows before the switch. The local restored
+the user's 2026-09-26 cutoff decision accepts later Redis-only windows as excluded. The local restored
 database accepted the migration, and a non-superuser runtime role reserved a synthetic window.
 
 Local migration `0104_diagnostic_reports` adds typed current reports, hashed admission
@@ -175,8 +175,9 @@ that exports omit functions, so source code remains the authority for Lua behavi
 | `guest:list` and `user-report:*`   |    3 | Original guest list with 274 guests and 157 nested plus-ones; one expiring legacy report record and its matching one-member expiring index          |
 
 All 224 keys were decoded; 199 have absolute expiry. None had expired by the file's download
-time. This snapshot is evidence, not the final cutover delta: source writes and TTL expiry must be
-reconciled again at the maintenance window. The eight processing items decode as valid raw jobs
+time. On 2026-09-26 the user designated this verified export as the Redis cutoff and accepted
+loss of Redis-only writes after it; no later Redis delta is required. Expiry must still be
+applied against each item's original absolute timestamp at import. The eight processing items decode as valid raw jobs
 with distinct idempotency keys, spanning two transfers. Seven point at the one exported transfer;
 one points at a missing transfer. Do not replay the orphan without checking expiry and R2 object
 ownership. Do not import the stale session/report index members as valid records. Git history
@@ -245,8 +246,9 @@ object reference or browser recovery path is accounted for.
       TTLs without printing private values.
 - [x] Identify the three legacy keys and their original owning code in Git history; the user
       selected a restricted Postgres archive table for the guest list.
-- [ ] Establish exact source snapshot time and refresh the export at cutover. Set archive
-      retention and privileged access policy before import.
+- [x] Record the user's first-export cutoff and acceptance of later Redis-only loss; a refresh is
+      no longer required. Exact capture time is unknown, so apply recorded absolute expiries.
+- [ ] Set archive retention and privileged access policy before production import.
 - [ ] Establish exact production counts and contradictions from the source and target, including
       transfers, active work, content, credentials, rooms, receipts and revocations.
 - [x] Reconcile exported word/transfer references and editable album/word-image manifests to R2

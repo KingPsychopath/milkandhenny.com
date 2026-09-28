@@ -28,7 +28,7 @@ const TONE_CLASSES: Record<AdminStatusTone, { dot: string; text: string; border:
 const DANGER_STATE =
   /\b(fail(?:ed|ure|ures|ing)?|errors?|unavailable|invalid|blocked|rejected|bounced|complained|critical|stale|overdue)\b/;
 const ATTENTION_STATE =
-  /\b(pending|processing|queued|leased|scheduled|draft|paused|checking|warnings?|degraded|retrying|investigating|unread|awaiting|waiting|preparing|invited|held|partial|contended|rate limited)\b/;
+  /\b(pending|processing|publishing|queued|leased|scheduled|draft|paused|checking|warnings?|degraded|retrying|investigating|unread|awaiting|waiting|preparing|invited|held|partial|contended|rate limited)\b/;
 const POSITIVE_STATE =
   /\b(active|available|healthy|ready|resolved|delivered|accepted|published|live|open|enabled|sent|complete|completed|committed|verified|valid|claimed|approved|connected|confirmed|settled|synchronized|succeeded|success|usable)\b/;
 

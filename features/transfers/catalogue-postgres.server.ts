@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import { enqueueMediaObjectOperation } from "@/features/media/object-operations.server";
 import { query, transaction } from "@/lib/platform/postgres.server";
 import { getTransferFileDeleteKeys } from "./delete";
+import { inferTransferAssetGroups } from "./live-photo";
 import {
   appendReservationFingerprint,
   lockPostgresTransferAppendReservation,
@@ -10,7 +11,10 @@ import {
 import {
   decryptTransferDeleteToken,
   encryptTransferDeleteToken,
+  verifyTransferDeleteToken,
 } from "./delete-token-postgres.server";
+import { enqueuePostgresTransferMediaJob } from "./media-jobs-postgres.server";
+import type { TransferMediaJob } from "./media-queue.server";
 import type { AssetGroup, TransferData, TransferFile, TransferSummary } from "./types";
 import {
   lockPostgresTransferUploadReservation,
@@ -298,6 +302,49 @@ export async function createPostgresTransfer(data: TransferData): Promise<boolea
   return transaction((client) => createPostgresTransferInTransaction(client, data));
 }
 
+export async function validatePostgresTransferDeleteToken(
+  transferId: string,
+  token: string,
+): Promise<boolean> {
+  if (!token) return false;
+  const rows = await query<{ delete_token_hash: string }>(
+    `select delete_token_hash from transfers
+      where id=$1 and deleted_at is null and expires_at > clock_timestamp()`,
+    [transferId],
+  );
+  return rows[0] ? verifyTransferDeleteToken(token, rows[0].delete_token_hash) : false;
+}
+
+async function enqueuePlannedMediaJobs(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  jobs: TransferMediaJob[] | undefined,
+): Promise<void> {
+  const plannedJobs = jobs ?? [];
+  const queued = new Map(
+    files.filter((file) => file.processingStatus === "queued").map((file) => [file.id, file]),
+  );
+  if (queued.size !== plannedJobs.length) throw new Error("Incomplete transfer media job plan");
+  const seen = new Set<string>();
+  for (const job of plannedJobs) {
+    const fileId = job.mediaId ?? job.file.mediaId ?? job.file.name;
+    const file = queued.get(fileId);
+    if (
+      !file ||
+      seen.has(fileId) ||
+      job.transferId !== transferId ||
+      job.file.name !== file.filename ||
+      job.storageKey !== file.storageKey ||
+      job.processingRoute !== file.processingRoute ||
+      job.attempt !== 1
+    )
+      throw new Error("Transfer media job plan does not match its file");
+    seen.add(fileId);
+    await enqueuePostgresTransferMediaJob(client, job, 1);
+  }
+}
+
 export type FinalizePostgresTransferResult =
   | "created"
   | "missing-reservation"
@@ -311,6 +358,7 @@ export async function finalizePostgresTransferReservation(
   actorJti: string,
   expiresSeconds: number,
   selectedFiles: TransferUploadFileInput[],
+  mediaJobs?: TransferMediaJob[],
 ): Promise<FinalizePostgresTransferResult> {
   return transaction(async (client) => {
     const reservation = await lockPostgresTransferUploadReservation(client, data.id);
@@ -335,6 +383,7 @@ export async function finalizePostgresTransferReservation(
     )
       return "too-large";
     if (!(await createPostgresTransferInTransaction(client, data))) return "transfer-conflict";
+    await enqueuePlannedMediaJobs(client, data.id, data.files, mediaJobs);
     await client.query("delete from transfer_upload_reservations where transfer_id=$1", [data.id]);
     return "created";
   });
@@ -448,6 +497,7 @@ export async function finalizePostgresTransferAppend(
   selectedFiles: TransferUploadFileInput[],
   files: TransferFile[],
   limits: { maxFiles?: number; maxTotalBytes?: number } = {},
+  mediaJobs?: TransferMediaJob[],
 ): Promise<FinalizePostgresTransferAppendResult> {
   return transaction(async (client) => {
     const transfer = await client.query<{ id: string }>(
@@ -490,170 +540,318 @@ export async function finalizePostgresTransferAppend(
       appendReservationFingerprint(selectedFiles),
     );
     if (result.status !== "updated") return result;
+    await enqueuePlannedMediaJobs(client, transferId, files, mediaJobs);
+    const grouped = inferTransferAssetGroups(result.transfer.files);
+    if (
+      !(await updatePostgresTransferGroupingInTransaction(
+        client,
+        transferId,
+        grouped.files,
+        grouped.groups,
+      ))
+    )
+      throw new Error("Transfer changed during append grouping");
     await client.query(
       "delete from transfer_append_reservations where transfer_id=$1 and fingerprint_sha256=$2",
       [transferId, appendReservationFingerprint(selectedFiles)],
     );
-    return result;
+    const updated = await readTransfer(client, transferId, true, false);
+    if (!updated) throw new Error("Transfer disappeared during append finalization");
+    return { status: "updated", transfer: updated };
   });
 }
 
 /** Reorder and regroup the current file set without replacing worker-owned file fields. */
+async function updatePostgresTransferGroupingInTransaction(
+  client: PoolClient,
+  transferId: string,
+  files: TransferFile[],
+  groups: AssetGroup[] | undefined,
+): Promise<boolean> {
+  const owner = await client.query<{ id: string }>(
+    `select id from transfers
+        where id=$1 and deleted_at is null and expires_at > clock_timestamp()
+        for update`,
+    [transferId],
+  );
+  if (!owner.rows[0]) return false;
+  const current = await client.query<{ id: string; position: number }>(
+    "select id,position from transfer_files where transfer_id=$1 order by position",
+    [transferId],
+  );
+  const currentIds = new Set(current.rows.map((row) => row.id));
+  if (
+    currentIds.size !== files.length ||
+    files.some((file) => !currentIds.has(file.id)) ||
+    new Set(files.map((file) => file.id)).size !== files.length
+  )
+    return false;
+  const assignments = new Map(
+    files.map((file) => [file.id, { groupId: file.groupId, groupRole: file.groupRole }]),
+  );
+  const seenGroups = new Set<string>();
+  const seenMembers = new Set<string>();
+  for (const group of groups ?? []) {
+    if (
+      !group.id ||
+      seenGroups.has(group.id) ||
+      (group.type !== "live_photo" && group.type !== "raw_pair") ||
+      group.members.length < 2
+    )
+      throw new Error("Invalid transfer group");
+    seenGroups.add(group.id);
+    for (const member of group.members) {
+      const assignment = assignments.get(member.fileId);
+      if (
+        !assignment ||
+        seenMembers.has(member.fileId) ||
+        assignment.groupId !== group.id ||
+        assignment.groupRole !== member.role
+      )
+        throw new Error("Invalid transfer group member");
+      seenMembers.add(member.fileId);
+    }
+  }
+  if (
+    files.some(
+      (file) =>
+        Boolean(file.groupId) !== seenMembers.has(file.id) ||
+        Boolean(file.groupId) !== Boolean(file.groupRole),
+    )
+  )
+    throw new Error("Invalid transfer file group");
+
+  // The temporary range avoids intermediate collisions with the unique position constraint.
+  const offset = (current.rows.at(-1)?.position ?? -1) + files.length + 1;
+  await client.query("update transfer_files set position=position+$2 where transfer_id=$1", [
+    transferId,
+    offset,
+  ]);
+  for (const [position, file] of files.entries()) {
+    await client.query("update transfer_files set position=$3 where transfer_id=$1 and id=$2", [
+      transferId,
+      file.id,
+      position,
+    ]);
+  }
+  await client.query("delete from transfer_groups where transfer_id=$1", [transferId]);
+  await insertGroups(client, transferId, groups);
+  await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
+  return true;
+}
+
 export async function updatePostgresTransferGrouping(
   transferId: string,
   files: TransferFile[],
   groups: AssetGroup[] | undefined,
 ): Promise<boolean> {
+  return transaction((client) =>
+    updatePostgresTransferGroupingInTransaction(client, transferId, files, groups),
+  );
+}
+
+type TransferDeleteFileRow = {
+  id: string;
+  filename: string;
+  storage_key: string;
+  original_storage_key: string | null;
+  processing_route: TransferFile["processingRoute"] | null;
+  derivative_generation: number | null;
+  derivative_claim_token: string | null;
+};
+
+async function stageTransferFileObjectDeletes(
+  client: PoolClient,
+  transferId: string,
+  revision: number,
+  files: TransferDeleteFileRow[],
+  fileId?: string,
+): Promise<void> {
+  const keys = new Set(
+    files.flatMap((file) =>
+      getTransferFileDeleteKeys(transferId, {
+        id: file.id,
+        filename: file.filename,
+        storageKey: file.storage_key,
+        originalStorageKey: file.original_storage_key ?? undefined,
+        processingRoute: file.processing_route ?? undefined,
+        derivativeGeneration: file.derivative_generation ?? undefined,
+        derivativeClaimToken: file.derivative_claim_token ?? undefined,
+      }),
+    ),
+  );
+  const params = fileId ? [transferId, fileId] : [transferId];
+  const filter = fileId ? " and file_id=$2" : "";
+  const jobs = await client.query<{ thumb_key: string | null; full_key: string | null }>(
+    `select payload->>'expectedThumbKey' as thumb_key,
+            payload->>'expectedFullKey' as full_key
+       from transfer_media_jobs where transfer_id=$1${filter}`,
+    params,
+  );
+  for (const job of jobs.rows)
+    for (const key of [job.thumb_key, job.full_key])
+      if (key?.startsWith(`transfers/${transferId}/`)) keys.add(key);
+  const attempts = await client.query<{ thumb_key: string; full_key: string | null }>(
+    `select o.thumb_key,o.full_key from transfer_media_job_attempt_outputs o
+       join transfer_media_jobs j on j.id=o.job_id
+      where j.transfer_id=$1${fileId ? " and j.file_id=$2" : ""}`,
+    params,
+  );
+  for (const attempt of attempts.rows)
+    for (const key of [attempt.thumb_key, attempt.full_key])
+      if (key?.startsWith(`transfers/${transferId}/`)) keys.add(key);
+  for (const key of keys)
+    await enqueueMediaObjectOperation(client, {
+      ownerKind: "transfer",
+      ownerId: transferId,
+      ownerRevision: revision,
+      operation: "delete",
+      targetScope: "private",
+      targetKey: key,
+    });
+}
+
+/** Hide a transfer and fence its unfinished jobs before object cleanup begins. */
+async function tombstonePostgresTransferInTransaction(
+  client: PoolClient,
+  transferId: string,
+): Promise<boolean> {
+  const deleted = await client.query<{ revision: string }>(
+    `update transfers
+          set deleted_at=clock_timestamp(),revision=revision+1
+        where id=$1 and deleted_at is null
+        returning revision::text`,
+    [transferId],
+  );
+  if (!deleted.rows[0]) return false;
+  const revision = Number(deleted.rows[0].revision);
+  if (!Number.isInteger(revision) || revision < 1 || revision > 2_147_483_647)
+    throw new Error("Transfer deletion revision exceeds object ledger range");
+  const files = await client.query<TransferDeleteFileRow>(
+    `select id,filename,storage_key,original_storage_key,processing_route,
+              derivative_generation,derivative_claim_token
+         from transfer_files where transfer_id=$1`,
+    [transferId],
+  );
+  await stageTransferFileObjectDeletes(client, transferId, revision, files.rows);
+  await client.query(
+    `update transfer_media_jobs
+          set status='cancelled',claim_token=null,claim_owner=null,lease_until=null,
+              last_error='transfer deleted'
+        where transfer_id=$1 and status in ('pending','claimed')`,
+    [transferId],
+  );
+  return true;
+}
+
+export async function tombstonePostgresTransfer(transferId: string): Promise<boolean> {
+  return transaction((client) => tombstonePostgresTransferInTransaction(client, transferId));
+}
+
+/** Hard-reset the current catalogue in bounded transactions; R2 work stays durable in the ledger. */
+export async function tombstoneAllPostgresTransfers(): Promise<{
+  deletedTransfers: number;
+  stagedFiles: number;
+}> {
+  const maximum = 1_000;
+  const total = await query<{ count: string }>(
+    "select count(*)::text as count from transfers where deleted_at is null",
+  );
+  if (Number(total[0]?.count ?? 0) > maximum)
+    throw new Error("Transfer hard reset exceeds the 1,000-transfer safety bound");
+  let deletedTransfers = 0;
+  let stagedFiles = 0;
+  while (true) {
+    const batch = await transaction(async (client) => {
+      const selected = await client.query<{ id: string; file_count: number }>(
+        `select t.id,
+                (select count(*)::integer from transfer_files f where f.transfer_id=t.id) as file_count
+           from transfers t where t.deleted_at is null
+          order by t.id limit 20 for update of t`,
+      );
+      for (const row of selected.rows) await tombstonePostgresTransferInTransaction(client, row.id);
+      return {
+        transfers: selected.rows.length,
+        files: selected.rows.reduce((sum, row) => sum + row.file_count, 0),
+      };
+    });
+    deletedTransfers += batch.transfers;
+    stagedFiles += batch.files;
+    if (batch.transfers === 0) return { deletedTransfers, stagedFiles };
+    if (deletedTransfers > maximum)
+      throw new Error("Transfer hard reset reached its safety bound; rerun after inspection");
+  }
+}
+
+/** Expiry is a tombstone plus durable object work, never an implicit row disappearance. */
+export async function cleanupExpiredPostgresTransfers(limit = 10): Promise<number> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+    throw new Error("Invalid transfer expiry cleanup limit");
   return transaction(async (client) => {
-    const owner = await client.query<{ id: string }>(
+    const expired = await client.query<{ id: string }>(
       `select id from transfers
+        where deleted_at is null and expires_at <= clock_timestamp()
+        order by expires_at,id
+        limit $1 for update skip locked`,
+      [limit],
+    );
+    for (const row of expired.rows) await tombstonePostgresTransferInTransaction(client, row.id);
+    return expired.rowCount ?? 0;
+  });
+}
+
+/** Remove one file without losing another worker's result or leaving its R2 objects behind. */
+export async function removePostgresTransferFile(
+  transferId: string,
+  fileId: string,
+): Promise<"updated" | "deleted" | "missing" | "file-missing"> {
+  return transaction(async (client) => {
+    const owner = await client.query<{ revision: string }>(
+      `select revision::text from transfers
         where id=$1 and deleted_at is null and expires_at > clock_timestamp()
         for update`,
       [transferId],
     );
-    if (!owner.rows[0]) return false;
-    const current = await client.query<{ id: string; position: number }>(
-      "select id,position from transfer_files where transfer_id=$1 order by position",
-      [transferId],
-    );
-    const currentIds = new Set(current.rows.map((row) => row.id));
-    if (
-      currentIds.size !== files.length ||
-      files.some((file) => !currentIds.has(file.id)) ||
-      new Set(files.map((file) => file.id)).size !== files.length
-    )
-      return false;
-    const assignments = new Map(
-      files.map((file) => [file.id, { groupId: file.groupId, groupRole: file.groupRole }]),
-    );
-    const seenGroups = new Set<string>();
-    const seenMembers = new Set<string>();
-    for (const group of groups ?? []) {
-      if (
-        !group.id ||
-        seenGroups.has(group.id) ||
-        (group.type !== "live_photo" && group.type !== "raw_pair") ||
-        group.members.length < 2
-      )
-        throw new Error("Invalid transfer group");
-      seenGroups.add(group.id);
-      for (const member of group.members) {
-        const assignment = assignments.get(member.fileId);
-        if (
-          !assignment ||
-          seenMembers.has(member.fileId) ||
-          assignment.groupId !== group.id ||
-          assignment.groupRole !== member.role
-        )
-          throw new Error("Invalid transfer group member");
-        seenMembers.add(member.fileId);
-      }
-    }
-    if (
-      files.some(
-        (file) =>
-          Boolean(file.groupId) !== seenMembers.has(file.id) ||
-          Boolean(file.groupId) !== Boolean(file.groupRole),
-      )
-    )
-      throw new Error("Invalid transfer file group");
-
-    // The temporary range avoids intermediate collisions with the unique position constraint.
-    const offset = (current.rows.at(-1)?.position ?? -1) + files.length + 1;
-    await client.query("update transfer_files set position=position+$2 where transfer_id=$1", [
-      transferId,
-      offset,
-    ]);
-    for (const [position, file] of files.entries()) {
-      await client.query("update transfer_files set position=$3 where transfer_id=$1 and id=$2", [
-        transferId,
-        file.id,
-        position,
-      ]);
-    }
-    await client.query("delete from transfer_groups where transfer_id=$1", [transferId]);
-    await insertGroups(client, transferId, groups);
-    await client.query("update transfers set revision=revision+1 where id=$1", [transferId]);
-    return true;
-  });
-}
-
-/** Hide a transfer and fence its unfinished jobs before object cleanup begins. */
-export async function tombstonePostgresTransfer(transferId: string): Promise<boolean> {
-  return transaction(async (client) => {
-    const deleted = await client.query<{ revision: string }>(
-      `update transfers
-          set deleted_at=clock_timestamp(),revision=revision+1
-        where id=$1 and deleted_at is null
-        returning revision::text`,
-      [transferId],
-    );
-    if (!deleted.rows[0]) return false;
-    const revision = Number(deleted.rows[0].revision);
-    if (!Number.isInteger(revision) || revision < 1 || revision > 2_147_483_647)
-      throw new Error("Transfer deletion revision exceeds object ledger range");
-    const files = await client.query<{
-      id: string;
-      filename: string;
-      storage_key: string;
-      original_storage_key: string | null;
-      processing_route: TransferFile["processingRoute"] | null;
-      derivative_generation: number | null;
-      derivative_claim_token: string | null;
-    }>(
+    if (!owner.rows[0]) return "missing";
+    const file = await client.query<TransferDeleteFileRow>(
       `select id,filename,storage_key,original_storage_key,processing_route,
               derivative_generation,derivative_claim_token
-         from transfer_files where transfer_id=$1`,
+         from transfer_files where transfer_id=$1 and id=$2 for update`,
+      [transferId, fileId],
+    );
+    const target = file.rows[0];
+    if (!target) return "file-missing";
+    const count = await client.query<{ count: string }>(
+      "select count(*)::text as count from transfer_files where transfer_id=$1",
       [transferId],
     );
-    const keys = new Set(
-      files.rows.flatMap((file) =>
-        getTransferFileDeleteKeys(transferId, {
-          id: file.id,
-          filename: file.filename,
-          storageKey: file.storage_key,
-          originalStorageKey: file.original_storage_key ?? undefined,
-          processingRoute: file.processing_route ?? undefined,
-          derivativeGeneration: file.derivative_generation ?? undefined,
-          derivativeClaimToken: file.derivative_claim_token ?? undefined,
-        }),
-      ),
+    if (count.rows[0]?.count === "1") {
+      await tombstonePostgresTransferInTransaction(client, transferId);
+      return "deleted";
+    }
+    const revision = Number(owner.rows[0].revision) + 1;
+    if (!Number.isSafeInteger(revision) || revision > 2_147_483_647)
+      throw new Error("Transfer file deletion revision exceeds object ledger range");
+    await stageTransferFileObjectDeletes(client, transferId, revision, [target], fileId);
+    const group = await client.query<{ group_id: string }>(
+      `select group_id from transfer_group_members
+        where transfer_id=$1 and file_id=$2`,
+      [transferId, fileId],
     );
-    const jobKeys = await client.query<{ thumb_key: string | null; full_key: string | null }>(
-      `select payload->>'expectedThumbKey' as thumb_key,
-              payload->>'expectedFullKey' as full_key
-         from transfer_media_jobs where transfer_id=$1`,
-      [transferId],
-    );
-    for (const job of jobKeys.rows)
-      for (const key of [job.thumb_key, job.full_key])
-        if (key?.startsWith(`transfers/${transferId}/`)) keys.add(key);
-    const attemptKeys = await client.query<{ thumb_key: string; full_key: string | null }>(
-      `select o.thumb_key,o.full_key from transfer_media_job_attempt_outputs o
-         join transfer_media_jobs j on j.id=o.job_id
-        where j.transfer_id=$1`,
-      [transferId],
-    );
-    for (const attempt of attemptKeys.rows)
-      for (const key of [attempt.thumb_key, attempt.full_key])
-        if (key?.startsWith(`transfers/${transferId}/`)) keys.add(key);
-    for (const key of keys)
-      await enqueueMediaObjectOperation(client, {
-        ownerKind: "transfer",
-        ownerId: transferId,
-        ownerRevision: revision,
-        operation: "delete",
-        targetScope: "private",
-        targetKey: key,
-      });
-    await client.query(
-      `update transfer_media_jobs
-          set status='cancelled',claim_token=null,claim_owner=null,lease_until=null,
-              last_error='transfer deleted'
-        where transfer_id=$1 and status in ('pending','claimed')`,
-      [transferId],
-    );
-    return true;
+    await client.query("delete from transfer_files where transfer_id=$1 and id=$2", [
+      transferId,
+      fileId,
+    ]);
+    if (group.rows[0])
+      await client.query(
+        `delete from transfer_groups g
+          where g.transfer_id=$1 and g.id=$2
+            and (select count(*) from transfer_group_members m
+                  where m.transfer_id=g.transfer_id and m.group_id=g.id)<2`,
+        [transferId, group.rows[0].group_id],
+      );
+    await client.query("update transfers set revision=$2 where id=$1", [transferId, revision]);
+    return "updated";
   });
 }
 

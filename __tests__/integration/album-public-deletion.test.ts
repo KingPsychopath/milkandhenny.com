@@ -1,0 +1,359 @@
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import sharp from "sharp";
+
+import {
+  deleteAlbum,
+  deleteAlbumPhotos,
+  finalizeAlbumUploads,
+  updateAlbumMetadata,
+} from "@/features/media/admin-albums";
+import { runAlbumObjectDeletionBatch } from "@/features/media/album-object-deletions.server";
+import { publicPhotoKeys } from "@/features/media/album-object-keys";
+import { readPostgresAlbum, writePostgresAlbum } from "@/features/media/album-postgres.server";
+import type { Album } from "@/features/media/albums";
+import { getAlbumBySlug } from "@/features/media/albums.server";
+import {
+  r2ObjectStorageProvider,
+  withObjectStorageProvider,
+} from "@/lib/platform/object-storage-provider-context.server";
+import { query } from "@/lib/platform/postgres.server";
+import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
+
+const album: Album = {
+  slug: "unpublish-recovery",
+  title: "Unpublish recovery",
+  date: "2026-09-20",
+  cover: "photo-1",
+  status: "published",
+  photos: [
+    {
+      id: "photo-1",
+      width: 480,
+      height: 320,
+      version: "v1",
+      widths: [480],
+      placeholder: { color: "#5b4636" },
+    },
+  ],
+};
+
+describeWithDatabase("Postgres album public deletion", () => {
+  beforeAll(applySchema);
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await closeDatabase();
+  });
+  beforeEach(async () => {
+    vi.stubEnv("ALBUM_STORE", "postgres");
+    await query("truncate gallery_albums cascade");
+    await query("truncate media_object_operations");
+    await writePostgresAlbum(album);
+  });
+
+  it("commits draft state with deletion intents and blocks republishing until cleanup", async () => {
+    const remove = vi.fn(async () => {});
+    const updated = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => updateAlbumMetadata(album.slug, { status: "draft" }),
+    );
+    expect(updated.status).toBe("draft");
+    expect(remove).not.toHaveBeenCalled();
+    const pending = await query<{ target_key: string; status: string }>(
+      `select target_key,status from media_object_operations
+        where owner_kind='album' and owner_id=$1 order by target_key`,
+      [album.slug],
+    );
+    expect(pending).toHaveLength(3);
+    expect(pending.every((operation) => operation.status === "pending")).toBe(true);
+    await expect(updateAlbumMetadata(album.slug, { status: "published" })).rejects.toThrow(
+      "cleanup is still pending",
+    );
+    const deleted = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-delete-test"),
+    );
+    expect(deleted).toEqual({ claimed: 3, completed: 3, retried: 0, lostClaim: 0 });
+    expect(remove).toHaveBeenCalledTimes(3);
+    const republished = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        copyObject: vi.fn(async () => {}),
+      },
+      () => updateAlbumMetadata(album.slug, { status: "published" }),
+    );
+    expect(republished.status).toBe("published");
+    expect((await readPostgresAlbum(album.slug))?.status).toBe("published");
+  });
+
+  it("publishes only after every queued public copy succeeds", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: publicPhotoKeys(album.slug, album.photos[0]!) },
+    );
+    expect(publishing.status).toBe("publishing");
+    expect(await getAlbumBySlug(album.slug)).toBeNull();
+    const copy = vi.fn(async () => {});
+    const batch = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy },
+      () => runAlbumObjectDeletionBatch("album-copy-test"),
+    );
+    expect(batch).toMatchObject({ claimed: 3, completed: 3 });
+    expect(copy).toHaveBeenCalledTimes(3);
+    expect((await getAlbumBySlug(album.slug))?.status).toBe("published");
+  });
+
+  it("keeps publication hidden and retries a failed copy", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: publicPhotoKeys(album.slug, album.photos[0]!) },
+    );
+    const copy = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("R2 unavailable"))
+      .mockResolvedValue(undefined);
+    await withObjectStorageProvider({ ...r2ObjectStorageProvider, copyObject: copy }, async () => {
+      expect(await runAlbumObjectDeletionBatch("album-copy-retry-test")).toMatchObject({
+        claimed: 3,
+        completed: 2,
+        retried: 1,
+      });
+      expect(await getAlbumBySlug(album.slug)).toBeNull();
+      await query("update media_object_operations set available_at=now() where status='pending'");
+      expect(await runAlbumObjectDeletionBatch("album-copy-retry-test")).toMatchObject({
+        claimed: 1,
+        completed: 1,
+      });
+    });
+    expect((await getAlbumBySlug(album.slug))?.status).toBe("published");
+  });
+
+  it("cancels obsolete copies after a publishing album returns to drafts", async () => {
+    const draft = await writePostgresAlbum({ ...album, status: "draft", revision: 1 });
+    const keys = publicPhotoKeys(album.slug, album.photos[0]!);
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: keys },
+    );
+    await writePostgresAlbum({ ...publishing, status: "draft" }, { publicDeleteKeys: keys });
+    const copy = vi.fn(async () => {});
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-copy-cancel-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 6, completed: 6 });
+    expect(copy).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(3);
+    expect(await getAlbumBySlug(album.slug)).toBeNull();
+  });
+
+  it("removing a photo during publication cleans every possibly copied public key", async () => {
+    const twoPhotos = await writePostgresAlbum({
+      ...album,
+      revision: 1,
+      photos: [...album.photos, { ...album.photos[0]!, id: "photo-2" }],
+    });
+    const draft = await writePostgresAlbum({ ...twoPhotos, status: "draft" });
+    const publishing = await writePostgresAlbum(
+      { ...draft, status: "publishing" },
+      { publicCopyKeys: draft.photos.flatMap((photo) => publicPhotoKeys(album.slug, photo)) },
+    );
+    expect(publishing.status).toBe("publishing");
+    const removed = await deleteAlbumPhotos(album.slug, ["photo-1"]);
+    expect(removed.album.status).toBe("draft");
+    expect(removed.queuedKeys).toBe(10);
+    const copy = vi.fn(async () => {});
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, copyObject: copy, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-cancel-photo-test", 30),
+    );
+    expect(settled).toMatchObject({ claimed: 16, completed: 16 });
+    expect(copy).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledTimes(10);
+  });
+
+  it("retains failed deletes for retry after an uncertain R2 result", async () => {
+    await updateAlbumMetadata(album.slug, { status: "draft" });
+    const remove = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("R2 unavailable"))
+      .mockResolvedValue(undefined);
+    await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      async () => {
+        expect(await runAlbumObjectDeletionBatch("album-delete-test")).toEqual({
+          claimed: 3,
+          completed: 2,
+          retried: 1,
+          lostClaim: 0,
+        });
+        await query("update media_object_operations set available_at=now() where status='pending'");
+        expect(await runAlbumObjectDeletionBatch("album-delete-test")).toEqual({
+          claimed: 1,
+          completed: 1,
+          retried: 0,
+          lostClaim: 0,
+        });
+      },
+    );
+  });
+
+  it("serializes a public delete with republishing the same object key", async () => {
+    const key = `albums/${album.slug}/og/photo-1.jpg`;
+    await writePostgresAlbum(
+      { ...album, status: "draft", revision: 1 },
+      {
+        publicDeleteKeys: [key],
+      },
+    );
+    let beginDelete!: () => void;
+    const deleting = new Promise<void>((resolve) => {
+      beginDelete = resolve;
+    });
+    let finishDelete!: () => void;
+    const deleteGate = new Promise<void>((resolve) => {
+      finishDelete = resolve;
+    });
+    const worker = withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        deleteObject: vi.fn(async () => {
+          beginDelete();
+          await deleteGate;
+        }),
+      },
+      () => runAlbumObjectDeletionBatch("album-delete-lock-test"),
+    );
+    await deleting;
+    const draft = await readPostgresAlbum(album.slug);
+    let published = false;
+    const republish = writePostgresAlbum({ ...draft!, status: "published" }).then(() => {
+      published = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(published).toBe(false);
+    finishDelete();
+    await expect(worker).resolves.toMatchObject({ completed: 1 });
+    await republish;
+    expect(published).toBe(true);
+  });
+
+  it("queues both scopes after removing the last photo and blocks key reuse", async () => {
+    const removeMany = vi.fn(async () => 0);
+    const removed = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObjects: removeMany },
+      () => deleteAlbumPhotos(album.slug, ["photo-1"]),
+    );
+    expect(removed.album.status).toBe("draft");
+    expect(removed.deletedKeys).toBe(0);
+    expect(removed.queuedKeys).toBe(7);
+    expect(removeMany).not.toHaveBeenCalled();
+    await expect(
+      writePostgresAlbum({ ...album, status: "draft", revision: removed.album.revision }),
+    ).rejects.toThrow();
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-photo-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 7, completed: 7 });
+    expect(remove).toHaveBeenCalledTimes(7);
+    expect(
+      (await writePostgresAlbum({ ...album, status: "draft", revision: removed.album.revision }))
+        .photos,
+    ).toHaveLength(1);
+  });
+
+  it("deletes a removed photo while the rest of the album stays published", async () => {
+    const added = await writePostgresAlbum({
+      ...album,
+      revision: 1,
+      photos: [...album.photos, { ...album.photos[0]!, id: "photo-2" }],
+    });
+    expect(added.status).toBe("published");
+    const removed = await deleteAlbumPhotos(album.slug, ["photo-1"]);
+    expect(removed.album.status).toBe("published");
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: vi.fn(async () => {}) },
+      () => runAlbumObjectDeletionBatch("album-photo-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 7, completed: 7 });
+  });
+
+  it("tombstones a whole album with object intents and preserves the next slug generation", async () => {
+    const privateKeys = [
+      `albums/${album.slug}/original/photo-1.jpg`,
+      `albums/${album.slug}/og/photo-1.jpg`,
+      `albums/${album.slug}/images/photo-1/480.avif`,
+      `albums/${album.slug}/images/photo-1/480.webp`,
+    ];
+    const publicKeys = privateKeys.slice(1);
+    const immediateDelete = vi.fn(async () => 0);
+    const removed = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        listObjects: vi.fn(async (_prefix, options) =>
+          (options.scope === "private" ? privateKeys : publicKeys).map((key) => ({
+            key,
+            size: 1,
+            lastModified: undefined,
+          })),
+        ),
+        deleteObjects: immediateDelete,
+      },
+      () => deleteAlbum(album.slug),
+    );
+    expect(removed).toEqual({ deletedFiles: 0, deletedManifest: true, queuedFiles: 8 });
+    expect(immediateDelete).not.toHaveBeenCalled();
+    expect(await readPostgresAlbum(album.slug)).toBeNull();
+    await expect(writePostgresAlbum({ ...album, revision: undefined })).rejects.toThrow();
+    const remove = vi.fn(async () => {});
+    const settled = await withObjectStorageProvider(
+      { ...r2ObjectStorageProvider, deleteObject: remove },
+      () => runAlbumObjectDeletionBatch("album-whole-delete-test"),
+    );
+    expect(settled).toMatchObject({ claimed: 8, completed: 8 });
+    const recreated = await writePostgresAlbum({ ...album, revision: undefined });
+    expect(recreated.revision).toBeGreaterThan(2);
+  });
+
+  it("commits upload finalization and unpublication before public object cleanup", async () => {
+    const image = await sharp({
+      create: { width: 80, height: 80, channels: 3, background: "#67422b" },
+    })
+      .jpeg()
+      .toBuffer();
+    const removeMany = vi.fn(async () => 0);
+    const result = await withObjectStorageProvider(
+      {
+        ...r2ObjectStorageProvider,
+        headObject: vi.fn(async () => ({ exists: true, size: image.byteLength })),
+        downloadBuffer: vi.fn(async () => image),
+        uploadBuffer: vi.fn(async () => {}),
+        deleteObjects: removeMany,
+      },
+      () =>
+        finalizeAlbumUploads(album.slug, [
+          {
+            original: "new.jpg",
+            photoId: "new",
+            uploadKey: `incoming/albums/${album.slug}/new.jpg`,
+          },
+        ]),
+    );
+    expect(result.album.status).toBe("draft");
+    expect(result.album.photos).toHaveLength(2);
+    expect(removeMany).toHaveBeenCalledOnce();
+    expect(removeMany).toHaveBeenCalledWith([`incoming/albums/${album.slug}/new.jpg`], {
+      scope: "private",
+    });
+    const operations = await query<{ target_key: string }>(
+      `select target_key from media_object_operations where owner_kind='album' and owner_id=$1`,
+      [album.slug],
+    );
+    expect(operations).toHaveLength(3);
+  });
+});

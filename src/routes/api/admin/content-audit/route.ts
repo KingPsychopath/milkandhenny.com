@@ -5,12 +5,10 @@ import { validateAllAlbums } from "@/features/media/albums.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { isWordsEnabled } from "@/features/words/reader.server";
 import { getWord, listAllWords } from "@/features/words/store.server";
-import { getRedis } from "@/lib/platform/redis.server";
 
 const WORDS_MEDIA_PREFIX = "words/media/";
 const WORDS_ASSETS_PREFIX = "words/assets/";
 const LINK_RE = /!?\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-const CONTENT_AUDIT_CACHE_KEY = "admin:content-audit:v1";
 const CONTENT_AUDIT_CACHE_TTL_SECONDS = 15 * 60;
 
 let memoryContentAuditCache: { expiresAt: number; value: Record<string, unknown> } | null = null;
@@ -171,21 +169,7 @@ async function computeContentAudit(): Promise<Record<string, unknown>> {
   };
 }
 
-async function readCachedContentAudit(): Promise<Record<string, unknown> | null> {
-  const redis = getRedis();
-  if (redis) {
-    const raw = await redis.get<Record<string, unknown> | string>(CONTENT_AUDIT_CACHE_KEY);
-    if (!raw) return null;
-    if (typeof raw === "string") {
-      try {
-        return JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        return null;
-      }
-    }
-    return raw as Record<string, unknown>;
-  }
-
+function readCachedContentAudit(): Record<string, unknown> | null {
   if (!memoryContentAuditCache || memoryContentAuditCache.expiresAt <= Date.now()) {
     memoryContentAuditCache = null;
     return null;
@@ -193,15 +177,7 @@ async function readCachedContentAudit(): Promise<Record<string, unknown> | null>
   return memoryContentAuditCache.value;
 }
 
-async function writeCachedContentAudit(value: Record<string, unknown>): Promise<void> {
-  const redis = getRedis();
-  if (redis) {
-    await redis.set(CONTENT_AUDIT_CACHE_KEY, JSON.stringify(value), {
-      ex: CONTENT_AUDIT_CACHE_TTL_SECONDS,
-    });
-    return;
-  }
-
+function writeCachedContentAudit(value: Record<string, unknown>): void {
   memoryContentAuditCache = {
     value,
     expiresAt: Date.now() + CONTENT_AUDIT_CACHE_TTL_SECONDS * 1000,
