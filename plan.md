@@ -1572,3 +1572,34 @@ For each completed milestone append: date, milestone, commit(s), decisions/DDL c
 files, source/target mapping changes, checks and evidence, remaining risks/blockers, and next
 action. When a new finding changes a dependency or acceptance criterion, update the main plan
 and ledger as well as the checkpoint.
+
+### Production cutover execution — 2026-09-28
+
+The user authorized switching now despite possible interruption of sessions, queued work, and
+multiplayer recovery, while retaining the first verified Redis export as the source cutoff. No
+fresh backup or Redis delta is required. This checklist records observed execution, not a claim
+that the release is complete.
+
+- [x] Verify the accepted RDB SHA-256
+      `9dbb17f1c44765ca74892bc00ba2eca46f2f2904f09c47768f184db8c0fc17c4` and readability
+      of the existing pre-cutover Postgres dump.
+- [x] Apply migrations through `0122_word_media_scope_reconciliation` on production Postgres;
+      verify the restricted web login sees 123 source migrations and cannot create in `public` or use
+      `legacy_archive`.
+- [x] Import and reconcile the accepted source: 13 words, zero shares, two albums with 14 photos,
+      192 attendee sessions, three role versions, three current and one legacy report, voting state,
+      four upload-audit events, one worker-status record, one transfer with 52 files, seven preserved
+      media jobs, and one quarantined orphan job.
+- [x] Import the historical guest list into the restricted encrypted archive and verify 274 guests
+      with 157 plus-ones using the archive login. The archive encryption key is retained in a
+      mode-0600 local private migration file; independent escrow and restore verification remain.
+- [x] Audit imported album objects (14 photos, 210 objects, zero issues) and transfer sources
+      (52 files, 64 objects, zero issues after correcting quota-versus-object size comparison).
+- [x] Stage all 30 Postgres selectors and `DATABASE_SCHEMA_MODE=verify` for web and media-worker,
+      with separate non-superuser database URLs and the worker's required public R2 credentials.
+- [ ] Pass release verification on the exact release artifact.
+- [ ] Deploy and verify the web and media-worker release IDs, health, worker queue, content,
+      access, and multiplayer journeys in production.
+- [ ] Remove Redis variables, verify Redis-free operation and maintenance, and retire the Upstash
+      database and credentials.
+- [ ] Complete production observation, archive-key escrow, recovery evidence, and final acceptance.

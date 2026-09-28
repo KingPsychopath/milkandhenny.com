@@ -41,6 +41,7 @@ export default defineConfig({
         DATABASE_URL: testDatabase,
         REDIS_REST_URL: "http://127.0.0.1:56380",
         REDIS_REST_TOKEN: "local-browser-test",
+        REDIS_URL: "redis://127.0.0.1:56379",
         VITE_BASE_URL: baseURL,
         VITE_MEDIA_PUBLIC_URL: "http://127.0.0.1:4568/public",
         AUTH_SECRET: "playwright-auth-secret-at-least-thirty-two-characters",
