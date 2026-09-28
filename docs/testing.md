@@ -25,7 +25,7 @@ evidence. Do not repeatedly run the full suite while iterating.
 `main`, and manual dispatch. Code changes run `pnpm check`, `pnpm test`,
 `pnpm build`, then the Chromium journeys. CI supplies Postgres, Redis, and media
 tools. Browser runs stop after the first failed test (including its retry) and
-have a nine-minute global limit, leaving time to upload failure evidence before
+have a fifteen-minute global limit, leaving time to upload failure evidence before
 the job limit. Browser failures retain screenshots and traces for seven days.
 
 Only changes entirely within `README.md`, `AGENTS.md`, Markdown files under
