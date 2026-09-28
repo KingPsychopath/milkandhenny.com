@@ -1597,9 +1597,36 @@ that the release is complete.
       (52 files, 64 objects, zero issues after correcting quota-versus-object size comparison).
 - [x] Stage all 30 Postgres selectors and `DATABASE_SCHEMA_MODE=verify` for web and media-worker,
       with separate non-superuser database URLs and the worker's required public R2 credentials.
-- [ ] Pass release verification on the exact release artifact.
-- [ ] Deploy and verify the web and media-worker release IDs, health, worker queue, content,
-      access, and multiplayer journeys in production.
-- [ ] Remove Redis variables, verify Redis-free operation and maintenance, and retire the Upstash
-      database and credentials.
-- [ ] Complete production observation, archive-key escrow, recovery evidence, and final acceptance.
+- [ ] Pass `pnpm verify:release` on the release source. The first run passed checks and 2,200
+      coverage tests but had three browser fixture failures because `TEST_DATABASE_URL` was unset
+      in the Playwright process, plus one multiplayer timing failure. The fixture is corrected;
+      all nine affected browser cases passed on rerun. A complete release rerun is in progress.
+- [x] Deploy release `acef2431` to web and media-worker. Both Redis-free restarts succeeded
+      (`9697eeb2-032f-4c34-ba03-32c33163acec` and
+      `0d3bd400-9639-499d-a36a-074b46e5542d`). Public health, words, pictures, and party
+      pages return 200; the admin content endpoint denies anonymous access with 401.
+      A root-admin login against the live Postgres session store succeeded; authenticated
+      content summary returned three public posts, two albums and 14 photos, transfer admin
+      returned one transfer, and `/api/debug` reported healthy with every required capability
+      available.
+- [x] Remove `REDIS_URL`, `REDIS_REST_URL`, and `REDIS_REST_TOKEN` from both services and verify
+      neither environment retains a Redis key. The media queue has zero waiting jobs and all
+      seven imported jobs are completed. The worker heartbeat advanced after the Redis-free
+      restart; the production transfer reconciliation scanned one transfer and found no repairs.
+      Four non-mailing maintenance cleanup endpoints returned 200.
+- [x] Remove the old Upstash and KV credentials from the ignored local `.env.local`, migrate the
+      local development database through migration `0122`, and select the same 30 Postgres stores
+      for local development. The local media processor remains in its existing local mode.
+- [ ] Delete the external Upstash database and revoke its credentials. The application no longer
+      connects to it, but account-level retirement requires Upstash management access.
+- [x] Escrow the guest archive encryption key in the macOS Keychain as
+      `mah-production-legacy-guest-archive-20260928`; verify readback against the private file and
+      use the Keychain copy to decrypt the production archive with the restricted importer role.
+      The verified payload has 274 guests and 157 plus-ones at the accepted source hash.
+- [x] Observe successive worker heartbeats after the Redis-free restart, a stable zero-length
+      queue, and healthy web and worker deployments. The last 250 deployment log lines for each
+      service contain no error messages.
+- [ ] Complete final acceptance after the external Upstash resource is deleted. A separate-account
+      Postgres backup schedule and restore drill remain operational follow-up work; the user waived
+      a fresh dump for this cutover and the earlier readable pre-cutover dump remains available
+      locally.

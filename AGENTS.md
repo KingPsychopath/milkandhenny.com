@@ -91,7 +91,7 @@ Promise conversion belongs at TanStack, Nitro, CLI, or worker edges. Pass the ac
 timed-out or interrupted external mutation as potentially uncertain. Retry only reads, advisory
 publication, or mutations with an explicit idempotency guarantee.
 
-Effect controls execution, not durable truth. Postgres transactions, Redis queues/outboxes, leases,
+Effect controls execution, not durable truth. Postgres transactions, queues/outboxes, leases,
 and R2 objects remain authoritative. Add injectable provider services only when a workflow consumes
 them and substitution, lifecycle, or typed failure handling provides real value; do not wrap every
 query or SDK call.
@@ -103,19 +103,18 @@ an exact prerelease in `package.json`; treat an upgrade as a coordinated change.
 
 Choose storage by responsibility:
 
-| Store    | Owns                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------- |
-| Postgres | Durable relational product state, transactions, leases, and transactional outboxes      |
-| Redis    | Expiring sessions, rate limits, rooms, transfer/word metadata, coordination, and queues |
-| R2       | Private source blobs and intentional public media derivatives                           |
-| Git      | Source, configuration, migrations, fixtures, and generated build inputs                 |
+| Store    | Owns                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| Postgres | Durable relational state, expiring sessions, rate limits, rooms, transfer/word metadata, leases, and queues |
+| R2       | Private source blobs and intentional public media derivatives                                        |
+| Git      | Source, configuration, migrations, fixtures, and generated build inputs                              |
 
 Durable work is recorded atomically beside the state that creates it. Wake signals are advisory and
 may be lost. Consumers must be idempotent. See [docs/durable-work.md](./docs/durable-work.md).
 
-Use one Redis key per independently read mutable record. Domain-specific queues, indexes, and atomic
-aggregate/outbox structures require a documented consistency reason. Never restore the retired
-single-key collection pattern described in
+Use one independently addressable record per mutable entity. Domain-specific queues, indexes, and
+atomic aggregate/outbox structures require a documented consistency reason. Never restore the retired
+single-key Redis collection pattern described in
 [docs/postmortem-guestlist-kv-read-spike.md](./docs/postmortem-guestlist-kv-read-spike.md).
 
 Production fails closed when required persistence is unavailable. In-memory implementations are

@@ -2,13 +2,12 @@
 
 ## Recovery targets
 
-- PostgreSQL relational product state, including events, tickets, scoring, communications, and
-  Pitch Night: 24-hour recovery point; 4-hour recovery time.
+- PostgreSQL product state, including events, tickets, writing, albums, sessions, rooms, transfers,
+  queues, scoring, communications, and Pitch Night: 24-hour recovery point; 4-hour recovery time.
 - Permanent object-storage media: 24-hour recovery point; 8-hour recovery time.
-- Redis sessions, rate limits, live games, Pitch Night rooms, private transfers, and expiring word
-  shares: no application-managed restore guarantee. Most are short-lived by design; any durable
-  Redis-backed content requires a provider backup policy before it can claim a recovery target.
-- Admin-authored writing: daily checksummed word archive plus permanent media backup; 24-hour recovery point target. Git-owned writing and application configuration restore from Git and the deployment environment.
+- Admin-authored writing and its metadata are included in the PostgreSQL backup; permanent media
+  needs its corresponding object backup. Git-owned writing and application configuration restore
+  from Git and the deployment environment.
 
 These are operating targets, not provider guarantees. Confirm that the selected database and object-storage plans can meet them before launch.
 
@@ -32,9 +31,11 @@ DATABASE_URL=… pnpm restore:postgres /absolute/secure/path/milkandhenny-YYYY-M
 
 After restore:
 
-1. Start the application against the restored database and isolated Redis and object storage.
+1. Start the application against the restored database and isolated object storage, with the same
+   Postgres store selectors as production and no Redis connection variables.
 2. Check `/api/health`.
-3. Verify representative event/ticket, scoring, communication-outbox, and Pitch Night records.
+3. Verify representative event/ticket, word, album, transfer, media-job, room, scoring,
+   communication-outbox, and Pitch Night records.
 4. Record the archive date, restore duration, operator, and result outside the repository.
 5. Delete the drill environment and its credentials.
 
@@ -51,43 +52,18 @@ Test a restore of one image, one video, and one document every quarter. Verify t
 1. Stop writes or direct traffic to a maintenance response.
 2. Preserve logs and the failed system for investigation.
 3. Create new database and storage resources. Do not restore over the failed resources.
-4. Restore PostgreSQL, then permanent objects, then deploy the recorded application commit.
+4. Restore PostgreSQL and the matching permanent objects, then deploy the recorded application commit.
 5. Rotate credentials if exposure caused the incident.
-6. Check health, sign-in, an event, a ticket, an upload, email queue state, and Pitch Night.
+6. Check health, sign-in, an event, a ticket, writing, albums, private transfers, media queue,
+   multiplayer recovery, email queue state, and Pitch Night.
 7. Move traffic only after the checks pass. Keep the failed environment until the incident review is complete.
 
-## Word metadata and index recovery
+## Writing and album recovery
 
-With the source Redis and object-storage credentials exported on a trusted maintenance host:
-
-```bash
-pnpm backup:words /absolute/secure/path/words-YYYY-MM-DD.json
-```
-
-The archive includes public, unlisted, and private content, visibility, body keys, dates, tags, and
-media references, with a SHA-256 integrity check. Missing bodies or inconsistent index membership fail the export. It never includes
-sessions or share tokens. Protect this file like a database backup, encrypt the off-host copy, and
-retain the same daily/weekly versions. Media binaries are restored from the corresponding object
-backup. The command refuses to overwrite an archive. Supply credentials explicitly; it does not
-implicitly load the developer's environment file.
-
-For a drill, select empty isolated Redis and object storage, restore permanent media first, then:
-
-```bash
-pnpm restore:words /absolute/secure/path/words-YYYY-MM-DD.json --confirm-empty-target
-```
-
-Verify one public word and one private draft, timestamps, markdown, image/media references, and the
-admin listing. Restore recreates metadata and the index together and refuses existing metadata.
-A failed partial restore should be investigated and repeated in a fresh isolated target. Archive
-creation must run in a quiet write window; it is not a cross-provider point-in-time snapshot.
-Provider backup schedules, off-host retention, and a real-provider drill remain operational checks.
-The local regression drill verifies a complete public/private loss and reconstruction using test storage.
-
-For a suspected interrupted word write, run `pnpm inspect:words` first. It checks independent
-metadata keys against the index and reports missing bodies without exposing their content.
-`pnpm inspect:words --repair-index` repairs only provable index membership using atomic existence
-checks. Missing bodies require the last verified archive/object version; do not infer visibility
-from an orphaned blob or publish it. Retain the last verified archive before a planned repair. Re-run inspection after index repair, then
-create a fresh archive when every body is readable. Object deletion and visibility moves span providers and
-still require recovery if interrupted; index repair does not pretend to make those atomic.
+Word and album metadata are PostgreSQL-owned in production. Restore the PostgreSQL dump together
+with the corresponding private and public object versions. Check one public word, one private
+draft, one published album, and one unpublished album before reopening writes. Pending object
+copies and deletions are durable database intents; start the media worker only after both stores
+are available and let it resume those intents. Audit references against R2 before treating the
+restore as complete. The pre-cutover Redis word archive commands are legacy migration tools and
+must not be used as the production recovery path.

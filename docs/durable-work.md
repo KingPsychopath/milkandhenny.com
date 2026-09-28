@@ -5,16 +5,14 @@ queue notification or wake signal is never a substitute for that commit.
 
 ## Approved mechanisms
 
-| Mechanism                       | Use                                                          | Delivery and ordering                                                     | Deduplication                                                                                                                | Retry and retention                                                                                  |
-| ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Transactional Postgres outbox   | Email and other work created by Postgres-owned product state | At least once; ordered only where the domain query explicitly orders rows | Stable domain/idempotency key enforced in the transaction                                                                    | Retry transient delivery; retain operational history and permanent failures per the subsystem policy |
-| Leased Redis background queue   | Blocking, high-frequency media work                          | At least once; FIFO is best effort across retries and expired leases      | Idempotent handler and stable job identity                                                                                   | Recover expired leases, retry transient failures, dead-letter poison/permanent failures              |
-| Redis aggregate-adjacent outbox | Results created by Redis-owned multiplayer room state        | At least once; result revisions define domain order                       | `(channel, result, revision)` plus payload hash; the Postgres consumer is idempotent under duplicate and concurrent delivery | Keep retryable refusals until room TTL; acknowledge permanent invalid/conflicting envelopes          |
-| Advisory wake signal            | Low-latency notice after a durable commit                    | At most once and unordered                                                | None required                                                                                                                | May be dropped; readers and scheduled drains reconcile authoritative state                           |
+| Mechanism                     | Use                                                  | Delivery and ordering                                                 | Deduplication                                    | Retry and retention                                                        |
+| ----------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| Transactional Postgres outbox | Email and official results created by Postgres state | At least once; ordered where the domain query explicitly orders rows  | Stable domain/idempotency key in the transaction | Retry transient delivery; retain permanent failures per subsystem policy   |
+| Leased Postgres media queue   | Media processing and object cleanup                  | At least once; order is best effort across retries and expired leases | Stable job identity and idempotent handler       | Recover expired leases, retry transient failures, retain failed jobs       |
+| Advisory wake signal          | Low-latency notice after a durable commit            | At most once and unordered                                            | None required                                    | May be dropped; readers and scheduled drains reconcile authoritative state |
 
-Postgres is the default for new durable work when no data-local transaction requires
-Redis. Redis is appropriate for blocking workers, high-frequency ephemeral work, or when the state
-that creates the work is already Redis-owned and must commit atomically with it.
+Production durable work is Postgres-owned. Redis queue and outbox implementations remain available
+only in explicit non-production configurations while their retirement is completed.
 
 ## Operations
 
