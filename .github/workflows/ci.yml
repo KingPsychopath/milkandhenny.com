@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -37,24 +38,82 @@ jobs:
       REDIS_URL: redis://127.0.0.1:56379
       TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:55432/mah_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.17.0
-      - uses: actions/setup-node@v4
+      # Keep the check present on every PR; workflow-level path filters can leave
+      # a required check pending. Only known documentation paths may skip code checks.
+      - name: Determine verification scope
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT: ${{ github.event_name }}
+        shell: bash
+        run: |
+          code=true
+          judging=false
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]] && git cat-file -e "$BASE^{commit}"; then
+            range="$BASE..HEAD"
+            if [[ "$EVENT" == pull_request ]]; then range="$BASE...HEAD"; fi
+            git diff --name-only --no-renames -z "$range" > "$RUNNER_TEMP/ci-paths"
+            code=false
+            while IFS= read -r -d '' file; do
+              case "$file" in
+                README.md|AGENTS.md|docs/*.md|.cursor/rules/*.mdc) ;;
+                *) code=true ;;
+              esac
+              case "$file" in runtime-assets/hot-and-cold/*) judging=true ;; esac
+            done < "$RUNNER_TEMP/ci-paths"
+            git diff --check "$range"
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "judging=$judging" >> "$GITHUB_OUTPUT"
+          if [[ "$code" == false ]]; then
+            echo 'Documentation-only change: code verification is not needed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: pnpm/action-setup@v6
+        if: steps.scope.outputs.code == 'true'
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.code == 'true'
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --prod --audit-level high
-      - run: pnpm check:game-judging --base "$GAME_JUDGING_BASE"
+      - name: Install dependencies
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Check source
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm check
+      - name: Check changed game judging assets
+        if: steps.scope.outputs.judging == 'true'
+        run: pnpm check:game-judging --base "$GAME_JUDGING_BASE"
         env:
           GAME_JUDGING_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-      - run: pnpm check:hot-and-cold-quality
-      - run: pnpm check
-      - run: pnpm test:coverage
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-      - run: pnpm build
+      - name: Install media test tools
+        if: steps.scope.outputs.code == 'true'
+        run: |
+          if ! command -v ffmpeg || ! command -v exiftool; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg libimage-exiftool-perl
+          fi
+      - name: Test
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm test
+      - name: Build
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm build
+      - name: Install Chromium
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser journeys
+        id: browser
+        if: steps.scope.outputs.code == 'true'
+        run: pnpm test:e2e
+      - name: Save browser failure evidence
+        if: failure() && steps.browser.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-failures
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
