@@ -1,6 +1,7 @@
 import { Context, Deferred, Effect, Fiber, Layer, Schedule } from "effect";
 
 import { sendOperationsDigests } from "@/features/attendee-operations/notifications.server";
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { CommunicationsService } from "@/features/communications/communications-service.server";
 import { processScheduledEventDrops } from "@/features/events/drop.server";
 import { eventsOperation } from "@/features/events/events-operation.server";
@@ -17,6 +18,7 @@ import {
 import { BASE_URL } from "@/lib/shared/config";
 import { isMediaWorkerRole } from "./media-role.server";
 import { monitorMediaWorkerHealth } from "./media-worker-monitor.server";
+import { dailyMaintenanceSteps, runDailyMaintenanceSteps } from "./daily-maintenance.server";
 
 const EMAIL_INTERVAL_MS = 15_000;
 const EVENT_DROP_INTERVAL_MS = 30_000;
@@ -24,6 +26,10 @@ const OPERATIONS_DIGEST_INTERVAL_MS = 5 * 60_000;
 const MEDIA_WORKER_HEALTH_INTERVAL_MS = 60_000;
 const PITCH_REMINDER_INTERVAL_MS = 15 * 60_000;
 const GAME_POOL_CLEANUP_INTERVAL_MS = 30_000;
+const DAILY_MAINTENANCE_INTERVAL_MS = 24 * 60 * 60_000;
+const DAILY_MAINTENANCE_RETRY_MS = 60 * 60_000;
+const DAILY_MAINTENANCE_LEASE_MS = 4 * 60 * 60_000;
+const DAILY_MAINTENANCE_TIMEOUT_MS = 3 * 60 * 60_000;
 const JOB_LEASE_MS = 10 * 60_000;
 const JOB_TIMEOUT_MS = 2 * 60_000;
 
@@ -89,6 +95,9 @@ export class ApplicationSchedulerService extends Context.Service<
     readonly runGamePoolCleanup: (
       force?: boolean,
     ) => Effect.Effect<ScheduledJobRun<Awaited<ReturnType<typeof cleanupGamePools>>>, unknown>;
+    readonly runDailyMaintenance: (
+      force?: boolean,
+    ) => Effect.Effect<ScheduledJobRun<{ completed: number }>, unknown>;
     readonly runPitchReminders: (force?: boolean) => Effect.Effect<
       ScheduledJobRun<{
         queuedEmails: number;
@@ -104,6 +113,7 @@ export class ApplicationSchedulerService extends Context.Service<
     this,
     Effect.gen(function* () {
       const communications = yield* CommunicationsService;
+      const attendee = yield* AttendeeOperationsService;
       const postgres = yield* PostgresService;
       const redis = yield* RedisService;
       const redisClient = yield* redis.client;
@@ -158,6 +168,17 @@ export class ApplicationSchedulerService extends Context.Service<
           intervalMs: PITCH_REMINDER_INTERVAL_MS,
           run: schedulerOperation("pitch_reminders", () =>
             runAutomaticPitchReminders({ origin: BASE_URL }),
+          ),
+        });
+      const runDailyMaintenance = (force = false) =>
+        runLeasedScheduledJobEffect({
+          force,
+          jobKey: "daily-maintenance",
+          intervalMs: DAILY_MAINTENANCE_INTERVAL_MS,
+          retryMs: DAILY_MAINTENANCE_RETRY_MS,
+          leaseMs: DAILY_MAINTENANCE_LEASE_MS,
+          run: runDailyMaintenanceSteps(dailyMaintenanceSteps({ communications, attendee })).pipe(
+            Effect.timeout(DAILY_MAINTENANCE_TIMEOUT_MS),
           ),
         });
 
@@ -293,6 +314,18 @@ export class ApplicationSchedulerService extends Context.Service<
           },
           4,
         ),
+        forkJob(
+          {
+            jobKey: "daily-maintenance",
+            intervalMs: 60_000,
+            run: runDailyMaintenance,
+            report: (outcome) => {
+              if (outcome.ran)
+                log.info("scheduler.maintenance", "Daily maintenance completed", outcome.value);
+            },
+          },
+          5,
+        ),
       ]);
 
       const jobSummaries = [
@@ -302,6 +335,7 @@ export class ApplicationSchedulerService extends Context.Service<
         { jobKey: "operations-digests", intervalMs: OPERATIONS_DIGEST_INTERVAL_MS },
         { jobKey: "pitch-reminders", intervalMs: PITCH_REMINDER_INTERVAL_MS },
         { jobKey: "game-pool-cleanup", intervalMs: GAME_POOL_CLEANUP_INTERVAL_MS },
+        { jobKey: "daily-maintenance", intervalMs: DAILY_MAINTENANCE_INTERVAL_MS },
       ];
 
       return {
@@ -326,6 +360,7 @@ export class ApplicationSchedulerService extends Context.Service<
         runCommunications,
         runEventDrops,
         runGamePoolCleanup,
+        runDailyMaintenance,
         runMediaWorkerHealth,
         runOperationsDigests,
         runPitchReminders,

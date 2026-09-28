@@ -32,7 +32,14 @@ const eventWorkflowLayer = Layer.mergeAll(
   EventScoringService.layer,
 );
 const scheduledEventWorkflowLayer = ApplicationSchedulerService.layer.pipe(
-  Layer.provide(Layer.mergeAll(eventWorkflowLayer, PostgresService.layer, RedisService.layer)),
+  Layer.provide(
+    Layer.mergeAll(
+      eventWorkflowLayer,
+      AttendeeOperationsService.layer,
+      PostgresService.layer,
+      RedisService.layer,
+    ),
+  ),
 );
 const eventsLayer = Layer.mergeAll(
   eventWorkflowLayer,
