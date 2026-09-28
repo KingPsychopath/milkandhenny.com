@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseAlbumManifest } from "@/features/media/album-repository.server";
+import { getAlbumBySlug, getAllAlbums } from "@/features/media/albums.server";
+import {
+  r2ObjectStorageProvider,
+  withObjectStorageProvider,
+} from "@/lib/platform/object-storage-provider-context.server";
 
 const photo = {
   id: "photo-1",
@@ -12,6 +17,43 @@ const photo = {
 };
 
 describe("album manifest parsing", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([undefined, "published", "draft", "publishing"] as const)(
+    "should preserve public visibility for manifest status %s",
+    async (status) => {
+      vi.stubEnv("ALBUM_STORE", "");
+      const manifest = {
+        slug: "jazz-night",
+        title: "Jazz Night",
+        date: "2026-08-24",
+        cover: photo.id,
+        photos: [photo],
+        ...(status ? { status } : {}),
+      };
+      await withObjectStorageProvider(
+        {
+          ...r2ObjectStorageProvider,
+          isConfigured: () => true,
+          headObject: async () => ({ exists: true }),
+          downloadBuffer: async () => Buffer.from(JSON.stringify(manifest)),
+          listObjects: async () => [
+            { key: "albums/_manifests/jazz-night.json", size: 1, lastModified: new Date() },
+          ],
+        },
+        async () => {
+          const published = status === undefined || status === "published";
+          expect((await getAlbumBySlug(manifest.slug))?.status ?? null).toBe(
+            published ? "published" : null,
+          );
+          expect((await getAllAlbums()).map(({ slug }) => slug)).toEqual(
+            published ? [manifest.slug] : [],
+          );
+        },
+      );
+    },
+  );
+
   it("accepts a complete responsive album manifest", () => {
     const album = parseAlbumManifest(
       JSON.stringify({

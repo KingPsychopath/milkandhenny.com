@@ -2,8 +2,8 @@
  * Live processing updates, pushed rather than polled.
  *
  * The worker and the web server are different processes, so a completed job
- * has to cross a process boundary to reach the browser. Redis pub/sub carries
- * it: the worker publishes once per file, every web replica receives it, and
+ * has to cross a process boundary to reach the browser. The selected Postgres or
+ * legacy Redis backplane carries it: every web replica receives the wake and
  * each replica fans it out to whichever viewers are watching that transfer.
  *
  * The alternative — clients polling the transfer endpoint — is what caused
@@ -161,8 +161,10 @@ async function subscribeToTransferMediaEvents(
   };
 }
 
-async function closeTransferMediaEventSubscriber(): Promise<void> {
-  await closePostgresTransferMediaEventSubscriber();
+async function closeTransferMediaEventSubscriber(
+  options: { permanent?: boolean } = {},
+): Promise<void> {
+  await closePostgresTransferMediaEventSubscriber(options);
   const client = subscriber;
   subscriber = null;
   listeners.clear();

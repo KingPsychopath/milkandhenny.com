@@ -7,7 +7,7 @@ import {
   subscribeToTransferMediaEvents,
 } from "@/features/transfers/media-events.server";
 import type { TransferData } from "@/features/transfers/types";
-import { query } from "@/lib/platform/postgres.server";
+import { getPool, query } from "@/lib/platform/postgres.server";
 import { GET } from "@/src/routes/api/transfers/$id/events/route";
 import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
 
@@ -44,6 +44,7 @@ describeWithDatabase("Postgres transfer media events", () => {
     await closeDatabase();
   });
   beforeEach(async () => {
+    await closeTransferMediaEventSubscriber();
     vi.stubEnv("AUTH_SECRET", "integration-test-transfer-secret-at-least-32-bytes");
     vi.stubEnv("TRANSFER_CATALOGUE_STORE", "postgres");
     vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
@@ -90,5 +91,51 @@ describeWithDatabase("Postgres transfer media events", () => {
       abort.abort();
       await reader.cancel();
     }
+  });
+
+  it("should refresh an existing listener after a database disconnect loses a wake", async () => {
+    const transfer = await createTransfer();
+    const received = vi.fn();
+    const unsubscribe = await subscribeToTransferMediaEvents(transfer.id, received);
+    try {
+      const disconnected = await query<{ terminated: boolean }>(
+        `select pg_terminate_backend(pid) as terminated from pg_stat_activity
+          where datname=current_database() and query='listen transfer_media_events_v1'`,
+      );
+      expect(disconnected).toEqual([{ terminated: true }]);
+      await query("update transfer_files set width=1920 where transfer_id=$1", [transfer.id]);
+      // This wake occurs during the reconnect delay, before a new LISTEN exists.
+      await publishTransferMediaEvent(transfer.id, file);
+      await vi.waitFor(
+        () =>
+          expect(received).toHaveBeenCalledWith(
+            expect.objectContaining({
+              transferId: transfer.id,
+              file: expect.objectContaining({ id: file.id, width: 1920 }),
+            }),
+          ),
+        { timeout: 5_000 },
+      );
+    } finally {
+      unsubscribe();
+    }
+  }, 10_000);
+
+  it("should release the SSE checkout when a separately evaluated Media runtime shuts down", async () => {
+    const transfer = await createTransfer();
+    const pool = getPool();
+    if (!pool) throw new Error("Expected test pool");
+    const baseline = pool.totalCount - pool.idleCount;
+    const unsubscribe = await subscribeToTransferMediaEvents(transfer.id, () => {});
+    unsubscribe();
+    expect(pool.totalCount - pool.idleCount).toBe(baseline + 1);
+
+    // Nitro's shutdown plugin and SSR's SSE route evaluate separate module copies.
+    vi.resetModules();
+    const { disposeMediaWorkerRuntime } =
+      await import("@/features/system/media-worker-runtime.server");
+    await disposeMediaWorkerRuntime();
+    expect(pool.totalCount - pool.idleCount).toBe(baseline);
+    await expect(subscribeToTransferMediaEvents(transfer.id, () => {})).rejects.toThrow("closed");
   });
 });

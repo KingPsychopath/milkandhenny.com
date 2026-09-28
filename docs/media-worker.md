@@ -104,17 +104,24 @@ a warning and stays idle — a queue with no consumer is worse than no queue.
 ## Live updates
 
 A file queued for the worker reaches the browser as `original_only` — no
-preview yet. Rather than have clients poll, the worker publishes each state
-change to the Redis channel `transfer:media:events`, every web replica
-subscribes once per process, and `GET /api/transfers/:id/events` streams the
-relevant ones to viewers of that transfer as SSE.
+preview yet. With `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres`, the worker publishes
+a file wake on `transfer_media_events_v1`. Each web process holds one Postgres
+LISTEN connection, reads the committed file state, and streams it through
+`GET /api/transfers/:id/events` as SSE. The legacy Redis backplane uses
+`transfer:media:events`.
+
+The SSE route sends a current snapshot after subscribing. If the Postgres
+backplane reconnects while browser streams remain open, it refreshes every
+subscribed transfer after restoring LISTEN to recover updates missed during the
+outage. The Media runtime shutdown closes the shared subscriber, including any
+connection still being established, before the process closes its Postgres pool.
 
 The gallery opens the stream only while something is outstanding and closes it
 when everything is ready, so idle pages hold no connection. Cost scales with
 work done, not with viewers — the failure mode recorded in
 [postmortem-guestlist-kv-read-spike.md](./postmortem-guestlist-kv-read-spike.md).
 
-If Redis has no direct connection configured the route reports `unavailable`
+If the selected backplane cannot subscribe, the route reports `unavailable`
 and the client closes the stream instead of reconnecting forever.
 
 ## Delivery, retries, and idempotency

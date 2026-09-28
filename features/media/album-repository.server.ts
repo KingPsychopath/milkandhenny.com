@@ -106,6 +106,7 @@ function parseAlbumManifest(raw: string, expectedSlug?: string): Album | null {
       date: value.date,
       cover: value.cover,
       photos: value.photos,
+      status: value.status ?? "published",
     };
   } catch {
     return null;
