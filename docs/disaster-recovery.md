@@ -21,6 +21,12 @@ DATABASE_URL=… pnpm backup:postgres /absolute/secure/path/milkandhenny-YYYY-MM
 
 Encrypt the archive at rest and copy it to a different account or failure domain. Keep at least 7 daily and 4 weekly archives. Never put an archive or database URL in git.
 
+For the current production deployment, the owner chose Railway-managed daily and weekly volume
+backups without an external backup destination. This narrows recovery to what remains available in
+the Railway project; deleting the volume also deletes its Railway backups. Confirm the schedules
+are enabled in the Postgres service before relying on the 24-hour recovery target. The one-time
+encrypted local dump and restore drill are recorded in `plan.md`; they are not a recurring schedule.
+
 ## PostgreSQL restore drill
 
 Create a separate empty database. Never use the live database for a drill. The restore command verifies the SHA-256 and byte count against its adjacent `.dump.json` file before connecting, checks that the public schema has no tables, and uses one transaction. Retain the sidecar with every archive.

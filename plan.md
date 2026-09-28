@@ -1597,15 +1597,11 @@ that the release is complete.
       (52 files, 64 objects, zero issues after correcting quota-versus-object size comparison).
 - [x] Stage all 30 Postgres selectors and `DATABASE_SCHEMA_MODE=verify` for web and media-worker,
       with separate non-superuser database URLs and the worker's required public R2 credentials.
-- [ ] Pass `pnpm verify:release` on the release source. The first run passed checks and 2,200
-      coverage tests but had three browser fixture failures because `TEST_DATABASE_URL` was unset
-      in the Playwright process, plus one multiplayer timing failure. The fixture is corrected;
-      all nine affected browser cases passed on rerun. The combined release rerun on merge
-      `e4fd4272` passed `pnpm check` and 2,203 coverage tests, then passed 71 of 72 browser
-      journeys against an isolated migrated Postgres database. Its only failure was an admin
-      settings test expecting a bare event title while the visible checkbox label includes
-      `· draft`. The assertion was corrected in PR #16; its focused browser journey, `pnpm check`,
-      and `pnpm build` passed on current `main`. A full green `verify:release` rerun remains open.
+- [x] Pass `pnpm verify:release` on the combined source rebased onto PR #18. On a fresh isolated
+      migrated Postgres database, `pnpm check`, all 2,209 tests in 299 files with coverage, the
+      production build, and all 72 browser journeys passed. Earlier full runs exposed an admin
+      selector assumption, a transfer navigation timeout, and a Twin guest-phone timing race;
+      the corrected paths also passed focused browser verification before the green full run.
 - [x] Deploy release `acef2431` to web and media-worker. Both Redis-free restarts succeeded
       (`9697eeb2-032f-4c34-ba03-32c33163acec` and
       `0d3bd400-9639-499d-a36a-074b46e5542d`). Public health, words, pictures, and party
@@ -1622,8 +1618,10 @@ that the release is complete.
 - [x] Remove the old Upstash and KV credentials from the ignored local `.env.local`, migrate the
       local development database through migration `0122`, and select the same 30 Postgres stores
       for local development. The local media processor remains in its existing local mode.
-- [ ] Delete the external Upstash database and revoke its credentials. The application no longer
-      connects to it, but account-level retirement requires Upstash management access.
+- [x] The user confirmed deleting the external Upstash database on 2026-09-28. All three production
+      services were reread afterward and had no Redis or Upstash environment variables. The
+      account-side deletion is recorded from the user's report; this workspace has no independent
+      Upstash management readback.
 - [x] Escrow the guest archive encryption key in the macOS Keychain as
       `mah-production-legacy-guest-archive-20260928`; verify readback against the private file and
       use the Keychain copy to decrypt the production archive with the restricted importer role.
@@ -1641,7 +1639,20 @@ that the release is complete.
       heartbeat, and both services still had no Redis or Upstash environment variables. GitHub CI
       remains red at the unrelated Hot & Cold human editorial approval gate for dailies #36–65;
       the user explicitly authorized merging the code despite that gate.
-- [ ] Complete final acceptance after the external Upstash resource is deleted. A separate-account
-      Postgres backup schedule and restore drill remain operational follow-up work; the user waived
-      a fresh dump for this cutover and the earlier readable pre-cutover dump remains available
-      locally.
+- [x] Take a current logical Postgres dump on 2026-09-28 and restore it into an empty isolated
+      local database. The checksum-verified 1,860,962-byte dump restored in one transaction.
+      Representative restored counts were three events, 119 tickets, 13 words, two albums,
+      14 photos, one transfer with 52 files, seven media jobs, zero rooms, 908 email-outbox rows,
+      and one encrypted guest archive row. The Keychain-escrowed guest key decrypted that restored
+      row and verified 274 guests and 157 plus-ones. The dump was encrypted with age, its key was
+      escrowed separately in Keychain as `mah-production-postgres-backup-20260928`, and the
+      plaintext dump and temporary key file were removed. The encrypted file and checksum
+      sidecar remain in the private local backup directory; Keychain decryption was verified.
+- [ ] Enable Railway-managed daily and weekly Postgres volume backups and read the schedule back.
+      Railway reported no schedules and only an expired 2026-08-23 backup. Repeated scoped CLI schedule
+      attempts returned `You do not have access to this resource`; the user said they would grant
+      access. The user chose Railway-managed backups and declined an external backup destination.
+      The local encrypted dump is a tested recovery copy, not an automatic backup schedule.
+- [ ] Complete final cutover acceptance after the Railway backup schedule is enabled and read back.
+      The broader M13 code-retirement and section 8 acceptance criteria remain separately
+      unchecked until their own evidence exists.
