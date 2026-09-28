@@ -36,8 +36,9 @@ test("admin access policies and administrator grants hydrate on the first render
     await page.goto(url);
     await waitForAppHydration(page);
     await expect(page.getByRole("heading", { name: "Named administrators" })).toBeVisible();
+    await page.getByLabel("event activation", { exact: true }).click();
     await expect(
-      page.getByRole("checkbox", { name: "Hydrated access policy · draft" }),
+      page.getByRole("option", { name: "Hydrated access policy · draft", exact: true }),
     ).toBeVisible();
   } finally {
     await database.query("delete from events where slug=$1", [slug]);

@@ -16,13 +16,41 @@ evidence. Do not repeatedly run the full suite while iterating.
 | `pnpm test:integration` | Multi-module and persistence flows              | Some suites use Postgres              |
 | `pnpm test`             | All Vitest tests                                | Postgres suites skip without Postgres |
 | `pnpm test:coverage`    | All Vitest tests with the release coverage gate | Postgres suites skip without Postgres |
-| `pnpm test:e2e`         | Critical pitch and multiplayer browser journeys | Postgres, S3 test server, Chromium    |
+| `pnpm test:e2e`         | Critical browser journeys                       | Postgres, S3 test server, Chromium    |
 | `pnpm verify:release`   | Full local release gate                         | Postgres, S3 test server, Chromium    |
 
-CI provides Postgres, installs Chromium, runs the full coverage suite, runs the
-browser flow, and builds the production bundle. A local Vitest run probes
-Postgres once. Database-backed suites are skipped with a clear warning when it
-is not available; CI must remain the place that proves those suites ran.
+## CI
+
+[CI](../.github/workflows/ci.yml) has one `verify` job on pull requests, pushes to
+`main`, and manual dispatch. Code changes run `pnpm check`, `pnpm test`,
+`pnpm build`, then the Chromium journeys. CI supplies Postgres, Redis, and media
+tools. Browser runs stop after the first failed test (including its retry) and
+have a fifteen-minute global limit, leaving time to upload failure evidence before
+the job limit. Browser failures retain screenshots and traces for seven days.
+
+Only changes entirely within `README.md`, `AGENTS.md`, Markdown files under
+`docs/`, or rule files under `.cursor/rules/` skip code verification. The job
+still runs and checks diff whitespace, so a required check can complete.
+Service containers still start for these runs; dependency installation, tests,
+and builds are skipped. Content, unknown paths, configuration, and workflow
+changes receive full verification. Renames include both old and new paths.
+Manual runs and unavailable comparison commits default to full verification.
+
+Changed Hot & Cold assets also run the judging-version guard. The full Git
+history supports PR merge-base comparisons and multi-commit pushes. Generated
+asset behaviour remains covered by Vitest.
+
+Date-dependent puzzle approvals and whole-dependency vulnerability audits do
+not block PR verification. Run `pnpm check:hot-and-cold-quality` for editorial
+readiness and `pnpm audit --prod --audit-level high` for dependency triage when
+needed; neither is scheduled by this repository. Coverage is available through
+`pnpm test:coverage` and the local release gate, rather than instrumenting every
+PR test run. Native-dropdown and CLI-parity policies run once in `pnpm check`.
+
+A local Vitest run skips database-backed suites with a warning when Postgres is
+unavailable. CI instead fails when its test database is unreachable. Playwright
+currently tests the development server; the separate build verifies bundling,
+not a production-server browser journey.
 
 ## What belongs in each layer
 
@@ -66,9 +94,9 @@ production contract.
 
 Browser tests live in `e2e/` and use Playwright. Keep these flows few and
 high-value because they are slower and more sensitive to infrastructure. The
-current journeys cover creating, saving, publishing, presenting, and remotely
-controlling a pitch, plus isolated host/player identity, authority, privacy,
-refresh, and reveal in a multiplayer room.
+current journeys cover pitch creation and presentation, attendee access, staff
+operations, admin draft recovery, transfers, and multiplayer identity, privacy,
+refresh, and reveal.
 
 Add a browser test when a failure would be hard to see from server tests alone:
 

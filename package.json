@@ -10,7 +10,7 @@
     "model:semantic": "tsx --tsconfig tsconfig.cli.json scripts/fetch-semantic-model.ts",
     "predev": "node scripts/copy-excalidraw-fonts.mjs",
     "dev": "vite dev",
-    "prebuild": "pnpm check:native-dropdowns && node scripts/copy-excalidraw-fonts.mjs",
+    "prebuild": "node scripts/copy-excalidraw-fonts.mjs",
     "og:cards": "node scripts/generate-og-cards.mjs",
     "media:event-arrival": "node scripts/generate-event-arrival-gif.mjs",
     "media:email-mascots": "node scripts/generate-email-mascot-media.mjs",
@@ -47,7 +47,7 @@
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "verify:release": "pnpm check && pnpm test:coverage && pnpm test:e2e && pnpm build",
+    "verify:release": "pnpm check && pnpm test:coverage && pnpm build && pnpm test:e2e",
     "backup:words": "tsx --tsconfig tsconfig.cli.json scripts/words-archive.ts backup",
     "restore:words": "tsx --tsconfig tsconfig.cli.json scripts/words-archive.ts restore",
     "inspect:words": "tsx --tsconfig tsconfig.cli.json scripts/words-archive.ts inspect"

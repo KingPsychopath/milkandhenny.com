@@ -75,11 +75,11 @@ Every alert needs a target owner and a link to [`deployment.md`](./deployment.md
 
 ## Time-driven product readiness
 
-`product-readiness.yml` checks the rolling Hot & Cold quality window daily, seven days ahead.
-A failed run contains the affected puzzle/date; use repository workflow-failure notifications rather
-than sending unchanged application alerts every polling cycle. The protected System panel shows
+Run `pnpm check:hot-and-cold-quality` when reviewing the upcoming Hot & Cold puzzle window.
+This editorial check is manual; it is not a scheduled workflow or a PR gate.
+The protected System panel shows
 oldest pending email/media age and scheduler last-success/next-due times. Scheduled-job rows and
 queue state are shared durable state; multiplayer counters belong to the displayed replica and
 reset when that process restarts. Aggregate those process metrics in the log/metrics backend.
 Configure the deployment's alert receiver for growing queue age or missed job success windows;
-workflow scheduling and notification delivery must be verified after this change is deployed.
+alert delivery must be verified against the deployed receiver.

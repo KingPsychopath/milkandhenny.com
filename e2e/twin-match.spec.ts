@@ -77,6 +77,10 @@ test("Twin finishes an isolated-phone match after a wrong answer and supports a 
       const matching = choices.find((symbol) => symbols.includes(symbol));
       expect(matching).toBeTruthy();
       if (heat === 0) {
+        // The guest receives the room transition independently of the host.
+        await expect(
+          guest.page.locator('[data-twin-card="hand"] button[data-twin-symbol]').first(),
+        ).toBeEnabled({ timeout: 20_000 });
         const wrong = await guest.page
           .locator('[data-twin-card="hand"] button[data-twin-symbol]')
           .evaluateAll(
